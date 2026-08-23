@@ -3,11 +3,21 @@
 ## Environment
 | Env | Cara jalan | DB |
 |---|---|---|
-| dev | `docker compose -f docker-compose.dev.yml up` (app, queue, redis, postgres lokal) | Postgres lokal (kontainer) |
+| dev | `docker compose up --build` (app, queue, scheduler, Redis, Postgres lokal) | Postgres lokal (kontainer) |
 | staging | Docker Compose di VPS staging, domain `staging.psikotes.oncam.id` | Postgres terpisah (VPS/managed), migrasi diuji di sini dulu |
 | production | Docker Compose di VPS produksi, domain `psikotes.oncam.id` | Postgres produksi (PITR aktif) |
 
-Kontainer terpisah (semua env): `app` (PHP-FPM+Nginx, Laravel+Inertia+Filament dalam satu build), `queue` (Laravel Queue worker — render PDF/Browsershot, rakit narasi, sinkron Drive, notifikasi WAHA/n8n), `redis`, `postgres`. Redis & Postgres di jaringan Docker privat, tidak menghadap publik; hanya `app` yang expose port ke Nginx/reverse proxy.
+Kontainer terpisah (semua env): `app` (PHP-FPM+Nginx, Laravel+Inertia+Filament dalam satu build), `queue` (Laravel Queue worker — render PDF/Browsershot, rakit narasi, sinkron Drive, notifikasi WAHA/n8n), `scheduler` (Laravel Scheduler), `redis`, dan `postgres`. Ketiga proses Laravel memakai image/config yang sama. Redis & Postgres hanya berada di jaringan Docker internal dan tidak memiliki host port; hanya `app` yang memublikasikan `${APP_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-8000}` untuk reverse proxy lokal.
+
+## Menjalankan stack development
+
+1. Salin `.env.example` menjadi `.env`, lalu ganti seluruh placeholder password/secret development.
+2. Jalankan `php artisan key:generate` untuk membuat `APP_KEY` lokal; jangan commit `.env`.
+3. Jalankan `docker compose up --build -d`.
+4. Periksa `docker compose ps`; `postgres`, `redis`, dan `app` harus sehat.
+5. Buka `http://localhost:8000/health`. Respons siap adalah `{"status":"ok"}`; kegagalan dependency menghasilkan status HTTP 503 tanpa detail koneksi.
+
+Docker Compose otomatis membaca `.env`. Volume bernama `postgres-data`, `redis-data`, dan `app-storage` mempertahankan state development saat kontainer dibuat ulang.
 
 ## Langkah deploy
 1. Migrasi DB: `php artisan migrate` (staging dulu; migrasi destruktif WAJIB tag git `pre-{aksi}` + backup manual sebelum jalan — aturan CLAUDE.md).

@@ -48,9 +48,9 @@
 
 **Acceptance criteria:**
 
-- [ ] Compose memakai healthcheck dan volume bernama; Postgres/Redis tidak dipublikasikan ke internet.
-- [ ] App, queue, dan scheduler memakai image/config aplikasi yang sama.
-- [ ] `.env.example` hanya berisi placeholder.
+- [x] Compose memakai healthcheck dan volume bernama; Postgres/Redis tidak dipublikasikan ke host.
+- [x] App, queue, dan scheduler memakai image/config aplikasi yang sama.
+- [x] `.env.example` hanya berisi placeholder.
 
 **Verification:**
 
