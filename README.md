@@ -17,7 +17,7 @@ Stack: Laravel · Inertia.js+React (peserta) · Filament/Livewire (admin/staf/ps
 ## Status implementasi
 
 - F0 selesai: ekstraksi instrumen dan 11 gate otomatis lulus. Lihat `F0_VALIDATION.md`.
-- F1 berjalan: baseline repository dan shell Laravel React telah lulus verifikasi. Rencana dan checklist berada di `tasks/plan.md` dan `tasks/todo.md`.
+- F1 berjalan: baseline repository, shell Laravel React, topologi container statis, dan seeder konfigurasi F0 telah lulus gerbang yang tersedia. Verifikasi runtime container menunggu Docker. Rencana dan checklist berada di `tasks/plan.md` dan `tasks/todo.md`.
 
 ## Toolchain F1
 

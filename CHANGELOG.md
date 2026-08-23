@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## [Unreleased] — F1 fondasi
+- Bootstrap Laravel 13 + Inertia 3/React 19 dengan lockfile PHP/frontend dan quality gate otomatis.
+- Tambah topologi Compose untuk app, queue, scheduler, PostgreSQL, dan Redis; data service berada di jaringan internal.
+- Tambah seeder immutable untuk enam artefak JSON F0 dengan versi dan checksum SHA-256.
+
 ## [4.2.1] — 21 Agustus 2026 (koreksi stack — bukan fungsional)
 - **Perbaikan menyeluruh:** seluruh dokumen (SPEC, ARCHITECTURE, DATABASE_SCHEMA, API_CONTRACT, DEPLOYMENT, CLAUDE, PANDUAN-EKSEKUSI, README, SECURITY, PRIVACY_POLICY, KICKOFF_PROMPT) diperbaiki dari draf arsitektur Cloudflare Pages/Workers/Hono/Supabase/Next.js/R2 (sisa dari SPEC v1.0 paling awal) ke **stack final yang sebelumnya sudah diputuskan**: Laravel + Inertia.js/React (peserta) + Filament/Livewire (admin/staf/psikolog) + PostgreSQL dengan RLS (bukan Supabase — konteks WAJIB disuntik middleware kustom) + Docker Compose di VPS + object storage S3-compatible + Xendit (tak berubah) + WAHA/n8n (tak berubah).
 - Tidak ada perubahan fungsional/psikometrik — murni koreksi lapisan infrastruktur agar dokumen konsisten dengan keputusan stack yang berlaku.

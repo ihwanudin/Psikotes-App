@@ -69,14 +69,14 @@
 
 **Acceptance criteria:**
 
-- [ ] Seeder idempotent dan menyimpan versi sumber/engine.
-- [ ] Seluruh angka dibaca dari JSON; tidak ada norma/ambang yang ditanam di PHP.
-- [ ] Count dan checksum hasil seed cocok dengan artefak F0.
+- [x] Seeder idempotent dan menyimpan versi sumber/engine.
+- [x] Seluruh angka dibaca dari JSON; tidak ada norma/ambang yang ditanam di PHP.
+- [x] Count dan checksum hasil seed cocok dengan artefak F0.
 
 **Verification:**
 
-- [ ] Seeder integration test lulus dua kali berturut-turut.
-- [ ] Gate Python F0 tetap 11/11 lulus.
+- [x] Seeder integration test lulus dua kali berturut-turut.
+- [x] Gate Python F0 tetap 11/11 lulus.
 
 **Dependencies:** Task 2
 

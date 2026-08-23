@@ -24,7 +24,7 @@ Docker Compose otomatis membaca `.env`. Volume bernama `postgres-data`, `redis-d
 2. Build image: `docker compose build` → push ke registry (atau build langsung di VPS untuk skala saat ini) → smoke test di staging.
 3. Deploy produksi: `docker compose pull && docker compose up -d` (rolling — `app` baru naik, health check lulus, baru kontainer lama dimatikan). Production hanya dari `main` yang sudah direview.
 4. Restart queue worker setelah tiap deploy (`docker compose restart queue`) agar kode lama di worker tidak terus jalan.
-5. Seed instrumen (sekali / saat revisi norma): `php artisan tools:extract && php artisan db:seed --class=InstrumentSeeder` — bump `engine_version`.
+5. Validasi data sumber dengan `python -m unittest discover -s tools/extract/tests -v`, lalu seed instrumen memakai `php artisan db:seed --class=InstrumentSeeder`. Versi yang sudah tersimpan immutable; revisi norma wajib memakai versi baru dan bump `engine_version`.
 
 ## Secrets (`.env` di server, TIDAK di git — lihat `.env.example`)
 `APP_KEY`, `DB_*` (host/port/db/user/password Postgres privat), `REDIS_*`, `PARTICIPANT_JWT_SECRET`, `FILESYSTEM_S3_*` (endpoint/key/secret/bucket — object storage S3-compatible), `DRIVE_SA_JSON` (base64, service account) + `DRIVE_SHARED_FOLDER_ID`, `WAHA_URL`/`WAHA_TOKEN` atau `N8N_WEBHOOK_URL`, `XENDIT_SECRET_KEY` + `XENDIT_CALLBACK_TOKEN`, `SENTRY_DSN` (atau Laravel error tracker pilihan).
