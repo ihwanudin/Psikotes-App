@@ -6,14 +6,14 @@
 
 **Acceptance criteria:**
 
-- [ ] Repository Git dan branch F1 aktif tanpa memasukkan data peserta atau secrets.
-- [ ] `.gitignore` mencakup `.env*` rahasia, key, vendor, node_modules, dan build output.
-- [ ] PHP, Composer Laragon, Node/package manager, PostgreSQL client, dan Docker dicatat statusnya.
+- [x] Repository Git dan branch F1 aktif tanpa memasukkan data peserta atau secrets.
+- [x] `.gitignore` mencakup `.env*` rahasia, key, vendor, node_modules, dan build output.
+- [x] PHP, Composer Laragon, Node/package manager, PostgreSQL client, dan Docker dicatat statusnya.
 
 **Verification:**
 
-- [ ] `git status` hanya menampilkan file yang memang diharapkan.
-- [ ] Secret/PII scan baseline tidak menemukan material sensitif yang akan di-commit.
+- [x] `git status` hanya menampilkan file yang memang diharapkan.
+- [x] Secret/PII scan baseline tidak menemukan material sensitif yang akan di-commit.
 
 **Dependencies:** None
 
@@ -27,14 +27,14 @@
 
 **Acceptance criteria:**
 
-- [ ] Laravel boot dengan PHP strict conventions dan environment example tanpa secret.
-- [ ] Inertia React terpasang dan halaman smoke test dirender.
-- [ ] Lockfile PHP/frontend tunggal serta dependency-script policy tercatat.
+- [x] Laravel boot dengan PHP strict conventions dan environment example tanpa secret.
+- [x] Inertia React terpasang dan halaman smoke test dirender.
+- [x] Lockfile PHP/frontend tunggal serta dependency-script policy tercatat.
 
 **Verification:**
 
-- [ ] Focused PHP smoke test lulus.
-- [ ] Frontend build, lint, dan typecheck lulus.
+- [x] Focused PHP smoke test lulus (39/39; 136 assertions).
+- [x] Frontend build, lint, dan typecheck lulus; Composer/npm audit tidak menemukan advisory.
 
 **Dependencies:** Task 1
 
