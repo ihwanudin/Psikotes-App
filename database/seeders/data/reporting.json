@@ -1,0 +1,753 @@
+{
+  "standard_version": "GA-2026.08",
+  "fields": [
+    {
+      "code": "KAIGO",
+      "required_interest": "D4",
+      "raised_to_4": [
+        "C2",
+        "C3",
+        "C4"
+      ]
+    },
+    {
+      "code": "KENSETSU",
+      "required_interest": "D3",
+      "raised_to_4": [
+        "B2",
+        "C5"
+      ]
+    },
+    {
+      "code": "NOUGYOU",
+      "required_interest": "D1",
+      "raised_to_4": [
+        "C5",
+        "C6"
+      ]
+    },
+    {
+      "code": "SEIZOU",
+      "required_interest": "D2",
+      "raised_to_4": [
+        "B1",
+        "B2",
+        "B4"
+      ]
+    },
+    {
+      "code": "GAISHOKU",
+      "required_interest": "D5",
+      "raised_to_4": [
+        "B2",
+        "C2",
+        "C3"
+      ]
+    },
+    {
+      "code": "UMUM",
+      "required_interest": null,
+      "raised_to_4": []
+    }
+  ],
+  "critical": [
+    "A1",
+    "B2",
+    "C4",
+    "C5"
+  ],
+  "narratives": [
+    {
+      "key": "A1-L1",
+      "aspect": "A1",
+      "level": 1,
+      "id": "Klien mengalami kesulitan dalam berpikir secara logika dan analogi. Hal ini mengakibatkan ketidakmampuan dalam menghubungkan informasi dasar untuk melakukan rutinitas kerja yang berisiko melakukan kesalahan di lapangan.",
+      "jp": "論理的・類推的思考に困難があり、基本的な情報を関連づけて日常業務を遂行することが難しく、現場での誤りが生じるおそれがあります。"
+    },
+    {
+      "key": "A1-L2",
+      "aspect": "A1",
+      "level": 2,
+      "id": "Individu menunjukkan adanya daya pikir logika dan analogi tergolong lambat. Klien butuh waktu lebih lama untuk memahami instruksi dan sering keliru jika dihadapkan pada tugas teknis yang sedikit berbeda dari kebiasaan.",
+      "jp": "論理的・類推的思考の働きが遅く、指示の理解に時間を要します。普段と少し異なる技術的作業では誤りが生じやすい傾向があります。"
+    },
+    {
+      "key": "A1-L3",
+      "aspect": "A1",
+      "level": 3,
+      "id": "Memiliki daya pikir logika dan analogi yang memadai. Klien mampu memahami instruksi kerja dan menjalankan tugas operasional dengan wajar dan konsisten.",
+      "jp": "論理的・類推的思考力は十分な水準です。作業指示を理解し、標準的な業務を妥当かつ一貫して遂行できます。"
+    },
+    {
+      "key": "A1-L4",
+      "aspect": "A1",
+      "level": 4,
+      "id": "Cepat menangkap logika instruksi kerja. Klien mampu menggunakan analogi sederhana untuk merealisasikan dan memahami tugas teknis baru dengan baik dan minim kesalahan.",
+      "jp": "作業指示の論理を素早く把握します。簡単な類推を用いて新しい技術的作業を理解し、誤りも少なく遂行できます。"
+    },
+    {
+      "key": "A1-L5",
+      "aspect": "A1",
+      "level": 5,
+      "id": "Sangat tajam dalam berpikir logika dan analogi. Klien mampu dengan cepat menyerap instruksi kerja yang kompleks dan beradaptasi dengan ritme pekerjaan yang menuntut akurasi tinggi.",
+      "jp": "論理的・類推的思考が非常に鋭敏です。複雑な作業指示も速やかに吸収し、高い正確さを要する作業リズムにも適応できます。"
+    },
+    {
+      "key": "A2-L1",
+      "aspect": "A2",
+      "level": 1,
+      "id": "Ada hambatan dalam menguraikan masalah teknis. Klien cenderung bertindak ekstrem tanpa memikirkan cara penyelesaian masalah yang aman dan sesuai standar operasional.",
+      "jp": "技術的な問題を分解することに困難があります。安全かつ標準手順に沿った解決策を考えずに、極端な行動をとる傾向があります。"
+    },
+    {
+      "key": "A2-L2",
+      "aspect": "A2",
+      "level": 2,
+      "id": "Sering kebingungan dalam menguraikan penyebab kendala teknis. Terkadang klien memilih jalan pintas yang berisiko karena kurang cepat merespon atau menghindari pemikiran analitis dasar.",
+      "jp": "技術的な不具合の原因を分解する際に混乱しやすい傾向があります。基本的な分析を避け、対応が遅れるために危険な近道を選ぶことがあります。"
+    },
+    {
+      "key": "A2-L3",
+      "aspect": "A2",
+      "level": 3,
+      "id": "Klien mampu menguraikan dan memecahkan masalah operasional yang standar. Sikap kerjanya normatif, mampu beradaptasi secara wajar tanpa memaksakan penyelesaian masalah yang di luar batas wewenangnya.",
+      "jp": "標準的な運用上の問題を分解し解決できます。作業姿勢は規範的で、権限を超えた解決を強行せず妥当に適応します。"
+    },
+    {
+      "key": "A2-L4",
+      "aspect": "A2",
+      "level": 4,
+      "id": "Klien dapat menunjukkan kepekaan dalam merinci kendala teknis dan memadukannya menjadi solusi praktis. Ia menjadikan pemahaman aturan kerja sebagai penggerak utama dalam mengeksekusi penyelesaian masalah dalam produksi.",
+      "jp": "技術的な不具合を細かく捉える感度があり、それを実践的な解決策へ統合できます。作業規則の理解を、製造現場での問題解決を進める主たる原動力としています。"
+    },
+    {
+      "key": "A2-L5",
+      "aspect": "A2",
+      "level": 5,
+      "id": "Klien sangat teliti menguraikan akar masalah dan merumuskan solusi teknis yang baik. Ia bekerja sangat taktis, menyeimbangkan analisa pemecahan masalah yang tajam dengan kecepatan eksekusi yang tepat sasaran.",
+      "jp": "問題の根本原因を非常に丁寧に分解し、良質な技術的解決策を組み立てられます。極めて実務的に働き、鋭い分析と的確な実行速度を両立させます。"
+    },
+    {
+      "key": "B1-L1",
+      "aspect": "B1",
+      "level": 1,
+      "id": "Klien memiliki penyimpanan memori yang lemah dan rentan kehilangan instruksi dalam waktu singkat. Ia lamban merespon tugas dengan ritme kerja yang kurang teratur.",
+      "jp": "記憶の保持が弱く、短時間で指示を失念しやすい水準です。作業への反応が遅く、作業リズムも整いにくい状態です。"
+    },
+    {
+      "key": "B1-L2",
+      "aspect": "B1",
+      "level": 2,
+      "id": "Klien mudah terdistraksi dengan atensi yang pendek. Kecepatan kerja di bawah rata-rata dan menunjukkan pengerjaan yang tidak stabil saat di bawah tekanan.",
+      "jp": "注意の持続が短く、気が散りやすい傾向があります。作業速度は平均を下回り、重圧下では処理が不安定になります。"
+    },
+    {
+      "key": "B1-L3",
+      "aspect": "B1",
+      "level": 3,
+      "id": "Ingatan dan pemusatan perhatian berada pada taraf standar. Klien mampu bekerja dengan kecepatan normal dan kestabilan yang wajar, di mana fluktuasi naik- turun kinerjanya masih dalam batas yang bisa ditoleransi.",
+      "jp": "記憶と注意の集中は標準水準です。通常の速度で妥当な安定性をもって作業でき、成績の上下も許容範囲内に収まります。"
+    },
+    {
+      "key": "B1-L4",
+      "aspect": "B1",
+      "level": 4,
+      "id": "Klien memiliki konsentrasi yang stabil, teliti dan tanggap untuk mengingat memori dari instruksi. Kecepatan kerjanya baik dengan ritme yang cukup stabil dan minim fluktuasi pada lajur pengerjaan.",
+      "jp": "集中が安定し、丁寧かつ機敏に指示内容を記憶できます。作業速度も良好で、作業量の変動が少ない安定したリズムを保てます。"
+    },
+    {
+      "key": "B1-L5",
+      "aspect": "B1",
+      "level": 5,
+      "id": "Klien memiliki fokus yang tajam dengan daya ingat instruksi jangka panjang dengan baik. Ia dapat merespon pekerjaan dengan konsistensi kecepatan yang sangat terjaga dari awal hingga akhir.",
+      "jp": "鋭い集中力と、長期にわたる指示の記憶力を備えています。始めから終わりまで非常に安定した速度で業務に応じられます。"
+    },
+    {
+      "key": "B2-L1",
+      "aspect": "B2",
+      "level": 1,
+      "id": "Kecepatan respon motorik klien terhadap suatu aktivitas sangat lamban dengan hasil yang sedikit. Ia sangat rentan melakukan kelalaian atau kesalahan saat mengeksekusi tugas- tugas operasional.",
+      "jp": "作業に対する運動反応が非常に遅く、処理量も少ない水準です。標準業務の遂行において不注意や誤りが生じやすい状態です。"
+    },
+    {
+      "key": "B2-L2",
+      "aspect": "B2",
+      "level": 2,
+      "id": "Kecepatan klien dalam melakukan pengerjaan masih tergolong lambat dan berada di bawah standar. Jumlah target yang diselesaikan kurang maksimal dan sering kurang teliti dalam mengontrol kualitas kerjanya.",
+      "jp": "作業速度は遅く標準を下回ります。達成量が不十分で、作業品質の管理においても不注意が目立ちます。"
+    },
+    {
+      "key": "B2-L3",
+      "aspect": "B2",
+      "level": 3,
+      "id": "Kecepatan pengerjaan dan respon motorik klien berada pada taraf wajar. Ia mampu memenuhi standar kecepatan normal suatu perusahaan dengan tingkat ketelitian operasional yang memadai.",
+      "jp": "作業速度と運動反応は妥当な水準です。企業の標準速度を満たし、実務上必要な正確さも備えています。"
+    },
+    {
+      "key": "B2-L4",
+      "aspect": "B2",
+      "level": 4,
+      "id": "Klien dapat merespon motorik dengan baik dan mampu menyelesaikan tugas dengan ritme yang bagus. Ia memiliki tingkat ketelitian yang baik, sehingga hasil kerjanya minim cacat produksi.",
+      "jp": "運動反応が良好で、良いリズムで業務を完了できます。正確さも高く、成果物の不良が少ない水準です。"
+    },
+    {
+      "key": "B2-L5",
+      "aspect": "B2",
+      "level": 5,
+      "id": "Klien mampu mengeksekusi tugas fisik dengan kecepatan yang tinggi dan jauh di atas rata-rata. Ketelitian yang dimiliki sangat maksimal, ia menunjukkan akurasi dan kepastian yang bagus dalam bekerja.",
+      "jp": "高い速度で身体的作業を遂行でき、平均を大きく上回ります。正確さも極めて高く、作業における精度と確実性が優れています。"
+    },
+    {
+      "key": "B3-L1",
+      "aspect": "B3",
+      "level": 1,
+      "id": "Klien menunjukkan adanya kelemahan dalam pemahaman praktis, kaku dalam komunikasi dan tidak paham esensi instruksi. Ia cenderung sangat labil dan rentan membuat keputusan operasional yang salah arah.",
+      "jp": "実務的な理解に弱さがみられ、意思疎通が硬く、指示の趣旨を捉えられません。判断が不安定で、方向を誤った業務判断をするおそれがあります。"
+    },
+    {
+      "key": "B3-L2",
+      "aspect": "B3",
+      "level": 2,
+      "id": "Klien menunjukkan pemahaman yang terlalu praktis dan kaku. Ia sering ragu menilai situasi, kurang peka pada instruksi yang agak rumit dan sangat membutuhkan bimbingan jika terjadi kendala teknis tak terduga.",
+      "jp": "理解が過度に実際的かつ硬直的です。状況判断に迷いやすく、やや複雑な指示への感度が低いため、想定外の不具合時には指導を強く要します。"
+    },
+    {
+      "key": "B3-L3",
+      "aspect": "B3",
+      "level": 3,
+      "id": "Klien dapat mengerti suatu instruksi yang disampaikan secara lugas dan literal. Ia mampu menilai realitas secara wajar, mengerti garis besar pekerjaan operasionalnya dan mampu mengambil keputusan berdasarkan common sense.",
+      "jp": "平易かつ文字どおりに伝えられた指示は理解できます。現実を妥当に判断し、担当業務の全体像を把握して常識に基づく判断ができます。"
+    },
+    {
+      "key": "B3-L4",
+      "aspect": "B3",
+      "level": 4,
+      "id": "Klien mampu menangkap esensi pemahaman masalah teknis dengan baik dan logis. Komunikasinya lancar, mandiri, dan dapat diandalkan untuk memutus kendala operasional taktis di lapangan secara cepat.",
+      "jp": "技術的な問題の要点を的確かつ論理的に捉えられます。意思疎通が円滑で自立しており、現場の運用上の判断を素早く下せる信頼性があります。"
+    },
+    {
+      "key": "B3-L5",
+      "aspect": "B3",
+      "level": 5,
+      "id": "Kemampuan klien dalam hal abstraksi dan empati verbalnya sangat tajam. Ia mampu menangkap makna tersirat dari masalah kompleks dan mengambil keputusan penyelesaian masalah secara mandiri berdasarkan fakta akurat.",
+      "jp": "抽象化と言語的共感の能力が非常に鋭敏です。複雑な問題の言外の意味を捉え、正確な事実に基づいて自立的に解決の判断を下せます。"
+    },
+    {
+      "key": "B4-L1",
+      "aspect": "B4",
+      "level": 1,
+      "id": "Klien menunjukkan sistematika kerja yang sangat tidak konsisten dengan ritme kerja yang kurang stabil. Ia bekerja tidak teratur, kerap berimprovisasi tanpa rencana dan cenderung ceroboh serta mengabaikan akurasi tugas yang berakibat melewatkan kesalahan operasional penting.",
+      "jp": "作業の体系性が極めて不安定で、リズムも整いません。計画を持たずに即興で進め、不注意により重要な運用上の誤りを見落とすおそれがあります。"
+    },
+    {
+      "key": "B4-L2",
+      "aspect": "B4",
+      "level": 2,
+      "id": "Klien menunjukkan gaya kerja yang bisa terlalu berlebihan pada detail. Ia dapat mendetailkan suatu pekerjaan hingga membuang waktu, atau terlalu kaku pada birokrasi. Hal ini menghambat laju eksekusi aktivitas pekerjaan harian.",
+      "jp": "細部への偏りが過度な作業様式です。ある業務を細かくしすぎて時間を費やし、あるいは手続きに硬直的で、日常業務の遂行速度を妨げます。"
+    },
+    {
+      "key": "B4-L3",
+      "aspect": "B4",
+      "level": 3,
+      "id": "Klien mampu menunjukkan sistematika kestabilan kerja yang wajar. Ia memiliki keteraturan fleksibel dan adaptif dalam menjaga kerapian sistem pekerjaan sehari-hari. Klien juga cukup akurat untuk operasional umum tanpa larut dalam detail.",
+      "jp": "妥当な水準の作業の安定性と体系性を示します。日常業務の秩序を保つうえで柔軟かつ適応的な規則性があり、細部に埋没せず一般的な運用に足る正確さを備えています。"
+    },
+    {
+      "key": "B4-L4",
+      "aspect": "B4",
+      "level": 4,
+      "id": "Ritme kerja yang ditunjukkan klien stabil. Ia menunjukkan preferensi sistematika pribadi yang terstruktur, bekerja dengan pendekatan metodis dan merencanakan jadwal dengan baik. Ia juga konsisten dalam memeriksa pekerjaannya untuk memastikan akurasi.",
+      "jp": "作業リズムが安定しています。構造化された個人の作業様式を好み、方法的に進め、予定を適切に計画します。正確さを確かめるための点検も一貫して行います。"
+    },
+    {
+      "key": "B4-L5",
+      "aspect": "B4",
+      "level": 5,
+      "id": "Klien mampu menunjukkan kestabilan sistematika kerja yang sangat baik dan konsisten. Ia memiliki kedisiplinan dan sistematika dalam mengeksekusi instruksi kompleks dengan baik. Keteraturan dan ketelitian yang dilakukan sangat rasional hingga mampu menyesuaikan standar pekerjaan.",
+      "jp": "非常に良好かつ一貫した作業の体系性と安定性を示します。規律と体系性をもって複雑な指示を遂行し、その秩序と丁寧さは極めて合理的で、業務標準に適合させることができます。"
+    },
+    {
+      "key": "C1-L1",
+      "aspect": "C1",
+      "level": 1,
+      "id": "Klien menunjukkan sikap menghindar posisi tanggung jawab atau sebaliknya dengan memiliki ambisi memimpin yang ekstrem dan berpotensi memicu konflik otoritas dengan atasan. Reaktivitas emosinya ekstrem, terkesan pasif dan kurang mampu berempati terhadap kesulitan kerja.",
+      "jp": "責任ある立場を避ける姿勢、あるいは逆に極端な主導欲を示し、上長との権限上の衝突を招くおそれがあります。情緒的反応が極端で、消極的にみえ、業務上の困難への共感も乏しい状態です。"
+    },
+    {
+      "key": "C1-L2",
+      "aspect": "C1",
+      "level": 2,
+      "id": "Klien menunjukkan kepercayaan diri yang kurang stabil saat menghadapi tekanan. Terkadang ia ragu dalam mengambil porsi tanggung jawab dan pengendalian emosinya masih rentan saat beban kerja meningkat.",
+      "jp": "重圧下での自信が不安定です。責任の分担を引き受ける判断に迷うことがあり、業務負荷が高まると情緒の制御も揺らぎやすい傾向があります。"
+    },
+    {
+      "key": "C1-L3",
+      "aspect": "C1",
+      "level": 3,
+      "id": "Klien memiliki kematangan dan pengendalian emosi yang wajar. Ia mampu menunjukkan kepemimpinan situasional secara adaptif jika ditugaskan dan ekspresif untuk mengomunikasikan beban kerjanya dengan jujur tanpa merusak alur kerja.",
+      "jp": "妥当な水準の成熟度と情緒の制御を備えています。任された場合には状況に応じた適応的な指導性を示し、作業の流れを損なわずに負荷を率直に伝えられます。"
+    },
+    {
+      "key": "C1-L4",
+      "aspect": "C1",
+      "level": 4,
+      "id": "Klien menunjukkan kesiapan matang untuk menjalankan tanggung jawab. Ia Ia memiliki kematangan diri yang stabil, tenang menghadapi dinamika harian dan tangguh meredam reaktivitas negatif saat terjadi konflik operasional.",
+      "jp": "責任を担うための成熟した準備が整っています。安定した自己の成熟度をもち、日々の変動に落ち着いて対処し、業務上の衝突時にも負の反応を抑えられます。"
+    },
+    {
+      "key": "C1-L5",
+      "aspect": "C1",
+      "level": 5,
+      "id": "Klien menunjukkan ketangguhan dan berkepala dingin dalam menghadapi situasi krisis. Ia sangat siap dan tegas mengarahkan diri maupun kelompok secara mandiri tanpa arogansi. Hal ini diartikan bahwa kematangan emosional dan kepercayaan dirinya sangat baik.",
+      "jp": "危機的な状況において強靭さと冷静さを示します。傲慢さを伴わずに、自らも集団も自立的かつ明確に導く用意があります。情緒的成熟度と自信が非常に良好であることを意味します。"
+    },
+    {
+      "key": "C2-L1",
+      "aspect": "C2",
+      "level": 1,
+      "id": "Klien cenderung menunda pekerjaan, mudah terdistraksi dan sering meninggalkan tugas yang belum selesai. Ia sangat kritis dan rentan membangkang terhadap otoritas. Klien juga cenderung menarik diri dan bersikap dingin dalam komunikasi.",
+      "jp": "業務を先延ばしにし、気が散りやすく、未完了のまま放置する傾向があります。批判的で権限に反発しやすく、また距離を置いて冷淡な意思疎通をとる傾向もあります。"
+    },
+    {
+      "key": "C2-L2",
+      "aspect": "C2",
+      "level": 2,
+      "id": "Ketekunan klien dalam menyelesaikan tugas masih kurang maksimal. Ia cenderung pasif dalam komunikasi tim dan membutuhkan instruksi yang diulang karena tanggung jawab kerjanya cenderung diabaikan saat tidak diawasi.",
+      "jp": "業務を完了させる粘り強さが不十分です。チーム内の意思疎通に消極的で、監督がないと責任が疎かになりやすいため、指示の反復を要します。"
+    },
+    {
+      "key": "C2-L3",
+      "aspect": "C2",
+      "level": 3,
+      "id": "Klien memiliki ketekunan yang wajar dan fleksibel mengelola tugas tanpa kehilangan fokus pada hasil akhir. Ia mampu menunjukkan sikap kooperatif dengan menghormati pimpinan dan berkomunikasi secara proporsional dalam batasan profesional yang sehat.",
+      "jp": "妥当な粘り強さを備え、最終成果への集中を失わずに柔軟に業務を管理できます。上長を尊重する協調的な姿勢を示し、健全な職業上の境界の内で釣り合いのとれた意思疎通ができます。"
+    },
+    {
+      "key": "C2-L4",
+      "aspect": "C2",
+      "level": 4,
+      "id": "Klien memiliki dorongan internal yang kuat untuk menuntaskan pekerjaan. Ia bisa menunjukkan sikap loyal dan konsisten dalam mendengarkan instruksi atasan serta ramah dan proaktif membangun hubungan baik di tempat kerja.",
+      "jp": "業務を完遂しようとする強い内的動機を備えています。上長の指示に耳を傾ける誠実で一貫した姿勢を示し、和やかかつ能動的に職場の良好な関係を築けます。"
+    },
+    {
+      "key": "C2-L5",
+      "aspect": "C2",
+      "level": 5,
+      "id": "Klien mampu menuntaskan dan dapat diandalkan dalam menyelesaikan pekerjaan dari awal hingga akhir. Ia memiliki potensi menjadi pilar penguat hierarki yang loyal pada pimpinan dengan kemampuan relasional komunikasi yang lugas.",
+      "jp": "業務を始めから終わりまで完遂し、信頼して任せられます。円滑な意思疎通の力をもち、上長に誠実な、階層を支える柱となる資質を備えています。"
+    },
+    {
+      "key": "C3-L1",
+      "aspect": "C3",
+      "level": 1,
+      "id": "Klien cenderung sangat menghindari persaingan, pasif dalam pengawasan dan bergantung pada penerimaan kelompok atau terlalu menuntut keakraban personal. Dalam aktivitasnya, klien cenderung cepat puas dengan kondisi saat ini tanpa inisiatif kerja.",
+      "jp": "競争を強く避け、監督下で受動的になり、集団の受容に依存するか、あるいは個人的な親密さを過度に求める傾向があります。活動においては現状に早く満足し、業務上の自発性が乏しい状態です。"
+    },
+    {
+      "key": "C3-L2",
+      "aspect": "C3",
+      "level": 2,
+      "id": "Inisiatif kerja yang ditunjukkan klien cenderung tergolong rendah. Sesekali ia bisa menyesuaikan diri dengan lingkungan sosial, namun klien masih butuh dorongan eksternal untuk mau berpartisipasi dan mengambil peran dalam pekerjaan.",
+      "jp": "業務上の自発性は低い水準です。ときには社会的環境に適応できますが、参加し役割を担うには外部からの働きかけを要します。"
+    },
+    {
+      "key": "C3-L3",
+      "aspect": "C3",
+      "level": 3,
+      "id": "Adanya dorongan berprestasi yang ditunjukkan klien dengan wajar sesuai standar aktivitas pekerjaan. Ia mampu melakukan kontrol proporsional secara adaptif, mandiri secara sosial dan memiliki batasan emosional yang tegas secara profesional di tempat kerja.",
+      "jp": "業務の標準に見合った妥当な達成意欲を示します。適応的に釣り合いのとれた統制ができ、社会的に自立し、職場において明確な情緒的境界を保てます。"
+    },
+    {
+      "key": "C3-L4",
+      "aspect": "C3",
+      "level": 4,
+      "id": "Klien memiliki potensi dalam bersikap ambisius untuk mencapai target dengan sesuai. Ia cenderung tegas dalam memastikan eksekusi kerja secara mandiri, menghargai keharmonisan antar rekan kerja dan mampu menyeimbangkan kemandirian dengan partisipasi aktif dalam kelompok.",
+      "jp": "目標達成に向けた意欲を備えています。業務遂行を自立的に確かめるうえで明確な姿勢をとり、同僚間の調和を尊重しながら、自立性と集団への能動的な参加を両立できます。"
+    },
+    {
+      "key": "C3-L5",
+      "aspect": "C3",
+      "level": 5,
+      "id": "Klien memiliki dorongan untuk terpacu guna meraih target maksimal. Ia dapat menunjukkan loyalitas dalam kelompok, kooperatif memupuk kebersamaan tim dan berinisiatif memastikan alur operasional berjalan sempurna.",
+      "jp": "最大限の目標に向かって自らを駆り立てる意欲を備えています。集団内で誠実さを示し、協調してチームの一体感を育て、運用の流れが完全に機能するよう自発的に働きかけられます。"
+    },
+    {
+      "key": "C4-L1",
+      "aspect": "C4",
+      "level": 1,
+      "id": "Ketahanan kerja klien terhadap tekanan sangat rendah. Ia cenderung submisif dan mudah mengalah atau sebaliknya cenderung agresif, defensif, dan mudah tersinggung.",
+      "jp": "重圧に対する耐性が非常に低い水準です。従属的で容易に譲る傾向、あるいは逆に攻撃的・防衛的で感情を害しやすい傾向があります。"
+    },
+    {
+      "key": "C4-L2",
+      "aspect": "C4",
+      "level": 2,
+      "id": "Klien cenderung kurang mampu menjaga kestabilan diri di bawah beban kerja produksi. Hal ini berpotensi memicu emosinya yang mudah terpancing.",
+      "jp": "生産上の業務負荷のもとで自己の安定を保つことが難しい傾向があります。そのため感情が刺激されやすくなるおそれがあります。"
+    },
+    {
+      "key": "C4-L3",
+      "aspect": "C4",
+      "level": 3,
+      "id": "Ketahanan kerja yang dimiliki klien bersifat wajar dan sesuai. Ia dapat menunjukkan sikap peka terhadap lingkungan kerja dan asertif yang standar untuk berkolaborasi tanpa kecenderungan konfrontatif.",
+      "jp": "業務の耐性は妥当かつ適切な水準です。職場環境への感受性を示し、対立的にならずに協働できる標準的な自己主張ができます。"
+    },
+    {
+      "key": "C4-L4",
+      "aspect": "C4",
+      "level": 4,
+      "id": "Ketahanan kerja yang dimiliki klien baik. Ia dapat memiliki stamina yang stabil dari awal hingga akhir aktivitas. Emosinya matang, objektif dan memiliki ketegasan profesional untuk melindungi batasan kerja secara logis di tengah tekanan.",
+      "jp": "業務の耐性は良好です。活動の始めから終わりまで安定した体力を保てます。情緒が成熟し客観的で、重圧の中でも業務上の境界を論理的に守る職業的な明確さを備えています。"
+    },
+    {
+      "key": "C4-L5",
+      "aspect": "C4",
+      "level": 5,
+      "id": "Ketahanan kerja klien sangat baik. Ia cukup tangguh dalam bernegosiasi dan mampu menunjukkan ketenangan dalam menghadapi krisis tekanan tinggi dalam aktivitas di tempat kerja.",
+      "jp": "業務の耐性が非常に良好です。交渉において十分に強靭で、職場活動における高い重圧の危機的状況でも落ち着きを示せます。"
+    },
+    {
+      "key": "C5-L1",
+      "aspect": "C5",
+      "level": 1,
+      "id": "Klien menunjukkan daya tahan diri yang sangat rendah. Stamina fisik terbatas, cepat merasa lelah dan sangat menghindari pengerahan tenaga aktivitas fisik.",
+      "jp": "自己の持久力が非常に低い水準です。体力に限りがあり、疲れを感じやすく、身体的活動への力の投入を強く避けます。"
+    },
+    {
+      "key": "C5-L2",
+      "aspect": "C5",
+      "level": 2,
+      "id": "Stamina yang dimiliki klien mulai dapat menurun seiring berjalannya waktu. Ia cenderung kurang betah dalam menjalani rutinitas fisik jangka panjang, sehingga mudah mengeluh jika tuntutan mobilitas di tempat kerja ditingkatkan.",
+      "jp": "体力は時間の経過とともに低下しはじめます。長期にわたる身体的な反復業務への定着が弱く、職場での移動量が増すと不満を述べやすい傾向があります。"
+    },
+    {
+      "key": "C5-L3",
+      "aspect": "C5",
+      "level": 3,
+      "id": "Ketahanan fisik yang dimiliki klien standar normal. Ia dapat merasa nyaman dengan stabilitas kerja, mampu mempertahankan stamina secara wajar meskipun terjadi sedikit penurunan performa akibat kelelahan fisik di akhir waktu.",
+      "jp": "身体的な持久力は標準水準です。安定した業務に心地よさを感じ、終盤に身体的疲労による多少の成績低下が生じても、体力を妥当に保てます。"
+    },
+    {
+      "key": "C5-L4",
+      "aspect": "C5",
+      "level": 4,
+      "id": "Klien mampu memiliki daya tahan diri yang energik, aktif dan menyukai mobilitas. Ia dapat mempertahankan stamina dan ketekunan yang stabil dari awal hingga akhir alur operasional tanpa keluhan fisik yang berarti.",
+      "jp": "精力的で活動的な持久力を備え、身体を動かすことを好みます。運用の流れの始めから終わりまで、目立った身体的不調を訴えることなく体力と粘り強さを保てます。"
+    },
+    {
+      "key": "C5-L5",
+      "aspect": "C5",
+      "level": 5,
+      "id": "Ketahanan diri dan fisik klien sangat baik. Ia memiliki stamina fisik dan vitalitas kerja yang tinggi. Hal ini mendorong dirinya merasa tangguh dalam menghadapi jam kerja padat dan tuntutan fisik kerja lapangan tanpa mudah lelah.",
+      "jp": "自己と身体の持久力が非常に良好です。高い体力と業務の活力を備え、密な勤務時間や現場作業の身体的要求にも容易に疲れることなく立ち向かえます。"
+    },
+    {
+      "key": "C6-L1",
+      "aspect": "C6",
+      "level": 1,
+      "id": "Klien memiliki tempo kerja yang lambat, menunda pekerjaan dan meninggalkan tugas belum selesai. Klien juga tidak mampu menunjukkan kegigihannya karena fisik cepat lelah dan kehilangan urgensi waktu.",
+      "jp": "作業の速さが遅く、業務を先延ばしにし、未完了のまま放置します。身体が早く疲れ、時間の切迫感を失うため、粘り強さを示せません。"
+    },
+    {
+      "key": "C6-L2",
+      "aspect": "C6",
+      "level": 2,
+      "id": "Kecepatan dan ketekunan klien dalam pekerjaan berada di bawah rata-rata. Ia mudah menyerah atau terdistraksi di pertengahan jalan saat menghadapi masalah teknis.",
+      "jp": "業務における速さと粘り強さが平均を下回ります。技術的な問題に直面すると、途中で諦めたり気が散ったりしやすい傾向があります。"
+    },
+    {
+      "key": "C6-L3",
+      "aspect": "C6",
+      "level": 3,
+      "id": "Klien mampu menunjukkan sikap bekerja dengan ritme yang stabil, tidak terburu-buru dan tidak menunda. Ia cenderung cukup tekun untuk menuntaskan rutinitas tugas harian sesuai alur waktu standar.",
+      "jp": "急ぎすぎず先延ばしもしない安定したリズムで働く姿勢を示します。標準的な時間の流れに沿って日常業務を完了させる十分な粘り強さを備えています。"
+    },
+    {
+      "key": "C6-L4",
+      "aspect": "C6",
+      "level": 4,
+      "id": "Klien dapat merespon tugas dengan sigap dan dalam tempo kerja yang cepat. Ia memiliki dorongan internal yang tangguh untuk memecahkan hambatan demi menuntaskan tugas secara mandiri.",
+      "jp": "機敏に、そして速い作業速度で業務に応じられます。障害を打開して業務を自立的に完了させる強靭な内的動機を備えています。"
+    },
+    {
+      "key": "C6-L5",
+      "aspect": "C6",
+      "level": 5,
+      "id": "Klien mampu memiliki dorongan dalam merespon tugas yang dalam segala kondisi. Ia responsif untuk memproses kerja paralel dan konsisten menuntaskan pekerjaan dari awal hingga akhir dengan dedikasi penuh.",
+      "jp": "あらゆる状況で業務に応じる意欲を備えています。並行業務を処理する反応の速さがあり、始めから終わりまで全力の献身をもって一貫して業務を完遂します。"
+    },
+    {
+      "key": "C7-L1",
+      "aspect": "C7",
+      "level": 1,
+      "id": "Arah dan gaya kerja yang dimiliki klien sangat tidak konsisten secara ritme. Ia menolak regulasi/SOP, cenderung kritis membangkang hierarki dan terlalu dominan memikirkan teori tanpa ada eksekusi nyata sama sekali.",
+      "jp": "作業の方向と様式のリズムが極めて不安定です。規程や標準手順を拒み、階層に対して批判的に反抗する傾向があり、理論を過度に重んじて実際の遂行がまったく伴いません。"
+    },
+    {
+      "key": "C7-L2",
+      "aspect": "C7",
+      "level": 2,
+      "id": "Gaya kerja yang dilakukan klien tidak stabil. Ia cenderung bergantung pada aturan tanpa inisiatif dan kurang luwes menyesuaikan arah kerja dengan target praktis di lapangan produksi.",
+      "jp": "作業様式が不安定です。自発性を伴わずに規則へ依存する傾向があり、生産現場の実務的な目標に合わせて作業の方向を柔軟に調整することが苦手です。"
+    },
+    {
+      "key": "C7-L3",
+      "aspect": "C7",
+      "level": 3,
+      "id": "Kestabilan kerja yang dimiliki klien wajar. Ia dapat bekerja sebagai eksekutor praktis yang fokus menyelesaikan tugas operasional secara mandiri, menghormati struktur atasan dan tetap fleksibel terhadap perubahan.",
+      "jp": "妥当な水準の作業の安定性を備えています。標準業務を自立的に完了させる実務的な遂行者として働けます。上長の構造を尊重し、変化に対しても柔軟さを保てます。"
+    },
+    {
+      "key": "C7-L4",
+      "aspect": "C7",
+      "level": 4,
+      "id": "Ritme kerja yang dimiliki cenderung stabil dengan sedikit fluktuasi pekerjaan. Ia Menyukai keteraturan, disiplin mengikuti sistem, loyal pada instruksi atasan dan mampu menerjemahkan konsep menjadi langkah operasional yang nyata.",
+      "jp": "作業リズムは概ね安定し、業務の変動も少ない状態です。規則性を好み、体系に従う規律を保ち、上長の指示に誠実で、概念を実際の運用手順へ翻訳できます。"
+    },
+    {
+      "key": "C7-L5",
+      "aspect": "C7",
+      "level": 5,
+      "id": "Gaya kerja yang dimiliki klien cenderung sangat stabil, lurus dan presisi. Ia mampu menjaga disiplin kerja dengan mengimplementasikan SOP dengan baik, berdedikasi tinggi dalam mengawal instruksi atasan namun tetap memprioritaskan tindakan penyelesaian secara praktis dan rasional.",
+      "jp": "作業様式が非常に安定し、まっすぐで精確です。標準手順を的確に実施して業務規律を保ち、上長の指示を高い献身をもって守りながら、実務的かつ合理的な解決行動を優先できます。"
+    },
+    {
+      "key": "D1-L1",
+      "aspect": "D1",
+      "level": 1,
+      "id": "Sangat tidak menyukai dan menolak pekerjaan di luar ruangan. Rentan tidak betah dan berisiko keluar jika ditempatkan pada bidang pertanian atau perkebunan.",
+      "jp": "屋外作業を強く好まず拒みます。農業・造園分野に配置された場合、定着せず離職するおそれがあります。"
+    },
+    {
+      "key": "D1-L2",
+      "aspect": "D1",
+      "level": 2,
+      "id": "Minat pada bidang pertanian/perkebunan tergolong rendah. Lebih menyukai pekerjaan di dalam ruangan dan kurang antusias jika harus berpanas-panasan di lapangan.",
+      "jp": "農業・造園分野への関心は低い水準です。屋内作業を好み、現場で炎天下に置かれることに意欲を示しません。"
+    },
+    {
+      "key": "D1-L3",
+      "aspect": "D1",
+      "level": 3,
+      "id": "Memiliki minat wajar pada bidang pertanian dan perkebunan. Cukup adaptif dan sanggup bekerja di luar ruangan meski itu bukan preferensi utamanya.",
+      "jp": "農業・造園分野に妥当な関心があります。主たる志向ではないものの、屋外での作業に適応し従事できます。"
+    },
+    {
+      "key": "D1-L4",
+      "aspect": "D1",
+      "level": 4,
+      "id": "Menunjukkan minat yang tinggi pada bidang pertanian dan perkebunan. Cukup antusias bekerja di alam terbuka atau lapangan.",
+      "jp": "農業・造園分野に高い関心を示します。野外や現場で働くことに十分な意欲があります。"
+    },
+    {
+      "key": "D1-L5",
+      "aspect": "D1",
+      "level": 5,
+      "id": "Sangat menyukai dan memiliki dorongan kuat untuk bekerja di bidang pertanian dan perkebunan. Pilihan sangat ideal untuk penempatan kerja lapangan/ outdoor.",
+      "jp": "農業・造園分野で働くことを強く好み、その意欲も高い水準です。現場・屋外作業への配置に非常に適した選択です。"
+    },
+    {
+      "key": "D2-L1",
+      "aspect": "D2",
+      "level": 1,
+      "id": "Sangat menghindari pekerjaan yang berhubungan dengan operasional permesinan. Sama sekali tidak termotivasi untuk mendalami bidang mekanik dan elektrik.",
+      "jp": "機械の運転に関わる業務を強く避けます。機械・電気分野を深めようとする動機はまったくありません。"
+    },
+    {
+      "key": "D2-L2",
+      "aspect": "D2",
+      "level": 2,
+      "id": "Minat pada permesinan kurang menonjol. Kurang antusias jika dihadapkan pada tugas yang mengharuskan perbaikan alat atau operasional kelistrikan sehari-hari.",
+      "jp": "機械への関心は目立ちません。日常的な機器の修理や電気関係の作業を求められる場面では意欲が乏しい状態です。"
+    },
+    {
+      "key": "D2-L3",
+      "aspect": "D2",
+      "level": 3,
+      "id": "Minat pada bidang mekanik dan elektrik berada pada tingkat wajar. Mampu menjalankan tugas operasional mesin pabrik standar tanpa penolakan berarti.",
+      "jp": "機械・電気分野への関心は妥当な水準です。標準的な工場機械の運転業務を、特段の拒否なく遂行できます。"
+    },
+    {
+      "key": "D2-L4",
+      "aspect": "D2",
+      "level": 4,
+      "id": "Memiliki minat yang tangguh terhadap operasional mesin dan kelistrikan. Antusias jika dilibatkan dalam perawatan atau perbaikan peralatan teknis.",
+      "jp": "機械の運転と電気に対して確かな関心を備えています。技術機器の保全や修理に関わることに意欲を示します。"
+    },
+    {
+      "key": "D2-L5",
+      "aspect": "D2",
+      "level": 5,
+      "id": "Sangat antusias dan menjadikan bidang mekanik serta elektrik sebagai minat utama. Memiliki motivasi tinggi untuk mendalami operasional mesin dan teknis pabrik.",
+      "jp": "機械・電気分野を主たる関心とし、非常に高い意欲を示します。機械の運転と工場の技術を深めようとする動機が高い水準です。"
+    },
+    {
+      "key": "D3-L1",
+      "aspect": "D3",
+      "level": 1,
+      "id": "Sangat menghindari pekerjaan fisik kasar. Menolak jenis pekerjaan yang berkaitan dengan pertukangan atau konstruksi bangunan.",
+      "jp": "重い身体作業を強く避けます。大工仕事や建設に関わる業務を拒みます。"
+    },
+    {
+      "key": "D3-L2",
+      "aspect": "D3",
+      "level": 2,
+      "id": "Minat pada bidang konstruksi rendah. Kurang menyukai pekerjaan yang menuntut pengerahan tenaga fisik untuk membangun atau merakit material berat.",
+      "jp": "建設分野への関心は低い水準です。重量物の組立てや構築のために体力を投入する業務を好みません。"
+    },
+    {
+      "key": "D3-L3",
+      "aspect": "D3",
+      "level": 3,
+      "id": "Ketertarikan pada keahlian konstruksi cukup wajar. Sanggup menjalani tugas fisik pertukangan atau pembangunan dasar sebagai kewajiban pekerjaan.",
+      "jp": "建設技能への関心は妥当な水準です。大工仕事や基礎的な建設の身体作業を、業務上の務めとして遂行できます。"
+    },
+    {
+      "key": "D3-L4",
+      "aspect": "D3",
+      "level": 4,
+      "id": "Menunjukkan minat yang tinggi pada pekerjaan praktis dan konstruksi. Antusias untuk terlibat langsung dalam proyek pembangunan atau fitting material di lapangan.",
+      "jp": "実務的な作業と建設に高い関心を示します。建設工事や現場での資材取付けに直接関わることに意欲があります。"
+    },
+    {
+      "key": "D3-L5",
+      "aspect": "D3",
+      "level": 5,
+      "id": "Memiliki ketertarikan yang sangat kuat pada bidang keahlian konstruksi. Sangat termotivasi untuk bekerja secara praktis dengan alat pertukangan dan material bangunan.",
+      "jp": "建設技能分野に非常に強い関心を備えています。大工道具と建築資材を用いて実務的に働く動機が高い水準です。"
+    },
+    {
+      "key": "D4-L1",
+      "aspect": "D4",
+      "level": 1,
+      "id": "Sangat menolak pekerjaan di bidang medis atau caregiver. Tidak memiliki ketertarikan sama sekali untuk merawat pasien, lansia, atau orang sakit.",
+      "jp": "医療や介護の分野の業務を強く拒みます。患者・高齢者・病者を看ることへの関心がまったくありません。"
+    },
+    {
+      "key": "D4-L2",
+      "aspect": "D4",
+      "level": 2,
+      "id": "Minat pada keahlian perawat tergolong rendah. Cenderung enggan jika harus berhadapan langsung dengan tugas yang melayani pasien medis atau lansia.",
+      "jp": "介護技能への関心は低い水準です。患者や高齢者に直接向き合う業務には消極的な傾向があります。"
+    },
+    {
+      "key": "D4-L3",
+      "aspect": "D4",
+      "level": 3,
+      "id": "Memiliki ketertarikan standar pada bidang keahlian perawat. Sanggup menjalankan tugas dasar caregiver dengan profesionalisme dan kepedulian yang wajar.",
+      "jp": "介護技能分野に標準的な関心を備えています。専門性と妥当な配慮をもって、基礎的な介護業務を遂行できます。"
+    },
+    {
+      "key": "D4-L4",
+      "aspect": "D4",
+      "level": 4,
+      "id": "Minat pada bidang keahlian perawat cukup tinggi. Menunjukkan antusiasme dan kepedulian untuk bekerja di lingkungan fasilitas kesehatan atau panti wreda.",
+      "jp": "介護技能分野への関心は十分に高い水準です。医療施設や高齢者施設で働くことに意欲と気遣いを示します。"
+    },
+    {
+      "key": "D4-L5",
+      "aspect": "D4",
+      "level": 5,
+      "id": "Sangat antusias dan menjadikan bidang perawatan sebagai panggilan utama. Sangat termotivasi untuk berdedikasi merawat pasien atau lansia dengan sepenuh hati.",
+      "jp": "介護分野を主たる使命とし、非常に高い意欲を示します。患者や高齢者を心を込めて看ることに献身する動機が高い水準です。"
+    },
+    {
+      "key": "D5-L1",
+      "aspect": "D5",
+      "level": 1,
+      "id": "Sangat tidak menyukai pekerjaan di bidang restoran dan perhotelan. Sangat menghindari interaksi langsung untuk melayani pelanggan atau tamu.",
+      "jp": "外食・宿泊分野の業務を強く好みません。顧客や来客に応じる直接的な対応を強く避けます。"
+    },
+    {
+      "key": "D5-L2",
+      "aspect": "D5",
+      "level": 2,
+      "id": "Minat pada bidang hospitality rendah. Kurang antusias jika ditempatkan di garda depan untuk pelayanan pelanggan.",
+      "jp": "ホスピタリティ分野への関心は低い水準です。顧客対応の最前線に配置されることに意欲を示しません。"
+    },
+    {
+      "key": "D5-L3",
+      "aspect": "D5",
+      "level": 3,
+      "id": "Ketertarikan melayani di bidang restoran dan perhotelan cukup wajar. Mampu berinteraksi dengan pelanggan dan memberikan pelayanan standar tanpa keluhan berarti.",
+      "jp": "外食・宿泊分野での対人業務への関心は妥当な水準です。顧客と関わり、標準的な接客を大きな不満なく提供できます。"
+    },
+    {
+      "key": "D5-L4",
+      "aspect": "D5",
+      "level": 4,
+      "id": "Menunjukkan minat yang tinggi pada bidang restoran dan perhotelan. Antusias melayani, ramah, dan menikmati interaksi dengan tamu atau pelanggan.",
+      "jp": "外食・宿泊分野に高い関心を示します。接客に意欲があり、和やかで、来客や顧客との関わりを楽しめます。"
+    },
+    {
+      "key": "D5-L5",
+      "aspect": "D5",
+      "level": 5,
+      "id": "Sangat menyukai dan termotivasi bekerja di bidang restoran dan perhotelan. Sangat antusias dan proaktif dalam memberikan pelayanan prima kepada pelanggan.",
+      "jp": "外食・宿泊分野で働くことを強く好み、意欲も高い水準です。顧客に優れた接客を提供することに非常に意欲的かつ能動的です。"
+    }
+  ],
+  "connectors": [
+    {
+      "group": "ADITIF",
+      "order": 1,
+      "text": "Di samping itu,"
+    },
+    {
+      "group": "ADITIF",
+      "order": 2,
+      "text": "Sejalan dengan hal tersebut,"
+    },
+    {
+      "group": "ADITIF",
+      "order": 3,
+      "text": "Demikian pula,"
+    },
+    {
+      "group": "ADITIF",
+      "order": 4,
+      "text": "Selanjutnya,"
+    },
+    {
+      "group": "ADITIF",
+      "order": 5,
+      "text": "Hal ini didukung oleh keadaan bahwa"
+    },
+    {
+      "group": "KONTRAS",
+      "order": 1,
+      "text": "Meskipun demikian,"
+    },
+    {
+      "group": "KONTRAS",
+      "order": 2,
+      "text": "Di sisi lain,"
+    },
+    {
+      "group": "KONTRAS",
+      "order": 3,
+      "text": "Namun demikian,"
+    },
+    {
+      "group": "KONTRAS",
+      "order": 4,
+      "text": "Pada sisi yang berbeda,"
+    },
+    {
+      "group": "KONTRAS",
+      "order": 5,
+      "text": "Berbeda dengan hal tersebut,"
+    },
+    {
+      "group": "PENUTUP",
+      "order": 1,
+      "text": "Adapun secara keseluruhan,"
+    },
+    {
+      "group": "PENUTUP",
+      "order": 2,
+      "text": "Secara menyeluruh,"
+    }
+  ]
+}

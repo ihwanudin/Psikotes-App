@@ -1,0 +1,1336 @@
+{
+  "mapping": [
+    {
+      "item": 1,
+      "type": "ROLE",
+      "a": "G",
+      "b": "E"
+    },
+    {
+      "item": 2,
+      "type": "NEED",
+      "a": "A",
+      "b": "N"
+    },
+    {
+      "item": 3,
+      "type": "NEED",
+      "a": "P",
+      "b": "A"
+    },
+    {
+      "item": 4,
+      "type": "NEED",
+      "a": "X",
+      "b": "P"
+    },
+    {
+      "item": 5,
+      "type": "NEED",
+      "a": "B",
+      "b": "X"
+    },
+    {
+      "item": 6,
+      "type": "NEED",
+      "a": "O",
+      "b": "B"
+    },
+    {
+      "item": 7,
+      "type": "NEED",
+      "a": "Z",
+      "b": "O"
+    },
+    {
+      "item": 8,
+      "type": "NEED",
+      "a": "K",
+      "b": "Z"
+    },
+    {
+      "item": 9,
+      "type": "NEED",
+      "a": "F",
+      "b": "K"
+    },
+    {
+      "item": 10,
+      "type": "NEED",
+      "a": "W",
+      "b": "F"
+    },
+    {
+      "item": 11,
+      "type": "ROLE",
+      "a": "G",
+      "b": "C"
+    },
+    {
+      "item": 12,
+      "type": "ROLE",
+      "a": "L",
+      "b": "E"
+    },
+    {
+      "item": 13,
+      "type": "NEED",
+      "a": "P",
+      "b": "N"
+    },
+    {
+      "item": 14,
+      "type": "NEED",
+      "a": "X",
+      "b": "A"
+    },
+    {
+      "item": 15,
+      "type": "NEED",
+      "a": "B",
+      "b": "P"
+    },
+    {
+      "item": 16,
+      "type": "NEED",
+      "a": "O",
+      "b": "X"
+    },
+    {
+      "item": 17,
+      "type": "NEED",
+      "a": "Z",
+      "b": "B"
+    },
+    {
+      "item": 18,
+      "type": "NEED",
+      "a": "K",
+      "b": "O"
+    },
+    {
+      "item": 19,
+      "type": "NEED",
+      "a": "F",
+      "b": "Z"
+    },
+    {
+      "item": 20,
+      "type": "NEED",
+      "a": "W",
+      "b": "K"
+    },
+    {
+      "item": 21,
+      "type": "ROLE",
+      "a": "G",
+      "b": "D"
+    },
+    {
+      "item": 22,
+      "type": "ROLE",
+      "a": "L",
+      "b": "C"
+    },
+    {
+      "item": 23,
+      "type": "ROLE",
+      "a": "I",
+      "b": "E"
+    },
+    {
+      "item": 24,
+      "type": "NEED",
+      "a": "X",
+      "b": "N"
+    },
+    {
+      "item": 25,
+      "type": "NEED",
+      "a": "B",
+      "b": "A"
+    },
+    {
+      "item": 26,
+      "type": "NEED",
+      "a": "O",
+      "b": "P"
+    },
+    {
+      "item": 27,
+      "type": "NEED",
+      "a": "Z",
+      "b": "X"
+    },
+    {
+      "item": 28,
+      "type": "NEED",
+      "a": "K",
+      "b": "B"
+    },
+    {
+      "item": 29,
+      "type": "NEED",
+      "a": "F",
+      "b": "O"
+    },
+    {
+      "item": 30,
+      "type": "NEED",
+      "a": "W",
+      "b": "Z"
+    },
+    {
+      "item": 31,
+      "type": "ROLE",
+      "a": "G",
+      "b": "R"
+    },
+    {
+      "item": 32,
+      "type": "ROLE",
+      "a": "L",
+      "b": "D"
+    },
+    {
+      "item": 33,
+      "type": "ROLE",
+      "a": "I",
+      "b": "C"
+    },
+    {
+      "item": 34,
+      "type": "ROLE",
+      "a": "T",
+      "b": "E"
+    },
+    {
+      "item": 35,
+      "type": "NEED",
+      "a": "B",
+      "b": "N"
+    },
+    {
+      "item": 36,
+      "type": "NEED",
+      "a": "O",
+      "b": "A"
+    },
+    {
+      "item": 37,
+      "type": "NEED",
+      "a": "Z",
+      "b": "P"
+    },
+    {
+      "item": 38,
+      "type": "NEED",
+      "a": "K",
+      "b": "X"
+    },
+    {
+      "item": 39,
+      "type": "NEED",
+      "a": "F",
+      "b": "B"
+    },
+    {
+      "item": 40,
+      "type": "NEED",
+      "a": "W",
+      "b": "O"
+    },
+    {
+      "item": 41,
+      "type": "ROLE",
+      "a": "G",
+      "b": "S"
+    },
+    {
+      "item": 42,
+      "type": "ROLE",
+      "a": "L",
+      "b": "R"
+    },
+    {
+      "item": 43,
+      "type": "ROLE",
+      "a": "I",
+      "b": "D"
+    },
+    {
+      "item": 44,
+      "type": "ROLE",
+      "a": "T",
+      "b": "C"
+    },
+    {
+      "item": 45,
+      "type": "ROLE",
+      "a": "V",
+      "b": "E"
+    },
+    {
+      "item": 46,
+      "type": "NEED",
+      "a": "O",
+      "b": "N"
+    },
+    {
+      "item": 47,
+      "type": "NEED",
+      "a": "Z",
+      "b": "A"
+    },
+    {
+      "item": 48,
+      "type": "NEED",
+      "a": "K",
+      "b": "P"
+    },
+    {
+      "item": 49,
+      "type": "NEED",
+      "a": "F",
+      "b": "X"
+    },
+    {
+      "item": 50,
+      "type": "NEED",
+      "a": "W",
+      "b": "B"
+    },
+    {
+      "item": 51,
+      "type": "ROLE",
+      "a": "G",
+      "b": "V"
+    },
+    {
+      "item": 52,
+      "type": "ROLE",
+      "a": "L",
+      "b": "S"
+    },
+    {
+      "item": 53,
+      "type": "ROLE",
+      "a": "I",
+      "b": "R"
+    },
+    {
+      "item": 54,
+      "type": "ROLE",
+      "a": "T",
+      "b": "D"
+    },
+    {
+      "item": 55,
+      "type": "ROLE",
+      "a": "V",
+      "b": "C"
+    },
+    {
+      "item": 56,
+      "type": "ROLE",
+      "a": "S",
+      "b": "E"
+    },
+    {
+      "item": 57,
+      "type": "NEED",
+      "a": "Z",
+      "b": "N"
+    },
+    {
+      "item": 58,
+      "type": "NEED",
+      "a": "K",
+      "b": "A"
+    },
+    {
+      "item": 59,
+      "type": "NEED",
+      "a": "F",
+      "b": "P"
+    },
+    {
+      "item": 60,
+      "type": "NEED",
+      "a": "W",
+      "b": "X"
+    },
+    {
+      "item": 61,
+      "type": "ROLE",
+      "a": "G",
+      "b": "T"
+    },
+    {
+      "item": 62,
+      "type": "ROLE",
+      "a": "L",
+      "b": "V"
+    },
+    {
+      "item": 63,
+      "type": "ROLE",
+      "a": "I",
+      "b": "S"
+    },
+    {
+      "item": 64,
+      "type": "ROLE",
+      "a": "T",
+      "b": "R"
+    },
+    {
+      "item": 65,
+      "type": "ROLE",
+      "a": "V",
+      "b": "D"
+    },
+    {
+      "item": 66,
+      "type": "ROLE",
+      "a": "S",
+      "b": "C"
+    },
+    {
+      "item": 67,
+      "type": "ROLE",
+      "a": "R",
+      "b": "E"
+    },
+    {
+      "item": 68,
+      "type": "NEED",
+      "a": "K",
+      "b": "N"
+    },
+    {
+      "item": 69,
+      "type": "NEED",
+      "a": "F",
+      "b": "A"
+    },
+    {
+      "item": 70,
+      "type": "NEED",
+      "a": "W",
+      "b": "P"
+    },
+    {
+      "item": 71,
+      "type": "ROLE",
+      "a": "G",
+      "b": "I"
+    },
+    {
+      "item": 72,
+      "type": "ROLE",
+      "a": "L",
+      "b": "T"
+    },
+    {
+      "item": 73,
+      "type": "ROLE",
+      "a": "I",
+      "b": "V"
+    },
+    {
+      "item": 74,
+      "type": "ROLE",
+      "a": "T",
+      "b": "S"
+    },
+    {
+      "item": 75,
+      "type": "ROLE",
+      "a": "V",
+      "b": "R"
+    },
+    {
+      "item": 76,
+      "type": "ROLE",
+      "a": "S",
+      "b": "D"
+    },
+    {
+      "item": 77,
+      "type": "ROLE",
+      "a": "R",
+      "b": "C"
+    },
+    {
+      "item": 78,
+      "type": "ROLE",
+      "a": "D",
+      "b": "E"
+    },
+    {
+      "item": 79,
+      "type": "NEED",
+      "a": "F",
+      "b": "N"
+    },
+    {
+      "item": 80,
+      "type": "NEED",
+      "a": "W",
+      "b": "A"
+    },
+    {
+      "item": 81,
+      "type": "ROLE",
+      "a": "G",
+      "b": "L"
+    },
+    {
+      "item": 82,
+      "type": "ROLE",
+      "a": "L",
+      "b": "I"
+    },
+    {
+      "item": 83,
+      "type": "ROLE",
+      "a": "I",
+      "b": "T"
+    },
+    {
+      "item": 84,
+      "type": "ROLE",
+      "a": "T",
+      "b": "V"
+    },
+    {
+      "item": 85,
+      "type": "ROLE",
+      "a": "V",
+      "b": "S"
+    },
+    {
+      "item": 86,
+      "type": "ROLE",
+      "a": "S",
+      "b": "R"
+    },
+    {
+      "item": 87,
+      "type": "ROLE",
+      "a": "R",
+      "b": "D"
+    },
+    {
+      "item": 88,
+      "type": "ROLE",
+      "a": "D",
+      "b": "C"
+    },
+    {
+      "item": 89,
+      "type": "ROLE",
+      "a": "C",
+      "b": "E"
+    },
+    {
+      "item": 90,
+      "type": "NEED",
+      "a": "W",
+      "b": "N"
+    }
+  ],
+  "bands": {
+    "N": {
+      "dimension": "Need to finish task",
+      "zones": [
+        {
+          "zone": "yellow_low",
+          "label": "Kuning Ekstrem Rendah",
+          "lo": 0,
+          "hi": 2,
+          "range": "0 – 2"
+        },
+        {
+          "zone": "blue_low",
+          "label": "Biru Moderat Bawah",
+          "lo": 3,
+          "hi": 5,
+          "range": "3 – 5"
+        },
+        {
+          "zone": "white",
+          "label": "Putih Optimal/Adaptif",
+          "lo": 6,
+          "hi": 8,
+          "range": "6 – 8"
+        },
+        {
+          "zone": "blue_high",
+          "label": "Biru Moderat Atas",
+          "lo": 9,
+          "hi": 9,
+          "range": "9"
+        }
+      ],
+      "hpp_usage": "Communication & Responsibility · Persistency"
+    },
+    "G": {
+      "dimension": "Hard intense worker",
+      "zones": [
+        {
+          "zone": "yellow_low",
+          "label": "Kuning Ekstrem Rendah",
+          "lo": 0,
+          "hi": 2,
+          "range": "0 – 2"
+        },
+        {
+          "zone": "blue_low",
+          "label": "Biru Moderat Bawah",
+          "lo": 3,
+          "hi": 4,
+          "range": "3 – 4"
+        },
+        {
+          "zone": "white",
+          "label": "Putih Optimal/Adaptif",
+          "lo": 5,
+          "hi": 7,
+          "range": "5 – 7"
+        },
+        {
+          "zone": "blue_high",
+          "label": "Biru Moderat Atas",
+          "lo": 8,
+          "hi": 9,
+          "range": "8 – 9"
+        }
+      ],
+      "hpp_usage": "— tidak dipakai di sub-aspek HPP"
+    },
+    "A": {
+      "dimension": "Need to achieve",
+      "zones": [
+        {
+          "zone": "yellow_low",
+          "label": "Kuning Ekstrem Rendah",
+          "lo": 0,
+          "hi": 1,
+          "range": "0 – 1"
+        },
+        {
+          "zone": "blue_low",
+          "label": "Biru Moderat Bawah",
+          "lo": 2,
+          "hi": 4,
+          "range": "2 – 4"
+        },
+        {
+          "zone": "white",
+          "label": "Putih Optimal/Adaptif",
+          "lo": 5,
+          "hi": 8,
+          "range": "5 – 8"
+        },
+        {
+          "zone": "blue_high",
+          "label": "Biru Moderat Atas",
+          "lo": 9,
+          "hi": 9,
+          "range": "9"
+        }
+      ],
+      "hpp_usage": "Initiative-Social Adjusted"
+    },
+    "L": {
+      "dimension": "Leadership role",
+      "zones": [
+        {
+          "zone": "yellow_low",
+          "label": "Kuning Ekstrem Rendah",
+          "lo": 0,
+          "hi": 2,
+          "range": "0 – 2"
+        },
+        {
+          "zone": "blue_low",
+          "label": "Biru Moderat Bawah",
+          "lo": 3,
+          "hi": 3,
+          "range": "3"
+        },
+        {
+          "zone": "white",
+          "label": "Putih Optimal/Adaptif",
+          "lo": 4,
+          "hi": 7,
+          "range": "4 – 7"
+        },
+        {
+          "zone": "blue_high",
+          "label": "Biru Moderat Atas",
+          "lo": 8,
+          "hi": 8,
+          "range": "8"
+        },
+        {
+          "zone": "yellow_high",
+          "label": "Kuning Ekstrem Tinggi",
+          "lo": 9,
+          "hi": 9,
+          "range": "9"
+        }
+      ],
+      "hpp_usage": "Maturity & Self-Confidence"
+    },
+    "P": {
+      "dimension": "Need to control others",
+      "zones": [
+        {
+          "zone": "yellow_low",
+          "label": "Kuning Ekstrem Rendah",
+          "lo": 0,
+          "hi": 2,
+          "range": "0 – 2"
+        },
+        {
+          "zone": "blue_low",
+          "label": "Biru Moderat Bawah",
+          "lo": 3,
+          "hi": 5,
+          "range": "3 – 5"
+        },
+        {
+          "zone": "white",
+          "label": "Putih Optimal/Adaptif",
+          "lo": 6,
+          "hi": 9,
+          "range": "6 – 9"
+        }
+      ],
+      "hpp_usage": "Initiative-Social Adjusted"
+    },
+    "I": {
+      "dimension": "Ease in decision making",
+      "zones": [
+        {
+          "zone": "yellow_low",
+          "label": "Kuning Ekstrem Rendah",
+          "lo": 0,
+          "hi": 1,
+          "range": "0 – 1"
+        },
+        {
+          "zone": "blue_low",
+          "label": "Biru Moderat Bawah",
+          "lo": 2,
+          "hi": 4,
+          "range": "2 – 4"
+        },
+        {
+          "zone": "white",
+          "label": "Putih Optimal/Adaptif",
+          "lo": 5,
+          "hi": 7,
+          "range": "5 – 7"
+        },
+        {
+          "zone": "blue_high",
+          "label": "Biru Moderat Atas",
+          "lo": 8,
+          "hi": 9,
+          "range": "8 – 9"
+        }
+      ],
+      "hpp_usage": "— tidak dipakai di sub-aspek HPP"
+    },
+    "T": {
+      "dimension": "Pace",
+      "zones": [
+        {
+          "zone": "yellow_low",
+          "label": "Kuning Ekstrem Rendah",
+          "lo": 0,
+          "hi": 2,
+          "range": "0 – 2"
+        },
+        {
+          "zone": "blue_low",
+          "label": "Biru Moderat Bawah",
+          "lo": 3,
+          "hi": 4,
+          "range": "3 – 4"
+        },
+        {
+          "zone": "white",
+          "label": "Putih Optimal/Adaptif",
+          "lo": 5,
+          "hi": 8,
+          "range": "5 – 8"
+        },
+        {
+          "zone": "blue_high",
+          "label": "Biru Moderat Atas",
+          "lo": 9,
+          "hi": 9,
+          "range": "9"
+        }
+      ],
+      "hpp_usage": "Persistency"
+    },
+    "V": {
+      "dimension": "Vigorous type",
+      "zones": [
+        {
+          "zone": "yellow_low",
+          "label": "Kuning Ekstrem Rendah",
+          "lo": 0,
+          "hi": 2,
+          "range": "0 – 2"
+        },
+        {
+          "zone": "blue_low",
+          "label": "Biru Moderat Bawah",
+          "lo": 3,
+          "hi": 3,
+          "range": "3"
+        },
+        {
+          "zone": "white",
+          "label": "Putih Optimal/Adaptif",
+          "lo": 4,
+          "hi": 7,
+          "range": "4 – 7"
+        },
+        {
+          "zone": "blue_high",
+          "label": "Biru Moderat Atas",
+          "lo": 8,
+          "hi": 9,
+          "range": "8 – 9"
+        }
+      ],
+      "hpp_usage": "Endurance · Persistency"
+    },
+    "O": {
+      "dimension": "Need for closeness and affection",
+      "zones": [
+        {
+          "zone": "blue_low",
+          "label": "Biru Moderat Bawah",
+          "lo": 0,
+          "hi": 1,
+          "range": "0 – 1"
+        },
+        {
+          "zone": "white",
+          "label": "Putih Optimal/Adaptif",
+          "lo": 2,
+          "hi": 6,
+          "range": "2 – 6"
+        },
+        {
+          "zone": "yellow_high",
+          "label": "Kuning Ekstrem Tinggi",
+          "lo": 7,
+          "hi": 9,
+          "range": "7 – 9"
+        }
+      ],
+      "hpp_usage": "Initiative-Social Adjusted"
+    },
+    "B": {
+      "dimension": "Need to belong to groups",
+      "zones": [
+        {
+          "zone": "blue_low",
+          "label": "Biru Moderat Bawah",
+          "lo": 0,
+          "hi": 1,
+          "range": "0 – 1"
+        },
+        {
+          "zone": "white",
+          "label": "Putih Optimal/Adaptif",
+          "lo": 2,
+          "hi": 5,
+          "range": "2 – 5"
+        },
+        {
+          "zone": "blue_high",
+          "label": "Biru Moderat Atas",
+          "lo": 6,
+          "hi": 7,
+          "range": "6 – 7"
+        },
+        {
+          "zone": "yellow_high",
+          "label": "Kuning Ekstrem Tinggi",
+          "lo": 8,
+          "hi": 9,
+          "range": "8 – 9"
+        }
+      ],
+      "hpp_usage": "Initiative-Social Adjusted"
+    },
+    "S": {
+      "dimension": "Social extension",
+      "zones": [
+        {
+          "zone": "yellow_low",
+          "label": "Kuning Ekstrem Rendah",
+          "lo": 0,
+          "hi": 2,
+          "range": "0 – 2"
+        },
+        {
+          "zone": "blue_low",
+          "label": "Biru Moderat Bawah",
+          "lo": 3,
+          "hi": 4,
+          "range": "3 – 4"
+        },
+        {
+          "zone": "white",
+          "label": "Putih Optimal/Adaptif",
+          "lo": 5,
+          "hi": 7,
+          "range": "5 – 7"
+        },
+        {
+          "zone": "blue_high",
+          "label": "Biru Moderat Atas",
+          "lo": 8,
+          "hi": 9,
+          "range": "8 – 9"
+        }
+      ],
+      "hpp_usage": "Communication & Responsibility"
+    },
+    "X": {
+      "dimension": "Need to be noticed",
+      "zones": [
+        {
+          "zone": "blue_low",
+          "label": "Biru Moderat Bawah",
+          "lo": 0,
+          "hi": 2,
+          "range": "0 – 2"
+        },
+        {
+          "zone": "white",
+          "label": "Putih Optimal/Adaptif",
+          "lo": 3,
+          "hi": 6,
+          "range": "3 – 6"
+        },
+        {
+          "zone": "blue_high",
+          "label": "Biru Moderat Atas",
+          "lo": 7,
+          "hi": 8,
+          "range": "7 – 8"
+        },
+        {
+          "zone": "yellow_high",
+          "label": "Kuning Ekstrem Tinggi",
+          "lo": 9,
+          "hi": 9,
+          "range": "9"
+        }
+      ],
+      "hpp_usage": "— tidak dipakai di sub-aspek HPP"
+    },
+    "C": {
+      "dimension": "Organized type",
+      "zones": [
+        {
+          "zone": "yellow_low",
+          "label": "Kuning Ekstrem Rendah",
+          "lo": 0,
+          "hi": 2,
+          "range": "0 – 2"
+        },
+        {
+          "zone": "blue_low",
+          "label": "Biru Moderat Bawah",
+          "lo": 3,
+          "hi": 3,
+          "range": "3"
+        },
+        {
+          "zone": "white",
+          "label": "Putih Optimal/Adaptif",
+          "lo": 4,
+          "hi": 7,
+          "range": "4 – 7"
+        },
+        {
+          "zone": "blue_high",
+          "label": "Biru Moderat Atas",
+          "lo": 8,
+          "hi": 8,
+          "range": "8"
+        },
+        {
+          "zone": "yellow_high",
+          "label": "Kuning Ekstrem Tinggi",
+          "lo": 9,
+          "hi": 9,
+          "range": "9"
+        }
+      ],
+      "hpp_usage": "Systematic"
+    },
+    "D": {
+      "dimension": "Interest in working with details",
+      "zones": [
+        {
+          "zone": "yellow_low",
+          "label": "Kuning Ekstrem Rendah",
+          "lo": 0,
+          "hi": 1,
+          "range": "0 – 1"
+        },
+        {
+          "zone": "blue_low",
+          "label": "Biru Moderat Bawah",
+          "lo": 2,
+          "hi": 2,
+          "range": "2"
+        },
+        {
+          "zone": "white",
+          "label": "Putih Optimal/Adaptif",
+          "lo": 3,
+          "hi": 7,
+          "range": "3 – 7"
+        },
+        {
+          "zone": "yellow_high",
+          "label": "Kuning Ekstrem Tinggi",
+          "lo": 8,
+          "hi": 9,
+          "range": "8 – 9"
+        }
+      ],
+      "hpp_usage": "Systematic"
+    },
+    "R": {
+      "dimension": "Theoretical type",
+      "zones": [
+        {
+          "zone": "blue_low",
+          "label": "Biru Moderat Bawah",
+          "lo": 0,
+          "hi": 2,
+          "range": "0 – 2"
+        },
+        {
+          "zone": "white",
+          "label": "Putih Optimal/Adaptif",
+          "lo": 3,
+          "hi": 7,
+          "range": "3 – 7"
+        },
+        {
+          "zone": "yellow_high",
+          "label": "Kuning Ekstrem Tinggi",
+          "lo": 8,
+          "hi": 9,
+          "range": "8 – 9"
+        }
+      ],
+      "hpp_usage": "Analysis-Synthesis · Direction and Work Style"
+    },
+    "Z": {
+      "dimension": "Need for change",
+      "zones": [
+        {
+          "zone": "yellow_low",
+          "label": "Kuning Ekstrem Rendah",
+          "lo": 0,
+          "hi": 2,
+          "range": "0 – 2"
+        },
+        {
+          "zone": "blue_low",
+          "label": "Biru Moderat Bawah",
+          "lo": 3,
+          "hi": 3,
+          "range": "3"
+        },
+        {
+          "zone": "white",
+          "label": "Putih Optimal/Adaptif",
+          "lo": 4,
+          "hi": 7,
+          "range": "4 – 7"
+        },
+        {
+          "zone": "blue_high",
+          "label": "Biru Moderat Atas",
+          "lo": 8,
+          "hi": 8,
+          "range": "8"
+        },
+        {
+          "zone": "yellow_high",
+          "label": "Kuning Ekstrem Tinggi",
+          "lo": 9,
+          "hi": 9,
+          "range": "9"
+        }
+      ],
+      "hpp_usage": "— tidak dipakai di sub-aspek HPP"
+    },
+    "E": {
+      "dimension": "Emotional resistant",
+      "zones": [
+        {
+          "zone": "blue_low",
+          "label": "Biru Moderat Bawah",
+          "lo": 0,
+          "hi": 2,
+          "range": "0 – 2"
+        },
+        {
+          "zone": "white",
+          "label": "Putih Optimal/Adaptif",
+          "lo": 3,
+          "hi": 6,
+          "range": "3 – 6"
+        },
+        {
+          "zone": "blue_high",
+          "label": "Biru Moderat Atas",
+          "lo": 7,
+          "hi": 7,
+          "range": "7"
+        },
+        {
+          "zone": "yellow_high",
+          "label": "Kuning Ekstrem Tinggi",
+          "lo": 8,
+          "hi": 9,
+          "range": "8 – 9"
+        }
+      ],
+      "hpp_usage": "Maturity & Self-Confidence · Stress Resistance & Stability"
+    },
+    "K": {
+      "dimension": "Need for Defensive Aggressiveness",
+      "zones": [
+        {
+          "zone": "yellow_low",
+          "label": "Kuning Ekstrem Rendah",
+          "lo": 0,
+          "hi": 2,
+          "range": "0 – 2"
+        },
+        {
+          "zone": "blue_low",
+          "label": "Biru Moderat Bawah",
+          "lo": 3,
+          "hi": 3,
+          "range": "3"
+        },
+        {
+          "zone": "white",
+          "label": "Putih Optimal/Adaptif",
+          "lo": 4,
+          "hi": 6,
+          "range": "4 – 6"
+        },
+        {
+          "zone": "blue_high",
+          "label": "Biru Moderat Atas",
+          "lo": 7,
+          "hi": 7,
+          "range": "7"
+        },
+        {
+          "zone": "yellow_high",
+          "label": "Kuning Ekstrem Tinggi",
+          "lo": 8,
+          "hi": 9,
+          "range": "8 – 9"
+        }
+      ],
+      "hpp_usage": "Stress Resistance & Stability"
+    },
+    "F": {
+      "dimension": "Need to support authority",
+      "zones": [
+        {
+          "zone": "yellow_low",
+          "label": "Kuning Ekstrem Rendah",
+          "lo": 0,
+          "hi": 2,
+          "range": "0 – 2"
+        },
+        {
+          "zone": "blue_low",
+          "label": "Biru Moderat Bawah",
+          "lo": 3,
+          "hi": 4,
+          "range": "3 – 4"
+        },
+        {
+          "zone": "white",
+          "label": "Putih Optimal/Adaptif",
+          "lo": 5,
+          "hi": 7,
+          "range": "5 – 7"
+        },
+        {
+          "zone": "blue_high",
+          "label": "Biru Moderat Atas",
+          "lo": 8,
+          "hi": 8,
+          "range": "8"
+        },
+        {
+          "zone": "yellow_high",
+          "label": "Kuning Ekstrem Tinggi",
+          "lo": 9,
+          "hi": 9,
+          "range": "9"
+        }
+      ],
+      "hpp_usage": "Communication & Responsibility · Direction and Work Style"
+    },
+    "W": {
+      "dimension": "Need for rules and supervision",
+      "zones": [
+        {
+          "zone": "yellow_low",
+          "label": "Kuning Ekstrem Rendah",
+          "lo": 0,
+          "hi": 1,
+          "range": "0 – 1"
+        },
+        {
+          "zone": "blue_low",
+          "label": "Biru Moderat Bawah",
+          "lo": 2,
+          "hi": 3,
+          "range": "2 – 3"
+        },
+        {
+          "zone": "white",
+          "label": "Putih Optimal/Adaptif",
+          "lo": 4,
+          "hi": 7,
+          "range": "4 – 7"
+        },
+        {
+          "zone": "blue_high",
+          "label": "Biru Moderat Atas",
+          "lo": 8,
+          "hi": 8,
+          "range": "8"
+        },
+        {
+          "zone": "yellow_high",
+          "label": "Kuning Ekstrem Tinggi",
+          "lo": 9,
+          "hi": 9,
+          "range": "9"
+        }
+      ],
+      "hpp_usage": "Direction and Work Style"
+    }
+  },
+  "band_scores": {
+    "white": 8,
+    "blue_low": 7,
+    "blue_high": 7,
+    "yellow_low": 3,
+    "yellow_high": 5
+  },
+  "white_zones": {
+    "N": [
+      6,
+      8
+    ],
+    "G": [
+      5,
+      7
+    ],
+    "A": [
+      5,
+      8
+    ],
+    "L": [
+      4,
+      7
+    ],
+    "P": [
+      6,
+      9
+    ],
+    "I": [
+      5,
+      7
+    ],
+    "T": [
+      5,
+      8
+    ],
+    "V": [
+      4,
+      7
+    ],
+    "O": [
+      2,
+      6
+    ],
+    "B": [
+      2,
+      5
+    ],
+    "S": [
+      5,
+      7
+    ],
+    "X": [
+      3,
+      6
+    ],
+    "C": [
+      4,
+      7
+    ],
+    "D": [
+      3,
+      7
+    ],
+    "R": [
+      3,
+      7
+    ],
+    "Z": [
+      4,
+      7
+    ],
+    "E": [
+      3,
+      6
+    ],
+    "K": [
+      4,
+      6
+    ],
+    "F": [
+      5,
+      7
+    ],
+    "W": [
+      4,
+      7
+    ]
+  }
+}

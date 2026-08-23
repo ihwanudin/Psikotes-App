@@ -1,0 +1,1885 @@
+{
+  "hanker_formula": "slope_b_x_50",
+  "score_bands": [
+    {
+      "factor": "Panker",
+      "group": "SMA/SMK",
+      "score": 10,
+      "lo": 16.7,
+      "hi": null,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Panker",
+      "group": "SMA/SMK",
+      "score": 9,
+      "lo": 15.485,
+      "hi": 16.699,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Panker",
+      "group": "SMA/SMK",
+      "score": 8,
+      "lo": 14.271,
+      "hi": 15.484,
+      "category": "Baik"
+    },
+    {
+      "factor": "Panker",
+      "group": "SMA/SMK",
+      "score": 7,
+      "lo": 13.056,
+      "hi": 14.27,
+      "category": "Baik"
+    },
+    {
+      "factor": "Panker",
+      "group": "SMA/SMK",
+      "score": 6,
+      "lo": 11.526,
+      "hi": 13.055,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Panker",
+      "group": "SMA/SMK",
+      "score": 5,
+      "lo": 9.995,
+      "hi": 11.525,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Panker",
+      "group": "SMA/SMK",
+      "score": 4,
+      "lo": 8.934,
+      "hi": 9.994,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Panker",
+      "group": "SMA/SMK",
+      "score": 3,
+      "lo": 7.872,
+      "hi": 8.933,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Panker",
+      "group": "SMA/SMK",
+      "score": 2,
+      "lo": 6.811,
+      "hi": 7.871,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Panker",
+      "group": "SMA/SMK",
+      "score": 1,
+      "lo": null,
+      "hi": 6.81,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Panker",
+      "group": "D3 (IPA)",
+      "score": 10,
+      "lo": 17.596,
+      "hi": null,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Panker",
+      "group": "D3 (IPA)",
+      "score": 9,
+      "lo": 16.496,
+      "hi": 17.595,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Panker",
+      "group": "D3 (IPA)",
+      "score": 8,
+      "lo": 15.397,
+      "hi": 16.495,
+      "category": "Baik"
+    },
+    {
+      "factor": "Panker",
+      "group": "D3 (IPA)",
+      "score": 7,
+      "lo": 14.297,
+      "hi": 15.396,
+      "category": "Baik"
+    },
+    {
+      "factor": "Panker",
+      "group": "D3 (IPA)",
+      "score": 6,
+      "lo": 12.852,
+      "hi": 14.296,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Panker",
+      "group": "D3 (IPA)",
+      "score": 5,
+      "lo": 11.405,
+      "hi": 12.851,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Panker",
+      "group": "D3 (IPA)",
+      "score": 4,
+      "lo": 10.176,
+      "hi": 11.404,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Panker",
+      "group": "D3 (IPA)",
+      "score": 3,
+      "lo": 8.946,
+      "hi": 10.175,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Panker",
+      "group": "D3 (IPA)",
+      "score": 2,
+      "lo": 7.717,
+      "hi": 8.945,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Panker",
+      "group": "D3 (IPA)",
+      "score": 1,
+      "lo": null,
+      "hi": 7.716,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Panker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 10,
+      "lo": 17.352,
+      "hi": null,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Panker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 9,
+      "lo": 15.809,
+      "hi": 17.351,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Panker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 8,
+      "lo": 14.267,
+      "hi": 15.808,
+      "category": "Baik"
+    },
+    {
+      "factor": "Panker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 7,
+      "lo": 12.724,
+      "hi": 14.266,
+      "category": "Baik"
+    },
+    {
+      "factor": "Panker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 6,
+      "lo": 11.351,
+      "hi": 12.723,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Panker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 5,
+      "lo": 9.976,
+      "hi": 11.35,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Panker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 4,
+      "lo": 8.343,
+      "hi": 9.975,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Panker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 3,
+      "lo": 6.709,
+      "hi": 8.342,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Panker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 2,
+      "lo": 5.076,
+      "hi": 6.708,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Panker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 1,
+      "lo": null,
+      "hi": 5.075,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Panker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 10,
+      "lo": 17.386,
+      "hi": null,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Panker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 9,
+      "lo": 16.044,
+      "hi": 17.385,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Panker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 8,
+      "lo": 14.704,
+      "hi": 16.043,
+      "category": "Baik"
+    },
+    {
+      "factor": "Panker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 7,
+      "lo": 13.362,
+      "hi": 14.703,
+      "category": "Baik"
+    },
+    {
+      "factor": "Panker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 6,
+      "lo": 12.163,
+      "hi": 13.361,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Panker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 5,
+      "lo": 10.963,
+      "hi": 12.162,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Panker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 4,
+      "lo": 8.836,
+      "hi": 10.962,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Panker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 3,
+      "lo": 6.709,
+      "hi": 8.835,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Panker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 2,
+      "lo": 4.583,
+      "hi": 6.708,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Panker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 1,
+      "lo": null,
+      "hi": 4.582,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Panker",
+      "group": "S1/S2 (IPA)",
+      "score": 10,
+      "lo": 18.327,
+      "hi": null,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Panker",
+      "group": "S1/S2 (IPA)",
+      "score": 9,
+      "lo": 17.209,
+      "hi": 18.326,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Panker",
+      "group": "S1/S2 (IPA)",
+      "score": 8,
+      "lo": 16.091,
+      "hi": 17.208,
+      "category": "Baik"
+    },
+    {
+      "factor": "Panker",
+      "group": "S1/S2 (IPA)",
+      "score": 7,
+      "lo": 14.973,
+      "hi": 16.09,
+      "category": "Baik"
+    },
+    {
+      "factor": "Panker",
+      "group": "S1/S2 (IPA)",
+      "score": 6,
+      "lo": 13.855,
+      "hi": 14.972,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Panker",
+      "group": "S1/S2 (IPA)",
+      "score": 5,
+      "lo": 12.736,
+      "hi": 13.854,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Panker",
+      "group": "S1/S2 (IPA)",
+      "score": 4,
+      "lo": 11.618,
+      "hi": 12.735,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Panker",
+      "group": "S1/S2 (IPA)",
+      "score": 3,
+      "lo": 10.5,
+      "hi": 11.617,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Panker",
+      "group": "S1/S2 (IPA)",
+      "score": 2,
+      "lo": 9.383,
+      "hi": 10.499,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Panker",
+      "group": "S1/S2 (IPA)",
+      "score": 1,
+      "lo": null,
+      "hi": 9.382,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Panker",
+      "group": "S1/S2 (IPS)",
+      "score": 10,
+      "lo": 17.939,
+      "hi": null,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Panker",
+      "group": "S1/S2 (IPS)",
+      "score": 9,
+      "lo": 16.746,
+      "hi": 17.938,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Panker",
+      "group": "S1/S2 (IPS)",
+      "score": 8,
+      "lo": 15.554,
+      "hi": 16.745,
+      "category": "Baik"
+    },
+    {
+      "factor": "Panker",
+      "group": "S1/S2 (IPS)",
+      "score": 7,
+      "lo": 14.362,
+      "hi": 15.553,
+      "category": "Baik"
+    },
+    {
+      "factor": "Panker",
+      "group": "S1/S2 (IPS)",
+      "score": 6,
+      "lo": 13.17,
+      "hi": 14.361,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Panker",
+      "group": "S1/S2 (IPS)",
+      "score": 5,
+      "lo": 11.977,
+      "hi": 13.169,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Panker",
+      "group": "S1/S2 (IPS)",
+      "score": 4,
+      "lo": 10.786,
+      "hi": 11.976,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Panker",
+      "group": "S1/S2 (IPS)",
+      "score": 3,
+      "lo": 9.593,
+      "hi": 10.785,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Panker",
+      "group": "S1/S2 (IPS)",
+      "score": 2,
+      "lo": 8.402,
+      "hi": 9.592,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Panker",
+      "group": "S1/S2 (IPS)",
+      "score": 1,
+      "lo": null,
+      "hi": 8.401,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Tianker",
+      "group": "SMA/SMK",
+      "score": 10,
+      "lo": 0,
+      "hi": 1,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Tianker",
+      "group": "SMA/SMK",
+      "score": 9,
+      "lo": 2,
+      "hi": 2,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Tianker",
+      "group": "SMA/SMK",
+      "score": 8,
+      "lo": 3,
+      "hi": 4,
+      "category": "Baik"
+    },
+    {
+      "factor": "Tianker",
+      "group": "SMA/SMK",
+      "score": 7,
+      "lo": 5,
+      "hi": 6,
+      "category": "Baik"
+    },
+    {
+      "factor": "Tianker",
+      "group": "SMA/SMK",
+      "score": 6,
+      "lo": 7,
+      "hi": 10,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Tianker",
+      "group": "SMA/SMK",
+      "score": 5,
+      "lo": 11,
+      "hi": 13,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Tianker",
+      "group": "SMA/SMK",
+      "score": 4,
+      "lo": 14,
+      "hi": 20,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Tianker",
+      "group": "SMA/SMK",
+      "score": 3,
+      "lo": 21,
+      "hi": 27,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Tianker",
+      "group": "SMA/SMK",
+      "score": 2,
+      "lo": 28,
+      "hi": 34,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Tianker",
+      "group": "SMA/SMK",
+      "score": 1,
+      "lo": 35,
+      "hi": null,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Tianker",
+      "group": "D3 (IPA)",
+      "score": 10,
+      "lo": 0,
+      "hi": 0,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Tianker",
+      "group": "D3 (IPA)",
+      "score": 8,
+      "lo": 1,
+      "hi": 1,
+      "category": "Baik"
+    },
+    {
+      "factor": "Tianker",
+      "group": "D3 (IPA)",
+      "score": 7,
+      "lo": 2,
+      "hi": 2,
+      "category": "Baik"
+    },
+    {
+      "factor": "Tianker",
+      "group": "D3 (IPA)",
+      "score": 6,
+      "lo": 3,
+      "hi": 8,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Tianker",
+      "group": "D3 (IPA)",
+      "score": 5,
+      "lo": 9,
+      "hi": 14,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Tianker",
+      "group": "D3 (IPA)",
+      "score": 4,
+      "lo": 15,
+      "hi": 18,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Tianker",
+      "group": "D3 (IPA)",
+      "score": 3,
+      "lo": 19,
+      "hi": 21,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Tianker",
+      "group": "D3 (IPA)",
+      "score": 2,
+      "lo": 22,
+      "hi": 25,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Tianker",
+      "group": "D3 (IPA)",
+      "score": 1,
+      "lo": 26,
+      "hi": null,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Tianker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 10,
+      "lo": 0,
+      "hi": 0,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Tianker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 8,
+      "lo": 1,
+      "hi": 1,
+      "category": "Baik"
+    },
+    {
+      "factor": "Tianker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 7,
+      "lo": 2,
+      "hi": 2,
+      "category": "Baik"
+    },
+    {
+      "factor": "Tianker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 6,
+      "lo": 3,
+      "hi": 8,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Tianker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 5,
+      "lo": 9,
+      "hi": 14,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Tianker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 4,
+      "lo": 15,
+      "hi": 18,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Tianker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 3,
+      "lo": 19,
+      "hi": 21,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Tianker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 2,
+      "lo": 22,
+      "hi": 25,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Tianker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 1,
+      "lo": 26,
+      "hi": null,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Tianker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 10,
+      "lo": 0,
+      "hi": 0,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Tianker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 8,
+      "lo": 1,
+      "hi": 1,
+      "category": "Baik"
+    },
+    {
+      "factor": "Tianker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 7,
+      "lo": 2,
+      "hi": 2,
+      "category": "Baik"
+    },
+    {
+      "factor": "Tianker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 6,
+      "lo": 3,
+      "hi": 8,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Tianker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 5,
+      "lo": 9,
+      "hi": 14,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Tianker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 4,
+      "lo": 15,
+      "hi": 18,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Tianker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 3,
+      "lo": 19,
+      "hi": 21,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Tianker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 2,
+      "lo": 22,
+      "hi": 25,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Tianker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 1,
+      "lo": 26,
+      "hi": null,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Tianker",
+      "group": "S1/S2 (IPA)",
+      "score": 10,
+      "lo": 0,
+      "hi": 0,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Tianker",
+      "group": "S1/S2 (IPA)",
+      "score": 8,
+      "lo": 1,
+      "hi": 1,
+      "category": "Baik"
+    },
+    {
+      "factor": "Tianker",
+      "group": "S1/S2 (IPA)",
+      "score": 7,
+      "lo": 2,
+      "hi": 2,
+      "category": "Baik"
+    },
+    {
+      "factor": "Tianker",
+      "group": "S1/S2 (IPA)",
+      "score": 6,
+      "lo": 3,
+      "hi": 8,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Tianker",
+      "group": "S1/S2 (IPA)",
+      "score": 5,
+      "lo": 9,
+      "hi": 13,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Tianker",
+      "group": "S1/S2 (IPA)",
+      "score": 4,
+      "lo": 14,
+      "hi": 18,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Tianker",
+      "group": "S1/S2 (IPA)",
+      "score": 3,
+      "lo": 19,
+      "hi": 22,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Tianker",
+      "group": "S1/S2 (IPA)",
+      "score": 2,
+      "lo": 23,
+      "hi": 27,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Tianker",
+      "group": "S1/S2 (IPA)",
+      "score": 1,
+      "lo": 28,
+      "hi": null,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Tianker",
+      "group": "S1/S2 (IPS)",
+      "score": 10,
+      "lo": 0,
+      "hi": 0,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Tianker",
+      "group": "S1/S2 (IPS)",
+      "score": 8,
+      "lo": 1,
+      "hi": 1,
+      "category": "Baik"
+    },
+    {
+      "factor": "Tianker",
+      "group": "S1/S2 (IPS)",
+      "score": 7,
+      "lo": 2,
+      "hi": 2,
+      "category": "Baik"
+    },
+    {
+      "factor": "Tianker",
+      "group": "S1/S2 (IPS)",
+      "score": 6,
+      "lo": 3,
+      "hi": 8,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Tianker",
+      "group": "S1/S2 (IPS)",
+      "score": 5,
+      "lo": 9,
+      "hi": 13,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Tianker",
+      "group": "S1/S2 (IPS)",
+      "score": 4,
+      "lo": 14,
+      "hi": 18,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Tianker",
+      "group": "S1/S2 (IPS)",
+      "score": 3,
+      "lo": 19,
+      "hi": 22,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Tianker",
+      "group": "S1/S2 (IPS)",
+      "score": 2,
+      "lo": 23,
+      "hi": 27,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Tianker",
+      "group": "S1/S2 (IPS)",
+      "score": 1,
+      "lo": 28,
+      "hi": null,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Hanker",
+      "group": "SMA/SMK",
+      "score": 10,
+      "lo": 5.204,
+      "hi": null,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Hanker",
+      "group": "SMA/SMK",
+      "score": 9,
+      "lo": 4.222,
+      "hi": 5.203,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Hanker",
+      "group": "SMA/SMK",
+      "score": 8,
+      "lo": 3.241,
+      "hi": 4.221,
+      "category": "Baik"
+    },
+    {
+      "factor": "Hanker",
+      "group": "SMA/SMK",
+      "score": 7,
+      "lo": 2.26,
+      "hi": 3.24,
+      "category": "Baik"
+    },
+    {
+      "factor": "Hanker",
+      "group": "SMA/SMK",
+      "score": 6,
+      "lo": 0.75,
+      "hi": 2.259,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Hanker",
+      "group": "SMA/SMK",
+      "score": 5,
+      "lo": -0.761,
+      "hi": 0.749,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Hanker",
+      "group": "SMA/SMK",
+      "score": 4,
+      "lo": -1.759,
+      "hi": -0.762,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Hanker",
+      "group": "SMA/SMK",
+      "score": 3,
+      "lo": -2.757,
+      "hi": -1.76,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Hanker",
+      "group": "SMA/SMK",
+      "score": 2,
+      "lo": -3.755,
+      "hi": -2.758,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Hanker",
+      "group": "SMA/SMK",
+      "score": 1,
+      "lo": null,
+      "hi": -3.756,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Hanker",
+      "group": "D3 (IPA)",
+      "score": 10,
+      "lo": 3.055,
+      "hi": null,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Hanker",
+      "group": "D3 (IPA)",
+      "score": 9,
+      "lo": 2.13,
+      "hi": 3.054,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Hanker",
+      "group": "D3 (IPA)",
+      "score": 8,
+      "lo": 1.205,
+      "hi": 2.129,
+      "category": "Baik"
+    },
+    {
+      "factor": "Hanker",
+      "group": "D3 (IPA)",
+      "score": 7,
+      "lo": 0.28,
+      "hi": 1.204,
+      "category": "Baik"
+    },
+    {
+      "factor": "Hanker",
+      "group": "D3 (IPA)",
+      "score": 6,
+      "lo": -0.596,
+      "hi": 0.279,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Hanker",
+      "group": "D3 (IPA)",
+      "score": 5,
+      "lo": -1.472,
+      "hi": -0.597,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Hanker",
+      "group": "D3 (IPA)",
+      "score": 4,
+      "lo": -2.441,
+      "hi": -1.473,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Hanker",
+      "group": "D3 (IPA)",
+      "score": 3,
+      "lo": -3.411,
+      "hi": -2.442,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Hanker",
+      "group": "D3 (IPA)",
+      "score": 2,
+      "lo": -4.38,
+      "hi": -3.412,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Hanker",
+      "group": "D3 (IPA)",
+      "score": 1,
+      "lo": null,
+      "hi": -4.381,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Hanker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 10,
+      "lo": 3.695,
+      "hi": null,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Hanker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 9,
+      "lo": 2.69,
+      "hi": 3.694,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Hanker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 8,
+      "lo": 1.686,
+      "hi": 2.689,
+      "category": "Baik"
+    },
+    {
+      "factor": "Hanker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 7,
+      "lo": 0.682,
+      "hi": 1.685,
+      "category": "Baik"
+    },
+    {
+      "factor": "Hanker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 6,
+      "lo": -0.19,
+      "hi": 0.681,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Hanker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 5,
+      "lo": -1.063,
+      "hi": -0.191,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Hanker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 4,
+      "lo": -2.008,
+      "hi": -1.064,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Hanker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 3,
+      "lo": -2.954,
+      "hi": -2.009,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Hanker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 2,
+      "lo": -3.899,
+      "hi": -2.955,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Hanker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 1,
+      "lo": null,
+      "hi": -3.9,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Hanker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 10,
+      "lo": 2.934,
+      "hi": null,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Hanker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 9,
+      "lo": 2.03,
+      "hi": 2.933,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Hanker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 8,
+      "lo": 1.128,
+      "hi": 2.029,
+      "category": "Baik"
+    },
+    {
+      "factor": "Hanker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 7,
+      "lo": 0.224,
+      "hi": 1.127,
+      "category": "Baik"
+    },
+    {
+      "factor": "Hanker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 6,
+      "lo": -0.861,
+      "hi": 0.223,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Hanker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 5,
+      "lo": -1.947,
+      "hi": -0.862,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Hanker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 4,
+      "lo": -2.692,
+      "hi": -1.948,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Hanker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 3,
+      "lo": -3.438,
+      "hi": -2.693,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Hanker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 2,
+      "lo": -4.183,
+      "hi": -3.439,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Hanker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 1,
+      "lo": null,
+      "hi": -4.184,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Hanker",
+      "group": "S1/S2 (IPA)",
+      "score": 10,
+      "lo": 3.238,
+      "hi": null,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Hanker",
+      "group": "S1/S2 (IPA)",
+      "score": 9,
+      "lo": 2.497,
+      "hi": 3.237,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Hanker",
+      "group": "S1/S2 (IPA)",
+      "score": 8,
+      "lo": 1.757,
+      "hi": 2.496,
+      "category": "Baik"
+    },
+    {
+      "factor": "Hanker",
+      "group": "S1/S2 (IPA)",
+      "score": 7,
+      "lo": 1.015,
+      "hi": 1.756,
+      "category": "Baik"
+    },
+    {
+      "factor": "Hanker",
+      "group": "S1/S2 (IPA)",
+      "score": 6,
+      "lo": 0.274,
+      "hi": 1.014,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Hanker",
+      "group": "S1/S2 (IPA)",
+      "score": 5,
+      "lo": -0.468,
+      "hi": 0.273,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Hanker",
+      "group": "S1/S2 (IPA)",
+      "score": 4,
+      "lo": -1.209,
+      "hi": -0.469,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Hanker",
+      "group": "S1/S2 (IPA)",
+      "score": 3,
+      "lo": -1.95,
+      "hi": -1.21,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Hanker",
+      "group": "S1/S2 (IPA)",
+      "score": 2,
+      "lo": -2.691,
+      "hi": -1.951,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Hanker",
+      "group": "S1/S2 (IPA)",
+      "score": 1,
+      "lo": null,
+      "hi": -2.692,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Hanker",
+      "group": "S1/S2 (IPS)",
+      "score": 10,
+      "lo": 3.238,
+      "hi": null,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Hanker",
+      "group": "S1/S2 (IPS)",
+      "score": 9,
+      "lo": 2.497,
+      "hi": 3.237,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Hanker",
+      "group": "S1/S2 (IPS)",
+      "score": 8,
+      "lo": 1.757,
+      "hi": 2.496,
+      "category": "Baik"
+    },
+    {
+      "factor": "Hanker",
+      "group": "S1/S2 (IPS)",
+      "score": 7,
+      "lo": 1.015,
+      "hi": 1.756,
+      "category": "Baik"
+    },
+    {
+      "factor": "Hanker",
+      "group": "S1/S2 (IPS)",
+      "score": 6,
+      "lo": 0.274,
+      "hi": 1.014,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Hanker",
+      "group": "S1/S2 (IPS)",
+      "score": 5,
+      "lo": -0.468,
+      "hi": 0.273,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Hanker",
+      "group": "S1/S2 (IPS)",
+      "score": 4,
+      "lo": -1.209,
+      "hi": -0.469,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Hanker",
+      "group": "S1/S2 (IPS)",
+      "score": 3,
+      "lo": -1.95,
+      "hi": -1.21,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Hanker",
+      "group": "S1/S2 (IPS)",
+      "score": 2,
+      "lo": -2.691,
+      "hi": -1.951,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Hanker",
+      "group": "S1/S2 (IPS)",
+      "score": 1,
+      "lo": null,
+      "hi": -2.692,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Janker",
+      "group": "SMA/SMK",
+      "score": 10,
+      "lo": 0,
+      "hi": 1,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Janker",
+      "group": "SMA/SMK",
+      "score": 9,
+      "lo": 2,
+      "hi": 3,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Janker",
+      "group": "SMA/SMK",
+      "score": 8,
+      "lo": 4,
+      "hi": 5,
+      "category": "Baik"
+    },
+    {
+      "factor": "Janker",
+      "group": "SMA/SMK",
+      "score": 7,
+      "lo": 6,
+      "hi": 7,
+      "category": "Baik"
+    },
+    {
+      "factor": "Janker",
+      "group": "SMA/SMK",
+      "score": 6,
+      "lo": 8,
+      "hi": 9,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Janker",
+      "group": "SMA/SMK",
+      "score": 5,
+      "lo": 10,
+      "hi": 11,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Janker",
+      "group": "SMA/SMK",
+      "score": 4,
+      "lo": 12,
+      "hi": 13,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Janker",
+      "group": "SMA/SMK",
+      "score": 3,
+      "lo": 14,
+      "hi": 14,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Janker",
+      "group": "SMA/SMK",
+      "score": 2,
+      "lo": 15,
+      "hi": 16,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Janker",
+      "group": "SMA/SMK",
+      "score": 1,
+      "lo": 17,
+      "hi": null,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Janker",
+      "group": "D3 (IPA)",
+      "score": 10,
+      "lo": 0,
+      "hi": 2,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Janker",
+      "group": "D3 (IPA)",
+      "score": 9,
+      "lo": 3,
+      "hi": 4,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Janker",
+      "group": "D3 (IPA)",
+      "score": 8,
+      "lo": 5,
+      "hi": 6,
+      "category": "Baik"
+    },
+    {
+      "factor": "Janker",
+      "group": "D3 (IPA)",
+      "score": 7,
+      "lo": 7,
+      "hi": 7,
+      "category": "Baik"
+    },
+    {
+      "factor": "Janker",
+      "group": "D3 (IPA)",
+      "score": 6,
+      "lo": 8,
+      "hi": 8,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Janker",
+      "group": "D3 (IPA)",
+      "score": 5,
+      "lo": 9,
+      "hi": 9,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Janker",
+      "group": "D3 (IPA)",
+      "score": 4,
+      "lo": 10,
+      "hi": 11,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Janker",
+      "group": "D3 (IPA)",
+      "score": 3,
+      "lo": 12,
+      "hi": 12,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Janker",
+      "group": "D3 (IPA)",
+      "score": 2,
+      "lo": 13,
+      "hi": 14,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Janker",
+      "group": "D3 (IPA)",
+      "score": 1,
+      "lo": 15,
+      "hi": null,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Janker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 10,
+      "lo": 0,
+      "hi": 2,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Janker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 9,
+      "lo": 3,
+      "hi": 4,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Janker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 8,
+      "lo": 5,
+      "hi": 5,
+      "category": "Baik"
+    },
+    {
+      "factor": "Janker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 7,
+      "lo": 6,
+      "hi": 6,
+      "category": "Baik"
+    },
+    {
+      "factor": "Janker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 6,
+      "lo": 7,
+      "hi": 7,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Janker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 5,
+      "lo": 8,
+      "hi": 8,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Janker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 4,
+      "lo": 9,
+      "hi": 11,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Janker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 3,
+      "lo": 12,
+      "hi": 13,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Janker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 2,
+      "lo": 14,
+      "hi": 16,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Janker",
+      "group": "D3 (IPS) Laki-laki",
+      "score": 1,
+      "lo": 17,
+      "hi": null,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Janker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 10,
+      "lo": 0,
+      "hi": 2,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Janker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 9,
+      "lo": 3,
+      "hi": 4,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Janker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 8,
+      "lo": 5,
+      "hi": 6,
+      "category": "Baik"
+    },
+    {
+      "factor": "Janker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 7,
+      "lo": 7,
+      "hi": 7,
+      "category": "Baik"
+    },
+    {
+      "factor": "Janker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 6,
+      "lo": 8,
+      "hi": 8,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Janker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 5,
+      "lo": 9,
+      "hi": 9,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Janker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 4,
+      "lo": 10,
+      "hi": 11,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Janker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 3,
+      "lo": 12,
+      "hi": 12,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Janker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 2,
+      "lo": 13,
+      "hi": 14,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Janker",
+      "group": "D3 (IPS) Perempuan",
+      "score": 1,
+      "lo": 15,
+      "hi": null,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Janker",
+      "group": "S1/S2 (IPA)",
+      "score": 10,
+      "lo": 0,
+      "hi": 1,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Janker",
+      "group": "S1/S2 (IPA)",
+      "score": 9,
+      "lo": 2,
+      "hi": 3,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Janker",
+      "group": "S1/S2 (IPA)",
+      "score": 8,
+      "lo": 4,
+      "hi": 5,
+      "category": "Baik"
+    },
+    {
+      "factor": "Janker",
+      "group": "S1/S2 (IPA)",
+      "score": 7,
+      "lo": 6,
+      "hi": 6,
+      "category": "Baik"
+    },
+    {
+      "factor": "Janker",
+      "group": "S1/S2 (IPA)",
+      "score": 6,
+      "lo": 7,
+      "hi": 8,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Janker",
+      "group": "S1/S2 (IPA)",
+      "score": 5,
+      "lo": 9,
+      "hi": 10,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Janker",
+      "group": "S1/S2 (IPA)",
+      "score": 4,
+      "lo": 11,
+      "hi": 11,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Janker",
+      "group": "S1/S2 (IPA)",
+      "score": 3,
+      "lo": 12,
+      "hi": 12,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Janker",
+      "group": "S1/S2 (IPA)",
+      "score": 2,
+      "lo": 13,
+      "hi": 13,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Janker",
+      "group": "S1/S2 (IPA)",
+      "score": 1,
+      "lo": 14,
+      "hi": null,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Janker",
+      "group": "S1/S2 (IPS)",
+      "score": 10,
+      "lo": 0,
+      "hi": 0,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Janker",
+      "group": "S1/S2 (IPS)",
+      "score": 9,
+      "lo": 1,
+      "hi": 1,
+      "category": "Baik Sekali"
+    },
+    {
+      "factor": "Janker",
+      "group": "S1/S2 (IPS)",
+      "score": 8,
+      "lo": 2,
+      "hi": 3,
+      "category": "Baik"
+    },
+    {
+      "factor": "Janker",
+      "group": "S1/S2 (IPS)",
+      "score": 7,
+      "lo": 4,
+      "hi": 4,
+      "category": "Baik"
+    },
+    {
+      "factor": "Janker",
+      "group": "S1/S2 (IPS)",
+      "score": 6,
+      "lo": 5,
+      "hi": 7,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Janker",
+      "group": "S1/S2 (IPS)",
+      "score": 5,
+      "lo": 8,
+      "hi": 10,
+      "category": "Sedang"
+    },
+    {
+      "factor": "Janker",
+      "group": "S1/S2 (IPS)",
+      "score": 4,
+      "lo": 11,
+      "hi": 12,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Janker",
+      "group": "S1/S2 (IPS)",
+      "score": 3,
+      "lo": 13,
+      "hi": 14,
+      "category": "Kurang"
+    },
+    {
+      "factor": "Janker",
+      "group": "S1/S2 (IPS)",
+      "score": 2,
+      "lo": 15,
+      "hi": 16,
+      "category": "Kurang Sekali"
+    },
+    {
+      "factor": "Janker",
+      "group": "S1/S2 (IPS)",
+      "score": 1,
+      "lo": 17,
+      "hi": null,
+      "category": "Kurang Sekali"
+    }
+  ]
+}

@@ -1,0 +1,416 @@
+{
+  "items": [
+    {
+      "item": 1,
+      "scale": "S",
+      "text_id": "Saya merasa sulit untuk menenangkan diri."
+    },
+    {
+      "item": 2,
+      "scale": "A",
+      "text_id": "Saya merasa mulut saya kering."
+    },
+    {
+      "item": 3,
+      "scale": "D",
+      "text_id": "Saya sama sekali tidak dapat merasakan perasaan positif."
+    },
+    {
+      "item": 4,
+      "scale": "A",
+      "text_id": "Saya mengalami kesulitan bernapas (misalnya napas terlalu cepat, sesak napas padahal tidak melakukan aktivitas fisik)."
+    },
+    {
+      "item": 5,
+      "scale": "D",
+      "text_id": "Saya merasa sulit berinisiatif untuk melakukan sesuatu."
+    },
+    {
+      "item": 6,
+      "scale": "S",
+      "text_id": "Saya cenderung bereaksi berlebihan terhadap suatu situasi."
+    },
+    {
+      "item": 7,
+      "scale": "A",
+      "text_id": "Saya merasakan gemetar (misalnya pada tangan)."
+    },
+    {
+      "item": 8,
+      "scale": "S",
+      "text_id": "Saya merasa banyak menghabiskan energi karena merasa cemas atau gelisah."
+    },
+    {
+      "item": 9,
+      "scale": "A",
+      "text_id": "Saya khawatir berada pada situasi yang dapat membuat saya panik dan mempermalukan diri sendiri."
+    },
+    {
+      "item": 10,
+      "scale": "D",
+      "text_id": "Saya merasa tidak ada lagi hal yang dapat saya harapkan."
+    },
+    {
+      "item": 11,
+      "scale": "S",
+      "text_id": "Saya merasa diri saya mudah gelisah."
+    },
+    {
+      "item": 12,
+      "scale": "S",
+      "text_id": "Saya merasa sulit untuk bersantai."
+    },
+    {
+      "item": 13,
+      "scale": "D",
+      "text_id": "Saya merasa sedih dan murung."
+    },
+    {
+      "item": 14,
+      "scale": "S",
+      "text_id": "Saya tidak dapat menoleransi hal-hal yang menghalangi saya menyelesaikan apa yang sedang saya kerjakan."
+    },
+    {
+      "item": 15,
+      "scale": "A",
+      "text_id": "Saya merasa hampir panik."
+    },
+    {
+      "item": 16,
+      "scale": "D",
+      "text_id": "Saya tidak dapat merasa antusias terhadap hal apa pun."
+    },
+    {
+      "item": 17,
+      "scale": "D",
+      "text_id": "Saya merasa diri saya tidak berharga sebagai seorang manusia."
+    },
+    {
+      "item": 18,
+      "scale": "S",
+      "text_id": "Saya merasa diri saya mudah tersinggung."
+    },
+    {
+      "item": 19,
+      "scale": "A",
+      "text_id": "Saya menyadari jantung saya berdebar-debar padahal tidak sedang melakukan aktivitas fisik."
+    },
+    {
+      "item": 20,
+      "scale": "A",
+      "text_id": "Saya merasa takut tanpa alasan yang jelas."
+    },
+    {
+      "item": 21,
+      "scale": "D",
+      "text_id": "Saya merasa hidup ini tidak berarti."
+    }
+  ],
+  "cutoffs": [
+    {
+      "scale": "D",
+      "category": "Normal",
+      "level": 1,
+      "range_x2": "0 – 9"
+    },
+    {
+      "scale": "D",
+      "category": "Ringan",
+      "level": 2,
+      "range_x2": "10 – 13"
+    },
+    {
+      "scale": "D",
+      "category": "Sedang",
+      "level": 3,
+      "range_x2": "14 – 20"
+    },
+    {
+      "scale": "D",
+      "category": "Parah",
+      "level": 4,
+      "range_x2": "21 – 27"
+    },
+    {
+      "scale": "D",
+      "category": "Sangat Parah",
+      "level": 5,
+      "range_x2": "≥ 28"
+    },
+    {
+      "scale": "A",
+      "category": "Normal",
+      "level": 1,
+      "range_x2": "0 – 7"
+    },
+    {
+      "scale": "A",
+      "category": "Ringan",
+      "level": 2,
+      "range_x2": "8 – 9"
+    },
+    {
+      "scale": "A",
+      "category": "Sedang",
+      "level": 3,
+      "range_x2": "10 – 14"
+    },
+    {
+      "scale": "A",
+      "category": "Parah",
+      "level": 4,
+      "range_x2": "15 – 19"
+    },
+    {
+      "scale": "A",
+      "category": "Sangat Parah",
+      "level": 5,
+      "range_x2": "≥ 20"
+    },
+    {
+      "scale": "S",
+      "category": "Normal",
+      "level": 1,
+      "range_x2": "0 – 14"
+    },
+    {
+      "scale": "S",
+      "category": "Ringan",
+      "level": 2,
+      "range_x2": "15 – 18"
+    },
+    {
+      "scale": "S",
+      "category": "Sedang",
+      "level": 3,
+      "range_x2": "19 – 25"
+    },
+    {
+      "scale": "S",
+      "category": "Parah",
+      "level": 4,
+      "range_x2": "26 – 33"
+    },
+    {
+      "scale": "S",
+      "category": "Sangat Parah",
+      "level": 5,
+      "range_x2": "≥ 34"
+    }
+  ],
+  "multiplier": 2,
+  "narratives": [
+    {
+      "key": "DASS-D-K1",
+      "type": "Subskala",
+      "subscale": "Depresi",
+      "category": "Normal",
+      "level": 1,
+      "text_id": "Tidak ditemukan indikasi gejala depresi yang berarti. Kandidat menunjukkan suasana perasaan yang stabil, minat yang terjaga pada aktivitas sehari-hari, serta pandangan yang wajar terhadap dirinya dan masa depannya.",
+      "text_jp": "抑うつ症状の明らかな兆候は認められません。気分は安定し、日常活動への関心も保たれ、自己および将来に対する見方も妥当です。",
+      "follow_up_trigger": "—"
+    },
+    {
+      "key": "DASS-D-K2",
+      "type": "Subskala",
+      "subscale": "Depresi",
+      "category": "Ringan",
+      "level": 2,
+      "text_id": "Terdapat indikasi gejala depresi pada taraf ringan, misalnya berkurangnya semangat atau minat pada beberapa kegiatan dalam satu pekan terakhir. Taraf ini umum dijumpai pada masa transisi dan persiapan keberangkatan, dan pada umumnya tidak mengganggu keberfungsian kerja sehari-hari.",
+      "text_jp": "軽度の抑うつ傾向が認められ、直近1週間において意欲や関心の低下がみられます。渡航準備などの移行期には一般的にみられる水準であり、通常、日常の職務遂行を妨げるものではありません。",
+      "follow_up_trigger": "—"
+    },
+    {
+      "key": "DASS-D-K3",
+      "type": "Subskala",
+      "subscale": "Depresi",
+      "category": "Sedang",
+      "level": 3,
+      "text_id": "Terdapat indikasi gejala depresi pada taraf sedang, seperti menurunnya semangat, berkurangnya minat, atau perasaan kurang berharga yang cukup terasa dalam satu pekan terakhir. Kandidat dianjurkan memperoleh dukungan psikologis suportif serta pemantauan berkala selama masa pelatihan.",
+      "text_jp": "中等度の抑うつ傾向が認められ、直近1週間において意欲・関心の低下や自己評価の低下が一定程度みられます。研修期間中の心理的支援と定期的な経過観察が推奨されます。",
+      "follow_up_trigger": "pemantauan"
+    },
+    {
+      "key": "DASS-D-K4",
+      "type": "Subskala",
+      "subscale": "Depresi",
+      "category": "Parah",
+      "level": 4,
+      "text_id": "Hasil skrining menunjukkan taraf gejala depresi yang tinggi dalam satu pekan terakhir. Temuan ini merupakan gambaran kondisi sesaat, bukan diagnosis, dan dapat dipengaruhi oleh situasi yang sedang dijalani kandidat termasuk tekanan proses seleksi. Dianjurkan asesmen psikologis lanjutan oleh psikolog atau tenaga kesehatan jiwa sebelum atau selama masa penempatan.",
+      "text_jp": "直近1週間において高い水準の抑うつ傾向が示されました。本結果は現時点の状態像であり診断ではなく、選考過程の緊張を含む現在の状況の影響を受けている可能性があります。配置前または配置期間中に、心理職または精神保健専門職による追加評価が推奨されます。",
+      "follow_up_trigger": "rujukan"
+    },
+    {
+      "key": "DASS-D-K5",
+      "type": "Subskala",
+      "subscale": "Depresi",
+      "category": "Sangat Parah",
+      "level": 5,
+      "text_id": "Hasil skrining menunjukkan taraf gejala depresi yang sangat tinggi dalam satu pekan terakhir. Temuan ini bukan diagnosis dan tidak menentukan kelayakan kerja kandidat, namun menunjukkan kebutuhan dukungan yang perlu segera ditindaklanjuti. Sangat dianjurkan pemeriksaan psikologis klinis lanjutan serta pendampingan sebelum proses berlanjut.",
+      "text_jp": "直近1週間において非常に高い水準の抑うつ傾向が示されました。本結果は診断ではなく就労適格性を判定するものではありませんが、速やかな支援の必要性を示しています。手続きを進める前に、臨床心理学的な追加評価と継続的な支援が強く推奨されます。",
+      "follow_up_trigger": "rujukan"
+    },
+    {
+      "key": "DASS-A-K1",
+      "type": "Subskala",
+      "subscale": "Kecemasan",
+      "category": "Normal",
+      "level": 1,
+      "text_id": "Tidak ditemukan indikasi kecemasan yang berarti. Kandidat mampu menghadapi situasi yang menuntut tanpa keluhan fisik maupun kekhawatiran yang berlebih.",
+      "text_jp": "明らかな不安症状は認められません。負荷のかかる状況でも、身体症状や過度の心配を伴わずに対応できています。",
+      "follow_up_trigger": "—"
+    },
+    {
+      "key": "DASS-A-K2",
+      "type": "Subskala",
+      "subscale": "Kecemasan",
+      "category": "Ringan",
+      "level": 2,
+      "text_id": "Terdapat indikasi kecemasan pada taraf ringan, berupa kekhawatiran atau ketegangan ringan menjelang situasi tertentu. Taraf ini lazim ditemui pada proses seleksi dan pada umumnya bersifat sementara.",
+      "text_jp": "軽度の不安が認められ、特定の場面を前にした軽い緊張や心配がみられます。選考過程では一般的にみられる水準であり、通常は一時的なものです。",
+      "follow_up_trigger": "—"
+    },
+    {
+      "key": "DASS-A-K3",
+      "type": "Subskala",
+      "subscale": "Kecemasan",
+      "category": "Sedang",
+      "level": 3,
+      "text_id": "Terdapat indikasi kecemasan pada taraf sedang, disertai ketegangan atau keluhan fisik ringan seperti jantung berdebar dan kesulitan merasa rileks. Dianjurkan pembekalan keterampilan pengelolaan kecemasan sebelum keberangkatan.",
+      "text_jp": "中等度の不安が認められ、動悸やリラックスの困難など軽度の身体症状を伴います。渡航前に不安対処スキルの指導が推奨されます。",
+      "follow_up_trigger": "pemantauan"
+    },
+    {
+      "key": "DASS-A-K4",
+      "type": "Subskala",
+      "subscale": "Kecemasan",
+      "category": "Parah",
+      "level": 4,
+      "text_id": "Hasil skrining menunjukkan taraf kecemasan yang tinggi dalam satu pekan terakhir. Temuan ini menggambarkan kondisi sesaat, bukan diagnosis, dan dapat dipengaruhi oleh tekanan proses seleksi itu sendiri. Dianjurkan asesmen lanjutan serta dukungan pengelolaan kecemasan.",
+      "text_jp": "直近1週間において高い水準の不安が示されました。本結果は現時点の状態像であり診断ではなく、選考自体の緊張の影響も考えられます。追加評価と不安対処の支援が推奨されます。",
+      "follow_up_trigger": "rujukan"
+    },
+    {
+      "key": "DASS-A-K5",
+      "type": "Subskala",
+      "subscale": "Kecemasan",
+      "category": "Sangat Parah",
+      "level": 5,
+      "text_id": "Hasil skrining menunjukkan taraf kecemasan yang sangat tinggi dalam satu pekan terakhir. Temuan ini bukan diagnosis dan tidak menentukan kelayakan kerja, namun menunjukkan kebutuhan dukungan yang perlu segera ditindaklanjuti oleh tenaga profesional.",
+      "text_jp": "直近1週間において非常に高い水準の不安が示されました。本結果は診断ではなく就労適格性を判定するものではありませんが、専門職による速やかな支援の必要性を示しています。",
+      "follow_up_trigger": "rujukan"
+    },
+    {
+      "key": "DASS-S-K1",
+      "type": "Subskala",
+      "subscale": "Stres",
+      "category": "Normal",
+      "level": 1,
+      "text_id": "Tidak ditemukan indikasi ketegangan yang berarti. Kandidat mampu mengatur beban dan tuntutan sehari-hari dengan cukup baik.",
+      "text_jp": "明らかな緊張状態は認められません。日常の負担や要求を適切に調整できています。",
+      "follow_up_trigger": "—"
+    },
+    {
+      "key": "DASS-S-K2",
+      "type": "Subskala",
+      "subscale": "Stres",
+      "category": "Ringan",
+      "level": 2,
+      "text_id": "Terdapat indikasi ketegangan pada taraf ringan, seperti mudah tersinggung atau sulit merasa rileks pada beberapa kesempatan. Taraf ini umum pada masa persiapan keberangkatan.",
+      "text_jp": "軽度の緊張が認められ、苛立ちやリラックスの困難が時折みられます。渡航準備期には一般的な水準です。",
+      "follow_up_trigger": "—"
+    },
+    {
+      "key": "DASS-S-K3",
+      "type": "Subskala",
+      "subscale": "Stres",
+      "category": "Sedang",
+      "level": 3,
+      "text_id": "Terdapat indikasi ketegangan pada taraf sedang, berupa mudah terganggu, sulit menenangkan diri, atau reaksi yang cepat berubah. Dianjurkan pengaturan beban kegiatan serta pembekalan keterampilan relaksasi.",
+      "text_jp": "中等度の緊張が認められ、動じやすさ、鎮静の困難、反応の変わりやすさがみられます。活動量の調整とリラクセーション技法の指導が推奨されます。",
+      "follow_up_trigger": "pemantauan"
+    },
+    {
+      "key": "DASS-S-K4",
+      "type": "Subskala",
+      "subscale": "Stres",
+      "category": "Parah",
+      "level": 4,
+      "text_id": "Hasil skrining menunjukkan taraf ketegangan yang tinggi dalam satu pekan terakhir. Temuan ini bersifat sementara dan bukan diagnosis. Dianjurkan asesmen lanjutan dan pendampingan pengelolaan stres sebelum masa penempatan.",
+      "text_jp": "直近1週間において高い水準の緊張が示されました。本結果は一時的な状態像であり診断ではありません。配置前に追加評価とストレス対処の支援が推奨されます。",
+      "follow_up_trigger": "rujukan"
+    },
+    {
+      "key": "DASS-S-K5",
+      "type": "Subskala",
+      "subscale": "Stres",
+      "category": "Sangat Parah",
+      "level": 5,
+      "text_id": "Hasil skrining menunjukkan taraf ketegangan yang sangat tinggi dalam satu pekan terakhir. Temuan ini bukan diagnosis dan tidak menentukan kelayakan kerja, namun perlu segera ditindaklanjuti dengan dukungan profesional.",
+      "text_jp": "直近1週間において非常に高い水準の緊張が示されました。本結果は診断ではなく就労適格性を判定するものではありませんが、専門職による速やかな対応が必要です。",
+      "follow_up_trigger": "rujukan"
+    },
+    {
+      "key": "DASS-UMUM-K1",
+      "type": "Kategori umum",
+      "subscale": "(gabungan)",
+      "category": "Normal",
+      "level": 1,
+      "text_id": "Secara umum, kondisi kesehatan mental kandidat berada pada tahapan NORMAL. Tidak ditemukan indikasi gejala yang mengganggu keberfungsian sehari-hari pada ketiga aspek yang diukur. Cukup dilakukan pemantauan biasa sebagaimana kandidat lainnya.",
+      "text_jp": "全体として、精神的健康状態は「正常」の段階にあります。測定した3領域において、日常機能を妨げる症状の兆候は認められませんでした。他の候補者と同様の通常の経過観察で足ります。",
+      "follow_up_trigger": "—"
+    },
+    {
+      "key": "DASS-UMUM-K2",
+      "type": "Kategori umum",
+      "subscale": "(gabungan)",
+      "category": "Ringan",
+      "level": 2,
+      "text_id": "Secara umum, kondisi kesehatan mental kandidat berada pada tahapan RINGAN. Ditemukan gejala pada taraf ringan yang umum muncul pada masa persiapan dan seleksi, dan pada umumnya tidak mengganggu keberfungsian sehari-hari. Cukup dilakukan pemantauan biasa disertai pemberian informasi mengenai pengelolaan diri.",
+      "text_jp": "全体として「軽度」の段階にあります。準備期や選考過程で一般的にみられる軽度の症状であり、通常、日常機能を妨げるものではありません。通常の経過観察とセルフケアに関する情報提供で足ります。",
+      "follow_up_trigger": "—"
+    },
+    {
+      "key": "DASS-UMUM-K3",
+      "type": "Kategori umum",
+      "subscale": "(gabungan)",
+      "category": "Sedang",
+      "level": 3,
+      "text_id": "Secara umum, kondisi kesehatan mental kandidat berada pada tahapan SEDANG. Ditemukan gejala yang cukup terasa dalam satu pekan terakhir. Dianjurkan dukungan psikologis suportif serta pemantauan berkala selama masa pelatihan maupun penempatan. Kondisi ini tidak menghalangi kandidat untuk bekerja.",
+      "text_jp": "全体として「中等度」の段階にあります。直近1週間において一定程度の症状が認められました。研修および配置期間中の心理的支援と定期的な経過観察が推奨されます。本状態は就労を妨げるものではありません。",
+      "follow_up_trigger": "pemantauan"
+    },
+    {
+      "key": "DASS-UMUM-K4",
+      "type": "Kategori umum",
+      "subscale": "(gabungan)",
+      "category": "Parah",
+      "level": 4,
+      "text_id": "Secara umum, kondisi kesehatan mental kandidat berada pada tahapan PARAH. Hasil ini menggambarkan kondisi kandidat dalam satu pekan terakhir dan bukan merupakan diagnosis gangguan jiwa. Dianjurkan asesmen psikologis lanjutan oleh psikolog serta pendampingan yang memadai. Hasil skrining ini tidak digunakan sebagai dasar penolakan kelayakan kerja.",
+      "text_jp": "全体として「重度」の段階にあります。本結果は直近1週間の状態を示すものであり、精神疾患の診断ではありません。心理職による追加評価と適切な支援が推奨されます。本スクリーニング結果は就労不適格の判断根拠として用いられません。",
+      "follow_up_trigger": "rujukan"
+    },
+    {
+      "key": "DASS-UMUM-K5",
+      "type": "Kategori umum",
+      "subscale": "(gabungan)",
+      "category": "Sangat Parah",
+      "level": 5,
+      "text_id": "Secara umum, kondisi kesehatan mental kandidat berada pada tahapan SANGAT PARAH. Hasil ini menggambarkan kondisi kandidat dalam satu pekan terakhir dan bukan merupakan diagnosis gangguan jiwa. Sangat dianjurkan pemeriksaan psikologis klinis lanjutan dan dukungan profesional sebelum proses ditindaklanjuti. Hasil skrining ini tidak digunakan sebagai dasar penolakan kelayakan kerja, melainkan sebagai dasar pemberian dukungan.",
+      "text_jp": "全体として「極めて重度」の段階にあります。本結果は直近1週間の状態を示すものであり、精神疾患の診断ではありません。手続きを進める前に、臨床心理学的な追加評価と専門的支援が強く推奨されます。本結果は就労不適格の根拠ではなく、支援提供の根拠として用いられます。",
+      "follow_up_trigger": "rujukan"
+    }
+  ],
+  "follow_up": {
+    "monitoring": {
+      "condition": "pemantauan (kategori umum = Sedang)",
+      "text_id": "Tindak lanjut: pemantauan berkala oleh pendamping LPK selama masa pelatihan, disertai penyediaan informasi mengenai pengelolaan diri dan jalur bantuan yang dapat diakses kandidat.",
+      "text_jp": "フォローアップ：研修期間中、送出機関の担当者による定期的な経過観察と、セルフケア情報および相談窓口の案内。"
+    },
+    "referral": {
+      "condition": "rujukan (kategori umum = Parah / Sangat Parah)",
+      "text_id": "Tindak lanjut: kandidat ditawari sesi asesmen lanjutan dan/atau konsultasi psikologis. Penawaran ini bersifat dukungan, bukan syarat kelulusan, dan keputusan mengikutinya sepenuhnya berada pada kandidat.",
+      "text_jp": "フォローアップ：追加評価および心理相談の機会を案内します。これは支援としての提案であり合否の条件ではなく、利用の判断は本人に委ねられます。"
+    }
+  }
+}

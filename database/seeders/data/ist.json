@@ -1,0 +1,1990 @@
+{
+  "version": "F0-2026.08",
+  "keys": [
+    {
+      "subtest": "SE",
+      "item": 1,
+      "key": "e"
+    },
+    {
+      "subtest": "SE",
+      "item": 2,
+      "key": "c"
+    },
+    {
+      "subtest": "SE",
+      "item": 3,
+      "key": "d"
+    },
+    {
+      "subtest": "SE",
+      "item": 4,
+      "key": "d"
+    },
+    {
+      "subtest": "SE",
+      "item": 5,
+      "key": "e"
+    },
+    {
+      "subtest": "SE",
+      "item": 6,
+      "key": "b"
+    },
+    {
+      "subtest": "SE",
+      "item": 7,
+      "key": "c"
+    },
+    {
+      "subtest": "SE",
+      "item": 8,
+      "key": "a"
+    },
+    {
+      "subtest": "SE",
+      "item": 9,
+      "key": "e"
+    },
+    {
+      "subtest": "SE",
+      "item": 10,
+      "key": "b"
+    },
+    {
+      "subtest": "SE",
+      "item": 11,
+      "key": "c"
+    },
+    {
+      "subtest": "SE",
+      "item": 12,
+      "key": "d"
+    },
+    {
+      "subtest": "SE",
+      "item": 13,
+      "key": "d"
+    },
+    {
+      "subtest": "SE",
+      "item": 14,
+      "key": "e"
+    },
+    {
+      "subtest": "SE",
+      "item": 15,
+      "key": "c"
+    },
+    {
+      "subtest": "SE",
+      "item": 16,
+      "key": "a"
+    },
+    {
+      "subtest": "SE",
+      "item": 17,
+      "key": "b"
+    },
+    {
+      "subtest": "SE",
+      "item": 18,
+      "key": "b"
+    },
+    {
+      "subtest": "SE",
+      "item": 19,
+      "key": "c"
+    },
+    {
+      "subtest": "SE",
+      "item": 20,
+      "key": "a"
+    },
+    {
+      "subtest": "WA",
+      "item": 1,
+      "key": "a"
+    },
+    {
+      "subtest": "WA",
+      "item": 2,
+      "key": "b"
+    },
+    {
+      "subtest": "WA",
+      "item": 3,
+      "key": "d"
+    },
+    {
+      "subtest": "WA",
+      "item": 4,
+      "key": "c"
+    },
+    {
+      "subtest": "WA",
+      "item": 5,
+      "key": "c"
+    },
+    {
+      "subtest": "WA",
+      "item": 6,
+      "key": "c"
+    },
+    {
+      "subtest": "WA",
+      "item": 7,
+      "key": "c"
+    },
+    {
+      "subtest": "WA",
+      "item": 8,
+      "key": "d"
+    },
+    {
+      "subtest": "WA",
+      "item": 9,
+      "key": "d"
+    },
+    {
+      "subtest": "WA",
+      "item": 10,
+      "key": "a"
+    },
+    {
+      "subtest": "WA",
+      "item": 11,
+      "key": "e"
+    },
+    {
+      "subtest": "WA",
+      "item": 12,
+      "key": "a"
+    },
+    {
+      "subtest": "WA",
+      "item": 13,
+      "key": "a"
+    },
+    {
+      "subtest": "WA",
+      "item": 14,
+      "key": "b"
+    },
+    {
+      "subtest": "WA",
+      "item": 15,
+      "key": "c"
+    },
+    {
+      "subtest": "WA",
+      "item": 16,
+      "key": "a"
+    },
+    {
+      "subtest": "WA",
+      "item": 17,
+      "key": "d"
+    },
+    {
+      "subtest": "WA",
+      "item": 18,
+      "key": "e"
+    },
+    {
+      "subtest": "WA",
+      "item": 19,
+      "key": "b"
+    },
+    {
+      "subtest": "WA",
+      "item": 20,
+      "key": "c"
+    },
+    {
+      "subtest": "AN",
+      "item": 1,
+      "key": "c"
+    },
+    {
+      "subtest": "AN",
+      "item": 2,
+      "key": "e"
+    },
+    {
+      "subtest": "AN",
+      "item": 3,
+      "key": "d"
+    },
+    {
+      "subtest": "AN",
+      "item": 4,
+      "key": "d"
+    },
+    {
+      "subtest": "AN",
+      "item": 5,
+      "key": "d"
+    },
+    {
+      "subtest": "AN",
+      "item": 6,
+      "key": "b"
+    },
+    {
+      "subtest": "AN",
+      "item": 7,
+      "key": "d"
+    },
+    {
+      "subtest": "AN",
+      "item": 8,
+      "key": "b"
+    },
+    {
+      "subtest": "AN",
+      "item": 9,
+      "key": "e"
+    },
+    {
+      "subtest": "AN",
+      "item": 10,
+      "key": "d"
+    },
+    {
+      "subtest": "AN",
+      "item": 11,
+      "key": "c"
+    },
+    {
+      "subtest": "AN",
+      "item": 12,
+      "key": "c"
+    },
+    {
+      "subtest": "AN",
+      "item": 13,
+      "key": "c"
+    },
+    {
+      "subtest": "AN",
+      "item": 14,
+      "key": "c"
+    },
+    {
+      "subtest": "AN",
+      "item": 15,
+      "key": "e"
+    },
+    {
+      "subtest": "AN",
+      "item": 16,
+      "key": "c"
+    },
+    {
+      "subtest": "AN",
+      "item": 17,
+      "key": "c"
+    },
+    {
+      "subtest": "AN",
+      "item": 18,
+      "key": "e"
+    },
+    {
+      "subtest": "AN",
+      "item": 19,
+      "key": "e"
+    },
+    {
+      "subtest": "AN",
+      "item": 20,
+      "key": "e"
+    },
+    {
+      "subtest": "RA",
+      "item": 1,
+      "key": "3, 5"
+    },
+    {
+      "subtest": "RA",
+      "item": 2,
+      "key": "2, 8, 0"
+    },
+    {
+      "subtest": "RA",
+      "item": 3,
+      "key": "2, 5, 0"
+    },
+    {
+      "subtest": "RA",
+      "item": 4,
+      "key": "2, 6"
+    },
+    {
+      "subtest": "RA",
+      "item": 5,
+      "key": "3, 0"
+    },
+    {
+      "subtest": "RA",
+      "item": 6,
+      "key": "7, 0"
+    },
+    {
+      "subtest": "RA",
+      "item": 7,
+      "key": "4, 5"
+    },
+    {
+      "subtest": "RA",
+      "item": 8,
+      "key": "5, 0"
+    },
+    {
+      "subtest": "RA",
+      "item": 9,
+      "key": "4, 8"
+    },
+    {
+      "subtest": "RA",
+      "item": 10,
+      "key": "7, 8"
+    },
+    {
+      "subtest": "RA",
+      "item": 11,
+      "key": "1, 9"
+    },
+    {
+      "subtest": "RA",
+      "item": 12,
+      "key": "6"
+    },
+    {
+      "subtest": "RA",
+      "item": 13,
+      "key": "5, 7"
+    },
+    {
+      "subtest": "RA",
+      "item": 14,
+      "key": "9, 0"
+    },
+    {
+      "subtest": "RA",
+      "item": 15,
+      "key": "1, 2, 0"
+    },
+    {
+      "subtest": "RA",
+      "item": 16,
+      "key": "1, 7"
+    },
+    {
+      "subtest": "RA",
+      "item": 17,
+      "key": "2, 4"
+    },
+    {
+      "subtest": "RA",
+      "item": 18,
+      "key": "5"
+    },
+    {
+      "subtest": "RA",
+      "item": 19,
+      "key": "4, 8"
+    },
+    {
+      "subtest": "RA",
+      "item": 20,
+      "key": "9"
+    },
+    {
+      "subtest": "ZR",
+      "item": 1,
+      "key": "2, 7"
+    },
+    {
+      "subtest": "ZR",
+      "item": 2,
+      "key": "2, 5"
+    },
+    {
+      "subtest": "ZR",
+      "item": 3,
+      "key": "2, 7"
+    },
+    {
+      "subtest": "ZR",
+      "item": 4,
+      "key": "1, 5"
+    },
+    {
+      "subtest": "ZR",
+      "item": 5,
+      "key": "4, 6"
+    },
+    {
+      "subtest": "ZR",
+      "item": 6,
+      "key": "1, 0"
+    },
+    {
+      "subtest": "ZR",
+      "item": 7,
+      "key": "2, 4"
+    },
+    {
+      "subtest": "ZR",
+      "item": 8,
+      "key": "7"
+    },
+    {
+      "subtest": "ZR",
+      "item": 9,
+      "key": "5"
+    },
+    {
+      "subtest": "ZR",
+      "item": 10,
+      "key": "1, 4"
+    },
+    {
+      "subtest": "ZR",
+      "item": 11,
+      "key": "8"
+    },
+    {
+      "subtest": "ZR",
+      "item": 12,
+      "key": "1, 4"
+    },
+    {
+      "subtest": "ZR",
+      "item": 13,
+      "key": "4, 5"
+    },
+    {
+      "subtest": "ZR",
+      "item": 14,
+      "key": "3, 6"
+    },
+    {
+      "subtest": "ZR",
+      "item": 15,
+      "key": "1, 2"
+    },
+    {
+      "subtest": "ZR",
+      "item": 16,
+      "key": "8, 0"
+    },
+    {
+      "subtest": "ZR",
+      "item": 17,
+      "key": "1, 4"
+    },
+    {
+      "subtest": "ZR",
+      "item": 18,
+      "key": "1, 2"
+    },
+    {
+      "subtest": "ZR",
+      "item": 19,
+      "key": "3, 6"
+    },
+    {
+      "subtest": "ZR",
+      "item": 20,
+      "key": "1, 0"
+    },
+    {
+      "subtest": "FA",
+      "item": 1,
+      "key": "b"
+    },
+    {
+      "subtest": "FA",
+      "item": 2,
+      "key": "d"
+    },
+    {
+      "subtest": "FA",
+      "item": 3,
+      "key": "c"
+    },
+    {
+      "subtest": "FA",
+      "item": 4,
+      "key": "b"
+    },
+    {
+      "subtest": "FA",
+      "item": 5,
+      "key": "e"
+    },
+    {
+      "subtest": "FA",
+      "item": 6,
+      "key": "c"
+    },
+    {
+      "subtest": "FA",
+      "item": 7,
+      "key": "d"
+    },
+    {
+      "subtest": "FA",
+      "item": 8,
+      "key": "a"
+    },
+    {
+      "subtest": "FA",
+      "item": 9,
+      "key": "a"
+    },
+    {
+      "subtest": "FA",
+      "item": 10,
+      "key": "e"
+    },
+    {
+      "subtest": "FA",
+      "item": 11,
+      "key": "a"
+    },
+    {
+      "subtest": "FA",
+      "item": 12,
+      "key": "c"
+    },
+    {
+      "subtest": "FA",
+      "item": 13,
+      "key": "d"
+    },
+    {
+      "subtest": "FA",
+      "item": 14,
+      "key": "c"
+    },
+    {
+      "subtest": "FA",
+      "item": 15,
+      "key": "b"
+    },
+    {
+      "subtest": "FA",
+      "item": 16,
+      "key": "a"
+    },
+    {
+      "subtest": "FA",
+      "item": 17,
+      "key": "b"
+    },
+    {
+      "subtest": "FA",
+      "item": 18,
+      "key": "d"
+    },
+    {
+      "subtest": "FA",
+      "item": 19,
+      "key": "c"
+    },
+    {
+      "subtest": "FA",
+      "item": 20,
+      "key": "c"
+    },
+    {
+      "subtest": "WU",
+      "item": 1,
+      "key": "a"
+    },
+    {
+      "subtest": "WU",
+      "item": 2,
+      "key": "c"
+    },
+    {
+      "subtest": "WU",
+      "item": 3,
+      "key": "d"
+    },
+    {
+      "subtest": "WU",
+      "item": 4,
+      "key": "e"
+    },
+    {
+      "subtest": "WU",
+      "item": 5,
+      "key": "a"
+    },
+    {
+      "subtest": "WU",
+      "item": 6,
+      "key": "c"
+    },
+    {
+      "subtest": "WU",
+      "item": 7,
+      "key": "d"
+    },
+    {
+      "subtest": "WU",
+      "item": 8,
+      "key": "c"
+    },
+    {
+      "subtest": "WU",
+      "item": 9,
+      "key": "e"
+    },
+    {
+      "subtest": "WU",
+      "item": 10,
+      "key": "a"
+    },
+    {
+      "subtest": "WU",
+      "item": 11,
+      "key": "b"
+    },
+    {
+      "subtest": "WU",
+      "item": 12,
+      "key": "d"
+    },
+    {
+      "subtest": "WU",
+      "item": 13,
+      "key": "e"
+    },
+    {
+      "subtest": "WU",
+      "item": 14,
+      "key": "b"
+    },
+    {
+      "subtest": "WU",
+      "item": 15,
+      "key": "d"
+    },
+    {
+      "subtest": "WU",
+      "item": 16,
+      "key": "b"
+    },
+    {
+      "subtest": "WU",
+      "item": 17,
+      "key": "a"
+    },
+    {
+      "subtest": "WU",
+      "item": 18,
+      "key": "e"
+    },
+    {
+      "subtest": "WU",
+      "item": 19,
+      "key": "b"
+    },
+    {
+      "subtest": "WU",
+      "item": 20,
+      "key": "c"
+    },
+    {
+      "subtest": "ME",
+      "item": 1,
+      "key": "d"
+    },
+    {
+      "subtest": "ME",
+      "item": 2,
+      "key": "e"
+    },
+    {
+      "subtest": "ME",
+      "item": 3,
+      "key": "b"
+    },
+    {
+      "subtest": "ME",
+      "item": 4,
+      "key": "a"
+    },
+    {
+      "subtest": "ME",
+      "item": 5,
+      "key": "c"
+    },
+    {
+      "subtest": "ME",
+      "item": 6,
+      "key": "a"
+    },
+    {
+      "subtest": "ME",
+      "item": 7,
+      "key": "d"
+    },
+    {
+      "subtest": "ME",
+      "item": 8,
+      "key": "e"
+    },
+    {
+      "subtest": "ME",
+      "item": 9,
+      "key": "c"
+    },
+    {
+      "subtest": "ME",
+      "item": 10,
+      "key": "b"
+    },
+    {
+      "subtest": "ME",
+      "item": 11,
+      "key": "b"
+    },
+    {
+      "subtest": "ME",
+      "item": 12,
+      "key": "a"
+    },
+    {
+      "subtest": "ME",
+      "item": 13,
+      "key": "e"
+    },
+    {
+      "subtest": "ME",
+      "item": 14,
+      "key": "c"
+    },
+    {
+      "subtest": "ME",
+      "item": 15,
+      "key": "d"
+    },
+    {
+      "subtest": "ME",
+      "item": 16,
+      "key": "b"
+    },
+    {
+      "subtest": "ME",
+      "item": 17,
+      "key": "e"
+    },
+    {
+      "subtest": "ME",
+      "item": 18,
+      "key": "a"
+    },
+    {
+      "subtest": "ME",
+      "item": 19,
+      "key": "c"
+    },
+    {
+      "subtest": "ME",
+      "item": 20,
+      "key": "d"
+    }
+  ],
+  "ge_dictionary": [
+    {
+      "item": 1,
+      "answers": [
+        {
+          "answer": "bunga",
+          "score": 2
+        },
+        {
+          "answer": "kembang",
+          "score": 2
+        },
+        {
+          "answer": "perdu",
+          "score": 2
+        },
+        {
+          "answer": "tumbuh-tumbuhan",
+          "score": 1
+        },
+        {
+          "answer": "tumbuhan",
+          "score": 1
+        },
+        {
+          "answer": "tanaman",
+          "score": 1
+        },
+        {
+          "answer": "tangkai",
+          "score": 1
+        },
+        {
+          "answer": "harum",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "item": 2,
+      "answers": [
+        {
+          "answer": "alat indra",
+          "score": 2
+        },
+        {
+          "answer": "indra",
+          "score": 2
+        },
+        {
+          "answer": "panca indra",
+          "score": 2
+        },
+        {
+          "answer": "organ",
+          "score": 1
+        },
+        {
+          "answer": "organ tubuh",
+          "score": 1
+        },
+        {
+          "answer": "alat tubuh",
+          "score": 1
+        },
+        {
+          "answer": "bagian tubuh",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "item": 3,
+      "answers": [
+        {
+          "answer": "hablur",
+          "score": 2
+        },
+        {
+          "answer": "kristal",
+          "score": 2
+        },
+        {
+          "answer": "zat arang",
+          "score": 2
+        },
+        {
+          "answer": "berkilau",
+          "score": 1
+        },
+        {
+          "answer": "berkilauanan",
+          "score": 1
+        },
+        {
+          "answer": "mengkilat",
+          "score": 1
+        },
+        {
+          "answer": "bening",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "item": 4,
+      "answers": [
+        {
+          "answer": "cuaca",
+          "score": 2
+        },
+        {
+          "answer": "musim",
+          "score": 2
+        },
+        {
+          "answer": "air",
+          "score": 1
+        },
+        {
+          "answer": "basah",
+          "score": 1
+        },
+        {
+          "answer": "gejala alam",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "item": 5,
+      "answers": [
+        {
+          "answer": "pembawa berita",
+          "score": 2
+        },
+        {
+          "answer": "alat perhubungan",
+          "score": 2
+        },
+        {
+          "answer": "alat komunikasi",
+          "score": 2
+        },
+        {
+          "answer": "pos",
+          "score": 1
+        },
+        {
+          "answer": "p.t.t",
+          "score": 1
+        },
+        {
+          "answer": "telekomunikasi",
+          "score": 1
+        },
+        {
+          "answer": "perhubungan",
+          "score": 1
+        },
+        {
+          "answer": "komunikasi",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "item": 6,
+      "answers": [
+        {
+          "answer": "alat optik",
+          "score": 2
+        },
+        {
+          "answer": "optik",
+          "score": 2
+        },
+        {
+          "answer": "lensa",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "item": 7,
+      "answers": [
+        {
+          "answer": "alat pencernaan",
+          "score": 2
+        },
+        {
+          "answer": "jalan makanan",
+          "score": 1
+        },
+        {
+          "answer": "perut",
+          "score": 1
+        },
+        {
+          "answer": "isi perut",
+          "score": 1
+        },
+        {
+          "answer": "pencernaan",
+          "score": 1
+        },
+        {
+          "answer": "pencernaan makanan",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "item": 8,
+      "answers": [
+        {
+          "answer": "penyebut jumlah",
+          "score": 2
+        },
+        {
+          "answer": "pengertian jumlah",
+          "score": 2
+        },
+        {
+          "answer": "jumlah",
+          "score": 2
+        },
+        {
+          "answer": "kuantitas",
+          "score": 2
+        },
+        {
+          "answer": "mengukur",
+          "score": 1
+        },
+        {
+          "answer": "ukuran",
+          "score": 1
+        },
+        {
+          "answer": "ukur",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "item": 9,
+      "answers": [
+        {
+          "answer": "bibit",
+          "score": 2
+        },
+        {
+          "answer": "bakal",
+          "score": 2
+        },
+        {
+          "answer": "alat pembiak",
+          "score": 2
+        },
+        {
+          "answer": "permulaan kehidupan",
+          "score": 2
+        },
+        {
+          "answer": "sel",
+          "score": 1
+        },
+        {
+          "answer": "pembiakan",
+          "score": 1
+        },
+        {
+          "answer": "perkembangbiakan",
+          "score": 1
+        },
+        {
+          "answer": "berkembangbiak",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "item": 10,
+      "answers": [
+        {
+          "answer": "simbol",
+          "score": 2
+        },
+        {
+          "answer": "lambang",
+          "score": 2
+        },
+        {
+          "answer": "tanda",
+          "score": 2
+        },
+        {
+          "answer": "nama",
+          "score": 1
+        },
+        {
+          "answer": "pengenal",
+          "score": 1
+        },
+        {
+          "answer": "tanda pengenal",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "item": 11,
+      "answers": [
+        {
+          "answer": "makhluk",
+          "score": 2
+        },
+        {
+          "answer": "makhluk hidup",
+          "score": 2
+        },
+        {
+          "answer": "organisme",
+          "score": 2
+        },
+        {
+          "answer": "tumbuh",
+          "score": 1
+        },
+        {
+          "answer": "biologi",
+          "score": 1
+        },
+        {
+          "answer": "ilmu hayat",
+          "score": 1
+        },
+        {
+          "answer": "ilmu hayati",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "item": 12,
+      "answers": [
+        {
+          "answer": "wadah",
+          "score": 2
+        },
+        {
+          "answer": "tempat mengisi",
+          "score": 2
+        },
+        {
+          "answer": "tempat penyimpan",
+          "score": 2
+        },
+        {
+          "answer": "tempat penyimpanan",
+          "score": 2
+        },
+        {
+          "answer": "tempat susuatu",
+          "score": 1
+        },
+        {
+          "answer": "alat",
+          "score": 1
+        },
+        {
+          "answer": "tempat",
+          "score": 1
+        },
+        {
+          "answer": "benda",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "item": 13,
+      "answers": [
+        {
+          "answer": "pengertian waktu",
+          "score": 2
+        },
+        {
+          "answer": "batas",
+          "score": 2
+        },
+        {
+          "answer": "batas waktu",
+          "score": 2
+        },
+        {
+          "answer": "waktu",
+          "score": 1
+        },
+        {
+          "answer": "masa",
+          "score": 1
+        },
+        {
+          "answer": "saat",
+          "score": 1
+        },
+        {
+          "answer": "lamanya",
+          "score": 1
+        },
+        {
+          "answer": "lama",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "item": 14,
+      "answers": [
+        {
+          "answer": "sifat-watak",
+          "score": 2
+        },
+        {
+          "answer": "sifat-karakter",
+          "score": 2
+        },
+        {
+          "answer": "karakter",
+          "score": 2
+        },
+        {
+          "answer": "watak",
+          "score": 2
+        },
+        {
+          "answer": "sifat",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "item": 15,
+      "answers": [
+        {
+          "answer": "regulator harga",
+          "score": 2
+        },
+        {
+          "answer": "regulasi harga",
+          "score": 2
+        },
+        {
+          "answer": "pengertian ekonomi",
+          "score": 2
+        },
+        {
+          "answer": "dagang",
+          "score": 1
+        },
+        {
+          "answer": "niaga",
+          "score": 1
+        },
+        {
+          "answer": "penjualan",
+          "score": 1
+        },
+        {
+          "answer": "pembelian",
+          "score": 1
+        },
+        {
+          "answer": "jual beli",
+          "score": 1
+        }
+      ]
+    },
+    {
+      "item": 16,
+      "answers": [
+        {
+          "answer": "pengertian ruang",
+          "score": 2
+        },
+        {
+          "answer": "penyebut ruang",
+          "score": 2
+        },
+        {
+          "answer": "arah",
+          "score": 1
+        },
+        {
+          "answer": "letak",
+          "score": 1
+        },
+        {
+          "answer": "penentuan daerah",
+          "score": 1
+        },
+        {
+          "answer": "tempat",
+          "score": 1
+        },
+        {
+          "answer": "ruang",
+          "score": 1
+        },
+        {
+          "answer": "penunjuk tempat",
+          "score": 1
+        }
+      ]
+    }
+  ],
+  "norms": {
+    "SE": {
+      "0": 71,
+      "1": 75,
+      "2": 78,
+      "3": 82,
+      "4": 86,
+      "5": 90,
+      "6": 93,
+      "7": 97,
+      "8": 101,
+      "9": 105,
+      "10": 108,
+      "11": 112,
+      "12": 116,
+      "13": 120,
+      "14": 123,
+      "15": 127,
+      "16": 131,
+      "17": 135,
+      "18": 138,
+      "19": 142,
+      "20": 146
+    },
+    "WA": {
+      "0": 67,
+      "1": 71,
+      "2": 74,
+      "3": 78,
+      "4": 81,
+      "5": 84,
+      "6": 88,
+      "7": 92,
+      "8": 95,
+      "9": 98,
+      "10": 102,
+      "11": 105,
+      "12": 109,
+      "13": 112,
+      "14": 116,
+      "15": 119,
+      "16": 123,
+      "17": 126,
+      "18": 130,
+      "19": 133,
+      "20": 137
+    },
+    "AN": {
+      "0": 79,
+      "1": 83,
+      "2": 86,
+      "3": 89,
+      "4": 92,
+      "5": 96,
+      "6": 99,
+      "7": 102,
+      "8": 105,
+      "9": 109,
+      "10": 112,
+      "11": 115,
+      "12": 119,
+      "13": 122,
+      "14": 125,
+      "15": 129,
+      "16": 132,
+      "17": 135,
+      "18": 138,
+      "19": 142,
+      "20": 145
+    },
+    "RA": {
+      "0": 79,
+      "1": 82,
+      "2": 84,
+      "3": 87,
+      "4": 89,
+      "5": 92,
+      "6": 95,
+      "7": 97,
+      "8": 100,
+      "9": 102,
+      "10": 105,
+      "11": 107,
+      "12": 110,
+      "13": 112,
+      "14": 115,
+      "15": 118,
+      "16": 120,
+      "17": 123,
+      "18": 125,
+      "19": 128,
+      "20": 130
+    },
+    "ZR": {
+      "0": 85,
+      "1": 87,
+      "2": 89,
+      "3": 91,
+      "4": 93,
+      "5": 95,
+      "6": 96,
+      "7": 98,
+      "8": 100,
+      "9": 102,
+      "10": 104,
+      "11": 105,
+      "12": 108,
+      "13": 109,
+      "14": 111,
+      "15": 113,
+      "16": 115,
+      "17": 117,
+      "18": 119,
+      "19": 121,
+      "20": 122
+    },
+    "FA": {
+      "0": 69,
+      "1": 73,
+      "2": 75,
+      "3": 79,
+      "4": 82,
+      "5": 85,
+      "6": 88,
+      "7": 91,
+      "8": 94,
+      "9": 97,
+      "10": 100,
+      "11": 103,
+      "12": 108,
+      "13": 109,
+      "14": 112,
+      "15": 115,
+      "16": 118,
+      "17": 121,
+      "18": 124,
+      "19": 127,
+      "20": 130
+    },
+    "WU": {
+      "0": 75,
+      "1": 78,
+      "2": 81,
+      "3": 84,
+      "4": 87,
+      "5": 90,
+      "6": 93,
+      "7": 96,
+      "8": 99,
+      "9": 102,
+      "10": 105,
+      "11": 108,
+      "12": 111,
+      "13": 114,
+      "14": 117,
+      "15": 120,
+      "16": 123,
+      "17": 126,
+      "18": 129,
+      "19": 131,
+      "20": 134
+    },
+    "ME": {
+      "0": 74,
+      "1": 76,
+      "2": 78,
+      "3": 80,
+      "4": 82,
+      "5": 84,
+      "6": 87,
+      "7": 89,
+      "8": 91,
+      "9": 94,
+      "10": 97,
+      "11": 99,
+      "12": 100,
+      "13": 102,
+      "14": 104,
+      "15": 106,
+      "16": 108,
+      "17": 110,
+      "18": 112,
+      "19": 114,
+      "20": 116
+    },
+    "GE": {
+      "0": 70,
+      "1": 72,
+      "2": 75,
+      "3": 77,
+      "4": 79,
+      "5": 81,
+      "6": 84,
+      "7": 86,
+      "8": 88,
+      "9": 90,
+      "10": 93,
+      "11": 95,
+      "12": 97,
+      "13": 99,
+      "14": 101,
+      "15": 104,
+      "16": 106,
+      "17": 108,
+      "18": 110,
+      "19": 113,
+      "20": 115,
+      "21": 117,
+      "22": 119,
+      "23": 122,
+      "24": 124,
+      "25": 126,
+      "26": 129,
+      "27": 131,
+      "28": 133,
+      "29": 135,
+      "30": 137,
+      "31": 139,
+      "32": 142
+    }
+  },
+  "iq_ranges": [
+    {
+      "lo": 150,
+      "hi": 151,
+      "iq": 132
+    },
+    {
+      "lo": 148,
+      "hi": 149,
+      "iq": 131
+    },
+    {
+      "lo": 146,
+      "hi": 147,
+      "iq": 130
+    },
+    {
+      "lo": 144,
+      "hi": 145,
+      "iq": 129
+    },
+    {
+      "lo": 142,
+      "hi": 143,
+      "iq": 128
+    },
+    {
+      "lo": 139,
+      "hi": 141,
+      "iq": 127
+    },
+    {
+      "lo": 137,
+      "hi": 138,
+      "iq": 126
+    },
+    {
+      "lo": 135,
+      "hi": 136,
+      "iq": 125
+    },
+    {
+      "lo": 133,
+      "hi": 134,
+      "iq": 124
+    },
+    {
+      "lo": 130,
+      "hi": 132,
+      "iq": 123
+    },
+    {
+      "lo": 128,
+      "hi": 129,
+      "iq": 122
+    },
+    {
+      "lo": 126,
+      "hi": 127,
+      "iq": 121
+    },
+    {
+      "lo": 124,
+      "hi": 125,
+      "iq": 120
+    },
+    {
+      "lo": 122,
+      "hi": 123,
+      "iq": 119
+    },
+    {
+      "lo": 119,
+      "hi": 121,
+      "iq": 118
+    },
+    {
+      "lo": 117,
+      "hi": 118,
+      "iq": 117
+    },
+    {
+      "lo": 115,
+      "hi": 116,
+      "iq": 116
+    },
+    {
+      "lo": 113,
+      "hi": 114,
+      "iq": 115
+    },
+    {
+      "lo": 110,
+      "hi": 112,
+      "iq": 114
+    },
+    {
+      "lo": 108,
+      "hi": 109,
+      "iq": 113
+    },
+    {
+      "lo": 106,
+      "hi": 107,
+      "iq": 112
+    },
+    {
+      "lo": 104,
+      "hi": 105,
+      "iq": 111
+    },
+    {
+      "lo": 102,
+      "hi": 103,
+      "iq": 110
+    },
+    {
+      "lo": 99,
+      "hi": 101,
+      "iq": 109
+    },
+    {
+      "lo": 97,
+      "hi": 98,
+      "iq": 108
+    },
+    {
+      "lo": 95,
+      "hi": 96,
+      "iq": 107
+    },
+    {
+      "lo": 93,
+      "hi": 94,
+      "iq": 106
+    },
+    {
+      "lo": 90,
+      "hi": 92,
+      "iq": 105
+    },
+    {
+      "lo": 88,
+      "hi": 89,
+      "iq": 104
+    },
+    {
+      "lo": 86,
+      "hi": 87,
+      "iq": 103
+    },
+    {
+      "lo": 84,
+      "hi": 85,
+      "iq": 102
+    },
+    {
+      "lo": 82,
+      "hi": 83,
+      "iq": 101
+    },
+    {
+      "lo": 79,
+      "hi": 81,
+      "iq": 100
+    },
+    {
+      "lo": 77,
+      "hi": 78,
+      "iq": 99
+    },
+    {
+      "lo": 75,
+      "hi": 76,
+      "iq": 98
+    },
+    {
+      "lo": 73,
+      "hi": 74,
+      "iq": 97
+    },
+    {
+      "lo": 70,
+      "hi": 72,
+      "iq": 96
+    },
+    {
+      "lo": 68,
+      "hi": 69,
+      "iq": 95
+    },
+    {
+      "lo": 66,
+      "hi": 67,
+      "iq": 94
+    },
+    {
+      "lo": 64,
+      "hi": 65,
+      "iq": 93
+    },
+    {
+      "lo": 62,
+      "hi": 63,
+      "iq": 92
+    },
+    {
+      "lo": 59,
+      "hi": 61,
+      "iq": 91
+    },
+    {
+      "lo": 57,
+      "hi": 58,
+      "iq": 90
+    },
+    {
+      "lo": 55,
+      "hi": 56,
+      "iq": 89
+    },
+    {
+      "lo": 53,
+      "hi": 54,
+      "iq": 88
+    },
+    {
+      "lo": 50,
+      "hi": 52,
+      "iq": 87
+    },
+    {
+      "lo": 48,
+      "hi": 49,
+      "iq": 86
+    },
+    {
+      "lo": 46,
+      "hi": 47,
+      "iq": 85
+    },
+    {
+      "lo": 44,
+      "hi": 45,
+      "iq": 84
+    },
+    {
+      "lo": 42,
+      "hi": 43,
+      "iq": 83
+    },
+    {
+      "lo": 39,
+      "hi": 41,
+      "iq": 82
+    },
+    {
+      "lo": 37,
+      "hi": 38,
+      "iq": 81
+    },
+    {
+      "lo": 35,
+      "hi": 36,
+      "iq": 80
+    },
+    {
+      "lo": 33,
+      "hi": 34,
+      "iq": 79
+    },
+    {
+      "lo": 30,
+      "hi": 32,
+      "iq": 78
+    },
+    {
+      "lo": 28,
+      "hi": 29,
+      "iq": 77
+    }
+  ],
+  "sw_score_bands": [
+    {
+      "score": 10,
+      "lo": 131,
+      "hi": null,
+      "range": "SW ≥ 131",
+      "category": "B (Baik)",
+      "split_status": "Konvensi sistem"
+    },
+    {
+      "score": 9,
+      "lo": 119,
+      "hi": 130,
+      "range": "119 – 130",
+      "category": "B (Baik)",
+      "split_status": "Baku (batas 119)"
+    },
+    {
+      "score": 8,
+      "lo": 112,
+      "hi": 118,
+      "range": "112 – 118",
+      "category": "CB (Cukup Baik)",
+      "split_status": "Konvensi sistem"
+    },
+    {
+      "score": 7,
+      "lo": 105,
+      "hi": 111,
+      "range": "105 – 111",
+      "category": "CB (Cukup Baik)",
+      "split_status": "Baku (batas 105)"
+    },
+    {
+      "score": 6,
+      "lo": 100,
+      "hi": 104,
+      "range": "100 – 104",
+      "category": "S (Sedang)",
+      "split_status": "Baku"
+    },
+    {
+      "score": 5,
+      "lo": 95,
+      "hi": 99,
+      "range": "95 – 99",
+      "category": "S (Sedang)",
+      "split_status": "Baku"
+    },
+    {
+      "score": 4,
+      "lo": 88,
+      "hi": 94,
+      "range": "88 – 94",
+      "category": "AK (Agak Kurang)",
+      "split_status": "Konvensi sistem"
+    },
+    {
+      "score": 3,
+      "lo": 81,
+      "hi": 87,
+      "range": "81 – 87",
+      "category": "AK (Agak Kurang)",
+      "split_status": "Baku (batas 81)"
+    },
+    {
+      "score": 2,
+      "lo": 71,
+      "hi": 80,
+      "range": "71 – 80",
+      "category": "K (Kurang)",
+      "split_status": "Konvensi sistem"
+    },
+    {
+      "score": 1,
+      "lo": null,
+      "hi": 70,
+      "range": "SW ≤ 70",
+      "category": "K (Kurang)",
+      "split_status": "Konvensi sistem"
+    }
+  ],
+  "iq_score_bands": [
+    {
+      "score": 10,
+      "lo": 139,
+      "hi": null,
+      "range": "IQ ≥ 139",
+      "category": "BS · Baik Sekali (Sangat Superior)"
+    },
+    {
+      "score": 9,
+      "lo": 127,
+      "hi": 138,
+      "range": "127 – 138",
+      "category": "B · Baik (Superior)"
+    },
+    {
+      "score": 8,
+      "lo": 121,
+      "hi": 126,
+      "range": "121 – 126",
+      "category": "CB · Cukup Baik (High Average) — paruh atas"
+    },
+    {
+      "score": 7,
+      "lo": 115,
+      "hi": 120,
+      "range": "115 – 120",
+      "category": "CB · Cukup Baik (High Average) — paruh bawah"
+    },
+    {
+      "score": 6,
+      "lo": 109,
+      "hi": 114,
+      "range": "109 – 114",
+      "category": "S · Sedang (Average) — paruh atas"
+    },
+    {
+      "score": 5,
+      "lo": 103,
+      "hi": 108,
+      "range": "103 – 108",
+      "category": "S · Sedang (Average) — paruh bawah"
+    },
+    {
+      "score": 4,
+      "lo": 97,
+      "hi": 102,
+      "range": "97 – 102",
+      "category": "AK · Agak Kurang (Low Average) — paruh atas"
+    },
+    {
+      "score": 3,
+      "lo": 91,
+      "hi": 96,
+      "range": "91 – 96",
+      "category": "AK · Agak Kurang (Low Average) — paruh bawah"
+    },
+    {
+      "score": 2,
+      "lo": 79,
+      "hi": 90,
+      "range": "79 – 90",
+      "category": "K · Kurang (Borderline)"
+    },
+    {
+      "score": 1,
+      "lo": null,
+      "hi": 78,
+      "range": "IQ ≤ 78",
+      "category": "KS · Kurang Sekali (Defektif)"
+    }
+  ],
+  "match_strategy": {
+    "SE": "option_prefix",
+    "WA": "option_prefix",
+    "AN": "option_prefix",
+    "RA": "formula_character_membership",
+    "ZR": "formula_character_membership",
+    "FA": "exact",
+    "WU": "exact",
+    "ME": "option_prefix"
+  }
+}

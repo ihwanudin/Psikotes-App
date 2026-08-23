@@ -1,0 +1,39 @@
+# Laravel / PHP
+/.env
+/.env.*
+!/.env.example
+/vendor/
+/.phpunit.cache/
+/.phpunit.result.cache
+/storage/*.key
+/storage/framework/cache/data/
+/storage/framework/sessions/
+/storage/framework/testing/
+/storage/framework/views/
+/storage/logs/
+/bootstrap/cache/*.php
+
+# Frontend
+/node_modules/
+/public/build/
+/public/hot
+/coverage/
+
+# Secrets and credentials
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Python extraction cache
+__pycache__/
+*.py[cod]
+
+# Local tooling / OS
+/.idea/
+/.vscode/
+.DS_Store
+Thumbs.db
+
+# Temporary bootstrap directories
+/.scaffold/
