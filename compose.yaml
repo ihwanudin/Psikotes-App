@@ -6,8 +6,6 @@ x-app-service: &app-service
     dockerfile: docker/app/Dockerfile
   image: psikotes-app:${APP_IMAGE_TAG:-dev}
   restart: unless-stopped
-  env_file:
-    - .env
   environment: &app-environment
     APP_ENV: ${APP_ENV:-local}
     APP_DEBUG: ${APP_DEBUG:-false}
@@ -18,8 +16,8 @@ x-app-service: &app-service
     DB_HOST: postgres
     DB_PORT: 5432
     DB_DATABASE: ${DB_DATABASE:-psikotes}
-    DB_USERNAME: ${DB_USERNAME:-psikotes}
-    DB_PASSWORD: "${DB_PASSWORD:?Set DB_PASSWORD before starting the stack}"
+    DB_USERNAME: ${DB_RUNTIME_USERNAME:-psikotes_runtime}
+    DB_PASSWORD: "${DB_RUNTIME_PASSWORD:?Set DB_RUNTIME_PASSWORD before starting the stack}"
     QUEUE_CONNECTION: redis
     REDIS_CLIENT: phpredis
     REDIS_HOST: redis
@@ -68,13 +66,23 @@ services:
     <<: *app-service
     command: ["php", "artisan", "schedule:work"]
 
+  migrate:
+    <<: *app-service
+    profiles: ["tools"]
+    command: ["php", "artisan", "migrate", "--database=pgsql_migration", "--force"]
+    environment:
+      <<: *app-environment
+      DB_MIGRATION_USERNAME: ${DB_OWNER_USERNAME:-psikotes_owner}
+      DB_MIGRATION_PASSWORD: "${DB_OWNER_PASSWORD:?Set DB_OWNER_PASSWORD before running migrations}"
+
   postgres:
     image: postgres:17.6-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_DATABASE:-psikotes}
-      POSTGRES_USER: ${DB_USERNAME:-psikotes}
-      POSTGRES_PASSWORD: "${DB_PASSWORD:?Set DB_PASSWORD before starting the stack}"
+      POSTGRES_USER: ${DB_OWNER_USERNAME:-psikotes_owner}
+      POSTGRES_PASSWORD: "${DB_OWNER_PASSWORD:?Set DB_OWNER_PASSWORD before starting the stack}"
+      DB_RUNTIME_PASSWORD: "${DB_RUNTIME_PASSWORD:?Set DB_RUNTIME_PASSWORD before starting the stack}"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
@@ -84,6 +92,8 @@ services:
       - backend
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./database/schema/postgres_roles.sql:/docker-entrypoint-initdb.d/10-postgres-roles.sql:ro
+      - ./docker/postgres/init-runtime.sh:/docker-entrypoint-initdb.d/20-init-runtime.sh:ro
 
   redis:
     image: redis:8.2-alpine

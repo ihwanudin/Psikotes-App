@@ -91,14 +91,14 @@
 **Acceptance criteria:**
 
 - [ ] Foreign keys, enum/check constraints, indeks, dan unique/partial unique constraints sesuai SPEC.
-- [ ] `payment_methods` menyimpan kode stabil dan `is_active`; semua metode default nonaktif.
-- [ ] Consent A/B versioned; consent B nullable/declined tanpa memblokir psikotes.
-- [ ] Role migration dan runtime database terpisah.
+- [x] `payment_methods` menyimpan kode stabil dan `is_active`; semua metode default nonaktif.
+- [x] Consent A/B versioned; consent B nullable/declined tanpa memblokir psikotes.
+- [x] Role migration dan runtime database terpisah.
 
 **Verification:**
 
 - [ ] Migration up/down lulus pada PostgreSQL.
-- [ ] Schema assertion tests memeriksa constraint dan indeks kritis.
+- [x] Schema assertion tests memeriksa constraint dan indeks kritis.
 
 **Dependencies:** Task 3
 

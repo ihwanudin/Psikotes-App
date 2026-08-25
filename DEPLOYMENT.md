@@ -11,16 +11,19 @@ Kontainer terpisah (semua env): `app` (PHP-FPM+Nginx, Laravel+Inertia+Filament d
 
 ## Menjalankan stack development
 
-1. Salin `.env.example` menjadi `.env`, lalu ganti seluruh placeholder password/secret development.
+1. Salin `.env.example` menjadi `.env`, lalu ganti password runtime database, owner database, Redis, dan seluruh placeholder secret development. Kedua password database wajib berbeda.
 2. Jalankan `php artisan key:generate` untuk membuat `APP_KEY` lokal; jangan commit `.env`.
 3. Jalankan `docker compose up --build -d`.
 4. Periksa `docker compose ps`; `postgres`, `redis`, dan `app` harus sehat.
 5. Buka `http://localhost:8000/health`. Respons siap adalah `{"status":"ok"}`; kegagalan dependency menghasilkan status HTTP 503 tanpa detail koneksi.
+6. Jalankan migrasi owner secara terpisah dengan `docker compose --profile tools run --rm migrate`. Service web/queue/scheduler hanya memakai role `psikotes_runtime` yang bukan pemilik tabel dan tidak memiliki `BYPASSRLS`.
+
+Pada PostgreSQL managed, role cluster mungkin harus dibuat oleh DBA terlebih dahulu. Jalankan `database/schema/postgres_roles.sql` sebagai role yang memiliki `CREATEROLE`, lalu atur `LOGIN PASSWORD` melalui secret manager/provider; jangan menaruh password di berkas SQL atau Git.
 
 Docker Compose otomatis membaca `.env`. Volume bernama `postgres-data`, `redis-data`, dan `app-storage` mempertahankan state development saat kontainer dibuat ulang.
 
 ## Langkah deploy
-1. Migrasi DB: `php artisan migrate` (staging dulu; migrasi destruktif WAJIB tag git `pre-{aksi}` + backup manual sebelum jalan — aturan CLAUDE.md).
+1. Migrasi DB: `docker compose --profile tools run --rm migrate` (staging dulu; memakai koneksi owner terpisah). Migrasi destruktif WAJIB tag git `pre-{aksi}` + backup manual sebelum jalan — aturan CLAUDE.md.
 2. Build image: `docker compose build` → push ke registry (atau build langsung di VPS untuk skala saat ini) → smoke test di staging.
 3. Deploy produksi: `docker compose pull && docker compose up -d` (rolling — `app` baru naik, health check lulus, baru kontainer lama dimatikan). Production hanya dari `main` yang sudah direview.
 4. Restart queue worker setelah tiap deploy (`docker compose restart queue`) agar kode lama di worker tidak terus jalan.

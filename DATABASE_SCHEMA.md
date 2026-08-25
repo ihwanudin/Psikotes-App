@@ -1,4 +1,4 @@
-# DATABASE_SCHEMA.md (v2.0)
+# DATABASE_SCHEMA.md (v4.1)
 
 Skema penuh + RLS ada di SPEC.md §3 dan migrasi `db/`. Dokumen ini merangkum relasi, indeks, dan policy per tabel. ERD tekstual:
 
@@ -28,3 +28,11 @@ Perubahan v4.0 (payment+referral): `branches`+`ref_code text unique`+`is_default
 - `payment_webhook_events`, `audit_logs`: service_role only; super_admin SELECT.
 
 Backup: PITR (Point-In-Time Recovery) Postgres via `pg_basebackup`/WAL archiving + dump harian terenkripsi ke object storage S3-compatible (DEPLOYMENT.md).
+
+## Fondasi schema F1
+
+- Identitas tenant: `branches`, `admins`, `participants`, `referral_visits`, dan `consent_records`.
+- Pembayaran/operasional: `payment_methods`, `orders`, `entitlements`, `audit_logs`, dan `outbox_messages`. Kanal `xendit` dan `manual_transfer` dibuat nonaktif; menonaktifkan kanal tidak menghapus order historis.
+- DASS memakai schema PostgreSQL `dass` dengan tabel `assessments`, `responses`, dan `results`. Seluruh tabel memiliki `expires_at` untuk retensi dua tahun. SQLite testing memakai nama ekuivalen `dass_*` karena tidak mendukung schema PostgreSQL.
+- Migrasi dijalankan oleh owner terpisah. Aplikasi memakai role `psikotes_runtime` yang `NOSUPERUSER`, `NOCREATEDB`, `NOCREATEROLE`, dan `NOBYPASSRLS`. Policy RLS ditambahkan pada Task 6.
+- PII: identitas/kontak peserta serta IP/user-agent referral. Data sensitif: response dan hasil DASS. Data finansial: order. `audit_logs.context` hanya boleh memuat identifier dan metadata allowlist, bukan PII mentah.

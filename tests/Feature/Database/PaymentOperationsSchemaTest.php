@@ -49,6 +49,19 @@ final class PaymentOperationsSchemaTest extends TestCase
         ])->all());
     }
 
+    public function test_reseeding_does_not_disable_an_activated_channel(): void
+    {
+        $this->seed(PaymentMethodSeeder::class);
+        DB::table('payment_methods')->where('code', 'xendit')->update(['is_active' => true]);
+
+        $this->seed(PaymentMethodSeeder::class);
+
+        $this->assertDatabaseHas('payment_methods', [
+            'code' => 'xendit',
+            'is_active' => true,
+        ]);
+    }
+
     public function test_disabling_a_payment_method_preserves_historical_orders(): void
     {
         [$participantId, $methodId] = $this->seedParticipantAndPaymentMethod();
