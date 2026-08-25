@@ -44,4 +44,5 @@ Thumbs.db
 # Temporary bootstrap directories
 /.scaffold/
 /.playwright-cli/
+/output/playwright/
 /storage/app/browser-smoke-*.sqlite

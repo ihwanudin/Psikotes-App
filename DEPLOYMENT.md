@@ -30,7 +30,9 @@ Docker Compose otomatis membaca `.env`. Volume bernama `postgres-data`, `redis-d
 5. Validasi data sumber dengan `python -m unittest discover -s tools/extract/tests -v`, lalu seed instrumen memakai `php artisan db:seed --class=InstrumentSeeder`. Versi yang sudah tersimpan immutable; revisi norma wajib memakai versi baru dan bump `engine_version`.
 
 ## Secrets (`.env` di server, TIDAK di git — lihat `.env.example`)
-`APP_KEY`, `DB_*` (host/port/db/user/password Postgres privat), `REDIS_*`, `PARTICIPANT_JWT_SECRET`, `FILESYSTEM_S3_*` (endpoint/key/secret/bucket — object storage S3-compatible), `DRIVE_SA_JSON` (base64, service account) + `DRIVE_SHARED_FOLDER_ID`, `WAHA_URL`/`WAHA_TOKEN` atau `N8N_WEBHOOK_URL`, `XENDIT_SECRET_KEY` + `XENDIT_CALLBACK_TOKEN`, `SENTRY_DSN` (atau Laravel error tracker pilihan).
+`APP_KEY`, `DB_*` (host/port/db/user/password Postgres privat), `REDIS_*`, `PARTICIPANT_JWT_SECRET`, `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_DEFAULT_REGION`/`AWS_BUCKET` + `AWS_ENDPOINT` atau alias lama `FILESYSTEM_S3_ENDPOINT` (object storage S3-compatible), `IDENTITY_FILESYSTEM_DRIVER=s3`, `IDENTITY_FILESYSTEM_ROOT=identity`, `DRIVE_SA_JSON` (base64, service account) + `DRIVE_SHARED_FOLDER_ID`, `WAHA_URL`/`WAHA_TOKEN` atau `N8N_WEBHOOK_URL`, `XENDIT_SECRET_KEY` + `XENDIT_CALLBACK_TOKEN`, `SENTRY_DSN` (atau Laravel error tracker pilihan).
+
+Bucket/prefix identitas wajib private dan tidak boleh diberi public-read policy/CDN. Smoke test staging harus membuktikan upload bekerja, URL langsung permanen tidak tersedia, URL sementara kedaluwarsa setelah 15 menit, serta audit penerbitan URL tercatat. Masa retensi khusus foto dokumen identitas dan selfie awal belum ditetapkan oleh dokumen kebijakan; keputusan hukum/psikolog dan job purge otomatis wajib selesai sebelum production launch.
 
 ## Rollback
 - `app`/`queue`: `docker compose up -d --no-deps app` dengan tag image sebelumnya (image versioned per rilis, bukan `latest`) — cepat karena image lama masih ada di registry/lokal.

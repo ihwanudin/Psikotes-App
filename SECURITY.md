@@ -17,8 +17,10 @@
 - Referral first-touch disimpan dalam cookie terenkripsi `Secure`/`HttpOnly`/`SameSite=Lax` selama 30 hari. Payload kedaluwarsa atau tidak valid gagal tertutup dan diresolusi ulang di server; browser tidak menjadi sumber `branch_id`.
 - Audit referral menyimpan IP serta maksimal 512 karakter user-agent hanya sampai `expires_at` 30 hari. Route publik menulis audit melalui transaksi berkonteks `service`, bukan dengan memperluas policy RLS publik.
 - Signed URL (object storage S3-compatible) TTL 15 menit, diterbitkan hanya setelah cek hak. Tidak ada URL permanen.
-- Validasi input server-side: zod di setiap endpoint; file upload dibatasi tipe/ukuran (bukti transfer ≤5 MB jpg/png/pdf; foto proctor ≤200 KB).
-- Audit log: verifikasi order, void sesi, akses/unduh laporan oleh admin, perubahan rate fee, keputusan withdraw, perubahan kamus GE.
+- Bukti identitas disimpan pada disk `identity` privat (local private pada development, S3-compatible pada production). Key acak 64 karakter tidak memuat nama peserta/nama file asli. Foto dokumen dan selfie divalidasi dari isi/magic bytes, format JPG/PNG/WebP, ukuran ≤5 MB, dan dimensi 480–8.000 px; upload dibatasi 5/menit per sesi+IP.
+- URL bukti identitas diterbitkan setelah policy peserta dan konteks RLS admin lulus, dibatasi 30 permintaan/menit/admin, dan setiap penerbitan menulis audit service-only. Konteks audit hanya memuat jenis bukti dan waktu kedaluwarsa URL, bukan PII, URL, atau object key.
+- Hasil matcher adalah marker (`pending|match|mismatch|error`) dengan status manual tetap `pending`; mismatch/error tidak menghapus peserta, tidak mengubah entitlement, dan tidak otomatis menentukan kelayakan.
+- Audit log: verifikasi order, void sesi, penerbitan URL bukti identitas, akses/unduh laporan oleh admin, perubahan rate fee, keputusan withdraw, perubahan kamus GE.
 
 ## Anti-kecurangan
 - Timer server-side (satu-satunya sumber waktu); jawaban di luar `ends_at+grace 10s` ditolak.

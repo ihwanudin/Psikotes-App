@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\Admin\IdentityEvidenceAccessController;
 use App\Http\Controllers\HealthCheckController;
+use App\Http\Controllers\IdentityEvidenceUploadController;
 use App\Http\Controllers\ParticipantRegistrationController;
 use App\Http\Controllers\ReferralController;
 use Illuminate\Support\Facades\Route;
@@ -20,6 +22,14 @@ Route::post('/registrations', [ParticipantRegistrationController::class, 'store'
     ->name('registrations.store');
 Route::get('/registration/received', [ParticipantRegistrationController::class, 'received'])
     ->name('registration.received');
+Route::post('/registration/identity-evidence', IdentityEvidenceUploadController::class)
+    ->middleware('throttle:identity-evidence-uploads')
+    ->name('registration.identity-evidence.store');
+
+Route::post('/admin/identity-evidence/{evidence}/temporary-url', IdentityEvidenceAccessController::class)
+    ->whereUlid('evidence')
+    ->middleware(['auth:admin', 'throttle:identity-evidence-access'])
+    ->name('admin.identity-evidence.temporary-url');
 
 Route::inertia('/', 'welcome')->name('home');
 

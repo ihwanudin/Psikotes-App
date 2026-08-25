@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Actions\Registration\RegisterParticipant;
 use App\Http\Requests\StoreParticipantRegistrationRequest;
+use App\Models\Participant;
 use App\Models\TestPackage;
 use App\Registration\ConsentDocument;
 use App\Security\RlsContext;
@@ -77,18 +78,60 @@ final class ParticipantRegistrationController extends Controller
         $cookieName = (string) config('referral.cookie_name', 'psikotes_referral');
         $cookie = $request->cookie($cookieName);
 
-        $register->handle(
+        $participant = $register->handle(
             $validated,
             $packageId,
             $token,
             is_string($cookie) ? $cookie : null,
         );
 
+        $request->session()->put([
+            'registration.participant_id' => $participant->id,
+            'registration.evidence_authorized_until' => now()
+                ->addHours((int) config('identity.upload_session_hours', 2))
+                ->getTimestamp(),
+        ]);
+
         return redirect()->route('registration.received');
     }
 
-    public function received(): Response
+    public function received(Request $request, RlsContextRunner $runner): Response
     {
-        return Inertia::render('registration/received');
+        $participantId = $request->session()->get('registration.participant_id');
+        $authorizedUntil = $request->session()->get('registration.evidence_authorized_until');
+        $isAuthorized = is_numeric($participantId)
+            && is_numeric($authorizedUntil)
+            && (int) $authorizedUntil >= now()->getTimestamp();
+        $state = [
+            'authorized' => false,
+            'complete' => false,
+            'outcome' => null,
+            'manualStatus' => null,
+        ];
+
+        if ($isAuthorized) {
+            $participant = $runner->run(
+                new RlsContext('service'),
+                fn (): ?Participant => Participant::query()
+                    ->with(['identityEvidence:id,participant_id,type', 'identityVerification'])
+                    ->find((int) $participantId),
+            );
+
+            if ($participant !== null) {
+                $types = $participant->identityEvidence->pluck('type');
+                $state = [
+                    'authorized' => true,
+                    'complete' => $types->contains('identity_document')
+                        && $types->contains('initial_selfie'),
+                    'outcome' => $participant->identityVerification?->outcome,
+                    'manualStatus' => $participant->identityVerification?->manual_status,
+                ];
+            }
+        }
+
+        return Inertia::render('registration/received', [
+            'identityEvidence' => $state,
+            'status' => $request->session()->get('status'),
+        ]);
     }
 }

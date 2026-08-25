@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Contracts\IdentityMatcher;
 use App\Contracts\RunsRlsContext;
 use App\Security\RlsContextRunner;
+use App\Services\Identity\ManualReviewIdentityMatcher;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -24,6 +26,7 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->scoped(RlsContextRunner::class);
         $this->app->alias(RlsContextRunner::class, RunsRlsContext::class);
+        $this->app->bind(IdentityMatcher::class, ManualReviewIdentityMatcher::class);
     }
 
     /**
@@ -57,5 +60,9 @@ class AppServiceProvider extends ServiceProvider
 
         RateLimiter::for('registrations', fn (Request $request): Limit => Limit::perMinute(5)
             ->by((string) $request->ip()));
+        RateLimiter::for('identity-evidence-uploads', fn (Request $request): Limit => Limit::perMinute(5)
+            ->by($request->session()->getId().'|'.(string) $request->ip()));
+        RateLimiter::for('identity-evidence-access', fn (Request $request): Limit => Limit::perMinute(30)
+            ->by((string) ($request->user('admin')?->getAuthIdentifier() ?? $request->ip())));
     }
 }

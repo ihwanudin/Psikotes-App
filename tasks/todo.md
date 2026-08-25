@@ -221,14 +221,14 @@
 
 **Acceptance criteria:**
 
-- [ ] MIME, magic bytes, ukuran, dan dimensi gambar divalidasi; object key tidak memakai nama peserta.
-- [ ] Bucket private dan akses memakai signed URL yang diaudit.
-- [ ] Hasil matcher hanya penanda; kegagalan tidak otomatis memutuskan kelayakan.
+- [x] MIME, magic bytes, ukuran, dan dimensi gambar divalidasi; object key tidak memakai nama peserta.
+- [x] Bucket private dan akses memakai signed URL yang diaudit.
+- [x] Hasil matcher hanya penanda; kegagalan tidak otomatis memutuskan kelayakan.
 
 **Verification:**
 
-- [ ] Upload tests menolak spoofed MIME, oversized, malformed, dan unauthorized access.
-- [ ] Fake matcher contract test lulus tanpa data biometrik nyata.
+- [x] Upload tests menolak spoofed MIME, oversized, malformed, dan unauthorized access.
+- [x] Fake matcher contract test lulus tanpa data biometrik nyata.
 
 **Dependencies:** Task 10
 

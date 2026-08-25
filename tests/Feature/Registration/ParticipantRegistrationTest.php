@@ -26,7 +26,7 @@ final class ParticipantRegistrationTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('registration/create')
                 ->where('assignedBranch.name', $branch->name)
-                ->where('consents.psychotest.version', 'draft-2026-08-25')
+                ->where('consents.psychotest.version', 'draft-2026-08-25.2')
                 ->where('consents.dass.version', 'draft-2026-08-25')
                 ->where('consents.legalReviewPending', true)
                 ->has('registrationToken')
@@ -41,7 +41,9 @@ final class ParticipantRegistrationTest extends TestCase
 
         $this->withSession(['registration.token' => $token])
             ->post('/registrations', $this->validPayload($token))
-            ->assertRedirect('/registration/received');
+            ->assertRedirect('/registration/received')
+            ->assertSessionHas('registration.participant_id')
+            ->assertSessionHas('registration.evidence_authorized_until');
 
         $participant = Participant::query()->sole();
         $this->assertSame($branch->id, $participant->branch_id);
@@ -54,7 +56,7 @@ final class ParticipantRegistrationTest extends TestCase
             'participant_id' => $participant->id,
             'consent_type' => 'psychotest',
             'status' => 'accepted',
-            'document_version' => 'draft-2026-08-25',
+            'document_version' => 'draft-2026-08-25.2',
             'consented_at' => '2026-08-25 10:00:00',
         ]);
         $this->assertDatabaseHas('consent_records', [

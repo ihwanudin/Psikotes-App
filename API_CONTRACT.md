@@ -5,6 +5,7 @@ Base: `https://psikotes.oncam.id`. Rute peserta (Inertia+React) dan API internal
 ## Publik
 - `GET  /r/:ref_code` — resolusi referral: set cookie first-touch 30 hari + catat `referral_visits`, redirect ke halaman daftar. ref tak dikenal → cabang default (pusat).
 - `POST /registrations` — body form + `ref` (dari cookie/query; opsional) + `package_id`. `package_id` wajib menunjuk paket aktif, memiliki jenis tes, berharga positif dalam IDR; server memvalidasi ulang saat transaksi agar paket yang baru dinonaktifkan tidak dapat dipilih. Server tetapkan `referral_branch_id` (first-touch menang; kosong→default). Untuk Xendit: buat invoice → `{test_number, order_id, invoice_url, status:'pending'}`. Untuk transfer manual: upload bukti (multipart) → `{test_number, order_id, status:'pending'}`.
+- `POST /registration/identity-evidence` — multipart `identity_document` + `initial_selfie`, hanya dari sesi registrasi yang terikat peserta dan aktif dua jam. JPG/PNG/WebP maksimal 5 MB, dimensi 480–8.000 px; MIME dibaca dari isi file. Berhasil → redirect ke `/registration/received`; matcher hanya mengisi penanda tinjauan.
 - `POST /auth/participant/login` `{test_number, birth_date}` → `{jwt}` (rate-limit 5/menit/IP)
 - `GET  /orders/:id/status`
 - `POST /webhooks/xendit` — verifikasi header `x-callback-token` = token dashboard; baca `external_id`(=order_id) & `status`; PAID/SETTLED → order paid + entitlement ready + bekukan komisi + notif WA. **Balas 200 ≤30 dtk** (Xendit retry 24 jam bila gagal). Idempotent by `id` invoice (unik). Status lain (EXPIRED) → order expired, entitlement tetap locked.
@@ -23,6 +24,7 @@ Base: `https://psikotes.oncam.id`. Rute peserta (Inertia+React) dan API internal
 
 ## Admin (sesi Laravel/Filament; scope RLS via middleware)
 - Peserta: `GET /admin/participants?status&branch` · `GET /admin/participants/:id` (detail + timeline + foto) · `POST /admin/participants/:id/void-session` · `POST /admin/orders/:id/verify` (paid|reject) · `POST /admin/orders/:id/activate-manual`
+- Bukti identitas: `POST /admin/identity-evidence/:public_id/temporary-url` → `{url, expires_at}` setelah policy peserta/RLS; URL berlaku 15 menit dan penerbitannya dicatat di `audit_logs` tanpa menyimpan URL/object key di konteks audit.
 - Laporan: `GET /admin/reports/:participant/url` · `POST /admin/reports/:participant/regenerate` · `GET /admin/reports/:participant/integration` (draf) · `PUT /admin/reports/:participant/integration` (psikolog simpan teks tersunting; tak tertimpa saat regenerate) · `POST /admin/reports/:participant/finalize` (draft→reviewed→final, kunci norm_version)
 - Fee: `GET /admin/fees/summary?branch` · `POST /admin/withdrawals` (cabang) · `POST /admin/withdrawals/:id/decide` · `POST /admin/withdrawals/:id/mark-paid` (pusat, +bukti)
 - Master: CRUD packages, branches, admins, psychologists; `POST /admin/ge-dictionary` (tambah kamus GE dr unknown); `GET /admin/audit-logs`

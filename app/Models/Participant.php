@@ -7,6 +7,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
@@ -45,6 +47,18 @@ final class Participant extends Model
     public function package(): BelongsTo
     {
         return $this->belongsTo(TestPackage::class, 'package_id');
+    }
+
+    /** @return HasMany<IdentityEvidence, $this> */
+    public function identityEvidence(): HasMany
+    {
+        return $this->hasMany(IdentityEvidence::class);
+    }
+
+    /** @return HasOne<IdentityVerification, $this> */
+    public function identityVerification(): HasOne
+    {
+        return $this->hasOne(IdentityVerification::class);
     }
 
     /** @return array<string, string> */

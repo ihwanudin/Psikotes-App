@@ -1,44 +1,164 @@
-import { Head, Link } from '@inertiajs/react';
-import { CheckCircle2, ClipboardCheck } from 'lucide-react';
+import { Form, Head, Link } from '@inertiajs/react';
+import {
+    BadgeCheck,
+    Camera,
+    CheckCircle2,
+    ClipboardCheck,
+    FileImage,
+    LockKeyhole,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/spinner';
+import IdentityFileField from '@/pages/registration/components/identity-file-field';
 
-export default function RegistrationReceived() {
+type Props = {
+    identityEvidence: {
+        authorized: boolean;
+        complete: boolean;
+        outcome: 'pending' | 'match' | 'mismatch' | 'error' | null;
+        manualStatus: 'pending' | 'accepted' | 'rejected' | null;
+    };
+    status?: string;
+};
+
+export default function RegistrationReceived({
+    identityEvidence,
+    status,
+}: Props) {
+    const stored =
+        status === 'identity-evidence-stored' || identityEvidence.complete;
+
     return (
         <>
-            <Head title="Pendaftaran tersimpan" />
-            <main className="grid min-h-screen place-items-center bg-slate-50 px-4 py-12">
-                <section className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-7 shadow-sm sm:p-10">
-                    <div className="mb-7 grid size-14 place-items-center rounded-2xl bg-teal-100 text-teal-800">
-                        <CheckCircle2 className="size-8" aria-hidden="true" />
-                    </div>
-                    <p className="text-sm font-medium tracking-wide text-teal-700 uppercase">
-                        Data tersimpan
-                    </p>
-                    <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">
-                        Pendaftaran Anda sudah kami terima.
-                    </h1>
-                    <p className="mt-4 leading-7 text-slate-600">
-                        Tahap berikutnya adalah verifikasi bukti identitas.
-                        Nomor tes belum diterbitkan pada tahap ini.
-                    </p>
-
-                    <div className="mt-7 flex gap-3 rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-700">
-                        <ClipboardCheck className="mt-0.5 size-5 shrink-0 text-teal-700" />
-                        <p>
-                            Simpan halaman ini sebagai konfirmasi. Jangan
-                            mengirim formulir pendaftaran baru untuk peserta
-                            yang sama.
+            <Head title="Verifikasi identitas" />
+            <main className="min-h-screen bg-slate-50 px-4 py-8 text-slate-950 sm:py-12">
+                <div className="mx-auto grid w-full max-w-5xl gap-6 lg:grid-cols-[0.8fr_1.2fr] lg:gap-8">
+                    <section className="rounded-2xl bg-teal-950 p-7 text-white sm:p-9">
+                        <div className="grid size-12 place-items-center rounded-xl bg-white/10 ring-1 ring-white/15">
+                            <CheckCircle2
+                                className="size-7 text-teal-200"
+                                aria-hidden="true"
+                            />
+                        </div>
+                        <p className="mt-8 text-sm font-medium tracking-wide text-teal-200 uppercase">
+                            Data pendaftaran tersimpan
                         </p>
-                    </div>
+                        <h1 className="mt-2 text-3xl font-semibold tracking-tight">
+                            Lengkapi bukti identitas Anda.
+                        </h1>
+                        <p className="mt-4 text-sm leading-7 text-teal-50/80 sm:text-base">
+                            Foto ini dipakai untuk mencocokkan peserta dengan
+                            dokumen resmi sebelum tes. Ketidakcocokan hanya
+                            menjadi penanda untuk tinjauan petugas.
+                        </p>
 
-                    <Button
-                        asChild
-                        variant="outline"
-                        className="mt-8 h-11 w-full"
-                    >
-                        <Link href="/">Kembali ke beranda</Link>
-                    </Button>
-                </section>
+                        <div className="mt-8 flex gap-3 border-t border-white/15 pt-6 text-sm leading-6 text-teal-50/80">
+                            <LockKeyhole
+                                className="mt-0.5 size-5 shrink-0 text-teal-200"
+                                aria-hidden="true"
+                            />
+                            <p>
+                                Berkas disimpan privat. Petugas hanya dapat
+                                membukanya melalui tautan sementara yang
+                                tercatat di audit.
+                            </p>
+                        </div>
+                    </section>
+
+                    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-9">
+                        {stored && (
+                            <div
+                                role="status"
+                                className="mb-7 flex gap-3 rounded-xl border border-teal-200 bg-teal-50 p-4 text-sm leading-6 text-teal-950"
+                            >
+                                <BadgeCheck
+                                    className="mt-0.5 size-5 shrink-0 text-teal-700"
+                                    aria-hidden="true"
+                                />
+                                <p>
+                                    Kedua foto sudah tersimpan dan menunggu
+                                    tinjauan. Anda masih dapat menggantinya
+                                    selama sesi ini aktif.
+                                </p>
+                            </div>
+                        )}
+
+                        {identityEvidence.authorized ? (
+                            <>
+                                <h2 className="text-xl font-semibold tracking-tight">
+                                    {identityEvidence.complete
+                                        ? 'Ganti foto verifikasi'
+                                        : 'Unggah dua foto'}
+                                </h2>
+                                <p className="mt-2 text-sm leading-6 text-slate-600">
+                                    Format JPG, PNG, atau WebP; maksimal 5 MB
+                                    per foto. Pastikan teks dokumen dan wajah
+                                    terlihat jelas.
+                                </p>
+
+                                <Form
+                                    action="/registration/identity-evidence"
+                                    method="post"
+                                    resetOnSuccess
+                                    className="mt-7 space-y-6"
+                                >
+                                    {({ processing, errors }) => (
+                                        <>
+                                            <IdentityFileField
+                                                id="identity_document"
+                                                name="identity_document"
+                                                label="Foto KTP atau paspor"
+                                                description="Letakkan dokumen di permukaan datar, tanpa pantulan dan tanpa bagian terpotong."
+                                                icon={FileImage}
+                                                capture="environment"
+                                                error={errors.identity_document}
+                                            />
+                                            <IdentityFileField
+                                                id="initial_selfie"
+                                                name="initial_selfie"
+                                                label="Selfie awal"
+                                                description="Hadapkan wajah ke kamera dengan pencahayaan cukup; jangan memakai filter."
+                                                icon={Camera}
+                                                capture="user"
+                                                error={errors.initial_selfie}
+                                            />
+
+                                            <Button
+                                                type="submit"
+                                                disabled={processing}
+                                                className="h-12 w-full bg-teal-800 text-base hover:bg-teal-900"
+                                            >
+                                                {processing && <Spinner />}
+                                                {identityEvidence.complete
+                                                    ? 'Simpan foto pengganti'
+                                                    : 'Simpan bukti identitas'}
+                                            </Button>
+                                        </>
+                                    )}
+                                </Form>
+                            </>
+                        ) : (
+                            <div role="alert" className="text-center">
+                                <ClipboardCheck
+                                    className="mx-auto size-10 text-amber-600"
+                                    aria-hidden="true"
+                                />
+                                <h2 className="mt-4 text-xl font-semibold">
+                                    Sesi unggah tidak aktif
+                                </h2>
+                                <p className="mt-2 text-sm leading-6 text-slate-600">
+                                    Buka halaman ini langsung setelah
+                                    menyelesaikan pendaftaran. Jika sesi
+                                    berakhir, hubungi petugas LSI.
+                                </p>
+                            </div>
+                        )}
+
+                        <Button asChild variant="ghost" className="mt-7 w-full">
+                            <Link href="/">Kembali ke beranda</Link>
+                        </Button>
+                    </section>
+                </div>
             </main>
         </>
     );
