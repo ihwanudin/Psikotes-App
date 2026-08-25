@@ -12,6 +12,8 @@
 - Schema DASS terpisah (`dass.*`), retensi dua tahun, dan tidak diberikan kepada admin non-psikolog. Role runtime memiliki `NOBYPASSRLS`; migrasi memakai credential owner terpisah.
 - Controller yang membaca/menulis data tenant wajib mengimplementasikan `RequiresRlsContext` dan route-nya wajib memakai middleware `rls`; architecture test menolak kombinasi yang tidak lengkap. Job tenant wajib mengimplementasikan `ProvidesRlsContext` dan memasang `ApplyRlsContextToJob`.
 - Konteks `role`, `branch_id`, dan `participant_id` hanya berasal dari principal/job internal, dipasang dengan `set_config(..., true)` dalam transaksi, dan dibersihkan pada sukses maupun exception. Header atau parameter request tidak pernah menjadi sumber konteks RLS.
+- Panel Filament memakai guard session `admin` dan model `Admin`, bukan guard peserta/web. Kemampuan didefinisikan server-side; policy peserta menolak akses lintas cabang walaupun ID diketahui, dan hanya psikolog yang memperoleh kemampuan membaca DASS.
+- Default session admin: cookie `Secure`, `HttpOnly`, `SameSite=Lax`, masa idle 120 menit. Nilai produksi tetap dinyatakan eksplisit melalui environment server.
 - Signed URL (object storage S3-compatible) TTL 15 menit, diterbitkan hanya setelah cek hak. Tidak ada URL permanen.
 - Validasi input server-side: zod di setiap endpoint; file upload dibatasi tipe/ukuran (bukti transfer ≤5 MB jpg/png/pdf; foto proctor ≤200 KB).
 - Audit log: verifikasi order, void sesi, akses/unduh laporan oleh admin, perubahan rate fee, keputusan withdraw, perubahan kamus GE.

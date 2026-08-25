@@ -45,6 +45,7 @@ RUN composer dump-autoload \
         --no-scripts \
         --no-plugins \
     && php artisan package:discover --ansi \
+    && php artisan filament:upgrade \
     && php artisan wayfinder:generate
 
 FROM node:24.11.0-bookworm-slim AS frontend

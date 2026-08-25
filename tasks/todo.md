@@ -154,14 +154,14 @@
 
 **Acceptance criteria:**
 
-- [ ] Role dan kemampuan diverifikasi server-side, bukan hanya menyembunyikan menu.
-- [ ] Cookie httpOnly/Secure/SameSite dan session expiry dikonfigurasi.
-- [ ] Admin cabang otomatis mendapat konteks RLS cabangnya.
+- [x] Role dan kemampuan diverifikasi server-side, bukan hanya menyembunyikan menu.
+- [x] Cookie httpOnly/Secure/SameSite dan session expiry dikonfigurasi.
+- [x] Admin cabang otomatis mendapat konteks RLS cabangnya.
 
 **Verification:**
 
-- [ ] Auth/authorization feature tests lulus untuk setiap role.
-- [ ] IDOR lintas cabang ditolak walau ID resource diketahui.
+- [x] Auth/authorization feature tests lulus untuk setiap role.
+- [x] IDOR lintas cabang ditolak walau ID resource diketahui.
 
 **Dependencies:** Task 7
 
