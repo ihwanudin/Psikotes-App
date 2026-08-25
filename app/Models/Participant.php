@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -18,6 +19,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property int|null $package_id
  * @property int $branch_id
  * @property int $referral_branch_id
+ * @property string $full_name
+ * @property CarbonInterface $birth_date
+ * @property string|null $test_number
  */
 #[Fillable([
     'branch_id',

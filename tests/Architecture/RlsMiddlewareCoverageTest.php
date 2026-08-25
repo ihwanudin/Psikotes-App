@@ -8,12 +8,10 @@ use App\Contracts\RequiresRlsContext;
 use App\Http\Middleware\ApplyRlsContext;
 use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\Route as RouteFacade;
-use PHPUnit\Framework\Attributes\DoesNotPerformAssertions;
 use Tests\TestCase;
 
 final class RlsMiddlewareCoverageTest extends TestCase
 {
-    #[DoesNotPerformAssertions]
     public function test_all_registered_tenant_controllers_use_rls_middleware(): void
     {
         foreach (RouteFacade::getRoutes() as $route) {
