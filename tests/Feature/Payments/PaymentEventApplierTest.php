@@ -12,11 +12,13 @@ use App\Models\Order;
 use App\Models\Participant;
 use App\Services\Payments\Exceptions\InvalidOrderTransition;
 use App\Services\Payments\Exceptions\PaymentReferenceMismatch;
+use App\Services\Payments\OrderPaymentEventHandler;
 use App\Services\Payments\PaymentEventApplier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use LogicException;
 use Tests\TestCase;
 
 final class PaymentEventApplierTest extends TestCase
@@ -112,6 +114,16 @@ final class PaymentEventApplierTest extends TestCase
             $this->assertSame('pending', $order->fresh()->status->value);
             $this->assertSame('locked', $entitlement->fresh()->status);
         }
+    }
+
+    public function test_transaction_handler_rejects_calls_without_an_active_service_context(): void
+    {
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('Payment events require an active service transaction.');
+
+        app(OrderPaymentEventHandler::class)->applyInCurrentServiceTransaction(
+            $this->event(PaymentStatus::Paid, 'event-outside-service-transaction'),
+        );
     }
 
     /** @return array{Order, Entitlement} */
