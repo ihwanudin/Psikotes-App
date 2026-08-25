@@ -53,6 +53,20 @@ final class ComposeTopologyTest extends TestCase
         }
     }
 
+    public function test_notification_queue_and_provider_configuration_reach_workers(): void
+    {
+        $queue = $this->compose['services']['queue'];
+        $command = $queue['command'];
+        $environment = $queue['environment'];
+
+        $this->assertContains('--queue=notifications,default', $command);
+        $this->assertContains('--tries=5', $command);
+        $this->assertContains('--timeout=120', $command);
+        $this->assertSame('${N8N_WEBHOOK_URL:-}', $environment['N8N_WEBHOOK_URL']);
+        $this->assertSame('${N8N_WEBHOOK_TOKEN:-}', $environment['N8N_WEBHOOK_TOKEN']);
+        $this->assertSame('${REDIS_QUEUE_RETRY_AFTER:-150}', $environment['REDIS_QUEUE_RETRY_AFTER']);
+    }
+
     /** @return iterable<string, array{string}> */
     public static function privateDependencyProvider(): iterable
     {

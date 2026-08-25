@@ -88,6 +88,7 @@ final readonly class DeliverParticipantActivation
                 || $message->status === 'processed'
                 || $message->attempts >= 5
                 || $message->available_at->isFuture()
+                || ! $message->expires_at->isFuture()
                 || ($message->status === 'processing'
                     && $message->updated_at->isAfter(now()->subMinutes(10)))) {
                 return null;

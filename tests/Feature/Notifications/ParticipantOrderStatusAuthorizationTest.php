@@ -65,6 +65,7 @@ final class ParticipantOrderStatusAuthorizationTest extends TestCase
             ->assertJsonMissing(['rejection_reason' => 'Dokumen peserta lain'])
             ->assertJsonMissingPath('data.participant_id')
             ->assertJsonMissingPath('data.gateway_ref');
+        $response->assertHeader('Cache-Control', 'no-store, private');
     }
 
     public function test_jwt_order_status_requires_a_valid_participant_token(): void
@@ -81,7 +82,7 @@ final class ParticipantOrderStatusAuthorizationTest extends TestCase
         $own = $this->order($first, 'pending', 250_000);
         $other = $this->order($second, 'paid', 999_000);
 
-        $this->withSession([
+        $response = $this->withSession([
             'registration.participant_id' => $first->id,
             'registration.evidence_authorized_until' => now()->addHour()->getTimestamp(),
         ])->get('/registration/order-status?participant_id='.$second->id.'&order_id='.$other->public_id)
@@ -95,6 +96,7 @@ final class ParticipantOrderStatusAuthorizationTest extends TestCase
                 ->missing('order.participantId')
                 ->missing('order.gatewayRef')
             );
+        $response->assertHeader('Cache-Control', 'no-store, private');
     }
 
     public function test_registration_status_hides_data_when_session_is_missing_or_expired(): void

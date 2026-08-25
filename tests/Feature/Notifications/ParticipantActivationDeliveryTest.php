@@ -128,6 +128,26 @@ final class ParticipantActivationDeliveryTest extends TestCase
         $this->assertNotContains('LSI-202608-000001-ABCDEF', $failureLog['context']);
     }
 
+    public function test_expired_outbox_is_never_delivered(): void
+    {
+        [, $messageId] = $this->paidOrderAndOutbox();
+        DB::table('outbox_messages')->where('message_id', $messageId)->update([
+            'expires_at' => now(),
+        ]);
+        $notifier = new FakeNotifier;
+        $this->app->instance(Notifier::class, $notifier);
+
+        app(DeliverParticipantActivation::class)->handle($messageId);
+
+        $this->assertSame([], $notifier->delivered());
+        $this->assertDatabaseHas('outbox_messages', [
+            'message_id' => $messageId,
+            'status' => 'pending',
+            'attempts' => 0,
+        ]);
+        $this->assertDatabaseCount('audit_logs', 0);
+    }
+
     /** @return array{Order, string, Collection<int, Entitlement>} */
     private function paidOrderAndOutbox(): array
     {

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Notifications;
 
 use App\Data\Notifications\ParticipantActivationNotification;
+use App\Services\Notifications\Exceptions\NotificationDeliveryFailed;
 use App\Services\Notifications\FakeNotifier;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
@@ -40,6 +41,16 @@ final class NotifierContractTest extends TestCase
                 $this->addToAssertionCount(1);
             }
         }
+    }
+
+    public function test_delivery_failure_normalizes_unsafe_error_codes(): void
+    {
+        $safe = new NotificationDeliveryFailed('n8n_http_5xx');
+        $unsafe = new NotificationDeliveryFailed('provider said phone +6281234567890 failed');
+
+        $this->assertSame('n8n_http_5xx', $safe->errorCode);
+        $this->assertSame('notifier_invalid_error_code', $unsafe->errorCode);
+        $this->assertStringNotContainsString('+6281234567890', $unsafe->getMessage());
     }
 
     /** @param array<string, mixed> $override */

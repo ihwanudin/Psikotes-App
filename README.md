@@ -38,3 +38,29 @@ php -r "echo 'base64:'.base64_encode(random_bytes(32)), PHP_EOL;"
 ```
 
 Simpan hasilnya hanya sebagai `PARTICIPANT_JWT_SECRET` di environment deployment. Keputusan kredensial dan batas entitlement gate dicatat di `docs/decisions/0001-participant-credentials.md`.
+
+## Operasi notifikasi aktivasi
+
+Notifikasi produksi dikirim Laravel Queue ke webhook n8n; n8n kemudian memanggil WAHA. Konfigurasikan `N8N_WEBHOOK_URL` HTTPS dan `N8N_WEBHOOK_TOKEN`, jalankan scheduler, serta pastikan worker mendengarkan queue `notifications`:
+
+```powershell
+php artisan schedule:work
+php artisan queue:work redis --queue=notifications,default --tries=5 --timeout=120
+```
+
+`REDIS_QUEUE_RETRY_AFTER` harus lebih besar dari timeout worker (contoh menyediakan 150 detik). Semua instance harus memakai Redis cache bersama agar unique-job lock bekerja lintas node.
+
+Pemeriksaan operator:
+
+```powershell
+php artisan schedule:list
+php artisan notifications:dispatch-outbox --limit=100
+php artisan queue:failed
+```
+
+- `outbox_messages.status=failed` dan `attempts<5`: scheduler akan mencoba lagi setelah `available_at`.
+- `attempts=5`: perbaiki konfigurasi/provider lebih dahulu, lalu evaluasi audit sebelum retry manual; jangan membuat pesan baru karena `deduplication_key` sengaja unik.
+- `last_error=n8n_not_configured`: URL/token belum masuk ke environment queue worker.
+- Kegagalan notifikasi tidak boleh mengubah order `paid` atau entitlement `ready`.
+
+Workflow n8n wajib mengautentikasi Bearer token dan melakukan deduplikasi atomik berdasarkan `idempotency_key` sebelum `POST /api/sendText` ke WAHA. Lihat keputusan dan kontrak data di `docs/decisions/0003-notification-delivery-boundary.md`.

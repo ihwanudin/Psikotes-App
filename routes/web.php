@@ -32,6 +32,7 @@ Route::post('/registrations', [ParticipantRegistrationController::class, 'store'
 Route::get('/registration/received', [ParticipantRegistrationController::class, 'received'])
     ->name('registration.received');
 Route::get('/registration/order-status', RegistrationOrderStatusController::class)
+    ->middleware('cache.headers:no_store;private')
     ->name('registration.order-status');
 Route::post('/registration/identity-evidence', IdentityEvidenceUploadController::class)
     ->middleware('throttle:identity-evidence-uploads')

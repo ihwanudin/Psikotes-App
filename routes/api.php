@@ -18,6 +18,7 @@ Route::middleware(['participant.jwt', 'rls'])->group(function (): void {
     Route::get('/me/entitlements', ParticipantEntitlementController::class)
         ->name('participant.entitlements');
     Route::get('/me/order', ParticipantOrderStatusController::class)
+        ->middleware('cache.headers:no_store;private')
         ->name('participant.order');
     Route::post('/sessions/{testType}/start', StartParticipantSessionController::class)
         ->whereIn('testType', ['ist', 'papi', 'rmib', 'kraepelin', 'dass21'])

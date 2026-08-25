@@ -19,11 +19,14 @@ x-app-service: &app-service
     DB_USERNAME: ${DB_RUNTIME_USERNAME:-psikotes_runtime}
     DB_PASSWORD: "${DB_RUNTIME_PASSWORD:?Set DB_RUNTIME_PASSWORD before starting the stack}"
     QUEUE_CONNECTION: redis
+    REDIS_QUEUE_RETRY_AFTER: ${REDIS_QUEUE_RETRY_AFTER:-150}
     REDIS_CLIENT: phpredis
     REDIS_HOST: redis
     REDIS_PORT: 6379
     REDIS_PASSWORD: "${REDIS_PASSWORD:?Set REDIS_PASSWORD before starting the stack}"
     SESSION_DRIVER: redis
+    N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL:-}
+    N8N_WEBHOOK_TOKEN: ${N8N_WEBHOOK_TOKEN:-}
   depends_on:
     postgres:
       condition: service_healthy
@@ -56,8 +59,9 @@ services:
       - artisan
       - queue:work
       - redis
+      - --queue=notifications,default
       - --sleep=3
-      - --tries=3
+      - --tries=5
       - --timeout=120
       - --max-time=3600
     stop_grace_period: 30s
