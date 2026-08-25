@@ -87,6 +87,14 @@ final class XenditWebhookTest extends TestCase
             $entitlement->fresh()->ready_at->getTimestamp(),
         );
         $this->assertDatabaseCount('payment_webhook_events', 1);
+        $this->assertDatabaseCount('outbox_messages', 1);
+        $this->assertDatabaseHas('outbox_messages', [
+            'topic' => 'participant.activation',
+            'aggregate_type' => Order::class,
+            'aggregate_id' => $order->public_id,
+            'status' => 'pending',
+            'attempts' => 0,
+        ]);
     }
 
     public function test_settled_retry_is_the_same_logical_paid_event(): void

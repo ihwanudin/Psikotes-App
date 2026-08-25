@@ -63,6 +63,14 @@ final class ManualTransferVerificationTest extends TestCase
         $this->assertTrue($order->fresh()->paid_at?->equalTo($paidAt) ?? false);
         $this->assertTrue($entitlement->fresh()->ready_at?->equalTo($readyAt) ?? false);
         $this->assertDatabaseCount('audit_logs', 1);
+        $this->assertDatabaseCount('outbox_messages', 1);
+        $this->assertDatabaseHas('outbox_messages', [
+            'topic' => 'participant.activation',
+            'aggregate_type' => Order::class,
+            'aggregate_id' => $order->public_id,
+            'status' => 'pending',
+            'attempts' => 0,
+        ]);
     }
 
     public function test_reject_stores_the_trimmed_reason_once_and_keeps_entitlement_locked(): void
@@ -87,6 +95,7 @@ final class ManualTransferVerificationTest extends TestCase
         $action->reject($admin, $order->id, (string) $order->proof_object_key, 'Alasan pengganti tidak boleh menimpa.');
         $this->assertSame('Nominal pada bukti tidak sesuai.', $order->fresh()->rejection_reason);
         $this->assertDatabaseCount('audit_logs', 1);
+        $this->assertDatabaseCount('outbox_messages', 0);
     }
 
     public function test_opposite_decision_after_a_terminal_review_is_rejected(): void

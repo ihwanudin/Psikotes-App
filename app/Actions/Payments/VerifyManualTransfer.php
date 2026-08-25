@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Actions\Payments;
 
+use App\Actions\Notifications\EnqueueParticipantActivation;
 use App\Models\Admin;
 use App\Models\Entitlement;
 use App\Models\Order;
@@ -18,6 +19,7 @@ final readonly class VerifyManualTransfer
     public function __construct(
         private RlsContextRunner $runner,
         private OrderStateMachine $stateMachine,
+        private EnqueueParticipantActivation $enqueueActivation,
     ) {}
 
     public function approve(Admin $admin, int $orderId, string $expectedProofKey): Order
@@ -94,6 +96,8 @@ final readonly class VerifyManualTransfer
                         'ready_at' => $reviewedAt,
                         'updated_at' => now(),
                     ]);
+
+                $this->enqueueActivation->handle($order);
             }
 
             DB::table('audit_logs')->insert([

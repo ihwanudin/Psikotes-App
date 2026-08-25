@@ -46,6 +46,20 @@ final class PaymentOperationsSchemaTest extends TestCase
             'error_code',
             'processed_at',
         ]));
+        $this->assertTrue(Schema::hasColumns('outbox_messages', [
+            'message_id',
+            'deduplication_key',
+            'topic',
+            'aggregate_type',
+            'aggregate_id',
+            'payload',
+            'status',
+            'attempts',
+            'available_at',
+            'processed_at',
+            'expires_at',
+            'last_error',
+        ]));
     }
 
     public function test_payment_channels_are_seeded_inactive_and_idempotent(): void
@@ -156,6 +170,30 @@ final class PaymentOperationsSchemaTest extends TestCase
 
         $this->expectException(QueryException::class);
         DB::table('payment_webhook_events')->insert($event);
+    }
+
+    public function test_outbox_deduplication_keys_are_unique(): void
+    {
+        $message = [
+            'message_id' => (string) Str::ulid(),
+            'deduplication_key' => hash('sha256', 'participant.activation|synthetic-order'),
+            'topic' => 'participant.activation',
+            'aggregate_type' => 'order',
+            'aggregate_id' => 'synthetic-order',
+            'payload' => json_encode(['schema_version' => 1], JSON_THROW_ON_ERROR),
+            'status' => 'pending',
+            'attempts' => 0,
+            'available_at' => now(),
+            'expires_at' => now()->addYears(2),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ];
+
+        DB::table('outbox_messages')->insert($message);
+
+        $this->expectException(QueryException::class);
+        $message['message_id'] = (string) Str::ulid();
+        DB::table('outbox_messages')->insert($message);
     }
 
     /** @return array{int, int} */

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Payments;
 
+use App\Actions\Notifications\EnqueueParticipantActivation;
 use App\Data\Payments\OrderTransition;
 use App\Data\Payments\PaymentEvent;
 use App\Enums\OrderStatus;
@@ -20,6 +21,7 @@ final readonly class OrderPaymentEventHandler
     public function __construct(
         private RlsContextRunner $runner,
         private OrderStateMachine $stateMachine,
+        private EnqueueParticipantActivation $enqueueActivation,
     ) {}
 
     public function applyInCurrentServiceTransaction(PaymentEvent $event): OrderTransition
@@ -69,6 +71,8 @@ final readonly class OrderPaymentEventHandler
                     'ready_at' => $occurredAt,
                     'updated_at' => now(),
                 ]);
+
+            $this->enqueueActivation->handle($order);
         }
 
         return $transition;
