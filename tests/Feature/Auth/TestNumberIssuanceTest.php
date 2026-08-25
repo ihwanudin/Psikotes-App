@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Auth;
 
 use App\Services\TestNumber\MonthlyTestNumberIssuer;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Date;
@@ -58,11 +59,12 @@ final class TestNumberIssuanceTest extends TestCase
 
     public function test_month_preparation_is_scheduled_for_the_first_day(): void
     {
-        $output = Artisan::call('schedule:list');
-        $schedule = Artisan::output();
+        $event = collect(app(Schedule::class)->events())
+            ->first(fn ($event): bool => str_contains($event->command ?? '', 'test-numbers:prepare-month'));
 
-        $this->assertSame(0, $output);
-        $this->assertStringContainsString('0 0 1 * *', $schedule);
-        $this->assertStringContainsString('test-numbers:prepare-month', $schedule);
+        $this->assertNotNull($event);
+        $this->assertSame('0 0 1 * *', $event->expression);
+        $this->assertSame(config('participant_auth.test_number_timezone'), $event->timezone);
+        $this->assertTrue($event->onOneServer);
     }
 }
