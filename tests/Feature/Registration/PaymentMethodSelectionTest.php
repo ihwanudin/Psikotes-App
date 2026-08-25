@@ -9,7 +9,10 @@ use App\Models\Order;
 use App\Models\Participant;
 use Database\Seeders\PaymentMethodSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -24,6 +27,7 @@ final class PaymentMethodSelectionTest extends TestCase
 
         $this->branch();
         $this->seed(PaymentMethodSeeder::class);
+        Date::setTestNow('2026-08-25 13:00:00+07:00');
     }
 
     public function test_registration_only_exposes_active_payment_methods(): void
@@ -124,6 +128,82 @@ final class PaymentMethodSelectionTest extends TestCase
         $this->assertSame('manual_transfer', $order->paymentMethod->code);
         $this->assertDatabaseCount('participants', 1);
         $this->assertDatabaseCount('orders', 1);
+    }
+
+    public function test_active_xendit_registration_creates_invoice_and_redirects_to_hosted_checkout(): void
+    {
+        config()->set('services.xendit.secret_key', 'xnd_test_secret');
+        DB::table('payment_methods')->where('code', 'xendit')->update(['is_active' => true]);
+        Http::preventStrayRequests();
+        $token = (string) Str::uuid();
+        $payload = $this->validPayload($token, 'xendit');
+
+        Http::fake(function (Request $request) {
+            $response = [
+                'id' => 'invoice-registration-1',
+                'external_id' => $request['external_id'],
+                'status' => 'PENDING',
+                'amount' => 150_000,
+                'currency' => 'IDR',
+                'invoice_url' => 'https://invoice.xendit.co/invoice-registration-1',
+                'expiry_date' => '2026-08-26T13:00:00+07:00',
+                'created' => '2026-08-25T13:00:00+07:00',
+                'updated' => '2026-08-25T13:00:00+07:00',
+            ];
+
+            return Http::response($response);
+        });
+
+        $this->withSession(['registration.token' => $token])
+            ->post('/registrations', $payload)
+            ->assertRedirect('https://invoice.xendit.co/invoice-registration-1');
+
+        $order = Order::query()->sole();
+        $this->assertSame('invoice-registration-1', $order->gateway_ref);
+        $this->assertSame('https://invoice.xendit.co/invoice-registration-1', $order->invoice_url);
+        $this->assertNotNull($order->expires_at);
+        $this->assertSame('pending', $order->status->value);
+        $this->assertDatabaseHas('entitlements', [
+            'order_id' => $order->id,
+            'status' => 'locked',
+        ]);
+
+        $this->withSession(['registration.token' => $token])
+            ->post('/registrations', $payload)
+            ->assertRedirect('https://invoice.xendit.co/invoice-registration-1');
+        Http::assertSentCount(1);
+        $this->assertDatabaseCount('orders', 1);
+    }
+
+    public function test_unknown_xendit_outcome_preserves_pending_registration_for_safe_reconciliation(): void
+    {
+        config()->set('services.xendit.secret_key', 'xnd_test_secret');
+        DB::table('payment_methods')->where('code', 'xendit')->update(['is_active' => true]);
+        Http::preventStrayRequests();
+        Http::fakeSequence('https://api.xendit.co/*')
+            ->pushFailedConnection('create timeout')
+            ->pushFailedConnection('status fallback timeout');
+        $token = (string) Str::uuid();
+        $payload = $this->validPayload($token, 'xendit');
+
+        $this->withSession(['registration.token' => $token])
+            ->post('/registrations', $payload)
+            ->assertRedirect('/registration/received');
+
+        $order = Order::query()->sole();
+        $this->assertSame('pending', $order->status->value);
+        $this->assertNull($order->gateway_ref);
+        $this->assertNull($order->invoice_url);
+        $this->assertSame('unknown', $order->metadata['xendit_invoice']['state']);
+        $this->assertDatabaseHas('entitlements', [
+            'order_id' => $order->id,
+            'status' => 'locked',
+        ]);
+
+        $this->withSession(['registration.token' => $token])
+            ->post('/registrations', $payload)
+            ->assertRedirect('/registration/received');
+        Http::assertSentCount(2);
     }
 
     /** @return array<string, mixed> */

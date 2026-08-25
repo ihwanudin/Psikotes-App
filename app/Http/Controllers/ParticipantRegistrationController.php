@@ -12,6 +12,7 @@ use App\Models\TestPackage;
 use App\Registration\ConsentDocument;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
+use App\Services\Payments\CreateRegistrationInvoice;
 use App\Services\Referral\ReferralAttribution;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -79,6 +80,7 @@ final class ParticipantRegistrationController extends Controller
     public function store(
         StoreParticipantRegistrationRequest $request,
         RegisterParticipant $register,
+        CreateRegistrationInvoice $createInvoice,
     ): RedirectResponse {
         $validated = $request->validated();
         $token = (string) $validated['_registration_token'];
@@ -107,6 +109,12 @@ final class ParticipantRegistrationController extends Controller
                 ->addHours((int) config('identity.upload_session_hours', 2))
                 ->getTimestamp(),
         ]);
+
+        $invoice = $createInvoice->handle($participant);
+
+        if ($invoice !== null) {
+            return redirect()->away($invoice->paymentUrl);
+        }
 
         return redirect()->route('registration.received');
     }

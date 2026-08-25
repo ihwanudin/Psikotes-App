@@ -20,6 +20,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $amount
  * @property string $currency
  * @property string|null $gateway_ref
+ * @property array<string, mixed>|null $metadata
  * @property CarbonInterface|null $expires_at
  * @property CarbonInterface|null $paid_at
  */
