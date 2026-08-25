@@ -195,14 +195,15 @@
 
 **Acceptance criteria:**
 
-- [ ] Consent A wajib; consent B dapat ditolak; versi teks dan timestamp disimpan.
-- [ ] Bidang kerja dan atribusi cabang ditentukan server-side.
-- [ ] Validasi panjang/format dan rate limit registrasi aktif.
+- [x] Consent A wajib; consent B dapat ditolak; versi teks dan timestamp disimpan.
+- [x] Bidang kerja dan atribusi cabang ditentukan server-side.
+- [x] Validasi panjang/format dan rate limit registrasi aktif.
+- [ ] `package_id` menunggu master paket/harga resmi; backend dan UI tidak mengarang katalog.
 
 **Verification:**
 
-- [ ] Feature tests mencakup input valid, invalid, duplikat, consent B ditolak, dan mass-assignment abuse.
-- [ ] Browser smoke test mobile registration lulus.
+- [x] Feature tests mencakup input valid, invalid, duplikat, consent B ditolak, dan mass-assignment abuse.
+- [x] Browser smoke test mobile registration lulus (390×844; DASS ditolak; POST 302 → konfirmasi 200; console bersih).
 
 **Dependencies:** Tasks 8, 9
 
