@@ -6,11 +6,13 @@ namespace App\Actions\Registration;
 
 use App\Models\ConsentRecord;
 use App\Models\Participant;
+use App\Models\TestPackage;
 use App\Registration\ConsentDocument;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
 use App\Services\Referral\ReferralAttribution;
 use Illuminate\Database\QueryException;
+use Illuminate\Validation\ValidationException;
 
 final readonly class RegisterParticipant
 {
@@ -22,12 +24,24 @@ final readonly class RegisterParticipant
     /**
      * @param  array<string, mixed>  $input
      */
-    public function handle(array $input, string $registrationToken, ?string $referralCookie): Participant
-    {
+    public function handle(
+        array $input,
+        int $packageId,
+        string $registrationToken,
+        ?string $referralCookie,
+    ): Participant {
+        $payloadHash = $this->payloadHash([...$input, 'package_id' => $packageId]);
+
         try {
             return $this->runner->run(
                 new RlsContext('service'),
-                fn (): Participant => $this->createOnce($input, $registrationToken, $referralCookie),
+                fn (): Participant => $this->createOnce(
+                    $input,
+                    $packageId,
+                    $registrationToken,
+                    $payloadHash,
+                    $referralCookie,
+                ),
             );
         } catch (QueryException $exception) {
             $participant = $this->runner->run(
@@ -37,27 +51,53 @@ final readonly class RegisterParticipant
                     ->first(),
             );
 
-            return $participant ?? throw $exception;
+            if ($participant === null) {
+                throw $exception;
+            }
+
+            $this->assertMatchingPayload($participant, $payloadHash);
+
+            return $participant;
         }
     }
 
     /**
      * @param  array<string, mixed>  $input
      */
-    private function createOnce(array $input, string $registrationToken, ?string $referralCookie): Participant
-    {
+    private function createOnce(
+        array $input,
+        int $packageId,
+        string $registrationToken,
+        string $payloadHash,
+        ?string $referralCookie,
+    ): Participant {
         $existing = Participant::query()
             ->where('registration_token', $registrationToken)
             ->first();
 
         if ($existing !== null) {
+            $this->assertMatchingPayload($existing, $payloadHash);
+
             return $existing;
+        }
+
+        $package = TestPackage::query()
+            ->availableForRegistration()
+            ->sharedLock()
+            ->find($packageId);
+
+        if ($package === null) {
+            throw ValidationException::withMessages([
+                'package_id' => 'Paket tidak tersedia untuk pendaftaran.',
+            ]);
         }
 
         $assignment = $this->referrals->assignmentFromCookie($referralCookie);
         $participant = new Participant;
         $participant->forceFill([
             'registration_token' => $registrationToken,
+            'registration_payload_hash' => $payloadHash,
+            'package_id' => $package->id,
             'branch_id' => $assignment->branch->id,
             'referral_branch_id' => $assignment->branch->id,
             'referral_source' => $assignment->source,
@@ -74,6 +114,28 @@ final readonly class RegisterParticipant
         $this->recordConsent($participant, ConsentDocument::for('dass'), (bool) $input['consent_dass']);
 
         return $participant;
+    }
+
+    /** @param array<string, mixed> $input */
+    private function payloadHash(array $input): string
+    {
+        ksort($input);
+
+        return hash_hmac(
+            'sha256',
+            json_encode($input, JSON_THROW_ON_ERROR),
+            (string) config('app.key'),
+        );
+    }
+
+    private function assertMatchingPayload(Participant $participant, string $payloadHash): void
+    {
+        if (! is_string($participant->registration_payload_hash)
+            || ! hash_equals($participant->registration_payload_hash, $payloadHash)) {
+            throw ValidationException::withMessages([
+                '_registration_token' => 'Token registrasi telah digunakan untuk data yang berbeda.',
+            ]);
+        }
     }
 
     private function recordConsent(Participant $participant, ConsentDocument $document, bool $accepted): void

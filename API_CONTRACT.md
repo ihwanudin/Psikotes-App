@@ -4,7 +4,7 @@ Base: `https://psikotes.oncam.id`. Rute peserta (Inertia+React) dan API internal
 
 ## Publik
 - `GET  /r/:ref_code` — resolusi referral: set cookie first-touch 30 hari + catat `referral_visits`, redirect ke halaman daftar. ref tak dikenal → cabang default (pusat).
-- `POST /registrations` — body form + `ref` (dari cookie/query; opsional) + `package_id`. Server tetapkan `referral_branch_id` (first-touch menang; kosong→default). Untuk Xendit: buat invoice → `{test_number, order_id, invoice_url, status:'pending'}`. Untuk transfer manual: upload bukti (multipart) → `{test_number, order_id, status:'pending'}`.
+- `POST /registrations` — body form + `ref` (dari cookie/query; opsional) + `package_id`. `package_id` wajib menunjuk paket aktif, memiliki jenis tes, berharga positif dalam IDR; server memvalidasi ulang saat transaksi agar paket yang baru dinonaktifkan tidak dapat dipilih. Server tetapkan `referral_branch_id` (first-touch menang; kosong→default). Untuk Xendit: buat invoice → `{test_number, order_id, invoice_url, status:'pending'}`. Untuk transfer manual: upload bukti (multipart) → `{test_number, order_id, status:'pending'}`.
 - `POST /auth/participant/login` `{test_number, birth_date}` → `{jwt}` (rate-limit 5/menit/IP)
 - `GET  /orders/:id/status`
 - `POST /webhooks/xendit` — verifikasi header `x-callback-token` = token dashboard; baca `external_id`(=order_id) & `status`; PAID/SETTLED → order paid + entitlement ready + bekukan komisi + notif WA. **Balas 200 ≤30 dtk** (Xendit retry 24 jam bila gagal). Idempotent by `id` invoice (unik). Status lain (EXPIRED) → order expired, entitlement tetap locked.

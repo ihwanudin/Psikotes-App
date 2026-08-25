@@ -198,7 +198,8 @@
 - [x] Consent A wajib; consent B dapat ditolak; versi teks dan timestamp disimpan.
 - [x] Bidang kerja dan atribusi cabang ditentukan server-side.
 - [x] Validasi panjang/format dan rate limit registrasi aktif.
-- [ ] `package_id` menunggu master paket/harga resmi; backend dan UI tidak mengarang katalog.
+- [x] `package_id` terhubung ke katalog per jenis tes dengan harga IDR dan sakelar aktivasi default OFF; backend memvalidasi ulang paket saat transaksi.
+- [ ] Nominal harga resmi untuk template IST, PAPI, RMIB, Kraepelin, dan DASS-21 masih menunggu konfirmasi sebelum paket dapat diaktifkan.
 
 **Verification:**
 

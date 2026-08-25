@@ -12,6 +12,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 /**
  * @property int $id
  * @property string|null $registration_token
+ * @property string|null $registration_payload_hash
+ * @property int|null $package_id
  * @property int $branch_id
  * @property int $referral_branch_id
  */
@@ -37,6 +39,12 @@ final class Participant extends Model
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    /** @return BelongsTo<TestPackage, $this> */
+    public function package(): BelongsTo
+    {
+        return $this->belongsTo(TestPackage::class, 'package_id');
     }
 
     /** @return array<string, string> */

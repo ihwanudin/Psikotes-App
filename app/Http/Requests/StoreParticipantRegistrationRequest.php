@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests;
 
+use Illuminate\Database\Query\Builder;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -23,6 +24,18 @@ final class StoreParticipantRegistrationRequest extends FormRequest
                 'required',
                 'uuid',
                 Rule::in([(string) $this->session()->get('registration.token')]),
+            ],
+            'package_id' => [
+                'bail',
+                'required',
+                'integer',
+                Rule::exists('packages', 'id')->where(
+                    fn (Builder $query): Builder => $query
+                        ->where('is_active', true)
+                        ->whereNotNull('amount')
+                        ->where('amount', '>', 0)
+                        ->where('currency', 'IDR'),
+                ),
             ],
             'full_name' => ['bail', 'required', 'string', 'min:2', 'max:200'],
             'gender' => ['bail', 'required', Rule::in(['female', 'male'])],

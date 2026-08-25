@@ -8,6 +8,7 @@ use App\Models\Branch;
 use App\Models\Participant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -190,6 +191,7 @@ final class ParticipantRegistrationTest extends TestCase
     {
         return [
             '_registration_token' => $token,
+            'package_id' => $this->activePackage(),
             'full_name' => 'Ayu Pratiwi',
             'gender' => 'female',
             'birth_date' => '2001-04-15',
@@ -200,6 +202,35 @@ final class ParticipantRegistrationTest extends TestCase
             'consent_psychotest' => true,
             'consent_dass' => true,
         ];
+    }
+
+    private function activePackage(): int
+    {
+        $existing = DB::table('packages')->where('code', 'TEST-BATTERY')->value('id');
+
+        if (is_numeric($existing)) {
+            return (int) $existing;
+        }
+
+        $packageId = DB::table('packages')->insertGetId([
+            'code' => 'TEST-BATTERY',
+            'name' => 'Paket Baterai Tes',
+            'amount' => 350000,
+            'currency' => 'IDR',
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('package_items')->insert([
+            'package_id' => $packageId,
+            'test_type' => 'ist',
+            'sort_order' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return $packageId;
     }
 
     private function branch(string $code, string $refCode, bool $isDefault = false): Branch

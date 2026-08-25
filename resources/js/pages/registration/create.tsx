@@ -10,6 +10,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
+import PackageSelector from '@/pages/registration/components/package-selector';
+import type { RegistrationPackage } from '@/pages/registration/components/package-selector';
 
 type ConsentDocument = {
     version: string;
@@ -23,6 +25,8 @@ type Props = {
         source: 'link' | 'default';
     };
     registrationToken: string;
+    packages: RegistrationPackage[];
+    packageConfigurationPending: boolean;
     consents: {
         psychotest: ConsentDocument;
         dass: ConsentDocument;
@@ -42,6 +46,8 @@ const intendedFields = [
 export default function CreateRegistration({
     assignedBranch,
     registrationToken,
+    packages,
+    packageConfigurationPending,
     consents,
 }: Props) {
     return (
@@ -368,17 +374,13 @@ export default function CreateRegistration({
                                                 </div>
                                             </div>
 
-                                            <div className="rounded-xl border border-dashed border-slate-300 bg-white p-4">
-                                                <p className="text-sm font-medium">
-                                                    Paket psikotes
-                                                </p>
-                                                <p className="mt-1 text-sm leading-6 text-slate-600">
-                                                    Katalog paket resmi belum
-                                                    dikonfigurasi. Pemilihan
-                                                    paket dan harga belum
-                                                    dicatat pada tahap ini.
-                                                </p>
-                                            </div>
+                                            <PackageSelector
+                                                packages={packages}
+                                                configurationPending={
+                                                    packageConfigurationPending
+                                                }
+                                                error={errors.package_id}
+                                            />
                                         </fieldset>
 
                                         <fieldset className="space-y-5 border-t border-slate-200 pt-8">
@@ -500,6 +502,10 @@ export default function CreateRegistration({
                                         <Button
                                             type="submit"
                                             size="lg"
+                                            disabled={
+                                                processing ||
+                                                packageConfigurationPending
+                                            }
                                             className="h-12 w-full bg-teal-800 text-base hover:bg-teal-900"
                                         >
                                             {processing && <Spinner />}
