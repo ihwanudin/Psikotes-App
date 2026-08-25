@@ -55,6 +55,21 @@ final class ReferralAttribution
         );
     }
 
+    public function assignmentFromCookie(?string $cookie): ReferralAssignment
+    {
+        $existing = $this->decodeCookie($cookie, Carbon::now());
+
+        if ($existing !== null) {
+            $branch = $this->activeBranch($existing['ref_code']);
+
+            if ($branch !== null) {
+                return new ReferralAssignment($branch, $existing['source']);
+            }
+        }
+
+        return new ReferralAssignment($this->defaultBranch(), 'default');
+    }
+
     /** @return array{ref_code: string, source: string, expires_at: int}|null */
     private function decodeCookie(?string $payload, Carbon $now): ?array
     {
