@@ -1,4 +1,4 @@
-# SECURITY.md (v2.0) — implementasi poin A, B, C list arsitektur
+# SECURITY.md (v2.1) — implementasi poin A, B, C list arsitektur
 
 ## Auth & sesi
 - Peserta: login `nomor_tes + tanggal_lahir` → JWT HS256 TTL 12 jam tanpa refresh token (sesi tes pendek; login ulang murah). Header wajib `typ=participant+jwt`; signature, algoritme tetap, `iss`, `aud`, `sub`, `{participant_id, branch_id}`, `iat`, `nbf`, `exp`, serta durasi token divalidasi. Secret wajib random `base64:` minimal 32 byte. Magic link/OTP TIDAK dipakai untuk peserta — menambah dependensi email/HP saat ujian; keputusan sadar, bukan kelalaian.
@@ -20,8 +20,10 @@
 - Signed URL (object storage S3-compatible) TTL 15 menit, diterbitkan hanya setelah cek hak. Tidak ada URL permanen.
 - Bukti identitas disimpan pada disk `identity` privat (local private pada development, S3-compatible pada production). Key acak 64 karakter tidak memuat nama peserta/nama file asli. Foto dokumen dan selfie divalidasi dari isi/magic bytes, format JPG/PNG/WebP, ukuran ≤5 MB, dan dimensi 480–8.000 px; upload dibatasi 5/menit per sesi+IP.
 - URL bukti identitas diterbitkan setelah policy peserta dan konteks RLS admin lulus, dibatasi 30 permintaan/menit/admin, dan setiap penerbitan menulis audit service-only. Konteks audit hanya memuat jenis bukti dan waktu kedaluwarsa URL, bukan PII, URL, atau object key.
+- Bukti transfer manual disimpan pada disk `payment-proofs` privat dengan key acak yang tidak memuat nama asli. Validasi memeriksa isi/MIME sekaligus ekstensi JPG/JPEG/PNG/PDF dan membatasi ukuran ke 5.000 KB; upload dibatasi 5/menit per sesi+IP dan tidak menerima order ID dari browser.
+- URL bukti transfer berlaku 15 menit, hanya dapat diterbitkan kepada admin dengan kemampuan verifikasi dalam scope cabang, dan setiap penerbitan diaudit tanpa URL/object key. Approve/reject melakukan policy check ulang di domain action, row lock, dan perbandingan konstan-waktu terhadap key bukti yang dilihat sehingga penggantian file saat review gagal tertutup.
 - Hasil matcher adalah marker (`pending|match|mismatch|error`) dengan status manual tetap `pending`; mismatch/error tidak menghapus peserta, tidak mengubah entitlement, dan tidak otomatis menentukan kelayakan.
-- Audit log: aktivasi metode pembayaran, verifikasi order, void sesi, penerbitan URL bukti identitas, akses/unduh laporan oleh admin, perubahan rate fee, keputusan withdraw, perubahan kamus GE. Aktivasi kanal hanya dapat dilakukan super admin dan auditnya ditulis atomik melalui konteks service.
+- Audit log: aktivasi metode pembayaran, verifikasi order, void sesi, penerbitan URL bukti identitas/transfer, akses/unduh laporan oleh admin, perubahan rate fee, keputusan withdraw, perubahan kamus GE. Aktivasi kanal hanya dapat dilakukan super admin dan auditnya ditulis atomik melalui konteks service.
 - Event pembayaran dinormalisasi di adapter dan dicocokkan melalui ID invoice (`gateway_ref`), reference order (`external_id`), nominal, dan currency. Callback Xendit memakai perbandingan konstan-waktu `x-callback-token`; token/payload/status salah hanya menerima error generik. Event terautentikasi diklaim atomik oleh unique `(provider,event_id)` dan hanya intent hash yang disimpan—bukan payload mentah. Transisi terminal tidak dapat ditimpa; hanya pending→paid pertama yang membuka entitlement, dengan ledger event, order, dan entitlement diperbarui dalam satu transaksi service-RLS.
 
 ## Anti-kecurangan

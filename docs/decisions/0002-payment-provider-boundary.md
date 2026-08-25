@@ -23,6 +23,7 @@ Pembayaran F1 harus mendukung invoice Xendit dan transfer manual tanpa memasukka
 - Kanal pembayaran kanonis dibuat default nonaktif. Hanya super admin yang dapat mengubah aktivasi melalui action ber-row-lock; setiap perubahan state dicatat di `audit_logs` dalam transaksi service-RLS yang sama. Replay state identik adalah no-op tanpa audit duplikat.
 - Registrasi hanya mengekspos kanal aktif. Paket dan kanal dikunci serta divalidasi ulang sebelum participant, order `pending`, dan entitlement `locked` dibuat atomik. Order menyimpan `payment_method_id`, nominal, dan mata uang sebagai snapshot transaksi; menonaktifkan kanal hanya mencegah order baru dan tidak menyembunyikan order historis.
 - `payment_webhook_events` mengklaim `(provider,event_id)` secara atomik. Event ID Xendit adalah hash ID invoice + status ternormalisasi: PAID/SETTLED menjadi satu event paid, sementara PENDING/EXPIRED tetap terpisah. Intent hash mencegah satu event ID dipakai ulang untuk payload logis berbeda. Claim event dan transisi finansial commit dalam satu transaksi service-RLS.
+- Transfer manual memakai state machine yang sama tanpa menyamar sebagai webhook provider. Bukti disimpan privat di luar database; admin dengan kemampuan verifikasi dan scope cabang yang tepat menerapkan `pending→paid|rejected` melalui row lock. Keputusan membawa object key bukti yang ditinjau, sehingga penggantian bukti di antara buka dan klik gagal tertutup. Replay status yang sama tetap no-op tanpa audit atau sinyal finansial kedua.
 - Invoice API yang dipakai kickoff berstatus legacy pada dokumentasi Xendit. Migrasi ke Payment Session ditunda sebagai keputusan adapter tersendiri agar kontrak F1 tidak berubah diam-diam.
 
 ## Alternatives Considered
@@ -49,3 +50,4 @@ Akan merusak rekonsiliasi, audit, dan status pembayaran peserta yang sudah memil
 - Integrasi Xendit tidak boleh menambahkan field gateway ke state machine atau DTO domain; kebutuhan provider-spesifik tetap di adapter/configuration boundary.
 - Scheduler status fallback wajib berjalan. Credential sandbox tidak tersedia di repository; contract test eksternal hanya menerima key development dan skip bila key tidak terpasang.
 - Admin harus mengaktifkan setidaknya satu kanal sebelum registrasi pembayaran dapat dilanjutkan; kondisi semua-OFF gagal tertutup dan ditampilkan jelas pada form.
+- Ledger komisi belum menjadi bagian schema F1 yang telah dimigrasikan. Konsumen ledger mendatang harus memakai transisi pertama yang teraudit sebagai sinyal idempoten, bukan menghitung ulang dari klik atau upload bukti.

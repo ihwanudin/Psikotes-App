@@ -325,14 +325,14 @@
 
 **Acceptance criteria:**
 
-- [ ] Bukti dibatasi jpg/png/pdf maksimal 5 MB dan disimpan private.
-- [ ] Hanya role berwenang dalam scope cabang yang dapat memverifikasi.
-- [ ] Approve berulang tidak menggandakan entitlement/komisi; reject menyimpan alasan.
+- [x] Bukti dibatasi jpg/png/pdf maksimal 5 MB dan disimpan private.
+- [x] Hanya role berwenang dalam scope cabang yang dapat memverifikasi.
+- [x] Approve berulang tidak menggandakan entitlement/sinyal finansial; reject menyimpan alasan. Ledger komisi belum ada pada schema F1, sehingga transisi pertama yang teraudit menjadi input idempoten untuk implementasi ledger berikutnya.
 
 **Verification:**
 
-- [ ] Authorization, upload, idempotency, dan cross-branch tests lulus.
-- [ ] Filament action smoke test lulus.
+- [x] Authorization, upload, idempotency, penggantian bukti saat ditinjau, dan cross-branch tests lulus.
+- [x] Filament action smoke test lulus.
 
 **Dependencies:** Tasks 8, 14
 
