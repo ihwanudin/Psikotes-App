@@ -155,6 +155,7 @@ final class PaymentWebhookProcessorTest extends TestCase
         return new PaymentEvent(
             eventId: $eventId,
             providerReference: 'xendit-invoice-reference',
+            merchantReference: Order::query()->where('gateway_ref', 'xendit-invoice-reference')->valueOrFail('public_id'),
             status: $status,
             occurredAt: Date::now(),
             amount: 350_000,

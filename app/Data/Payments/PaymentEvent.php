@@ -13,6 +13,7 @@ final readonly class PaymentEvent
     public function __construct(
         public string $eventId,
         public string $providerReference,
+        public string $merchantReference,
         public PaymentStatus $status,
         public CarbonInterface $occurredAt,
         public int $amount,
@@ -24,6 +25,10 @@ final readonly class PaymentEvent
 
         if (! preg_match('/^[A-Za-z0-9_-]{1,160}$/', $providerReference)) {
             throw new InvalidArgumentException('Provider reference has an invalid format.');
+        }
+
+        if (! preg_match('/^[A-Za-z0-9_-]{1,64}$/', $merchantReference)) {
+            throw new InvalidArgumentException('Merchant reference has an invalid format.');
         }
 
         if ($amount < 1 || $currency !== 'IDR') {

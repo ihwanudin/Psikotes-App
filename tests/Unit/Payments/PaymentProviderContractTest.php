@@ -95,6 +95,7 @@ final class PaymentProviderContractTest extends TestCase
             payload: [
                 'event_id' => 'fake-webhook-event-1',
                 'invoice_reference' => $invoice->providerReference,
+                'order_reference' => '01K3H9M5YXB62D9QK7E5V2G8Z1',
                 'status' => 'paid',
                 'occurred_at' => '2026-08-25T13:05:00+07:00',
                 'amount' => 350_000,

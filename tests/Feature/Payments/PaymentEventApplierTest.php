@@ -106,6 +106,7 @@ final class PaymentEventApplierTest extends TestCase
                 new PaymentEvent(
                     eventId: 'event-forged',
                     providerReference: 'different-provider-reference',
+                    merchantReference: $order->public_id,
                     status: PaymentStatus::Paid,
                     occurredAt: Date::now(),
                     amount: 350_000,
@@ -125,7 +126,15 @@ final class PaymentEventApplierTest extends TestCase
         $this->expectExceptionMessage('Payment events require an active service transaction.');
 
         app(OrderPaymentEventHandler::class)->applyInCurrentServiceTransaction(
-            $this->event(PaymentStatus::Paid, 'event-outside-service-transaction'),
+            new PaymentEvent(
+                eventId: 'event-outside-service-transaction',
+                providerReference: 'fake-provider-reference',
+                merchantReference: '01K3H9M5YXB62D9QK7E5V2G8Z1',
+                status: PaymentStatus::Paid,
+                occurredAt: Date::now(),
+                amount: 350_000,
+                currency: 'IDR',
+            ),
         );
     }
 
@@ -137,6 +146,7 @@ final class PaymentEventApplierTest extends TestCase
             app(PaymentEventApplier::class)->apply(new PaymentEvent(
                 eventId: 'event-wrong-amount',
                 providerReference: 'fake-provider-reference',
+                merchantReference: $order->public_id,
                 status: PaymentStatus::Paid,
                 occurredAt: Date::now(),
                 amount: 349_999,
@@ -144,6 +154,27 @@ final class PaymentEventApplierTest extends TestCase
             ));
             $this->fail('Expected a payment amount mismatch.');
         } catch (PaymentAmountMismatch) {
+            $this->assertSame('pending', $order->fresh()->status->value);
+            $this->assertSame('locked', $entitlement->fresh()->status);
+        }
+    }
+
+    public function test_event_with_different_merchant_reference_is_rejected_and_remains_locked(): void
+    {
+        [$order, $entitlement] = $this->orderWithLockedEntitlement();
+
+        try {
+            app(PaymentEventApplier::class)->apply(new PaymentEvent(
+                eventId: 'event-wrong-merchant-reference',
+                providerReference: 'fake-provider-reference',
+                merchantReference: '01K3H9M5YXB62D9QK7E5V2G8Z9',
+                status: PaymentStatus::Paid,
+                occurredAt: Date::now(),
+                amount: 350_000,
+                currency: 'IDR',
+            ));
+            $this->fail('Expected a merchant reference mismatch.');
+        } catch (PaymentReferenceMismatch) {
             $this->assertSame('pending', $order->fresh()->status->value);
             $this->assertSame('locked', $entitlement->fresh()->status);
         }
@@ -202,6 +233,7 @@ final class PaymentEventApplierTest extends TestCase
         return new PaymentEvent(
             eventId: $eventId,
             providerReference: 'fake-provider-reference',
+            merchantReference: Order::query()->where('gateway_ref', 'fake-provider-reference')->valueOrFail('public_id'),
             status: $status,
             occurredAt: Date::now(),
             amount: 350_000,

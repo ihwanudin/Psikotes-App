@@ -60,6 +60,7 @@ final readonly class PaymentWebhookProcessor
             'provider' => $provider,
             'event_id' => $event->eventId,
             'provider_reference' => $event->providerReference,
+            'merchant_reference' => $event->merchantReference,
             'status' => $event->status->value,
             'amount' => $event->amount,
             'currency' => $event->currency,

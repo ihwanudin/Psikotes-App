@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Contracts\IdentityMatcher;
+use App\Contracts\PaymentProvider;
 use App\Contracts\RunsRlsContext;
 use App\Security\RlsContextRunner;
 use App\Services\Identity\ManualReviewIdentityMatcher;
+use App\Services\Payments\XenditProvider;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -27,6 +29,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->scoped(RlsContextRunner::class);
         $this->app->alias(RlsContextRunner::class, RunsRlsContext::class);
         $this->app->bind(IdentityMatcher::class, ManualReviewIdentityMatcher::class);
+        $this->app->bind(PaymentProvider::class, XenditProvider::class);
     }
 
     /**

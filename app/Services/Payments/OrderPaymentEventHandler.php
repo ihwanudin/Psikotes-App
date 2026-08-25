@@ -36,6 +36,10 @@ final readonly class OrderPaymentEventHandler
             throw new PaymentReferenceMismatch('Payment event does not match an order.');
         }
 
+        if ($order->public_id !== $event->merchantReference) {
+            throw new PaymentReferenceMismatch('Payment event does not match an order.');
+        }
+
         if ($order->amount !== $event->amount || $order->currency !== $event->currency) {
             throw new PaymentAmountMismatch('Payment event money does not match the order.');
         }

@@ -73,6 +73,7 @@ final class FakePaymentProvider implements PaymentProvider
 
         $eventId = $input->payload['event_id'] ?? null;
         $providerReference = $input->payload['invoice_reference'] ?? null;
+        $merchantReference = $input->payload['order_reference'] ?? null;
         $rawStatus = $input->payload['status'] ?? null;
         $rawOccurredAt = $input->payload['occurred_at'] ?? null;
         $amount = $input->payload['amount'] ?? null;
@@ -80,6 +81,7 @@ final class FakePaymentProvider implements PaymentProvider
 
         if (! is_string($eventId)
             || ! is_string($providerReference)
+            || ! is_string($merchantReference)
             || ! is_string($rawStatus)
             || ! is_string($rawOccurredAt)
             || ! is_int($amount)
@@ -100,7 +102,7 @@ final class FakePaymentProvider implements PaymentProvider
         }
 
         try {
-            return new PaymentEvent($eventId, $providerReference, $status, $occurredAt, $amount, $currency);
+            return new PaymentEvent($eventId, $providerReference, $merchantReference, $status, $occurredAt, $amount, $currency);
         } catch (InvalidArgumentException $exception) {
             throw new PaymentProviderException('Webhook identifiers are invalid.', previous: $exception);
         }
@@ -143,6 +145,7 @@ final class FakePaymentProvider implements PaymentProvider
             $event = new PaymentEvent(
                 eventId: $eventId,
                 providerReference: $record->invoice->providerReference,
+                merchantReference: $record->request->orderReference,
                 status: PaymentStatus::Paid,
                 occurredAt: $occurredAt,
                 amount: $record->invoice->amount,
@@ -170,6 +173,7 @@ final class FakePaymentProvider implements PaymentProvider
         return new PaymentEvent(
             eventId: $record->eventId,
             providerReference: $record->invoice->providerReference,
+            merchantReference: $record->request->orderReference,
             status: $record->status,
             occurredAt: $record->occurredAt,
             amount: $record->invoice->amount,

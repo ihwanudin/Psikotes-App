@@ -16,6 +16,7 @@ return new class extends Migration
             $table->string('provider', 32);
             $table->string('event_id', 160);
             $table->string('provider_reference', 160);
+            $table->string('merchant_reference', 64);
             $table->string('status', 24);
             $table->unsignedBigInteger('amount');
             $table->char('currency', 3);

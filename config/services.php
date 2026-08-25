@@ -35,4 +35,12 @@ return [
         ],
     ],
 
+    'xendit' => [
+        'secret_key' => env('XENDIT_SECRET_KEY'),
+        'callback_token' => env('XENDIT_CALLBACK_TOKEN'),
+        'base_url' => 'https://api.xendit.co',
+        'connect_timeout_seconds' => 3,
+        'timeout_seconds' => 10,
+    ],
+
 ];
