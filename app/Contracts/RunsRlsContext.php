@@ -15,4 +15,12 @@ interface RunsRlsContext
      * @return TResult
      */
     public function run(RlsContext $context, callable $callback): mixed;
+
+    /**
+     * @template TResult
+     *
+     * @param  callable(): TResult  $callback
+     * @return TResult
+     */
+    public function runAsService(callable $callback): mixed;
 }

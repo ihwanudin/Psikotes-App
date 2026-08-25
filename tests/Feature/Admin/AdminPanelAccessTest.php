@@ -10,6 +10,7 @@ use App\Models\Admin;
 use Filament\Facades\Filament;
 use Filament\Http\Middleware\Authenticate;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Livewire\Mechanisms\PersistentMiddleware\PersistentMiddleware;
 use Tests\TestCase;
 
 final class AdminPanelAccessTest extends TestCase
@@ -24,6 +25,10 @@ final class AdminPanelAccessTest extends TestCase
         $this->assertSame('admin', $panel->getAuthGuard());
         $this->assertContains(Authenticate::class, $middleware);
         $this->assertContains(ApplyRlsContext::class, $middleware);
+        $this->assertContains(
+            ApplyRlsContext::class,
+            app(PersistentMiddleware::class)->getPersistentMiddleware(),
+        );
         $this->assertLessThan(
             array_search(ApplyRlsContext::class, $middleware, true),
             array_search(Authenticate::class, $middleware, true),

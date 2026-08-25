@@ -7,7 +7,6 @@ namespace App\Actions\Payments;
 use App\Enums\AdminAbility;
 use App\Models\Admin;
 use App\Models\PaymentMethod;
-use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
@@ -22,8 +21,7 @@ final readonly class SetPaymentMethodActivation
             throw new AuthorizationException('Payment method management is not allowed.');
         }
 
-        return $this->runner->run(
-            new RlsContext('service'),
+        return $this->runner->runAsService(
             function () use ($admin, $paymentMethodId, $active): PaymentMethod {
                 $method = PaymentMethod::query()->lockForUpdate()->findOrFail($paymentMethodId);
 
