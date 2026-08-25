@@ -13,7 +13,19 @@ final class OrderStateMachine
 {
     public function apply(OrderStatus $current, PaymentStatus $incoming): OrderTransition
     {
-        $target = OrderStatus::from($incoming->value);
+        return $this->transition($current, OrderStatus::from($incoming->value));
+    }
+
+    public function applyManualReview(OrderStatus $current, bool $approved): OrderTransition
+    {
+        return $this->transition(
+            $current,
+            $approved ? OrderStatus::Paid : OrderStatus::Rejected,
+        );
+    }
+
+    private function transition(OrderStatus $current, OrderStatus $target): OrderTransition
+    {
 
         if ($current === $target) {
             return new OrderTransition($current, changed: false, unlocksEntitlements: false);

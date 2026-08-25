@@ -20,9 +20,13 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $amount
  * @property string $currency
  * @property string|null $gateway_ref
+ * @property string|null $proof_object_key
+ * @property int|null $verified_by_admin_id
+ * @property string|null $rejection_reason
  * @property array<string, mixed>|null $metadata
  * @property CarbonInterface|null $expires_at
  * @property CarbonInterface|null $paid_at
+ * @property CarbonInterface|null $verified_at
  */
 #[Fillable([
     'public_id',
