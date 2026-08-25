@@ -132,12 +132,26 @@ final class ParticipantRegistrationController extends Controller
             'outcome' => null,
             'manualStatus' => null,
         ];
+        $manualPayment = [
+            'required' => false,
+            'proofUploaded' => false,
+            'status' => null,
+            'amount' => null,
+            'currency' => null,
+            'rejectionReason' => null,
+        ];
 
         if ($isAuthorized) {
             $participant = $runner->run(
                 new RlsContext('service'),
                 fn (): ?Participant => Participant::query()
-                    ->with(['identityEvidence:id,participant_id,type', 'identityVerification'])
+                    ->with([
+                        'identityEvidence:id,participant_id,type',
+                        'identityVerification',
+                        'orders' => fn ($query) => $query
+                            ->with('paymentMethod')
+                            ->latest('id'),
+                    ])
                     ->find((int) $participantId),
             );
 
@@ -150,11 +164,26 @@ final class ParticipantRegistrationController extends Controller
                     'outcome' => $participant->identityVerification?->outcome,
                     'manualStatus' => $participant->identityVerification?->manual_status,
                 ];
+                $manualOrder = $participant->orders->first(
+                    fn ($order): bool => $order->paymentMethod->code === 'manual_transfer',
+                );
+
+                if ($manualOrder !== null) {
+                    $manualPayment = [
+                        'required' => true,
+                        'proofUploaded' => is_string($manualOrder->proof_object_key),
+                        'status' => $manualOrder->status->value,
+                        'amount' => $manualOrder->amount,
+                        'currency' => $manualOrder->currency,
+                        'rejectionReason' => $manualOrder->rejection_reason,
+                    ];
+                }
             }
         }
 
         return Inertia::render('registration/received', [
             'identityEvidence' => $state,
+            'manualPayment' => $manualPayment,
             'status' => $request->session()->get('status'),
         ]);
     }

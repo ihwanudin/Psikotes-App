@@ -10,6 +10,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import IdentityFileField from '@/pages/registration/components/identity-file-field';
+import ManualPaymentProofForm from '@/pages/registration/components/manual-payment-proof-form';
 
 type Props = {
     identityEvidence: {
@@ -18,11 +19,21 @@ type Props = {
         outcome: 'pending' | 'match' | 'mismatch' | 'error' | null;
         manualStatus: 'pending' | 'accepted' | 'rejected' | null;
     };
+    manualPayment: {
+        required: boolean;
+        proofUploaded: boolean;
+        status:
+            'pending' | 'paid' | 'rejected' | 'expired' | 'cancelled' | null;
+        amount: number | null;
+        currency: string | null;
+        rejectionReason: string | null;
+    };
     status?: string;
 };
 
 export default function RegistrationReceived({
     identityEvidence,
+    manualPayment,
     status,
 }: Props) {
     const stored =
@@ -66,6 +77,24 @@ export default function RegistrationReceived({
                     </section>
 
                     <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-9">
+                        {manualPayment.required &&
+                            manualPayment.status !== null &&
+                            manualPayment.amount !== null &&
+                            manualPayment.currency !== null && (
+                                <ManualPaymentProofForm
+                                    proofUploaded={manualPayment.proofUploaded}
+                                    status={manualPayment.status}
+                                    amount={manualPayment.amount}
+                                    currency={manualPayment.currency}
+                                    rejectionReason={
+                                        manualPayment.rejectionReason
+                                    }
+                                    stored={
+                                        status === 'manual-payment-proof-stored'
+                                    }
+                                />
+                            )}
+
                         {stored && (
                             <div
                                 role="status"

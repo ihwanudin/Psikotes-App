@@ -12,6 +12,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 final class ManualPaymentProofUploadTest extends TestCase
@@ -147,6 +148,48 @@ final class ManualPaymentProofUploadTest extends TestCase
         $this->assertNotSame($firstKey, $secondKey);
         Storage::disk('payment-proofs')->assertMissing($firstKey);
         Storage::disk('payment-proofs')->assertExists($secondKey);
+    }
+
+    public function test_received_page_exposes_only_the_session_bound_manual_order_state(): void
+    {
+        [$participant, $order] = $this->manualOrder();
+        $session = $this->authorizedSession($participant);
+
+        $this->withSession($session)
+            ->get('/registration/received')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('registration/received')
+                ->where('manualPayment.required', true)
+                ->where('manualPayment.proofUploaded', false)
+                ->where('manualPayment.status', 'pending')
+                ->where('manualPayment.amount', 250_000)
+                ->where('manualPayment.currency', 'IDR')
+                ->where('manualPayment.rejectionReason', null)
+            );
+
+        $this->withSession($session)->post('/registration/manual-payment-proof', [
+            'payment_proof' => UploadedFile::fake()->image('proof.jpg', 800, 800),
+        ])->assertSessionHasNoErrors();
+
+        $this->get('/registration/received')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('manualPayment.proofUploaded', true)
+                ->where('status', 'manual-payment-proof-stored')
+            );
+
+        $this->flushSession();
+        $this->get('/registration/received')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('manualPayment.required', false)
+                ->where('manualPayment.proofUploaded', false)
+                ->where('manualPayment.status', null)
+                ->where('manualPayment.amount', null)
+                ->where('manualPayment.currency', null)
+                ->where('manualPayment.rejectionReason', null)
+            );
+
+        $this->assertSame('pending', $order->fresh()->status->value);
     }
 
     /** @return array{Participant, Order} */
