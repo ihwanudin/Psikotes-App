@@ -65,6 +65,8 @@ class AppServiceProvider extends ServiceProvider
             ->by((string) $request->ip()));
         RateLimiter::for('identity-evidence-uploads', fn (Request $request): Limit => Limit::perMinute(5)
             ->by($request->session()->getId().'|'.(string) $request->ip()));
+        RateLimiter::for('manual-payment-proof-uploads', fn (Request $request): Limit => Limit::perMinute(5)
+            ->by($request->session()->getId().'|'.(string) $request->ip()));
         RateLimiter::for('identity-evidence-access', fn (Request $request): Limit => Limit::perMinute(30)
             ->by((string) ($request->user('admin')?->getAuthIdentifier() ?? $request->ip())));
         RateLimiter::for('participant-login', fn (Request $request): Limit => Limit::perMinute(5)

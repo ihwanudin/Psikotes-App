@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Http\Controllers\Admin\IdentityEvidenceAccessController;
 use App\Http\Controllers\HealthCheckController;
 use App\Http\Controllers\IdentityEvidenceUploadController;
+use App\Http\Controllers\ManualPaymentProofUploadController;
 use App\Http\Controllers\ParticipantRegistrationController;
 use App\Http\Controllers\ReferralController;
 use App\Http\Controllers\XenditWebhookController;
@@ -29,6 +30,9 @@ Route::get('/registration/received', [ParticipantRegistrationController::class, 
 Route::post('/registration/identity-evidence', IdentityEvidenceUploadController::class)
     ->middleware('throttle:identity-evidence-uploads')
     ->name('registration.identity-evidence.store');
+Route::post('/registration/manual-payment-proof', ManualPaymentProofUploadController::class)
+    ->middleware('throttle:manual-payment-proof-uploads')
+    ->name('registration.manual-payment-proof.store');
 
 Route::post('/admin/identity-evidence/{evidence}/temporary-url', IdentityEvidenceAccessController::class)
     ->whereUlid('evidence')
