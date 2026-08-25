@@ -77,6 +77,17 @@ final class PostgresRlsDefinitionTest extends TestCase
         $this->assertStringContainsString("app_private.app_role() IN ('branch_admin', 'staff')", $financePolicy);
     }
 
+    public function test_payment_webhook_ledger_forces_rls_and_only_service_can_write(): void
+    {
+        $migration = file_get_contents(dirname(__DIR__, 3).'/database/migrations/2026_08_25_000800_create_payment_webhook_events.php');
+        $this->assertIsString($migration);
+
+        $this->assertStringContainsString('ALTER TABLE payment_webhook_events ENABLE ROW LEVEL SECURITY', $migration);
+        $this->assertStringContainsString('ALTER TABLE payment_webhook_events FORCE ROW LEVEL SECURITY', $migration);
+        $this->assertStringContainsString("app_private.app_role() IN ('service', 'super_admin')", $migration);
+        $this->assertStringContainsString("app_private.app_role() = 'service'", $migration);
+    }
+
     private function section(string $start, string $end): string
     {
         $matches = [];

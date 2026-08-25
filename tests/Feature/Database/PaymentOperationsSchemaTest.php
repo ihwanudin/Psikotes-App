@@ -18,7 +18,7 @@ final class PaymentOperationsSchemaTest extends TestCase
 
     public function test_payment_and_operational_tables_exist(): void
     {
-        foreach (['payment_methods', 'orders', 'entitlements', 'audit_logs', 'outbox_messages'] as $table) {
+        foreach (['payment_methods', 'orders', 'entitlements', 'payment_webhook_events', 'audit_logs', 'outbox_messages'] as $table) {
             $this->assertTrue(Schema::hasTable($table), "Missing table: {$table}");
         }
 
@@ -32,6 +32,18 @@ final class PaymentOperationsSchemaTest extends TestCase
             'invoice_url',
             'expires_at',
             'paid_at',
+        ]));
+        $this->assertTrue(Schema::hasColumns('payment_webhook_events', [
+            'provider',
+            'event_id',
+            'provider_reference',
+            'status',
+            'amount',
+            'currency',
+            'intent_hash',
+            'outcome',
+            'error_code',
+            'processed_at',
         ]));
     }
 
@@ -119,6 +131,29 @@ final class PaymentOperationsSchemaTest extends TestCase
 
         $this->expectException(QueryException::class);
         DB::table('entitlements')->insert($entitlement);
+    }
+
+    public function test_provider_event_ids_are_unique_per_provider(): void
+    {
+        $event = [
+            'provider' => 'xendit',
+            'event_id' => 'invoice-event-unique',
+            'provider_reference' => 'invoice-reference',
+            'status' => 'paid',
+            'amount' => 500000,
+            'currency' => 'IDR',
+            'occurred_at' => now(),
+            'intent_hash' => hash('sha256', 'intent'),
+            'outcome' => 'applied',
+            'processed_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ];
+
+        DB::table('payment_webhook_events')->insert($event);
+
+        $this->expectException(QueryException::class);
+        DB::table('payment_webhook_events')->insert($event);
     }
 
     /** @return array{int, int} */
