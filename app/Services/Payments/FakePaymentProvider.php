@@ -75,11 +75,15 @@ final class FakePaymentProvider implements PaymentProvider
         $providerReference = $input->payload['invoice_reference'] ?? null;
         $rawStatus = $input->payload['status'] ?? null;
         $rawOccurredAt = $input->payload['occurred_at'] ?? null;
+        $amount = $input->payload['amount'] ?? null;
+        $currency = $input->payload['currency'] ?? null;
 
         if (! is_string($eventId)
             || ! is_string($providerReference)
             || ! is_string($rawStatus)
-            || ! is_string($rawOccurredAt)) {
+            || ! is_string($rawOccurredAt)
+            || ! is_int($amount)
+            || ! is_string($currency)) {
             throw new PaymentProviderException('Webhook payload is malformed.');
         }
 
@@ -96,7 +100,7 @@ final class FakePaymentProvider implements PaymentProvider
         }
 
         try {
-            return new PaymentEvent($eventId, $providerReference, $status, $occurredAt);
+            return new PaymentEvent($eventId, $providerReference, $status, $occurredAt, $amount, $currency);
         } catch (InvalidArgumentException $exception) {
             throw new PaymentProviderException('Webhook identifiers are invalid.', previous: $exception);
         }
@@ -141,6 +145,8 @@ final class FakePaymentProvider implements PaymentProvider
                 providerReference: $record->invoice->providerReference,
                 status: PaymentStatus::Paid,
                 occurredAt: $occurredAt,
+                amount: $record->invoice->amount,
+                currency: $record->invoice->currency,
             );
         } catch (InvalidArgumentException $exception) {
             throw new PaymentProviderException('Fake paid event is invalid.', previous: $exception);
@@ -166,6 +172,8 @@ final class FakePaymentProvider implements PaymentProvider
             providerReference: $record->invoice->providerReference,
             status: $record->status,
             occurredAt: $record->occurredAt,
+            amount: $record->invoice->amount,
+            currency: $record->invoice->currency,
         );
     }
 

@@ -15,6 +15,8 @@ final readonly class PaymentEvent
         public string $providerReference,
         public PaymentStatus $status,
         public CarbonInterface $occurredAt,
+        public int $amount,
+        public string $currency,
     ) {
         if (! preg_match('/^[A-Za-z0-9._:-]{1,160}$/', $eventId)) {
             throw new InvalidArgumentException('Payment event identifier has an invalid format.');
@@ -22,6 +24,10 @@ final readonly class PaymentEvent
 
         if (! preg_match('/^[A-Za-z0-9_-]{1,160}$/', $providerReference)) {
             throw new InvalidArgumentException('Provider reference has an invalid format.');
+        }
+
+        if ($amount < 1 || $currency !== 'IDR') {
+            throw new InvalidArgumentException('Payment event money values are invalid.');
         }
     }
 }

@@ -97,11 +97,15 @@ final class PaymentProviderContractTest extends TestCase
                 'invoice_reference' => $invoice->providerReference,
                 'status' => 'paid',
                 'occurred_at' => '2026-08-25T13:05:00+07:00',
+                'amount' => 350_000,
+                'currency' => 'IDR',
             ],
         ));
 
         $this->assertSame('fake-webhook-event-1', $event->eventId);
         $this->assertSame(PaymentStatus::Paid, $event->status);
+        $this->assertSame(350_000, $event->amount);
+        $this->assertSame('IDR', $event->currency);
     }
 
     public function test_malformed_or_unauthenticated_webhook_is_rejected(): void

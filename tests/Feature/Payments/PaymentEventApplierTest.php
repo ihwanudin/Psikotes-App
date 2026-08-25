@@ -11,6 +11,7 @@ use App\Models\Entitlement;
 use App\Models\Order;
 use App\Models\Participant;
 use App\Services\Payments\Exceptions\InvalidOrderTransition;
+use App\Services\Payments\Exceptions\PaymentAmountMismatch;
 use App\Services\Payments\Exceptions\PaymentReferenceMismatch;
 use App\Services\Payments\OrderPaymentEventHandler;
 use App\Services\Payments\PaymentEventApplier;
@@ -107,6 +108,8 @@ final class PaymentEventApplierTest extends TestCase
                     providerReference: 'different-provider-reference',
                     status: PaymentStatus::Paid,
                     occurredAt: Date::now(),
+                    amount: 350_000,
+                    currency: 'IDR',
                 ),
             );
             $this->fail('Expected a provider reference mismatch.');
@@ -124,6 +127,26 @@ final class PaymentEventApplierTest extends TestCase
         app(OrderPaymentEventHandler::class)->applyInCurrentServiceTransaction(
             $this->event(PaymentStatus::Paid, 'event-outside-service-transaction'),
         );
+    }
+
+    public function test_paid_event_with_different_money_snapshot_is_rejected_and_remains_locked(): void
+    {
+        [$order, $entitlement] = $this->orderWithLockedEntitlement();
+
+        try {
+            app(PaymentEventApplier::class)->apply(new PaymentEvent(
+                eventId: 'event-wrong-amount',
+                providerReference: 'fake-provider-reference',
+                status: PaymentStatus::Paid,
+                occurredAt: Date::now(),
+                amount: 349_999,
+                currency: 'IDR',
+            ));
+            $this->fail('Expected a payment amount mismatch.');
+        } catch (PaymentAmountMismatch) {
+            $this->assertSame('pending', $order->fresh()->status->value);
+            $this->assertSame('locked', $entitlement->fresh()->status);
+        }
     }
 
     /** @return array{Order, Entitlement} */
@@ -181,6 +204,8 @@ final class PaymentEventApplierTest extends TestCase
             providerReference: 'fake-provider-reference',
             status: $status,
             occurredAt: Date::now(),
+            amount: 350_000,
+            currency: 'IDR',
         );
     }
 }

@@ -10,6 +10,7 @@ use App\Enums\OrderStatus;
 use App\Models\Entitlement;
 use App\Models\Order;
 use App\Security\RlsContextRunner;
+use App\Services\Payments\Exceptions\PaymentAmountMismatch;
 use App\Services\Payments\Exceptions\PaymentReferenceMismatch;
 use LogicException;
 
@@ -33,6 +34,10 @@ final readonly class OrderPaymentEventHandler
 
         if ($order === null) {
             throw new PaymentReferenceMismatch('Payment event does not match an order.');
+        }
+
+        if ($order->amount !== $event->amount || $order->currency !== $event->currency) {
+            throw new PaymentAmountMismatch('Payment event money does not match the order.');
         }
 
         $transition = $this->stateMachine->apply($order->status, $event->status);
