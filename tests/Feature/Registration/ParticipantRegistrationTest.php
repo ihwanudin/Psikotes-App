@@ -202,6 +202,7 @@ final class ParticipantRegistrationTest extends TestCase
 
         $this->assertDatabaseCount('participants', 1);
         $this->assertDatabaseCount('consent_records', 2);
+        $this->assertDatabaseCount('orders', 1);
     }
 
     public function test_registration_is_rate_limited_by_ip(): void

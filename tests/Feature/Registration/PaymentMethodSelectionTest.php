@@ -105,6 +105,27 @@ final class PaymentMethodSelectionTest extends TestCase
         $this->assertFalse($historical->paymentMethod->is_active);
     }
 
+    public function test_registration_token_cannot_be_reused_for_another_payment_method(): void
+    {
+        DB::table('payment_methods')->update(['is_active' => true]);
+        $token = (string) Str::uuid();
+        $payload = $this->validPayload($token, 'manual_transfer');
+
+        $this->withSession(['registration.token' => $token])
+            ->post('/registrations', $payload)
+            ->assertRedirect('/registration/received');
+
+        $payload['payment_method_code'] = 'xendit';
+        $this->withSession(['registration.token' => $token])
+            ->post('/registrations', $payload)
+            ->assertSessionHasErrors('_registration_token');
+
+        $order = Order::query()->with('paymentMethod')->sole();
+        $this->assertSame('manual_transfer', $order->paymentMethod->code);
+        $this->assertDatabaseCount('participants', 1);
+        $this->assertDatabaseCount('orders', 1);
+    }
+
     /** @return array<string, mixed> */
     private function validPayload(string $token, string $paymentMethodCode): array
     {

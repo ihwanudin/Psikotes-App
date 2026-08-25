@@ -21,7 +21,7 @@
 - Bukti identitas disimpan pada disk `identity` privat (local private pada development, S3-compatible pada production). Key acak 64 karakter tidak memuat nama peserta/nama file asli. Foto dokumen dan selfie divalidasi dari isi/magic bytes, format JPG/PNG/WebP, ukuran ≤5 MB, dan dimensi 480–8.000 px; upload dibatasi 5/menit per sesi+IP.
 - URL bukti identitas diterbitkan setelah policy peserta dan konteks RLS admin lulus, dibatasi 30 permintaan/menit/admin, dan setiap penerbitan menulis audit service-only. Konteks audit hanya memuat jenis bukti dan waktu kedaluwarsa URL, bukan PII, URL, atau object key.
 - Hasil matcher adalah marker (`pending|match|mismatch|error`) dengan status manual tetap `pending`; mismatch/error tidak menghapus peserta, tidak mengubah entitlement, dan tidak otomatis menentukan kelayakan.
-- Audit log: verifikasi order, void sesi, penerbitan URL bukti identitas, akses/unduh laporan oleh admin, perubahan rate fee, keputusan withdraw, perubahan kamus GE.
+- Audit log: aktivasi metode pembayaran, verifikasi order, void sesi, penerbitan URL bukti identitas, akses/unduh laporan oleh admin, perubahan rate fee, keputusan withdraw, perubahan kamus GE. Aktivasi kanal hanya dapat dilakukan super admin dan auditnya ditulis atomik melalui konteks service.
 - Event pembayaran dinormalisasi di adapter dan dicocokkan melalui `gateway_ref` unik. Transisi terminal tidak dapat ditimpa; hanya pending→paid pertama yang membuka entitlement, dengan order dan entitlement dikunci serta diperbarui dalam satu transaksi service-RLS. Autentikasi callback dan constraint unik `event_id` diselesaikan pada integrasi provider (Task 15).
 
 ## Anti-kecurangan

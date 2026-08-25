@@ -283,14 +283,14 @@
 
 **Acceptance criteria:**
 
-- [ ] Hanya super admin dapat mengubah `is_active`; perubahan masuk audit log.
-- [ ] Endpoint/form registrasi hanya menampilkan metode aktif dan menolak kode nonaktif dengan error stabil.
-- [ ] Menonaktifkan kanal tidak membatalkan atau menyembunyikan order yang sudah dibuat.
+- [x] Hanya super admin dapat mengubah `is_active`; perubahan masuk audit log.
+- [x] Endpoint/form registrasi hanya menampilkan metode aktif dan menolak kode nonaktif dengan error stabil.
+- [x] Menonaktifkan kanal tidak membatalkan atau menyembunyikan order yang sudah dibuat.
 
 **Verification:**
 
-- [ ] Feature tests mencakup default-off, on/off, unauthorized toggle, forced disabled code, dan order historis.
-- [ ] Filament toggle smoke test lulus.
+- [x] Feature tests mencakup default-off, on/off, unauthorized toggle, forced disabled code, dan order historis.
+- [x] Filament toggle smoke test lulus.
 
 **Dependencies:** Tasks 8, 13
 
