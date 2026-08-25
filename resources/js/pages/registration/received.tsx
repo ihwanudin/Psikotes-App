@@ -184,6 +184,11 @@ export default function RegistrationReceived({
                         )}
 
                         <Button asChild variant="ghost" className="mt-7 w-full">
+                            <Link href="/registration/order-status">
+                                Lihat status pembayaran
+                            </Link>
+                        </Button>
+                        <Button asChild variant="ghost" className="mt-2 w-full">
                             <Link href="/">Kembali ke beranda</Link>
                         </Button>
                     </section>

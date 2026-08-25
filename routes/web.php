@@ -9,6 +9,7 @@ use App\Http\Controllers\IdentityEvidenceUploadController;
 use App\Http\Controllers\ManualPaymentProofUploadController;
 use App\Http\Controllers\ParticipantRegistrationController;
 use App\Http\Controllers\ReferralController;
+use App\Http\Controllers\RegistrationOrderStatusController;
 use App\Http\Controllers\XenditWebhookController;
 use App\Http\Middleware\ApplyRlsContext;
 use Filament\Http\Middleware\Authenticate as AuthenticateFilament;
@@ -30,6 +31,8 @@ Route::post('/registrations', [ParticipantRegistrationController::class, 'store'
     ->name('registrations.store');
 Route::get('/registration/received', [ParticipantRegistrationController::class, 'received'])
     ->name('registration.received');
+Route::get('/registration/order-status', RegistrationOrderStatusController::class)
+    ->name('registration.order-status');
 Route::post('/registration/identity-evidence', IdentityEvidenceUploadController::class)
     ->middleware('throttle:identity-evidence-uploads')
     ->name('registration.identity-evidence.store');
