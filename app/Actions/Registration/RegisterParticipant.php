@@ -11,6 +11,7 @@ use App\Registration\ConsentDocument;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
 use App\Services\Referral\ReferralAttribution;
+use App\Services\TestNumber\MonthlyTestNumberIssuer;
 use Illuminate\Database\QueryException;
 use Illuminate\Validation\ValidationException;
 
@@ -19,6 +20,7 @@ final readonly class RegisterParticipant
     public function __construct(
         private RlsContextRunner $runner,
         private ReferralAttribution $referrals,
+        private MonthlyTestNumberIssuer $testNumbers,
     ) {}
 
     /**
@@ -82,6 +84,7 @@ final readonly class RegisterParticipant
         }
 
         $package = TestPackage::query()
+            ->with('items')
             ->availableForRegistration()
             ->sharedLock()
             ->find($packageId);
@@ -108,7 +111,18 @@ final readonly class RegisterParticipant
             'intended_field' => $input['intended_field'],
             'phone' => preg_replace('/[^0-9+]/', '', (string) $input['phone']),
             'email' => $input['email'] ?? null,
+            'test_number' => $this->testNumbers->issue(),
         ])->save();
+
+        $now = now();
+        $participant->entitlements()->createMany(
+            $package->items->map(fn ($item): array => [
+                'test_type' => $item->test_type,
+                'status' => 'locked',
+                'created_at' => $now,
+                'updated_at' => $now,
+            ])->all(),
+        );
 
         $this->recordConsent($participant, ConsentDocument::for('psychotest'), true);
         $this->recordConsent($participant, ConsentDocument::for('dass'), (bool) $input['consent_dass']);

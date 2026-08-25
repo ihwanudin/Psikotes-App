@@ -50,7 +50,15 @@ final class ParticipantRegistrationTest extends TestCase
         $this->assertSame($branch->id, $participant->referral_branch_id);
         $this->assertSame('default', $participant->referral_source);
         $this->assertSame('KAIGO', $participant->intended_field);
-        $this->assertNull($participant->test_number);
+        $this->assertMatchesRegularExpression(
+            '/^LSI-\d{6}-\d{6}-[A-Z0-9]{6}$/',
+            (string) $participant->test_number,
+        );
+        $this->assertDatabaseHas('entitlements', [
+            'participant_id' => $participant->id,
+            'test_type' => 'ist',
+            'status' => 'locked',
+        ]);
 
         $this->assertDatabaseHas('consent_records', [
             'participant_id' => $participant->id,
@@ -145,7 +153,10 @@ final class ParticipantRegistrationTest extends TestCase
         $this->assertSame($referral->id, $participant->branch_id);
         $this->assertSame($referral->id, $participant->referral_branch_id);
         $this->assertSame('link', $participant->referral_source);
-        $this->assertNull($participant->test_number);
+        $this->assertMatchesRegularExpression(
+            '/^LSI-\d{6}-\d{6}-[A-Z0-9]{6}$/',
+            (string) $participant->test_number,
+        );
         $this->assertDatabaseMissing('consent_records', [
             'consented_at' => '2000-01-01 00:00:00',
         ]);

@@ -61,6 +61,12 @@ final class Participant extends Model
         return $this->hasOne(IdentityVerification::class);
     }
 
+    /** @return HasMany<Entitlement, $this> */
+    public function entitlements(): HasMany
+    {
+        return $this->hasMany(Entitlement::class);
+    }
+
     /** @return array<string, string> */
     protected function casts(): array
     {
