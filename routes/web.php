@@ -3,12 +3,15 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\Admin\IdentityEvidenceAccessController;
+use App\Http\Controllers\Admin\ManualPaymentProofAccessController;
 use App\Http\Controllers\HealthCheckController;
 use App\Http\Controllers\IdentityEvidenceUploadController;
 use App\Http\Controllers\ManualPaymentProofUploadController;
 use App\Http\Controllers\ParticipantRegistrationController;
 use App\Http\Controllers\ReferralController;
 use App\Http\Controllers\XenditWebhookController;
+use App\Http\Middleware\ApplyRlsContext;
+use Filament\Http\Middleware\Authenticate as AuthenticateFilament;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/health', HealthCheckController::class)->name('health');
@@ -38,6 +41,15 @@ Route::post('/admin/identity-evidence/{evidence}/temporary-url', IdentityEvidenc
     ->whereUlid('evidence')
     ->middleware(['auth:admin', 'throttle:identity-evidence-access'])
     ->name('admin.identity-evidence.temporary-url');
+Route::get('/admin/manual-payment-proofs/{order}/open', ManualPaymentProofAccessController::class)
+    ->whereUlid('order')
+    ->middleware([
+        'panel:admin',
+        AuthenticateFilament::class,
+        ApplyRlsContext::class,
+        'throttle:manual-payment-proof-access',
+    ])
+    ->name('admin.manual-payment-proofs.open');
 
 Route::inertia('/', 'welcome')->name('home');
 
