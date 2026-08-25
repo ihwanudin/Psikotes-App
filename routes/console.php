@@ -17,3 +17,8 @@ Schedule::command('payments:reconcile-xendit')
     ->everyFiveMinutes()
     ->withoutOverlapping()
     ->onOneServer();
+
+Schedule::command('notifications:dispatch-outbox')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->onOneServer();
