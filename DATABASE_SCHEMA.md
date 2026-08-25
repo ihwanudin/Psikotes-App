@@ -34,5 +34,6 @@ Backup: PITR (Point-In-Time Recovery) Postgres via `pg_basebackup`/WAL archiving
 - Identitas tenant: `branches`, `admins`, `participants`, `referral_visits`, dan `consent_records`.
 - Pembayaran/operasional: `payment_methods`, `orders`, `entitlements`, `audit_logs`, dan `outbox_messages`. Kanal `xendit` dan `manual_transfer` dibuat nonaktif; menonaktifkan kanal tidak menghapus order historis.
 - DASS memakai schema PostgreSQL `dass` dengan tabel `assessments`, `responses`, dan `results`. Seluruh tabel memiliki `expires_at` untuk retensi dua tahun. SQLite testing memakai nama ekuivalen `dass_*` karena tidak mendukung schema PostgreSQL.
-- Migrasi dijalankan oleh owner terpisah. Aplikasi memakai role `psikotes_runtime` yang `NOSUPERUSER`, `NOCREATEDB`, `NOCREATEROLE`, dan `NOBYPASSRLS`. Policy RLS ditambahkan pada Task 6.
+- Migrasi dijalankan oleh owner terpisah. Aplikasi memakai role `psikotes_runtime` yang `NOSUPERUSER`, `NOCREATEDB`, `NOCREATEROLE`, dan `NOBYPASSRLS`.
+- Policy RLS fail-closed didefinisikan di `database/schema/rls_policies.sql`: konteks kosong tidak memperoleh baris, akses cabang/peserta dibatasi oleh ID sesi, mutasi keuangan dibatasi, dan schema `dass` tidak dapat dibaca admin non-psikolog. Verifikasi negatif lintas tenant tetap harus dijalankan pada PostgreSQL nyata sebelum Task 6 dinyatakan selesai.
 - PII: identitas/kontak peserta serta IP/user-agent referral. Data sensitif: response dan hasil DASS. Data finansial: order. `audit_logs.context` hanya boleh memuat identifier dan metadata allowlist, bukan PII mentah.
