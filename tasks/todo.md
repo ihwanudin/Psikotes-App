@@ -175,13 +175,13 @@
 
 **Acceptance criteria:**
 
-- [ ] Referral pertama tetap menang setelah link cabang lain dibuka.
-- [ ] Kode tidak dikenal jatuh ke cabang default tanpa membuka data cabang.
-- [ ] IP/UA diperlakukan sebagai PII dengan retensi dan logging minimum.
+- [x] Referral pertama tetap menang setelah link cabang lain dibuka.
+- [x] Kode tidak dikenal jatuh ke cabang default tanpa membuka data cabang.
+- [x] IP/UA diperlakukan sebagai PII dengan retensi dan logging minimum.
 
 **Verification:**
 
-- [ ] Feature tests mencakup first-touch, unknown code, expired cookie, dan concurrent registration.
+- [ ] Feature tests mencakup first-touch, unknown code, expired cookie, dan concurrent registration. Tiga skenario pertama hijau; concurrent registration menunggu Task 10.
 
 **Dependencies:** Task 7
 

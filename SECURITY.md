@@ -14,6 +14,8 @@
 - Konteks `role`, `branch_id`, dan `participant_id` hanya berasal dari principal/job internal, dipasang dengan `set_config(..., true)` dalam transaksi, dan dibersihkan pada sukses maupun exception. Header atau parameter request tidak pernah menjadi sumber konteks RLS.
 - Panel Filament memakai guard session `admin` dan model `Admin`, bukan guard peserta/web. Kemampuan didefinisikan server-side; policy peserta menolak akses lintas cabang walaupun ID diketahui, dan hanya psikolog yang memperoleh kemampuan membaca DASS.
 - Default session admin: cookie `Secure`, `HttpOnly`, `SameSite=Lax`, masa idle 120 menit. Nilai produksi tetap dinyatakan eksplisit melalui environment server.
+- Referral first-touch disimpan dalam cookie terenkripsi `Secure`/`HttpOnly`/`SameSite=Lax` selama 30 hari. Payload kedaluwarsa atau tidak valid gagal tertutup dan diresolusi ulang di server; browser tidak menjadi sumber `branch_id`.
+- Audit referral menyimpan IP serta maksimal 512 karakter user-agent hanya sampai `expires_at` 30 hari. Route publik menulis audit melalui transaksi berkonteks `service`, bukan dengan memperluas policy RLS publik.
 - Signed URL (object storage S3-compatible) TTL 15 menit, diterbitkan hanya setelah cek hak. Tidak ada URL permanen.
 - Validasi input server-side: zod di setiap endpoint; file upload dibatasi tipe/ukuran (bukti transfer ≤5 MB jpg/png/pdf; foto proctor ≤200 KB).
 - Audit log: verifikasi order, void sesi, akses/unduh laporan oleh admin, perubahan rate fee, keputusan withdraw, perubahan kamus GE.
