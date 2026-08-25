@@ -138,6 +138,15 @@ Toolchain + repository
 - Provider/algoritme pencocokan wajah otomatis dan dasar pemrosesan biometrik. Rekomendasi sementara: capture + tinjauan manual, dengan interface provider tetapi tanpa keputusan otomatis.
 - Endpoint yang dipakai untuk notifikasi: WAHA langsung atau webhook n8n.
 - Credential sandbox Xendit, S3-compatible storage, dan layanan notifikasi tersedia kapan.
+
+## Rencana implementasi Task 17
+
+1. Tambahkan deduplication key unik pada outbox dan enqueue notifikasi aktivasi di transaksi pertama `pending→paid`; dispatch job hanya setelah commit.
+2. Tambahkan kontrak notifier, fake deterministik, adapter webhook n8n fail-closed, worker retry dengan audit/telemetry tanpa PII, serta scheduler pemulihan outbox tertinggal.
+3. Tambahkan status order berbasis JWT pada `/api/me/order` dan halaman Inertia berbasis sesi registrasi yang selalu menurunkan participant dari principal/sesi, bukan ID request.
+4. Jalankan focused tests per irisan, review keamanan/idempotensi, browser smoke bila runtime lokal tersedia, lalu gerbang PHP/frontend/audit penuh dan sinkronkan dokumentasi.
+
+Keputusan batas provider: n8n menjadi adapter produksi karena webhook dapat diwajibkan menduplikasi `idempotency_key` sebelum memanggil WAHA. Adapter langsung `POST /api/sendText` tidak dipakai pada F1 karena dokumentasi WAHA tidak menjamin idempotensi untuk outcome timeout yang tidak diketahui.
 - Docker Desktop/Engine akan dipasang lokal atau development awal dijalankan via Laragon.
 - Teks final consent A/B dan masa retensi consent perlu review hukum sebelum go-live.
 
