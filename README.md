@@ -63,4 +63,4 @@ php artisan queue:failed
 - `last_error=n8n_not_configured`: URL/token belum masuk ke environment queue worker.
 - Kegagalan notifikasi tidak boleh mengubah order `paid` atau entitlement `ready`.
 
-Workflow n8n wajib mengautentikasi Bearer token dan melakukan deduplikasi atomik berdasarkan `idempotency_key` sebelum `POST /api/sendText` ke WAHA. Lihat keputusan dan kontrak data di `docs/decisions/0003-notification-delivery-boundary.md`.
+Workflow n8n wajib mengautentikasi Bearer token dan melakukan deduplikasi atomik berdasarkan `idempotency_key` sebelum `POST /api/sendText` ke WAHA. File siap impor dan petunjuk pemasangan tersedia di `n8n/README.md`; lihat keputusan dan kontrak data di `docs/decisions/0003-notification-delivery-boundary.md`.

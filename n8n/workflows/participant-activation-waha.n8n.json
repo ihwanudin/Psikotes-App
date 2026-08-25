@@ -1,0 +1,289 @@
+{
+  "name": "Psikotes LSI - Participant Activation via WAHA",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Setup wajib\n1. Jalankan SQL `n8n/sql/notification-delivery-dedup.sql` pada database deduplikasi.\n2. Pilih credential **Header Auth** pada Webhook: header `Authorization`, value `Bearer <N8N_WEBHOOK_TOKEN>`.\n3. Pilih credential PostgreSQL pada dua node Postgres.\n4. Pada **Send WAHA Message**, ganti host WAHA, pilih Header Auth dengan header `X-Api-Key`, dan ubah session `default` bila perlu.\n5. Aktifkan workflow lalu gunakan Production URL `/webhook/participant-activation`.\n\nWorkflow sengaja tidak menyimpan execution payload agar nomor telepon dan nomor tes tidak tertahan di riwayat n8n.",
+        "height": 420,
+        "width": 520,
+        "color": 5
+      },
+      "id": "58ff90f8-0569-4291-a6ce-40db871f30dc",
+      "name": "Setup Instructions",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-920, -440]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "participant-activation",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "3d89105b-8814-43f8-97f7-111f0ed9e03d",
+      "name": "Participant Activation Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [-760, 20],
+      "webhookId": "7345a204-fdd4-4fee-a275-75429df3d437"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst body = input.body;\nconst headerKey = input.headers?.['idempotency-key'];\nconst allowedTests = new Set(['ist', 'papi', 'rmib', 'kraepelin', 'dass21']);\n\nif (!body || typeof body !== 'object' || Array.isArray(body)) {\n  throw new Error('invalid_request_body');\n}\n\nconst validKey = typeof body.idempotency_key === 'string'\n  && /^[0-9A-HJKMNP-TV-Z]{26}$/.test(body.idempotency_key)\n  && headerKey === body.idempotency_key;\nconst validPhone = typeof body.recipient?.phone === 'string'\n  && /^\\+?[0-9]{8,15}$/.test(body.recipient.phone);\nconst validTestNumber = typeof body.credentials?.test_number === 'string'\n  && /^[A-Z0-9-]{1,32}$/.test(body.credentials.test_number);\nconst validEntitlements = Array.isArray(body.entitlements)\n  && body.entitlements.length > 0\n  && body.entitlements.length === new Set(body.entitlements).size\n  && body.entitlements.every((value) => typeof value === 'string' && allowedTests.has(value));\n\nif (body.event !== 'participant.activation'\n  || body.schema_version !== 1\n  || !validKey\n  || !validPhone\n  || !validTestNumber\n  || !validEntitlements) {\n  throw new Error('invalid_participant_activation_contract');\n}\n\nconst phoneDigits = body.recipient.phone.replace(/\\D/g, '');\nconst testLabels = body.entitlements.map((value) => value.toUpperCase());\nconst canonical = JSON.stringify({\n  event: body.event,\n  schema_version: body.schema_version,\n  idempotency_key: body.idempotency_key,\n  phone: body.recipient.phone,\n  test_number: body.credentials.test_number,\n  entitlements: body.entitlements,\n});\n\nreturn [{\n  json: {\n    event: body.event,\n    idempotency_key: body.idempotency_key,\n    request_canonical: canonical,\n    claim_token: $execution.id,\n    chat_id: `${phoneDigits}@c.us`,\n    message: [\n      'Pembayaran Anda telah terverifikasi.',\n      `Nomor tes: ${body.credentials.test_number}`,\n      `Tes aktif: ${testLabels.join(', ')}`,\n      '',\n      'Simpan nomor tes ini dan jangan membagikannya kepada pihak lain.',\n    ].join('\\n'),\n  },\n}];"
+      },
+      "id": "b7ec53ce-138c-483d-810b-4933a7ea6bee",
+      "name": "Validate and Prepare Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-520, 20]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO notification_delivery_dedup (\n    idempotency_key,\n    request_hash,\n    claim_token,\n    state,\n    first_seen_at,\n    last_seen_at,\n    expires_at\n)\nVALUES ($1, md5($2), $3, 'processing', NOW(), NOW(), NOW() + INTERVAL '2 years')\nON CONFLICT (idempotency_key) DO UPDATE\nSET last_seen_at = NOW()\nRETURNING\n    state,\n    (claim_token = $3) AS claimed,\n    (request_hash = md5($2)) AS payload_matches;",
+        "options": {
+          "queryReplacement": "={{ [$json.idempotency_key, $json.request_canonical, $json.claim_token] }}"
+        }
+      },
+      "id": "81144865-2819-4814-9fea-1741b57303d5",
+      "name": "Claim Idempotency Key",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [-280, 20]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ca77fb14-bd97-4123-8510-284922a83a52",
+              "leftValue": "={{ $json.payload_matches }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "4c94387e-0cf9-4266-a153-1ed4e6b149e0",
+      "name": "Payload Matches Key?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-40, 20]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "81a4becb-18d5-4ee2-a662-e1390847608e",
+              "leftValue": "={{ $json.claimed }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e2df4aa0-597e-4618-b5d2-6ae7a02cc8d0",
+      "name": "New Claim?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [200, -80]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://REPLACE-WAHA-HOST/api/sendText",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ session: 'default', chatId: $('Validate and Prepare Payload').first().json.chat_id, text: $('Validate and Prepare Payload').first().json.message }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "c946c7d8-ac7b-4f02-98cb-3e1eb8bf343a",
+      "name": "Send WAHA Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, -200]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE notification_delivery_dedup\nSET state = 'sent', sent_at = NOW(), last_seen_at = NOW()\nWHERE idempotency_key = $1\n  AND claim_token = $2\n  AND state = 'processing'\nRETURNING state;",
+        "options": {
+          "queryReplacement": "={{ [$('Validate and Prepare Payload').first().json.idempotency_key, $('Validate and Prepare Payload').first().json.claim_token] }}"
+        }
+      },
+      "id": "84b8ce57-010d-47e6-90b2-af8577e48014",
+      "name": "Mark Delivery Sent",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [680, -200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'sent', idempotency_key: $('Validate and Prepare Payload').first().json.idempotency_key } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "8e902cec-d6b0-4a80-bda2-271438f2cb65",
+      "name": "Respond Sent",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [920, -200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "23c1745c-5e73-4104-8754-56dcf2a79f4f",
+              "leftValue": "={{ $json.state }}",
+              "rightValue": "sent",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "2ca169a7-156d-4234-8105-0aa4a8e46443",
+      "name": "Already Sent?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [440, 40]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'duplicate', idempotency_key: $('Validate and Prepare Payload').first().json.idempotency_key } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "e4dfc8ab-6fb4-473b-af07-1a9914942a38",
+      "name": "Respond Duplicate",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [680, -20]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'uncertain', code: 'DELIVERY_IN_PROGRESS_OR_UNCERTAIN' } }}",
+        "options": {
+          "responseCode": 503
+        }
+      },
+      "id": "065016bb-7dbd-4568-916e-46036a41d755",
+      "name": "Respond Uncertain",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [680, 120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'rejected', code: 'IDEMPOTENCY_PAYLOAD_MISMATCH' } }}",
+        "options": {
+          "responseCode": 422
+        }
+      },
+      "id": "85493c54-16fc-4661-be3e-0379c97d9652",
+      "name": "Respond Payload Mismatch",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [200, 180]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Participant Activation Webhook": {
+      "main": [[{"node": "Validate and Prepare Payload", "type": "main", "index": 0}]]
+    },
+    "Validate and Prepare Payload": {
+      "main": [[{"node": "Claim Idempotency Key", "type": "main", "index": 0}]]
+    },
+    "Claim Idempotency Key": {
+      "main": [[{"node": "Payload Matches Key?", "type": "main", "index": 0}]]
+    },
+    "Payload Matches Key?": {
+      "main": [
+        [{"node": "New Claim?", "type": "main", "index": 0}],
+        [{"node": "Respond Payload Mismatch", "type": "main", "index": 0}]
+      ]
+    },
+    "New Claim?": {
+      "main": [
+        [{"node": "Send WAHA Message", "type": "main", "index": 0}],
+        [{"node": "Already Sent?", "type": "main", "index": 0}]
+      ]
+    },
+    "Send WAHA Message": {
+      "main": [[{"node": "Mark Delivery Sent", "type": "main", "index": 0}]]
+    },
+    "Mark Delivery Sent": {
+      "main": [[{"node": "Respond Sent", "type": "main", "index": 0}]]
+    },
+    "Already Sent?": {
+      "main": [
+        [{"node": "Respond Duplicate", "type": "main", "index": 0}],
+        [{"node": "Respond Uncertain", "type": "main", "index": 0}]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": false,
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "saveExecutionProgress": false,
+    "timezone": "Asia/Jakarta"
+  },
+  "versionId": "70ecaa3e-9102-4c85-8cb7-c439f3d1f4a9",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}
