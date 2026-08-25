@@ -5,12 +5,13 @@ declare(strict_types=1);
 namespace App\Http\Requests\Settings;
 
 use App\Concerns\ProfileValidationRules;
+use App\Http\Requests\Concerns\ResolvesWebUser;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 
 class ProfileUpdateRequest extends FormRequest
 {
-    use ProfileValidationRules;
+    use ProfileValidationRules, ResolvesWebUser;
 
     /**
      * Get the validation rules that apply to the request.
