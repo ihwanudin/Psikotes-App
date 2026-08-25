@@ -48,6 +48,12 @@ final class Order extends Model
         return $this->belongsTo(Participant::class);
     }
 
+    /** @return BelongsTo<PaymentMethod, $this> */
+    public function paymentMethod(): BelongsTo
+    {
+        return $this->belongsTo(PaymentMethod::class);
+    }
+
     /** @return HasMany<Entitlement, $this> */
     public function entitlements(): HasMany
     {
