@@ -116,12 +116,14 @@ final readonly class RegisterParticipant
 
         $now = now();
         $participant->entitlements()->createMany(
-            $package->items->map(fn ($item): array => [
-                'test_type' => $item->test_type,
-                'status' => 'locked',
-                'created_at' => $now,
-                'updated_at' => $now,
-            ])->all(),
+            $package->items
+                ->reject(fn ($item): bool => $item->test_type === 'dass21' && ! (bool) $input['consent_dass'])
+                ->map(fn ($item): array => [
+                    'test_type' => $item->test_type,
+                    'status' => 'locked',
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ])->all(),
         );
 
         $this->recordConsent($participant, ConsentDocument::for('psychotest'), true);

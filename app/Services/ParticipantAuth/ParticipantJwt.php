@@ -22,7 +22,7 @@ final class ParticipantJwt
 
         $issuedAt = Date::now()->getTimestamp();
         $ttl = $this->ttl();
-        $header = ['alg' => 'HS256', 'typ' => 'JWT'];
+        $header = ['alg' => 'HS256', 'typ' => 'participant+jwt'];
         $payload = [
             'iss' => $this->issuer(),
             'aud' => $this->audience(),
@@ -64,7 +64,7 @@ final class ParticipantJwt
         $header = $this->decodeJson($encodedHeader);
         $claims = $this->decodeJson($encodedPayload);
 
-        if ($header !== ['alg' => 'HS256', 'typ' => 'JWT']) {
+        if ($header !== ['alg' => 'HS256', 'typ' => 'participant+jwt']) {
             throw new InvalidParticipantToken;
         }
 
@@ -152,10 +152,16 @@ final class ParticipantJwt
 
     private function secret(): string
     {
-        $secret = (string) config('participant_auth.jwt.secret');
+        $configured = (string) config('participant_auth.jwt.secret');
 
-        if (strlen($secret) < 32) {
-            throw new LogicException('PARTICIPANT_JWT_SECRET must contain at least 32 bytes.');
+        if (! str_starts_with($configured, 'base64:')) {
+            throw new LogicException('PARTICIPANT_JWT_SECRET must be a base64-encoded random key.');
+        }
+
+        $secret = base64_decode(substr($configured, 7), true);
+
+        if (! is_string($secret) || strlen($secret) < 32) {
+            throw new LogicException('PARTICIPANT_JWT_SECRET must decode to at least 32 bytes.');
         }
 
         return $secret;

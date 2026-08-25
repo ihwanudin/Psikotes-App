@@ -22,7 +22,7 @@ final class ParticipantApiAuthorizationTest extends TestCase
     {
         parent::setUp();
 
-        config()->set('participant_auth.jwt.secret', str_repeat('test-secret-', 4));
+        config()->set('participant_auth.jwt.secret', 'base64:'.base64_encode(str_repeat('A', 32)));
         Date::setTestNow('2026-08-25 10:00:00+07:00');
         $this->branch = Branch::query()->create([
             'code' => 'CENTRAL',

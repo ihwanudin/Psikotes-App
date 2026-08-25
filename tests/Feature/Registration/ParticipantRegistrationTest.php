@@ -111,6 +111,13 @@ final class ParticipantRegistrationTest extends TestCase
         $token = (string) Str::uuid();
         $payload = $this->validPayload($token);
         $payload['consent_dass'] = false;
+        DB::table('package_items')->insert([
+            'package_id' => $payload['package_id'],
+            'test_type' => 'dass21',
+            'sort_order' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
         $this->withSession(['registration.token' => $token])
             ->post('/registrations', $payload)
@@ -122,6 +129,15 @@ final class ParticipantRegistrationTest extends TestCase
             'consent_type' => 'dass',
             'status' => 'declined',
             'consented_at' => null,
+        ]);
+        $this->assertDatabaseHas('entitlements', [
+            'participant_id' => $participant->id,
+            'test_type' => 'ist',
+            'status' => 'locked',
+        ]);
+        $this->assertDatabaseMissing('entitlements', [
+            'participant_id' => $participant->id,
+            'test_type' => 'dass21',
         ]);
     }
 

@@ -30,3 +30,11 @@ Stack: Laravel · Inertia.js+React (peserta) · Filament/Livewire (admin/staf/ps
 Bootstrap dependency dilakukan dari branch utama starter kit React resmi Laravel karena rilis Packagist `v1.0.1` masih memakai Laravel 12. Dependensi dikunci di `composer.lock` dan `package-lock.json`; instalasi awal dilakukan tanpa lifecycle scripts, kemudian package discovery, test, lint, typecheck, build, dan audit dijalankan eksplisit.
 
 Semua metode pembayaran dikendalikan dengan status aktif/nonaktif. Kanal yang nonaktif tidak ditampilkan dan tidak menerima order baru; order historis tetap dipertahankan.
+
+Secret JWT peserta harus berupa random key dan tidak boleh disalin dari contoh:
+
+```powershell
+php -r "echo 'base64:'.base64_encode(random_bytes(32)), PHP_EOL;"
+```
+
+Simpan hasilnya hanya sebagai `PARTICIPANT_JWT_SECRET` di environment deployment. Keputusan kredensial dan batas entitlement gate dicatat di `docs/decisions/0001-participant-credentials.md`.

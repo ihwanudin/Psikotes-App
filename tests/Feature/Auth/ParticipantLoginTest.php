@@ -21,7 +21,7 @@ final class ParticipantLoginTest extends TestCase
     {
         parent::setUp();
 
-        config()->set('participant_auth.jwt.secret', str_repeat('test-secret-', 4));
+        config()->set('participant_auth.jwt.secret', 'base64:'.base64_encode(str_repeat('A', 32)));
         Date::setTestNow('2026-08-25 10:00:00+07:00');
         $this->branch = Branch::query()->create([
             'code' => 'CENTRAL',
@@ -43,6 +43,16 @@ final class ParticipantLoginTest extends TestCase
         $principal = app(ParticipantJwt::class)->verify((string) $response->json('jwt'));
         $this->assertSame($participant->id, $principal->participantId);
         $this->assertSame($this->branch->id, $principal->branchId);
+    }
+
+    public function test_login_validation_uses_the_uniform_api_error_shape(): void
+    {
+        $this->postJson('/api/auth/participant/login', [
+            'test_number' => 'invalid spaces',
+            'birth_date' => '15-04-2001',
+        ])->assertUnprocessable()
+            ->assertJsonPath('error.code', 'VALIDATION_FAILED')
+            ->assertJsonMissingPath('errors');
     }
 
     public function test_invalid_credentials_use_the_same_generic_response(): void

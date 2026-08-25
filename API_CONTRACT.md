@@ -6,14 +6,14 @@ Base: `https://psikotes.oncam.id`. Rute peserta (Inertia+React) dan API internal
 - `GET  /r/:ref_code` — resolusi referral: set cookie first-touch 30 hari + catat `referral_visits`, redirect ke halaman daftar. ref tak dikenal → cabang default (pusat).
 - `POST /registrations` — body form + `ref` (dari cookie/query; opsional) + `package_id`. `package_id` wajib menunjuk paket aktif, memiliki jenis tes, berharga positif dalam IDR; server memvalidasi ulang saat transaksi agar paket yang baru dinonaktifkan tidak dapat dipilih. Server tetapkan `referral_branch_id` (first-touch menang; kosong→default). Untuk Xendit: buat invoice → `{test_number, order_id, invoice_url, status:'pending'}`. Untuk transfer manual: upload bukti (multipart) → `{test_number, order_id, status:'pending'}`.
 - `POST /registration/identity-evidence` — multipart `identity_document` + `initial_selfie`, hanya dari sesi registrasi yang terikat peserta dan aktif dua jam. JPG/PNG/WebP maksimal 5 MB, dimensi 480–8.000 px; MIME dibaca dari isi file. Berhasil → redirect ke `/registration/received`; matcher hanya mengisi penanda tinjauan.
-- `POST /auth/participant/login` `{test_number, birth_date}` → `{jwt}` (rate-limit 5/menit/IP)
+- `POST /api/auth/participant/login` `{test_number, birth_date}` → `{jwt}` (rate-limit 5/menit/IP + lockout progresif per nomor tes)
 - `GET  /orders/:id/status`
 - `POST /webhooks/xendit` — verifikasi header `x-callback-token` = token dashboard; baca `external_id`(=order_id) & `status`; PAID/SETTLED → order paid + entitlement ready + bekukan komisi + notif WA. **Balas 200 ≤30 dtk** (Xendit retry 24 jam bila gagal). Idempotent by `id` invoice (unik). Status lain (EXPIRED) → order expired, entitlement tetap locked.
 - `POST /webhooks/:gateway` — gateway lain via adapter (signature sesuai gateway; idempotent by event_id)
 
 ## Peserta (JWT)
-- `GET  /me` · `GET /me/entitlements`
-- `POST /sessions/:test_type/start` → `{session_id, ends_at, config, seed?}`. **403 bila entitlement ≠ ready (belum bayar).** 409 bila sudah ada sesi aktif/one-attempt terkunci.
+- `GET  /api/me` · `GET /api/me/entitlements`
+- `POST /api/sessions/:test_type/start` → `{session_id, ends_at, config, seed?}`. **403 bila entitlement ≠ ready (belum bayar).** 409 bila sudah ada sesi aktif/one-attempt terkunci. Batas implementasi Task 12: entitlement `ready` mendapat 501 `SESSION_ENGINE_PENDING` tanpa perubahan state sampai engine sesi menyediakan durasi/config/seed dan one-attempt lock secara atomik.
 - `GET  /sessions/:id` → state + sisa waktu (resume)
 - `POST /sessions/:id/answers` — batch upsert `{items:[{item_no,value}]}` (IST/PAPI/RMIB; auto-save)
 - `POST /sessions/:id/events` — batch Kraepelin `{col,row,answer,client_ts_ms}[]` (insert-ignore per seq)

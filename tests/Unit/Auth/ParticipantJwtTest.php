@@ -15,7 +15,7 @@ final class ParticipantJwtTest extends TestCase
     {
         parent::setUp();
 
-        config()->set('participant_auth.jwt.secret', str_repeat('test-secret-', 4));
+        config()->set('participant_auth.jwt.secret', 'base64:'.base64_encode(str_repeat('A', 32)));
         Date::setTestNow('2026-08-25 10:00:00+07:00');
     }
 
@@ -23,8 +23,11 @@ final class ParticipantJwtTest extends TestCase
     {
         $jwt = app(ParticipantJwt::class);
         $token = $jwt->issue(participantId: 41, branchId: 7);
+        [$encodedHeader] = explode('.', $token);
+        $header = json_decode($this->decode($encodedHeader), true, flags: JSON_THROW_ON_ERROR);
         $principal = $jwt->verify($token);
 
+        $this->assertSame('participant+jwt', $header['typ']);
         $this->assertSame(41, $principal->participantId);
         $this->assertSame(7, $principal->branchId);
         $this->assertStringNotContainsString('birth', $token);
@@ -57,6 +60,28 @@ final class ParticipantJwtTest extends TestCase
         $this->expectException(InvalidParticipantToken::class);
 
         $jwt->verify($header.'.'.$tamperedPayload.'.'.$signature);
+    }
+
+    public function test_a_correctly_signed_token_with_the_wrong_profile_type_is_rejected(): void
+    {
+        $jwt = app(ParticipantJwt::class);
+        [$header, $payload] = explode('.', $jwt->issue(participantId: 41, branchId: 7));
+        $wrongHeader = $this->encode(json_encode(['alg' => 'HS256', 'typ' => 'JWT'], JSON_THROW_ON_ERROR));
+        $signingInput = $wrongHeader.'.'.$payload;
+        $signature = $this->encode(hash_hmac('sha256', $signingInput, str_repeat('A', 32), true));
+
+        $this->expectException(InvalidParticipantToken::class);
+
+        $jwt->verify($signingInput.'.'.$signature);
+    }
+
+    public function test_human_memorable_or_short_secret_is_rejected(): void
+    {
+        config()->set('participant_auth.jwt.secret', str_repeat('password', 4));
+
+        $this->expectException(\LogicException::class);
+
+        app(ParticipantJwt::class)->issue(participantId: 41, branchId: 7);
     }
 
     private function encode(string $value): string

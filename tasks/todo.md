@@ -242,13 +242,13 @@
 
 **Acceptance criteria:**
 
-- [ ] Nomor tes unik, aman dari race, dan reset scheduler teruji.
-- [ ] Login dibatasi 5/menit/IP dengan lockout progresif per nomor tes.
-- [ ] Endpoint peserta hanya mengakses participant claim sendiri; entitlement locked tidak dapat memulai sesi.
+- [x] Nomor tes unik, aman dari race, dan reset scheduler teruji.
+- [x] Login dibatasi 5/menit/IP dengan lockout progresif per nomor tes.
+- [x] Endpoint peserta hanya mengakses participant claim sendiri; entitlement locked tidak dapat memulai sesi.
 
 **Verification:**
 
-- [ ] Unit/feature tests mencakup collision, expiry JWT, brute force, claim tampering, dan 403 locked.
+- [x] Unit/feature tests mencakup collision, expiry JWT, brute force, claim tampering, dan 403 locked.
 
 **Dependencies:** Tasks 7, 10
 

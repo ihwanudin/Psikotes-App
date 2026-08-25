@@ -1,10 +1,10 @@
 # SECURITY.md (v2.0) — implementasi poin A, B, C list arsitektur
 
 ## Auth & sesi
-- Peserta: login `nomor_tes + tanggal_lahir` → JWT HS256 TTL 12 jam, claim `{participant_id, branch_id}`; tanpa refresh token (sesi tes pendek; login ulang murah). Magic link/OTP TIDAK dipakai untuk peserta — menambah dependensi email/HP saat ujian; keputusan sadar, bukan kelalaian.
+- Peserta: login `nomor_tes + tanggal_lahir` → JWT HS256 TTL 12 jam tanpa refresh token (sesi tes pendek; login ulang murah). Header wajib `typ=participant+jwt`; signature, algoritme tetap, `iss`, `aud`, `sub`, `{participant_id, branch_id}`, `iat`, `nbf`, `exp`, serta durasi token divalidasi. Secret wajib random `base64:` minimal 32 byte. Magic link/OTP TIDAK dipakai untuk peserta — menambah dependensi email/HP saat ujian; keputusan sadar, bukan kelalaian.
 - Admin: sesi Laravel/Filament email+password; role di `admins` (`super_admin`, `branch_admin`, `staff`, `psychologist`) dan kemampuan verifikasi pembayaran diperiksa server-side.
 - Cookies (web admin): httpOnly, Secure, SameSite=Lax. API stateless Bearer.
-- Rate limit (Workers KV/DO): login peserta 5/menit/IP + lockout progresif per nomor_tes; webhook & registrasi juga dibatasi.
+- Rate limit Laravel memakai cache Redis bersama: login peserta 5/menit/IP. Kegagalan per nomor tes disimpan sebagai key HMAC (bukan nomor mentah) dan mengunci 60 detik mulai kegagalan ketiga, 5 menit pada kegagalan berikutnya, lalu 15 menit; login berhasil menghapus riwayat kegagalan nomor tersebut. Webhook dan registrasi juga dibatasi.
 
 ## Data
 - Enkripsi: TLS in-transit; at-rest mengikuti volume/layanan PostgreSQL dan object storage. Kontrol utama data terstruktur = role runtime non-owner, RLS ketat, retensi, dan audit akses; object storage tetap private dengan signed URL.
@@ -12,6 +12,7 @@
 - Schema DASS terpisah (`dass.*`), retensi dua tahun, dan tidak diberikan kepada admin non-psikolog. Role runtime memiliki `NOBYPASSRLS`; migrasi memakai credential owner terpisah.
 - Controller yang membaca/menulis data tenant wajib mengimplementasikan `RequiresRlsContext` dan route-nya wajib memakai middleware `rls`; architecture test menolak kombinasi yang tidak lengkap. Job tenant wajib mengimplementasikan `ProvidesRlsContext` dan memasang `ApplyRlsContextToJob`.
 - Konteks `role`, `branch_id`, dan `participant_id` hanya berasal dari principal/job internal, dipasang dengan `set_config(..., true)` dalam transaksi, dan dibersihkan pada sukses maupun exception. Header atau parameter request tidak pernah menjadi sumber konteks RLS.
+- Middleware bearer peserta memverifikasi token, keberadaan peserta aktif, dan kecocokan branch claim terhadap database sebelum membentuk principal. Endpoint `/api/me`, entitlement, dan start-session tidak menerima participant ID dari request.
 - Panel Filament memakai guard session `admin` dan model `Admin`, bukan guard peserta/web. Kemampuan didefinisikan server-side; policy peserta menolak akses lintas cabang walaupun ID diketahui, dan hanya psikolog yang memperoleh kemampuan membaca DASS.
 - Default session admin: cookie `Secure`, `HttpOnly`, `SameSite=Lax`, masa idle 120 menit. Nilai produksi tetap dinyatakan eksplisit melalui environment server.
 - Referral first-touch disimpan dalam cookie terenkripsi `Secure`/`HttpOnly`/`SameSite=Lax` selama 30 hari. Payload kedaluwarsa atau tidak valid gagal tertutup dan diresolusi ulang di server; browser tidak menjadi sumber `branch_id`.
