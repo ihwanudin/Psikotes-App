@@ -29,7 +29,7 @@ Deployment: Docker Compose di VPS/server tradisional — kontainer terpisah untu
 - **Event-based answers (Kraepelin per sel + timestamp)** — auditable, skor bisa dihitung ulang saat norma direvisi.
 - **Object storage S3-compatible primer, Drive arsip async** — signed URL berbatas waktu utk data sensitif (via Flysystem S3 driver); Drive bukan jalur kritis (retry via queue).
 - **Norma/kamus = data, bukan kode** — revisi psikometrik tanpa deploy; `engine_version` dicatat di setiap `scores`.
-- **Adapter PaymentProvider** — Xendit Invoice implementasi awal; transfer manual adalah kanal permanen berdampingan, bukan fallback sementara.
+- **Adapter PaymentProvider** — domain menerima event provider-neutral; hanya transisi pertama pending→paid yang membuka entitlement dalam transaksi ber-row-lock. Xendit Invoice adalah implementasi awal; transfer manual tetap kanal permanen berdampingan. Lihat `docs/decisions/0002-payment-provider-boundary.md`.
 - **Dua level admin + RLS** — pusat vs cabang; isolasi data antar cabang di database (RLS+middleware), bukan hanya di UI.
 - **Referral cabang first-touch** — atribusi `branch_id` peserta dari link `?ref=KODE`, cookie 30 hari; kosong/tak dikenal → cabang default (pusat).
 - **PDF via Browsershot (Spatie, wrapper Puppeteer headless)** dipanggil dari queue worker, bukan dalam request — laporan HPP dwibahasa + Lembar Kerja Internal dirender dari template HTML/Blade.

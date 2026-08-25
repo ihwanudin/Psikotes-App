@@ -29,7 +29,7 @@ final readonly class PaymentInvoice
             throw new InvalidArgumentException('Payment URL must be an absolute HTTPS URL.');
         }
 
-        if ($amount < 1 || ! preg_match('/^[A-Z]{3}$/', $currency)) {
+        if ($amount < 1 || $currency !== 'IDR') {
             throw new InvalidArgumentException('Invoice money values are invalid.');
         }
     }

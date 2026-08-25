@@ -24,8 +24,12 @@ final readonly class CreateInvoiceRequest
             throw new InvalidArgumentException('Invoice amount must be positive.');
         }
 
-        if (! preg_match('/^[A-Z]{3}$/', $currency)) {
-            throw new InvalidArgumentException('Invoice currency must be an ISO 4217 code.');
+        if ($currency !== 'IDR') {
+            throw new InvalidArgumentException('Invoice currency must be IDR.');
+        }
+
+        if (! $expiresAt->isFuture()) {
+            throw new InvalidArgumentException('Invoice expiration must be in the future.');
         }
 
         $length = mb_strlen($description);

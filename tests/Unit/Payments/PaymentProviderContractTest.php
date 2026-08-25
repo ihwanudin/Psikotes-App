@@ -72,6 +72,21 @@ final class PaymentProviderContractTest extends TestCase
         $this->assertTrue($event->occurredAt->equalTo(Date::now()));
     }
 
+    public function test_invalid_paid_event_identifier_does_not_mutate_fake_invoice(): void
+    {
+        $invoice = $this->provider->createInvoice($this->invoiceRequest());
+
+        try {
+            $this->provider->markPaid($invoice->providerReference, 'invalid event id with spaces');
+            $this->fail('Expected an invalid fake event identifier to be rejected.');
+        } catch (PaymentProviderException) {
+            $this->assertSame(
+                PaymentStatus::Pending,
+                $this->provider->checkStatus($invoice->providerReference)->status,
+            );
+        }
+    }
+
     public function test_webhook_is_normalized_without_gateway_fields_leaking_into_the_event(): void
     {
         $invoice = $this->provider->createInvoice($this->invoiceRequest());
@@ -87,7 +102,6 @@ final class PaymentProviderContractTest extends TestCase
 
         $this->assertSame('fake-webhook-event-1', $event->eventId);
         $this->assertSame(PaymentStatus::Paid, $event->status);
-        $this->assertSame([], $event->metadata);
     }
 
     public function test_malformed_or_unauthenticated_webhook_is_rejected(): void

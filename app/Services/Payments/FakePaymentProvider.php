@@ -13,6 +13,7 @@ use App\Enums\PaymentStatus;
 use App\Services\Payments\Exceptions\PaymentProviderException;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
+use InvalidArgumentException;
 use Throwable;
 
 final class FakePaymentProvider implements PaymentProvider
@@ -96,7 +97,7 @@ final class FakePaymentProvider implements PaymentProvider
 
         try {
             return new PaymentEvent($eventId, $providerReference, $status, $occurredAt);
-        } catch (\InvalidArgumentException $exception) {
+        } catch (InvalidArgumentException $exception) {
             throw new PaymentProviderException('Webhook identifiers are invalid.', previous: $exception);
         }
     }
@@ -132,11 +133,24 @@ final class FakePaymentProvider implements PaymentProvider
             throw new PaymentProviderException('Only a pending invoice can be marked paid.');
         }
 
-        $record->status = PaymentStatus::Paid;
-        $record->eventId = $eventId;
-        $record->occurredAt = Date::now();
+        $occurredAt = Date::now();
 
-        return $this->event($record);
+        try {
+            $event = new PaymentEvent(
+                eventId: $eventId,
+                providerReference: $record->invoice->providerReference,
+                status: PaymentStatus::Paid,
+                occurredAt: $occurredAt,
+            );
+        } catch (InvalidArgumentException $exception) {
+            throw new PaymentProviderException('Fake paid event is invalid.', previous: $exception);
+        }
+
+        $record->status = $event->status;
+        $record->eventId = $event->eventId;
+        $record->occurredAt = $event->occurredAt;
+
+        return $event;
     }
 
     private function record(string $providerReference): FakeInvoiceRecord

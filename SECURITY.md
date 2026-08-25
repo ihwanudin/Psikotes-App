@@ -22,6 +22,7 @@
 - URL bukti identitas diterbitkan setelah policy peserta dan konteks RLS admin lulus, dibatasi 30 permintaan/menit/admin, dan setiap penerbitan menulis audit service-only. Konteks audit hanya memuat jenis bukti dan waktu kedaluwarsa URL, bukan PII, URL, atau object key.
 - Hasil matcher adalah marker (`pending|match|mismatch|error`) dengan status manual tetap `pending`; mismatch/error tidak menghapus peserta, tidak mengubah entitlement, dan tidak otomatis menentukan kelayakan.
 - Audit log: verifikasi order, void sesi, penerbitan URL bukti identitas, akses/unduh laporan oleh admin, perubahan rate fee, keputusan withdraw, perubahan kamus GE.
+- Event pembayaran dinormalisasi di adapter dan dicocokkan melalui `gateway_ref` unik. Transisi terminal tidak dapat ditimpa; hanya pending→paid pertama yang membuka entitlement, dengan order dan entitlement dikunci serta diperbarui dalam satu transaksi service-RLS. Autentikasi callback dan constraint unik `event_id` diselesaikan pada integrasi provider (Task 15).
 
 ## Anti-kecurangan
 - Timer server-side (satu-satunya sumber waktu); jawaban di luar `ends_at+grace 10s` ditolak.

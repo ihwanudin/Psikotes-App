@@ -262,14 +262,14 @@
 
 **Acceptance criteria:**
 
-- [ ] Interface mendukung create invoice, status check, webhook normalization, dan expiry.
-- [ ] Transition invalid ditolak; entitlement tetap locked sampai event sah.
-- [ ] Tidak ada secret atau detail Xendit di domain service.
+- [x] Interface mendukung create invoice, status check, webhook normalization, dan expiry.
+- [x] Transition invalid ditolak; entitlement tetap locked sampai event sah.
+- [x] Tidak ada secret atau detail Xendit di domain service.
 
 **Verification:**
 
-- [ ] Contract tests lulus terhadap fake provider.
-- [ ] State-machine property tests membuktikan event berulang aman.
+- [x] Contract tests lulus terhadap fake provider.
+- [x] State-machine property tests membuktikan event berulang aman.
 
 **Dependencies:** Tasks 5, 12
 
