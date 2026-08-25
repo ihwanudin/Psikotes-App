@@ -37,7 +37,7 @@ final class ManualTransferVerificationTest extends TestCase
         $admin = $this->admin($branch, canVerify: true);
         $action = app(VerifyManualTransfer::class);
 
-        $action->approve($admin, $order->id);
+        $action->approve($admin, $order->id, (string) $order->proof_object_key);
 
         $order->refresh();
         $entitlement->refresh();
@@ -58,7 +58,7 @@ final class ManualTransferVerificationTest extends TestCase
         $paidAt = $order->paid_at;
         $readyAt = $entitlement->ready_at;
         Date::setTestNow('2026-08-25 11:00:00+07:00');
-        $action->approve($admin, $order->id);
+        $action->approve($admin, $order->id, (string) $order->proof_object_key);
 
         $this->assertTrue($order->fresh()->paid_at?->equalTo($paidAt) ?? false);
         $this->assertTrue($entitlement->fresh()->ready_at?->equalTo($readyAt) ?? false);
@@ -71,7 +71,7 @@ final class ManualTransferVerificationTest extends TestCase
         $admin = $this->admin($branch, canVerify: true);
         $action = app(VerifyManualTransfer::class);
 
-        $action->reject($admin, $order->id, '  Nominal pada bukti tidak sesuai.  ');
+        $action->reject($admin, $order->id, (string) $order->proof_object_key, '  Nominal pada bukti tidak sesuai.  ');
 
         $order->refresh();
         $this->assertSame('rejected', $order->status->value);
@@ -84,7 +84,7 @@ final class ManualTransferVerificationTest extends TestCase
             'subject_id' => (string) $order->public_id,
         ]);
 
-        $action->reject($admin, $order->id, 'Alasan pengganti tidak boleh menimpa.');
+        $action->reject($admin, $order->id, (string) $order->proof_object_key, 'Alasan pengganti tidak boleh menimpa.');
         $this->assertSame('Nominal pada bukti tidak sesuai.', $order->fresh()->rejection_reason);
         $this->assertDatabaseCount('audit_logs', 1);
     }
@@ -94,11 +94,31 @@ final class ManualTransferVerificationTest extends TestCase
         [$branch, $order] = $this->manualOrder();
         $admin = $this->admin($branch, canVerify: true);
         $action = app(VerifyManualTransfer::class);
-        $action->reject($admin, $order->id, 'Bukti tidak dapat dibaca.');
+        $action->reject($admin, $order->id, (string) $order->proof_object_key, 'Bukti tidak dapat dibaca.');
 
         $this->expectException(InvalidOrderTransition::class);
 
-        $action->approve($admin, $order->id);
+        $action->approve($admin, $order->id, (string) $order->proof_object_key);
+    }
+
+    public function test_review_fails_closed_when_the_proof_changed_after_admin_loaded_it(): void
+    {
+        [$branch, $order, $entitlement] = $this->manualOrder();
+        $admin = $this->admin($branch, canVerify: true);
+        $reviewedProofKey = (string) $order->proof_object_key;
+
+        $order->forceFill(['proof_object_key' => 'manual/replacement-proof.jpg'])->save();
+
+        try {
+            app(VerifyManualTransfer::class)->approve($admin, $order->id, $reviewedProofKey);
+            $this->fail('A decision must not apply to a proof that was replaced after review.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('payment_proof', $exception->errors());
+        }
+
+        $this->assertSame('pending', $order->fresh()->status->value);
+        $this->assertSame('locked', $entitlement->fresh()->status);
+        $this->assertDatabaseCount('audit_logs', 0);
     }
 
     public function test_admin_without_ability_and_cross_branch_admin_cannot_verify(): void
@@ -112,7 +132,7 @@ final class ManualTransferVerificationTest extends TestCase
             $this->admin($branchB, canVerify: true),
         ] as $admin) {
             try {
-                $action->approve($admin, $order->id);
+                $action->approve($admin, $order->id, (string) $order->proof_object_key);
                 $this->fail('Unauthorized verification should throw.');
             } catch (AuthorizationException) {
                 $this->assertSame('pending', $order->fresh()->status->value);
@@ -131,7 +151,7 @@ final class ManualTransferVerificationTest extends TestCase
 
         foreach (['   ', str_repeat('x', 501)] as $reason) {
             try {
-                $action->reject($admin, $order->id, $reason);
+                $action->reject($admin, $order->id, (string) $order->proof_object_key, $reason);
                 $this->fail('Invalid rejection reason should throw.');
             } catch (ValidationException $exception) {
                 $this->assertArrayHasKey('rejection_reason', $exception->errors());
@@ -149,7 +169,7 @@ final class ManualTransferVerificationTest extends TestCase
         $action = app(VerifyManualTransfer::class);
 
         try {
-            $action->approve($admin, $order->id);
+            $action->approve($admin, $order->id, 'manual/missing-proof.jpg');
             $this->fail('Proof is required.');
         } catch (ValidationException $exception) {
             $this->assertArrayHasKey('payment_proof', $exception->errors());
@@ -158,7 +178,11 @@ final class ManualTransferVerificationTest extends TestCase
         [$xenditBranch, $xenditOrder] = $this->manualOrder(methodCode: 'xendit');
 
         try {
-            $action->approve($this->admin($xenditBranch, canVerify: true), $xenditOrder->id);
+            $action->approve(
+                $this->admin($xenditBranch, canVerify: true),
+                $xenditOrder->id,
+                (string) $xenditOrder->proof_object_key,
+            );
             $this->fail('Xendit orders cannot be manually verified.');
         } catch (ValidationException $exception) {
             $this->assertArrayHasKey('payment_proof', $exception->errors());

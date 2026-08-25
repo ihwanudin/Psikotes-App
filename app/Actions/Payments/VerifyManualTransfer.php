@@ -20,12 +20,12 @@ final readonly class VerifyManualTransfer
         private OrderStateMachine $stateMachine,
     ) {}
 
-    public function approve(Admin $admin, int $orderId): Order
+    public function approve(Admin $admin, int $orderId, string $expectedProofKey): Order
     {
-        return $this->handle($admin, $orderId, approved: true, rejectionReason: null);
+        return $this->handle($admin, $orderId, $expectedProofKey, approved: true, rejectionReason: null);
     }
 
-    public function reject(Admin $admin, int $orderId, string $reason): Order
+    public function reject(Admin $admin, int $orderId, string $expectedProofKey, string $reason): Order
     {
         $reason = trim($reason);
 
@@ -35,18 +35,20 @@ final readonly class VerifyManualTransfer
             ]);
         }
 
-        return $this->handle($admin, $orderId, approved: false, rejectionReason: $reason);
+        return $this->handle($admin, $orderId, $expectedProofKey, approved: false, rejectionReason: $reason);
     }
 
     private function handle(
         Admin $admin,
         int $orderId,
+        string $expectedProofKey,
         bool $approved,
         ?string $rejectionReason,
     ): Order {
         return $this->runner->runAsService(function () use (
             $admin,
             $orderId,
+            $expectedProofKey,
             $approved,
             $rejectionReason,
         ): Order {
@@ -58,9 +60,10 @@ final readonly class VerifyManualTransfer
             Gate::forUser($admin)->authorize('verifyPayment', $order);
 
             if ($order->paymentMethod->code !== 'manual_transfer'
-                || ! is_string($order->proof_object_key)) {
+                || ! is_string($order->proof_object_key)
+                || ! hash_equals($order->proof_object_key, $expectedProofKey)) {
                 throw ValidationException::withMessages([
-                    'payment_proof' => 'Bukti transfer manual belum tersedia.',
+                    'payment_proof' => 'Bukti transfer berubah atau belum tersedia. Buka bukti terbaru sebelum memverifikasi.',
                 ]);
             }
 

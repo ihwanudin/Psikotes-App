@@ -137,7 +137,11 @@ final class OrderResource extends Resource
                     ->modalHeading('Setujui transfer manual?')
                     ->modalDescription('Order akan ditandai lunas dan seluruh entitlement paket dibuka.')
                     ->action(function (Order $record): void {
-                        app(VerifyManualTransfer::class)->approve(self::currentAdmin(), $record->id);
+                        app(VerifyManualTransfer::class)->approve(
+                            self::currentAdmin(),
+                            $record->id,
+                            (string) $record->proof_object_key,
+                        );
 
                         Notification::make()
                             ->title('Transfer disetujui')
@@ -161,6 +165,7 @@ final class OrderResource extends Resource
                         app(VerifyManualTransfer::class)->reject(
                             self::currentAdmin(),
                             $record->id,
+                            (string) $record->proof_object_key,
                             (string) $data['rejection_reason'],
                         );
 
