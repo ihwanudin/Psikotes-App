@@ -6,6 +6,7 @@ namespace Tests\Feature\Registration;
 
 use App\Models\Branch;
 use App\Models\Participant;
+use Database\Seeders\PaymentMethodSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -16,6 +17,14 @@ use Tests\TestCase;
 final class PackageSelectionTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->seed(PaymentMethodSeeder::class);
+        DB::table('payment_methods')->where('code', 'manual_transfer')->update(['is_active' => true]);
+    }
 
     public function test_package_catalog_uses_normalized_test_items_and_idr_prices(): void
     {
@@ -165,6 +174,7 @@ final class PackageSelectionTest extends TestCase
         return [
             '_registration_token' => $token,
             'package_id' => $packageId,
+            'payment_method_code' => 'manual_transfer',
             'full_name' => 'Ayu Pratiwi',
             'gender' => 'female',
             'birth_date' => '2001-04-15',

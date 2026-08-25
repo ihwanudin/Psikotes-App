@@ -37,6 +37,13 @@ final class StoreParticipantRegistrationRequest extends FormRequest
                         ->where('currency', 'IDR'),
                 ),
             ],
+            'payment_method_code' => [
+                'bail',
+                'required',
+                'string',
+                'max:48',
+                'regex:/^[a-z0-9_]+$/',
+            ],
             'full_name' => ['bail', 'required', 'string', 'min:2', 'max:200'],
             'gender' => ['bail', 'required', Rule::in(['female', 'male'])],
             'birth_date' => ['bail', 'required', 'date_format:Y-m-d', 'before_or_equal:today'],
@@ -50,6 +57,15 @@ final class StoreParticipantRegistrationRequest extends FormRequest
             'email' => ['nullable', 'email:rfc', 'max:255'],
             'consent_psychotest' => ['bail', 'required', 'accepted'],
             'consent_dass' => ['bail', 'required', 'boolean'],
+        ];
+    }
+
+    /** @return array<string, string> */
+    public function messages(): array
+    {
+        return [
+            'payment_method_code.required' => 'Metode pembayaran wajib dipilih.',
+            'payment_method_code.regex' => 'Metode pembayaran tidak tersedia.',
         ];
     }
 

@@ -12,6 +12,8 @@ import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import PackageSelector from '@/pages/registration/components/package-selector';
 import type { RegistrationPackage } from '@/pages/registration/components/package-selector';
+import PaymentMethodSelector from '@/pages/registration/components/payment-method-selector';
+import type { RegistrationPaymentMethod } from '@/pages/registration/components/payment-method-selector';
 
 type ConsentDocument = {
     version: string;
@@ -27,6 +29,8 @@ type Props = {
     registrationToken: string;
     packages: RegistrationPackage[];
     packageConfigurationPending: boolean;
+    paymentMethods: RegistrationPaymentMethod[];
+    paymentConfigurationPending: boolean;
     consents: {
         psychotest: ConsentDocument;
         dass: ConsentDocument;
@@ -48,6 +52,8 @@ export default function CreateRegistration({
     registrationToken,
     packages,
     packageConfigurationPending,
+    paymentMethods,
+    paymentConfigurationPending,
     consents,
 }: Props) {
     return (
@@ -381,6 +387,16 @@ export default function CreateRegistration({
                                                 }
                                                 error={errors.package_id}
                                             />
+
+                                            <PaymentMethodSelector
+                                                methods={paymentMethods}
+                                                configurationPending={
+                                                    paymentConfigurationPending
+                                                }
+                                                error={
+                                                    errors.payment_method_code
+                                                }
+                                            />
                                         </fieldset>
 
                                         <fieldset className="space-y-5 border-t border-slate-200 pt-8">
@@ -504,7 +520,8 @@ export default function CreateRegistration({
                                             size="lg"
                                             disabled={
                                                 processing ||
-                                                packageConfigurationPending
+                                                packageConfigurationPending ||
+                                                paymentConfigurationPending
                                             }
                                             className="h-12 w-full bg-teal-800 text-base hover:bg-teal-900"
                                         >

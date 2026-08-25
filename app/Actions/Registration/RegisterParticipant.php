@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Actions\Registration;
 
 use App\Models\ConsentRecord;
+use App\Models\Order;
 use App\Models\Participant;
+use App\Models\PaymentMethod;
 use App\Models\TestPackage;
 use App\Registration\ConsentDocument;
 use App\Security\RlsContext;
@@ -13,6 +15,7 @@ use App\Security\RlsContextRunner;
 use App\Services\Referral\ReferralAttribution;
 use App\Services\TestNumber\MonthlyTestNumberIssuer;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 final readonly class RegisterParticipant
@@ -29,10 +32,15 @@ final readonly class RegisterParticipant
     public function handle(
         array $input,
         int $packageId,
+        string $paymentMethodCode,
         string $registrationToken,
         ?string $referralCookie,
     ): Participant {
-        $payloadHash = $this->payloadHash([...$input, 'package_id' => $packageId]);
+        $payloadHash = $this->payloadHash([
+            ...$input,
+            'package_id' => $packageId,
+            'payment_method_code' => $paymentMethodCode,
+        ]);
 
         try {
             return $this->runner->run(
@@ -40,6 +48,7 @@ final readonly class RegisterParticipant
                 fn (): Participant => $this->createOnce(
                     $input,
                     $packageId,
+                    $paymentMethodCode,
                     $registrationToken,
                     $payloadHash,
                     $referralCookie,
@@ -69,6 +78,7 @@ final readonly class RegisterParticipant
     private function createOnce(
         array $input,
         int $packageId,
+        string $paymentMethodCode,
         string $registrationToken,
         string $payloadHash,
         ?string $referralCookie,
@@ -95,6 +105,18 @@ final readonly class RegisterParticipant
             ]);
         }
 
+        $paymentMethod = PaymentMethod::query()
+            ->active()
+            ->sharedLock()
+            ->where('code', $paymentMethodCode)
+            ->first();
+
+        if ($paymentMethod === null) {
+            throw ValidationException::withMessages([
+                'payment_method_code' => 'Metode pembayaran tidak tersedia.',
+            ]);
+        }
+
         $assignment = $this->referrals->assignmentFromCookie($referralCookie);
         $participant = new Participant;
         $participant->forceFill([
@@ -115,10 +137,19 @@ final readonly class RegisterParticipant
         ])->save();
 
         $now = now();
+        $order = Order::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'participant_id' => $participant->id,
+            'payment_method_id' => $paymentMethod->id,
+            'status' => 'pending',
+            'amount' => $package->amount,
+            'currency' => $package->currency,
+        ]);
         $participant->entitlements()->createMany(
             $package->items
                 ->reject(fn ($item): bool => $item->test_type === 'dass21' && ! (bool) $input['consent_dass'])
                 ->map(fn ($item): array => [
+                    'order_id' => $order->id,
                     'test_type' => $item->test_type,
                     'status' => 'locked',
                     'created_at' => $now,

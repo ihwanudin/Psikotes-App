@@ -6,6 +6,7 @@ namespace Tests\Feature\Registration;
 
 use App\Models\Branch;
 use App\Models\Participant;
+use Database\Seeders\PaymentMethodSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -16,6 +17,14 @@ use Tests\TestCase;
 final class ParticipantRegistrationTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->seed(PaymentMethodSeeder::class);
+        DB::table('payment_methods')->where('code', 'manual_transfer')->update(['is_active' => true]);
+    }
 
     public function test_registration_screen_exposes_server_assigned_branch_and_versioned_consents(): void
     {
@@ -221,6 +230,7 @@ final class ParticipantRegistrationTest extends TestCase
         return [
             '_registration_token' => $token,
             'package_id' => $this->activePackage(),
+            'payment_method_code' => 'manual_transfer',
             'full_name' => 'Ayu Pratiwi',
             'gender' => 'female',
             'birth_date' => '2001-04-15',

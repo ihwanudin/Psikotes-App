@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Actions\Registration\RegisterParticipant;
 use App\Http\Requests\StoreParticipantRegistrationRequest;
 use App\Models\Participant;
+use App\Models\PaymentMethod;
 use App\Models\TestPackage;
 use App\Registration\ConsentDocument;
 use App\Security\RlsContext;
@@ -38,6 +39,13 @@ final class ParticipantRegistrationController extends Controller
             ->with('items:id,package_id,test_type,sort_order')
             ->orderBy('name')
             ->get();
+        $paymentMethods = $runner->run(
+            new RlsContext('service'),
+            fn () => PaymentMethod::query()
+                ->active()
+                ->orderBy('display_name')
+                ->get(['code', 'display_name']),
+        );
 
         return Inertia::render('registration/create', [
             'assignedBranch' => [
@@ -55,6 +63,11 @@ final class ParticipantRegistrationController extends Controller
                 'testTypes' => $package->items->pluck('test_type')->values()->all(),
             ]),
             'packageConfigurationPending' => $packages->isEmpty(),
+            'paymentMethods' => $paymentMethods->map(fn (PaymentMethod $method): array => [
+                'code' => $method->code,
+                'displayName' => $method->display_name,
+            ]),
+            'paymentConfigurationPending' => $paymentMethods->isEmpty(),
             'consents' => [
                 'psychotest' => ConsentDocument::for('psychotest')->toPublicArray(),
                 'dass' => ConsentDocument::for('dass')->toPublicArray(),
@@ -70,9 +83,11 @@ final class ParticipantRegistrationController extends Controller
         $validated = $request->validated();
         $token = (string) $validated['_registration_token'];
         $packageId = $request->integer('package_id');
+        $paymentMethodCode = (string) $validated['payment_method_code'];
         unset(
             $validated['_registration_token'],
             $validated['package_id'],
+            $validated['payment_method_code'],
             $validated['consent_psychotest'],
         );
         $cookieName = (string) config('referral.cookie_name', 'psikotes_referral');
@@ -81,6 +96,7 @@ final class ParticipantRegistrationController extends Controller
         $participant = $register->handle(
             $validated,
             $packageId,
+            $paymentMethodCode,
             $token,
             is_string($cookie) ? $cookie : null,
         );
