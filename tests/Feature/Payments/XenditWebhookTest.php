@@ -110,16 +110,16 @@ final class XenditWebhookTest extends TestCase
         $this->postJson('/webhooks/xendit', $this->payload($order, [
             'status' => 'EXPIRED',
             'updated' => '2026-08-25T13:06:00+07:00',
-        ]), $this->validHeaders())->assertConflict()->assertExactJson([
-            'error' => [
-                'code' => 'WEBHOOK_CONFLICT',
-                'message' => 'Webhook tidak dapat diproses.',
-            ],
-        ]);
+        ]), $this->validHeaders())->assertOk()->assertExactJson(['status' => 'received']);
 
         $this->assertSame('paid', $order->fresh()->status->value);
         $this->assertSame('ready', $entitlement->fresh()->status);
-        $this->assertDatabaseCount('payment_webhook_events', 1);
+        $this->assertDatabaseCount('payment_webhook_events', 2);
+        $this->assertDatabaseHas('payment_webhook_events', [
+            'event_id' => $this->eventId('expired'),
+            'outcome' => 'rejected',
+            'error_code' => 'invalid_transition',
+        ]);
     }
 
     public function test_expired_callback_keeps_entitlement_locked(): void
@@ -151,7 +151,7 @@ final class XenditWebhookTest extends TestCase
         $this->assertSame('pending', $order->fresh()->status->value);
         $this->assertSame('locked', $entitlement->fresh()->status);
         $this->assertDatabaseHas('payment_webhook_events', [
-            'event_id' => 'invoice-123',
+            'event_id' => $this->eventId('paid'),
             'outcome' => 'rejected',
             'error_code' => 'money_mismatch',
         ]);
@@ -228,5 +228,10 @@ final class XenditWebhookTest extends TestCase
     private function validHeaders(): array
     {
         return ['x-callback-token' => 'callback-secret'];
+    }
+
+    private function eventId(string $status): string
+    {
+        return 'xendit-invoice:'.hash('sha256', 'invoice-123').':'.$status;
     }
 }

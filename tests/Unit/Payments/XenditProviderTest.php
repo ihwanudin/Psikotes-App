@@ -97,7 +97,7 @@ final class XenditProviderTest extends TestCase
 
         $event = app(XenditProvider::class)->checkStatus('invoice-123');
 
-        $this->assertSame('invoice-123', $event->eventId);
+        $this->assertSame($this->eventId('invoice-123', 'paid'), $event->eventId);
         $this->assertSame('invoice-123', $event->providerReference);
         $this->assertSame('01K3H9M5YXB62D9QK7E5V2G8Z1', $event->merchantReference);
         $this->assertSame(PaymentStatus::Paid, $event->status);
@@ -121,7 +121,7 @@ final class XenditProviderTest extends TestCase
         $paid = $provider->normalizeWebhook($this->webhookInput('PAID'));
         $settled = $provider->normalizeWebhook($this->webhookInput('SETTLED'));
 
-        $this->assertSame('invoice-123', $paid->eventId);
+        $this->assertSame($this->eventId('invoice-123', 'paid'), $paid->eventId);
         $this->assertSame($paid->eventId, $settled->eventId);
         $this->assertSame(PaymentStatus::Paid, $paid->status);
         $this->assertSame($paid->status, $settled->status);
@@ -174,5 +174,10 @@ final class XenditProviderTest extends TestCase
             description: 'Paket IST',
             expiresAt: Date::now()->addHour(),
         );
+    }
+
+    private function eventId(string $providerReference, string $status): string
+    {
+        return 'xendit-invoice:'.hash('sha256', $providerReference).':'.$status;
     }
 }

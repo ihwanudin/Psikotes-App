@@ -190,7 +190,7 @@ final class XenditProvider implements PaymentProvider
 
         try {
             return new PaymentEvent(
-                eventId: $providerReference,
+                eventId: $this->eventId($providerReference, $status),
                 providerReference: $providerReference,
                 merchantReference: $merchantReference,
                 status: $status,
@@ -240,6 +240,11 @@ final class XenditProvider implements PaymentProvider
         }
 
         return $reference;
+    }
+
+    private function eventId(string $providerReference, PaymentStatus $status): string
+    {
+        return 'xendit-invoice:'.hash('sha256', $providerReference).':'.$status->value;
     }
 
     private function logRequest(

@@ -12,3 +12,8 @@ Schedule::command('test-numbers:prepare-month')
     ->monthlyOn(1, '00:00')
     ->timezone((string) config('participant_auth.test_number_timezone'))
     ->onOneServer();
+
+Schedule::command('payments:reconcile-xendit')
+    ->everyFiveMinutes()
+    ->withoutOverlapping()
+    ->onOneServer();
