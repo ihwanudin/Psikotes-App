@@ -18,11 +18,12 @@ Pembayaran F1 harus mendukung invoice Xendit dan transfer manual tanpa memasukka
 - Mata uang dibatasi ke IDR dan nominal memakai integer rupiah positif. Invoice hanya menerima URL HTTPS dan waktu kedaluwarsa yang masih akan datang.
 - Status provider dinormalisasi menjadi `pending`, `paid`, `expired`, atau `cancelled`. State machine order hanya mengizinkan transisi dari `pending` menuju salah satu status terminal. Replay status yang sama adalah no-op; transisi keluar dari status terminal ditolak.
 - Hanya transisi pertama `pending` ke `paid` yang dapat membuka entitlement. Perubahan order dan entitlement dijalankan dalam satu transaksi service-RLS setelah order dikunci dengan `lockForUpdate()`.
-- Event diterapkan berdasarkan `gateway_ref` unik milik order, bukan pasangan order ID dan reference dari request. Reference yang tidak dikenal gagal tertutup.
-- `FakePaymentProvider` menjadi implementasi deterministik untuk contract test dan tidak didaftarkan sebagai provider produksi. Xendit akan menjadi adapter tersendiri.
+- Event diterapkan setelah ID invoice (`gateway_ref`), reference order (`external_id`), nominal, dan currency cocok dengan snapshot order. Reference atau nilai uang yang tidak cocok gagal tertutup.
+- `FakePaymentProvider` menjadi implementasi deterministik untuk contract test. Binding produksi memakai `XenditProvider`, yang mengakses Invoice API melalui Laravel HTTP client dengan Basic Auth, timeout, validasi respons, dan status fallback.
 - Kanal pembayaran kanonis dibuat default nonaktif. Hanya super admin yang dapat mengubah aktivasi melalui action ber-row-lock; setiap perubahan state dicatat di `audit_logs` dalam transaksi service-RLS yang sama. Replay state identik adalah no-op tanpa audit duplikat.
 - Registrasi hanya mengekspos kanal aktif. Paket dan kanal dikunci serta divalidasi ulang sebelum participant, order `pending`, dan entitlement `locked` dibuat atomik. Order menyimpan `payment_method_id`, nominal, dan mata uang sebagai snapshot transaksi; menonaktifkan kanal hanya mencegah order baru dan tidak menyembunyikan order historis.
-- Task 13 menjamin replay aman pada state machine. Persistensi `event_id` unik, autentikasi callback Xendit, dan idempotensi delivery lintas proses adalah tanggung jawab Task 15.
+- `payment_webhook_events` mengklaim `(provider,event_id)` secara atomik. Event ID Xendit adalah hash ID invoice + status ternormalisasi: PAID/SETTLED menjadi satu event paid, sementara PENDING/EXPIRED tetap terpisah. Intent hash mencegah satu event ID dipakai ulang untuk payload logis berbeda. Claim event dan transisi finansial commit dalam satu transaksi service-RLS.
+- Invoice API yang dipakai kickoff berstatus legacy pada dokumentasi Xendit. Migrasi ke Payment Session ditunda sebagai keputusan adapter tersendiri agar kontrak F1 tidak berubah diam-diam.
 
 ## Alternatives Considered
 
@@ -46,5 +47,5 @@ Akan merusak rekonsiliasi, audit, dan status pembayaran peserta yang sudah memil
 
 - Adapter provider wajib mengautentikasi dan menormalisasi input tidak tepercaya sebelum membentuk `PaymentEvent`.
 - Integrasi Xendit tidak boleh menambahkan field gateway ke state machine atau DTO domain; kebutuhan provider-spesifik tetap di adapter/configuration boundary.
-- Task 15 wajib menyimpan event terautentikasi dengan constraint unik sebelum mengandalkan contract ini untuk webhook produksi.
+- Scheduler status fallback wajib berjalan. Credential sandbox tidak tersedia di repository; contract test eksternal hanya menerima key development dan skip bila key tidak terpasang.
 - Admin harus mengaktifkan setidaknya satu kanal sebelum registrasi pembayaran dapat dilanjutkan; kondisi semua-OFF gagal tertutup dan ditampilkan jelas pada form.

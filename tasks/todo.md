@@ -304,14 +304,14 @@
 
 **Acceptance criteria:**
 
-- [ ] PAID/SETTLED terverifikasi mengubah order dan entitlement tepat sekali dalam satu transaksi.
-- [ ] Token salah dan status tidak dikenal ditolak tanpa bocor detail; EXPIRED mempertahankan locked.
-- [ ] Event ID/gateway reference unik mencegah replay dan komisi ganda.
+- [x] PAID/SETTLED terverifikasi mengubah order dan entitlement tepat sekali dalam satu transaksi.
+- [x] Token salah dan status tidak dikenal ditolak tanpa bocor detail; EXPIRED mempertahankan locked.
+- [x] Event ID/gateway reference unik mencegah replay; hanya transisi paid pertama menghasilkan sinyal unlock yang dapat dipakai ledger komisi tanpa duplikasi.
 
 **Verification:**
 
-- [ ] HTTP tests mencakup forged, duplicate, reordered, timeout, dan retry callback.
-- [ ] Sandbox contract test lulus ketika credential tersedia.
+- [x] HTTP tests mencakup forged, duplicate, reordered, timeout, dan retry callback.
+- [ ] Sandbox contract test tersedia dan fail-closed ke key development, tetapi diskip karena credential belum tersedia pada environment ini.
 
 **Dependencies:** Task 14
 

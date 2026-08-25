@@ -41,3 +41,11 @@ Bucket/prefix identitas wajib private dan tidak boleh diberi public-read policy/
 
 ## Backup & monitoring
 Postgres PITR (WAL archiving / `pg_basebackup`) + dump harian terenkripsi ke object storage S3-compatible (`backups/`, retensi 30 hari); uji restore per kuartal. Monitoring: error tracker (Sentry atau setara, terpasang di `app` dan `queue`), log terpusat (Docker logging driver → agregator pilihan), uptime eksternal (healthcheck `/health` tiap 1 menit — Laravel route ringan yang cek DB+Redis), alert webhook gagal beruntun & antrean PDF macet (queue depth Redis dipantau).
+
+## Operasi Xendit Invoice
+
+- Gunakan hanya secret key Xendit dengan izin Money-in Read/Write dan simpan `XENDIT_SECRET_KEY` serta `XENDIT_CALLBACK_TOKEN` di secret manager/environment, tidak di repository. Daftarkan callback HTTPS ke `POST /webhooks/xendit` pada dashboard Xendit.
+- Scheduler wajib hidup; `payments:reconcile-xendit --limit=100` berjalan tiap lima menit sebagai fallback callback. Jalankan manual saat insiden setelah memeriksa log `xendit_api_request`, `payment_webhook_processed`, dan `xendit_status_reconciliation_*`.
+- Salah token/payload menghasilkan `WEBHOOK_REJECTED`; jangan mencatat token atau body callback. `WEBHOOK_CONFLICT` berarti event ID dipakai untuk intent berbeda dan perlu rekonsiliasi terhadap dashboard Xendit sebelum tindakan manual.
+- Contract test sandbox: set key `xnd_development_...`, lalu jalankan `php artisan test --group=sandbox`. Tes menolak key non-development, membuat satu invoice IDR 10.000, memeriksa status, lalu meng-expire invoice tersebut.
+- Hosted Invoice API adalah integrasi legacy. Xendit sekarang merekomendasikan Payment Session untuk integrasi baru; migrasi harus diperlakukan sebagai perubahan adapter/kontrak tersendiri, bukan penggantian diam-diam. Lihat [panduan migrasi resmi Xendit](https://docs.xendit.co/docs/migrate-to-payment-session.md).
