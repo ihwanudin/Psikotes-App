@@ -11,6 +11,8 @@ use App\Data\Payments\PaymentInvoice;
 use App\Data\Payments\PaymentWebhookInput;
 use App\Enums\PaymentStatus;
 use App\Services\Payments\Exceptions\PaymentProviderException;
+use App\Services\Payments\Exceptions\WebhookAuthenticationFailed;
+use App\Services\Payments\Exceptions\WebhookPayloadRejected;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
@@ -70,13 +72,13 @@ final class XenditProvider implements PaymentProvider
             || $configuredToken === ''
             || ! is_string($providedToken)
             || ! hash_equals($configuredToken, $providedToken)) {
-            throw new PaymentProviderException('Xendit webhook was rejected.');
+            throw new WebhookAuthenticationFailed('Xendit webhook was rejected.');
         }
 
         try {
             return $this->eventFromPayload($input->payload);
         } catch (Throwable $exception) {
-            throw new PaymentProviderException('Xendit webhook was rejected.', previous: $exception);
+            throw new WebhookPayloadRejected('Xendit webhook was rejected.', previous: $exception);
         }
     }
 

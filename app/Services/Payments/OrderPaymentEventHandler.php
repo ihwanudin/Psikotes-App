@@ -12,6 +12,7 @@ use App\Models\Order;
 use App\Security\RlsContextRunner;
 use App\Services\Payments\Exceptions\PaymentAmountMismatch;
 use App\Services\Payments\Exceptions\PaymentReferenceMismatch;
+use Carbon\CarbonImmutable;
 use LogicException;
 
 final readonly class OrderPaymentEventHandler
@@ -51,9 +52,10 @@ final readonly class OrderPaymentEventHandler
         }
 
         $order->status = $transition->status;
+        $occurredAt = CarbonImmutable::instance($event->occurredAt)->utc();
 
         if ($transition->status === OrderStatus::Paid) {
-            $order->paid_at = $event->occurredAt;
+            $order->paid_at = $occurredAt;
         }
 
         $order->save();
@@ -64,7 +66,7 @@ final readonly class OrderPaymentEventHandler
                 ->where('status', 'locked')
                 ->update([
                     'status' => 'ready',
-                    'ready_at' => $event->occurredAt,
+                    'ready_at' => $occurredAt,
                     'updated_at' => now(),
                 ]);
         }

@@ -13,6 +13,7 @@ use App\Security\RlsContextRunner;
 use App\Services\Payments\Exceptions\InvalidOrderTransition;
 use App\Services\Payments\Exceptions\PaymentAmountMismatch;
 use App\Services\Payments\Exceptions\PaymentReferenceMismatch;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 
@@ -64,7 +65,7 @@ final readonly class PaymentWebhookProcessor
             'status' => $event->status->value,
             'amount' => $event->amount,
             'currency' => $event->currency,
-            'occurred_at' => $event->occurredAt,
+            'occurred_at' => CarbonImmutable::instance($event->occurredAt)->utc(),
             'intent_hash' => $intentHash,
             'outcome' => 'processing',
             'created_at' => $now,

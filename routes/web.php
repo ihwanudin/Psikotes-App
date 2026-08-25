@@ -7,9 +7,13 @@ use App\Http\Controllers\HealthCheckController;
 use App\Http\Controllers\IdentityEvidenceUploadController;
 use App\Http\Controllers\ParticipantRegistrationController;
 use App\Http\Controllers\ReferralController;
+use App\Http\Controllers\XenditWebhookController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/health', HealthCheckController::class)->name('health');
+
+Route::post('/webhooks/xendit', XenditWebhookController::class)
+    ->name('webhooks.xendit');
 
 Route::get('/r/{refCode}', ReferralController::class)
     ->where('refCode', '[A-Za-z0-9_-]{1,64}')
