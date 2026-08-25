@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Contracts\RunsRlsContext;
+use App\Security\RlsContextRunner;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -17,7 +19,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->scoped(RlsContextRunner::class);
+        $this->app->alias(RlsContextRunner::class, RunsRlsContext::class);
     }
 
     /**

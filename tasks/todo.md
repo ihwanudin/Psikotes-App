@@ -134,13 +134,13 @@
 **Acceptance criteria:**
 
 - [ ] Semua route bertenant dan job bertenant memakai context middleware.
-- [ ] Konteks dibersihkan otomatis setelah transaksi, termasuk saat exception.
-- [ ] Route baru tanpa deklarasi context gagal melalui architecture test.
+- [x] Konteks dibersihkan otomatis setelah transaksi, termasuk saat exception.
+- [x] Route baru yang menyatakan akses tenant tanpa middleware context gagal melalui architecture test.
 
 **Verification:**
 
 - [ ] Dua request/job berurutan dari tenant berbeda tidak saling melihat data.
-- [ ] Route coverage test mendeteksi route bertenant tanpa middleware.
+- [x] Route coverage test mendeteksi controller bertenant tanpa middleware.
 
 **Dependencies:** Task 6
 

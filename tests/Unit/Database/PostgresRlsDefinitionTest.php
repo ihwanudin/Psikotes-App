@@ -49,6 +49,16 @@ final class PostgresRlsDefinitionTest extends TestCase
         $this->assertStringNotContainsString("COALESCE(app_private.app_role(), 'service')", $this->sql);
     }
 
+    public function test_application_context_is_set_transaction_locally(): void
+    {
+        $runner = file_get_contents(dirname(__DIR__, 3).'/app/Security/RlsContextRunner.php');
+        $this->assertIsString($runner);
+
+        $this->assertStringContainsString("set_config('app.role', ?, true)", $runner);
+        $this->assertStringContainsString("set_config('app.branch_id', ?, true)", $runner);
+        $this->assertStringContainsString("set_config('app.participant_id', ?, true)", $runner);
+    }
+
     public function test_dass_policy_excludes_all_admin_roles(): void
     {
         $dassPolicy = $this->section('dass_policy_start', 'dass_policy_end');
