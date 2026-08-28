@@ -17,11 +17,7 @@ final class N8nNotifier implements Notifier
         $url = config('participant_notifications.n8n.url');
         $token = config('participant_notifications.n8n.token');
 
-        if (! is_string($url)
-            || ! str_starts_with($url, 'https://')
-            || filter_var($url, FILTER_VALIDATE_URL) === false
-            || ! is_string($token)
-            || $token === '') {
+        if (! $this->hasValidConfiguration($url, $token)) {
             throw new NotificationDeliveryFailed('n8n_not_configured');
         }
 
@@ -55,5 +51,28 @@ final class N8nNotifier implements Notifier
     public function channel(): string
     {
         return 'n8n';
+    }
+
+    private function hasValidConfiguration(mixed $url, mixed $token): bool
+    {
+        if (! is_string($url)
+            || filter_var($url, FILTER_VALIDATE_URL) === false
+            || ! is_string($token)
+            || $token === '') {
+            return false;
+        }
+
+        $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
+
+        if ($scheme === 'https') {
+            return true;
+        }
+
+        $host = strtolower(trim((string) parse_url($url, PHP_URL_HOST), '[]'));
+
+        return $scheme === 'http'
+            && app()->environment('local')
+            && (bool) config('participant_notifications.n8n.allow_insecure_local_http', false)
+            && in_array($host, ['127.0.0.1', '::1', 'localhost', 'host.docker.internal'], true);
     }
 }

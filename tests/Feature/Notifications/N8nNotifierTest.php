@@ -73,6 +73,47 @@ final class N8nNotifierTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_it_allows_an_explicit_local_http_endpoint_in_the_local_environment(): void
+    {
+        $this->app->detectEnvironment(fn (): string => 'local');
+
+        try {
+            config()->set('participant_notifications.n8n.url', 'http://host.docker.internal:5678/webhook/participant-activation');
+            config()->set('participant_notifications.n8n.token', 'synthetic-token');
+            config()->set('participant_notifications.n8n.allow_insecure_local_http', true);
+            Http::fake(['host.docker.internal:5678/*' => Http::response(['status' => 'sent'])]);
+
+            app(N8nNotifier::class)->send($this->notification());
+
+            Http::assertSent(fn (Request $request): bool => $request->url()
+                === 'http://host.docker.internal:5678/webhook/participant-activation');
+        } finally {
+            $this->app->detectEnvironment(fn (): string => 'testing');
+        }
+    }
+
+    public function test_it_rejects_other_http_hosts_when_the_local_override_is_enabled(): void
+    {
+        $this->app->detectEnvironment(fn (): string => 'local');
+
+        try {
+            config()->set('participant_notifications.n8n.url', 'http://n8n.example.test/webhook/participant-activation');
+            config()->set('participant_notifications.n8n.token', 'synthetic-token');
+            config()->set('participant_notifications.n8n.allow_insecure_local_http', true);
+
+            try {
+                app(N8nNotifier::class)->send($this->notification());
+                $this->fail('An untrusted HTTP host should be rejected.');
+            } catch (NotificationDeliveryFailed $exception) {
+                $this->assertSame('n8n_not_configured', $exception->errorCode);
+            }
+
+            Http::assertNothingSent();
+        } finally {
+            $this->app->detectEnvironment(fn (): string => 'testing');
+        }
+    }
+
     private function notification(): ParticipantActivationNotification
     {
         return new ParticipantActivationNotification(
