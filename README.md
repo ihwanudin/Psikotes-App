@@ -17,7 +17,7 @@ Stack: Laravel · Inertia.js+React (peserta) · Filament/Livewire (admin/staf/ps
 ## Status implementasi
 
 - F0 selesai: ekstraksi instrumen dan 11 gate otomatis lulus. Lihat `F0_VALIDATION.md`.
-- F1 berjalan: baseline repository, shell Laravel React, topologi container statis, dan seeder konfigurasi F0 telah lulus gerbang yang tersedia. Verifikasi runtime container menunggu Docker. Rencana dan checklist berada di `tasks/plan.md` dan `tasks/todo.md`.
+- F1 berjalan: stack Docker lokal, PostgreSQL/Redis, queue, scheduler, notifikasi n8n/WAHA, dan halaman status peserta telah diverifikasi. Task 18 (alur end-to-end) menunggu harga paket resmi serta aktivasi metode pembayaran. Rencana dan checklist berada di `tasks/plan.md` dan `tasks/todo.md`.
 
 ## Toolchain F1
 
@@ -25,7 +25,7 @@ Stack: Laravel · Inertia.js+React (peserta) · Filament/Livewire (admin/staf/ps
 - Composer 2.9.4 melalui `php D:\laragon\bin\composer\composer.phar`
 - Node.js 24.11.0 dan npm 11.6.1
 - Target: Laravel 13, Inertia 3 + React 19 + TypeScript + Tailwind 4, Filament 5
-- Docker belum terdeteksi di `PATH`; bootstrap awal dapat berjalan melalui Laragon, tetapi checkpoint container tetap wajib sebelum F1 ditutup.
+- Docker Desktop tersedia lokal. Bila executable belum masuk `PATH` pada shell lama, buka terminal baru atau tambahkan direktori CLI Docker Desktop ke `PATH`.
 
 Bootstrap dependency dilakukan dari branch utama starter kit React resmi Laravel karena rilis Packagist `v1.0.1` masih memakai Laravel 12. Dependensi dikunci di `composer.lock` dan `package-lock.json`; instalasi awal dilakukan tanpa lifecycle scripts, kemudian package discovery, test, lint, typecheck, build, dan audit dijalankan eksplisit.
 

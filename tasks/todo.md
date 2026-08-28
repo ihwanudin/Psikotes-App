@@ -54,8 +54,8 @@
 
 **Verification:**
 
-- [ ] `docker compose config` valid.
-- [ ] Health endpoint membuktikan DB dan Redis dapat dijangkau setelah stack hidup.
+- [x] `docker compose config` valid.
+- [x] Health endpoint membuktikan DB dan Redis dapat dijangkau setelah stack hidup.
 
 **Dependencies:** Task 2
 
@@ -346,14 +346,14 @@
 
 **Acceptance criteria:**
 
-- [ ] Notifikasi diantrekan setelah commit dan aman diulang.
-- [ ] Kegagalan WAHA/n8n tidak membatalkan status paid; retry dan audit tersedia.
-- [ ] Halaman status tidak membocorkan order peserta lain.
+- [x] Notifikasi diantrekan setelah commit dan aman diulang.
+- [x] Kegagalan WAHA/n8n tidak membatalkan status paid; retry dan audit tersedia.
+- [x] Halaman status tidak membocorkan order peserta lain.
 
 **Verification:**
 
-- [ ] Queue retry/idempotency tests dan status-page authorization tests lulus.
-- [ ] Adapter fake lulus; integrasi WAHA/n8n dijalankan bila endpoint tersedia.
+- [x] Queue retry/idempotency tests dan status-page authorization tests lulus.
+- [x] Adapter fake lulus; integrasi WAHA/n8n dijalankan pada stack lokal dan deduplikasi terverifikasi.
 
 **Dependencies:** Tasks 15, 16
 
