@@ -199,15 +199,15 @@
 - [x] Bidang kerja dan atribusi cabang ditentukan server-side.
 - [x] Validasi panjang/format dan rate limit registrasi aktif.
 - [x] `package_id` terhubung ke katalog per jenis tes dengan harga IDR dan sakelar aktivasi default OFF; backend memvalidasi ulang paket saat transaksi.
-- [x] Panel `super_admin` dapat mengisi harga dan mengatur paket ON/OFF; role lain serta URL langsung ditolak, dan paket tidak dapat diaktifkan tanpa harga positif.
-- [ ] Nominal harga resmi untuk template IST, PAPI, RMIB, Kraepelin, dan DASS-21 masih menunggu konfirmasi sebelum paket dapat diaktifkan.
+- [x] Panel `super_admin` dapat mengisi harga dan mengatur paket ON/OFF; role lain serta URL langsung ditolak, dan paket tidak dapat diaktifkan tanpa harga terkonfigurasi (Rp0 sah untuk layanan gratis).
+- [x] Harga IDR disimpan di katalog database: IST/PAPI/RMIB/Kraepelin Rp99.000, DASS-21 gratis, paket semua tes Rp200.000, dan konsultasi psikolog opsional Rp50.000.
 
 **Verification:**
 
 - [x] Feature tests mencakup input valid, invalid, duplikat, consent B ditolak, dan mass-assignment abuse.
 - [x] Browser smoke test mobile registration lulus (390×844; DASS ditolak; POST 302 → konfirmasi 200; console bersih).
-- [x] Feature tests panel paket mencakup batas role, akses URL langsung, update harga/aktivasi, serta validasi harga kosong/nol.
-- [x] Browser smoke panel paket lulus: login super admin, lima template tampil default OFF, IST disimpan Rp150.000/ON pada database sementara, Livewire 200, dan console bersih.
+- [x] Feature tests panel paket mencakup batas role, akses URL langsung, update harga/aktivasi, harga gratis, dan validasi harga kosong.
+- [x] Browser smoke katalog lulus: enam paket dan add-on berasal dari database, DASS menampilkan Gratis, konsultasi mengubah total menjadi Rp50.000, dan console bersih.
 
 **Dependencies:** Tasks 8, 9
 
