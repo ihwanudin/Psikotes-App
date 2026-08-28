@@ -28,4 +28,12 @@ final class DockerBuildContextTest extends TestCase
         $this->assertStringContainsString('process.env.WAYFINDER_COMMAND', $viteConfig);
         $this->assertStringContainsString("'php artisan wayfinder:generate'", $viteConfig);
     }
+
+    public function test_nginx_preserves_the_external_host_port_for_generated_asset_urls(): void
+    {
+        $nginxConfig = file_get_contents(dirname(__DIR__, 3).'/docker/nginx/default.conf');
+
+        $this->assertIsString($nginxConfig);
+        $this->assertStringContainsString('fastcgi_param HTTP_HOST $http_host;', $nginxConfig);
+    }
 }

@@ -76,6 +76,16 @@ final class ComposeTopologyTest extends TestCase
         }
     }
 
+    public function test_session_cookie_security_setting_reaches_the_application_containers(): void
+    {
+        foreach (['app', 'queue', 'scheduler'] as $service) {
+            $this->assertSame(
+                '${SESSION_SECURE_COOKIE:-true}',
+                $this->compose['services'][$service]['environment']['SESSION_SECURE_COOKIE'],
+            );
+        }
+    }
+
     /** @return iterable<string, array{string}> */
     public static function privateDependencyProvider(): iterable
     {
