@@ -1,4 +1,5 @@
 import { Form, Head } from '@inertiajs/react';
+import { useState } from 'react';
 import {
     BrainCircuit,
     Building2,
@@ -56,6 +57,25 @@ export default function CreateRegistration({
     paymentConfigurationPending,
     consents,
 }: Props) {
+    const [selectedPackageId, setSelectedPackageId] = useState<number | null>(
+        null,
+    );
+    const [includeConsultation, setIncludeConsultation] = useState(false);
+    const selectedPackage = packages.find(
+        (testPackage) => testPackage.id === selectedPackageId,
+    );
+    const consultationAmount = selectedPackage?.consultationAmount ?? null;
+    const totalAmount = selectedPackage
+        ? selectedPackage.amount +
+          (includeConsultation ? (consultationAmount ?? 0) : 0)
+        : null;
+    const paymentRequired = totalAmount === null || totalAmount > 0;
+    const rupiah = new Intl.NumberFormat('id-ID', {
+        style: 'currency',
+        currency: 'IDR',
+        maximumFractionDigits: 0,
+    });
+
     return (
         <>
             <Head title="Pendaftaran psikotes" />
@@ -386,17 +406,95 @@ export default function CreateRegistration({
                                                     packageConfigurationPending
                                                 }
                                                 error={errors.package_id}
+                                                selectedPackageId={
+                                                    selectedPackageId
+                                                }
+                                                onSelect={(packageId) => {
+                                                    setSelectedPackageId(
+                                                        packageId,
+                                                    );
+                                                    setIncludeConsultation(
+                                                        false,
+                                                    );
+                                                }}
                                             />
 
-                                            <PaymentMethodSelector
-                                                methods={paymentMethods}
-                                                configurationPending={
-                                                    paymentConfigurationPending
-                                                }
-                                                error={
-                                                    errors.payment_method_code
-                                                }
-                                            />
+                                            {selectedPackage && (
+                                                <div className="rounded-xl border border-slate-200 bg-white p-4">
+                                                    <label className="flex cursor-pointer items-start gap-3">
+                                                        <input
+                                                            type="checkbox"
+                                                            name="include_consultation"
+                                                            value="1"
+                                                            checked={
+                                                                includeConsultation
+                                                            }
+                                                            disabled={
+                                                                consultationAmount ===
+                                                                null
+                                                            }
+                                                            onChange={(event) =>
+                                                                setIncludeConsultation(
+                                                                    event.target
+                                                                        .checked,
+                                                                )
+                                                            }
+                                                            className="mt-1 size-5 shrink-0 accent-teal-700"
+                                                        />
+                                                        <span>
+                                                            <span className="block text-sm font-semibold">
+                                                                Konsultasi
+                                                                langsung dengan
+                                                                psikolog
+                                                            </span>
+                                                            <span className="mt-1 block text-sm text-slate-600">
+                                                                {consultationAmount ===
+                                                                null
+                                                                    ? 'Belum tersedia untuk paket ini.'
+                                                                    : `Tambahan ${rupiah.format(consultationAmount)}`}
+                                                            </span>
+                                                        </span>
+                                                    </label>
+                                                    <InputError
+                                                        id="include_consultation-error"
+                                                        message={
+                                                            errors.include_consultation
+                                                        }
+                                                        role="alert"
+                                                        className="mt-3"
+                                                    />
+                                                    <p className="mt-4 border-t border-slate-100 pt-4 text-sm font-semibold text-teal-900">
+                                                        Total:{' '}
+                                                        {totalAmount === 0
+                                                            ? 'Gratis'
+                                                            : rupiah.format(
+                                                                  totalAmount ??
+                                                                      0,
+                                                              )}
+                                                    </p>
+                                                </div>
+                                            )}
+
+                                            {paymentRequired ? (
+                                                <PaymentMethodSelector
+                                                    methods={paymentMethods}
+                                                    configurationPending={
+                                                        paymentConfigurationPending
+                                                    }
+                                                    error={
+                                                        errors.payment_method_code
+                                                    }
+                                                />
+                                            ) : (
+                                                <div
+                                                    role="status"
+                                                    className="rounded-xl border border-teal-200 bg-teal-50 p-4 text-sm text-teal-950"
+                                                >
+                                                    Paket ini gratis dan tidak
+                                                    memerlukan metode
+                                                    pembayaran.
+                                                </div>
+                                            )}
                                         </fieldset>
 
                                         <fieldset className="space-y-5 border-t border-slate-200 pt-8">
@@ -521,7 +619,8 @@ export default function CreateRegistration({
                                             disabled={
                                                 processing ||
                                                 packageConfigurationPending ||
-                                                paymentConfigurationPending
+                                                (paymentRequired &&
+                                                    paymentConfigurationPending)
                                             }
                                             className="h-12 w-full bg-teal-800 text-base hover:bg-teal-900"
                                         >

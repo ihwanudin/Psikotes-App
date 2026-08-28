@@ -7,6 +7,7 @@ export type RegistrationPackage = {
     name: string;
     description: string | null;
     amount: number;
+    consultationAmount: number | null;
     currency: 'IDR';
     testTypes: string[];
 };
@@ -15,6 +16,8 @@ type Props = {
     packages: RegistrationPackage[];
     configurationPending: boolean;
     error?: string;
+    selectedPackageId: number | null;
+    onSelect: (packageId: number) => void;
 };
 
 const testTypeLabels: Record<string, string> = {
@@ -35,6 +38,8 @@ export default function PackageSelector({
     packages,
     configurationPending,
     error,
+    selectedPackageId,
+    onSelect,
 }: Props) {
     if (configurationPending) {
         return (
@@ -85,6 +90,8 @@ export default function PackageSelector({
                                 name="package_id"
                                 value={testPackage.id}
                                 required
+                                checked={selectedPackageId === testPackage.id}
+                                onChange={() => onSelect(testPackage.id)}
                                 aria-invalid={Boolean(error)}
                                 className="mt-1 size-4 shrink-0 accent-teal-700"
                             />
@@ -94,7 +101,9 @@ export default function PackageSelector({
                                         {testPackage.name}
                                     </span>
                                     <span className="shrink-0 font-semibold text-teal-800">
-                                        {rupiah.format(testPackage.amount)}
+                                        {testPackage.amount === 0
+                                            ? 'Gratis'
+                                            : rupiah.format(testPackage.amount)}
                                     </span>
                                 </span>
                                 {testPackage.description && (

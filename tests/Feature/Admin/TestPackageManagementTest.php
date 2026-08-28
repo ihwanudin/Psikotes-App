@@ -69,6 +69,7 @@ final class TestPackageManagementTest extends TestCase
         Livewire::test(EditTestPackage::class, ['record' => $package->id])
             ->fillForm([
                 'amount' => 150000,
+                'consultation_amount' => 50000,
                 'is_active' => true,
             ])
             ->call('save')
@@ -78,12 +79,13 @@ final class TestPackageManagementTest extends TestCase
         $this->assertDatabaseHas('packages', [
             'id' => $package->id,
             'amount' => 150000,
+            'consultation_amount' => 50000,
             'currency' => 'IDR',
             'is_active' => true,
         ]);
     }
 
-    public function test_package_cannot_be_activated_without_a_positive_price(): void
+    public function test_package_cannot_be_activated_without_a_configured_price(): void
     {
         $admin = $this->admin(AdminRole::SuperAdmin);
         $package = $this->package('IST');
@@ -97,18 +99,34 @@ final class TestPackageManagementTest extends TestCase
             ->call('save')
             ->assertHasFormErrors(['amount' => 'required']);
 
+        $this->assertDatabaseHas('packages', [
+            'id' => $package->id,
+            'amount' => 99000,
+            'is_active' => false,
+        ]);
+    }
+
+    public function test_super_admin_can_activate_a_free_package(): void
+    {
+        $admin = $this->admin(AdminRole::SuperAdmin);
+        $package = $this->package('DASS21');
+        $this->actingAs($admin, 'admin');
+
         Livewire::test(EditTestPackage::class, ['record' => $package->id])
             ->fillForm([
                 'amount' => 0,
+                'consultation_amount' => 50000,
                 'is_active' => true,
             ])
             ->call('save')
-            ->assertHasFormErrors(['amount' => 'min']);
+            ->assertHasNoFormErrors()
+            ->assertNotified();
 
         $this->assertDatabaseHas('packages', [
             'id' => $package->id,
-            'amount' => null,
-            'is_active' => false,
+            'amount' => 0,
+            'consultation_amount' => 50000,
+            'is_active' => true,
         ]);
     }
 

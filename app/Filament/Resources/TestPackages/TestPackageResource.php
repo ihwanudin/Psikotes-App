@@ -53,9 +53,16 @@ final class TestPackageResource extends Resource
                     ->label('Harga')
                     ->prefix('Rp')
                     ->integer()
-                    ->minValue(1)
+                    ->minValue(0)
                     ->required(fn (Get $get): bool => (bool) $get('is_active'))
                     ->helperText('Isi nominal Rupiah tanpa tanda titik atau koma.'),
+                TextInput::make('consultation_amount')
+                    ->label('Tambahan konsultasi psikolog')
+                    ->prefix('Rp')
+                    ->integer()
+                    ->minValue(1)
+                    ->nullable()
+                    ->helperText('Kosongkan bila konsultasi tidak tersedia untuk paket ini.'),
                 TextInput::make('currency')
                     ->label('Mata uang')
                     ->disabled()
@@ -85,6 +92,10 @@ final class TestPackageResource extends Resource
                     ->money('IDR', locale: 'id_ID', decimalPlaces: 0)
                     ->placeholder('Belum diisi')
                     ->sortable(),
+                TextColumn::make('consultation_amount')
+                    ->label('Konsultasi')
+                    ->money('IDR', locale: 'id_ID', decimalPlaces: 0)
+                    ->placeholder('Tidak tersedia'),
                 IconColumn::make('is_active')
                     ->label('Aktif')
                     ->boolean(),
