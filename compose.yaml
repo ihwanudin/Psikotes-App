@@ -55,6 +55,8 @@ services:
 
   queue:
     <<: *app-service
+    healthcheck:
+      disable: true
     networks:
       - edge
       - backend
@@ -72,11 +74,15 @@ services:
 
   scheduler:
     <<: *app-service
+    healthcheck:
+      disable: true
     command: ["php", "artisan", "schedule:work"]
 
   migrate:
     <<: *app-service
     profiles: ["tools"]
+    healthcheck:
+      disable: true
     command: ["php", "artisan", "migrate", "--database=pgsql_migration", "--force"]
     environment:
       <<: *app-environment

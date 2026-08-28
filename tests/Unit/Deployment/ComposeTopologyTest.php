@@ -69,6 +69,13 @@ final class ComposeTopologyTest extends TestCase
         $this->assertSame('${REDIS_QUEUE_RETRY_AFTER:-150}', $environment['REDIS_QUEUE_RETRY_AFTER']);
     }
 
+    public function test_cli_services_disable_the_web_server_healthcheck(): void
+    {
+        foreach (['queue', 'scheduler', 'migrate'] as $service) {
+            $this->assertTrue($this->compose['services'][$service]['healthcheck']['disable']);
+        }
+    }
+
     /** @return iterable<string, array{string}> */
     public static function privateDependencyProvider(): iterable
     {
