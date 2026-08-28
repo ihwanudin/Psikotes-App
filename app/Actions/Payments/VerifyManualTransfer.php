@@ -61,7 +61,8 @@ final readonly class VerifyManualTransfer
 
             Gate::forUser($admin)->authorize('verifyPayment', $order);
 
-            if ($order->paymentMethod->code !== 'manual_transfer'
+            if ($order->payment_method_id === null
+                || $order->paymentMethod->code !== 'manual_transfer'
                 || ! is_string($order->proof_object_key)
                 || ! hash_equals($order->proof_object_key, $expectedProofKey)) {
                 throw ValidationException::withMessages([

@@ -22,13 +22,21 @@ final readonly class ParticipantOrderStatus
 
     public static function fromOrder(Order $order): self
     {
+        $paymentMethodCode = 'free';
+        $paymentMethodDisplayName = 'Tanpa pembayaran';
+
+        if ($order->payment_method_id !== null) {
+            $paymentMethodCode = $order->paymentMethod->code;
+            $paymentMethodDisplayName = $order->paymentMethod->display_name;
+        }
+
         return new self(
             publicId: $order->public_id,
             status: $order->status->value,
             amount: $order->amount,
             currency: $order->currency,
-            paymentMethodCode: $order->paymentMethod->code,
-            paymentMethodDisplayName: $order->paymentMethod->display_name,
+            paymentMethodCode: $paymentMethodCode,
+            paymentMethodDisplayName: $paymentMethodDisplayName,
             paidAt: $order->paid_at?->toAtomString(),
             expiresAt: $order->expires_at?->toAtomString(),
             rejectionReason: $order->status->value === 'rejected'

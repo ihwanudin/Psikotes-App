@@ -64,7 +64,9 @@ final readonly class CreateRegistrationInvoice
             ->lockForUpdate()
             ->first();
 
-        if ($order === null || $order->paymentMethod->code !== 'xendit') {
+        if ($order === null
+            || $order->payment_method_id === null
+            || $order->paymentMethod->code !== 'xendit') {
             return null;
         }
 

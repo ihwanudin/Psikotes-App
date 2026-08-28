@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests;
 
+use App\Models\TestPackage;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -33,13 +34,14 @@ final class StoreParticipantRegistrationRequest extends FormRequest
                     fn (Builder $query): Builder => $query
                         ->where('is_active', true)
                         ->whereNotNull('amount')
-                        ->where('amount', '>', 0)
+                        ->where('amount', '>=', 0)
                         ->where('currency', 'IDR'),
                 ),
             ],
             'payment_method_code' => [
                 'bail',
-                'required',
+                Rule::requiredIf(fn (): bool => $this->paymentRequired()),
+                'nullable',
                 'string',
                 'max:48',
                 'regex:/^[a-z0-9_]+$/',
@@ -57,6 +59,7 @@ final class StoreParticipantRegistrationRequest extends FormRequest
             'email' => ['nullable', 'email:rfc', 'max:255'],
             'consent_psychotest' => ['bail', 'required', 'accepted'],
             'consent_dass' => ['bail', 'required', 'boolean'],
+            'include_consultation' => ['bail', 'required', 'boolean'],
         ];
     }
 
@@ -76,6 +79,22 @@ final class StoreParticipantRegistrationRequest extends FormRequest
                 ? preg_replace('/\s+/u', ' ', trim($this->input('full_name')))
                 : $this->input('full_name'),
             'email' => $this->input('email') === '' ? null : $this->input('email'),
+            'include_consultation' => $this->boolean('include_consultation'),
         ]);
+    }
+
+    private function paymentRequired(): bool
+    {
+        $package = TestPackage::query()
+            ->availableForRegistration()
+            ->find($this->integer('package_id'));
+
+        if ($package === null) {
+            return true;
+        }
+
+        return (int) $package->amount
+            + ($this->boolean('include_consultation') ? ($package->consultation_amount ?? 0) : 0)
+            > 0;
     }
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Registration;
 
 use App\Models\Branch;
+use App\Models\Order;
 use App\Models\Participant;
 use Database\Seeders\PaymentMethodSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -75,6 +76,7 @@ final class PackageSelectionTest extends TestCase
                 ->where('packages.0.id', $active)
                 ->where('packages.0.code', 'BATTERY')
                 ->where('packages.0.amount', 350000)
+                ->where('packages.0.consultationAmount', 50000)
                 ->where('packages.0.currency', 'IDR')
                 ->where('packages.0.testTypes', ['ist', 'papi', 'rmib', 'kraepelin'])
                 ->where('packageConfigurationPending', false)
@@ -105,6 +107,53 @@ final class PackageSelectionTest extends TestCase
             ->assertRedirect('/registration/received');
 
         $this->assertSame($packageId, Participant::query()->sole()->package_id);
+    }
+
+    public function test_consultation_is_priced_from_the_selected_package_and_snapshotted_on_order(): void
+    {
+        $this->branch();
+        $packageId = $this->package('IST-ONLY', 99000, true, ['ist']);
+        $token = (string) Str::uuid();
+        $payload = $this->validPayload($token, $packageId);
+        $payload['include_consultation'] = true;
+
+        $this->withSession(['registration.token' => $token])
+            ->post('/registrations', $payload)
+            ->assertRedirect('/registration/received');
+
+        $order = Order::query()->sole();
+        $this->assertSame(149000, $order->amount);
+        $this->assertSame([
+            'package_code' => 'IST-ONLY',
+            'package_amount' => 99000,
+            'consultation_selected' => true,
+            'consultation_amount' => 50000,
+        ], $order->metadata['pricing']);
+    }
+
+    public function test_free_dass_registration_needs_no_payment_and_is_activated_immediately(): void
+    {
+        $this->branch();
+        $packageId = $this->package('DASS21', 0, true, ['dass21']);
+        $token = (string) Str::uuid();
+        $payload = $this->validPayload($token, $packageId);
+        unset($payload['payment_method_code']);
+        $payload['consent_dass'] = true;
+
+        $this->withSession(['registration.token' => $token])
+            ->post('/registrations', $payload)
+            ->assertRedirect('/registration/received');
+
+        $order = Order::query()->sole();
+        $this->assertSame(0, $order->amount);
+        $this->assertNull($order->payment_method_id);
+        $this->assertSame('paid', $order->status->value);
+        $this->assertDatabaseHas('entitlements', [
+            'order_id' => $order->id,
+            'test_type' => 'dass21',
+            'status' => 'ready',
+        ]);
+        $this->assertDatabaseCount('outbox_messages', 1);
     }
 
     public function test_registration_rejects_inactive_unpriced_and_unknown_packages(): void
@@ -150,6 +199,7 @@ final class PackageSelectionTest extends TestCase
             'code' => $code,
             'name' => "Package {$code}",
             'amount' => $amount,
+            'consultation_amount' => 50000,
             'currency' => 'IDR',
             'is_active' => $active,
             'created_at' => now(),

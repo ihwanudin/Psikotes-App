@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Actions\Registration;
 
+use App\Actions\Notifications\EnqueueParticipantActivation;
 use App\Models\ConsentRecord;
 use App\Models\Order;
 use App\Models\Participant;
@@ -24,6 +25,7 @@ final readonly class RegisterParticipant
         private RlsContextRunner $runner,
         private ReferralAttribution $referrals,
         private MonthlyTestNumberIssuer $testNumbers,
+        private EnqueueParticipantActivation $enqueueActivation,
     ) {}
 
     /**
@@ -32,7 +34,7 @@ final readonly class RegisterParticipant
     public function handle(
         array $input,
         int $packageId,
-        string $paymentMethodCode,
+        ?string $paymentMethodCode,
         string $registrationToken,
         ?string $referralCookie,
     ): Participant {
@@ -78,7 +80,7 @@ final readonly class RegisterParticipant
     private function createOnce(
         array $input,
         int $packageId,
-        string $paymentMethodCode,
+        ?string $paymentMethodCode,
         string $registrationToken,
         string $payloadHash,
         ?string $referralCookie,
@@ -105,13 +107,25 @@ final readonly class RegisterParticipant
             ]);
         }
 
-        $paymentMethod = PaymentMethod::query()
-            ->active()
-            ->sharedLock()
-            ->where('code', $paymentMethodCode)
-            ->first();
+        $consultationSelected = (bool) ($input['include_consultation'] ?? false);
+        $consultationAmount = $consultationSelected ? $package->consultation_amount : 0;
 
-        if ($paymentMethod === null) {
+        if ($consultationSelected && $consultationAmount === null) {
+            throw ValidationException::withMessages([
+                'include_consultation' => 'Konsultasi psikolog belum tersedia untuk paket ini.',
+            ]);
+        }
+
+        $totalAmount = (int) $package->amount + (int) $consultationAmount;
+        $paymentMethod = $totalAmount > 0
+            ? PaymentMethod::query()
+                ->active()
+                ->sharedLock()
+                ->where('code', $paymentMethodCode)
+                ->first()
+            : null;
+
+        if ($totalAmount > 0 && $paymentMethod === null) {
             throw ValidationException::withMessages([
                 'payment_method_code' => 'Metode pembayaran tidak tersedia.',
             ]);
@@ -137,13 +151,23 @@ final readonly class RegisterParticipant
         ])->save();
 
         $now = now();
+        $isFree = $totalAmount === 0;
         $order = Order::query()->create([
             'public_id' => (string) Str::ulid(),
             'participant_id' => $participant->id,
-            'payment_method_id' => $paymentMethod->id,
-            'status' => 'pending',
-            'amount' => $package->amount,
+            'payment_method_id' => $paymentMethod?->id,
+            'status' => $isFree ? 'paid' : 'pending',
+            'amount' => $totalAmount,
             'currency' => $package->currency,
+            'paid_at' => $isFree ? $now : null,
+            'metadata' => [
+                'pricing' => [
+                    'package_code' => $package->code,
+                    'package_amount' => (int) $package->amount,
+                    'consultation_selected' => $consultationSelected,
+                    'consultation_amount' => (int) $consultationAmount,
+                ],
+            ],
         ]);
         $participant->entitlements()->createMany(
             $package->items
@@ -151,7 +175,8 @@ final readonly class RegisterParticipant
                 ->map(fn ($item): array => [
                     'order_id' => $order->id,
                     'test_type' => $item->test_type,
-                    'status' => 'locked',
+                    'status' => $isFree ? 'ready' : 'locked',
+                    'ready_at' => $isFree ? $now : null,
                     'created_at' => $now,
                     'updated_at' => $now,
                 ])->all(),
@@ -159,6 +184,10 @@ final readonly class RegisterParticipant
 
         $this->recordConsent($participant, ConsentDocument::for('psychotest'), true);
         $this->recordConsent($participant, ConsentDocument::for('dass'), (bool) $input['consent_dass']);
+
+        if ($isFree) {
+            $this->enqueueActivation->handle($order);
+        }
 
         return $participant;
     }

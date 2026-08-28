@@ -60,6 +60,7 @@ final class ParticipantRegistrationController extends Controller
                 'name' => $package->name,
                 'description' => $package->description,
                 'amount' => $package->amount,
+                'consultationAmount' => $package->consultation_amount,
                 'currency' => $package->currency,
                 'testTypes' => $package->items->pluck('test_type')->values()->all(),
             ]),
@@ -85,7 +86,9 @@ final class ParticipantRegistrationController extends Controller
         $validated = $request->validated();
         $token = (string) $validated['_registration_token'];
         $packageId = $request->integer('package_id');
-        $paymentMethodCode = (string) $validated['payment_method_code'];
+        $paymentMethodCode = isset($validated['payment_method_code'])
+            ? (string) $validated['payment_method_code']
+            : null;
         unset(
             $validated['_registration_token'],
             $validated['package_id'],
@@ -165,7 +168,8 @@ final class ParticipantRegistrationController extends Controller
                     'manualStatus' => $participant->identityVerification?->manual_status,
                 ];
                 $manualOrder = $participant->orders->first(
-                    fn ($order): bool => $order->paymentMethod->code === 'manual_transfer',
+                    fn ($order): bool => $order->payment_method_id !== null
+                        && $order->paymentMethod->code === 'manual_transfer',
                 );
 
                 if ($manualOrder !== null) {

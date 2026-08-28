@@ -30,7 +30,8 @@ final readonly class ManualPaymentProofUrlIssuer
 
             Gate::forUser($admin)->authorize('verifyPayment', $order);
             abort_unless(
-                $order->paymentMethod->code === 'manual_transfer'
+                $order->payment_method_id !== null
+                    && $order->paymentMethod->code === 'manual_transfer'
                     && is_string($order->proof_object_key),
                 404,
             );
