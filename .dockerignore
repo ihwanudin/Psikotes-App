@@ -8,6 +8,7 @@ node_modules
 public/build
 vendor
 coverage
+bootstrap/cache/*.php
 storage/logs/*
 storage/framework/cache/data/*
 storage/framework/sessions/*
