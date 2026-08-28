@@ -62,8 +62,10 @@ final class ComposeTopologyTest extends TestCase
         $this->assertContains('--queue=notifications,default', $command);
         $this->assertContains('--tries=5', $command);
         $this->assertContains('--timeout=120', $command);
+        $this->assertSame(['edge', 'backend'], $queue['networks']);
         $this->assertSame('${N8N_WEBHOOK_URL:-}', $environment['N8N_WEBHOOK_URL']);
         $this->assertSame('${N8N_WEBHOOK_TOKEN:-}', $environment['N8N_WEBHOOK_TOKEN']);
+        $this->assertSame('${N8N_ALLOW_INSECURE_LOCAL_HTTP:-false}', $environment['N8N_ALLOW_INSECURE_LOCAL_HTTP']);
         $this->assertSame('${REDIS_QUEUE_RETRY_AFTER:-150}', $environment['REDIS_QUEUE_RETRY_AFTER']);
     }
 

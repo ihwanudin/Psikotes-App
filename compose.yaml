@@ -27,6 +27,7 @@ x-app-service: &app-service
     SESSION_DRIVER: redis
     N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL:-}
     N8N_WEBHOOK_TOKEN: ${N8N_WEBHOOK_TOKEN:-}
+    N8N_ALLOW_INSECURE_LOCAL_HTTP: ${N8N_ALLOW_INSECURE_LOCAL_HTTP:-false}
   depends_on:
     postgres:
       condition: service_healthy
@@ -54,6 +55,9 @@ services:
 
   queue:
     <<: *app-service
+    networks:
+      - edge
+      - backend
     command:
       - php
       - artisan
