@@ -10,12 +10,20 @@ use App\Http\Controllers\ManualPaymentProofUploadController;
 use App\Http\Controllers\ParticipantRegistrationController;
 use App\Http\Controllers\ReferralController;
 use App\Http\Controllers\RegistrationOrderStatusController;
+use App\Http\Controllers\SelectionLaunchController;
 use App\Http\Controllers\XenditWebhookController;
 use App\Http\Middleware\ApplyRlsContext;
 use Filament\Http\Middleware\Authenticate as AuthenticateFilament;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/health', HealthCheckController::class)->name('health');
+
+Route::get('/selection/launch', SelectionLaunchController::class)
+    ->middleware('throttle:30,1')
+    ->name('selection.launch');
+
+Route::inertia('/participant/lobby', 'participant/lobby')
+    ->name('participant.lobby');
 
 Route::post('/webhooks/xendit', XenditWebhookController::class)
     ->name('webhooks.xendit');

@@ -10,6 +10,8 @@ Base: `https://psikotes.oncam.id`. Rute peserta (Inertia+React) dan API internal
 - Payload: `{externalCandidateId,selectionRoundId,registrationId,fullName,birthDate,gender,educationLevel,email,phone}`. Respons sukses: `{data:{participantId}}` (`201` baru, `200` replay identik).
 - Kunci/candidate yang dipakai ulang dengan data berbeda menghasilkan `409 IDEMPOTENCY_CONFLICT`; request tanpa autentikasi valid tidak boleh menyimpan data pribadi.
 - Cabang, bidang tujuan default, dan daftar tes harus dikonfigurasi eksplisit. Integrasi tidak melakukan fallback ke cabang/paket komersial.
+- `GET /selection/launch?ticket=<jwt>` adalah bridge browser: server menandatangani request konsumsi ke `POST <SELECTION_APP_BASE_URL>/api/v1/integrations/psychotest/launch-tickets/consume`, mencocokkan ketiga ID respons dengan ledger lokal, lalu menerbitkan JWT peserta. Ticket satu kali tidak diteruskan ke lobby dan respons memakai CSP nonce, `no-store`, serta `no-referrer`.
+- Bridge menyimpan JWT peserta di `sessionStorage`, membersihkan query URL, lalu berpindah ke `GET /participant/lobby`. Lobby mengambil profil dan entitlement melalui API Bearer; tidak ada token atau data peserta di props server.
 
 ## Publik
 - `GET  /r/:ref_code` — resolusi referral: set cookie first-touch 30 hari + catat `referral_visits`, redirect ke halaman daftar. ref tak dikenal → cabang default (pusat).
