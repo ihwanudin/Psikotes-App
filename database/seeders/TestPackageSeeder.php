@@ -6,42 +6,60 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use LogicException;
 
 final class TestPackageSeeder extends Seeder
 {
-    /** @var array<string, array{name: string, test_type: string}> */
-    private const PACKAGES = [
-        'IST' => ['name' => 'Tes Inteligensi (IST)', 'test_type' => 'ist'],
-        'PAPI' => ['name' => 'Tes Kepribadian (PAPI Kostick)', 'test_type' => 'papi'],
-        'RMIB' => ['name' => 'Tes Minat (RMIB)', 'test_type' => 'rmib'],
-        'KRAEPELIN' => ['name' => 'Tes Ketahanan Kerja (Kraepelin)', 'test_type' => 'kraepelin'],
-        'DASS21' => ['name' => 'Skrining DASS-21', 'test_type' => 'dass21'],
-    ];
-
     public function run(): void
     {
-        foreach (self::PACKAGES as $code => $definition) {
+        $catalog = json_decode(
+            File::get(database_path('seeders/data/service-catalog.json')),
+            true,
+            flags: JSON_THROW_ON_ERROR,
+        );
+
+        foreach ($catalog['packages'] as $definition) {
             DB::table('packages')->insertOrIgnore([
-                'code' => $code,
+                'code' => $definition['code'],
                 'name' => $definition['name'],
-                'amount' => null,
-                'currency' => 'IDR',
+                'amount' => $definition['amount'],
+                'consultation_amount' => $catalog['consultation_amount'],
+                'currency' => $catalog['currency'],
                 'is_active' => false,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
 
-            $packageId = DB::table('packages')->where('code', $code)->value('id')
-                ?? throw new LogicException("Package template [{$code}] could not be resolved.");
+            DB::table('packages')
+                ->where('code', $definition['code'])
+                ->whereNull('amount')
+                ->update([
+                    'amount' => $definition['amount'],
+                    'consultation_amount' => $catalog['consultation_amount'],
+                    'updated_at' => now(),
+                ]);
 
-            DB::table('package_items')->insertOrIgnore([
-                'package_id' => $packageId,
-                'test_type' => $definition['test_type'],
-                'sort_order' => 0,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
+            DB::table('packages')
+                ->where('code', $definition['code'])
+                ->whereNull('consultation_amount')
+                ->update([
+                    'consultation_amount' => $catalog['consultation_amount'],
+                    'updated_at' => now(),
+                ]);
+
+            $packageId = DB::table('packages')->where('code', $definition['code'])->value('id')
+                ?? throw new LogicException("Package template [{$definition['code']}] could not be resolved.");
+
+            foreach ($definition['test_types'] as $sortOrder => $testType) {
+                DB::table('package_items')->insertOrIgnore([
+                    'package_id' => $packageId,
+                    'test_type' => $testType,
+                    'sort_order' => $sortOrder,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
         }
     }
 }

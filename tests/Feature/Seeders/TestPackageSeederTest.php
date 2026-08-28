@@ -13,31 +13,37 @@ final class TestPackageSeederTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_each_canonical_test_type_has_an_inactive_idr_package_template(): void
+    public function test_catalog_has_data_driven_individual_and_bundle_prices(): void
     {
         $this->seed(TestPackageSeeder::class);
 
         $expected = [
-            'IST' => 'ist',
-            'PAPI' => 'papi',
-            'RMIB' => 'rmib',
-            'KRAEPELIN' => 'kraepelin',
-            'DASS21' => 'dass21',
+            'IST' => ['amount' => 99000, 'items' => ['ist']],
+            'PAPI' => ['amount' => 99000, 'items' => ['papi']],
+            'RMIB' => ['amount' => 99000, 'items' => ['rmib']],
+            'KRAEPELIN' => ['amount' => 99000, 'items' => ['kraepelin']],
+            'DASS21' => ['amount' => 0, 'items' => ['dass21']],
+            'ALL' => ['amount' => 200000, 'items' => ['ist', 'papi', 'rmib', 'kraepelin', 'dass21']],
         ];
 
         $this->assertDatabaseCount('packages', count($expected));
-        $this->assertDatabaseCount('package_items', count($expected));
+        $this->assertDatabaseCount('package_items', 10);
 
-        foreach ($expected as $code => $testType) {
+        foreach ($expected as $code => $definition) {
             $package = DB::table('packages')->where('code', $code)->sole();
 
             $this->assertSame('IDR', $package->currency);
             $this->assertSame(0, $package->is_active);
-            $this->assertNull($package->amount);
-            $this->assertDatabaseHas('package_items', [
-                'package_id' => $package->id,
-                'test_type' => $testType,
-            ]);
+            $this->assertSame($definition['amount'], $package->amount);
+            $this->assertSame(50000, $package->consultation_amount);
+            $this->assertSame(
+                $definition['items'],
+                DB::table('package_items')
+                    ->where('package_id', $package->id)
+                    ->orderBy('sort_order')
+                    ->pluck('test_type')
+                    ->all(),
+            );
         }
     }
 
@@ -46,7 +52,7 @@ final class TestPackageSeederTest extends TestCase
         $this->seed(TestPackageSeeder::class);
         $this->seed(TestPackageSeeder::class);
 
-        $this->assertDatabaseCount('packages', 5);
-        $this->assertDatabaseCount('package_items', 5);
+        $this->assertDatabaseCount('packages', 6);
+        $this->assertDatabaseCount('package_items', 10);
     }
 }

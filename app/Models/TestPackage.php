@@ -15,10 +15,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $name
  * @property string|null $description
  * @property int|null $amount
+ * @property int|null $consultation_amount
  * @property string $currency
  * @property bool $is_active
  */
-#[Fillable(['code', 'name', 'description', 'amount', 'currency', 'is_active'])]
+#[Fillable(['code', 'name', 'description', 'amount', 'consultation_amount', 'currency', 'is_active'])]
 final class TestPackage extends Model
 {
     protected $table = 'packages';
@@ -34,7 +35,7 @@ final class TestPackage extends Model
     {
         $query->where('is_active', true)
             ->whereNotNull('amount')
-            ->where('amount', '>', 0)
+            ->where('amount', '>=', 0)
             ->where('currency', 'IDR')
             ->whereHas('items');
     }
@@ -44,6 +45,7 @@ final class TestPackage extends Model
     {
         return [
             'amount' => 'integer',
+            'consultation_amount' => 'integer',
             'is_active' => 'boolean',
         ];
     }

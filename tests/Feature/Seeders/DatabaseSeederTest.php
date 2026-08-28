@@ -21,7 +21,7 @@ final class DatabaseSeederTest extends TestCase
             'is_default' => true,
             'is_active' => true,
         ]);
-        $this->assertDatabaseCount('packages', 5);
+        $this->assertDatabaseCount('packages', 6);
         $this->assertDatabaseCount('payment_methods', 2);
         $this->assertDatabaseCount('users', 0);
     }

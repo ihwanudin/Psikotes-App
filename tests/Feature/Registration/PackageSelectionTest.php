@@ -34,6 +34,7 @@ final class PackageSelectionTest extends TestCase
             'name',
             'description',
             'amount',
+            'consultation_amount',
             'currency',
             'is_active',
         ]));
