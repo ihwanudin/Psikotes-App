@@ -26,6 +26,8 @@ final class N8nWorkflowDefinitionTest extends TestCase
     {
         $webhook = $this->node('Participant Activation Webhook');
 
+        $this->assertIsString($this->workflow['id'] ?? null);
+        $this->assertNotSame('', $this->workflow['id']);
         $this->assertSame('n8n-nodes-base.webhook', $webhook['type']);
         $this->assertSame(2.1, $webhook['typeVersion']);
         $this->assertSame('headerAuth', $webhook['parameters']['authentication']);
