@@ -4,6 +4,7 @@
 - Peserta: login `nomor_tes + tanggal_lahir` → JWT HS256 TTL 12 jam tanpa refresh token (sesi tes pendek; login ulang murah). Header wajib `typ=participant+jwt`; signature, algoritme tetap, `iss`, `aud`, `sub`, `{participant_id, branch_id}`, `iat`, `nbf`, `exp`, serta durasi token divalidasi. Secret wajib random `base64:` minimal 32 byte. Magic link/OTP TIDAK dipakai untuk peserta — menambah dependensi email/HP saat ujian; keputusan sadar, bukan kelalaian.
 - Admin: sesi Laravel/Filament email+password; role di `admins` (`super_admin`, `branch_admin`, `staff`, `psychologist`) dan kemampuan verifikasi pembayaran diperiksa server-side.
 - Cookies (web admin): httpOnly, Secure, SameSite=Lax. API stateless Bearer.
+- Integrasi Selection App memakai secret khusus (bukan `APP_KEY`), HMAC-SHA256 atas timestamp dan hash raw body, toleransi waktu pendek, rate limit per IP, serta ledger idempotensi. Signature diverifikasi sebelum validasi/persistensi PII. Secret minimum 32 byte dan wajib berbeda per environment.
 - Rate limit Laravel memakai cache Redis bersama: login peserta 5/menit/IP. Kegagalan per nomor tes disimpan sebagai key HMAC (bukan nomor mentah) dan mengunci 60 detik mulai kegagalan ketiga, 5 menit pada kegagalan berikutnya, lalu 15 menit; login berhasil menghapus riwayat kegagalan nomor tersebut. Webhook dan registrasi juga dibatasi.
 
 ## Data

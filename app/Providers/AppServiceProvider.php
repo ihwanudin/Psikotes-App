@@ -82,5 +82,13 @@ class AppServiceProvider extends ServiceProvider
                     'message' => 'Terlalu banyak percobaan. Silakan coba lagi nanti.',
                 ],
             ], 429, $headers)));
+        RateLimiter::for('selection-integration', fn (Request $request): Limit => Limit::perMinute(120)
+            ->by((string) $request->ip())
+            ->response(fn (Request $request, array $headers) => response()->json([
+                'error' => [
+                    'code' => 'RATE_LIMITED',
+                    'message' => 'Terlalu banyak permintaan layanan.',
+                ],
+            ], 429, $headers)));
     }
 }

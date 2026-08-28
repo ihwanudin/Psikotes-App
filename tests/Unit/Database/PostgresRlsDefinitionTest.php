@@ -88,6 +88,16 @@ final class PostgresRlsDefinitionTest extends TestCase
         $this->assertStringContainsString("app_private.app_role() = 'service'", $migration);
     }
 
+    public function test_selection_participant_mapping_forces_service_only_rls(): void
+    {
+        $migration = file_get_contents(dirname(__DIR__, 3).'/database/migrations/2026_08_29_000100_create_selection_participants.php');
+        $this->assertIsString($migration);
+
+        $this->assertStringContainsString('ALTER TABLE selection_participants ENABLE ROW LEVEL SECURITY', $migration);
+        $this->assertStringContainsString('ALTER TABLE selection_participants FORCE ROW LEVEL SECURITY', $migration);
+        $this->assertStringContainsString("app_private.app_role() = 'service'", $migration);
+    }
+
     private function section(string $start, string $end): string
     {
         $matches = [];

@@ -6,8 +6,13 @@ use App\Http\Controllers\ParticipantEntitlementController;
 use App\Http\Controllers\ParticipantLoginController;
 use App\Http\Controllers\ParticipantOrderStatusController;
 use App\Http\Controllers\ParticipantProfileController;
+use App\Http\Controllers\SelectionParticipantProvisioningController;
 use App\Http\Controllers\StartParticipantSessionController;
 use Illuminate\Support\Facades\Route;
+
+Route::post('/integrations/v1/selection/participants', SelectionParticipantProvisioningController::class)
+    ->middleware(['throttle:selection-integration', 'selection.integration'])
+    ->name('integrations.selection.participants.store');
 
 Route::post('/auth/participant/login', ParticipantLoginController::class)
     ->middleware('throttle:participant-login')

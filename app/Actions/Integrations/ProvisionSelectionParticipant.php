@@ -1,0 +1,173 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Actions\Integrations;
+
+use App\Models\Branch;
+use App\Models\Participant;
+use App\Models\SelectionParticipant;
+use App\Security\RlsContext;
+use App\Security\RlsContextRunner;
+use App\Services\TestNumber\MonthlyTestNumberIssuer;
+use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
+
+final readonly class ProvisionSelectionParticipant
+{
+    private const array SUPPORTED_TEST_TYPES = ['ist', 'papi', 'rmib', 'kraepelin', 'dass21'];
+
+    private const array INTENDED_FIELDS = ['KAIGO', 'KENSETSU', 'NOUGYOU', 'SEIZOU', 'GAISHOKU', 'UMUM'];
+
+    public function __construct(
+        private RlsContextRunner $runner,
+        private MonthlyTestNumberIssuer $testNumbers,
+    ) {}
+
+    /**
+     * @param  array<string, mixed>  $input
+     * @return array{participant_id: int, replayed: bool}
+     */
+    public function handle(array $input, string $clientId, string $idempotencyKey): array
+    {
+        $requestHash = $this->requestHash($input);
+
+        try {
+            return $this->runner->run(
+                new RlsContext('service'),
+                fn (): array => $this->createOnce($input, $clientId, $idempotencyKey, $requestHash),
+            );
+        } catch (QueryException $exception) {
+            $existing = $this->findExisting(
+                $clientId,
+                $idempotencyKey,
+                (string) $input['externalCandidateId'],
+            );
+            if ($existing === null) {
+                throw $exception;
+            }
+
+            $this->assertSameRequest($existing, $requestHash);
+
+            return ['participant_id' => $existing->participant_id, 'replayed' => true];
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $input
+     * @return array{participant_id: int, replayed: bool}
+     */
+    private function createOnce(array $input, string $clientId, string $idempotencyKey, string $requestHash): array
+    {
+        $existing = SelectionParticipant::query()
+            ->where('client_id', $clientId)
+            ->where('idempotency_key', $idempotencyKey)
+            ->first();
+
+        if ($existing !== null) {
+            $this->assertSameRequest($existing, $requestHash);
+
+            return ['participant_id' => $existing->participant_id, 'replayed' => true];
+        }
+
+        $branchRef = config('selection_integration.branch_ref');
+        $branch = is_string($branchRef)
+            ? Branch::query()->where('ref_code', $branchRef)->where('is_active', true)->sharedLock()->first()
+            : null;
+        $intendedField = strtoupper((string) config('selection_integration.intended_field', 'UMUM'));
+        $testTypes = array_values(array_unique((array) config('selection_integration.test_types', ['ist'])));
+
+        if ($branch === null
+            || ! in_array($intendedField, self::INTENDED_FIELDS, true)
+            || $testTypes === []
+            || array_diff($testTypes, self::SUPPORTED_TEST_TYPES) !== []) {
+            throw new SelectionIntegrationUnavailable;
+        }
+
+        $participant = Participant::query()->create([
+            'branch_id' => $branch->id,
+            'referral_branch_id' => $branch->id,
+            'referral_source' => 'manual',
+            'full_name' => $input['fullName'],
+            'gender' => $input['gender'],
+            'birth_date' => $input['birthDate'],
+            'education_level' => $input['educationLevel'],
+            'intended_field' => $intendedField,
+            'phone' => preg_replace('/[^0-9+]/', '', (string) $input['phone']),
+            'email' => strtolower((string) $input['email']),
+            'test_number' => $this->testNumbers->issue(),
+        ]);
+
+        $now = now();
+        $participant->entitlements()->createMany(array_map(
+            static fn (string $testType): array => [
+                'order_id' => null,
+                'test_type' => $testType,
+                'status' => 'ready',
+                'ready_at' => $now,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            $testTypes,
+        ));
+
+        SelectionParticipant::query()->create([
+            'client_id' => $clientId,
+            'external_candidate_id' => $input['externalCandidateId'],
+            'selection_round_id' => $input['selectionRoundId'],
+            'registration_id' => $input['registrationId'],
+            'participant_id' => $participant->id,
+            'idempotency_key' => $idempotencyKey,
+            'request_hash' => $requestHash,
+        ]);
+
+        DB::table('audit_logs')->insert([
+            'branch_id' => $branch->id,
+            'actor_type' => 'service',
+            'actor_id' => $clientId,
+            'action' => 'selection_participant.provisioned',
+            'subject_type' => Participant::class,
+            'subject_id' => (string) $participant->id,
+            'context' => json_encode([
+                'selection_round_id' => $input['selectionRoundId'],
+                'test_types' => $testTypes,
+            ], JSON_THROW_ON_ERROR),
+            'occurred_at' => $now,
+            'expires_at' => $now->addYears(5),
+        ]);
+
+        return ['participant_id' => $participant->id, 'replayed' => false];
+    }
+
+    private function findExisting(
+        string $clientId,
+        string $idempotencyKey,
+        string $externalCandidateId,
+    ): ?SelectionParticipant {
+        return $this->runner->run(
+            new RlsContext('service'),
+            fn (): ?SelectionParticipant => SelectionParticipant::query()
+                ->where('client_id', $clientId)
+                ->where(function ($query) use ($idempotencyKey, $externalCandidateId): void {
+                    $query->where('idempotency_key', $idempotencyKey)
+                        ->orWhere('external_candidate_id', $externalCandidateId);
+                })
+                ->first(),
+        );
+    }
+
+    private function assertSameRequest(SelectionParticipant $existing, string $requestHash): void
+    {
+        if (! hash_equals($existing->request_hash, $requestHash)) {
+            throw new IdempotencyConflict;
+        }
+    }
+
+    /** @param array<string, mixed> $input */
+    private function requestHash(array $input): string
+    {
+        ksort($input);
+
+        return hash('sha256', json_encode($input, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
+    }
+}
