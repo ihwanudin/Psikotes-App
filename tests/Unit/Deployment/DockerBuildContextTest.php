@@ -15,4 +15,17 @@ final class DockerBuildContextTest extends TestCase
         $this->assertIsString($dockerignore);
         $this->assertStringContainsString('bootstrap/cache/*.php', $dockerignore);
     }
+
+    public function test_frontend_image_reuses_pre_generated_wayfinder_types_without_php(): void
+    {
+        $root = dirname(__DIR__, 3);
+        $dockerfile = file_get_contents($root.'/docker/app/Dockerfile');
+        $viteConfig = file_get_contents($root.'/vite.config.ts');
+
+        $this->assertIsString($dockerfile);
+        $this->assertIsString($viteConfig);
+        $this->assertStringContainsString('ENV WAYFINDER_COMMAND=true', $dockerfile);
+        $this->assertStringContainsString('process.env.WAYFINDER_COMMAND', $viteConfig);
+        $this->assertStringContainsString("'php artisan wayfinder:generate'", $viteConfig);
+    }
 }

@@ -51,6 +51,7 @@ RUN composer dump-autoload \
 FROM node:24.11.0-bookworm-slim AS frontend
 
 WORKDIR /app
+ENV WAYFINDER_COMMAND=true
 
 COPY package.json package-lock.json .npmrc ./
 RUN npm ci --ignore-scripts
