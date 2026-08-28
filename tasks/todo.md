@@ -367,10 +367,10 @@
 
 **Acceptance criteria:**
 
-- [ ] Manual: aktifkan metode -> daftar -> upload bukti -> admin verifikasi -> notifikasi -> login berhasil.
+- [x] Manual: aktifkan metode -> daftar -> upload bukti -> admin verifikasi -> notifikasi -> login berhasil.
 - [ ] Xendit: aktifkan metode -> invoice -> webhook terverifikasi -> entitlement ready -> notifikasi -> login berhasil.
-- [ ] Metode yang dimatikan hilang dari pilihan dan order baru ditolak tanpa mengganggu order historis.
-- [ ] RLS, consent B decline, webhook replay, upload abuse, dan auth brute force tetap hijau.
+- [x] Metode yang dimatikan hilang dari pilihan dan order baru ditolak tanpa mengganggu order historis.
+- [x] RLS, consent B decline, webhook replay, upload abuse, dan auth brute force tetap hijau.
 
 **Verification:**
 

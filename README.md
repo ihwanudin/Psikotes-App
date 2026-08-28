@@ -17,7 +17,7 @@ Stack: Laravel · Inertia.js+React (peserta) · Filament/Livewire (admin/staf/ps
 ## Status implementasi
 
 - F0 selesai: ekstraksi instrumen dan 11 gate otomatis lulus. Lihat `F0_VALIDATION.md`.
-- F1 berjalan: stack Docker lokal, PostgreSQL/Redis, queue, scheduler, notifikasi n8n/WAHA, dan halaman status peserta telah diverifikasi. Task 18 (alur end-to-end) menunggu harga paket resmi serta aktivasi metode pembayaran. Rencana dan checklist berada di `tasks/plan.md` dan `tasks/todo.md`.
+- F1 berjalan: stack Docker lokal, PostgreSQL/Redis, queue, scheduler, notifikasi n8n/WAHA, dan halaman status peserta telah diverifikasi. Harga paket resmi sudah diterapkan dan alur end-to-end Transfer Manual sudah lulus pada PostgreSQL nyata. Task 18 masih menunggu validasi Xendit sandbox; bukti berada di `F1_VALIDATION.md`.
 
 ## Toolchain F1
 
