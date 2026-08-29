@@ -20,5 +20,15 @@ final class BranchSeeder extends Seeder
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+
+        DB::table('branches')->insertOrIgnore([
+            'code' => 'BEASISWA-JEPANG',
+            'name' => 'Program Beasiswa Jepang',
+            'ref_code' => 'BEASISWA-JEPANG',
+            'is_default' => false,
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 }
