@@ -86,6 +86,25 @@ final class ComposeTopologyTest extends TestCase
         }
     }
 
+    public function test_participant_auth_and_selection_integration_reach_the_web_application(): void
+    {
+        $environment = $this->compose['services']['app']['environment'];
+
+        $expected = [
+            'PARTICIPANT_JWT_SECRET' => '${PARTICIPANT_JWT_SECRET:?Set PARTICIPANT_JWT_SECRET before starting the stack}',
+            'SELECTION_INTEGRATION_ENABLED' => '${SELECTION_INTEGRATION_ENABLED:-false}',
+            'SELECTION_INTEGRATION_CLIENT_ID' => '${SELECTION_INTEGRATION_CLIENT_ID:-selection-app}',
+            'SELECTION_INTEGRATION_CLIENT_SECRET' => '${SELECTION_INTEGRATION_CLIENT_SECRET:-}',
+            'SELECTION_INTEGRATION_BRANCH_REF' => '${SELECTION_INTEGRATION_BRANCH_REF:-BEASISWA-JEPANG}',
+            'SELECTION_APP_BASE_URL' => '${SELECTION_APP_BASE_URL:-https://seleksi.beasiswajepang.id}',
+            'SELECTION_APP_ALLOW_INSECURE_LOCAL_HTTP' => '${SELECTION_APP_ALLOW_INSECURE_LOCAL_HTTP:-false}',
+        ];
+
+        foreach ($expected as $name => $value) {
+            $this->assertSame($value, $environment[$name] ?? null, $name);
+        }
+    }
+
     /** @return iterable<string, array{string}> */
     public static function privateDependencyProvider(): iterable
     {
