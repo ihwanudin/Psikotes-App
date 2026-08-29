@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
+use RuntimeException;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -41,6 +42,18 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+
+        if (config('app.env') !== 'production') {
+            return;
+        }
+
+        $missing = $this->missingProductionConfiguration();
+
+        if ($missing !== []) {
+            throw new RuntimeException(
+                'Konfigurasi production belum lengkap: '.implode(', ', $missing),
+            );
+        }
     }
 
     /**
@@ -90,5 +103,69 @@ class AppServiceProvider extends ServiceProvider
                     'message' => 'Terlalu banyak permintaan layanan.',
                 ],
             ], 429, $headers)));
+    }
+
+    /** @return list<string> */
+    private function missingProductionConfiguration(): array
+    {
+        $requirements = [
+            'APP_KEY' => filled(config('app.key')),
+            'APP_DEBUG_FALSE' => config('app.debug') === false,
+            'APP_URL_HTTPS' => $this->isHttpsUrl(config('app.url')),
+            'DB_CONNECTION_PGSQL' => config('database.default') === 'pgsql',
+            'DB_HOST' => filled(config('database.connections.pgsql.host')),
+            'DB_DATABASE' => filled(config('database.connections.pgsql.database')),
+            'DB_USERNAME' => filled(config('database.connections.pgsql.username')),
+            'DB_PASSWORD' => filled(config('database.connections.pgsql.password')),
+            'CACHE_STORE_REDIS' => config('cache.default') === 'redis',
+            'QUEUE_CONNECTION_REDIS' => config('queue.default') === 'redis',
+            'SESSION_DRIVER_REDIS' => config('session.driver') === 'redis',
+            'SESSION_SECURE_COOKIE' => config('session.secure') === true,
+            'REDIS_PASSWORD' => filled(config('database.redis.default.password')),
+            'PARTICIPANT_JWT_SECRET' => $this->isValidParticipantJwtSecret(
+                config('participant_auth.jwt.secret'),
+            ),
+        ];
+
+        if ((bool) config('selection_integration.enabled')) {
+            $requirements += [
+                'SELECTION_INTEGRATION_CLIENT_ID' => filled(
+                    config('selection_integration.client_id'),
+                ),
+                'SELECTION_INTEGRATION_CLIENT_SECRET' => is_string(
+                    config('selection_integration.client_secret'),
+                ) && strlen((string) config('selection_integration.client_secret')) >= 32,
+                'SELECTION_INTEGRATION_BRANCH_REF' => filled(
+                    config('selection_integration.branch_ref'),
+                ),
+                'SELECTION_INTEGRATION_TEST_TYPES' => config('selection_integration.test_types') !== [],
+                'SELECTION_APP_BASE_URL_HTTPS' => $this->isHttpsUrl(
+                    config('selection_integration.selection_base_url'),
+                ),
+                'SELECTION_APP_ALLOW_INSECURE_LOCAL_HTTP_FALSE' => config(
+                    'selection_integration.allow_insecure_local_http',
+                ) === false,
+            ];
+        }
+
+        return array_keys(array_filter($requirements, static fn (bool $valid): bool => ! $valid));
+    }
+
+    private function isValidParticipantJwtSecret(mixed $value): bool
+    {
+        if (! is_string($value) || ! str_starts_with($value, 'base64:')) {
+            return false;
+        }
+
+        $decoded = base64_decode(substr($value, 7), true);
+
+        return is_string($decoded) && strlen($decoded) >= 32;
+    }
+
+    private function isHttpsUrl(mixed $value): bool
+    {
+        return is_string($value)
+            && filter_var($value, FILTER_VALIDATE_URL) !== false
+            && parse_url($value, PHP_URL_SCHEME) === 'https';
     }
 }
