@@ -29,6 +29,29 @@ Docker Compose otomatis membaca `.env`. Volume bernama `postgres-data`, `redis-d
 4. Restart queue worker setelah tiap deploy (`docker compose restart queue`) agar kode lama di worker tidak terus jalan.
 5. Validasi data sumber dengan `python -m unittest discover -s tools/extract/tests -v`, lalu seed instrumen memakai `php artisan db:seed --class=InstrumentSeeder`. Versi yang sudah tersimpan immutable; revisi norma wajib memakai versi baru dan bump `engine_version`.
 
+## Integrasi Selection App — Beasiswa Jepang
+
+Gunakan domain produksi berikut:
+
+- Selection App: `https://seleksi.beasiswajepang.id`
+- Psikotes: `https://psikotes.oncam.id`
+- Cabang psikotes: `BEASISWA-JEPANG` (`Program Beasiswa Jepang`)
+
+Kedua aplikasi harus memakai nilai acak yang sama untuk `PSYCHOTEST_CLIENT_SECRET` di Selection App dan `SELECTION_INTEGRATION_CLIENT_SECRET` di psikotes. Secret minimal 32 byte, berbeda dari `APP_KEY`, `PARTICIPANT_JWT_SECRET`, serta secret webhook. Jangan kirim nilainya melalui chat atau menyimpannya di Git.
+
+Urutan aktivasi aman:
+
+1. Deploy kedua image dengan integrasi tetap nonaktif.
+2. Jalankan migrasi psikotes menggunakan service `migrate`, kemudian jalankan `BranchSeeder` dan pastikan cabang `BEASISWA-JEPANG` aktif.
+3. Pasang seluruh secret dan URL HTTPS, lalu jalankan `docker compose config --quiet` tanpa mencetak hasil konfigurasi ke log publik.
+4. Aktifkan `SELECTION_INTEGRATION_ENABLED=true` pada psikotes lebih dahulu dan recreate `app`.
+5. Pastikan `GET https://psikotes.oncam.id/health` mengembalikan HTTP 200.
+6. Aktifkan `PSYCHOTEST_INTEGRATION_ENABLED=true` pada Selection App.
+7. Gunakan satu kandidat sintetis berstatus lolos administrasi untuk smoke test: provisioning harus menghasilkan entitlement IST `ready`, tiket harus sampai ke `/participant/lobby`, dan pemakaian tiket kedua harus ditolak HTTP 409.
+8. Hapus kandidat sintetis setelah bukti audit dan hasil smoke test dicatat.
+
+Kill switch integrasi adalah `PSYCHOTEST_INTEGRATION_ENABLED=false` di Selection App. Matikan sisi Selection lebih dahulu agar tiket baru tidak diterbitkan. Jika perlu mematikan sisi psikotes, tunggu TTL tiket (default lima menit) atau terima bahwa tiket yang belum dipakai akan gagal. Token lobby yang sudah terbit tetap berlaku sampai TTL JWT peserta; rotasi `PARTICIPANT_JWT_SECRET` membatalkan seluruh sesi peserta dan hanya boleh dilakukan saat insiden keamanan.
+
 ## Secrets (`.env` di server, TIDAK di git — lihat `.env.example`)
 `APP_KEY`, `DB_*` (host/port/db/user/password Postgres privat), `REDIS_*`, `PARTICIPANT_JWT_SECRET`, `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_DEFAULT_REGION`/`AWS_BUCKET` + `AWS_ENDPOINT` atau alias lama `FILESYSTEM_S3_ENDPOINT` (object storage S3-compatible), `IDENTITY_FILESYSTEM_DRIVER=s3`, `IDENTITY_FILESYSTEM_ROOT=identity`, `PAYMENT_PROOF_FILESYSTEM_DRIVER=s3`, `PAYMENT_PROOF_FILESYSTEM_ROOT=payment-proofs`, `DRIVE_SA_JSON` (base64, service account) + `DRIVE_SHARED_FOLDER_ID`, `WAHA_URL`/`WAHA_TOKEN` atau `N8N_WEBHOOK_URL`, `XENDIT_SECRET_KEY` + `XENDIT_CALLBACK_TOKEN`, `SENTRY_DSN` (atau Laravel error tracker pilihan).
 

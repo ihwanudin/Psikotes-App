@@ -41,6 +41,8 @@ php -r "echo 'base64:'.base64_encode(random_bytes(32)), PHP_EOL;"
 
 Simpan hasilnya hanya sebagai `PARTICIPANT_JWT_SECRET` di environment deployment. Keputusan kredensial dan batas entitlement gate dicatat di `docs/decisions/0001-participant-credentials.md`.
 
+Konfigurasi produksi gagal saat boot bila boundary utama tidak lengkap, termasuk HTTPS, PostgreSQL/Redis, secure cookie, JWT peserta, dan—ketika diaktifkan—kontrak Selection App. Urutan aktivasi `seleksi.beasiswajepang.id` ke `psikotes.oncam.id`, smoke test, serta rollback tersedia di `DEPLOYMENT.md`.
+
 ## Operasi notifikasi aktivasi
 
 Notifikasi produksi dikirim Laravel Queue ke webhook n8n; n8n kemudian memanggil WAHA. Konfigurasikan `N8N_WEBHOOK_URL` HTTPS dan `N8N_WEBHOOK_TOKEN`, jalankan scheduler, serta pastikan worker mendengarkan queue `notifications`:
