@@ -34,6 +34,19 @@ final class ComposeTopologyTest extends TestCase
         $this->assertSame($services['app']['build'], $services['scheduler']['build']);
     }
 
+    public function test_image_build_uses_a_non_production_environment_for_artisan_discovery(): void
+    {
+        $dockerfile = file_get_contents(dirname(__DIR__, 3).'/docker/app/Dockerfile');
+
+        $this->assertIsString($dockerfile);
+        $vendorStage = strstr($dockerfile, 'FROM php-base AS vendor');
+
+        $this->assertIsString($vendorStage);
+        $vendorStage = strstr($vendorStage, 'FROM node:', true);
+        $this->assertIsString($vendorStage);
+        $this->assertStringContainsString('ENV APP_ENV=local', $vendorStage);
+    }
+
     #[DataProvider('privateDependencyProvider')]
     public function test_data_services_are_private_and_health_checked(string $service): void
     {
@@ -83,6 +96,16 @@ final class ComposeTopologyTest extends TestCase
                 '${SESSION_SECURE_COOKIE:-true}',
                 $this->compose['services'][$service]['environment']['SESSION_SECURE_COOKIE'],
             );
+        }
+    }
+
+    public function test_xendit_credentials_reach_the_application_containers(): void
+    {
+        foreach (['app', 'queue', 'scheduler'] as $service) {
+            $environment = $this->compose['services'][$service]['environment'];
+
+            $this->assertSame('${XENDIT_SECRET_KEY:-}', $environment['XENDIT_SECRET_KEY'] ?? null);
+            $this->assertSame('${XENDIT_CALLBACK_TOKEN:-}', $environment['XENDIT_CALLBACK_TOKEN'] ?? null);
         }
     }
 

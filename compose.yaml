@@ -40,6 +40,8 @@ x-app-service: &app-service
     N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL:-}
     N8N_WEBHOOK_TOKEN: ${N8N_WEBHOOK_TOKEN:-}
     N8N_ALLOW_INSECURE_LOCAL_HTTP: ${N8N_ALLOW_INSECURE_LOCAL_HTTP:-false}
+    XENDIT_SECRET_KEY: "${XENDIT_SECRET_KEY:-}"
+    XENDIT_CALLBACK_TOKEN: "${XENDIT_CALLBACK_TOKEN:-}"
   depends_on:
     postgres:
       condition: service_healthy

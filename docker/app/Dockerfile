@@ -25,6 +25,9 @@ WORKDIR /var/www/html
 
 FROM php-base AS vendor
 
+# Build-time Artisan discovery must not require production runtime secrets.
+ENV APP_ENV=local
+
 COPY composer.json composer.lock ./
 
 RUN composer install \
