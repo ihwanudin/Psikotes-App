@@ -1,11 +1,6 @@
 import { Form, Head } from '@inertiajs/react';
 import { useState } from 'react';
-import {
-    BrainCircuit,
-    Building2,
-    LockKeyhole,
-    ShieldCheck,
-} from 'lucide-react';
+import { Building2, LockKeyhole, ShieldCheck } from 'lucide-react';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -79,52 +74,48 @@ export default function CreateRegistration({
     return (
         <>
             <Head title="Pendaftaran psikotes" />
-            <main className="min-h-screen bg-slate-50 text-slate-950">
+            <main className="min-h-screen bg-brand-canvas text-slate-950">
                 <div className="mx-auto grid w-full max-w-6xl lg:min-h-screen lg:grid-cols-[0.78fr_1.22fr]">
-                    <aside className="relative overflow-hidden bg-teal-950 px-6 py-10 text-white sm:px-10 lg:sticky lg:top-0 lg:h-screen lg:px-12 lg:py-14">
+                    <aside className="relative overflow-hidden bg-brand-green-deep px-6 py-10 text-white sm:px-10 lg:sticky lg:top-0 lg:h-screen lg:px-12 lg:py-14">
                         <div
-                            className="absolute -top-24 -right-20 h-72 w-72 rounded-full bg-teal-400/15 blur-3xl"
+                            className="absolute -top-24 -right-20 h-72 w-72 rounded-full bg-brand-gold/20 blur-3xl"
                             aria-hidden="true"
                         />
                         <div className="relative flex h-full max-w-md flex-col">
-                            <div className="mb-12 flex items-center gap-3">
-                                <span className="grid size-11 place-items-center rounded-2xl bg-white/10 ring-1 ring-white/15">
-                                    <BrainCircuit className="size-6 text-teal-200" />
-                                </span>
-                                <div>
-                                    <p className="font-semibold tracking-tight">
-                                        Psikotes LSI
-                                    </p>
-                                    <p className="text-xs text-teal-100/70">
-                                        psikotes.oncam.id
-                                    </p>
-                                </div>
+                            <div className="mb-12 w-fit rounded-xl bg-white px-4 py-3 shadow-sm ring-1 ring-white/20">
+                                <img
+                                    src="/brand/oncam-logo-full-color.png"
+                                    alt="ONCAM — Online Career Mentor"
+                                    width="1200"
+                                    height="1027"
+                                    className="h-auto w-36 sm:w-40"
+                                />
                             </div>
 
                             <div className="my-auto">
-                                <p className="mb-3 text-sm font-medium tracking-wide text-teal-200 uppercase">
+                                <p className="mb-3 text-sm font-semibold tracking-wide text-brand-gold uppercase">
                                     Pendaftaran peserta
                                 </p>
                                 <h1 className="text-3xl leading-tight font-semibold tracking-tight sm:text-4xl">
                                     Satu langkah sebelum verifikasi identitas.
                                 </h1>
-                                <p className="mt-5 max-w-sm text-sm leading-7 text-teal-50/75 sm:text-base">
+                                <p className="mt-5 max-w-sm text-sm leading-7 text-white/80 sm:text-base">
                                     Isi data sesuai dokumen resmi. Informasi ini
                                     digunakan untuk administrasi tes dan laporan
                                     psikologis.
                                 </p>
                             </div>
 
-                            <div className="mt-10 space-y-4 border-t border-white/10 pt-7 text-sm text-teal-50/80">
+                            <div className="mt-10 space-y-4 border-t border-white/15 pt-7 text-sm text-white/80">
                                 <div className="flex gap-3">
-                                    <ShieldCheck className="mt-0.5 size-5 shrink-0 text-teal-300" />
+                                    <ShieldCheck className="mt-0.5 size-5 shrink-0 text-brand-gold" />
                                     <p>
                                         DASS-21 terpisah dan boleh ditolak tanpa
                                         membatalkan psikotes utama.
                                     </p>
                                 </div>
                                 <div className="flex gap-3">
-                                    <LockKeyhole className="mt-0.5 size-5 shrink-0 text-teal-300" />
+                                    <LockKeyhole className="mt-0.5 size-5 shrink-0 text-brand-gold" />
                                     <p>
                                         Atribusi cabang dikunci oleh server dari
                                         tautan pertama yang Anda buka.
@@ -383,16 +374,16 @@ export default function CreateRegistration({
                                                 </div>
                                             </div>
 
-                                            <div className="flex items-start gap-3 rounded-xl border border-teal-200 bg-teal-50 p-4">
-                                                <Building2 className="mt-0.5 size-5 shrink-0 text-teal-700" />
+                                            <div className="flex items-start gap-3 rounded-xl border border-brand-gold/40 bg-brand-gold-soft p-4">
+                                                <Building2 className="mt-0.5 size-5 shrink-0 text-brand-green" />
                                                 <div>
-                                                    <p className="text-xs font-medium tracking-wide text-teal-700 uppercase">
+                                                    <p className="text-xs font-semibold tracking-wide text-brand-green uppercase">
                                                         Cabang teratribusi
                                                     </p>
-                                                    <p className="mt-1 font-semibold text-teal-950">
+                                                    <p className="mt-1 font-semibold text-brand-green-deep">
                                                         {assignedBranch.name}
                                                     </p>
-                                                    <p className="mt-1 text-xs leading-5 text-teal-800">
+                                                    <p className="mt-1 text-xs leading-5 text-brand-green">
                                                         Ditentukan otomatis oleh
                                                         server dan tidak dapat
                                                         diubah dari formulir.
@@ -439,7 +430,7 @@ export default function CreateRegistration({
                                                                         .checked,
                                                                 )
                                                             }
-                                                            className="mt-1 size-5 shrink-0 accent-teal-700"
+                                                            className="mt-1 size-5 shrink-0 accent-brand-green"
                                                         />
                                                         <span>
                                                             <span className="block text-sm font-semibold">
@@ -463,7 +454,7 @@ export default function CreateRegistration({
                                                         role="alert"
                                                         className="mt-3"
                                                     />
-                                                    <p className="mt-4 border-t border-slate-100 pt-4 text-sm font-semibold text-teal-900">
+                                                    <p className="mt-4 border-t border-slate-100 pt-4 text-sm font-semibold text-brand-green-deep">
                                                         Total:{' '}
                                                         {totalAmount === 0
                                                             ? 'Gratis'
@@ -488,7 +479,7 @@ export default function CreateRegistration({
                                             ) : (
                                                 <div
                                                     role="status"
-                                                    className="rounded-xl border border-teal-200 bg-teal-50 p-4 text-sm text-teal-950"
+                                                    className="rounded-xl border border-brand-gold/40 bg-brand-gold-soft p-4 text-sm text-brand-green-deep"
                                                 >
                                                     Paket ini gratis dan tidak
                                                     memerlukan metode
@@ -523,7 +514,7 @@ export default function CreateRegistration({
                                                             errors.consent_psychotest,
                                                         )}
                                                         aria-describedby="psychotest-copy consent_psychotest-error"
-                                                        className="mt-1 size-5 shrink-0 accent-teal-700"
+                                                        className="mt-1 size-5 shrink-0 accent-brand-green"
                                                     />
                                                     <div>
                                                         <Label
@@ -577,23 +568,23 @@ export default function CreateRegistration({
                                                     className="mt-4 grid gap-3 sm:grid-cols-2"
                                                     aria-describedby="dass-copy consent_dass-error"
                                                 >
-                                                    <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg border border-slate-200 px-4 py-3 text-sm hover:border-teal-400 has-[:checked]:border-teal-600 has-[:checked]:bg-teal-50">
+                                                    <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg border border-slate-200 px-4 py-3 text-sm transition-colors hover:border-brand-gold has-[:checked]:border-brand-green has-[:checked]:bg-brand-gold-soft">
                                                         <input
                                                             type="radio"
                                                             name="consent_dass"
                                                             value="1"
                                                             required
-                                                            className="size-4 accent-teal-700"
+                                                            className="size-4 accent-brand-green"
                                                         />
                                                         Ya, saya memilih ikut
                                                     </label>
-                                                    <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg border border-slate-200 px-4 py-3 text-sm hover:border-teal-400 has-[:checked]:border-teal-600 has-[:checked]:bg-teal-50">
+                                                    <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg border border-slate-200 px-4 py-3 text-sm transition-colors hover:border-brand-gold has-[:checked]:border-brand-green has-[:checked]:bg-brand-gold-soft">
                                                         <input
                                                             type="radio"
                                                             name="consent_dass"
                                                             value="0"
                                                             required
-                                                            className="size-4 accent-teal-700"
+                                                            className="size-4 accent-brand-green"
                                                         />
                                                         Tidak, saya menolak
                                                     </label>
@@ -622,7 +613,7 @@ export default function CreateRegistration({
                                                 (paymentRequired &&
                                                     paymentConfigurationPending)
                                             }
-                                            className="h-12 w-full bg-teal-800 text-base hover:bg-teal-900"
+                                            className="h-12 w-full bg-brand-green text-base font-semibold text-white shadow-sm transition-colors hover:bg-brand-green-deep focus-visible:ring-brand-gold"
                                         >
                                             {processing && <Spinner />}
                                             Simpan pendaftaran
