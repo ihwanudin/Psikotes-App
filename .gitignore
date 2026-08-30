@@ -26,6 +26,7 @@
 /coverage/
 
 # Secrets and credentials
+/.secrets/
 *.pem
 *.key
 *.p12

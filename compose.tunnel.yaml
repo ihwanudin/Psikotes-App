@@ -1,0 +1,21 @@
+services:
+  cloudflared:
+    image: cloudflare/cloudflared@sha256:0aa26e284f05e6c77ae375b8c9c11d9eb6a448fb7bcd8d40f31cb6176189eb38
+    restart: unless-stopped
+    command:
+      - tunnel
+      - --no-autoupdate
+      - run
+      - --token-file
+      - /run/secrets/cloudflare_tunnel_token
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - edge
+    secrets:
+      - cloudflare_tunnel_token
+
+secrets:
+  cloudflare_tunnel_token:
+    file: ./.secrets/cloudflare_tunnel_token
