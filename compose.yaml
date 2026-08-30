@@ -11,6 +11,7 @@ x-app-service: &app-service
     APP_DEBUG: ${APP_DEBUG:-false}
     APP_KEY: "${APP_KEY:?Generate APP_KEY before starting the stack}"
     APP_URL: ${APP_URL:-http://localhost:8000}
+    LOG_CHANNEL: stderr
     CACHE_STORE: redis
     DB_CONNECTION: pgsql
     DB_HOST: postgres
