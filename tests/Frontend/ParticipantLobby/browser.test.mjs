@@ -199,7 +199,92 @@ async (page) => {
     )
     assert(requests.length === 0, 'Missing token sent API requests')
     results.push('missing token: PASS (initial error, no API fetch)')
+
+    const captureGeometry = async (state, width) => {
+        const geometry = await page.evaluate(() => {
+            const viewport = document.documentElement.clientWidth
+            const labels = [...document.querySelectorAll('h1, h2, p, li span')]
+                .filter((element) => element.getClientRects().length > 0)
+                .map((element) => {
+                    const box = element.getBoundingClientRect()
+                    const range = document.createRange()
+                    range.selectNodeContents(element)
+                    const lines = [...range.getClientRects()]
+                    const style = getComputedStyle(element)
+
+                    return {
+                        text: element.textContent,
+                        textFragments: lines.length,
+                        outside: lines.some((line) =>
+                            line.left < -1 || line.right > viewport + 1 ||
+                            line.left < box.left - 1 || line.right > box.right + 1 ||
+                            line.top < box.top - 1 || line.bottom > box.bottom + 1,
+                        ),
+                        clipped: (
+                            ['hidden', 'clip'].includes(style.overflowY) &&
+                            element.scrollHeight > element.clientHeight + 1
+                        ) || style.textOverflow === 'ellipsis',
+                    }
+                })
+
+            return {
+                viewport,
+                scrollWidth: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth),
+                labels,
+                controls: document.querySelectorAll('a[href], button, input, select, textarea, [tabindex]').length,
+                styles: {
+                    mainPadding: getComputedStyle(document.querySelector('main')).paddingLeft,
+                    headingSize: getComputedStyle(document.querySelector('h1')).fontSize,
+                    sectionRadius: getComputedStyle(document.querySelector('section')).borderRadius,
+                },
+            }
+        })
+        const screenshot = `output/playwright/lobby-visual/${width}-${state}.png`
+        await page.screenshot({ path: screenshot, fullPage: true })
+        assert(geometry.scrollWidth === geometry.viewport, `${width}/${state}: page overflow`)
+        assert(geometry.labels.every((label) => !label.outside && !label.clipped),
+            `${width}/${state}: clipped label ${JSON.stringify(geometry.labels.filter((label) => label.outside || label.clipped))}`)
+        // The existing lobby is informational: it has no links or focusable controls.
+        assert(geometry.controls === 0, `${width}/${state}: unexpected tab stop`)
+        const beforeTab = page.url()
+        await page.keyboard.press('Tab')
+        assert(page.url() === beforeTab, `${width}/${state}: Tab navigated`)
+        results.push({ state, width, screenshot, ...geometry })
+    }
+
+    for (const width of [320, 390, 1280]) {
+        await page.setViewportSize({ width, height: 900 })
+        fail = false
+        profile = { full_name: null, test_number: null }
+        pending = new Promise((resolve) => {
+            release = resolve
+        })
+        await page.goto(origin)
+        await page.getByText('Memuat data peserta', { exact: true }).waitFor()
+        await captureGeometry('loading', width)
+        release()
+        await page.getByRole('heading', { name: 'Nama belum dilengkapi' }).waitFor()
+        await captureGeometry('null', width)
+
+        profile = { full_name: 'Nadia Peserta Contoh', test_number: 'TEST-SYNTHETIC-001' }
+        await page.goto(origin)
+        await page.getByRole('heading', { name: 'Nadia Peserta Contoh' }).waitFor()
+        await captureGeometry('complete', width)
+
+        fail = true
+        await page.goto(origin)
+        await page.getByRole('heading', { name: 'Sesi tidak aktif' }).waitFor()
+        await captureGeometry('error', width)
+    }
+
     assert(errors.length === 0, `Browser errors: ${errors.join('; ')}`)
+    const unstyled = results.filter((result) => typeof result === 'object' && (
+        result.styles.mainPadding !== '16px' ||
+        result.styles.headingSize !== '30px' ||
+        result.styles.sectionRadius !== '16px'
+    ))
+    assert(unstyled.length === 0,
+        `Visual fixture missing lobby utilities; geometry is NOT accepted: ${JSON.stringify(unstyled.map(({ width, state, styles }) => ({ width, state, styles })))}`)
 
     return results
 }

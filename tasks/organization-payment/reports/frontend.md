@@ -1,5 +1,69 @@
 # Frontend — P16-prep
 
+## Verifikasi visual lobby — fixture belum layak bukti geometri (2026-08-31)
+
+Delta dari **e46bca4**, yang telah diintegrasikan koordinator sebagai 78d7c53.
+**Hasil: visual acceptance BELUM lulus. Ditemukan cacat styling harness, bukan
+kesimpulan cacat label produksi.** Sesuai instruksi, usulan perbaikan diserahkan
+lebih dahulu; tidak mengubah komponen produksi atau memperluas ownership.
+
+Playwright CLI cached memakai session baru `oncam-lobby-visual-d4ea` dan profil
+Chrome sementara, bukan tab pengguna. Port 8011 diperiksa kosong sebelum Vite
+fixture dijalankan. Tidak memakai .env, DB, login/credential nyata, API nyata,
+atau navigasi eksternal. Sembilan kasus teks/fetch existing dijalankan ulang;
+ditambah 12 capture full-page pada viewport tinggi 900 CSS px:
+
+| Lebar | State yang dicapture | scrollWidth terukur | Styling lobby |
+| --- | --- | --- | --- |
+| 320 | loading, null, complete, error | 320 | Tidak termuat |
+| 390 | loading, null, complete, error | 390 | Tidak termuat |
+| 1280 | loading, null, complete, error | 1280 | Tidak termuat |
+
+Screenshot `320-null.png` dan `1280-complete.png` diperiksa secara visual: layout
+polos tanpa padding/card/warna header dan tanpa ukuran heading yang semestinya.
+Computed style pada seluruh 12 capture mengonfirmasi padding main 0px, h1 16px,
+radius section 0px; probe tambahan menunjukkan header transparan. Utility pada
+komponen seharusnya memberi px-4 (16px), text-3xl (30px), rounded-2xl (16px).
+Karena styling hilang, scrollWidth yang sama dengan viewport serta label yang
+tidak terpotong **tidak diterima sebagai bukti reflow tampilan produksi**.
+
+Penyebab yang terlokalisasi: `tests/Frontend/ParticipantLobby/preview.tsx` mengimpor
+app.css langsung, sementara root Vite fixture tidak menyertakan sumber class lobby
+di luar root. CSS build fixture sebelumnya tidak mengandung px-4/bg-teal-950/
+max-w-2xl/rounded-2xl. Harness checkout lain sudah memakai entry CSS dengan @source
+eksplisit. Tidak ada perubahan CSS global atau dugaan perubahan schema yang dibuat.
+
+**Usulan minimal untuk review berikutnya:** tambahkan CSS entry khusus fixture
+ParticipantLobby yang mengimpor app.css dan mendeklarasikan
+`@source '../../../resources/js/pages/participant/lobby.tsx';`, lalu ubah import
+preview.tsx ke entry tersebut. Rebuild dan ulangi 12 capture serta pemeriksaan
+screenshot sebelum memutuskan ada/tidaknya clipping produksi. Belum diterapkan.
+
+Harness browser sekarang memeriksa lebar halaman, batas fragmen teks heading/
+nomor/status, overflow/ellipsis, dan keberadaan utility styling. Guard styling
+membuat run final **gagal eksplisit** dengan pesan
+`Visual fixture missing lobby utilities; geometry is NOT accepted` untuk 12 kasus,
+setelah screenshot disimpan. Ini tes RED untuk cacat fixture yang dilaporkan;
+tidak ditandai skip atau dilonggarkan agar hijau. Typecheck focused dan ESLint
+focused lulus. Bukti teks/fetch increment sebelumnya tidak diklaim membuktikan CSS.
+
+DOM lobby existing memiliki 0 tautan/kontrol/tabindex pada state yang diperiksa.
+Native Tab tidak mengubah URL; tidak ada tautan eksternal yang diklik. Tidak ada
+urutan kontrol/focus ring yang dapat dinyatakan lulus karena halaman informasional
+ini memang tidak menyediakan kontrol. Audit screen reader/zoom/lintas browser
+tidak dilakukan, dan keyboard checkout tidak termasuk scope ini.
+
+Repro memakai perintah increment sebelumnya, session `oncam-lobby-visual-d4ea`,
+dan `run-code --filename tests/Frontend/ParticipantLobby/browser.test.mjs`.
+Artifact ignored di worktree ini: `output/playwright/lobby-visual/` berisi
+`{320,390,1280}-{loading,null,complete,error}.png`, `results.log` (probe awal),
+`results-guarded.log` (RED final), dan `lint-final.log`. Screenshot/log tidak
+di-commit. Server dan browser uji ditutup setelah pengumpulan bukti.
+
+**Hanya dua file tracked berubah:** browser.test.mjs dan laporan ini. Tidak
+mengubah produksi/auth/API/schema/portal/mapper atau mereset/merge baseline.
+P9a0 dan checkout/akses tetap belum selesai. **Stop untuk review koordinator.**
+
 ## Increment lobby nullable — temuan audit #1 (2026-08-31)
 
 Delta terhadap **3105383**; audit telah diintegrasikan koordinator sebagai 793d494.
