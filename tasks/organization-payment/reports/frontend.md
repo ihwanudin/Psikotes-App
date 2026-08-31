@@ -1,5 +1,91 @@
 # Frontend — P16-prep
 
+## Profil tujuh field missing — fixture dan native submit (2026-09-01)
+
+Delta dari **51eca92**, menurut handoff sudah diintegrasikan root **67e263b**.
+Laporan frontend root dan ADR-004 dibaca read-only; proposal mapping lane serta
+form registrasi existing menjadi rujukan fixture. Skill frontend/Playwright yang
+telah dibaca dipakai. Tidak reset/merge baseline atau membuat task baru.
+
+Empat file saja: fixtures.ts, checkout.test.tsx, helper baru partial-profile.mjs
+(di tests/Frontend/IntegratedCheckout), dan laporan ini. **Tidak mengubah komponen
+produksi, types, endpoint atau mapper.** Skenario "Profil seluruhnya missing"
+memuat fullName(text), birthDate(date), gender(select), educationLevel(text),
+intendedField(select), email(email), phone(tel). Semua tujuh key tetap hadir;
+enam required, email opsional; tidak ada nilai awal/name/date/UMUM yang disisipkan.
+
+Opsi sintetis disalin dari resources/js/pages/registration/create.tsx:
+gender female/male dengan label Perempuan/Laki-laki; bidang KAIGO, KENSETSU,
+NOUGYOU, SEIZOU, GAISHOKU, UMUM beserta label existing. Pendidikan tetap string,
+tidak membuat enum baru. UMUM tersedia sebagai pilihan tetapi placeholder kosong
+tetap terpilih. Ini **bukan kontrak wire P15**: request provisioning root memakai
+gender uppercase, sementara fixture memakai nilai presentasi registrasi lowercase.
+Tidak menambahkan konversi/pemetaan atau menentukan otorisasi di browser.
+
+**Hasil nyata:** **27 SSR lulus, 0 gagal/skip** (26 existing + 1 kasus tujuh field
+blank/required); typecheck focused, ESLint ketiga file, syntax helper dan Prettier
+check lulus. Build preview JS **250.08 kB (gzip 77.54)**, CSS **70.37 kB (gzip 11.84)**.
+
+**9 checkpoint browser native lulus:** tujuh kontrol awal kosong dan required
+metadata sesuai; enam penolakan submit berurutan untuk fullName, birthDate,
+gender, educationLevel, intendedField, phone (callback tetap 0, validity.valueMissing
+dan fokus berpindah ke field tersebut); submit akhir dengan payload persis;
+pembanding profil lengkap tetap tujuh dd locked tanpa input/select dan tanpa
+permintaan daftar ulang. Pengisian memakai keyboard Tab/type, date segments,
+select Home/ArrowDown, consent Space/ArrowDown, dan submit Enter. Tidak memakai
+fill(), dispatchEvent, focus() atau DOM value assignment sebagai bukti input.
+Setup skenario memakai selectOption hanya pada kontrol preview sintetis.
+
+Payload callback tunggal berisi missingProfile dengan nama sintetis, DOB
+`2000-02-12`, gender `female`, pendidikan teks sintetis, bidang `KAIGO` dan phone
+sintetis; email kosong **tidak dikirim**. Hanya dua key tambahan:
+psychotest `{version:'contoh-v1:0',accepted:true}` dan
+dass `{version:'contoh-dass-v1:0',accepted:false}` yang dipilih eksplisit. Perbandingan
+keseluruhan payload menolak key branch/payer/amount/paid maupun data locked lain.
+Counter payment 0, akses tetap locked sesudah konfirmasi dan pada profil lengkap.
+
+Browser Chrome Windows `navigator.language=en-US`, viewport 1280×1000. Date
+ditampilkan native mm/dd/yyyy dan menghasilkan ISO YYYY-MM-DD pada value/callback.
+Percobaan awal helper memberi ArrowRight berlebih sehingga melewati segmen hari;
+screenshot diagnostic `02/dd/122000` membuktikan asumsi keyboard helper salah.
+Helper diperbaiki memakai auto-advance dua digit bulan/hari; source produksi tidak
+diubah. Screenshot asli blank.png/filled.png diperiksa: nama/date/bidang tidak
+terisi awal; nilai lengkap, email kosong dan opsi yang dipilih terlihat setelahnya.
+
+Final **0 pageerror, console error/warning, request gagal/HTTP error atau request
+eksternal/API**. Port 8011 diperiksa kosong sebelum preview envDir:false; Chrome
+memakai session baru partial-profile-d4ea. Browser dan server lane sudah ditutup,
+port kembali kosong. Seluruh data/callback sintetis, tanpa .env aktif/DB/login/
+payment/WA nyata. Tidak menjalankan ulang global lint/tsc, PHP/full suite atau
+seluruh matrix browser sebelumnya.
+
+Reproduksi: server fixture existing pada port kosong, lalu:
+
+```powershell
+$checkoutCli = 'C:/Users/ThinkPad/AppData/Local/npm-cache/_npx/31e32ef8478fbf80/node_modules/@playwright/cli/playwright-cli.js'
+New-Item -ItemType Directory -Path output/playwright/partial-profile -Force | Out-Null
+node $checkoutCli -s=partial-profile-d4ea open about:blank --headed
+$partialRun = (Get-Content tests/Frontend/IntegratedCheckout/partial-profile.mjs -Raw).Trim().TrimEnd(';')
+[System.IO.File]::WriteAllText((Join-Path (Get-Location) 'output/playwright/partial-profile/run.js'), $partialRun)
+node $checkoutCli -s=partial-profile-d4ea run-code --filename output/playwright/partial-profile/run.js > output/playwright/partial-profile/browser.log 2>&1
+if ((Get-Content output/playwright/partial-profile/browser.log -First 1) -ne '### Result') { throw 'Browser failed; inspect log' }
+node $checkoutCli -s=partial-profile-d4ea close
+# Hentikan hanya server fixture sendiri.
+node node_modules/vite/bin/vite.js build --config tests/Frontend/IntegratedCheckout/vite.config.ts --mode test
+node --test storage/app/private/verification/frontend-test/checkout.test.js
+node node_modules/typescript/bin/tsc --project tests/Frontend/IntegratedCheckout/tsconfig.json --noEmit
+node node_modules/eslint/bin/eslint.js tests/Frontend/IntegratedCheckout/fixtures.ts tests/Frontend/IntegratedCheckout/checkout.test.tsx tests/Frontend/IntegratedCheckout/partial-profile.mjs
+node node_modules/vite/bin/vite.js build --config tests/Frontend/IntegratedCheckout/vite.config.ts --mode preview
+```
+
+Bukti ignored di output/playwright/partial-profile: browser.log, ssr.log, run.js,
+blank.png, filled.png dan date-debug.png. Tidak commit output/snapshot baseline.
+**Batas:** date keyboard ini khusus Chrome desktop en-US, bukan bukti Safari/mobile,
+semua locale, tanggal mustahil, batas umur atau validasi tanggal server. Tes exact
+payload hanya membuktikan presentasi/callback; enum/options/format wire dan izin
+update tetap harus disahkan/divalidasi server P15. Tidak ditemukan bug produksi
+pada cakupan ini. **Stop review; P16 belum end-to-end.**
+
 ## Payment refresh pada instance form yang sama (2026-09-01)
 
 Delta dari **89822dc**. Menurut handoff, 4d146bc/89822dc diintegrasikan root

@@ -109,6 +109,85 @@ export const optionalEmailSummary: CheckoutSummary = {
 };
 
 export const scenarios: Record<string, IntegratedCheckoutProps['screen']> = {
+    'Profil seluruhnya missing': {
+        state: 'ready',
+        summary: {
+            ...summary,
+            formKey: 'synthetic-all-missing',
+            payment: {
+                payer: 'unselected',
+                state: 'unselected',
+                amountIdr: null,
+            },
+            // Synthetic options mirror registration/create.tsx, not a P15 wire contract.
+            profile: [
+                {
+                    key: 'fullName',
+                    label: 'Nama lengkap',
+                    state: 'missing',
+                    required: true,
+                    input: 'text',
+                },
+                {
+                    key: 'birthDate',
+                    label: 'Tanggal lahir',
+                    state: 'missing',
+                    required: true,
+                    input: 'date',
+                },
+                {
+                    key: 'gender',
+                    label: 'Jenis kelamin',
+                    state: 'missing',
+                    required: true,
+                    input: 'select',
+                    options: [
+                        { value: 'female', label: 'Perempuan' },
+                        { value: 'male', label: 'Laki-laki' },
+                    ],
+                },
+                {
+                    key: 'educationLevel',
+                    label: 'Pendidikan terakhir',
+                    state: 'missing',
+                    required: true,
+                    input: 'text',
+                },
+                {
+                    key: 'intendedField',
+                    label: 'Bidang tujuan',
+                    state: 'missing',
+                    required: true,
+                    input: 'select',
+                    options: [
+                        { value: 'KAIGO', label: 'Kaigo / perawatan' },
+                        { value: 'KENSETSU', label: 'Kensetsu / konstruksi' },
+                        { value: 'NOUGYOU', label: 'Nougyou / pertanian' },
+                        { value: 'SEIZOU', label: 'Seizou / manufaktur' },
+                        {
+                            value: 'GAISHOKU',
+                            label: 'Gaishoku / layanan makanan',
+                        },
+                        { value: 'UMUM', label: 'Umum / belum ditentukan' },
+                    ],
+                },
+                {
+                    key: 'email',
+                    label: 'Email',
+                    state: 'missing',
+                    required: false,
+                    input: 'email',
+                },
+                {
+                    key: 'phone',
+                    label: 'Nomor WhatsApp',
+                    state: 'missing',
+                    required: true,
+                    input: 'tel',
+                },
+            ],
+        },
+    },
     'Pembayar belum dipilih': {
         state: 'ready',
         summary: {

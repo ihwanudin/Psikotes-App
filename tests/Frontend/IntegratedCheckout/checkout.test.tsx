@@ -28,6 +28,39 @@ test('only the missing phone is editable', () => {
     assert.doesNotMatch(html, /name="(?:fullName|email|branchId)"/);
 });
 
+test('fully missing profile preserves seven blank keys with six required and optional email', () => {
+    const html = render({ screen: scenarios['Profil seluruhnya missing'] });
+
+    for (const key of [
+        'fullName',
+        'birthDate',
+        'gender',
+        'educationLevel',
+        'intendedField',
+        'email',
+        'phone',
+    ]) {
+        const input = html.match(
+            new RegExp(`<(?:input|select)\\b[^>]*name="${key}"[^>]*>`),
+        )?.[0];
+        assert.ok(input, key);
+        assert.equal(input.includes('required=""'), key !== 'email', key);
+
+        if (input.startsWith('<input')) {
+            assert.match(input, /value=""/);
+        }
+    }
+
+    assert.match(html, /type="date"/);
+    assert.doesNotMatch(
+        html,
+        /<option value="(?:female|male|KAIGO|KENSETSU|NOUGYOU|SEIZOU|GAISHOKU|UMUM)" selected/,
+    );
+    assert.doesNotMatch(html, /Nadia|nadia@example|12 Februari/);
+    assert.match(html, /Lengkapi hanya data yang belum tersedia/);
+    assert.match(html, /Akses tes belum dibuka/);
+});
+
 test('empty optional email keeps its input but needs no confirmation', () => {
     const html = render({
         screen: { state: 'ready', summary: optionalEmailSummary },
