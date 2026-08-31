@@ -1,5 +1,101 @@
 # Frontend — P16-prep
 
+## Checkpoint konsolidasi seluruh helper checkout (2026-09-01)
+
+Delta dari lane **dac8c67795f568c78848a11f498f4eebe6f6c4ba**; integrasi root
+**a24f11b** mengikuti handoff koordinator, bukan hasil merge/reset worker.
+Plan, todo, parallel-work dan ADR-004 root dibaca read-only. Skill browser
+Playwright dan workflow frontend/review yang sudah dibaca dipakai. Dua file lane:
+runner baru `tests/Frontend/IntegratedCheckout/run-checkpoint.mjs` dan laporan ini.
+**Tidak mengubah helper existing, fixture, assertion, budget Tab atau source produksi.**
+
+Runner memanggil enam entry helper existing secara berurutan, masing-masing pada
+session Chrome baru dari about:blank, lalu close di finally. Route, listener,
+receipt, input dan counter callback tidak dibagi lintas kelompok. Entry elementary
+baseline/optional/keyboard dipanggil langsung; wrapper lama verifyCombinedCheckout
+tidak dijalankan karena memakai satu page untuk ketiganya, dan tidak dihitung
+sebagai cakupan tambahan. Runner memeriksa exit/error CLI serta jumlah hasil
+agar kelompok tidak diam-diam terlewat. Tidak memasang dependency atau memulai server.
+
+**Run final exit 0, seluruh 44 checkpoint lulus pada fixture terkini:**
+
+| File / entry | Checkpoint | Capture geometri |
+| --- | ---: | ---: |
+| browser-interactions.mjs / verifyCheckoutInteractions | 10 | 0 |
+| browser-interactions.mjs / verifyOptionalEmail | 9 | 0 |
+| keyboard-reflow.mjs / verifyCheckoutKeyboardAndReflow | 6 | 6 |
+| unselected-payment.mjs | 2 | 6 |
+| payment-refresh.mjs | 8 | 0 |
+| partial-profile.mjs | 9 | 0 |
+| Total | **44** | **12** |
+
+Run final dimulai **2026-08-31T19:15:35.667Z** (2026-09-01 Asia/Bangkok), session
+`checkout-cp-38788-{baseline,optional,keyboard-reflow,unselected,payment-refresh,partial-profile}`.
+Log open menunjukkan browser berbeda per kelompok; keenam close log berhasil.
+Baseline, optional, native keyboard/fokus/submit, busy/legal-pending/callback absent,
+formKey/version reset, unselected readonly, same-instance payment refresh dan
+profil tujuh field missing semuanya diulang; bukan meneruskan status historis.
+Batas bukti native tetap mengikuti helper: setup skenario sintetis memakai kontrol
+preview; requestSubmit probe terpisah bukan bukti keyboard. Tidak menambahkan skenario.
+
+Geometri styled lulus di **320/390/1280** untuk optional-only, mixed required,
+unselected nominal null dan zero: tidak page overflow/clipping; assertion padding,
+heading dan radius tetap aktif. Screenshot terbaru 320-optional dan 1280-mixed
+dibuka dan diperiksa langsung. Dua belas capture geometri serta tiga screenshot
+payment-refresh dan dua partial-profile dibuat ulang; screenshot lainnya tidak
+diklaim telah diperiksa manual ulang satu per satu.
+
+**Kegagalan percobaan pertama dicatat:** baseline dan empat kelompok terakhir hijau,
+optional gagal karena console 404 `http://127.0.0.1:8011/favicon.ico`.
+Runner semula melakukan goto sebelum semua helper, sementara optional melakukan
+unrouteAll lalu memasang route sendiri; favicon navigasi tambahan dapat lolos
+di sela penggantian route. Koreksi hanya runner: navigasi awal khusus baseline
+(entry ini memerlukan dokumen awal); helper lain memasang route sebelum navigasinya
+sendiri. Seluruh enam kelompok kemudian diulang dan lulus. Guard console warning/
+error, pageerror, requestfailed/HTTP error, eksternal/API tetap aktif, tidak difilter
+atau dilonggarkan; favicon tetap respons sintetis 204 seperti harness existing.
+Log RED dan summary pertama disimpan ignored sebagai first-attempt-*.
+
+**Validasi lain yang benar-benar dijalankan:** SSR **27/27**, 0 gagal/skip;
+typecheck focused IntegratedCheckout; ESLint seluruh folder komponen checkout,
+tipe checkout dan harness; node syntax serta Prettier runner lulus. Build preview
+lulus, JS **250.08 kB (gzip 77.54)**, CSS **70.37 kB (gzip 11.84)**. Tidak menjalankan
+global tsc/lint atau PHP/full suite; perbedaan baseline lint worker tidak disentuh.
+
+Run final **0 console warning/error, pageerror, request gagal/HTTP error atau
+request eksternal/API**. Preview loopback 8011 envDir:false dijalankan setelah port
+diperiksa kosong. Server milik lane dihentikan setelah command line PID diverifikasi;
+port kembali kosong. Semua session percobaan pertama dan final ditutup. Artefak
+di output/playwright, .playwright-cli dan storage/app/private/verification tetap
+ignored, tidak di-commit. Tidak memakai .env aktif/DB/login/token nyata/outbound.
+
+Reproduksi dari worktree dengan dependency/CLI yang sudah tersedia:
+
+```powershell
+# Pastikan tidak ada listener 8011; jalankan server fixture di terminal terpisah.
+Get-NetTCPConnection -LocalPort 8011 -State Listen -ErrorAction SilentlyContinue
+node node_modules/vite/bin/vite.js --config tests/Frontend/IntegratedCheckout/vite.config.ts --mode preview
+# Terminal kedua, setelah server siap:
+$checkoutCli = 'C:/Users/ThinkPad/AppData/Local/npm-cache/_npx/31e32ef8478fbf80/node_modules/@playwright/cli/playwright-cli.js'
+node tests/Frontend/IntegratedCheckout/run-checkpoint.mjs $checkoutCli
+node node_modules/vite/bin/vite.js build --config tests/Frontend/IntegratedCheckout/vite.config.ts --mode test
+node --test storage/app/private/verification/frontend-test/checkout.test.js
+node node_modules/typescript/bin/tsc --project tests/Frontend/IntegratedCheckout/tsconfig.json --noEmit
+node node_modules/eslint/bin/eslint.js resources/js/components/integrated-checkout resources/js/types/integrated-checkout.ts tests/Frontend/IntegratedCheckout
+node node_modules/prettier/bin/prettier.cjs --check tests/Frontend/IntegratedCheckout/run-checkpoint.mjs
+node --check tests/Frontend/IntegratedCheckout/run-checkpoint.mjs
+node node_modules/vite/bin/vite.js build --config tests/Frontend/IntegratedCheckout/vite.config.ts --mode preview
+# Hentikan hanya server fixture milik sendiri; runner sudah menutup browsernya.
+```
+
+Ringkasan machine-readable: `output/playwright/checkout-checkpoint/summary.json`;
+log setiap entry memuat hasil dan kode yang dieksekusi, open/close log terpisah.
+Ini regresi browser presentasi sintetis pada Chrome Windows, bukan E2E/backend,
+bukti race jaringan nyata, lintas-browser/locale date, atau persetujuan kontrak P15.
+Paid/free tidak membuka akses; keputusan tetap milik server. **P16-prep berhenti
+di checkpoint ini untuk review dan menunggu kontrak P14/P15.** Tidak membuat mapper,
+page/public wiring, payer selection, endpoint atau mengaktifkan gate.
+
 ## Profil tujuh field missing — fixture dan native submit (2026-09-01)
 
 Delta dari **51eca92**, menurut handoff sudah diintegrasikan root **67e263b**.
