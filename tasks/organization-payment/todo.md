@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P8a, P9a/b/c, P10a dan P10b-a internal selesai lokal. Wave-15: claim60/444, regresi489/2692 dan PG231/1954 lulus. P10b-b dimulai terbatas ADR007; frontend/portal menunggu dependency backend. P8b–P18 keseluruhan belum end-to-end; tidak deploy atau migrasi DB aktif.**
+Status: **P1–P8a, P9a/b/c, P10a dan core P10b internal selesai lokal. Wave-16: issuance82/717, regresi511/2965 dan PG235/2025 lulus. P10c-a dimulai terbatas ADR008; frontend/portal menunggu dependency backend. P8b–P18 keseluruhan belum end-to-end; tidak deploy atau migrasi DB aktif.**
 
 ## Gerbang revisi kolektif
 
@@ -414,7 +414,7 @@ Acceptance P10b keseluruhan tetap terbuka sampai issuance/recovery terverifikasi
 
 **Acceptance:**
 
-- [ ] Claim issuance worker tunggal, request gateway setelah commit; gunakan AB_ reference/total induk. Sepuluh peserta menghasilkan satu panggilan create yang sah; crash/timeout menyimpan unknown dan tidak menggandakan invoice.
+- [x] Core internal claim/issuance worker tunggal, request fake setelah commit; gunakan AB_ reference/total induk. Sepuluh peserta menghasilkan satu create maksimum; crash/timeout menyimpan recovery/unknown tanpa invoice ganda. Bukti wave-16; belum dispatcher/credential/public wiring.
 
 **Dependencies:** P10a. **Scope:** M.
 
@@ -423,6 +423,10 @@ Acceptance P10b keseluruhan tetap terbuka sampai issuance/recovery terverifikasi
 **Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Payments/AssessmentBillInvoiceTest.php`
 
 ## P10c: Rekonsiliasi invoice tertunda
+
+Increment P10c-a lokal mengikuti ADR-008: satu intent unknown/processing,
+strict lookup tanpa create dan persistence boundary bersama. Command/discovery
+bounded serta scheduler tetap P10c-b terpisah dan nonaktif.
 
 **Acceptance:**
 

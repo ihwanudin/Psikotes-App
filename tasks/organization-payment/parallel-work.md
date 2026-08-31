@@ -476,3 +476,13 @@ diperbaiki terpisah pada2696e7d. P10b-a diterima, P10b keseluruhan tetap terbuka
 ADR007 membatasi P10b-b pada konsumsi permit sekali pakai + provider fake/HTTP
 fake, tanpa dispatcher/route/scheduler/credential nyata. Frontend dan portal
 tetap idle menunggu kontrak writer; tidak prep duplikat atau sistem aktif.
+
+## Checkpoint issuance dan rekonsiliasi (2026-09-01)
+
+[Wave-16](reports/integration-wave-16.md): backend b387e6e+e59cab5 diterima sebagai
+c3de46c+216601d. Root focused82/717, regresi511/2965 dan PostgreSQL235/2025
+lulus. Core P10b internal diterima; tidak ada dispatcher, credential, atau wiring.
+
+ADR008 membatasi kelanjutan backend P10c-a pada rekonsiliasi satu intent melalui
+strict lookup tanpa create. Discovery/command/scheduler ditunda ke P10c-b.
+Frontend/portal tetap menunggu dependensi; tidak ada operasi sistem aktif.
