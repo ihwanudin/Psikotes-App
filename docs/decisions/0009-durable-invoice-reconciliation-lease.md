@@ -28,7 +28,7 @@ discovery dan validasi harus dipisah.
   `reconciliation_lease_token`, `timestampTz` nullable
   `reconciliation_lease_expires_at`, `timestampTz` nullable
   `reconciliation_next_at`, dan `unsignedSmallInteger`
-  `reconciliation_lookup_attempts` default 0 dengan CHECK 0..100.
+  `reconciliation_lookup_attempts` default 0 dengan CHECK PostgreSQL 0..100.
 - Token dan expiry wajib sama-sama NULL atau non-NULL. Topic selain
   `assessment.bill.invoice-issuance` wajib memiliki token/expiry/next NULL dan
   counter 0. Lease aktif hanya sah untuk intent attempts=1, processed_at NULL,
@@ -37,7 +37,8 @@ discovery dan validasi harus dipisah.
 - Index discovery PostgreSQL bersifat partial hanya pada perbandingan konstanta
   topic/status/attempts/processed NULL. Waktu due/expiry tetap diperiksa pada
   query dengan database clock; predicate index tidak boleh memuat fungsi waktu
-  volatil. SQLite membuktikan schema/semantik, bukan concurrency.
+  volatil. SQLite membuktikan kolom, default, cast, config, dan preflight rollback;
+  constraint serta concurrency database dibuktikan pada PostgreSQL disposable.
 - Fase 1 memakai transaksi service outbox-only yang singkat: `FOR UPDATE SKIP
   LOCKED`, pasang UUID+expiry provisional, jangan increment counter, lalu commit.
   Token provisional bukan izin provider.
