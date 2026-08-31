@@ -1502,3 +1502,99 @@ ada schema/request/route/controller/job/consumer/provider/config global lain,
 .env/data aktif, outbound nyata, migration, source/gate ON, deploy, push, reset,
 merge/rebase baseline atau task/agent baru. **STOP setelah P10b-a untuk review;
 P10b-b/network tetap memerlukan instruksi baru.**
+
+## P10b-b — permit penerbitan sekali pakai, tanpa dispatcher
+
+### Batas dan implementasi
+
+ADR-007, wave-15, ADR-006, proposal issuance, P7/P8b, kontrak provider dan P10a
+dibaca penuh. Increment menambah `IssueAssessmentBillInvoice` sebagai entrypoint
+internal dan DTO in-memory `AssessmentInvoicePermit`; tidak menambah job karena
+belum ada dispatcher/queue wiring dan handler langsung sudah membuktikan crash
+boundary. Satu-satunya input runtime adalah persisted `message_id`.
+
+Entrypoint menolak RLS context apa pun dan `DB::transactionLevel() != 0` sebelum
+membaca state. Fase permit membuka service transaction sendiri. Outbox hanya
+dipakai sebagai routing hint tanpa lock; action claim P10b-a kemudian mengambil
+organization mutex dan memvalidasi ulang canonical intent, tenant, bill/items,
+price/policy/funding, current opt-in/channel/policy/revoke. Hanya issuing +
+pending/attempts=0 + requested expiry masih future yang berubah atomik menjadi
+processing/attempts=1 bersama audit `invoice_permit_consumed`. Return DTO hanya
+terjadi setelah transaksi service fisik selesai dan context kembali kosong.
+Method `consume(message_id)` sengaja menjadi testable crash boundary; DTO tidak
+boleh diserialisasikan menjadi izin retry.
+
+Fase network berjalan dengan context null dan transaction level0. Tepat satu
+`createInvoice` memakai reference/amount/currency/description/expiry dari intent.
+Baik create return maupun melempar, handler memanggil `lookupInvoice` P10a dengan
+reference, amount dan currency yang sama. Hasil create dan lookup harus memiliki
+provider reference sama; lookup mismatch/empty/ambiguous/error/timeout atau
+expiry yang sudah lewat menjadi unknown. Unexpected exception dilaporkan dengan
+pesan sanitasi tanpa menempelkan payload/credential dan tetap tidak membuka izin
+create kedua.
+
+Fase persist membuka service transaction baru dan mengulang lock organization ->
+registry -> bill/items -> attempt/participant/package/charge -> method -> intent.
+Payload digest, identity hash, initial funding, price/policy snapshot, item/charge
+linkage, sum/count, payer, method dan scope dicocokkan dengan permit. Exact result
+menulis gateway reference/URL/expiry + bill pending + intent processed/attempts1
++ audit secara atomik. Unknown menulis bill unknown + intent failed/attempts1 +
+kode generik `INVOICE_OUTCOME_UNKNOWN`. Counter tidak pernah reset. Exact late
+result hanya dapat melewati state issuing/processing atau unknown/failed yang
+masih identik; paid/terminal, reference existing, corrupt/lost/changed state dan
+processed replay tidak ditimpa. Replay processed yang canonical hanya
+`recovery_required` dan nol provider call.
+
+Tidak ada settlement, `settled_at`, consent, identity verification, entitlement,
+order, credential, session, notification, atau hak ready. Policy/channel/revoke
+OFF sebelum permit memblokir create. Perubahan setelah permit tidak dianggap
+mampu membatalkan remote request; persist tetap mengikat exact accounting result
+tanpa memberi akses. Topic tetap diabaikan consumer legacy.
+
+### TDD dan bukti aktual
+
+- RED awal: file feature memuat 20 skenario dan gagal karena class handler belum
+  ada (`p10bb-red.log`). Error lanjutan pada run RED berasal dari teardown setelah
+  kegagalan pertama, sehingga tidak diklaim sebagai 20 bukti perilaku terpisah.
+- Focused final handler + claim P10b-a: **82/82 tes, 717 assertions**
+  (`p10bb-focused-final.log`). Issuance sendiri mempunyai 22 cases termasuk
+  batch10, create exception + exact lookup, create success + lookup unknown,
+  mismatched refs, real Xendit adapter dengan HTTP fake, crash setelah permit,
+  ambient transaction/semua role, tenant/policy/channel/revoke/expiry/corrupt/
+  lost guards, paid late response, processed replay dan consumer legacy.
+- Real adapter test memakai secret sintetis in-memory dan `Http::fake` +
+  `preventStrayRequests`: tepat **1 POST + 1 GET strict**, tanpa request liar.
+  Mock tests membuktikan create maksimal sekali dan lookup tepat sekali; sepuluh
+  item tidak menghasilkan sepuluh create.
+- PostgreSQL disposable final: **214/214 tes, 1.424 assertions**, cleanup selesai
+  (`p10bb-postgres-final2.log`). Test baru menjalankan dua process/runtime backend
+  berbeda, keduanya teramati menunggu organization lock. Tepat satu winner
+  issued/create/lookup dan satu loser recovery; attempts tetap1. Audit failure
+  rollback mengembalikan pending/0 dan melepas lock, lalu retry valid hanya satu
+  create. Crash boundary processing/1 terlihat dari koneksi baru dan tidak
+  direarm. Runtime `psikotes_runtime` non-owner, non-superuser, NOBYPASSRLS;
+  ambient service/user/admin ditolak.
+- Regresi terkait Unit/Payments + Feature/Payments + Feature/Integrations sebelum
+  tambahan satu foreign-scope case terakhir: **511 tes, 508 lulus, 2 gagal,
+  1 skip, 2.896 assertions** (`p10bb-related.log`). Dua kegagalan tetap halaman
+  `ManualPaymentProofUploadTest` received dan `SelectionLaunchTest` lobby karena
+  `ViteManifestNotFoundException`; worker tidak membuat fake manifest. Semua 82
+  focused cases termasuk tambahan terakhir kemudian lulus. Review root dengan
+  build perlu menutup dua UI tersebut.
+- PHPStan seluruh project testing environment: **0 error**
+  (`p10bb-stan-final.log`). Pint empat file PHP lane lulus setelah formatting;
+  `git diff --check` lulus. Diagnosis generic `collect(mixed)` diperbaiki dengan
+  validasi list dan typed item map, tanpa ignore/baseline/type widening.
+
+### Files dan batas serah-terima
+
+Lima file lane: action handler, DTO permit, feature test, PostgreSQL test dan
+laporan ini. Tidak ada shared untracked file yang diedit; config durasi dari
+P10b-a tetap baseline dan tidak distage ulang. Tidak ada provider interface/
+adapter/fake, schema/migration, job, route, console, scheduler, config, source,
+gate, consumer, notifier, credential/.env/data aktif, outbound nyata, deploy,
+push, reset/merge/rebase baseline atau task/agent baru.
+
+P10b-b ini membuktikan permit dan persistence lokal, bukan delivery queue,
+exactly-once provider, production recovery atau settlement. **STOP untuk review;
+P10c/P11/public wiring tetap memerlukan instruksi berikutnya.**
