@@ -47,14 +47,15 @@ mengubah cache layanan publik untuk mengatasinya. Gunakan checkout test bersih.
 Regresi tanpa transaksi eksternal:
 
 ```powershell
-php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests --exclude-group sandbox
+php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Unit tests/Feature tests/Architecture --exclude-group sandbox
 php vendor/bin/phpstan analyse --no-progress
 npm run types:check
 npm run lint:check
 npm run build
 ```
 
-Argumen `tests` memilih tes existing juga. Grup sandbox sengaja tidak dijalankan
+Direktori eksplisit memilih suite lokal tanpa memasukkan tes PostgreSQL yang
+memiliki runner terpisah. Grup sandbox sengaja tidak dijalankan
 karena membuat invoice eksternal membutuhkan izin terpisah; ini bukan laporan
 gerbang F1 lulus. Skip/failure lain harus tetap dicatat, tidak disembunyikan.
 
@@ -81,3 +82,22 @@ runner PostgreSQL tidak dicampur ke perubahan ini.
 
 Tidak ada migrasi database aktif, invoice eksternal, pengiriman WhatsApp,
 perubahan harga, atau deployment pada langkah ini.
+
+## Pembaruan setelah penyelarasan registrasi (2026-08-31)
+
+Pengguna meminta melanjutkan penyelarasan tes legacy. Setelah skip dilepas,
+dua tes lama benar-benar gagal: fixture cabang default belum dibuat dan route
+register.store milik Fortify tidak tersedia. Aplikasi tidak diubah.
+
+RegistrationTest sekarang memeriksa tiga perilaku yang berlaku:
+
+- GET /register adalah halaman peserta dengan cabang dan persetujuan, bukan
+  form pembuatan akun umum Fortify.
+- POST /register ditolak dan tidak membuat user/admin/peserta.
+- Payload signup umum ke POST /registrations tidak melewati syarat peserta.
+
+Hasil: focused RegistrationTest + ParticipantRegistrationTest 10 tes lulus,
+93 assertions. Regresi lokal 353 tes lulus, 1.776 assertions, tanpa skip;
+grup sandbox tetap tidak dijalankan. Pint file yang diubah lulus.
+Catatan 350 lulus/2 skip di atas adalah bukti historis sebelum perbaikan tes.
+Pengujian PostgreSQL sedang disiapkan secara terpisah, bukan pada DB aktif.
