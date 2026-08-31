@@ -1405,3 +1405,100 @@ sudah tersedia atau membuatnya sebagai bagian audit.
 Index kosong sebelum staging. Commit dibatasi proposal baru dan laporan ini;
 tidak menyertakan baseline snapshot. **STOP untuk keputusan proposal sebelum
 implementasi P10b-a/P10b-b atau schema/ADR baru.**
+
+## P10b-a — claim intent invoice internal, belum ada network/consumer
+
+### Kontrak yang diimplementasikan
+
+ADR-006 root dibaca penuh dan menjadi batas slice. Action baru
+`ClaimAssessmentBillInvoice` hanya dapat dipanggil dalam explicit service RLS
+context. Action mengambil mutex organization, registry source/client, bill dan
+item, lalu attempt/participant/package/charge serta payment method dengan urutan
+yang konsisten terhadap P7/P8b. Tidak ada principal/admin/browser input yang
+dipakai sebagai authority.
+
+Claim pertama memvalidasi persisted tenant, payer, bill reference/hash/key,
+jumlah item dan sum, composite linkage, price/policy snapshot, status attempt,
+revocation, checkout-v2 source, current opt-in/policy serta channel Xendit aktif.
+Manual transfer mengembalikan `not_applicable`. Free/zero, terminal, corrupt,
+settled atau payer tak konsisten ditolak sebelum write. Metadata ADR-005 wajib
+memiliki key initial funding; nilainya tidak ditulis atau diubah. Hash identitas
+attempt mendeteksi perubahan seluruh identifier provisioning tanpa menyalin
+candidate PII ke payload.
+
+Transaksi yang valid menulis tepat satu intent topic
+`assessment.bill.invoice-issuance`, pending/attempts=0, mengubah reserved menjadi
+issuing dan menulis audit `assessment_bill.invoice_claimed`. Dedup key mengikat
+purpose/version/organization/bill. Payload versi1 mengikat bill, metode,
+reference, nominal/currency, ordered item linkage, price/policy/initial-funding,
+claim timestamp dan requested expiry. Retensi outbox/audit ditetapkan dua tahun.
+Tidak ada insertOrIgnore, job dispatch, HTTP/provider lookup/create, permit
+consumption, settlement, consent, credential, session, order atau entitlement.
+
+Replay mencari intent melalui dedup identity maupun aggregate identity, lalu
+membandingkan payload canonical dan hash terhadap persisted state. Missing,
+duplicate, changed key/topic/snapshot/expiry, invalid counter, atau kombinasi
+bill/outbox tak konsisten gagal tertutup. Pending/0 pada issuing hanya replay;
+processing/1 atau unknown/1 hanya `recovery_required`, tidak membuat/reset intent.
+Durasi dan expiry tersimpan tidak diperpanjang saat replay. Policy, revocation,
+scope dan channel tetap direload sebelum hasil replay; hasil action bukan izin
+POST provider.
+
+### TDD dan bukti aktual
+
+- RED awal: **53 tes, 0 lulus, 219 assertions**, action belum ada sehingga seluruh
+  skenario claim gagal/error (`p10ba-claim-red.log`). Ini bukan GREEN parsial.
+- Feature claim final: **60 tes, 60 lulus, 444 assertions**
+  (`p10ba-claim-green2.log`). Mencakup service-only roles, create/replay,
+  self/organization payer, manual not-applicable, corrupt sum/count/linkage,
+  overflow, config/expiry representability, policy/channel/revoke, lost/corrupt
+  intent, recovery state, rollback outbox/audit dan legacy consumer ignore.
+- Disposable PostgreSQL run pertama setelah test PG ditambah: **209 tes, 1.324
+  assertions**, lulus dan cleanup. Run matriks yang diperluas kemudian menemukan
+  satu error tes karena model OutboxMessage memang guarded; fixture diperbaiki
+  memakai `forceFill`, bukan production guard dilonggarkan. Hasil final dicatat
+  sebagai **210 tes, 210 lulus, 1.353 assertions**, cleanup selesai
+  (`p10ba-postgres-final2.log`).
+- Regresi terkait Unit/Payments + Feature/Payments + Feature/Integrations:
+  **490 tes, 487 lulus, 2 gagal, 1 skip, 2.635 assertions**
+  (`p10ba-regression.log`). Dua kegagalan adalah
+  `ManualPaymentProofUploadTest` received page dan `SelectionLaunchTest`
+  participant lobby, keduanya `ViteManifestNotFoundException`. Worker tidak
+  mempunyai `public/build/manifest.json`; tidak dibuat fake manifest dan hasil
+  tidak diklaim lulus. Koordinator perlu menutup dua UI itu pada root ber-build.
+- PHPStan seluruh project dengan testing SQLite environment: **0 error**
+  (`p10ba-stan.log`). Pint final untuk action dan dua test file lulus.
+
+Tes PostgreSQL memverifikasi runtime `psikotes_runtime` bukan owner,
+`rolsuper=false`, `rolbypassrls=false`; no-context/admin/participant/staff/
+psychologist tidak dapat memanggil action atau menulis outbox. Dua proses
+independen mempunyai PID backend berbeda dan diamati `wait_event_type=Lock`.
+Pada commit, waiter mereplay message ID sama; pada rollback outer, waiter membuat
+satu message ID baru dan tidak ada orphan audit/outbox. Unique dedup/composite FK
+serta CHECK currency tetap aktif. Corrupt sum/count/linkage/overflow/expiry dan
+initial funding replay semuanya ditutup. Consumer legacy mengembalikan nol.
+
+### Patch config untracked dan batas serah-terima
+
+`config/assessment_billing.php` adalah baseline untracked worker dan **tidak
+distage**. Patch exact yang perlu diterapkan koordinator terhadap file root:
+
+```diff
+ return [
+     // Operational batch limit only; prices remain in the package catalog.
+     'max_items' => 100,
++    'invoice_duration_hours' => 24,
+ ];
+```
+
+SHA-256 sebelum patch `EAED639067AF55B6F6A888BDDF02540EC2B181FC59A3BDF2D95D45BEC3FA549F`;
+sesudah patch `7D63AFD3ECABE14653166C9AFC879DFE7D7A8D4003F41830EE7403DE827557B3`
+(Git blob sesudah `a1c3c825dad36e83cc1a15fddab674d615bc2b78`). Config harus strict
+positive integer dan kedua horizon tanggal representable; replay memakai durasi
+snapshot, bukan config baru.
+
+Lane commit hanya action, feature test, PostgreSQL test dan laporan ini. Tidak
+ada schema/request/route/controller/job/consumer/provider/config global lain,
+.env/data aktif, outbound nyata, migration, source/gate ON, deploy, push, reset,
+merge/rebase baseline atau task/agent baru. **STOP setelah P10b-a untuk review;
+P10b-b/network tetap memerlukan instruksi baru.**
