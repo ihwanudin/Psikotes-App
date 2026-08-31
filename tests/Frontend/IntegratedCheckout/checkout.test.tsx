@@ -89,6 +89,61 @@ test('organization ignores an injected payment callback and never renders extra 
     );
 });
 
+for (const amountIdr of [null, 0, summary.payment.amountIdr]) {
+    test(`unselected payer at amount ${amountIdr} is readonly and never implies free/paid/access`, () => {
+        const extended = {
+            ...summary,
+            payment: {
+                payer: 'unselected' as const,
+                state: 'unselected' as const,
+                amountIdr,
+                actionAvailable: true,
+                organizationName: 'Unselected Secret Organization',
+                invoiceUrl: 'https://invoice.example.test/private',
+                batchTotal: 99999999,
+                batchMembers: ['Other Secret Participant'],
+            },
+        };
+        const html = render({
+            screen: { state: 'ready', summary: extended },
+            onPayment: () => assert.fail('Rendering must never call payment'),
+        });
+        const payment = html.match(
+            /<section aria-labelledby="checkout-payment-title"[\s\S]*?<\/section>/,
+        )?.[0];
+        assert.ok(payment);
+        assert.match(payment, /Pembayar belum dipilih/);
+        assert.doesNotMatch(
+            payment,
+            /<button|<a\b|<input|<select|Bayar sendiri|Dibayar lembaga|Gratis|sudah lunas|undefined|invoice.example|99999999|Other Secret|Unselected Secret/,
+        );
+        assert.match(html, /Akses tes belum dibuka/);
+        assert.doesNotMatch(html, /Prasyarat dikonfirmasi server|Mulai tes/);
+
+        if (amountIdr === null) {
+            assert.match(payment, /Belum tersedia/);
+        }
+    });
+}
+
+test('payment presentation follows each supplied payer/status without retaining an unselected fallback', () => {
+    for (const [scenario, expected] of [
+        ['Pembayar belum dipilih', 'Pembayar belum dipilih'],
+        ['Mandiri · pending', 'Lanjutkan pembayaran yang sama'],
+        ['Lembaga · menunggu', 'Menunggu pembayaran lembaga'],
+        ['Gratis · consent belum', 'Gratis · dikonfirmasi server'],
+        ['Pembayar belum dipilih · nol', 'Pembayar belum dipilih'],
+    ]) {
+        const html = render({
+            screen: scenarios[scenario],
+            onPayment: () => undefined,
+        });
+        assert.ok(html.includes(expected), scenario);
+        assert.match(html, /Akses tes belum dibuka/);
+        assert.doesNotMatch(html, /Prasyarat dikonfirmasi server|Mulai tes/);
+    }
+});
+
 for (const scenario of [
     'Mandiri · lunas',
     'Gratis · consent belum',

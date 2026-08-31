@@ -39,11 +39,18 @@ export type CheckoutConsent =
     | { state: 'accepted'; version: string }
     | { state: 'declined'; version: string };
 
-/** Only this participant's amount. Never pass a bill model, batch, or invoice URL. */
+/** Only this participant's amount. Never pass a bill model, batch, or invoice URL.
+ * Unselected is DRAFT read-only presentation, not a server funding mode.
+ */
 export type CheckoutPayment = {
     amountIdr: number | null;
 } & (
-    | { payer: 'self'; state: 'unpaid' | 'pending'; actionAvailable: boolean }
+    | { payer: 'unselected'; state: 'unselected' }
+    | {
+          payer: 'self';
+          state: 'unpaid' | 'pending';
+          actionAvailable: boolean;
+      }
     | {
           payer: 'self';
           state: 'paid' | 'free' | 'review' | 'expired' | 'rejected';

@@ -1,5 +1,92 @@
 # Frontend — P16-prep
 
+## P16-prep — payer unselected (2026-09-01)
+
+Delta setelah **723bf2b**, yang menurut handoff diintegrasikan root **563fa6e**.
+Root lint/probe sudah hijau; 14 import/order worker adalah perbedaan baseline dan
+tidak ikut diperbaiki. ADR-004 induk dibaca read-only. Tidak reset/merge baseline.
+Skill API/interface design, frontend, TDD dan Playwright yang tersedia dipakai.
+
+**Kontrak internal DRAFT:** CheckoutPayment kini memiliki varian eksplisit
+`{ payer: 'unselected', state: 'unselected', amountIdr: number | null }`.
+Hanya satu state untuk payer ini; bukan sentinel funding_mode untuk disimpan,
+bukan response HTTP, mapper atau keputusan P15. UI menampilkan label Pembayar /
+Belum dipilih dan status **"Pembayar belum dipilih"**. Tidak fallback self/lembaga,
+tidak ada pemilih payer, CTA bayar, handler baru atau invoice. Readonly berarti
+tampilan informasional; type props tetap kontrak internal, bukan validator input HTTP.
+
+Nominal null tetap "Belum tersedia"; nominal 0 ditampilkan Rp 0 tanpa menyimpulkan
+free/paid/ready. Predicate CTA existing tetap self + unpaid/pending + actionAvailable;
+organization/self/free dan akses milik server tidak diubah. CheckoutForm, consent,
+auth/gate/schema/API tidak disentuh. Cabang, paket, biaya dan status tidak dihitung
+atau dipilih browser. Tidak menambahkan naskah legal atau dependency.
+
+**Tes nyata:** RED 22 lulus / 4 gagal pada renderer lama. GREEN **26 SSR lulus,
+0 gagal/skip**: unselected untuk null, 0 dan nominal sintetis nonzero; injected
+onPayment/actionAvailable tidak menghasilkan kontrol bayar; organizationName,
+invoice/batchTotal/batchMembers ekstra tidak bocor. Kasus presentasi per props
+unselected/self/organization/free/unselected mempertahankan akses locked.
+Seluruh 22 SSR existing ikut diulang. SSR bukan bukti interaksi/effect.
+
+**Browser mounted:** helper khusus membuktikan dua kelompok: (1) native
+Tab/Space/Enter melewati card readonly, consent/refresh masih dapat dicapai, tanpa
+callback pembayaran; (2) transisi fixture unselected → self pending → organization
+pending → self paid → self free → unselected mengikuti props, tetap akses locked.
+Callback self diuji positif lewat keyboard, membuktikan onPayment memang injected.
+Pergantian skenario fixture existing me-remount checkout; tidak mengklaim rerender
+instance yang sama atau transisi server/network. Tidak ada mutasi value/checked,
+focus() atau dispatchEvent sebagai bukti native keyboard.
+
+Enam screenshot asli card pembayaran (null/zero pada viewport 320/390/1280)
+diperiksa: teks dan nominal utuh, tanpa CTA/field/link tersembunyi. Guard dokumen
+scrollWidth = clientWidth **305/375/1265** (scrollbar Windows 15 px), padding card
+20 px, radius 10 px dan h2 20 px; tidak ada clipping Range card. Tidak mengklaim
+ulang audit visual seluruh halaman atau semua 25 kelompok browser gelombang lalu.
+Browser final: **0 pageerror, console error/warning, request gagal/HTTP error,
+request eksternal/API**. Favicon fixture mendapat respons sintetis 204 saja.
+
+Typecheck focused, ESLint lima file kode/test, Prettier check dan preview build
+lulus. JS preview **247.73 kB (gzip 77.05)**, CSS **70.37 kB (gzip 11.84)**.
+Origin test-only 8011 dicek kosong sebelum server; envDir:false, Chrome session
+baru checkout-unselected-d4ea dibuka about:blank. Seluruh data/callback sintetis;
+tidak ada .env aktif, DB, login, payment/WA nyata. Browser/server ditutup dan port
+8011 kembali kosong. Tidak menjalankan global tsc/lint, PHP/full suite atau P15.
+
+Reproduksi focused dari worktree sendiri:
+
+```powershell
+node node_modules/vite/bin/vite.js build --config tests/Frontend/IntegratedCheckout/vite.config.ts --mode test
+node --test storage/app/private/verification/frontend-test/checkout.test.js
+node node_modules/typescript/bin/tsc --project tests/Frontend/IntegratedCheckout/tsconfig.json --noEmit
+node node_modules/eslint/bin/eslint.js resources/js/types/integrated-checkout.ts resources/js/components/integrated-checkout/checkout-payment.tsx tests/Frontend/IntegratedCheckout/fixtures.ts tests/Frontend/IntegratedCheckout/checkout.test.tsx tests/Frontend/IntegratedCheckout/unselected-payment.mjs
+node node_modules/vite/bin/vite.js build --config tests/Frontend/IntegratedCheckout/vite.config.ts --mode preview
+```
+
+Browser: pastikan port kosong seperti prosedur pada bagian sebelumnya, jalankan
+Vite config/mode preview di terminal terpisah. Dengan CLI cached existing:
+
+```powershell
+$checkoutCli = 'C:/Users/ThinkPad/AppData/Local/npm-cache/_npx/31e32ef8478fbf80/node_modules/@playwright/cli/playwright-cli.js'
+New-Item -ItemType Directory -Path output/playwright/checkout-unselected -Force | Out-Null
+node $checkoutCli -s=checkout-unselected-d4ea open about:blank --headed
+# run-code meminta function expression tanpa trailing semicolon formatter.
+$unselectedRun = (Get-Content tests/Frontend/IntegratedCheckout/unselected-payment.mjs -Raw).Trim().TrimEnd(';')
+[System.IO.File]::WriteAllText((Join-Path (Get-Location) 'output/playwright/checkout-unselected/run.js'), $unselectedRun)
+node $checkoutCli -s=checkout-unselected-d4ea run-code --filename output/playwright/checkout-unselected/run.js > output/playwright/checkout-unselected/browser.log 2>&1
+if ((Get-Content output/playwright/checkout-unselected/browser.log -First 1) -ne '### Result') { throw 'Browser failed; inspect log' }
+node $checkoutCli -s=checkout-unselected-d4ea close
+# Hentikan hanya server fixture milik lane.
+```
+
+Bukti ignored: output/playwright/checkout-unselected/{browser.log,run.js,
+320-null.png,320-zero.png,390-null.png,390-zero.png,1280-null.png,1280-zero.png};
+log SSR RED/GREEN di output/playwright/checkout-unselected-{red,green}.log.
+Tidak commit generated output atau snapshot awal. Lima file perubahan utama:
+types/integrated-checkout.ts, checkout-payment.tsx, fixtures.ts, checkout.test.tsx
+dan laporan ini. Helper keenam unselected-payment.mjs diserahkan sebagai commit
+bukti browser terpisah sesudah perubahan utama, sesuai izin ownership.
+**Stop review; varian DRAFT ini tidak menyelesaikan P16 end-to-end/P15/server mapper.**
+
 ## Wave-7 tooling — cakupan ESLint generated output (2026-09-01)
 
 Delta setelah **12f777c**, yang menurut handoff diintegrasikan root **a84d9bb**.

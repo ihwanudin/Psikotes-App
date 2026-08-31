@@ -109,6 +109,24 @@ export const optionalEmailSummary: CheckoutSummary = {
 };
 
 export const scenarios: Record<string, IntegratedCheckoutProps['screen']> = {
+    'Pembayar belum dipilih': {
+        state: 'ready',
+        summary: {
+            ...summary,
+            payment: {
+                payer: 'unselected',
+                state: 'unselected',
+                amountIdr: null,
+            },
+        },
+    },
+    'Pembayar belum dipilih · nol': {
+        state: 'ready',
+        summary: {
+            ...summary,
+            payment: { payer: 'unselected', state: 'unselected', amountIdr: 0 },
+        },
+    },
     'Email opsional · consent tercatat': {
         state: 'ready',
         summary: optionalEmailSummary,

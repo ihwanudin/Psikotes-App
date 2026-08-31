@@ -9,6 +9,8 @@ const rupiah = new Intl.NumberFormat('id-ID', {
 
 function paymentLabel(payment: Payment) {
     switch (payment.state) {
+        case 'unselected':
+            return 'Pembayar belum dipilih';
         case 'unpaid':
             return 'Belum dibayar';
         case 'unbilled':
@@ -55,12 +57,16 @@ export function CheckoutPayment({
             <dl className="space-y-4">
                 <div>
                     <dt className="text-sm text-slate-600">
-                        Pembayar · terkunci
+                        {payment.payer === 'unselected'
+                            ? 'Pembayar'
+                            : 'Pembayar · terkunci'}
                     </dt>
                     <dd className="mt-1 font-medium">
-                        {payment.payer === 'self'
-                            ? 'Bayar sendiri'
-                            : `Dibayar lembaga — ${payment.organizationName}`}
+                        {payment.payer === 'unselected'
+                            ? 'Belum dipilih'
+                            : payment.payer === 'self'
+                              ? 'Bayar sendiri'
+                              : `Dibayar lembaga — ${payment.organizationName}`}
                     </dd>
                 </div>
                 <div>
