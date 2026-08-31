@@ -601,3 +601,13 @@ Tidak ada invoice/WA/outbox nyata, data aktif, deployment, n8n, atau Cloudflare
 diubah. Container/database test dibersihkan oleh runner. Working tree lama
 dipertahankan; tidak mass-stage, commit atau push. Checkpoint P8a diserahkan
 untuk tinjauan pengguna sebelum aktivasi individual P8b.
+
+## Checkpoint P10a internal — 2026-09-01
+
+Lookup read-only ce9b3a0 diterima setelah full regression root **988 tes/5569
+assertions lulus**, tanpa skip, dengan XML testing SQLite memory dan outbound
+fake (sandbox dikecualikan). Pint/PHPStan lulus. Unknown tidak mengizinkan create
+ulang; hasil lookup bukan settlement. Tidak ada consumer, invoice atau data nyata.
+PG tidak diulang karena query/schema/RLS tidak berubah. Detail batas dan cursor:
+[wave-13](../tasks/organization-payment/reports/integration-wave-13.md).
+P10b baru proposal, public/E2E belum selesai; tidak ada izin aktivasi atau deploy.

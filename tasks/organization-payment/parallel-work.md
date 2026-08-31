@@ -444,3 +444,15 @@ browser worker direview; tidak perubahan produksi/wire P15. Frontend menerima
 satu regresi gabungan helper pada fixture terbaru, lalu prep UI menunggu P14/P15.
 Backend P10a dan portal keyboard/reflow masih aktif pada snapshot, tanpa prompt
 duplikat atau integrasi hasil belum selesai. Cursor/turn/batas ada di wave-12.
+
+## Checkpoint lookup dan konsolidasi frontend (2026-09-01)
+
+[Wave-13](reports/integration-wave-13.md): a1808f1 -> ce9b3a0 lookup internal
+dan 3fe0780 -> 12d0fd2 runner frontend diterima. Full root988/5569 lulus;
+Pint/PHPStan/syntax/lint sesuai delta bersih. Browser44/12 capture dari worker
+direview, bukan run ulang root. Frontend kini idle menunggu P14/P15.
+
+Portal 1c6afba+3c1dfa3 ditahan: build assets belum explicit envDir:false.
+Task menerima fix isolasi/probe sintetis saja. Backend menerima proposal P10b
+dua dokumen sebelum writer/claim implementation. Cursor/turn dan batas wave-13
+mencegah duplikasi; tidak operasi sistem aktif atau baseline reset/merge.

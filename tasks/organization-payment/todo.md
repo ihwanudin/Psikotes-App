@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P8a dan P9a/b/c internal selesai lokal. Bukti reports/integration-wave-12.md: 27 SSR lulus; focused199/1091, full927/5200 dan PG222/1659 historis. P10a lookup internal dikerjakan; P8b–P18 keseluruhan tetap belum selesai end-to-end. Tidak ada deploy atau migrasi database aktif.**
+Status: **P1–P8a, P9a/b/c dan P10a internal selesai lokal. Bukti reports/integration-wave-13.md: full988/5569 lulus; browser frontend44 checkpoint direview, SSR27/PG222 historis. P10b baru proposal; harness portal ditahan untuk fix isolasi. P8b–P18 keseluruhan belum end-to-end. Tidak ada deploy atau migrasi database aktif.**
 
 ## Gerbang revisi kolektif
 
@@ -391,7 +391,7 @@ ditugaskan setelah core P9 diterima, tanpa mengklaim dependensi public/E2E seles
 
 **Acceptance:**
 
-- [ ] Tentukan kontrak lookup/recovery read-only yang eksplisit; adapter/fake konsisten. Hasil unknown bukan izin POST ulang; provider tidak menerima total nol. Pertahankan kontrak legacy lewat tes regresi.
+- [x] Kontrak lookup/recovery read-only eksplisit, adapter/fake konsisten; unknown bukan izin POST ulang, nol ditolak. Review internal ce9b3a0 dan full988/5569 lulus; bukti wave-13. Tidak consumer/provider call nyata atau P10b issuance.
 
 **Dependencies:** P9. **Scope:** M.
 
