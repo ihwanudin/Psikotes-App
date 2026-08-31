@@ -1,5 +1,104 @@
 # P12a-prep — portal cabang baca-saja
 
+## Increment verifikasi keyboard/responsif — delta dari 2e8ae42
+
+Tanggal 2026-08-31. Gelombang kedua diintegrasikan induk sebagai 3a17d64.
+Instruksi review parallel-work.md dan reports/integration-wave-2.md induk dibaca
+read-only; tidak reset/merge baseline. **Increment ini hanya mengubah laporan
+ini**, tanpa perubahan resource/page, otorisasi, harness, fitur pembayaran atau
+gate. Tidak menjalankan PG, full regression, PHPUnit/Pint/PHPStan ulang karena
+tidak ada edit kode aplikasi/test; angka suite sebelumnya tetap bukti historis.
+
+### Lingkungan dan metode
+
+- Skill Playwright dibaca beserta referensi CLI/workflows. npx tersedia; memakai
+  CLI cached yang ditunjuk koordinator, bukan install dependency/browser:
+  `C:/Users/ThinkPad/AppData/Local/npm-cache/_npx/31e32ef8478fbf80/node_modules/@playwright/cli/playwright-cli.js`.
+- Sesi bernama `oncam-portal-keyboard`, `open --browser chrome`, default headless
+  dan profil terpisah; **tidak attach** sesi/tab pengguna maupun sesi koordinator.
+  Versi browser teramati 151.0.7922.171, tema terang default profil baru.
+- Origin hanya `http://127.0.0.1:8012`; port diperiksa kosong sebelum bind.
+  Tidak menggunakan port 8011. Init harness existing sukses pada direktori baru
+  tanpa .env, snapshot capture/fromCharge valid, 14 bill cabang + satu bill asing.
+  Tidak membuat invoice/notifikasi nyata atau menampilkan data klinis.
+- Keyboard dikirim lewat CLI `press` / `page.keyboard.press/type`. Listener
+  keydown hanya mengamati Tab/Enter/Space/Escape/arrow serta isTrusted, tidak
+  dispatchEvent, focus(), click DOM, mengubah value, atau requestSubmit.
+  Evaluate dipakai untuk membaca fokus, ukuran, nilai hasil, jumlah baris dan
+  event; bukan untuk menjalankan interaksi aplikasi. Resize memakai viewport
+  browser; mouse wheel native hanya mereset posisi scroll untuk screenshot.
+
+### Hasil aktual
+
+| Alur | Bukti |
+| --- | --- |
+| Login keyboard | Type email/password sintetis, Tab lewat toggle password ke Remember me, Space mencentang (assert isChecked), Space kembali kosong, Tab/Enter Sign in menuju dashboard. Screenshot fokus tombol tersimpan. |
+| Menu → daftar | Tab mencapai Tagihan Cabang dengan :focus-visible=true; Enter membuka daftar 14 bill. |
+| Filter desktop | Tab ke Filter, Space membuka; Tab melewati Reset ke select; Home + ArrowDown memilih Lunas. Enter membuka native select, sehingga Tab pertama menutup popup dan Tab berikutnya mencapai Apply. Space Apply menghasilkan dua row Lunas (id 9 dan 2). |
+| Filter 320 px | Ulang tanpa Enter pada select: Home + lima ArrowDown → paid, Tab ke Apply, Space menghasilkan dua row. Tab/ArrowDown/Space yang diamati semuanya isTrusted=true; ring fokus Filter/Apply terlihat. |
+| Daftar → detail | Tab melewati kolom row sampai Detail, Enter membuka bill 9; peserta sintetis 9, snapshot paket, IDR 100 dan konsultasi IDR 0 sesuai. |
+| Detail → daftar | Tab/Enter pada breadcrumb Tagihan Cabang mengembalikan daftar tanpa filter (14 bill). Ini bukti breadcrumb, bukan history back. |
+| Pagination 320 px | Shift+Tab mencapai Next; Space membuka page=2 dengan empat row. Shift+Tab mencapai Previous; Enter kembali ke halaman pertama. Fokus tombol terlihat. |
+| Per page | Tab mencapai select Per page, ArrowDown dari 10 ke 25 lalu Tab; kedua select responsif mencerminkan 25, seluruh 14 row tampil. |
+| Tabel horizontal | Tab ke Detail pada 320 px menggulir kontainer sampai tautan tampak utuh; rect tautan x=245.61–303.78 di dalam kontainer x=16–304. Fokus memakai underline dan :focus-visible=true, tidak terjebak di luar viewport. |
+
+Listener membuktikan native keydown `isTrusted=true` pada Tab/Enter select,
+Space Filter/Apply/Next dan ArrowDown. Bukti akhir filter mobile menyimpan nol
+event untrusted. Enter navigasi dinilai dari input Playwright dan halaman tujuan,
+bukan klaim bahwa log keydown bertahan melewati pergantian dokumen.
+
+### Responsif dan batas verifikasi
+
+| Viewport CSS px (tinggi 800) | Root/body list & detail | Kontainer/tabel list | Batas panel filter |
+| --- | --- | --- | --- |
+| 320 | 320 / 320, tanpa overflow halaman | 288 / 1050, scroll internal | x=0–320 |
+| 390 | 390 / 390, tanpa overflow halaman | 358 / 1050, scroll internal | x=38–358 |
+| 1280 | 1280 / 1280, tanpa overflow halaman | 896 / 1066, scroll internal | x=904–1224 |
+
+Screenshot list/detail/filter diperiksa pada tiga lebar tersebut; referensi dan
+attempt detail membungkus pada mobile, nominal/riwayat tetap terbaca. Tabel lebar
+memerlukan scroll horizontal; tidak diklaim seluruh kolom terlihat bersamaan.
+Screenshot awal resize/fokus menangkap animasi sebelum selesai; bukti akhir
+diulang setelah transisi 400–450 ms. Tidak ada perbaikan aplikasi yang diperlukan.
+
+**Zoom browser 200% belum terverifikasi.** Lima Control+Equal tidak mengubah
+innerWidth=1280, DPR=1 maupun visualViewport.scale=1 pada Chrome headless ini;
+Control+0 dikirim setelah probe. Tidak menggantinya dengan CSS zoom/pinch lalu
+mengklaim zoom browser. Alt+ArrowLeft juga tidak mengubah halaman; navigasi
+kembali yang terbukti memakai breadcrumb. Tidak mengklaim audit WCAG lengkap,
+screen reader, seluruh state/role, mobile hardware, touch, dark theme ulang,
+atau full end-to-end pembayaran.
+
+Login sempat melewati waitForURL 30 detik dan snapshot/eval ikut timeout/context
+destroyed selama dashboard memuat. Dashboard kemudian teramati selesai dan
+pengujian dilanjutkan setelah snapshot baru. Perintah CLI --help mengeluarkan
+Node UV_HANDLE_CLOSING saat exit; perintah browser berikutnya tetap berhasil.
+Ini dicatat sebagai kendala alat/runtime, bukan bukti alur gagal tertutup atau
+hasil tes aplikasi hijau. Console sesi akhir: **0 error, 0 warning**.
+
+### Artefak dan cleanup
+
+Artefak lokal tidak di-commit di
+`C:/Users/ThinkPad/.codex/worktrees/6e61/Psikotes/output/playwright/`:
+`keyboard-evidence.txt`, `list-return.txt`, `page2.txt`, script probe `.js`,
+`list-{320,390,1280}.png`, `detail-{320,390,1280}.png`,
+`filter-{320,390,1280}.png`, `apply-focus-320.png`,
+`detail-link-focus-320.png`, `pagination-focus-320.png`, `back-focus.png`,
+`menu-focus.png`, `login-focus.png`. Snapshot sementara CLI di `.playwright-cli/`
+juga tidak commit. Jalankan probe lewat `node <CLI> -s=oncam-portal-keyboard
+run-code --filename <script>`; script merupakan langkah berurutan yang bergantung
+pada state, bukan suite replay mandiri atau tes CI.
+
+CLI `close` mengonfirmasi sesi oncam-portal-keyboard ditutup; server dihentikan
+dan lookup listener 8012 kosong. Tidak memakai close-all/kill-all. Folder SQLite
+sintetis tetap lokal di
+`C:/Users/ThinkPad/AppData/Local/Temp/oncam-bills-1e94aa4e484942e8b4eb334159c819d2`
+(pointer output/playwright/preview-directory.txt), tidak commit atau diklaim
+sudah dihapus. Tidak menyentuh folder/proses induk, tidak push/deploy.
+
+Siap review sebagai increment verifikasi saja. P12a tetap menunggu P11c dan
+integrasi end-to-end; gate test-only tidak dibuka.
+
 ## Gelombang kedua — delta dari 55ffc29 (2026-08-31)
 
 **Siap review sebagai P12a-prep, bukan aktivasi P12a.** Gelombang pertama sudah
