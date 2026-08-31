@@ -1,8 +1,8 @@
-# Calon tugas: organization-payment
+# Tugas: organization-payment
 
-Status: **DRAFT — pendamping review plan, bukan antrean yang sudah disetujui untuk implementasi.**
+Status: **Pengguna meminta lanjut setelah review plan/checklist pada 2026-08-31. P1 berjalan; checkpoint berikutnya belum lulus.**
 
-Rujuk [plan.md](plan.md). Setelah plan disetujui, tinjau rincian file/kontrak tiap tugas dan setujui checklist sebelum coding. Lokasi `<new>` adalah nama migrasi yang belum dialokasikan; path baru lain adalah usulan, bukan klaim file sudah ada. Jika satu tugas melebar melebihi lima file, pecah dahulu. Semua tes di bawah baru direncanakan; filter tanpa tes bukan keberhasilan.
+Rujuk [plan.md](plan.md). Tinjau rincian file/kontrak tiap tugas sebelum coding. Lokasi `<new>` adalah nama migrasi yang belum dialokasikan; path baru lain adalah usulan, bukan klaim file sudah ada. Jika satu tugas melebar melebihi lima file, pecah dahulu. Tes selain yang memiliki bukti masih direncanakan; filter tanpa tes bukan keberhasilan.
 
 Tidak ada butir implementasi selesai. Checklist F1 lama tetap terpisah.
 
@@ -12,11 +12,11 @@ Tidak ada butir implementasi selesai. Checklist F1 lama tetap terpisah.
 
 - [ ] Runner menolak database aktif dan outbound nyata; baseline existing dicatat tanpa menandai skip sebagai lulus.
 
-**Verification:** `php artisan test --filter=OrganizationPaymentTestEnvironmentTest` pada environment test terisolasi; jumlah tes harus nonzero. Untuk P18, verifikasi tautan/runbook dan kesesuaian dengan bukti P17, bukan menjalankan deploy.
+**Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml`. Pengaman lulus 10 tes/22 assertions. Regresi + harness: 350 lulus, 2 skip registrasi Fortify nonaktif (exit 1); sandbox dikecualikan karena butuh izin transaksi eksternal. P1 belum dicentang selesai. Bukti: `docs/ORGANIZATION_PAYMENT_TESTING.md`. Runner ini khusus SQLite memori; PostgreSQL ditolak sampai runner terpisah tersedia.
 
 **Dependencies:** None. **Scope:** M.
 
-**Files likely touched:** `tests/Feature/Database/OrganizationPaymentTestEnvironmentTest.php`, `phpunit.organization-payment.xml`, `docs/ORGANIZATION_PAYMENT_TESTING.md`.
+**Files likely touched:** `tests/Feature/Database/OrganizationPaymentTestEnvironmentTest.php`, `tests/OrganizationPaymentTestCase.php`, `phpunit.organization-payment.xml`, `docs/ORGANIZATION_PAYMENT_TESTING.md`.
 
 ## P2: Konfigurasi pembayar
 

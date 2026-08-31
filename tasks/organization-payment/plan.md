@@ -1,19 +1,20 @@
 # Rencana: pembayaran lembaga dan checkout terintegrasi
 
 Tanggal: 2026-08-31
-Status: **DRAFT PLAN — menunggu tinjauan; belum izin implementasi atau deploy.**
+Status: **Disetujui untuk dilanjutkan pada 2026-08-31; P1 sedang dikerjakan lokal. Tidak ada izin deploy.**
 
 ## Lingkup dan status persetujuan
 
 Pengguna meminta melanjutkan setelah usulan lokasi terpisah. Rencana ini berada
 di `tasks/organization-payment/`; `tasks/plan.md` dan `tasks/todo.md` F1 tidak
 diubah. Persetujuan lingkup fungsional menjadi dasar perencanaan, bukan bukti
-fitur selesai. Rincian skema/kompatibilitas di bawah masih usulan untuk disetujui.
+fitur selesai. Pengguna menjawab "lanjutkan" setelah review plan dan calon tugas.
+Rincian migrasi/cutover tetap harus diverifikasi sebelum tahap terkait dijalankan.
 
 Sumber: `CAPABILITY-MAP-organization-payment.md`, `SPEC-funding-policy.md`,
 `SPEC-organization-billing.md`, dan `SPEC-integrated-checkout.md`.
-Checklist calon tugas berada di [todo.md](todo.md). Setelah plan diterima,
-validasi rincian tugas sebelum implementasi per modul.
+Checklist berada di [todo.md](todo.md). Validasi rincian tugas sebelum implementasi
+per modul; persetujuan tidak mencakup perubahan sistem eksternal.
 
 Hanya dua pilihan: bayar sendiri atau dibayar lembaga. Harga paket/konsultasi
 berasal dari database dalam IDR. Dana talang, cicilan, tempo, tagihan gabungan,
@@ -176,8 +177,8 @@ per attempt; organisasi sumber sebagai pembayar; tidak ada reinvoice otomatis.
 Persetujuan rencana mengizinkan pendetailan tugas dan proposal migrasi lokal,
 bukan menjalankan migrasi data aktif, deploy, Xendit Live, invoice atau WA nyata.
 
-## Bukti penyusunan
+## Bukti penyusunan dan pelaksanaan
 
-Hanya dokumentasi. Kode aplikasi, konfigurasi layanan, database, harga, dan
-checklist F1 tidak diubah. Pemeriksaan struktur dokumen dan diff dilakukan;
-test fitur/build belum dijalankan karena belum ada implementasi.
+Pada penyusunan awal hanya dokumentasi yang diubah. Pelaksanaan P1 menambah
+harness test lokal; lihat ../../docs/ORGANIZATION_PAYMENT_TESTING.md untuk bukti.
+Kode aplikasi publik, database aktif, harga, dan checklist F1 tidak diubah.
