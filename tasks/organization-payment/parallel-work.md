@@ -383,3 +383,16 @@ reproduksi/perbaikan replay P9a; frontend regresi gabungan browser, keyboard dan
 reflow; portal adapter preview read-only test-only tanpa memasang bulk action.
 Scope, commit, cursor/status dan batas bukti ada di wave-7. Tidak task/agent baru,
 reset/merge worker, akses publik, DB aktif, pembayaran atau notifikasi nyata.
+
+## Checkpoint review lanjutan (2026-09-01)
+
+Lihat [wave-8](reports/integration-wave-8.md): portal f4ca0c6 -> 521b49e dan
+browser harness 12f777c -> a84d9bb diintegrasikan setelah review. Root 804/4200,
+Pint/PHPStan dan lint/syntax helper lulus. PG adapter belum dibuktikan.
+Backend RED d0ed7cf tidak diintegrasikan; ADR-005 menetapkan snapshot keputusan
+funding awal agar replay dapat mempertahankan lifecycle dan guard policy.
+
+Sudah dispatch satu kali ke ketiga task: backend GREEN ADR-005; portal tes PG
+adapter; frontend cakupan ESLint generated output (izin shared config sempit,
+patch delta bila baseline untracked). Scope, cursor dan turn aktif ada di wave-8.
+Tidak mengirim ulang selama aktif atau menutup acceptance dari klaim task saja.

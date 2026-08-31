@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P8a selesai lokal. Core aktivasi/outbox/token, schema P9a0 dan kontrak intendedField terverifikasi; bukti terbaru reports/integration-wave-6.md. P8b–P18 keseluruhan tetap belum selesai; action P9a internal sedang dikerjakan. Tidak ada deploy atau migrasi database aktif.**
+Status: **P1–P8a selesai lokal. Core aktivasi/outbox/token, schema P9a0 dan kontrak intendedField terverifikasi; bukti terbaru reports/integration-wave-8.md. P8b–P18 keseluruhan tetap belum selesai; action P9a ditahan untuk perbaikan replay ADR-005. Root 804 tes/4.200 assertions lulus, bukan acceptance end-to-end. Tidak ada deploy atau migrasi database aktif.**
 
 ## Gerbang revisi kolektif
 
