@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P8a selesai lokal. Dua gelombang persiapan frontend/portal serta aktivasi/outbox sudah diintegrasikan (lihat reports/integration-wave-2.md); P8b–P18 tetap belum selesai. Autentikasi attempt dilanjutkan setelah persetujuan kontrak koordinator. Tidak ada deploy atau migrasi database aktif.**
+Status: **P1–P8a selesai lokal. Core aktivasi/outbox/token dan persiapan frontend/portal tersedia; bukti integrasi terakhir di reports/integration-wave-3.md. P8b–P18 keseluruhan tetap belum selesai; berikutnya P9a internal. Tidak ada deploy atau migrasi database aktif.**
 
 ## Gerbang revisi kolektif
 
@@ -318,6 +318,19 @@ session; tidak mengubah login legacy, settlement, UI, atau database aktif.
 
 - [ ] Service aktivasi dipanggil setelah settlement maupun pemenuhan consent; ready/outbox per attempt idempotent. Satu peserta belum consent tidak menghalangi yang lain; token attempt dan token checkout dibedakan di jalur start.
 
+Rincian checkpoint (acceptance gabungan di atas tetap wajib):
+
+- [x] Core aktivasi/outbox atomik per attempt, diuji dan diintegrasikan pada gelombang pertama.
+- [x] Token purpose-bound dan adapter read-only start: implementasi ee7ba62/fe96239 diintegrasikan; regresi 728/3.367 dan PostgreSQL 156/921 lulus. Bukan endpoint publik atau engine sesi.
+- [ ] Panggilan setelah settlement: dibuktikan bersama finalizer P11a, termasuk rollback aktivasi/outbox dalam transaksi induk.
+- [ ] Panggilan setelah pemenuhan consent/profil: dibuktikan bersama P15; tanpa invoice ulang dan tanpa auto-consent.
+- [ ] Wiring publik autentikasi/RLS, producer credential dan delivery intent diverifikasi sebelum cutover; engine sesi tetap dependensi terpisah, tidak boleh diganti respons sukses palsu.
+
+Dependensi dibedakan antara core dan integrasi: pemanggilan dari P11a/P15 tidak
+dapat menjadi prasyarat implementasi awal P9 yang mendahului kedua writer itu.
+P9a internal dapat dilanjutkan sesudah core P8b diverifikasi; tidak menutup P8b
+keseluruhan atau mengizinkan endpoint/cutover. Semua acceptance tetap tercatat.
+
 **Dependencies:** P8a. **Scope:** M.
 
 **Files likely touched:** `app/Actions/Payments/ActivateSettledAssessment.php`, `app/Actions/Notifications/EnqueueAssessmentActivation.php`, `app/Http/Controllers/StartParticipantSessionController.php`, `tests/Feature/Auth/SettledAssessmentActivationTest.php`.
@@ -331,6 +344,23 @@ session; tidak mengubah login legacy, settlement, UI, atau database aktif.
 - [ ] Persist attempt PROVISIONED, profil lengkap/parsial dalam scope autentikasi; tidak membuat invoice untuk organization. Sediakan jalur kontrak baru gated, tetap tertutup sampai checkout end-to-end siap.
 
 **Dependencies:** P8b. **Scope:** M.
+
+### P9a: increment internal provisioning (sebelum endpoint publik)
+
+- [ ] Action internal memakai client/sumber/paket persisted dan kontrak checkout-v2 existing; policy/opt-in tetap diperiksa. Cabang tidak berasal dari referral/input bebas, identitas tidak digabung lintas organisasi lewat email/telepon.
+- [ ] Persist profil yang tersedia dan attempt PROVISIONED dengan marker checkout-v2 server-side secara atomik/idempotent. Tidak membuat ready entitlement, bill/invoice, credential atau notifikasi; metadata browser tidak boleh menjadi bukti paid/verified/consent.
+- [ ] Replay yang konsisten tidak menggandakan participant/attempt; konflik payload, sumber/tenant/paket tidak sah dan concurrent request ditolak/ditangani deterministik. Kegagalan rollback; tidak menambah placeholder identitas palsu demi memenuhi kolom wajib.
+
+Dependencies P9a: core P8b yang sudah diverifikasi + policy/schema/reservasi
+existing. P9 keseluruhan dan endpoint masih unchecked. Review kontrak/rute
+terpisah sebelum wiring publik; tidak mengubah v1 atau mengaktifkan sumber.
+
+Files: `app/Actions/Integrations/ProvisionCheckoutParticipant.php`,
+`tests/Feature/Integrations/CheckoutProvisioningTest.php`, tes PG baru khusus
+provisioning bila transaksi/race diperlukan, serta laporan backend. Maksimal
+sekitar lima file per increment; schema/request shared tidak diubah tanpa review.
+Verification: focused PHPUnit dengan phpunit.organization-payment.xml, Pint,
+PHPStan, PG disposable untuk RLS/race. Koordinator mengulang regresi gabungan.
 
 **Files likely touched:** `app/Actions/Integrations/ProvisionCheckoutParticipant.php`, `app/Http/Controllers/CheckoutParticipantProvisioningController.php`, `routes/api.php`, `tests/Feature/Integrations/CheckoutProvisioningTest.php`.
 

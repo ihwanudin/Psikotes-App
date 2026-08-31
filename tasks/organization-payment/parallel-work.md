@@ -261,3 +261,19 @@ Task portal existing menerima increment verifikasi keyboard/responsive pada
 port 8012/session browser tersendiri. Tidak ada overlap backend/token, perubahan
 shared routes atau pembukaan gate. Frontend koordinator memakai 8011 hanya selama
 pengujian. Tidak ada task/agent baru; seluruh hasil portal tetap perlu review.
+
+## Checkpoint token dan kelanjutan backend
+
+Backend menyerahkan ee7ba62/fe96239: token purpose-bound dan adapter read-only
+start. Koordinator meninjau source dan tes; integrasi lulus 728 tes/3.367
+assertions serta regresi PostgreSQL 156/921, Pint/PHPStan lulus. Bukti pada
+[reports/integration-wave-3.md](reports/integration-wave-3.md).
+Controller tetap 501 dan route assessment hanya ada di tes.
+
+Setelah core ini lolos, task backend existing melanjutkan P9a internal pada
+todo.md. Ini memisahkan dependensi core dari integrasi writer P11a/P15, bukan
+menghapus acceptance P8b. Ownership baru terbatas action provisioning, tes
+feature/PG khusus dan laporan backend; tidak menyentuh frontend/portal, route,
+schema, shared config, v1 atau sumber aktif tanpa review. Gunakan kontrak request
+dan CheckoutContractAdapter existing; tidak menerbitkan invoice/notifikasi/token.
+Setiap increment tetap review dan berhenti, tidak lanjut P10 otomatis.
