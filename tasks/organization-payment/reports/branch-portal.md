@@ -1,5 +1,126 @@
 # P12a-prep — portal cabang baca-saja
 
+## Browser native collective preview — delta dari 7ead376
+
+Tanggal 2026-09-01. Root telah mengintegrasikan 7ead376 sebagai e1b9ecc.
+Increment ini hanya bukti browser P12b-prep, bukan acceptance atau wiring
+publik. Plan/todo, parallel-work dan ADR-004/005 terbaru induk dibaca read-only;
+skill Playwright beserta referensi CLI/workflow dibaca sebelum digunakan.
+Tidak ada perubahan komponen PHP, adapter, backend, schema, policy, route atau
+resource produksi. View testing diperbaiki dalam commit terpisah **1c6afba**.
+
+File increment:
+
+- `tools/testing/serve-collective-preview.php`: harness baru init/serve/verify,
+  tidak mengubah harness portal existing. Memuat komponen tests/Support dan
+  route Livewire hanya dalam proses fixture; endpoint aplikasi lain ditolak.
+- `tools/testing/verify-collective-preview-browser.mjs`: build CSS Filament
+  lokal dan driver CLI Playwright cached, tanpa install browser/dependency.
+  Asset build dapat diulang tanpa menghapus direktori atau memilih hash lama.
+- `tests/Support/views/collective-bill-preview.blade.php`: perbaikan fokus dan
+  reflow test-only yang dijelaskan di bawah, sudah commit terpisah.
+- Laporan ini; tidak mengedit checklist atau dokumen kanonik koordinator.
+
+Isolasi dan fixture:
+
+- Port 8012 diperiksa kosong sebelum server dimulai; bind hanya
+  `127.0.0.1:8012`. Harness memeriksa alamat remote, nama server, port, Host dan
+  Origin. Pengujian `/admin` mendapat 404 dan Host asing mendapat 403.
+- Direktori baru
+  `C:/Users/ThinkPad/AppData/Local/Temp/oncam-collective-a447822e414f4aa59dc1268a77be8649`
+  berisi SQLite baru, manifest sintetis, CSS, storage/session/cache tersendiri.
+  Init menolak DB/manifest existing; .env workspace tidak ada dan harness
+  memakai environment path temp tanpa .env. Migrasi hanya DB disposable itu.
+  Koneksi DB selain SQLite dihapus dari config runtime, Redis tidak tersedia;
+  payment/notifier fake, Mail fake, Laravel HTTP preventStrayRequests.
+- Browser headless Chrome installed memakai session baru
+  `oncam-collective-77be8649`, tanpa attach tab/profile user. Browser menolak
+  request selain prefix loopback tersebut; CSP connect-src self. Tidak ada
+  permintaan keluar selama alur. Login hanya admin BranchAdmin sintetis dari
+  manifest, bukan akun nyata. Ini isolasi harness aplikasi/browser, bukan
+  klaim sandbox egress OS untuk kode PHP arbitrer.
+- Sepuluh attempt paket A/A/B/B/C/C/A/B/C/A, harga A100/B200/C0 IDR;
+  konsultasi A/C30 dan B50. Konsultasi dipilih untuk ID2/4/6/10. ID2 nama null,
+  ID3 kandidat panjang untuk menguji wrapping. Attempt ke-11 sengaja memiliki
+  payer policy null; server memproyeksikan alasan aman tanpa label peserta.
+- node_modules disalin independen dengan /XJ, cache dikecualikan, setelah
+  package-lock root/worker cocok SHA256
+  `E8A50F8A14992153085D621E8C2DFCA8DC8708F59D0FC40F8FDFFA7F9D3A1253`.
+  Tidak ada junction/shared dependency atau instalasi. Overlay nullable lokal
+  2026_08_31_000600 tetap identik root SHA256
+  `B0AB61731EA1C1CFC49507FAF2C4FB5251F56BE87DEDC49752DB0DCA9A70F027`,
+  tidak diedit/stage/commit.
+
+Bukti red → fix → green pada browser:
+
+- Sebelum fix, Space memicu loading disabled pada fieldset dan fokus pindah
+  ke BODY. Pada submit, Livewire juga otomatis men-disable kontrol di dalam
+  form. Fieldset kini memakai aria-busy; tombol Tinjau berada di luar form
+  dengan atribut `form` native menuju ID unik komponen. Fokus tetap pada
+  kontrol setelah respons, tanpa script focus atau dispatchEvent.
+- Pada 320px fieldset awal melebar sampai scrollWidth 682. `min-w-0` pada
+  fieldset mengizinkan wrapping; `shrink-0` mencegah checkbox tertekan oleh ID
+  kandidat panjang. Harga dan policy tidak berubah. Tidak ada overflow-hidden
+  untuk menyembunyikan masalah.
+- Run final memakai Tab untuk mencapai kontrol, Space untuk attempt dan
+  konsultasi, Enter untuk Tinjau. **20 aksi native** lulus beserta pemeriksaan
+  activeElement dan `:focus-visible` setelah respons. Event log sebelum
+  refresh berisi **211 event**; semua keydown trusted dan perubahan checkbox
+  trusted teramati. evaluate hanya membaca DOM/geometri atau memasang pencatat
+  event, tidak mengubah pilihan, fokus atau hasil. Ini bukan simulasi event DOM.
+- Hasil 10 pilihan: **IDR 1.140, 8 berbiaya / 2 gratis, 10 baris hasil**.
+  Konsultasi ID2 dimatikan dengan Space: hasil lama hilang; Tinjau baru memberi
+  IDR 1.110. Menambah ID11 menghapus hasil lama; Tinjau menampilkan
+  PAYER_POLICY_UNCONFIGURED dan total belum tersedia, tanpa total sebelumnya.
+  Refresh tidak memulihkan selection/hasil. Tinjau kosong memberi error pilihan
+  tanpa hasil stale.
+- **12 pemeriksaan reflow**: empty/mixed/invalid/empty-error masing-masing pada
+  320, 390, 1280px. Document scrollWidth sama dengan viewport, tidak ada elemen
+  main terpotong/melebar, checkbox minimum **16×16px**. Screenshot full-page
+  diperiksa, termasuk kandidat panjang dan hasil campuran di layar kecil.
+- **26 respons HTTP** dalam run browser, semuanya <400; nol request gagal,
+  nol request eksternal yang diblokir, nol console warning/error atau pageerror.
+  CLI cached memakai perintah `requests`, bukan `network` yang tidak didukung.
+
+Verifikasi akhir:
+
+- `php vendor/bin/phpunit -c phpunit.organization-payment.xml tests/Feature/Admin/CollectiveBillPreviewComponentTest.php`:
+  **28 tes / 319 assertions lulus** setelah perbaikan view.
+- Pint harness lulus; PHPStan harness **0 error**; ESLint helper, Prettier check,
+  dan `node --check` lulus. PHPStan menggunakan APP_ENV=testing, SQLite :memory:,
+  cache/session array dan path bootstrap cache khusus ignored. Dua percobaan
+  ulang awal berhenti pada bootstrap (env testing belum diisi, lalu path
+  Windows absolut tidak dikenali Laravel); setelah env dan path relatif
+  isolated benar, analisis lulus. Tidak melonggarkan guard aplikasi.
+- Mode verify setelah browser: assessment_charges, assessment_bills,
+  assessment_bill_items, assessment_entitlements, audit_logs, outbox_messages,
+  orders, entitlements, consent_records, identity_verifications seluruhnya **0**.
+- PID server sendiri 62268 diverifikasi command line sebelum dihentikan;
+  port 8012 dipastikan bebas. Helper menutup session di finally; pemeriksaan
+  ulang CLI menyatakan session tidak terbuka. Tidak menghentikan server/tab lain.
+- Bukti lokal ignored di
+  `output/playwright/oncam-collective-a447822e414f4aa59dc1268a77be8649/`:
+  report.json (native/events/geometri/network), 12 screenshot final dan log CLI.
+  Screenshot red disimpan terpisah. Temp DB sintetis tetap ada untuk inspeksi,
+  tidak disajikan setelah server ditutup; tidak masuk commit.
+
+Reproduksi: buat direktori temp unik oncam-collective-{32hex}, set
+`ONCAM_COLLECTIVE_PREVIEW_DIRECTORY`, jalankan PHP harness `init`, lalu Node
+helper `assets`. Setelah memastikan 8012 kosong, start PHP hidden dengan
+`-d opcache.enable_cli=0 -S 127.0.0.1:8012 -t public tools/testing/serve-collective-preview.php`.
+Set `ONCAM_PLAYWRIGHT_CLI` ke CLI cached yang sudah ada dan jalankan Node helper
+`verify`; jalankan PHP harness `verify`, hentikan PID server sendiri dan cek
+port kembali. Helper tidak memasang browser, tidak menyalakan server otomatis.
+
+Batas: hanya Chromium/Chrome headless dan CSS Filament lokal, bukan audit
+aksesibilitas penuh, screen reader, browser lain atau browser zoom 200%.
+Input/response berurutan; tidak membuktikan race concurrent request, snapshot
+konfirmasi, invoice/finalizer P11, intent resume atau immutabilitas identitas.
+Tidak menjalankan PG/full regression baru; bukti RLS/query adapter tetap pada
+increment b8e3f6c yang sudah direview root, bukan klaim dari SQLite/browser ini.
+Tidak ada tombol bayar/reservasi, writer, transaksi nyata, flag publik atau
+acceptance P12b. Stop setelah commit bukti ini untuk review koordinator.
+
 ## Komponen Livewire preview sintetis — delta dari b8e3f6c
 
 Tanggal 2026-09-01. Koordinator telah mengintegrasikan bukti PG b8e3f6c sebagai
