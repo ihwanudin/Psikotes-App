@@ -1696,3 +1696,24 @@ regresi lookup/claim/issuance/reconciliation **163/163 tes, 1.241 assertions**;
 PostgreSQL disposable **216/216 tes, 1.473 assertions** dengan cleanup selesai.
 Pint file delta dan PHPStan seluruh project lulus. Tidak ada perubahan PG test,
 schema, provider, wiring, atau perilaku P10b canonical. **STOP untuk review.**
+
+## P10c-b0 — proposal bounded discovery dan durable lease
+
+Audit proposal-only selesai. Field outbox existing tidak aman di-overload:
+`available_at` terikat canonical ke `claimedAt`, attempts/status/processed/expiry
+memiliki arti issuance/terminal, dan `updated_at` tidak memiliki owner fence serta
+dipakai stale recovery legacy. Advisory/cache lock juga bukan authority durable.
+
+Rekomendasi untuk review adalah migration additive empat metadata lease terpisah
+(token, expiry, cooldown, lookup counter), acquisition service transaction dengan
+organization-first canonical locks dan outbox `FOR UPDATE SKIP LOCKED`, lalu GET
+setelah commit/context kosong. Late persist wajib token-fenced; crash dapat
+direbut setelah expiry tanpa create/rearm, dan unknown memakai cooldown tanpa
+audit spam. Command/scheduler tetap tidak terdaftar sampai P11b.
+
+State machine, API internal, config bounds, observability tanpa PII, rollback
+refusal, risiko consumer legacy, matriks SQLite/PG dua proses, dan pembagian
+increment <=5 file ada di
+`reports/backend-invoice-reconciliation-lease-proposal.md`. Increment ini tidak
+mengubah kode/schema/config/command/provider dan tidak menjalankan test karena
+hanya dua dokumen. **STOP untuk review ADR/migration sebelum implementasi.**
