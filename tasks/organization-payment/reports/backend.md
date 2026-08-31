@@ -947,3 +947,218 @@ HTTP endpoint, token, gate publik, pembayaran, consent, notifikasi, atau P10.
 Keberhasilan replay tidak membuktikan status akses/settlement dari fixture;
 gate akses tetap bertanggung jawab memeriksa bukti persisted pada endpointnya.
 **Fix ADR-005 siap review lokal; STOP sebelum integrasi/public wiring/P10.**
+
+## P9b adapter HTTP tanpa route produksi — 2026-09-01
+
+Koordinator menerima rangkaian P9a dan ADR-005 pada root; increment ini hanya
+controller HTTP, tes baru khusus, pembaruan kontrak P5/P9, dan laporan. Skill
+Laravel/Auth/Security/TDD/Git existing digunakan. Tidak mengubah action P9a,
+middleware, request, bootstrap, route, config, schema, v1 atau sumber aktif.
+
+### Perilaku dan boundary
+
+- Controller baru `CheckoutParticipantProvisioningController` memakai FormRequest
+  dan action P9a existing. Route hanya ada dalam tes, menggunakan alias nyata
+  `integration.client`; tidak ada route produksi yang didaftarkan.
+- Atribut IntegrationClient terautentikasi wajib ada sebelum service context
+  dibuat. Controller menggunakan `RlsContextRunner::run(new RlsContext('service'))`,
+  bukan runAsService yang dapat menaikkan context admin. Context existing ditolak
+  dengan 403; tanpa client 401. Controller bukan verifier HMAC tersendiri: wiring
+  berikutnya wajib memasang middleware existing, tidak cukup membuat atribut model.
+- Sukses 201 create/200 replay hanya mengirim `data.participantId` sebagai string,
+  `assessmentAttemptId`, `assessmentStatus`. Tidak ada PII/profil, metadata,
+  snapshot, funding, credential, token, checkoutURL atau sesi. Status persisted
+  adalah proyeksi, bukan bukti pembayaran atau izin akses.
+- IdempotencyConflict dipetakan 409/IDEMPOTENCY_CONFLICT; exception kontrak memakai
+  code/status existing (termasuk 422 key invalid dan 503 opt-in OFF). Pesan generic
+  tidak menyalin input, PII, credential, metadata atau exception message.
+- Respons yang **dibuat controller**, sukses dan contract error, memakai
+  `Cache-Control: no-store, private`. Auth rejection dan validation error berhenti
+  sebelum controller dan tetap memakai pipeline existing; no-store seluruh
+  pipeline tidak diklaim. Handler api/* existing memberikan VALIDATION_FAILED
+  generic. Error tak terduga tetap dirender framework dengan APP_DEBUG=false;
+  tidak menambah catch-all atau mapping status/error baru.
+- Context/transaksi dipulihkan setelah sukses, contract error dan exception
+  tak terduga. Tes crash setelah insert membuktikan rollback dan retry berikutnya
+  berhasil. Tidak ada observer/notifier/gateway baru; efek samping tetap milik
+  action existing yang sudah membatasi provisioning ke participant/attempt.
+
+### Bukti aktual
+
+- RED sebelum controller: **17 tes/17 error**, class controller belum ada,
+  tanpa assertions; p9b-http-red.log. Tes menjadi GREEN setelah adapter dibuat,
+  kemudian ditambah kasus crash dan replay lifecycle.
+- HTTP final: **19 tes/229 assertions lulus**, tanpa skip (p9b-http-green.log).
+  HMAC nyata memakai secret sintetis in-memory, raw body dan timestamp. Mencakup
+  missing/malformed/wrong signature, body tampered, malformed/stale timestamp,
+  client disabled sesudah create, opt-in OFF, tenant/source/package mismatch,
+  key missing/conflict, metadata authority ditolak, create/replay/proyeksi minimal,
+  lifecycle replay, no rights/bill/outbox, serta denial direct caller/context.
+- Focused regresi HTTP baru + P9a + kontrak checkout + intendedField + provisioning
+  v1 + gate assessment: **190 tes/954 assertions lulus**, tanpa skip
+  (p9b-http-regression.log). Seluruhnya menggunakan konfigurasi
+  phpunit.organization-payment.xml, testing SQLite memory.
+- Pint kedua file PHP **lulus**. PHPStan seluruh proyek **0 error**, env eksplisit
+  testing/SQLite memory/DB_URL kosong/cache+session array/queue sync
+  (p9b-http-phpstan.log). Tidak perlu perubahan reader/shared atau dependency.
+- Tidak menjalankan PG baru karena tidak mengubah query/schema/action/primitive
+  RLS; tes HTTP ini tidak diklaim sebagai bukti PostgreSQL controller. Tidak
+  mengulang UI/full application suite: manifest Vite worker tetap tidak tersedia.
+  Angka root 880/4652 dan PG 222/1659 adalah bukti koordinator, bukan run increment ini.
+
+### Dokumen baseline untracked dan handoff patch
+
+docs/ORGANIZATION_CHECKOUT_CONTRACT.md masih untracked sejak snapshot worker.
+Sebelum edit, SHA256 worker/root identik:
+`C9D7299B2E633316F7225C2F67EED884A53A4EC190235F42632AEB0377B01883`.
+File lokal diperbarui untuk intendedField/ADR-004, snapshot ADR-005, action versus
+adapter/endpoint, response/status/no-store dan batas error sebelum controller.
+Tautan ADR merujuk dokumen canonical yang tersedia di root, tidak disalin menjadi
+baseline baru di worker. Agar tidak commit ulang snapshot, dokumen **tidak di-add**;
+koordinator menerapkan patch berikut ke file tracked di root.
+
+```diff
+--- a/docs/ORGANIZATION_CHECKOUT_CONTRACT.md
++++ b/docs/ORGANIZATION_CHECKOUT_CONTRACT.md
+@@ -1,10 +1,13 @@
+-# Kontrak checkout opt-in (P5)
++# Kontrak checkout opt-in (P5/P9)
+
+ ## Status dan batas
+
+-Kontrak internal `checkout-v2` disiapkan untuk provisioning P9. Belum tersedia
+-endpoint checkout publik. Validasi/adaptasi tidak membuat participant, attempt,
+-invoice, entitlement, consent, atau outbox. Harga bukan input integrasi.
++Kontrak internal `checkout-v2` memiliki action P9a yang menyimpan participant dan
++attempt PROVISIONED secara atomik/idempotent. Request dan adapter policy sendiri
++tetap tidak melakukan persistence. Adapter HTTP P9b disiapkan tanpa registrasi
++route produksi: endpoint checkout publik belum tersedia dan P9 belum live.
++Tidak membuat invoice, entitlement, consent, credential, token atau outbox.
++Harga bukan input integrasi.
+
+ ## Input
+
+@@ -14,8 +17,11 @@ ## Input
+   `organizationCode`, `externalCandidateId`, `assessmentPackageCode`, `profile`.
+ - ID opsional: `externalProcessId`, `externalRegistrationId`, `assessmentRoundId`.
+ - `profile` menerima hanya fullName, birthDate, gender, educationLevel, email,
+-  phone. Object kosong/field null diperbolehkan sebagai profil parsial; nilai
+-  yang diberikan tetap wajib valid. Ini bukan bukti identitas atau persetujuan.
++  phone, intendedField. Object kosong/field null diperbolehkan sebagai profil
++  parsial; nilai yang diberikan tetap wajib valid. intendedField opsional/nullable
++  dengan nilai KAIGO/KENSETSU/NOUGYOU/SEIZOU/GAISHOKU/UMUM, tanpa default UMUM.
++  Missing/null tetap belum diketahui. Ini bukan bukti identitas atau persetujuan;
++  kontrak v1 tidak berubah. Lihat [ADR-004](decisions/0004-checkout-partial-profile.md).
+ - `payerType` opsional/null atau tepat `self`/`organization`. Tanpa pilihan,
+   resolver P3 dapat memilih satu pilihan efektif atau meminta pilihan peserta.
+ - `fundingMode` hanya untuk adapter legacy eksplisit: COMMERCIAL_SELF_PAY → self,
+@@ -25,7 +31,7 @@ ## Input
+ - `metadata` hanya menerima cohortCode. Field tambahan pada root/profile/
+   metadata ditolak, termasuk paid, amount, branchId dan consent.
+ - Idempotency-Key wajib valid sebelum provisioning P9; request helper memeriksa
+-  karakter/ukuran, tetapi P5 tidak mengklaim kunci atau membuat respons replay.
++  karakter/ukuran, action P9a memeriksa konflik dan replay secara transaksional.
+
+ Validasi memakai Form Request dan allow-list array seperti
+ [dokumentasi Laravel](https://laravel.com/docs/13.x/validation#validating-arrays).
+@@ -39,8 +45,54 @@ ## Gerbang dan keluaran
+ `CheckoutContractAdapter::resolve(client, source, package, input)` menerima input
+ tervalidasi serta model registry yang dipetakan server. Ia memeriksa versi,
+ pemetaan organisasi/sumber/paket, lalu memakai ResolvePayerPolicy. Keluaran
+-PayerDecision bukan izin tes atau lunas. Pemanggil persistence berikutnya wajib
+-reload registry dalam transaksi/RLS dan memenuhi gate identitas/consent/harga.
++PayerDecision bukan izin tes atau lunas. Action P9a me-reload registry dalam
++transaksi/service RLS sebelum create maupun replay; akses tetap memerlukan gate
++identitas/consent/settlement terpisah.
++
++## Persistence dan keputusan funding awal (P9a)
++
++Identitas dipetakan lewat organisasi/source/external candidate tepat, tidak
++digabung lintas organisasi lewat email/telepon. Profil parsial sah disimpan tanpa
++placeholder, attempt baru selalu PROVISIONED. Replay tidak mengosongkan profil
++yang telah dilengkapi dan tidak mengubah status/funding lifecycle.
++
++Sesuai [ADR-005](decisions/0005-checkout-initial-funding-snapshot.md), create menulis
++metadata server checkout_contract_version=checkout-v2 dan
++checkout_initial_funding_mode. Key snapshot awal wajib hadir, dengan nilai tepat
++null/COMMERCIAL_SELF_PAY/INVOICED_TO_ORGANIZATION dari resolver. Payload tidak
++boleh memasok keduanya; metadata input tetap hanya cohortCode. Snapshot tidak
++diubah replay/lifecycle; ini kontrak aplikasi, bukan constraint immutable DB baru.
++
++Replay mencocokkan scope/hash dan keputusan resolver terkini dengan snapshot
++awal, lalu memeriksa funding lifecycle secara terpisah terhadap PayerDecision.
++Initial null boleh dipilih kemudian; initial selected tidak boleh berubah/null.
++Snapshot hilang/invalid atau versi salah gagal tertutup tanpa infer/backfill.
++Policy tidak sah, keputusan awal berubah, revoked/void tetap ditolak. Nilai ini
++bukan bukti paid, persetujuan, identitas atau entitlement.
++
++## Adapter HTTP belum dipasang (P9b)
++
++CheckoutParticipantProvisioningController memakai ProvisionCheckoutParticipantRequest
++dan action P9a; route hanya didaftarkan oleh tes sintetis. Wiring mendatang wajib
++memasang middleware `integration.client` existing yang memverifikasi HMAC atas
++timestamp dan raw body. Controller bukan pengganti signature verifier. Context
++service dibentuk setelah autentikasi; context peserta/admin yang sudah aktif
++tidak dinaikkan haknya. Context dan transaksi dipulihkan pada sukses/error.
++
++Response sukses hanya `data.participantId` (string), `assessmentAttemptId`, dan
++`assessmentStatus`: HTTP 201 untuk create, 200 untuk replay. Tidak mengirim profil,
++metadata, funding snapshot, credential, token atau checkoutURL. Status adalah
++proyeksi existing, bukan izin mulai tes. Respons controller (sukses maupun error
++kontrak) memakai Cache-Control: no-store, private.
++
++Conflict menghasilkan HTTP 409/IDEMPOTENCY_CONFLICT; key missing/invalid
++422/IDEMPOTENCY_KEY_REQUIRED; exception kontrak memakai code/status existing.
++Pesan controller generik dan tidak menyalin exception/payload. Autentikasi gagal
++dan validasi FormRequest terjadi sebelum controller, tetap memakai middleware/
++handler JSON existing (termasuk VALIDATION_FAILED pada path api/*). Header error
++awal dan error tak terduga tetap milik pipeline existing; P9b tidak menambah
++no-store global atau mengubah shared auth. Error tak terduga memakai renderer
++framework dengan debug dimatikan, bukan contract-error mapping baru.
+
+ Kesalahan memakai IntegrationContractViolation: CHECKOUT_NOT_ENABLED (503),
+ CHECKOUT_CONTRACT_REQUIRED/INTEGRATION_CONTEXT_INVALID (403),
+@@ -66,11 +118,11 @@ ## Cutover tanpa fallback
+ Cabang/sumber lain yang belum dipindahkan tetap memakai perilaku v1 existing.
+ Guard hanya boleh dijalankan dalam service RLS context. Tanpa context tersebut,
+ ia melempar LogicException sebelum query, bukan menganggap hasil yang disembunyikan
+-RLS sebagai tidak ada penanda. Kedua action provisioning menyiapkan context ini.
++RLS sebagai tidak ada penanda. Kedua action provisioning legacy menyiapkan context ini.
+ Data historis/akses tes existing tidak diubah; guard ini khusus provisioning,
+ bukan pencabutan hak lama. Cutover konkuren tidak dilakukan saat writer aktif:
+-jeda ingress dan drain request/worker sebelum perubahan registry; uji race
+-reservasi merupakan tahap berikutnya, bukan klaim P5.
++jeda ingress dan drain request/worker sebelum perubahan registry. Bukti race
++reservasi/provisioning internal tidak menjadi izin cutover pada sumber aktif.
+
+ Threat model: cegah caller memilih organisasi lain, menyuntik paid/harga,
+ menggunakan label sponsored sebagai akses gratis, atau downgrade/replay lewat
+@@ -79,8 +131,10 @@ ## Cutover tanpa fallback
+
+ ## Pemanggil P9 dan checkpoint
+
+-P9 wajib menghubungkan request → reload registry → adapter → persist PROVISIONED
+-dalam transaksi, dengan idempotensi atomik dan gate publik terpisah. Flag P5
+-bukan sakelar untuk membuka endpoint yang belum dibuat. Pemindahan sumber aktif
+-memerlukan persetujuan terpisah dan runbook setelah alur end-to-end terbukti.
++P9a internal dan adapter HTTP P9b belum berarti route publik terdaftar atau
++checkout end-to-end tersedia. Tes P9b memakai HMAC dan database sintetis; bukan
++izin cutover. Flag P5 bukan sakelar untuk membuka endpoint yang belum dipasang.
++Pemindahan sumber aktif memerlukan persetujuan terpisah dan runbook setelah alur
++end-to-end terbukti. No-store untuk seluruh pipeline error sebelum controller
++perlu ditinjau pada tahap wiring; jangan mengklaim header controller mencakupnya.
+ Lihat [bukti checkpoint](ORGANIZATION_CHECKOUT_VALIDATION.md).
+```
+
+Daftar file lane: app/Http/Controllers/CheckoutParticipantProvisioningController.php
+(baru), tests/Feature/Integrations/CheckoutProvisioningHttpTest.php (baru),
+docs/ORGANIZATION_CHECKOUT_CONTRACT.md (patch untracked di atas), dan laporan ini.
+Index diperiksa kosong sebelum staging; commit hanya controller + tes baru +
+laporan yang membawa delta dokumen, bukan snapshot lama. Tidak reset/merge root,
+menyalin .env/data/cache aktif, menjalankan transaksi nyata atau spawn task.
+
+Tidak diperlukan perubahan shared untuk respons privat yang dibuat controller.
+Jika tahap wiring mengharuskan no-store juga pada seluruh early-auth/validation/
+unexpected error response, perubahan pipeline perlu scope/review tersendiri;
+P9b tidak memperluas ownership untuk itu. **Siap review adapter HTTP lokal dan
+patch dokumen; STOP sebelum registrasi route produksi/gate aktif/P10.**
