@@ -1,5 +1,80 @@
 # Frontend — P16-prep
 
+## Email opsional — increment presentasi (2026-09-01)
+
+Delta kecil setelah **aae2ffd**; tidak reset/merge snapshot baseline. Menurut
+handoff koordinator, pasangan fixture e7a0fd3/0e727db telah diintegrasikan sebagai
+5dec16f/cb3ddbf dan proposal aae2ffd sebagai **0b68ddb (DRAFT)**. Status tersebut
+menggantikan catatan menunggu integrasi pada bagian historis di bawah. Arah adapter
+server diterima; P14/P15, wire dan payer unresolved belum disahkan.
+
+**Perubahan:** CheckoutProfile membedakan required missing dari hanya field opsional
+yang kosong: "Data wajib sudah lengkap. Data opsional dapat diisi jika Anda ingin."
+Input email opsional tetap tampil. CheckoutForm menawarkan konfirmasi bila ada
+required missing, edit opsional nonblank, atau kebutuhan consent existing. Bila
+hanya email opsional kosong/whitespace dan consent sudah tercatat, tidak ada tombol
+submit maupun callback kosong melalui handler. Email kosong diomit dari
+`missingProfile` pada konfirmasi required/consent; edit nonblank dikirim tanpa
+mengubah nilainya. Key dalam summary dan union locked tidak diubah.
+
+`state`/`required` tetap metadata props server, bukan keputusan otorisasi browser.
+Guard legalReviewPending, busy, onConfirm dan consent utama dipertahankan. DASS
+tetap pilihan terpisah; onPayment/onRefresh dan status akses dari server tetap.
+Tidak ada mapper executable, endpoint, storage, schema, auth, gate, naskah legal,
+harga runtime hardcode, shared config atau perubahan dependency.
+
+**TDD dan bukti nyata:**
+
+- RED: 20 SSR lulus / 2 gagal pada copy email opsional sebelum perubahan produksi;
+  browser gagal pada copy yang sama. Probe handler baseline menaikkan callback
+  0 menjadi 1 dengan payload salah `{"missingProfile":{"email":""}}`.
+- GREEN: **22 SSR lulus, 0 gagal/skip**. Tiga kasus tambahan meliputi opsional saja,
+  campuran required/opsional, dan consent yang tetap memerlukan konfirmasi.
+- **9 kelompok interaksi mounted browser lulus**, bukan bukti SSR: email kosong
+  tanpa CTA/callback; email terisi mengirim hanya email; hapus/whitespace tidak
+  mengirim update kosong; email invalid ditolak validasi native dan difokuskan;
+  busy/onConfirm absen/legal pending tetap diblok; formKey reset membersihkan edit;
+  phone wajib + email kosong mengirim phone saja; consent utama tanpa email atau
+  pilihan DASS tetap dapat dikonfirmasi; kedua versi consent reset; decline DASS
+  eksplisit; callback payment/refresh tidak mengubah status pembayaran/akses.
+- Run final setelah reload penuh: **0 pageerror, 0 console error, 0 request
+  eksternal/API**. Log sesi sebelumnya memiliki error React createRoot saat HMR
+  selama penyuntingan; tidak mengklaim seluruh log pengembangan bebas error.
+- Typecheck focused, ESLint kelima file kode/fixture, build SSR dan build preview
+  lulus. Preview: JS 247.37 kB (gzip 76.99), CSS 70.37 kB (gzip 11.84).
+- Screenshot `output/playwright/checkout-email/optional-blank-390.png` diperiksa:
+  copy data wajib lengkap, input opsional dan tanpa CTA konfirmasi terlihat.
+  Screenshot bukan pengganti pengujian callback; tidak mengklaim audit reflow baru.
+
+Origin test-only `127.0.0.1:8011` diperiksa kosong sebelum server fixture dijalankan
+dengan envDir:false. Chrome memakai session baru `checkout-email-d4ea`, bukan tab
+pengguna. Semua data/callback sintetis, tidak ada login/token/DB/payment nyata.
+Session Chrome dan server fixture milik lane sudah ditutup; port 8011 kembali kosong.
+Skill frontend, TDD, Playwright, Git workflow dan review yang sudah dibaca dipakai.
+
+Reproduksi focused: jalankan build dengan config existing
+`tests/Frontend/IntegratedCheckout/vite.config.ts`, mode `test`, lalu
+`node --test storage/app/private/verification/frontend-test/checkout.test.js`.
+Typecheck memakai `tests/Frontend/IntegratedCheckout/tsconfig.json`; build browser
+memakai config Vite yang sama dengan mode `preview`. Untuk interaksi, jalankan dev
+server config tersebut pada 8011; panggil export `verifyOptionalEmail(page)` dari
+`tests/Frontend/IntegratedCheckout/browser-interactions.mjs` dengan Playwright Page.
+Run ini memakai Playwright CLI cached: body export disalin ke ignored
+`output/playwright/checkout-email/run.js` sebagai function expression async lalu
+`playwright-cli -s=checkout-email-d4ea run-code --filename output/playwright/checkout-email/run.js`.
+Hasil sembilan kelompok ada di ignored `output/playwright/checkout-email/final.log`.
+
+**Batas:** probe requestSubmit bersifat programmatic, bukan bukti keyboard native.
+Penolakan email/required memakai input browser dan klik submit native; whitespace
+email mengikuti sanitasi native type=email. Sepuluh kelompok helper browser lama
+tidak diklaim diulang dalam increment ini. Tidak menjalankan full suite/global tsc
+atau memverifikasi server/P15; paid tidak berarti akses siap. Tidak membuat agent
+baru atau mengubah dokumen kanonik. **P16 tetap belum end-to-end; stop review.**
+
+File delta: checkout-profile.tsx, checkout-form.tsx; fixtures.ts,
+checkout.test.tsx, browser-interactions.mjs (ketiganya di IntegratedCheckout);
+laporan frontend ini. Snapshot awal tidak termasuk commit lane.
+
 ## Proposal pemetaan profil nullable — dokumen saja (2026-09-01)
 
 Deliverable: [frontend-profile-mapping-proposal.md](frontend-profile-mapping-proposal.md).

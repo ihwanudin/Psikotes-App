@@ -87,7 +87,53 @@ export const summary: CheckoutSummary = {
     },
 };
 
+export const optionalEmailSummary: CheckoutSummary = {
+    ...summary,
+    formKey: 'synthetic-optional-email',
+    profile: summary.profile.map((field) =>
+        field.key === 'email'
+            ? {
+                  key: 'email',
+                  label: 'Email',
+                  state: 'missing',
+                  required: false,
+                  input: 'email',
+              }
+            : field,
+    ),
+    consents: {
+        legalReviewPending: false,
+        psychotest: { state: 'accepted', version: 'contoh-v1' },
+        dass: { state: 'declined', version: 'contoh-dass-v1' },
+    },
+};
+
 export const scenarios: Record<string, IntegratedCheckoutProps['screen']> = {
+    'Email opsional · consent tercatat': {
+        state: 'ready',
+        summary: optionalEmailSummary,
+    },
+    'Email opsional · consent belum': {
+        state: 'ready',
+        summary: { ...optionalEmailSummary, consents: summary.consents },
+    },
+    'Phone wajib + email opsional': {
+        state: 'ready',
+        summary: {
+            ...optionalEmailSummary,
+            profile: optionalEmailSummary.profile.map((field) =>
+                field.key === 'phone'
+                    ? {
+                          key: 'phone',
+                          label: 'Nomor WhatsApp',
+                          state: 'missing',
+                          required: true,
+                          input: 'tel',
+                      }
+                    : field,
+            ),
+        },
+    },
     'Lembaga · menunggu': { state: 'ready', summary },
     'Lembaga · belum ditagihkan': {
         state: 'ready',

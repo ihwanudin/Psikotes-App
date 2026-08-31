@@ -29,10 +29,13 @@ export function CheckoutForm({
         (field) => field.state === 'missing',
     );
     const needsConfirmation =
-        missingFields.length > 0 ||
+        missingFields.some(
+            (field) => field.required || Boolean(values[field.key]?.trim()),
+        ) ||
         summary.consents.psychotest.state === 'required' ||
         summary.consents.dass.state === 'required';
     const canConfirm =
+        needsConfirmation &&
         summary.consents.legalReviewPending === false &&
         (summary.consents.psychotest.state === 'accepted' || psychotest) &&
         !busy &&
@@ -60,8 +63,11 @@ export function CheckoutForm({
                 };
 
                 for (const field of missingFields) {
-                    confirmation.missingProfile[field.key] =
-                        values[field.key] ?? '';
+                    const value = values[field.key] ?? '';
+
+                    if (field.required || value.trim()) {
+                        confirmation.missingProfile[field.key] = value;
+                    }
                 }
 
                 if (

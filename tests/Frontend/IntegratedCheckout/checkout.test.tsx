@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { IntegratedCheckout } from '../../../resources/js/components/integrated-checkout/integrated-checkout';
 import type { IntegratedCheckoutProps } from '../../../resources/js/types/integrated-checkout';
-import { scenarios, summary } from './fixtures';
+import { optionalEmailSummary, scenarios, summary } from './fixtures';
 
 function render(props: Partial<IntegratedCheckoutProps> = {}) {
     return renderToStaticMarkup(
@@ -26,6 +26,42 @@ test('only the missing phone is editable', () => {
     const html = render({ screen: scenarios['Mandiri · profil kurang'] });
     assert.match(html, /name="phone"/);
     assert.doesNotMatch(html, /name="(?:fullName|email|branchId)"/);
+});
+
+test('empty optional email keeps its input but needs no confirmation', () => {
+    const html = render({
+        screen: { state: 'ready', summary: optionalEmailSummary },
+        onConfirm: () => undefined,
+    });
+    assert.match(html, /Data wajib sudah lengkap/);
+    assert.match(html, /Data opsional/);
+    assert.match(html, /name="email"/);
+    assert.doesNotMatch(
+        html.match(/<input[^>]*name="email"[^>]*>/)?.[0] ?? '',
+        /required/,
+    );
+    assert.doesNotMatch(html, /type="submit"|Lengkapi hanya data/);
+});
+
+test('required missing still requests completion with optional email visible', () => {
+    const html = render({
+        screen: scenarios['Phone wajib + email opsional'],
+        onConfirm: () => undefined,
+    });
+    assert.match(html, /Lengkapi hanya data yang belum tersedia/);
+    assert.match(html, /name="phone"/);
+    assert.match(html, /name="email"/);
+    assert.match(html, /type="submit"/);
+});
+
+test('optional email does not hide required consent confirmation', () => {
+    const html = render({
+        screen: scenarios['Email opsional · consent belum'],
+        onConfirm: () => undefined,
+    });
+    assert.match(html, /Data wajib sudah lengkap/);
+    assert.match(html, /type="submit"/);
+    assert.match(html, /persetujuan psikotes utama/);
 });
 
 test('consent starts unchecked and DASS is separate and optional', () => {

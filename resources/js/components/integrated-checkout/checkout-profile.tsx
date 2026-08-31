@@ -16,6 +16,7 @@ export function CheckoutProfile({
     onChange: (key: CheckoutProfileKey, value: string) => void;
 }) {
     const missing = fields.filter((field) => field.state === 'missing');
+    const hasRequiredMissing = missing.some((field) => field.required);
 
     return (
         <section aria-labelledby="checkout-profile-title" className="space-y-5">
@@ -27,9 +28,11 @@ export function CheckoutProfile({
                     Identitas Anda
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
-                    {missing.length
+                    {hasRequiredMissing
                         ? 'Lengkapi hanya data yang belum tersedia.'
-                        : 'Data sudah lengkap. Anda tidak perlu mendaftar ulang.'}{' '}
+                        : missing.length
+                          ? 'Data wajib sudah lengkap. Data opsional dapat diisi jika Anda ingin.'
+                          : 'Data sudah lengkap. Anda tidak perlu mendaftar ulang.'}{' '}
                     Koreksi data terkunci melalui sumber atau admin berwenang.
                 </p>
             </div>
@@ -50,7 +53,9 @@ export function CheckoutProfile({
             {missing.length ? (
                 <fieldset className="grid gap-5 rounded-lg border border-slate-300 p-4 sm:grid-cols-2">
                     <legend className="px-1 font-semibold">
-                        Data yang perlu dilengkapi
+                        {hasRequiredMissing
+                            ? 'Data yang perlu dilengkapi'
+                            : 'Data opsional'}
                     </legend>
                     {missing.map((field) => {
                         const id = `checkout-${field.key}`;
