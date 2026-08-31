@@ -503,3 +503,82 @@ provisioning, payer writer, pembatalan lifecycle, atau P10. Consumer/engine teta
 di luar scope. Data NULL tetap harus dilengkapi secara sah sebelum akses, dan
 rollback atas data tersebut sengaja menolak. **P9a0 siap review lokal dengan
 delta model untracked di atas; STOP sebelum action P9a/kontrak intendedField.**
+
+## Increment kontrak intendedField — 2026-09-01
+
+P9a0 diterima koordinator melalui bfc0587 (dari b6589d5); izin berikutnya hanya
+request intendedField, tes khusus, dan laporan ini. ADR-004, bagian terakhir
+parallel-work.md, dan reports/integration-wave-5.md dibaca dari induk tanpa
+diubah. Skill Laravel/Auth/Security/TDD/Incremental/Git yang telah dibaca tetap
+digunakan. Tidak ada action P9a, migrasi, controller, route produksi, konfigurasi,
+dependency, sumber aktif, atau dokumen kanonik yang diubah.
+
+### Perubahan dan asumsi kontrak
+
+- `profile.intendedField` masuk allowlist checkout-v2 dan memakai nullable,
+  string, serta enum existing KAIGO/KENSETSU/NOUGYOU/SEIZOU/GAISHOKU/UMUM.
+- Field boleh tidak dikirim atau null. Tidak ada default UMUM, coercion baru,
+  atau normalisasi tambahan. Middleware HTTP existing tetap berlaku.
+- Pengesahan request tidak memberi hak akses, settlement, identitas/consent,
+  atau izin payer. Test memakai middleware HMAC nyata, client persisted sintetis,
+  dan adapter checkout/payer existing. Route validasi hanya didefinisikan di tes.
+- Request v1 tidak diubah: profil lengkap masih wajib dan intendedField tetap
+  merupakan key yang tidak didukung, termasuk ketika null.
+
+### Bukti aktual
+
+- RED sebelum perubahan request: **21 tes, 4 lulus, 17 gagal, 71 assertions**,
+  tanpa error runtime. Keenam nilai valid/null ditolak allowlist lama; validasi
+  nested field belum ada. Run awal sebelumnya juga menemukan dua error fixture
+  `allowed_funding_modes` wajib; fixture dibetulkan sebelum run RED tersebut.
+- GREEN tes baru `CheckoutIntendedFieldContractTest`: **21 tes/82 assertions**.
+  Mencakup enam enum, missing/null tanpa default, unknown/lowercase, integer,
+  float, boolean, list/object, key profile tambahan termasuk paid/consent/
+  identityVerified, signature hilang/palsu, client disabled, payer invalid/
+  ambigu, opt-in checkout disabled, payer locked, dan kontrak v1.
+- Regresi gabungan tes baru + `CheckoutContractCompatibilityTest` +
+  `GenericAssessmentProvisioningTest`: **51 tes/218 assertions lulus**.
+- Semua PHPUnit memakai `--configuration phpunit.organization-payment.xml`
+  dengan testing SQLite memory. Tidak menjalankan DB aktif, PostgreSQL, UI,
+  atau full regression; request-only tidak mengubah transaksi/RLS/schema.
+- Pint request + tes baru: **lulus**. PHPStan seluruh cakupan proyek:
+  **0 error**, environment eksplisit testing/SQLite memory/DB_URL kosong,
+  cache dan session array, queue sync. Tidak perlu perubahan reader produksi.
+
+Log lokal tidak dicommit: storage/logs/intended-field-red.log,
+intended-field-green.log, intended-field-regression.log, intended-field-phpstan.log.
+
+### Handoff patch request untracked
+
+Sebelum edit, SHA256 request worker dan induk sama:
+`322D157EBDB90A44228F29F5D0D2ADFD6C2DD199163281C5A052C50CEC746AA5`.
+Request masih baseline untracked pada worker, sehingga **tidak ditambahkan ke
+Git**. File lokal dengan patch berikut ikut semua tes/Pint/PHPStan di atas.
+Koordinator harus menerapkan delta ini pada request tracked di induk; jangan
+menyalin/commit ulang snapshot baseline. Diff terhadap induk hanya dua perubahan:
+
+```diff
+--- a/app/Http/Requests/ProvisionCheckoutParticipantRequest.php
++++ b/app/Http/Requests/ProvisionCheckoutParticipantRequest.php
+@@ -34,7 +34,8 @@
+-            'profile' => ['present', 'array:fullName,birthDate,gender,educationLevel,email,phone'],
++            'profile' => ['present', 'array:fullName,birthDate,gender,educationLevel,email,phone,intendedField'],
+             'profile.fullName' => ['nullable', 'string', 'min:2', 'max:200'],
+             'profile.birthDate' => ['nullable', 'date_format:Y-m-d', 'before:today'],
+             'profile.gender' => ['nullable', 'string', Rule::in(['FEMALE', 'MALE'])],
+             'profile.educationLevel' => ['nullable', 'string', 'max:64'],
++            'profile.intendedField' => ['nullable', 'string', Rule::in(['KAIGO', 'KENSETSU', 'NOUGYOU', 'SEIZOU', 'GAISHOKU', 'UMUM'])],
+             'profile.email' => ['nullable', 'email:rfc', 'max:255'],
+             'profile.phone' => ['nullable', 'string', 'max:32', 'regex:/^\+?[0-9][0-9 ()-]{7,30}$/'],
+```
+
+Daftar file lane increment ini:
+1. app/Http/Requests/ProvisionCheckoutParticipantRequest.php — delta di atas,
+   lokal diuji, baseline untracked tidak masuk commit.
+2. tests/Feature/Integrations/CheckoutIntendedFieldContractTest.php — baru.
+3. tasks/organization-payment/reports/backend.md — laporan dan patch handoff.
+
+Index diperiksa kosong sebelum staging; commit dibatasi pada tes baru dan
+laporan ini. Perubahan baseline lama termasuk model/Fillable tidak disentuh.
+Tidak ada baseline induk yang di-reset/merge. **Siap review lokal; STOP sebelum
+action P9a maupun increment lain.**
