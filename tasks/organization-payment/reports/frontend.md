@@ -1,5 +1,85 @@
 # Frontend — P16-prep
 
+## Gelombang kedua — hardening interaksi (2026-08-31)
+
+Delta terhadap commit lane terakhir **895aeb8**, bukan baseline/checkpoint induk.
+Koordinator mengintegrasikan wave 1 sebagai c7b9280. parallel-work.md dan
+reports/integration-wave-1.md terbaru dibaca dari induk secara read-only; tidak
+reset/merge/cherry-pick baseline. Skill Frontend UI, UI/UX Pro Max, React Best
+Practices, Browser, TDD dan Git Workflow beserta referensi yang sudah dibaca
+tetap dipakai. Tidak ada task/agent tambahan atau perubahan dependency.
+
+**Hasil:** konfirmasi hanya boleh ketika `legalReviewPending === false`.
+Predicate `canConfirm` yang sama mengendalikan disabled tombol dan early return
+di handler onSubmit. Persetujuan utama yang sudah tercatat tidak melewati blok ini.
+Alasan disabled terhubung melalui aria-describedby. Tidak mengganti teks/legal
+policy server, menambah endpoint/storage, menghitung harga, atau memberi akses tes.
+
+**RED → GREEN nyata:**
+
+- Sebelum fix: tes SSR legal-pending gagal (18 pass/1 fail). Probe browser
+  mencentang persetujuan sintetis lalu menjalankan requestSubmit pada form lengkap:
+  CTA enabled=true dan counter callback naik 0 → 1 meski legal pending.
+- Setelah fix: **19 tes Node/SSR lulus, 0 gagal/skip**. Tambahan dua tes menegaskan
+  legal pending memblokir, dan legal false tetap menawarkan konfirmasi DASS ketika
+  consent utama sudah tercatat. SSR tidak memanggil callback.
+- **10 skenario interaksi browser lulus** melalui script baru
+  tests/Frontend/IntegratedCheckout/browser-interactions.mjs:
+  legal pending menahan CTA dan handler requestSubmit; DASS decline mengirim false;
+  busy menahan CTA/handler; callback absent tidak bisa submit; kembali ke pending
+  setelah konfirmasi kembali memblokir; error memfokuskan summary serta mempertahankan
+  input; tiga reset terpisah (formKey, versi psikotes, versi DASS); callback pembayaran
+  self pending tidak mengubah status.
+- Pada tiga reset, checkbox/radio kembali kosong dan CTA disabled. Setelah consent
+  dicentang ulang, klik submit tetap tidak memanggil callback dan fokus menuju phone
+  wajib yang kosong. Setelah phone diisi ulang, callback membawa nilai baru; DASS
+  yang belum dipilih tidak dikirim. Ini bukti browser, bukan kesimpulan dari SSR.
+- Typecheck targeted, ESLint targeted dan Vite build preview: lulus. Build JS
+  246.55 kB (gzip 76.82), CSS 70.37 kB (gzip 11.84). Console tab uji: 0 error/warning.
+  Tidak menjalankan ulang global tsc yang diketahui kekurangan generated Wayfinder
+  di worktree ini; global tsc koordinator adalah bukti checkout induk saja.
+- Origin 127.0.0.1:8011 diperiksa kosong, tanpa .env aktif; harness tetap tanpa
+  Laravel/DB. PHP/PG/full aplikasi tidak dijalankan karena tidak ada perubahan backend.
+  Tab uji ditutup dan server preview dihentikan setelah verifikasi.
+
+**Batas native keyboard masih terbuka, sekarang dengan bukti diagnostik:**
+
+Harness menampilkan key dan nativeEvent.isTrusted serta fokus terakhir. Playwright
+press(' ') pada checkbox menghasilkan `key= ; trusted=false`, tidak toggle. CUA
+Space juga tidak toggle. ArrowDown pada radio menghasilkan `trusted=false`, tetap
+di radio awal. CUA Tab menghasilkan `key=Tab; trusted=false`, fokus tetap pada radio.
+Enter pada tombol enabled menghasilkan `key=Enter; trusted=false`, callback tetap 0.
+Tidak ada mutasi DOM via evaluate, dispatchEvent, click pengganti, atau requestSubmit
+yang diklaim sebagai bukti keyboard native. Karena tool memberi event sintetis tanpa
+default action native, **Tab/Space/radio arrows/Enter belum terverifikasi lulus**.
+Retest dengan keyboard nyata/alat native yang tersedia masih diperlukan sebelum
+menutup acceptance keyboard; tidak membuat klaim WCAG/NVDA/axe penuh.
+
+requestSubmit dalam harness adalah probe programatis untuk menguji guard handler
+secara terpisah dari disabled CTA. Tombolnya berlabel **bukan keyboard**. Toggle
+legal dan revisi dokumen hanya mengubah props fixture sintetis; bukan pengesahan
+naskah atau izin untuk mematikan review server. Counter/telemetri hanya di test root,
+tidak di komponen produksi, route, atau storage browser.
+
+Pengulangan: jalankan perintah focused build-test/Node/tsc/eslint/build-preview/serve
+yang dicatat di bagian verifikasi wave 1. Setelah bootstrap sesuai skill Browser,
+buka tab khusus origin uji dan panggil melalui Node REPL tool:
+
+```js
+const { verifyCheckoutInteractions } = await import(
+    'C:/Users/ThinkPad/.codex/worktrees/d4ea/Psikotes/tests/Frontend/IntegratedCheckout/browser-interactions.mjs'
+);
+await verifyCheckoutInteractions(tab); // mengembalikan 10 hasil; throws jika gagal
+```
+
+File delta (5 file): checkout-form.tsx; checkout.test.tsx; preview.tsx;
+browser-interactions.mjs (baru); reports/frontend.md ini. Tidak mengubah types
+contract, fixture naskah, UI/payment state lain, routes, global CSS, lockfile,
+schema, checklist kanonik, atau folder proyek induk. Commit hanya path lane ini.
+**P16 tetap belum end-to-end; stop untuk review koordinator.**
+
+## Catatan historis gelombang pertama
+
 Tanggal: 2026-08-31. Slice presentasi tersedia untuk review lokal.
 **P16 belum selesai end-to-end; wiring final menunggu P14/P15 dan review kontrak.**
 

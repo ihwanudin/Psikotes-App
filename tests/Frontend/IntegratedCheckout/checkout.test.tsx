@@ -133,3 +133,33 @@ test('busy disables the form and payment action', () => {
     assert.match(html, /<fieldset[^>]*disabled=""/);
     assert.match(html, /Menyimpan/);
 });
+
+for (const legalReviewPending of [true, false]) {
+    test(`confirmation with recorded psychotest consent is ${legalReviewPending ? 'blocked' : 'available'} when legal review pending is ${legalReviewPending}`, () => {
+        const html = render({
+            screen: {
+                state: 'ready',
+                summary: {
+                    ...summary,
+                    consents: {
+                        ...summary.consents,
+                        legalReviewPending,
+                        psychotest: {
+                            state: 'accepted',
+                            version: 'synthetic-v1',
+                        },
+                    },
+                },
+            },
+            onConfirm: () => assert.fail('SSR must not confirm consent'),
+        });
+        const button = html.match(
+            /<button\b[^>]*>Konfirmasi data dan persetujuan<\/button>/,
+        )?.[0];
+        assert.ok(
+            button,
+            'DASS consent remains available for explicit confirmation',
+        );
+        assert.equal(button.includes('disabled=""'), legalReviewPending);
+    });
+}

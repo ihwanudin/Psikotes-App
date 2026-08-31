@@ -33,6 +33,7 @@ export function CheckoutForm({
         summary.consents.psychotest.state === 'required' ||
         summary.consents.dass.state === 'required';
     const canConfirm =
+        summary.consents.legalReviewPending === false &&
         (summary.consents.psychotest.state === 'accepted' || psychotest) &&
         !busy &&
         Boolean(onConfirm);
@@ -45,6 +46,7 @@ export function CheckoutForm({
 
     return (
         <form
+            aria-label="Konfirmasi checkout"
             aria-busy={busy}
             onSubmit={(event) => {
                 event.preventDefault();
@@ -148,16 +150,22 @@ export function CheckoutForm({
                             <Button
                                 type="submit"
                                 disabled={!canConfirm}
+                                aria-describedby="checkout-confirmation-help"
                                 className="min-h-12 w-full bg-brand-green whitespace-normal text-white hover:bg-brand-green-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-green"
                             >
                                 {busy
                                     ? 'Menyimpan…'
                                     : 'Konfirmasi data dan persetujuan'}
                             </Button>
-                            <p className="text-sm leading-6 text-slate-600">
-                                {!onConfirm
-                                    ? 'Konfirmasi belum terhubung pada tampilan ini.'
-                                    : 'Konfirmasi dikirim untuk pemeriksaan server; tidak langsung membuka akses tes.'}
+                            <p
+                                id="checkout-confirmation-help"
+                                className="text-sm leading-6 text-slate-600"
+                            >
+                                {summary.consents.legalReviewPending
+                                    ? 'Konfirmasi dinonaktifkan selama naskah persetujuan masih ditinjau.'
+                                    : !onConfirm
+                                      ? 'Konfirmasi belum terhubung pada tampilan ini.'
+                                      : 'Konfirmasi dikirim untuk pemeriksaan server; tidak langsung membuka akses tes.'}
                             </p>
                         </div>
                     ) : null}
