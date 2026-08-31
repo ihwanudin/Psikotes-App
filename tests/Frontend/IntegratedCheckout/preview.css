@@ -1,0 +1,4 @@
+/* Test-only entry: keep existing ONCAM tokens and scan components outside this Vite root. */
+@import '../../../resources/css/app.css';
+@source '../../../resources/js/components/integrated-checkout';
+@source '../../../resources/js/components/ui';
