@@ -301,3 +301,91 @@ Replay dalam TTL dan tidak adanya revocation token individual tetap batas ekspli
 P8b keseluruhan **belum dinyatakan selesai**; public wiring, engine, consumer dan
 regresi UI lengkap belum dibuktikan. Berhenti setelah commit lane untuk review,
 tidak lanjut P9/P10. Tidak ada push/deploy, reset/merge baseline, atau agent baru.
+
+## P9a — preflight: keputusan schema/kontrak diperlukan
+
+Instruksi kelanjutan koordinator setelah integrasi ee7ba62/fe96239 diterima.
+parallel-work.md, bagian P9a todo.md, plan.md dan integration-wave-3.md terbaru
+dibaca read-only dari induk; spec checkout dan implementasi v1/P5 diperiksa.
+728/3367, PG 156/921 dan tujuh tes UI yang telah hijau adalah **bukti koordinator**,
+bukan pengujian ulang worker. Baseline worker tetap fe96239, tidak di-reset/merge.
+
+Skill Laravel beserta local implementation guidance, Auth, Security, Database
+Schema & Migrations, Postgres, TDD, Incremental dan Git relevan telah tersedia
+dan dibaca. Scope provisioning internal tidak mengizinkan perubahan shared
+schema/request otomatis; alasan meminta keputusan adalah instruksi eksplisit
+koordinator tentang profil parsial/kontrak ambigu, bukan permintaan izin ulang
+untuk action yang sudah diotorisasi.
+
+### Temuan yang menghalangi implementasi sesuai acceptance
+
+1. ProvisionCheckoutParticipantRequest menerima profile kosong serta enam field
+   nullable: fullName, birthDate, gender, educationLevel, email, phone.
+   Migration 2026_08_25_000100_create_tenant_identity_tables.php:44–49 masih
+   mewajibkan full_name, gender, birth_date, education_level, intended_field,
+   phone (NOT NULL). Tidak ada migration berikutnya yang melonggarkannya.
+2. intended_field wajib, tetapi tidak terdapat dalam allowlist profile checkout
+   atau pemetaan field pada IntegrationSource/TestPackage. Action v1 mengisi UMUM
+   secara literal; menyalinnya akan menganggap bidang peserta tanpa bukti.
+   Bahkan payload dengan semua field checkout terisi belum menjawab bidang ini.
+3. Payer boleh belum dipilih ketika policy mengizinkan self dan organization.
+   ResolvePayerPolicy/PayerDecision secara eksplisit menghasilkan
+   selectedPayerType=null dan requiresSelection=true, tetapi
+   assessment_participants.funding_mode tetap NOT NULL tanpa default.
+   Belum ada kontrak persisted untuk kondisi tersebut. Mengisi self, organization,
+   SPONSORED atau sentinel baru diam-diam bukan solusi yang disetujui.
+
+Request, adapter, policy dan kedua migration terkait dicocokkan melalui SHA256
+ke induk: kelimanya sama. Pencarian migration induk juga tidak menemukan perubahan
+nullable setelahnya, jadi ini bukan akibat worker tertinggal snapshot.
+Gate AssessmentAccessPrerequisites sudah menolak profil kurang lengkap, tetapi
+itu tidak membuat penyimpanan profil parsial menjadi mungkin pada schema kini.
+
+### Pilihan untuk review koordinator
+
+**A — disarankan: prasyarat schema untuk data belum lengkap.** Tinjau increment
+shared terpisah sebelum action P9a: kolom profil yang belum diketahui boleh NULL,
+dan representasi payer belum dipilih untuk checkout-v2 ditetapkan eksplisit
+(usulan funding_mode NULL khusus attempt checkout-v2 PROVISIONED). Pertahankan
+validasi penuh v1/registrasi publik serta check nilai enum ketika nilai tersedia.
+intended_field tetap NULL sampai data sah tersedia, tidak diisi UMUM otomatis.
+Audit pembaca/model/type yang menganggap profil selalu lengkap, pertahankan gate
+akses fail-closed, dan verifikasi migration/constraint/legacy di PostgreSQL
+disposable. Ini usulan desain untuk review, **belum izin atau migration jadi**.
+P15 tetap wajib mengisi kekurangan sebelum akses. Owner shared perlu menetapkan
+scope/file migration dan aturan rollback tanpa memalsukan data yang masih NULL.
+
+**B — scope sementara yang lebih sempit.** Batasi P9a pada profil lengkap dan
+payer sudah dipilih, dengan sumber intended_field yang disepakati eksplisit
+(field kontrak atau mapping server yang benar). Ini tetap memerlukan review
+request/mapping dan perubahan scope; acceptance profil parsial/payer belum
+dipilih tetap terbuka. Tidak saya implementasikan sebagai pengganti diam-diam.
+
+Kedua pilihan tidak mengaktifkan route/source, tidak memberikan ready rights,
+dan tidak membuat charge/bill/invoice/token/consent/identity verification/outbox.
+Sesudah keputusan, action internal dapat dilanjutkan dengan signed client,
+reload registry/policy dalam transaksi, unique idempotency/logical attempt,
+rollback dan tes race PostgreSQL. Tidak perlu meniru action v1 yang memberi
+entitlement ready dan mengantre event provisioning.
+
+### Bukti aktual preflight dan batasnya
+
+- `php -d opcache.enable_cli=0 vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Integrations/CheckoutContractCompatibilityTest.php --filter 'partial_profile|omitted_payer' --debug`
+  **3 tes / 16 assertions lulus**; log storage/logs/p9a-contract-preflight.log.
+  Ini bukti kontrak existing, bukan implementasi provisioning baru.
+- Probe diagnostik disposable storage/logs/P9aSchemaProbeTest.php, memakai
+  OrganizationPaymentTestCase + RefreshDatabase dan konfigurasi yang sama:
+  **7 tes / 14 assertions lulus**. Tiap probe membuktikan QueryException NOT NULL
+  untuk satu dari enam kolom profil atau funding_mode. Log
+  storage/logs/p9a-schema-preflight.log. Probe/log diabaikan Git; tidak menjadi
+  tes acceptance permanen yang mengunci kelemahan schema.
+- Tidak ada query ke DB aktif, migration shared baru, perubahan request/model,
+  action baru, test-only route baru, atau perubahan sumber aktif. Probe hanya
+  pada SQLite :memory:, bukan bukti PostgreSQL RLS/race P9a.
+- PostgreSQL, Pint/PHPStan dan regresi UI tidak dijalankan ulang pada checkpoint
+  ini karena belum ada implementasi lane; tidak mengklaim P9a selesai atau hijau.
+  Bukti race/atomicity menunggu action sesudah keputusan prasyarat.
+
+Delta commit preflight hanya laporan backend ini. Tidak ada baseline yang
+diikutsertakan, agent tambahan atau kelanjutan P10. **Menunggu pilihan/approval
+prasyarat schema/kontrak dari koordinator sebelum implementasi P9a.**
