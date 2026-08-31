@@ -1162,3 +1162,77 @@ Jika tahap wiring mengharuskan no-store juga pada seluruh early-auth/validation/
 unexpected error response, perubahan pipeline perlu scope/review tersendiri;
 P9b tidak memperluas ownership untuk itu. **Siap review adapter HTTP lokal dan
 patch dokumen; STOP sebelum registrasi route produksi/gate aktif/P10.**
+
+## P9c — boundary privacy HTTP checkout, belum diregistrasi produksi
+
+Increment ini mengikuti review coordinator atas 835a622/e3d0b74 dan instruksi
+P9c terbaru. Parallel-work, todo, plan, ADR-004 serta ADR-005 root dibaca
+read-only; tidak ada reset/merge/rebase baseline worker. Skill Laravel,
+Auth/Tenant, Security, TDD, Incremental dan Git yang tersedia tetap menjadi
+rujukan. Scope hanya middleware baru, tes khusus, dan laporan ini.
+
+`PreventCheckoutResponseCaching` mengatur `Cache-Control: no-store, private`
+pada respons downstream. Middleware harus mendahului `integration.client`
+ketika nantinya wiring disetujui. Dalam increment ini urutan tersebut hanya
+terdaftar pada route sintetis tes; tidak ada alias/global middleware/route
+produksi yang diubah. Controller P9b, HMAC, FormRequest, action provisioning,
+exception handler, konfigurasi, dan jalur v1 tidak diedit.
+
+Dasar implementasi adalah source framework Laravel terpasang:
+`Illuminate/Routing/Pipeline.php::handleException()` memanggil handler asli
+`report()` lalu `render()` untuk exception downstream sebelum respons kembali
+melalui middleware luar. Boundary tidak catch exception, tidak membuat body
+error sendiri, dan tidak meniadakan reporting. Status, JSON body, serta header
+selain Cache-Control dibiarkan mengikuti pipeline existing.
+
+Tes route-only menggunakan HMAC dengan secret sintetis in-memory, request dan
+controller asli. Control route tanpa boundary membandingkan body/status untuk
+penolakan signature/client disabled, validasi 422, opt-in OFF 503, throttle 429,
+dan konflik 409. Create 201/replay 200 tetap hanya mengandung tiga field data,
+tanpa hak, bill/charge/order, consent/identity verification atau outbox.
+
+Kasus unexpected 500 menyuntik exception sintetis sesudah INSERT attempt di
+dalam transaksi, dengan APP_DEBUG=false dari XML testing. Handler asli tetap
+melaporkan objek exception yang sama tepat sekali; respons persis
+`{"message":"Server Error"}` dan tidak memuat nama/email/secret/payload/SQL/
+trace sintetis. Participant dan attempt rollback, level transaksi dan konteks
+RLS pulih, serta retry berikutnya berhasil. Tes juga menjalankan route v1
+existing: create READY/replay dan penolakan signature tetap kompatibel, tanpa
+menambahkan no-store ke route tersebut. Semua data sintetis; tidak ada consumer
+atau transaksi eksternal nyata.
+
+TDD: scaffold middleware pass-through menghasilkan RED **9 tes, 4 lulus,
+5 gagal, 91 assertions**, exit 1. Kelima kegagalan khusus header no-store pada
+malformed/disabled auth, validation, throttle, dan 500; tidak ada fixture error.
+Setelah penambahan header, focused GREEN **9 tes/137 assertions**, exit 0.
+Log lokal: `storage/logs/p9c-privacy-red.log` dan
+`storage/logs/p9c-privacy-green.log` (tidak di-commit).
+
+Verifikasi akhir aktual, semuanya exit 0:
+
+- PHPUnit memakai `--configuration phpunit.organization-payment.xml`:
+  **199 tes/1.091 assertions**, gabungan CheckoutPrivacyHeadersTest,
+  CheckoutProvisioningHttpTest, CheckoutProvisioningTest,
+  CheckoutContractCompatibilityTest, CheckoutIntendedFieldContractTest,
+  GenericAssessmentProvisioningTest dan Feature/Auth/AttemptEntitlementGateTest.
+  Log lokal `storage/logs/p9c-privacy-related.log`.
+- Pint `--test` terhadap kedua file PHP baru: lulus.
+- PHPStan seluruh project `analyse --no-progress --memory-limit=1G` dengan
+  APP_ENV=testing, SQLite :memory:, DB_URL kosong, cache/session array:
+  **0 error**. Log lokal `storage/logs/p9c-privacy-phpstan.log`.
+- Index kosong sebelum staging; staging/commit dibatasi tiga file lane:
+  `app/Http/Middleware/PreventCheckoutResponseCaching.php`,
+  `tests/Feature/Integrations/CheckoutPrivacyHeadersTest.php`, dan laporan ini.
+  Snapshot awal staged/untracked tidak ikut commit.
+
+Batas: jaminan header berlaku pada pipeline route downstream dari boundary.
+Error routing/global middleware yang terjadi sebelum boundary atau kegagalan
+di handler framework sendiri tidak dicakup oleh middleware route ini. Public
+wiring masih memerlukan review urutan tersebut; tidak ada klaim P9 publik live.
+Tidak menjalankan PG ulang karena tidak ada perubahan query, schema, RLS atau
+primitive transaksi; bukti rollback di increment ini berasal dari SQLite
+memory. Tidak menjalankan seluruh UI suite dengan manifest worker yang belum
+tersedia, dan angka regresi root dari coordinator bukan hasil run worker ini.
+
+**Siap review P9c lokal; STOP sebelum registrasi route produksi, gate/source
+aktif, P9 publik atau P10.**
