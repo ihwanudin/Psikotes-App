@@ -6,7 +6,10 @@ use App\Contracts\Notifier;
 use App\Contracts\PaymentProvider;
 use App\Enums\AdminRole;
 use App\Models\Admin;
+use App\Models\AssessmentCharge;
+use App\Models\TestPackage;
 use App\Services\Notifications\FakeNotifier;
+use App\Services\Payments\AssessmentPriceSnapshot;
 use App\Services\Payments\FakePaymentProvider;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Foundation\Application;
@@ -94,25 +97,32 @@ if ($initialize) {
         throw new RuntimeException('Disposable preview migration failed.');
     }
     $organization = null;
+    $captureSnapshot = function (array $fixture): void {
+        DB::table('packages')->where('id', $fixture['package'])->update(['name' => 'Paket Uji Sintetis', 'is_active' => true]);
+        DB::table('package_items')->insert(['package_id' => $fixture['package'], 'test_type' => 'ist', 'sort_order' => 1]);
+        $snapshots = app(AssessmentPriceSnapshot::class);
+        $snapshot = $snapshots->capture(TestPackage::with('items')->findOrFail($fixture['package']), false);
+        AssessmentCharge::findOrFail($fixture['charge'])->update(['price_snapshot' => $snapshot]);
+        $snapshots->fromCharge(AssessmentCharge::findOrFail($fixture['charge']), false);
+    };
     $statuses = ['pending', 'paid', 'expired', 'rejected', 'unknown', 'reserved', 'issuing'];
     for ($i = 0; $i < 14; $i++) {
         $fixture = Fixture::create('organization', $organization === null ? null : ['organization' => $organization]);
         $organization = $fixture['organization'];
+        $captureSnapshot($fixture);
         $status = $statuses[$i % count($statuses)];
         DB::table('assessment_bill_items')->insert([
             ...Fixture::item($fixture), 'settled_at' => $status === 'paid' ? '2026-08-31 13:00:00' : null,
         ]);
         DB::table('participants')->where('id', $fixture['participant'])->update(['full_name' => 'Peserta Sintetis '.($i + 1)]);
         DB::table('assessment_participants')->where('id', $fixture['attempt'])->update(['assessment_round_id' => 'Periode Uji Agustus']);
-        DB::table('assessment_charges')->where('id', $fixture['charge'])->update([
-            'price_snapshot' => json_encode(['packageName' => 'Paket Uji Sintetis']),
-        ]);
         DB::table('assessment_bills')->where('id', $fixture['bill'])->update([
             'status' => $status, 'created_at' => '2026-08-31 12:00:00', 'expires_at' => '2026-09-01 12:00:00',
             'paid_at' => $status === 'paid' ? '2026-08-31 13:00:00' : null,
         ]);
     }
     $foreign = Fixture::create();
+    $captureSnapshot($foreign);
     DB::table('assessment_bill_items')->insert(Fixture::item($foreign));
     Admin::create([
         'name' => 'Admin Cabang Sintetis', 'email' => 'bills@example.test',

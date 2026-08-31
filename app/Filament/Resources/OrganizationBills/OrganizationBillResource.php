@@ -10,7 +10,7 @@ use App\Filament\Resources\OrganizationBills\Pages\ViewOrganizationBill;
 use App\Models\Admin;
 use App\Models\AssessmentBill;
 use BackedEnum;
-use Filament\Actions\ViewAction;
+use Filament\Actions\Action;
 use Filament\Facades\Filament;
 use Filament\Resources\Pages\PageRegistration;
 use Filament\Resources\Resource;
@@ -96,7 +96,13 @@ final class OrganizationBillResource extends Resource
                 TextColumn::make('paid_at')->label('Dibayar')->dateTime('d M Y H:i')->placeholder('Belum lunas'),
             ])
             ->filters([SelectFilter::make('status')->label('Status / riwayat')->options(self::statusLabels())])
-            ->recordActions([ViewAction::make()->label('Detail')])
+            // Rows already come from the persisted, tenant-scoped query. Rendering a
+            // navigation URL needs no per-row database authorization. The destination
+            // reauthorizes on mount/hydration; a forged mounted action does so too.
+            ->recordUrl(fn (AssessmentBill $record): string => self::getUrl('view', ['record' => $record]))
+            ->recordActions([Action::make('detail')->label('Detail')->icon('heroicon-o-eye')
+                ->url(fn (AssessmentBill $record): string => self::getUrl('view', ['record' => $record]))
+                ->mountUsing(fn (AssessmentBill $record) => self::authorizeView($record))])
             ->defaultSort('id', 'desc')
             ->paginationPageOptions([10, 25, 50])
             ->defaultPaginationPageOption(10)

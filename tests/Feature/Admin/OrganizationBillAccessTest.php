@@ -10,6 +10,9 @@ use App\Filament\Resources\OrganizationBills\Pages\ListOrganizationBills;
 use App\Filament\Resources\OrganizationBills\Pages\ViewOrganizationBill;
 use App\Models\Admin;
 use App\Models\AssessmentBill;
+use App\Models\AssessmentCharge;
+use App\Models\TestPackage;
+use App\Services\Payments\AssessmentPriceSnapshot;
 use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -164,6 +167,7 @@ final class OrganizationBillAccessTest extends OrganizationPaymentTestCase
         $second = Fixture::create('organization', [
             'organization' => $this->own['organization'], 'participant' => $this->own['participant'],
         ]);
+        $this->validSnapshot($second, 'SECOND');
         DB::table('assessment_bills')->where('id', $second['bill'])->delete();
         $second['bill'] = $this->own['bill'];
         DB::table('assessment_bill_items')->insert(Fixture::item($second));
@@ -188,15 +192,45 @@ final class OrganizationBillAccessTest extends OrganizationPaymentTestCase
         $this->assertDatabaseCount('assessment_bills', 2);
     }
 
+    public function test_detail_navigation_and_forged_action_recheck_persisted_membership(): void
+    {
+        $list = Livewire::test(ListOrganizationBills::class)
+            ->assertTableActionHasUrl('detail', OrganizationBillResource::getUrl('view', ['record' => $this->own['bill']]), $this->own['bill']);
+        DB::table('admins')->where('id', $this->admin->id)->update(['branch_id' => $this->foreign['organization']]);
+        $list->mountTableAction('detail', $this->own['bill'])->assertActionNotMounted('detail');
+        $this->get('/admin/organization-bills/'.$this->own['bill'])->assertNotFound();
+        DB::table('admins')->where('id', $this->admin->id)->update(['role' => AdminRole::Staff->value]);
+        $list->mountTableAction('detail', $this->foreign['bill'])->assertForbidden();
+    }
+
+    public function test_paginated_livewire_query_counts(): void
+    {
+        for ($i = 1; $i < 50; $i++) {
+            $this->bill('MEASURE-'.$i, $this->own['organization']);
+        }
+        $list = Livewire::test(ListOrganizationBills::class);
+        foreach ([10, 25, 50] as $size) {
+            DB::flushQueryLog();
+            DB::enableQueryLog();
+            try {
+                $list->set('tableRecordsPerPage', $size)->assertSuccessful();
+                $queries = DB::getQueryLog();
+            } finally {
+                DB::disableQueryLog();
+            }
+            $this->assertCount($size, $list->instance()->getTableRecords());
+            fwrite(STDERR, "\nPortal SQLite Livewire page {$size}: ".count($queries)." queries\n");
+            $this->assertLessThanOrEqual(20, count($queries), 'Rendering navigation links must not query authorization per row.');
+        }
+    }
+
     private function bill(string $label, ?int $organization = null, string $status = 'pending'): array
     {
         $fixture = Fixture::create('organization', $organization === null ? null : ['organization' => $organization]);
-        DB::table('assessment_bill_items')->insert(Fixture::item($fixture));
         DB::table('participants')->where('id', $fixture['participant'])->update(['full_name' => 'Peserta '.$label]);
         DB::table('assessment_participants')->where('id', $fixture['attempt'])->update(['assessment_round_id' => 'Periode '.$label]);
-        DB::table('assessment_charges')->where('id', $fixture['charge'])->update([
-            'price_snapshot' => json_encode(['packageName' => 'Paket snapshot '.$label]),
-        ]);
+        $this->validSnapshot($fixture, $label);
+        DB::table('assessment_bill_items')->insert(Fixture::item($fixture));
         DB::table('assessment_bills')->where('id', $fixture['bill'])->update([
             'public_reference' => 'AB_'.$label, 'status' => $status,
             'expires_at' => '2026-09-01 12:00:00', 'created_at' => '2026-08-31 12:00:00',
@@ -204,5 +238,15 @@ final class OrganizationBillAccessTest extends OrganizationPaymentTestCase
         ]);
 
         return $fixture;
+    }
+
+    private function validSnapshot(array $fixture, string $label): void
+    {
+        DB::table('packages')->where('id', $fixture['package'])->update(['name' => 'Paket snapshot '.$label, 'is_active' => true]);
+        DB::table('package_items')->insert(['package_id' => $fixture['package'], 'test_type' => 'ist', 'sort_order' => 1]);
+        $snapshots = app(AssessmentPriceSnapshot::class);
+        $snapshot = $snapshots->capture(TestPackage::with('items')->findOrFail($fixture['package']), false);
+        AssessmentCharge::findOrFail($fixture['charge'])->update(['price_snapshot' => $snapshot]);
+        $this->assertSame($snapshot, $snapshots->fromCharge(AssessmentCharge::findOrFail($fixture['charge']), false));
     }
 }

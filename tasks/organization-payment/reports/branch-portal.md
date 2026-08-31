@@ -1,5 +1,130 @@
 # P12a-prep — portal cabang baca-saja
 
+## Gelombang kedua — delta dari 55ffc29 (2026-08-31)
+
+**Siap review sebagai P12a-prep, bukan aktivasi P12a.** Gelombang pertama sudah
+diintegrasikan koordinator sebagai 9decef5. Instruksi gelombang kedua pada
+parallel-work.md dan reports/integration-wave-1.md dibaca dari induk secara
+read-only. Worktree tidak reset/merge/cherry-pick baseline induk. Bagian setelah
+gelombang kedua ini mempertahankan bukti historis gelombang pertama.
+
+Skill Laravel, Auth & Tenant Access, Security, TDD, Git Workflow, PostgreSQL dan
+Browser dipakai kembali; acuan API ialah source Filament 5.7.6 terpasang serta
+[otorisasi resource Filament 5](https://filamentphp.com/docs/5.x/resources/overview#authorization)
+dan [RLS PostgreSQL 17](https://www.postgresql.org/docs/17/ddl-rowsecurity.html).
+
+### Delta file milik lane
+
+- `tests/Postgres/OrganizationBillPortalTest.php`: tujuh tes baru, menjalankan
+  `getEloquentQuery()`, `resolveRecordRouteBinding()`, authorization resource,
+  dan metode alokasi detail existing melalui reflection (tidak menyalin query).
+- `app/Filament/Resources/OrganizationBills/OrganizationBillResource.php`:
+  tautan navigasi detail eksplisit menggantikan ViewAction yang melakukan
+  authorization DB berulang ketika dirender. Action hanya berisi URL dan guard
+  mount persisted; tidak memiliki form, modal data, atau handler mutasi.
+- `tests/Feature/Admin/OrganizationBillAccessTest.php`: pengukuran rendering
+  Livewire pada 10/25/50 baris; regresi URL/action lama setelah membership/role
+  berubah; snapshot fixture dibuat dan divalidasi melalui layanan existing.
+- `tools/testing/serve-organization-bills-panel.php`: snapshot preview lengkap
+  dari katalog sintetis melalui capture/fromCharge, bukan object packageName saja.
+- `tasks/organization-payment/reports/branch-portal.md`: laporan delta ini.
+
+Tidak mengubah shared runner/fixtures/schema/config/routes/policies, halaman
+detail/list, AssessmentParticipants, dependency atau checklist kanonik. Gate
+test-only masih sama. Tidak ada cache otorisasi lintas request atau pelemahan
+pemeriksaan persisted pada query, URL detail, action mount, atau hydration.
+
+### Bukti runtime dan batasnya
+
+PG memverifikasi login `psikotes_runtime`, `rolsuper=false`, `rolbypassrls=false`,
+bukan pemilik tabel, serta ENABLE/FORCE RLS pada lima tabel proyeksi. BranchAdmin
+hanya memperoleh bill organisasi sendiri; self-payer, cabang lain, ID tidak ada,
+dan record ID asing dengan organization_id dipalsukan ditolak. Admin stale setelah
+role dicabut tetap ditolak meski context DB super_admin dapat membaca luas.
+Guest, branch null, soft-deleted admin dan environment produksi juga ditolak.
+
+Perubahan membership A→B diuji dengan auth object lama: context A tidak dapat
+membaca A maupun B, context B hanya memperoleh B, detail A yang sudah terambil
+ditolak saat proyeksi dipanggil ulang. PDO dan pg_backend_pid tetap sama. Context
+staff/psychologist/participant menolak query walau auth object BranchAdmin masih
+ada; exception context dan tanpa context juga diperiksa.
+
+Batas koneksi: fixture berada dalam outer transaction, sehingga pergantian
+context berjalan melalui savepoint runner pada satu backend. Context kosong
+disetel eksplisit untuk menguji fail-closed; rollback outer transaction kemudian
+dibuktikan menghapus GUC pada PDO yang sama. Ini bukan uji PgBouncer, beberapa
+worker HTTP, atau race perubahan membership selama satu statement berjalan.
+
+Snapshot charge valid dibuktikan `capture()` dan `fromCharge()` sebelum alokasi.
+Perubahan katalog setelah snapshot tidak mengubah nama/nominal detail. Allowlist
+field hasil dan sentinel membuktikan proyeksi tidak membawa metadata klinis,
+invoice, proof, gateway, review privat, atau peserta cabang lain. SQL detail
+memakai eager-load existing; tidak membuat invoice atau reservasi action.
+
+PG bootstrap memakai PHPUnit biasa. Tes ini **bukan HTTP/Livewire PostgreSQL**:
+middleware, render, hydration, request action dan status HTTP tetap dibuktikan
+oleh tes HTTP/Livewire SQLite terpisah. Reflection hanya menjangkau proyeksi
+privat existing; tidak memperluas API produksi demi tes.
+
+### Query count terukur
+
+| Pengukuran | 10 baris | 25 baris | 50 baris |
+| --- | ---: | ---: | ---: |
+| SQLite Livewire render sebelum optimasi | 97 | 232 | 457 |
+| SQLite Livewire render sesudah optimasi | 7 | 7 | 7 |
+| PG paginator resource (tanpa render) | 3 | 3 | 3 |
+
+Dataset 50 bill organisasi sendiri, ditambah bill asing dan self untuk PG.
+SQLite menghitung query pada update tableRecordsPerPage setelah initial mount,
+termasuk hydration/render. PG menghitung reload admin + count + page select;
+set_config/setup fixture tidak masuk pengukuran. Detail PG sepuluh alokasi
+memakai tujuh query, termasuk persisted authorization dan eager-load; resolve
+record awal di luar hitungan detail. Bukan klaim latency/load-test produksi.
+
+RED budget rendering (maksimum 20 query dengan ruang untuk overhead framework)
+gagal pada 97 query sebelum perubahan. GREEN menjadi konstan tujuh query;
+query budget kini dijaga oleh tes. Tidak mengoptimasi dengan cached membership.
+
+### Verifikasi gelombang kedua
+
+- Focused SQLite akhir: **14 tes / 210 assertions lulus**, tanpa skip.
+- Pint targeted resource/pages, dua test lane dan harness: lulus.
+- PHPStan targeted seluruh resource/pages: **0 error**, lingkungan proses
+  testing + SQLite memory + DB_URL kosong/cache-session array seperti perintah
+  gelombang pertama. Tests tidak termasuk cakupan PHPStan aplikasi existing.
+- PG run awal: **151 tes / 871 assertions lulus**, termasuk tujuh tes portal,
+  bukan hanya baseline 144. Run final: **151 tes / 872 assertions lulus**, tanpa
+  skip, setelah penguatan assertion record ID palsu (forceFill memastikan id
+  tidak dibuang mass-assignment). Delta di atas baseline worktree 144/690 ialah
+  **7 tes / 182 assertions portal**; hasil induk 149/739 tidak dipakai sebagai
+  denominator karena worktree tidak memuat integrasi backend gelombang pertama.
+- Browser 127.0.0.1:8012 dengan DB baru: login sintetis, daftar 14 tagihan,
+  klik Detail pada row id 14, lalu DOM detail menunjukkan referensi/attempt,
+  peserta 14, snapshot paket, IDR 100 dan konsultasi IDR 0 yang sesuai.
+  Tautan tetap native link ke halaman detail. Bukan bukti keyboard penuh,
+  screen reader, semua breakpoint, atau browser negatif lintas cabang.
+- Preview init berhasil dengan snapshot valid. Tab uji ditutup (tab list kosong),
+  server 8012 dihentikan. Tidak membuka tab/data pengguna.
+
+Perintah utama: focused PHPUnit dan PHPStan seperti gelombang pertama; Pint
+menambah `tests/Postgres/OrganizationBillPortalTest.php`; PostgreSQL tetap
+`powershell -NoProfile -ExecutionPolicy Bypass -File tools/testing/run-org-postgres.ps1`.
+Tidak menjalankan full regression gabungan induk atau mengklaim angka 668/3080
+sebagai hasil worktree ini. Tidak mengedit runner untuk memilih/filter suite.
+
+Run PG pertama `c55b03fde2f340308ace4f65c7d11d17` dibersihkan runner dan lookup
+container/network berlabel persis kosong. Run final
+`2777427fdf674b7596483a44c8330289` juga dibersihkan runner. Preview browser baru disimpan lokal di
+`C:/Users/ThinkPad/AppData/Local/Temp/oncam-bills-d2ac4c63c4ec4516a265d655e2168e98`
+dengan pointer `storage/bill-preview-wave2-directory.txt`; keduanya tidak commit.
+Folder sintetis dipertahankan, bukan DB aktif; tidak mencoba jalan penghapusan
+alternatif setelah blok tool gelombang pertama. Artefak lama tetap tidak commit.
+
+Delta ini berhenti untuk review. Gate produksi, P11c, HTTP/Livewire PG dan
+verifikasi end-to-end pembayaran tetap pekerjaan integrasi berikutnya.
+
+## Catatan gelombang pertama (historis)
+
 Status: **slice persiapan siap review; P12a belum selesai dan tetap menunggu
 P11c. Tidak lanjut ke slice berikutnya sebelum review koordinator.**
 
