@@ -1,5 +1,71 @@
 # Frontend — P16-prep
 
+## Increment lobby nullable — temuan audit #1 (2026-08-31)
+
+Delta terhadap **3105383**; audit telah diintegrasikan koordinator sebagai 793d494.
+ADR-004 dan bagian akhir parallel-work.md induk dibaca read-only. Sebelum edit,
+lobby.tsx sudah tracked dan bersih di worktree; SHA256 sama dengan induk:
+`577788741D873E2E25079C4E233320773FE72F472418A927C5F1480D757E018B`.
+Tidak reset/merge baseline atau memasukkan snapshot awal. Skill frontend/TDD/Git
+yang telah dibaca tetap dipakai; skill Playwright dan Debugging & Error Recovery
+dibaca untuk pengujian mounted component dan kendala tooling.
+
+**Perubahan produksi hanya lobby.tsx:** full_name/test_number bertipe string|null.
+Null, string kosong, dan whitespace dirender sebagai "Nama belum dilengkapi" serta
+"Belum tersedia". trim hanya menentukan apakah blank; nilai nonblank tetap dirender
+utuh, termasuk spasi awal/akhir. Tidak menyimpan placeholder atau mengubah fetch,
+effect, token/auth, entitlement, controller/API, schema, portal, maupun union checkout.
+
+**Bukti nyata:**
+
+- RED: harness browser pada kode lama gagal `null: name was ""`.
+- GREEN: **9 skenario browser lulus**, 0 kegagalan pada run final: kedua nilai null,
+  empty, whitespace, lengkap, hanya nama hilang, hanya nomor hilang, nonblank dengan
+  spasi dipertahankan, fetch gagal, dan token fixture tidak ada.
+- Tujuh skenario profil masing-masing menahan respons sintetis sampai loading
+  terlihat, lalu menjalankan fetch/effect asli hingga ready. Assertion membaca teks
+  heading dan nomor secara persis; status locked/Siap tetap dari fixture entitlement,
+  tidak ada tombol akses, hanya dua GET API yang diizinkan, token fixture tidak berubah.
+  Respons 401 sintetis menampilkan error existing dan menghapus token; tanpa token
+  langsung menampilkan pesan existing tanpa fetch API. Ini **bukan SSR**.
+- Typecheck focused, ESLint focused konfigurasi proyek asli, dan Vite build fixture
+  lulus. Build JS 320.19 kB (gzip 101.09), CSS 9.04 kB (gzip 2.49).
+  Pemuatan awal lint sempat tertahan; probe loader/duplikat dihentikan atau selesai.
+  Run final memakai perintah Node biasa, tanpa perubahan konfigurasi/dependency.
+- Chrome melalui Playwright CLI cached, session khusus `oncam-lobby-d4ea`, profil
+  sementara; tidak attach ke tab pengguna. Origin 127.0.0.1:8011 diperiksa kosong.
+  Harness Inertia memuat komponen produksi tanpa Laravel/.env/DB/login nyata.
+  Semua /api/* dicegat sebelum navigasi; hanya dua path GET dikenal yang diizinkan.
+  Token adalah literal sintetis bukan credential, hanya dalam sessionStorage profil
+  browser uji. Tidak ada write jaringan atau penyimpanan placeholder peserta.
+- Run final memiliki 0 pageerror; dua console error HTTP 401 memang berasal dari
+  skenario negatif sintetis. Tidak mengklaim console zero-error atau auth/server
+  end-to-end. Browser uji dan server preview ditutup setelah verifikasi.
+
+**Pengulangan dari root worktree:**
+
+```powershell
+node node_modules/vite/bin/vite.js --config tests/Frontend/ParticipantLobby/vite.config.ts
+# Terminal terpisah; gunakan CLI cached/tersedia, tanpa install:
+node C:/Users/ThinkPad/AppData/Local/npm-cache/_npx/31e32ef8478fbf80/node_modules/@playwright/cli/playwright-cli.js -s=oncam-lobby-d4ea open about:blank --browser chrome
+node C:/Users/ThinkPad/AppData/Local/npm-cache/_npx/31e32ef8478fbf80/node_modules/@playwright/cli/playwright-cli.js -s=oncam-lobby-d4ea run-code --filename tests/Frontend/ParticipantLobby/browser.test.mjs
+node C:/Users/ThinkPad/AppData/Local/npm-cache/_npx/31e32ef8478fbf80/node_modules/@playwright/cli/playwright-cli.js -s=oncam-lobby-d4ea close
+node node_modules/typescript/bin/tsc --project tests/Frontend/ParticipantLobby/tsconfig.json --noEmit
+node node_modules/eslint/bin/eslint.js resources/js/pages/participant/lobby.tsx tests/Frontend/ParticipantLobby/preview.tsx tests/Frontend/ParticipantLobby/vite.config.ts tests/Frontend/ParticipantLobby/browser.test.mjs
+node node_modules/vite/bin/vite.js build --config tests/Frontend/ParticipantLobby/vite.config.ts
+```
+
+CLI mengevaluasi file tes sebagai function expression; jangan menambahkan semicolon
+sebelum/sesudah expression. Satu pengecualian no-unused-expressions pada entrypoint
+tes mendokumentasikan pemanggilan CLI; aturan produksi/config bersama tidak diubah.
+Log build/browser lokal ada di storage/app/private/verification (tidak di-commit).
+
+**File delta (7):** lobby.tsx, lima file harness baru di
+tests/Frontend/ParticipantLobby (index.html, preview.tsx, vite.config.ts,
+tsconfig.json, browser.test.mjs), dan laporan ini. Tidak ada dependency install,
+full suite/global tsc, DB, endpoint, wiring P16, atau perubahan alur akses.
+Schema/backend/portal tetap milik review terpisah. **Stop untuk review koordinator.**
+
 ## Audit read-only prasyarat P9a — profil nullable (2026-08-31)
 
 **Status: temuan untuk review, bukan persetujuan migrasi atau aktivasi profil parsial.**

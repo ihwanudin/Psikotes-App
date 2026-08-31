@@ -8,8 +8,8 @@ import {
 import { useEffect, useState } from 'react';
 
 type Profile = {
-    full_name: string;
-    test_number: string;
+    full_name: string | null;
+    test_number: string | null;
 };
 
 type Entitlement = {
@@ -148,11 +148,15 @@ export default function ParticipantLobby() {
                                     />
                                     <div>
                                         <h2 className="text-lg font-semibold">
-                                            {state.profile.full_name}
+                                            {state.profile.full_name?.trim()
+                                                ? state.profile.full_name
+                                                : 'Nama belum dilengkapi'}
                                         </h2>
                                         <p className="mt-1 text-sm text-slate-600">
                                             Nomor tes{' '}
-                                            {state.profile.test_number}
+                                            {state.profile.test_number?.trim()
+                                                ? state.profile.test_number
+                                                : 'Belum tersedia'}
                                         </p>
                                     </div>
                                 </div>
