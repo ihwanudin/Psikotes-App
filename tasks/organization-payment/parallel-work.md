@@ -423,3 +423,15 @@ no-store untuk seluruh pipeline, frontend tes props payment pada instance sama,
 portal browser keyboard/reflow komponen sintetis. Scope/cursor/turn ada di wave-10.
 Tidak menduplikasi kelanjutan; review dulu setelah selesai. Tidak ada gate/source
 ON, data aktif, deploy/push, pembayaran/notifikasi nyata atau task/agent baru.
+
+## Checkpoint privacy route dan refresh payment (2026-09-01)
+
+[Wave-11](reports/integration-wave-11.md): P9c 5417326 -> 451cc73 dan frontend
+51eca92 -> 67e263b direview. Focused root199/1091, SSR26, global tsc, lint focused,
+Pint/PHPStan dan build fixture lulus. Full927/5200 serta PG222/1659 tetap historis.
+Header P9c hanya downstream route boundary; tidak ada registrasi publik.
+
+Backend menerima P10a lookup/recovery read-only internal; frontend fixture dan
+tes profil tujuh field missing. Portal masih memperbaiki keyboard/reflow sesuai
+instruksi wave-10, tidak mendapat prompt duplikat. Scope/cursor/turn dicatat di
+wave-11; jangan reset/merge baseline atau mengaktifkan sistem nyata.

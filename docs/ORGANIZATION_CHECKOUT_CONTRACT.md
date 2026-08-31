@@ -94,6 +94,13 @@ awal dan error tak terduga tetap milik pipeline existing; P9b tidak menambah
 no-store global atau mengubah shared auth. Error tak terduga memakai renderer
 framework dengan debug dimatikan, bukan contract-error mapping baru.
 
+P9c menambahkan PreventCheckoutResponseCaching yang belum diregistrasi produksi.
+Jika kelak wiring disetujui, boundary harus sebelum integration.client. Tes
+membuktikan no-store/private pada seluruh respons downstream termasuk auth,
+validation, throttle dan 500; handler framework tetap report/render sekali.
+Error routing/global middleware sebelum boundary dan kegagalan handler sendiri
+tidak dicakup. Header controller bukan pengganti boundary ini.
+
 Kesalahan memakai IntegrationContractViolation: CHECKOUT_NOT_ENABLED (503),
 CHECKOUT_CONTRACT_REQUIRED/INTEGRATION_CONTEXT_INVALID (403),
 LEGACY_FUNDING_MAPPING_DISABLED (403), AMBIGUOUS_PAYER_INPUT dan
@@ -135,6 +142,6 @@ P9a internal dan adapter HTTP P9b belum berarti route publik terdaftar atau
 checkout end-to-end tersedia. Tes P9b memakai HMAC dan database sintetis; bukan
 izin cutover. Flag P5 bukan sakelar untuk membuka endpoint yang belum dipasang.
 Pemindahan sumber aktif memerlukan persetujuan terpisah dan runbook setelah alur
-end-to-end terbukti. No-store untuk seluruh pipeline error sebelum controller
-perlu ditinjau pada tahap wiring; jangan mengklaim header controller mencakupnya.
+end-to-end terbukti. Urutan boundary P9c dan cakupan global pipeline tetap harus
+ditinjau pada tahap wiring; bukti route tes bukan izin mengaktifkan endpoint.
 Lihat [bukti checkpoint](ORGANIZATION_CHECKOUT_VALIDATION.md).
