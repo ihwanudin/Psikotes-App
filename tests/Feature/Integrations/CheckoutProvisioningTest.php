@@ -284,6 +284,122 @@ final class CheckoutProvisioningTest extends OrganizationPaymentTestCase
         $this->provision();
     }
 
+    #[DataProvider('selectedLifecycleStates')]
+    public function test_identical_provisioning_retry_preserves_later_payer_profile_and_status(string $funding, string $status): void
+    {
+        $first = $this->provision();
+        $attempt = AssessmentParticipant::sole();
+        $this->assertNull($attempt->funding_mode);
+        $originalHash = $attempt->request_hash;
+        Participant::sole()->update([
+            'full_name' => 'Completed Person', 'gender' => 'female', 'birth_date' => '2000-01-01',
+            'education_level' => 'SMA', 'intended_field' => 'KAIGO', 'phone' => '628123456789',
+            'email' => 'completed@example.test',
+        ]);
+        // Synthetic persisted lifecycle state, not a new payer/settlement/session writer.
+        $attempt->update(['funding_mode' => $funding, 'assessment_status' => $status]);
+        $storedAttempt = $attempt->fresh()->getAttributes();
+        $storedParticipant = Participant::sole()->getAttributes();
+
+        try {
+            $retry = $this->provision();
+        } catch (IdempotencyConflict) {
+            $this->fail('Identical provisioning retry conflicts with a later persisted payer selection.');
+        }
+
+        $this->assertTrue($retry['replayed']);
+        $this->assertSame($first['participant_id'], $retry['participant_id']);
+        $this->assertSame($first['assessment_attempt_id'], $retry['assessment_attempt_id']);
+        $this->assertSame($status, $retry['assessment_status']);
+        $this->assertSame($originalHash, AssessmentParticipant::sole()->request_hash);
+        $this->assertSame($storedAttempt, AssessmentParticipant::sole()->getAttributes());
+        $this->assertSame($storedParticipant, Participant::sole()->getAttributes());
+        $this->assertDatabaseCount('participants', 1);
+        $this->assertDatabaseCount('assessment_participants', 1);
+        $this->assertNoSideEffects();
+    }
+
+    public static function selectedLifecycleStates(): iterable
+    {
+        foreach (['COMMERCIAL_SELF_PAY', 'INVOICED_TO_ORGANIZATION'] as $funding) {
+            foreach (['PROVISIONED', 'READY', 'IN_PROGRESS', 'COMPLETED'] as $status) {
+                yield $funding.' '.$status => [$funding, $status];
+            }
+        }
+    }
+
+    public function test_later_payer_selection_does_not_allow_changed_provisioning_payload(): void
+    {
+        $this->provision();
+        AssessmentParticipant::sole()->update(['funding_mode' => 'COMMERCIAL_SELF_PAY']);
+        $this->expectException(IdempotencyConflict::class);
+        $this->provision([...$this->payload(), 'payerType' => 'self']);
+    }
+
+    public function test_later_payer_selection_does_not_bypass_disabled_source(): void
+    {
+        $this->provision();
+        AssessmentParticipant::sole()->update(['funding_mode' => 'COMMERCIAL_SELF_PAY']);
+        $this->source->update(['status' => 'SUSPENDED']);
+        $this->expectException(IntegrationContractViolation::class);
+        $this->expectExceptionMessage('SOURCE_NOT_ALLOWED');
+        $this->provision();
+    }
+
+    public function test_stored_request_and_funding_cannot_distinguish_initial_policy_from_later_choice(): void
+    {
+        DB::beginTransaction();
+        try {
+            $this->provision();
+            $attempt = AssessmentParticipant::sole();
+            $this->assertNull($attempt->funding_mode);
+            $attempt->update(['funding_mode' => 'COMMERCIAL_SELF_PAY']);
+            $this->source->update(['locked_payer_type' => 'self']);
+            $afterLaterChoice = [
+                'attempt' => $attempt->only(['request_hash', 'funding_mode', 'metadata']),
+                'policy' => $this->source->fresh()->only(['allowed_payer_types', 'locked_payer_type']),
+            ];
+        } finally {
+            DB::rollBack();
+        }
+
+        $this->source->refresh()->update(['locked_payer_type' => 'self']);
+        $this->provision();
+        $initialPolicyChoice = [
+            'attempt' => AssessmentParticipant::sole()->only(['request_hash', 'funding_mode', 'metadata']),
+            'policy' => $this->source->fresh()->only(['allowed_payer_types', 'locked_payer_type']),
+        ];
+        $this->assertSame($afterLaterChoice, $initialPolicyChoice);
+    }
+
+    public function test_later_payer_selection_does_not_bypass_invalid_payer_policy(): void
+    {
+        $this->provision();
+        AssessmentParticipant::sole()->update(['funding_mode' => 'COMMERCIAL_SELF_PAY']);
+        $this->source->update(['allowed_payer_types' => []]);
+        $this->expectException(IntegrationContractViolation::class);
+        $this->expectExceptionMessage('PAYER_NOT_ALLOWED');
+        $this->provision();
+    }
+
+    public function test_later_payer_selection_does_not_reopen_revoked_attempt(): void
+    {
+        $this->provision();
+        $attempt = AssessmentParticipant::sole();
+        $attempt->update(['funding_mode' => 'COMMERCIAL_SELF_PAY', 'assessment_status' => 'REVOKED', 'revoked_at' => now()]);
+        $stored = $attempt->fresh()->getAttributes();
+        try {
+            $this->provision();
+            $this->fail('Revoked attempt accepted');
+        } catch (IdempotencyConflict|IntegrationContractViolation) {
+            // Current funding conflict masks the revoked-specific error; denial must remain after the fix.
+            $this->assertSame($stored, AssessmentParticipant::sole()->getAttributes());
+            $this->assertDatabaseCount('participants', 1);
+            $this->assertDatabaseCount('assessment_participants', 1);
+            $this->assertNoSideEffects();
+        }
+    }
+
     #[DataProvider('badScopes')]
     public function test_invalid_scope_cannot_create_any_rows(array $override, string $error): void
     {

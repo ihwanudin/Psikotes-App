@@ -731,3 +731,113 @@ action sendiri tidak membuktikan signature dari model caller. Tidak ada public
 wiring, gateway, handoff, token, sesi, consent/identity writer, outbox consumer,
 migration aktif atau sumber yang diaktifkan. **P9a internal siap review lokal;
 STOP sebelum public wiring/P10 atau increment lain.**
+
+## Review fix P9a: replay sesudah pilihan payer — 2026-09-01
+
+Koordinator belum mengintegrasikan eb53cfd/5f4bb3b. Instruksi review meminta
+reproduksi dan melarang perubahan semantik bila kontrak belum menentukan kasus
+ini, sebelum bukti/opsi diserahkan. **Bagian ini menggantikan klaim siap integrasi
+P9a sebelumnya: bug terkonfirmasi, belum diperbaiki/GREEN.** Tidak melanjutkan
+P10/public wiring. Skill debugging/TDD digunakan untuk mempertahankan reproduksi;
+alasan berhenti sebelum perubahan action adalah instruksi review koordinator,
+bukan kebutuhan izin menjalankan tes atau pekerjaan reversible biasa.
+
+### Reproduksi dan hasil aktual
+
+Hanya tests/Feature/Integrations/CheckoutProvisioningTest.php dan laporan ini
+diubah. Delapan kasus positif baru:
+
+- Provision payload/key identik tanpa payer, policy awal self+organization,
+  funding NULL. Profil awal kosong.
+- Simulasikan state lifecycle persisted dengan profil lengkap, funding self atau
+  organization, dan status PROVISIONED/READY/IN_PROGRESS/COMPLETED.
+- Retry payload/key provisioning semula seharusnya mengembalikan attempt yang
+  sama tanpa mengubah profil/funding/status/hash atau menulis efek samping.
+- Semua delapan kasus gagal pada `IdempotencyConflict`: funding persisted sudah
+  selected, sementara hasil resolver atas payload awal tetap NULL. Test menangkap
+  exception spesifik itu dan menghasilkan pesan RED yang terbaca.
+
+Perubahan lifecycle di fixture memakai update sintetis untuk memodelkan state
+yang hendak diuji, **bukan** implementasi writer settlement/payer/sesi atau bukti
+transisi end-to-end sudah sah. Tidak ada entitlement atau bukti paid diciptakan.
+
+Tes tambahan yang GREEN memverifikasi payload provisioning berubah tetap
+ditolak, source SUSPENDED/payer policy kosong ditolak setelah payer dipilih,
+dan attempt revoked tetap ditolak tanpa mutasi. Pada kode lama, funding conflict
+mendahului alasan revoked; tes mempertahankan denial, tidak menganggap kode error
+spesifiknya sudah benar. Guard lama perubahan keputusan karena source lock tetap
+ada dan lulus, tidak dihapus atau diperlemah. Regresi lama replay profil yang
+dilengkapi, tenant, source, package, key, rollback, dan role tetap berjalan.
+
+Command: `php -d opcache.enable_cli=0 vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Integrations/CheckoutProvisioningTest.php --debug`
+
+Hasil final **RED: 51 tes, 43 lulus, 8 gagal, 169 assertions, tanpa runtime error**.
+Log: storage/logs/p9-replay-lifecycle-red.log. Pint file tes lulus; PHPStan
+seluruh proyek **0 error** (p9-replay-lifecycle-phpstan.log), environment eksplisit
+testing/SQLite memory/DB_URL kosong/cache+session array/queue sync. Tidak menjalankan
+PG ulang: tidak ada perubahan action/query/schema/transaksi. Hasil PG 197/997
+sebelumnya bukan bukti fix replay. Tidak mengulang UI, mengubah harness, atau
+menyembunyikan tes RED dengan skip/expected-exception sukses.
+
+### Celah kontrak yang membutuhkan keputusan sempit
+
+ADR-004 mengizinkan funding NULL saat PROVISIONED dan mengharuskan profil existing
+tidak dihapus replay. Kontrak P5 mewajibkan reload policy, tetapi tidak menetapkan
+snapshot keputusan awal untuk replay. `request_hash` mengikat input; input tanpa
+payer juga dapat menghasilkan payer otomatis akibat lock/satu pilihan policy.
+Karena itu hash input tidak membuktikan keputusan awal resolver.
+
+Tes baru `test_stored_request_and_funding_cannot_distinguish_initial_policy_from_later_choice`
+mereproduksi dua riwayat dengan transaksi sintetis yang di-rollback di antaranya:
+
+| Riwayat | Keputusan awal | Perubahan kemudian | State yang dapat dibaca replay |
+| --- | --- | --- | --- |
+| A | NULL, dua payer diizinkan | Lifecycle memilih self; source kemudian lock self | hash input, funding self, metadata marker, policy lock self |
+| B | self otomatis dari lock source | Tidak ada pilihan lifecycle | hash input, funding self, metadata marker, policy lock self |
+
+Assertion membuktikan keempat nilai akhir tersebut sama. Histori keputusan awal
+tidak tersimpan, sehingga menghapus perbandingan funding atau memberi pengecualian
+berdasarkan input payer kosong saja tidak dapat mempertahankan guard keputusan
+awal secara konsisten. Bahkan guard lama dapat kehilangan perubahan keputusan
+policy bila funding lifecycle kebetulan sama dengan keputusan policy terbaru.
+
+### Proposal untuk review, belum diimplementasikan
+
+**Opsi A (direkomendasikan): snapshot keputusan awal di metadata server.**
+
+1. Pada create saja, simpan field server semisal
+   `checkout_initial_funding_mode` yang wajib hadir, nullable, dan tidak berubah
+   oleh lifecycle; nilainya hasil resolver awal. Nama/format final perlu disetujui.
+   Tidak perlu schema/request baru; metadata input tetap hanya cohortCode.
+2. Replay tetap membandingkan request_hash dan semua scope, reload registry,
+   jalankan adapter atas input asli. Bandingkan hasil keputusan sekarang terhadap
+   snapshot awal, bukan funding lifecycle. Ini mempertahankan guard perubahan
+   keputusan policy existing, termasuk pilihan otomatis dari lock/satu payer.
+3. Funding lifecycle dinilai terpisah: snapshot NULL boleh tetap NULL atau menjadi
+   self/organization yang masih diizinkan oleh PayerDecision existing. Snapshot
+   awal selected tidak boleh berubah ke payer lain/NULL. Tidak menduplikasi
+   predicate policy atau menganggap funding sebagai bukti pembayaran.
+4. Profil/status/funding lifecycle tidak ditulis ulang pada retry. Payload
+   berubah, policy tidak sah, scope salah, revoked/void tetap ditolak. Snapshot
+   hilang/tipe invalid harus fail-closed, **jangan diinfer dari funding mutable**.
+   P9a belum diintegrasikan/dipasang publik, sehingga tidak mengusulkan backfill
+   aktif. Perilaku row tanpa snapshot harus eksplisit dalam acceptance berikutnya.
+
+Opsi A menambah kontrak metadata internal dan definisi replay terhadap keputusan
+policy awal. Itulah keputusan yang tidak saya buat sepihak. Setelah disetujui,
+scope fix tetap action + tes feature/PG + laporan, termasuk race retry yang
+menunggu perubahan lifecycle commit dan pengujian snapshot absent/invalid.
+
+**Opsi B: replay dinilai dari input identik dan validitas payer lifecycle terhadap
+policy saat ini saja**, tanpa snapshot awal. Ini lebih kecil, tetapi tidak bisa
+mempertahankan semantik guard perubahan keputusan awal: case awal NULL lalu
+policy memilih payer otomatis perlu didefinisikan ulang. Opsi ini **tidak memenuhi
+instruksi mempertahankan guard existing tanpa persetujuan kontrak baru** dan
+tidak direkomendasikan. Tidak diimplementasikan sebagai jalan pintas.
+
+Mohon keputusan koordinator atas opsi A, khususnya metadata snapshot server dan
+fail-closed untuk snapshot hilang. Commit increment ini hanya reproduksi RED,
+regresi negatif, bukti ambiguitas dan laporan; **bukan commit perbaikan siap merge**.
+Action/PG/shared files/baseline tetap utuh. Tidak ada .env/DB aktif, network
+outbound, migrasi, sumber/gate aktif, reset/merge atau commit snapshot awal.
+**STOP untuk review kontrak sebelum RED→GREEN; P9a belum diterima.**
