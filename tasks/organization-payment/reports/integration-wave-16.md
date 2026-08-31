@@ -1,4 +1,4 @@
-# Permit issuance diterima dan rekonsiliasi dimulai
+# Permit issuance dan rekonsiliasi single-intent diterima
 
 2026-09-01. Backend b387e6e + e59cab5 diintegrasikan sebagai c3de46c +
 216601d setelah review action, DTO, feature/PG tests dan laporan.
@@ -26,11 +26,18 @@ ADR-008 menerima P10c-a single-intent: strict lookup terhadap issuing/processing
 atau unknown/failed1, tanpa create/rearm. Exact result memakai persistence boundary
 bersama; unknown tetap fail-closed. Command/discovery/scheduler tetap P10c-b.
 
-Backend cursor `163af1e1-5f6a-4358-82dd-3e4d2134e4ed:44`. P10c-a menyerahkan
-`e3066bc`/`4f4b5e3`, tetapi review menemukan boundary unknown/failed belum
-memverifikasi `last_error=INVOICE_OUTCOME_UNKNOWN` saat persist. Satu instruksi
-perbaikan fail-closed dan tes race late-state sudah dikirim ke task yang sama;
-jangan integrasikan atau kirim ulang selama perbaikan aktif.
+P10c-a `e3066bc`/`4f4b5e3` dan review-fix `8ee792f` diintegrasikan sebagai
+`6facbda`/`89c8732`/`1900b78`. Review-fix mengikat unknown/failed ke
+`last_error=INVOICE_OUTCOME_UNKNOWN`, termasuk race setelah preflight; state
+noncanonical kini recovery_required tanpa update/audit.
+
+Bukti root final: **163/163 tes, 1.241 assertions** untuk lookup/claim/issuance/
+reconciliation; PostgreSQL disposable **237/237 tes, 2.074 assertions** dan
+cleanup berhasil; Pint file delta dan PHPStan seluruh proyek lulus. Nol
+create ulang, settlement, public wiring, command atau scheduler. P10c-a diterima;
+discovery/lease/operasional tetap P10c-b.
+
+Backend cursor `163af1e1-5f6a-4358-82dd-3e4d2134e4ed:45`; turn review-fix selesai.
 Frontend/portal tetap not-loaded pada cursor :33 dan menunggu dependency. Satu
-Instruksi tetap lookup-only, nol create/command/scheduler/outbound; review delta
-dan uji root wajib sebelum integrasi.
+increment P10c-b berikutnya wajib didesain bounded dan tetap nonaktif sampai
+review; jangan menggandakan instruksi saat task aktif.

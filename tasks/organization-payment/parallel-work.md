@@ -486,3 +486,9 @@ lulus. Core P10b internal diterima; tidak ada dispatcher, credential, atau wirin
 ADR008 membatasi kelanjutan backend P10c-a pada rekonsiliasi satu intent melalui
 strict lookup tanpa create. Discovery/command/scheduler ditunda ke P10c-b.
 Frontend/portal tetap menunggu dependensi; tidak ada operasi sistem aktif.
+
+P10c-a `e3066bc`/`4f4b5e3` diterima setelah review-fix fail-closed `8ee792f`,
+diintegrasikan sebagai `6facbda`/`89c8732`/`1900b78`. Root lookup sampai
+reconciliation 163/1241, PostgreSQL disposable 237/2074, Pint dan PHPStan lulus.
+P10c-b berikutnya harus memisahkan discovery bounded/lease dari aktivasi command
+atau scheduler; tidak ada provider credential maupun operasi aktif saat review.

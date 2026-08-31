@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P8a, P9a/b/c, P10a dan core P10b internal selesai lokal. Wave-16: issuance82/717, regresi511/2965 dan PG235/2025 lulus. P10c-a dimulai terbatas ADR008; frontend/portal menunggu dependency backend. P8b–P18 keseluruhan belum end-to-end; tidak deploy atau migrasi DB aktif.**
+Status: **P1–P8a, P9a/b/c, P10a, core P10b dan P10c-a internal selesai lokal. Wave-16 final: rekonsiliasi163/1241 dan PG237/2074 lulus. P10c-b discovery/operasional masih tertutup; frontend/portal menunggu dependency backend. P8b–P18 keseluruhan belum end-to-end; tidak deploy atau migrasi DB aktif.**
 
 ## Gerbang revisi kolektif
 
@@ -430,6 +430,7 @@ bounded serta scheduler tetap P10c-b terpisah dan nonaktif.
 
 **Acceptance:**
 
+- [x] P10c-a single-intent memvalidasi canonical state/policy/snapshot, commit sebelum strict GET, menempelkan exact atau mempertahankan unknown tanpa create/rearm/audit spam. Race late-state noncanonical fail-closed; bukti wave-16 final.
 - [ ] Lookup reference yang sama, cocokkan nominal/currency/reference; lanjutkan tanpa create ulang setelah unknown. Jadwal hanya memproses bill yang diizinkan dan bounded; perbedaan/ketidakpastian menuju petugas, bukan release claim. Tahap ini menghasilkan event ternormalisasi tanpa aktivasi akses; finalizer dihubungkan pada P11b, scheduler tetap nonaktif sampai itu teruji.
 
 **Dependencies:** P10b. **Scope:** M.
