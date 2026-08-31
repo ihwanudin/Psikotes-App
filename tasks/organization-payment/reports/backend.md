@@ -681,3 +681,53 @@ p9-action-focused-final.log, p9-action-phpstan-final.log, p9-action-postgres.log
 
 Public wiring, P10 dan lifecycle berikutnya tetap belum dikerjakan. Penyerahan
 akhir menunggu hasil PG dan pemeriksaan delta; checklist kanonik tidak diedit.
+
+### P9a hasil final PostgreSQL dan handoff
+
+Commit tahap pertama: **eb53cfd** (action + feature + laporan). Setelah itu tidak
+ada perubahan action atau baseline. Tes feature lane dijalankan lagi sendiri:
+**38 tes/133 assertions lulus** (p9-action-feature-final.log). Focused gabungan
+tetap **133/406**, Pint ketiga file PHP lulus, PHPStan 0 error sebagaimana di atas.
+
+Runner `powershell -NoProfile -ExecutionPolicy Bypass -File tools/testing/run-org-postgres.ps1`
+selesai exit 0: **197 tes/997 assertions lulus**, tanpa skip. Ini suite worker,
+bukan klaim jumlah suite root yang memiliki lane lain. Delapan tes PG baru:
+
+1. Runtime `psikotes_runtime`, bukan owner, non-superuser dan NOBYPASSRLS,
+   menyimpan profil parsial/PROVISIONED tanpa hak akses atau billing.
+2. Race key identik menghasilkan satu participant/attempt, retry replay.
+3. Race logical retry dengan key berbeda tetap satu attempt.
+4. Race dua round berbeda memakai satu exact external identity, dua attempt.
+5. Race payload payer konflik menghasilkan satu sukses dan IdempotencyConflict,
+   tanpa participant/orphan kedua.
+6. Sumber dinonaktifkan saat provisioning menunggu lock: reload menolak,
+   participant/attempt tetap nol.
+7. Crash setelah insert attempt rollback participant dan attempt ke savepoint,
+   walau outer caller menangkap exception dan commit; retry berikutnya berhasil.
+8. Lima context non-service ditolak action, participant tidak membaca attempt,
+   branch lain tidak membaca participant/attempt, dan tanpa context tidak melihat
+   attempt sesudah koneksi dipakai ulang. Context runner pulih setelah denial.
+
+Kelima race memakai pola barrier socket/pcntl existing yang disalin hanya ke tes
+lane ini: dua proses dan backend PID berbeda, keduanya diamati menunggu Lock pada
+mutex organisasi sebelum parent melepasnya. Bukan tes sekuensial yang diberi
+label concurrency. Tidak menambah helper atau mengubah shared harness. Startup
+Windows bind mount sekitar empat menit; waktu PHPUnit 59.935 detik, bukan hang
+DB. Runner membuang container/network tepat miliknya; pengecekan ulang berdasarkan
+label run e6e40047c6014bad97ed9bbfd3a4fdbb menghasilkan nol container/network.
+
+Commit kedua dibatasi pada tests/Postgres/CheckoutProvisioningTest.php dan laporan
+ini. Index diperiksa sebelum commit. Empat file lane keseluruhan tercantum di
+atas; tidak ada file baseline baru yang berubah sejak 34be1da. Request lokal
+dibandingkan ulang dengan request root dcfd96f: identik, tanpa patch tambahan.
+Tidak menyertakan snapshot awal atau baseline model/Fillable yang masih dirty.
+
+Batas yang tetap terbuka: satu tes UI lobby pada regresi direktori penuh gagal
+karena manifest worker tidak tersedia; tidak diubah atau diklaim lulus. Tes PG
+membuktikan transaksi/RLS/race internal, bukan autentikasi HTTP end-to-end atau
+kapasitas produksi. Integrasi HTTP berikutnya wajib memakai middleware HMAC nyata,
+FormRequest existing, boundary service yang sah dan error response tersanitasi;
+action sendiri tidak membuktikan signature dari model caller. Tidak ada public
+wiring, gateway, handoff, token, sesi, consent/identity writer, outbox consumer,
+migration aktif atau sumber yang diaktifkan. **P9a internal siap review lokal;
+STOP sebelum public wiring/P10 atau increment lain.**
