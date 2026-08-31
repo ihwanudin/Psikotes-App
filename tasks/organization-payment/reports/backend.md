@@ -1357,3 +1357,51 @@ existing dan tidak menjadi pola claim/recovery baru secara otomatis.
 
 **P10a internal siap review dengan batas regresi UI di atas; STOP sebelum P10b,
 P11, integrasi writer/reconciliation atau public wiring.**
+
+## P10b-prep — proposal issuance, tanpa implementasi
+
+P10a a1808f1 diterima coordinator sebagai ce9b3a0. Full root **988 tes/5.569
+assertions**, Pint/PHPStan lulus menurut review coordinator dan wave-13; termasuk
+enam halaman yang gagal karena manifest worker. Ini bukti root, bukan run ulang
+worker. Instruksi berikutnya membatasi lane pada dua dokumen, bukan writer/job.
+
+Proposal baru: [backend-invoice-issuance-proposal.md](backend-invoice-issuance-proposal.md).
+Plan/todo/parallel-work terbaru, wave-13, ADR-004/005 root dibaca read-only.
+Skill API/interface, queues/webhooks, DB/schema dan security digunakan; audit
+schema/model/constraints/RLS, P7 reservation, P8b activation, outbox consumers,
+payment-method toggle, provider legacy/P10a, RlsContextRunner, queue config dan
+source DatabaseTransactionsManager terpasang dilakukan tanpa DB aktif.
+
+Usulan untuk keputusan review:
+
+- Reuse bill statuses + outbox topic khusus, tanpa schema baru: claim
+  reserved->issuing membuat pending/0 intent; satu worker consume izin
+  processing/1 lalu commit sebelum satu create. Counter tidak pernah reset.
+- Dispatch hanya setelah outer commit, dengan outbox durable untuk crash sebelum
+  enqueue. Lease/stale tidak menjadi izin POST kedua; celah consume-commit
+  sebelum POST secara konservatif menjadi unknown bila worker mati.
+- Reuse satu create legacy dengan lookup ketat P10a sebelum attach pending;
+  legacy fallback first-match dan retry registration lima menit tidak diwarisi.
+  Boundary create-once terpisah disajikan sebagai alternatif yang perlu review.
+- Urutan organization->bill/items->attempt/participant/package/charge->method
+  ->outbox konsisten dengan mutex P7/P8b; registry dikunci setelah organization
+  sebelum bill bila dipakai. Harga tetap snapshot, bukan repricing katalog.
+- Guards service/scope/policy/metode/free/corrupt/terminal, late response, timeout,
+  rollback dan reconciliation dipisahkan dari settlement/hak tes. OFF sebelum
+  consume memblokir; OFF setelah consume tidak diklaim bisa membatalkan remote.
+- Pembagian P10b-a claim dan P10b-b issuance/job serta 17 kelompok matriks tes
+  feature/PG dua proses, outer commit fisik, outbox/rollback/late issuer disusun.
+  Usulan requested expiry awal 24 jam dan retensi intent perlu keputusan review.
+
+Verifikasi increment ini **read-only review + git diff --check**, bukan PHPUnit,
+PG, Pint/PHPStan atau bukti implementasi GREEN baru. Hanya Markdown berubah;
+tidak menulis tes yang meniru dokumen. Sumber resmi Laravel queues dan PostgreSQL
+locking dicocokkan dengan source installed; rujukan tercantum dalam proposal.
+Tidak ada writer/job/schema/route/config yang diedit, .env/DB aktif, network
+payment, deploy/push, consumer/notifikasi nyata, baseline reset/merge atau task
+baru. File enum AssessmentBillStatus belum ada; proposal tidak menganggapnya
+sudah tersedia atau membuatnya sebagai bagian audit.
+
+Index kosong sebelum staging. Commit dibatasi proposal baru dan laporan ini;
+tidak menyertakan baseline snapshot. **STOP untuk keputusan proposal sebelum
+implementasi P10b-a/P10b-b atau schema/ADR baru.**
