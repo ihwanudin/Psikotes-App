@@ -51,7 +51,8 @@ final class Admin extends Authenticatable implements FilamentUser, ProvidesRlsCo
             AdminAbility::ViewParticipants => true,
             AdminAbility::ManageAdmins,
             AdminAbility::ManageTestPackages,
-            AdminAbility::ManagePaymentMethods => $this->role === AdminRole::SuperAdmin,
+            AdminAbility::ManagePaymentMethods,
+            AdminAbility::ManageIntegrations => $this->role === AdminRole::SuperAdmin,
             AdminAbility::EditParticipants => in_array(
                 $this->role,
                 [AdminRole::SuperAdmin, AdminRole::BranchAdmin, AdminRole::Staff],

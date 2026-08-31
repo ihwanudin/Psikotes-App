@@ -35,7 +35,7 @@
             <script nonce="{{ $nonce }}">
                 const participantToken = @json($participantToken);
                 sessionStorage.setItem('participant_access_token', participantToken);
-                window.history.replaceState(null, '', '/selection/launch');
+                window.history.replaceState(null, '', @json($cleanPath ?? '/participant/lobby'));
                 window.location.replace('/participant/lobby');
             </script>
         @endif

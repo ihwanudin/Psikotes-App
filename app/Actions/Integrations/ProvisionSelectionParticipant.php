@@ -9,6 +9,7 @@ use App\Models\Participant;
 use App\Models\SelectionParticipant;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
+use App\Services\Integrations\CheckoutContractAdapter;
 use App\Services\TestNumber\MonthlyTestNumberIssuer;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -59,6 +60,15 @@ final readonly class ProvisionSelectionParticipant
      */
     private function createOnce(array $input, string $clientId, string $idempotencyKey, string $requestHash): array
     {
+        // Check before idempotent replay; the dedicated client is mapped by server branch_ref.
+        $organizationId = Branch::query()->where('ref_code', config('selection_integration.branch_ref'))->value('id');
+        if ($organizationId !== null) {
+            try {
+                app(CheckoutContractAdapter::class)->assertLegacyAllowed((int) $organizationId, 'SELEKSI_BEASISWA_JEPANG');
+            } catch (IntegrationContractViolation) {
+                throw new SelectionIntegrationUnavailable;
+            }
+        }
         $existing = SelectionParticipant::query()
             ->where('client_id', $clientId)
             ->where('idempotency_key', $idempotencyKey)
@@ -88,6 +98,8 @@ final readonly class ProvisionSelectionParticipant
             'branch_id' => $branch->id,
             'referral_branch_id' => $branch->id,
             'referral_source' => 'manual',
+            'source_system' => 'SELEKSI_BEASISWA_JEPANG',
+            'attribution_source' => $branch->ref_code,
             'full_name' => $input['fullName'],
             'gender' => $input['gender'],
             'birth_date' => $input['birthDate'],

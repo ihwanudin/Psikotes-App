@@ -1,6 +1,18 @@
 # Tugas: organization-payment
 
-Status: **P1 selesai pada 2026-08-31. P2 berikutnya; checkpoint setelah P3 belum lulus.**
+Status: **P1–P8a selesai lokal. Split dan kelanjutan disetujui pengguna pada 2026-08-31; penugasan gelombang pertama di parallel-work.md. P8b–P18 belum selesai. Tidak ada deploy atau migrasi database aktif.**
+
+## Gerbang revisi kolektif
+
+- [x] Kebutuhan pengguna dicatat: cabang memilih beberapa peserta dan membayar sekali; mandiri tetap ada.
+- [x] Draf spesifikasi diperbarui, termasuk menu cabang, alokasi lunas per attempt, dan pencegahan tagihan ganda.
+- [x] Tinjauan spesifikasi kolektif: satu cabang, pelunasan seluruh total, daftar terkunci, tanpa reinvoice otomatis; pengguna menjawab "lanjutkan".
+- [x] Rencana dan tugas schema/reservasi/invoice/alokasi/portal/regresi dipecah ulang setelah tinjauan spesifikasi.
+- [x] Pengguna meninjau dan menyetujui rencana teknis revisi sebelum implementasi P4a melalui jawaban "lanjhutkan".
+
+Checklist P1–P3 berikut mempertahankan bukti historis. P4a–P18 menggantikan daftar
+lama dengan rincian kolektif; status unchecked tetap dipertahankan.
+Lihat analisis dampak pada plan.md dan acuan SPEC-organization-billing.md.
 
 Rujuk [plan.md](plan.md). Tinjau rincian file/kontrak tiap tugas sebelum coding. Lokasi `<new>` adalah nama migrasi yang belum dialokasikan; path baru lain adalah usulan, bukan klaim file sudah ada. Jika satu tugas melebar melebihi lima file, pecah dahulu. Tes selain yang memiliki bukti masih direncanakan; filter tanpa tes bukan keberhasilan.
 
@@ -24,9 +36,11 @@ P1 selesai dengan bukti di dokumen pengujian. Checklist F1 lama tetap terpisah.
 
 **Deskripsi / acceptance:**
 
-- [ ] Schema additive dan RLS teruji; existing tidak otomatis memperoleh izin; default organisasi baru self saja.
+- [x] Schema additive dan RLS teruji; existing tidak otomatis memperoleh izin; default organisasi baru self saja.
 
-**Verification:** `php artisan test --filter=PayerPolicySchemaTest` pada environment test terisolasi; jumlah tes harus nonzero. Untuk P18, verifikasi tautan/runbook dan kesesuaian dengan bukti P17, bukan menjalankan deploy.
+**Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml`: 13 tes/44 assertions; regresi lokal 356 tes/1.798 assertions; runner PostgreSQL disposable 27 tes/105 assertions. Semua lulus tanpa skip; sandbox eksternal tidak dijalankan. Pint kelima file PHP dan PHPStan (0 error) lulus. Bukti/batas: `docs/ORGANIZATION_PAYMENT_TESTING.md`, bagian P2. Tidak ada migrasi DB aktif atau deploy.
+
+**Increment:** schema/model/test/XML (5 file), lalu tes PostgreSQL dan dokumentasi. Lifecycle up/down berisi data diuji pada SQLite; PostgreSQL membuktikan fresh migration, constraint, dan RLS. Perubahan masih working tree karena bergantung pada registry existing yang sebagian belum tracked; tidak melakukan commit massal.
 
 **Dependencies:** P1. **Scope:** M.
 
@@ -36,9 +50,11 @@ P1 selesai dengan bukti di dokumen pengujian. Checklist F1 lama tetap terpisah.
 
 **Deskripsi / acceptance:**
 
-- [ ] Irisan organisasi/sumber/paket dihormati; locked payer dan input palsu diuji; policy tidak membuka entitlement.
+- [x] Irisan organisasi/sumber/paket dihormati; locked payer dan input palsu diuji; policy tidak membuka entitlement.
 
-**Verification:** `php artisan test --filter=PayerPolicyTest` pada environment test terisolasi; jumlah tes harus nonzero. Untuk P18, verifikasi tautan/runbook dan kesesuaian dengan bukti P17, bukan menjalankan deploy.
+**Verification:** unit PayerPolicyTest 59 tes/351 assertions; harness P1–P3 75 tes/414 assertions; regresi lokal 418 tes/2.168 assertions; PostgreSQL disposable 28 tes/114 assertions. Semua lulus tanpa skip, sandbox eksternal tidak dijalankan. Kontrak: `docs/PAYER_POLICY.md`; bukti: `docs/ORGANIZATION_PAYMENT_TESTING.md`.
+
+**Increment:** enum/DTO/resolver/unit test, kemudian feature test SQLite, perluasan test PostgreSQL, registrasi XML, dan dokumentasi. Tidak memasang resolver ke route/provisioning v1. Pemanggil order nanti wajib reload registry dalam transaksi/RLS; keputusan bukan bukti paid/consent/akses.
 
 **Dependencies:** P2. **Scope:** M.
 
@@ -46,216 +62,534 @@ P1 selesai dengan bukti di dokumen pengujian. Checklist F1 lama tetap terpisah.
 
 ### Checkpoint setelah P3
 
-- [ ] Focused tests tiga tugas terakhir dan regresi terkait lulus tanpa skip gerbang.
-- [ ] Pint, PHPStan, lint/typecheck frontend, dan build lulus sesuai perintah plan.
+- [x] Focused tests tiga tugas terakhir dan regresi terkait lulus tanpa skip gerbang.
+- [x] Pint, PHPStan, lint/typecheck frontend, dan build lulus sesuai perintah plan.
 - [ ] Slice berjalan end-to-end pada lingkungan test; RLS/concurrency memakai PostgreSQL bila terkait. Catat bukti dan tinjau bersama pengguna sebelum kelompok berikutnya.
 
-## P4: Kontrol ON/OFF oleh ONCAM
+**Bukti teknis historis:** registry → resolver → keputusan berjalan di SQLite/PostgreSQL runtime. Browser checkout dan concurrency reservasi belum termasuk slice ini. Build memakai output verifikasi terpisah; peringatan existing fontaine/chunk >500 kB dicatat. Persetujuan rencana kolektif mengizinkan tahap P4a, bukan menandai pengujian checkout end-to-end selesai.
 
-**Deskripsi / acceptance:**
+## Tugas revisi kolektif — rencana disetujui
 
-- [ ] Admin ONCAM dapat mengubah policy organisasi/sumber dengan audit; lembaga tidak dapat memberi izin sendiri; OFF tidak membatalkan order historis.
+P4–P18 lama diganti rincian berikut; tidak dianggap selesai. Path baru adalah
+usulan dan diverifikasi sebelum implementasi. Semua task berscope S/M (2–5 file).
+Perubahan pendukung tambahan wajib dipecah dahulu.
+Tidak ada subagent; pekerjaan berurutan pada workspace yang sama.
 
-**Verification:** `php artisan test --filter=FundingPolicyManagementTest` pada environment test terisolasi; jumlah tes harus nonzero. Untuk P18, verifikasi tautan/runbook dan kesesuaian dengan bukti P17, bukan menjalankan deploy.
+Focused test menggunakan path eksplisit agar tidak bergantung pada registrasi XML.
+Tes baru harus ada dan jumlah tes nonzero sebelum dinilai lulus. File PostgreSQL
+hanya dijalankan dengan runner disposable. Dokumen verifikasi diperbarui pada
+checkpoint; jangan memasukkan tests/Postgres ke suite SQLite.
+
+## P4a: Otorisasi dan audit policy
+
+**Acceptance:**
+
+- [x] Hanya SuperAdmin ONCAM boleh mengubah izin pembayar; input invalid ditolak dan audit mencatat aktor/perubahan dalam transaksi. Urutan lock registry ditetapkan bagi reservasi berikutnya; race dengan reservasi dibuktikan pada P7/P17, bukan diklaim dari P4a.
 
 **Dependencies:** P3. **Scope:** M.
 
-**Files likely touched:** `app/Filament/Resources/IntegrationSources/IntegrationSourceResource.php`, `app/Policies/FundingPolicyPolicy.php`, `app/Actions/Payments/UpdateFundingPolicy.php`, `tests/Feature/Admin/FundingPolicyManagementTest.php`.
+**Files likely touched:** `app/Policies/FundingPolicyPolicy.php`, `app/Actions/Payments/UpdateFundingPolicy.php`, `tests/Feature/Admin/FundingPolicyManagementTest.php`.
+
+**Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Admin/FundingPolicyManagementTest.php`
+
+**Bukti:** 43 tes/166 assertions terfokus; regresi lokal 461 tes/2.334 assertions;
+runner PostgreSQL disposable 31 tes/128 assertions. Semuanya lulus tanpa skip
+(sandbox eksternal tidak dijalankan). Pint seluruh proyek dan PHPStan 0 error.
+Tes PostgreSQL tambahan berada di `tests/Postgres/FundingPolicyManagementTest.php`.
+Kontrak: `docs/PAYER_POLICY.md`; rincian RED/GREEN/batas di
+`docs/ORGANIZATION_PAYMENT_TESTING.md`. Belum dipasang ke panel/route; P4b berikutnya.
+
+## P4b: Kontrol policy pada panel ONCAM
+
+**Acceptance:**
+
+- [x] Form organisasi dan sumber menampilkan pilihan self/organization serta lock; menggunakan action P4a, bukan save bebas. BranchAdmin tidak bisa memberi izin sendiri.
+
+**Dependencies:** P4a. **Scope:** M.
+
+**Files touched:** `app/Filament/Actions/FundingPolicyAction.php`, `app/Filament/Resources/IntegrationSources/IntegrationSourceResource.php`, `app/Filament/Resources/IntegrationSources/Pages/EditIntegrationSource.php`, `app/Filament/Resources/IntegrationClients/IntegrationClientResource.php`, `tests/Feature/Admin/FundingPolicyPanelTest.php`.
+
+**Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Admin/FundingPolicyPanelTest.php`
+
+**Bukti:** 12 tes/98 assertions; regresi lokal 473 tes/2.432 assertions lulus
+tanpa skip, sandbox eksternal tidak dijalankan. Pint dan PHPStan 0 error.
+Browser menggunakan fixture sintetis SQLite terpisah: simpan lembaga/sumber,
+lock, batal, NULL, dan validasi inline. Rincian/batas di
+`docs/ORGANIZATION_PAYMENT_TESTING.md`. Increment pendukung terpisah:
+`tools/testing/serve-funding-panel.php`, kemudian dokumentasi. Tidak ada
+migrasi DB aktif, deploy, invoice atau WA nyata; perubahan masih working tree.
 
 ## P5: Kontrak checkout opt-in
 
-**Deskripsi / acceptance:**
+**Increment pelaksanaan:** (1) adapter, Form Request, config, tes kontrak,
+dan dokumen kontrak; (2) guard provisioning umum/seleksi sebelum replay, serta
+tes fallback; (3) verifikasi dan dokumentasi checkpoint. Masing-masing maksimal
+lima file. Tidak menambahkan endpoint provisioning checkout sebelum P9.
 
-- [ ] Versi baru dan mapping legacy eksplisit; unknown/SPONSORED/INTERNAL/WAIVED tidak otomatis paid; sumber cutover tidak fallback v1.
+**Acceptance:**
 
-**Verification:** `php artisan test --filter=CheckoutContractCompatibilityTest` pada environment test terisolasi; jumlah tes harus nonzero. Untuk P18, verifikasi tautan/runbook dan kesesuaian dengan bukti P17, bukan menjalankan deploy.
+- [x] Kontrak baru tidak membuat invoice/ready otomatis; mapping legacy hanya eksplisit. Sumber cutover tidak menerima fallback v1; test compatibility mempertahankan sumber legacy yang belum cutover.
 
-**Dependencies:** P4. **Scope:** M.
+**Dependencies:** P4b. **Scope:** M.
 
-**Files likely touched:** `app/Services/Integrations/CheckoutContractAdapter.php`, `app/Http/Requests/ProvisionCheckoutParticipantRequest.php`, `tests/Feature/Integrations/CheckoutContractCompatibilityTest.php`, `docs/ORGANIZATION_CHECKOUT_CONTRACT.md`.
+**Files likely touched:** `app/Services/Integrations/CheckoutContractAdapter.php`, `app/Http/Requests/ProvisionCheckoutParticipantRequest.php`, `config/assessment_integration.php`, `tests/Feature/Integrations/CheckoutContractCompatibilityTest.php`, `docs/ORGANIZATION_CHECKOUT_CONTRACT.md`.
 
-## P6: Schema tagihan attempt
+**Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Integrations/CheckoutContractCompatibilityTest.php`
 
-**Deskripsi / acceptance:**
+**Bukti:** 25 tes/99 assertions; regresi 498 tes/2.531 assertions; PostgreSQL
+33 tes/134 assertions lulus, tanpa skip. Sandbox eksternal tidak dijalankan.
+Pint/PHPStan lulus. Increment tambahan: dua action provisioning legacy dan
+`tests/Postgres/CheckoutContractTest.php`; rincian di
+`docs/ORGANIZATION_CHECKOUT_VALIDATION.md`. Tidak ada route checkout publik,
+migrasi/deploy/cutover aktif, invoice atau pesan nyata. Masih working tree.
 
-- [ ] FK payer/attempt dan unique order per attempt teruji; entitlement legacy tidak diubah; RLS database baru diuji dengan role runtime.
+### Checkpoint setelah P5
 
-**Verification:** `php artisan test --filter=AttemptBillingSchemaTest` pada environment test terisolasi; jumlah tes harus nonzero. Untuk P18, verifikasi tautan/runbook dan kesesuaian dengan bukti P17, bukan menjalankan deploy.
+- [x] Focused tests dan regresi terkait lulus tanpa skip; bukti baru dicatat di docs/ORGANIZATION_CHECKOUT_VALIDATION.md.
+- [x] Pint/PHPStan sesuai dampak lulus; query RLS diuji PostgreSQL terisolasi. Tidak ada perubahan frontend, sehingga browser/lint/typecheck/build tidak diulang. Race/cutover konkuren belum diklaim, batas tercatat.
+- [x] Slice diserahkan dan pengguna menjawab "lanjutkan" untuk P6a; tidak ada izin deploy, transaksi, atau notifikasi nyata.
+
+## P6a: Schema tagihan dan biaya
+
+**Increment:** kontrak skema + migrasi/model/tes SQLite (maksimal lima file),
+kemudian tes PostgreSQL dan dokumentasi. Proteksi awal kedua tabel service-only;
+kebijakan akses panel/tenant lengkap tetap P6c. Tidak ada writer/API billing baru.
+
+**Acceptance:**
+
+- [x] Tambahkan assessment_bills dan assessment_charges dengan snapshot IDR, FK scope, unique attempt/reference/idempotency; orders lama tetap utuh. Up/down populated dan defaults diuji terisolasi.
 
 **Dependencies:** P5. **Scope:** M.
 
-**Files likely touched:** `database/migrations/<new>_add_attempt_billing.php`, `app/Models/Order.php`, `app/Models/AssessmentEntitlement.php`, `tests/Feature/Database/AttemptBillingSchemaTest.php`.
+**Files likely touched:** `database/migrations/<new>_create_assessment_billing.php`, `app/Models/AssessmentBill.php`, `app/Models/AssessmentCharge.php`, `tests/Feature/Database/AssessmentBillingSchemaTest.php`.
 
-### Checkpoint setelah P6
+**Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Database/AssessmentBillingSchemaTest.php`
 
-- [ ] Focused tests tiga tugas terakhir dan regresi terkait lulus tanpa skip gerbang.
-- [ ] Pint, PHPStan, lint/typecheck frontend, dan build lulus sesuai perintah plan.
-- [ ] Slice berjalan end-to-end pada lingkungan test; RLS/concurrency memakai PostgreSQL bila terkait. Catat bukti dan tinjau bersama pengguna sebelum kelompok berikutnya.
+**Bukti:** 10 tes/40 assertions terfokus; regresi lokal 508 tes/2.571 assertions;
+PostgreSQL disposable 66 tes/184 assertions. Semua lulus tanpa skip; sandbox
+eksternal tidak dijalankan. Pint/PHPStan dan git diff --check lulus. Lifecycle
+populated down/up diuji SQLite; CHECK, FK scope existing, unique dan FORCE RLS
+dibuktikan PostgreSQL runtime. Kontrak: docs/ASSESSMENT_BILLING_SCHEMA.md;
+RED/GREEN, diagnosis konteks tes, review dan batas: docs/ORGANIZATION_CHECKOUT_VALIDATION.md.
+Tidak ada bill-items, writer, invoice/akses otomatis, atau migrasi DB aktif.
 
-## P7: Reservasi order idempotent
+## P6b: Keanggotaan dan hak per attempt
 
-**Deskripsi / acceptance:**
+**Increment pelaksanaan:** kontrak + fixture sintetis bersama + tes SQLite;
+kemudian dua migrasi/dua model; kemudian tes PostgreSQL dan penyesuaian urutan
+rollback tes P6a; terakhir dokumentasi/verifikasi. Tidak mengubah migrasi P6a
+yang sudah ada. Service-only RLS awal tetap berlaku hingga kebijakan P6c.
 
-- [ ] Harga IDR dari DB tersnapshot; retry/parallel hanya satu order; participant/payer/attempt wajib satu scope dan tidak dapat diganti.
+**Acceptance:**
 
-**Verification:** `php artisan test --filter=AssessmentOrderTest` pada environment test terisolasi; jumlah tes harus nonzero. Untuk P18, verifikasi tautan/runbook dan kesesuaian dengan bukti P17, bukan menjalankan deploy.
+- [x] Tambahkan assessment_bill_items dengan charge_id UNIQUE dan assessment_entitlements. Parent/child/attempt satu scope; bill self satu peserta; FK komposit atau constraint tambahan membuktikan tidak ada kaitan silang.
 
-**Dependencies:** P6. **Scope:** M.
+**Dependencies:** P6a. **Scope:** M.
 
-**Files likely touched:** `app/Actions/Payments/CreateAssessmentOrder.php`, `app/Services/Payments/AssessmentPriceSnapshot.php`, `tests/Feature/Payments/AssessmentOrderTest.php`.
+**Files likely touched:** `database/migrations/<new>_create_assessment_bill_items.php`, `database/migrations/<new>_create_assessment_entitlements.php`, `app/Models/AssessmentBillItem.php`, `app/Models/AssessmentEntitlement.php`, `tests/Feature/Database/AssessmentBillItemsSchemaTest.php`.
 
-## P8: Gate akses khusus attempt
+**Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Database/AssessmentBillItemsSchemaTest.php`
 
-**Deskripsi / acceptance:**
+**Bukti:** 12 tes/65 assertions terfokus; regresi lokal 520 tes/2.636 assertions;
+PostgreSQL disposable 98 tes/327 assertions. Semua lulus tanpa skip, sandbox
+eksternal dikecualikan. Pint/PHPStan dan git diff --check lulus. PostgreSQL
+menolak scope/payer palsu, klaim duplikat, status/waktu invalid, dan insert
+cabang. Lifecycle populated down/up masih SQLite; bukti PostgreSQL rollback
+populated dan kebijakan tenant lengkap tetap P6c. Kontrak dan rincian RED/GREEN:
+docs/ASSESSMENT_BILLING_SCHEMA.md dan docs/ORGANIZATION_CHECKOUT_VALIDATION.md.
+Belum ada reservasi, invoice, pelunasan atau pembukaan akses otomatis.
 
-- [ ] Gate memeriksa attempt milik principal; tidak fallback ke entitlement lama; paid tanpa consent/identitas yang diwajibkan tetap ditolak.
+## P6c: RLS dan integritas PostgreSQL
 
-**Verification:** `php artisan test --filter=AttemptEntitlementGateTest` pada environment test terisolasi; jumlah tes harus nonzero. Untuk P18, verifikasi tautan/runbook dan kesesuaian dengan bukti P17, bukan menjalankan deploy.
+**Increment:** matriks akses dan tes RLS; migrasi kebijakan baca + penyesuaian
+tes historis P6a/P6b (maksimal lima file); tes lifecycle PostgreSQL berisi fixture
+lama pada koneksi owner disposable khusus DDL; terakhir regresi/dokumentasi.
+Tidak memberi hak tulis langsung ke pengguna atau membuat route baru.
 
-**Dependencies:** P7. **Scope:** M.
+**Acceptance:**
 
-**Files likely touched:** `app/Services/ParticipantAuth/AssessmentEntitlementGate.php`, `app/Http/Controllers/StartParticipantSessionController.php`, `app/Http/Requests/StartAssessmentSessionRequest.php`, `tests/Feature/Auth/AttemptEntitlementGateTest.php`.
+- [x] FORCE RLS ke empat tabel; tanpa context/lintas cabang ditolak, peserta tidak SELECT bill/item batch. Direct SQL runtime menolak duplikasi charge dan hubungan lintas tenant; migrasi berisi fixture lama diuji tanpa DB aktif.
 
-## P9: Provisioning checkout tanpa akses dini
+**Dependencies:** P6b. **Scope:** M.
 
-**Deskripsi / acceptance:**
+**Files likely touched:** `database/migrations/<new>_secure_assessment_billing.php`, `tests/Postgres/AssessmentBillingRlsTest.php`, `tests/Postgres/AssessmentBillingIntegrityTest.php`.
 
-- [ ] Profil lengkap/parsial tersimpan tanpa duplikasi dalam scope sumber; assessment PROVISIONED tanpa ready otomatis; kontrak v1 tidak diam-diam berubah.
+**Bukti:** migrasi 000500, AssessmentBillingRlsTest dan AssessmentBillingMigrationTest;
+tes integritas SQL P6a/P6b dipakai ulang, bukan menduplikasi file IntegrityTest.
+PostgreSQL disposable 121 tes/504 assertions dan regresi 520 tes/2.636 assertions
+lulus tanpa skip. Pint/PHPStan serta git diff --check lulus. Uji lifecycle owner
+dibatasi database bermarker disposable; uji izin tetap runtime non-owner.
+Matriks akses dan batas: docs/ASSESSMENT_BILLING_SCHEMA.md;
+rincian RED/GREEN/checkpoint: docs/ORGANIZATION_CHECKOUT_VALIDATION.md.
 
-**Verification:** `php artisan test --filter=CheckoutProvisioningTest` pada environment test terisolasi; jumlah tes harus nonzero. Untuk P18, verifikasi tautan/runbook dan kesesuaian dengan bukti P17, bukan menjalankan deploy.
+**Verification:** `powershell -NoProfile -ExecutionPolicy Bypass -File tools/testing/run-org-postgres.ps1`
 
-**Dependencies:** P8. **Scope:** M.
+### Checkpoint setelah P6c
+
+- [x] Focused tests dan regresi terkait lulus tanpa skip; bukti baru dicatat di docs/ORGANIZATION_CHECKOUT_VALIDATION.md.
+- [x] Pint/PHPStan lulus; RLS/lifecycle PostgreSQL terisolasi. Tidak ada perubahan UI sehingga browser/lint/typecheck/build frontend tidak diulang; race reservasi belum diklaim, tetap P7/P17.
+- [x] Slice P6 diserahkan; pengguna menjawab "lanjutkan" untuk P7a. Tidak ada izin deploy, transaksi, atau notifikasi nyata.
+
+## P7a: Snapshot dan preview biaya
+
+**Increment:** kontrak + kalkulator snapshot + unit test; action/config/fixture
+preview/feature test (maksimal lima file); tes PostgreSQL; regresi/dokumentasi.
+Preview hanya service context dan tidak terhubung route. Attempt wajib marker
+metadata checkout_contract_version=checkout-v2; P9 harus menulis marker server
+ini. Legacy tidak otomatis memenuhi syarat hanya karena registry telah cutover.
+
+**Acceptance:**
+
+- [x] Harga paket/konsultasi dibaca DB, jumlah integer dengan pemeriksaan overflow; preview memuat hash snapshot dan alasan item tidak layak. Limit batch dari config (usulan 100), free dipisah, preview tidak mereservasi.
+
+**Dependencies:** P6c. **Scope:** M.
+
+**Files likely touched:** `app/Services/Payments/AssessmentPriceSnapshot.php`, `app/Actions/Payments/PreviewAssessmentBill.php`, `config/assessment_billing.php`, `tests/Feature/Payments/AssessmentBillPreviewTest.php`.
+
+**Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Payments/AssessmentBillPreviewTest.php`
+
+**Bukti:** 11 tes kalkulator/16 assertions, 22 tes preview/48 assertions
+(termasuk guard soft-delete); regresi 553 tes/2.700 assertions; PostgreSQL
+disposable 127 tes/531 assertions. Seluruhnya lulus tanpa skip, sandbox eksternal
+dikecualikan. Pint/PHPStan dan git diff --check lulus. Kontrak internal:
+docs/ASSESSMENT_BILL_PREVIEW.md; bukti/batas: docs/ORGANIZATION_CHECKOUT_VALIDATION.md.
+Tidak ada route/UI baru, reservasi, invoice, migrasi DB aktif, atau harga di kode.
+
+## P7b: Reservasi mandiri dan kolektif
+
+**Increment:** validasi canonical bersama preview/DTO; action internal dan tes
+feature (empat file); tes PostgreSQL dua proses (satu file); dokumentasi/review
+terpisah. Tidak membuat endpoint/UI atau mengaktifkan checkout-v2.
+
+**Acceptance:**
+
+- [x] Satu action/claim untuk self dan collective; input dipetakan ke principal, lock terurut, policy/harga reload. Seluruh daftar valid baru commit induk+items; key sama payload beda ditolak; race/total berubah tidak menerbitkan invoice parsial.
+
+**Dependencies:** P7a. **Scope:** M.
+
+**Files likely touched:** `app/Actions/Payments/ReserveAssessmentBill.php`, `app/Data/Payments/AssessmentBillSelection.php`, `tests/Feature/Payments/AssessmentBillReservationTest.php`, `tests/Postgres/AssessmentBillReservationTest.php`.
+
+**Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Payments/AssessmentBillReservationTest.php` Jalankan juga runner PostgreSQL disposable.
+
+**Bukti terfokus:** 29 tes/114 assertions lulus. Satu bill untuk 10/100 attempt,
+limit+1 ditolak, IDR dari DB, snapshot existing tetap, free terpisah, retry
+canonical, role/tenant persisted, policy/harga/kanal berubah, terminal claim,
+serta rollback item kelima. PostgreSQL: tujuh race dua proses + satu rollback;
+suite 135 tes/675 assertions lulus. Review membatch pembacaan charge agar tidak
+SELECT per peserta; verifikasi akhir setelah perbaikan: 582 tes regresi/2.814
+assertions dan PostgreSQL 135/675 lulus. Pint/PHPStan dan whitespace diff bersih.
+Kontrak: docs/ASSESSMENT_BILL_RESERVATION.md. Integrasi autentikasi HTTP dan
+proyeksi privat tetap tugas tahap berikutnya; action hanya menerima principal
+server dalam service context, kemudian memuat ulang role/identitasnya.
+
+## P8a: Gate akses khusus attempt
+
+**Increment:** principal attempt + prasyarat + gate internal + fixture/feature
+(lima file); tes PostgreSQL terpisah; dokumentasi/checkpoint. FormRequest dan
+controller start tidak ditambah sebagai stub tanpa verifier token: pemasangan
+ke jalur HTTP berada pada P8b bersama token assessment/checkout yang berbeda.
+
+**Acceptance:**
+
+- [x] Gate memeriksa principal, settlement tepat (paid bill+item atau free eksplisit), consent/identitas dan test_type. Tidak memakai entitlement legacy untuk attempt baru atau mempercayai total batch sebagai hak akses.
+
+**Dependencies:** P7b. **Scope:** M.
+
+**Files likely touched:** `app/Services/ParticipantAuth/AssessmentEntitlementGate.php`, `app/Http/Requests/StartAssessmentSessionRequest.php`, `tests/Feature/Auth/AttemptEntitlementGateTest.php`.
+
+**Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Auth/AttemptEntitlementGateTest.php`
+
+**Bukti:** 44 tes feature/55 assertions; regresi 626/2.869; PostgreSQL
+disposable 144/690, seluruhnya lulus tanpa skip. Bug perbandingan timestamp
+ber-offset direproduksi lalu diperbaiki dengan perbandingan waktu Carbon;
+PG memakai clock beku pada detik sama. Pint/PHPStan/diff check lulus.
+Kontrak/batas: docs/ASSESSMENT_ACCESS_GATE.md. Belum terhubung route/token/start
+session; tidak mengubah login legacy, settlement, UI, atau database aktif.
+
+### Checkpoint setelah P8a
+
+- [x] Focused tests dan regresi terkait lulus tanpa skip; bukti baru dicatat di docs/ORGANIZATION_CHECKOUT_VALIDATION.md.
+- [x] Pint/PHPStan lulus; PostgreSQL terisolasi termasuk regresi race P7b. Tidak ada perubahan UI sehingga browser/lint/typecheck/build frontend tidak diulang.
+- [ ] Tinjau slice dengan pengguna sebelum kelompok berikutnya; tidak ada deploy, transaksi, atau notifikasi nyata.
+
+## P8b: Aktivasi individual setelah syarat lengkap
+
+**Acceptance:**
+
+- [ ] Service aktivasi dipanggil setelah settlement maupun pemenuhan consent; ready/outbox per attempt idempotent. Satu peserta belum consent tidak menghalangi yang lain; token attempt dan token checkout dibedakan di jalur start.
+
+**Dependencies:** P8a. **Scope:** M.
+
+**Files likely touched:** `app/Actions/Payments/ActivateSettledAssessment.php`, `app/Actions/Notifications/EnqueueAssessmentActivation.php`, `app/Http/Controllers/StartParticipantSessionController.php`, `tests/Feature/Auth/SettledAssessmentActivationTest.php`.
+
+**Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Auth/SettledAssessmentActivationTest.php`
+
+## P9: Provisioning tanpa akses dini
+
+**Acceptance:**
+
+- [ ] Persist attempt PROVISIONED, profil lengkap/parsial dalam scope autentikasi; tidak membuat invoice untuk organization. Sediakan jalur kontrak baru gated, tetap tertutup sampai checkout end-to-end siap.
+
+**Dependencies:** P8b. **Scope:** M.
 
 **Files likely touched:** `app/Actions/Integrations/ProvisionCheckoutParticipant.php`, `app/Http/Controllers/CheckoutParticipantProvisioningController.php`, `routes/api.php`, `tests/Feature/Integrations/CheckoutProvisioningTest.php`.
 
-### Checkpoint setelah P9
+**Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Integrations/CheckoutProvisioningTest.php`
 
-- [ ] Focused tests tiga tugas terakhir dan regresi terkait lulus tanpa skip gerbang.
-- [ ] Pint, PHPStan, lint/typecheck frontend, dan build lulus sesuai perintah plan.
-- [ ] Slice berjalan end-to-end pada lingkungan test; RLS/concurrency memakai PostgreSQL bila terkait. Catat bukti dan tinjau bersama pengguna sebelum kelompok berikutnya.
+## P10a: Lookup invoice dengan reference tetap
 
-## P10: Invoice gateway dengan retry aman
+**Acceptance:**
 
-**Deskripsi / acceptance:**
-
-- [ ] Fake gateway dipanggil di luar transaksi reservasi; reference stabil saat timeout/retry; total nol tidak memanggil gateway.
-
-**Verification:** `php artisan test --filter=AssessmentInvoiceTest` pada environment test terisolasi; jumlah tes harus nonzero. Untuk P18, verifikasi tautan/runbook dan kesesuaian dengan bukti P17, bukan menjalankan deploy.
+- [ ] Tentukan kontrak lookup/recovery read-only yang eksplisit; adapter/fake konsisten. Hasil unknown bukan izin POST ulang; provider tidak menerima total nol. Pertahankan kontrak legacy lewat tes regresi.
 
 **Dependencies:** P9. **Scope:** M.
 
-**Files likely touched:** `app/Actions/Payments/IssueAssessmentInvoice.php`, `app/Services/Payments/AssessmentInvoiceReconciler.php`, `tests/Feature/Payments/AssessmentInvoiceTest.php`.
+**Files likely touched:** `app/Contracts/PaymentProvider.php`, `app/Services/Payments/XenditProvider.php`, `app/Services/Payments/FakePaymentProvider.php`, `tests/Feature/Payments/AssessmentInvoiceLookupTest.php`.
 
-## P11: Finalisasi pembayaran attempt
+**Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Payments/AssessmentInvoiceLookupTest.php`
 
-**Deskripsi / acceptance:**
+### Checkpoint setelah P10a
 
-- [ ] Autentikasi/nominal/currency/reference divalidasi; hanya entitlement attempt benar diaktifkan dengan outbox idempotent; paid tidak turun akibat expired terlambat.
+- [ ] Focused tests dan regresi terkait lulus tanpa skip; bukti baru dicatat di docs/ORGANIZATION_CHECKOUT_VALIDATION.md.
+- [ ] Pint/PHPStan dan lint/typecheck/build sesuai dampak; UI diperiksa browser, RLS/race memakai PostgreSQL terisolasi.
+- [ ] Tinjau slice dengan pengguna sebelum kelompok berikutnya; tidak ada deploy, transaksi, atau notifikasi nyata.
 
-**Verification:** `php artisan test --filter=AssessmentPaymentFinalizationTest` pada environment test terisolasi; jumlah tes harus nonzero. Untuk P18, verifikasi tautan/runbook dan kesesuaian dengan bukti P17, bukan menjalankan deploy.
+## P10b: Satu invoice untuk satu bill
 
-**Dependencies:** P10. **Scope:** M.
+**Acceptance:**
 
-**Files likely touched:** `app/Actions/Payments/FinalizeAssessmentPayment.php`, `app/Actions/Payments/VerifyManualTransfer.php`, `app/Http/Controllers/XenditWebhookController.php`, `app/Actions/Notifications/EnqueueParticipantActivation.php`, `tests/Feature/Payments/AssessmentPaymentFinalizationTest.php`.
+- [ ] Claim issuance worker tunggal, request gateway setelah commit; gunakan AB_ reference/total induk. Sepuluh peserta menghasilkan satu panggilan create yang sah; crash/timeout menyimpan unknown dan tidak menggandakan invoice.
 
-## P12: Portal tagihan lembaga
+**Dependencies:** P10a. **Scope:** M.
 
-**Deskripsi / acceptance:**
+**Files likely touched:** `app/Actions/Payments/IssueAssessmentBillInvoice.php`, `app/Jobs/IssueAssessmentBillInvoiceJob.php`, `app/Enums/AssessmentBillStatus.php`, `tests/Feature/Payments/AssessmentBillInvoiceTest.php`.
 
-- [ ] Lembaga melihat/membayar/mengunggah bukti tagihan sendiri saja; hanya ONCAM berwenang memverifikasi; hasil psikologis tidak ikut terbuka.
+**Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Payments/AssessmentBillInvoiceTest.php`
 
-**Verification:** `php artisan test --filter=OrganizationOrderAccessTest` pada environment test terisolasi; jumlah tes harus nonzero. Untuk P18, verifikasi tautan/runbook dan kesesuaian dengan bukti P17, bukan menjalankan deploy.
+## P10c: Rekonsiliasi invoice tertunda
 
-**Dependencies:** P11. **Scope:** M.
+**Acceptance:**
 
-**Files likely touched:** `app/Filament/Resources/OrganizationOrders/OrganizationOrderResource.php`, `app/Policies/OrganizationOrderPolicy.php`, `app/Actions/Payments/StoreOrganizationPaymentProof.php`, `tests/Feature/Admin/OrganizationOrderAccessTest.php`.
+- [ ] Lookup reference yang sama, cocokkan nominal/currency/reference; lanjutkan tanpa create ulang setelah unknown. Jadwal hanya memproses bill yang diizinkan dan bounded; perbedaan/ketidakpastian menuju petugas, bukan release claim. Tahap ini menghasilkan event ternormalisasi tanpa aktivasi akses; finalizer dihubungkan pada P11b, scheduler tetap nonaktif sampai itu teruji.
 
-### Checkpoint setelah P12
+**Dependencies:** P10b. **Scope:** M.
 
-- [ ] Focused tests tiga tugas terakhir dan regresi terkait lulus tanpa skip gerbang.
-- [ ] Pint, PHPStan, lint/typecheck frontend, dan build lulus sesuai perintah plan.
-- [ ] Slice berjalan end-to-end pada lingkungan test; RLS/concurrency memakai PostgreSQL bila terkait. Catat bukti dan tinjau bersama pengguna sebelum kelompok berikutnya.
+**Files likely touched:** `app/Services/Payments/ReconcileAssessmentBill.php`, `app/Console/Commands/ReconcileAssessmentBillsCommand.php`, `routes/console.php`, `tests/Feature/Payments/AssessmentBillReconciliationTest.php`.
 
-## P13: Token checkout terbatas
+**Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Payments/AssessmentBillReconciliationTest.php`
 
-**Deskripsi / acceptance:**
+## P11a: Pelunasan induk dan semua alokasi
 
-- [ ] Token hashed, expiring, single-use dengan scope attempt; reissue mencabut token lama; token checkout tidak memperoleh hak mulai tes.
+**Acceptance:**
 
-**Verification:** `php artisan test --filter=CheckoutHandoffTest` pada environment test terisolasi; jumlah tes harus nonzero. Untuk P18, verifikasi tautan/runbook dan kesesuaian dengan bukti P17, bukan menjalankan deploy.
+- [ ] Paid bill dan semua settled_at, audit, aktivasi yang memenuhi syarat, serta outbox commit atomik; kegagalan setelah item kelima rollback semuanya. Event replay no-op; nominal parsial/berlebih ditolak, paid tidak turun oleh expired.
 
-**Dependencies:** P12. **Scope:** M.
+**Dependencies:** P10c. **Scope:** M.
 
-**Files likely touched:** `database/migrations/<new>_create_checkout_handoffs.php`, `app/Models/CheckoutHandoff.php`, `app/Actions/Integrations/IssueCheckoutHandoff.php`, `app/Actions/Integrations/ConsumeCheckoutHandoff.php`, `tests/Feature/Integrations/CheckoutHandoffTest.php`.
+**Files likely touched:** `app/Actions/Payments/FinalizeAssessmentBill.php`, `app/Services/Payments/AssessmentBillEventHandler.php`, `tests/Feature/Payments/AssessmentBillFinalizationTest.php`, `tests/Postgres/AssessmentBillSettlementTest.php`.
+
+**Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Payments/AssessmentBillFinalizationTest.php` Jalankan juga runner PostgreSQL disposable.
+
+### Checkpoint setelah P11a
+
+- [ ] Focused tests dan regresi terkait lulus tanpa skip; bukti baru dicatat di docs/ORGANIZATION_CHECKOUT_VALIDATION.md.
+- [ ] Pint/PHPStan dan lint/typecheck/build sesuai dampak; UI diperiksa browser, RLS/race memakai PostgreSQL terisolasi.
+- [ ] Tinjau slice dengan pengguna sebelum kelompok berikutnya; tidak ada deploy, transaksi, atau notifikasi nyata.
+
+## P11b: Routing webhook dan pemeriksaan status
+
+**Acceptance:**
+
+- [ ] Setelah autentikasi provider, dispatcher membedakan bill vs legacy dalam event processor idempotent. AB_ tak dikenal ditolak tanpa fallback; checkStatus/reconciliation memakai finalizer yang sama; regresi webhook/order legacy tetap lulus.
+
+**Dependencies:** P11a. **Scope:** M.
+
+**Files likely touched:** `app/Services/Payments/PaymentEventDispatcher.php`, `app/Services/Payments/PaymentWebhookProcessor.php`, `app/Services/Payments/ReconcileAssessmentBill.php`, `tests/Feature/Payments/AssessmentBillWebhookTest.php`.
+
+**Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Payments/AssessmentBillWebhookTest.php`
+
+## P11c: Verifikasi transfer oleh ONCAM
+
+**Acceptance:**
+
+- [ ] SuperAdmin saja memverifikasi bukti bill dengan audit dan total tepat; cabang/staff dengan flag legacy tetap ditolak. Memakai finalizer yang sama, tidak jalur paid manual lain.
+
+**Dependencies:** P11b. **Scope:** M.
+
+**Files likely touched:** `app/Policies/AssessmentBillPolicy.php`, `app/Actions/Payments/VerifyAssessmentBillTransfer.php`, `app/Filament/Resources/AssessmentBills/AssessmentBillResource.php`, `app/Filament/Resources/AssessmentBills/Pages/ListAssessmentBills.php`, `tests/Feature/Admin/AssessmentBillVerificationTest.php`.
+
+**Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Admin/AssessmentBillVerificationTest.php`
+
+## P12a: Daftar dan detail tagihan cabang
+
+**Acceptance:**
+
+- [ ] List/detail hanya cabang sendiri; jumlah peserta/total/status/due/invoice dari server. Paginator/filter paid menjadi riwayat dari data yang sama, tanpa ledger duplikat; peserta tidak masuk panel ini.
+
+**Dependencies:** P11c. **Scope:** M.
+
+**Files likely touched:** `app/Filament/Resources/OrganizationBills/OrganizationBillResource.php`, `app/Filament/Resources/OrganizationBills/Pages/ListOrganizationBills.php`, `app/Filament/Resources/OrganizationBills/Pages/ViewOrganizationBill.php`, `tests/Feature/Admin/OrganizationBillAccessTest.php`.
+
+**Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Admin/OrganizationBillAccessTest.php`
+
+### Checkpoint setelah P12a
+
+- [ ] Focused tests dan regresi terkait lulus tanpa skip; bukti baru dicatat di docs/ORGANIZATION_CHECKOUT_VALIDATION.md.
+- [ ] Pint/PHPStan dan lint/typecheck/build sesuai dampak; UI diperiksa browser, RLS/race memakai PostgreSQL terisolasi.
+- [ ] Tinjau slice dengan pengguna sebelum kelompok berikutnya; tidak ada deploy, transaksi, atau notifikasi nyata.
+
+## P12b: Bayar banyak peserta dari menu cabang
+
+**Acceptance:**
+
+- [ ] Bulk selection attempt layak → preview → konfirmasi ReserveAssessmentBill; tampilkan alasan disabled dan perubahan harga/item. Invoice sekali, anggota terkunci, reload melanjutkan bill yang sama; keyboard/mobile diuji.
+
+**Dependencies:** P12a. **Scope:** M.
+
+**Files likely touched:** `app/Filament/Resources/AssessmentParticipants/AssessmentParticipantResource.php`, `app/Filament/Actions/CreateCollectiveBillAction.php`, `tests/Feature/Admin/CollectiveBillSelectionTest.php`.
+
+**Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Admin/CollectiveBillSelectionTest.php`
+
+## P12c: Bukti transfer privat dan riwayat
+
+**Acceptance:**
+
+- [ ] Cabang unggah bukti satu bill; tipe/ukuran/path divalidasi server, download privat berotorisasi. Status unggahan bukan paid; riwayat/verifikasi hanya dibaca sesuai peran.
+
+**Dependencies:** P12b. **Scope:** M.
+
+**Files likely touched:** `app/Actions/Payments/StoreAssessmentBillProof.php`, `app/Http/Controllers/Admin/AssessmentBillProofController.php`, `routes/web.php`, `app/Filament/Resources/OrganizationBills/Pages/ViewOrganizationBill.php`, `tests/Feature/Admin/AssessmentBillProofTest.php`.
+
+**Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Admin/AssessmentBillProofTest.php`
+
+## P13a: Terbitkan token checkout terbatas
+
+**Acceptance:**
+
+- [ ] Hash token short-lived terikat attempt/tujuan; reissue mencabut lama tanpa duplikasi charge/bill; tidak memuat PII/credential di URL/log.
+
+**Dependencies:** P12c. **Scope:** M.
+
+**Files likely touched:** `database/migrations/<new>_create_checkout_handoffs.php`, `app/Models/CheckoutHandoff.php`, `app/Actions/Integrations/IssueCheckoutHandoff.php`, `tests/Feature/Integrations/CheckoutHandoffIssueTest.php`.
+
+**Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Integrations/CheckoutHandoffIssueTest.php`
+
+### Checkpoint setelah P13a
+
+- [ ] Focused tests dan regresi terkait lulus tanpa skip; bukti baru dicatat di docs/ORGANIZATION_CHECKOUT_VALIDATION.md.
+- [ ] Pint/PHPStan dan lint/typecheck/build sesuai dampak; UI diperiksa browser, RLS/race memakai PostgreSQL terisolasi.
+- [ ] Tinjau slice dengan pengguna sebelum kelompok berikutnya; tidak ada deploy, transaksi, atau notifikasi nyata.
+
+## P13b: Konsumsi token satu kali
+
+**Acceptance:**
+
+- [ ] Consume atomik dengan expiry/replay checks, menghasilkan scope sesi checkout saja. Dua request paralel tidak menghasilkan sesi sah ganda; token invalid tidak fallback ke registrasi cabang default.
+
+**Dependencies:** P13a. **Scope:** M.
+
+**Files likely touched:** `app/Actions/Integrations/ConsumeCheckoutHandoff.php`, `tests/Feature/Integrations/CheckoutHandoffConsumeTest.php`, `tests/Postgres/CheckoutHandoffReplayTest.php`.
+
+**Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Integrations/CheckoutHandoffConsumeTest.php` Jalankan juga runner PostgreSQL disposable.
 
 ## P14: Sesi ringkasan privat
 
-**Deskripsi / acceptance:**
+**Acceptance:**
 
-- [ ] Handoff menghasilkan sesi privat/CSRF tanpa PII di URL; reload melanjutkan attempt sama; referral/token invalid tidak mengalihkan cabang atau membuat akun.
+- [ ] Sesi checkout CSRF/no-store/no-referrer, principal attempt; status miliknya saja, tidak bocor anggota/total/invoice batch. Jalur role salah/IDOR ditolak.
 
-**Verification:** `php artisan test --filter=CheckoutSummaryTest` pada environment test terisolasi; jumlah tes harus nonzero. Untuk P18, verifikasi tautan/runbook dan kesesuaian dengan bukti P17, bukan menjalankan deploy.
-
-**Dependencies:** P13. **Scope:** M.
+**Dependencies:** P13b. **Scope:** M.
 
 **Files likely touched:** `app/Http/Controllers/IntegratedCheckoutController.php`, `app/Http/Requests/ConsumeCheckoutHandoffRequest.php`, `app/Http/Middleware/AuthenticateCheckoutSession.php`, `routes/web.php`, `tests/Feature/Integrations/CheckoutSummaryTest.php`.
 
-## P15: Profil kurang dan persetujuan
+**Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Integrations/CheckoutSummaryTest.php`
 
-**Deskripsi / acceptance:**
+## P15: Profil kurang dan consent
 
-- [ ] Hanya field yang kurang dapat diisi; cabang/payer/paket/nominal locked ditolak bila dipalsukan; consent A dan pilihan DASS versioned disimpan tanpa duplikasi.
+**Acceptance:**
 
-**Verification:** `php artisan test --filter=IntegratedCheckoutConsentTest` pada environment test terisolasi; jumlah tes harus nonzero. Untuk P18, verifikasi tautan/runbook dan kesesuaian dengan bukti P17, bukan menjalankan deploy.
+- [ ] Hanya field kurang boleh diisi; cabang/payer/paket/nominal locked tidak dapat diganti. Consent versioned dan pilihan DASS tanpa duplikasi; sudah settled dapat aktif setelah syarat lengkap tanpa invoice baru.
 
 **Dependencies:** P14. **Scope:** M.
 
 **Files likely touched:** `app/Http/Requests/ConfirmIntegratedCheckoutRequest.php`, `app/Actions/Registration/ConfirmIntegratedCheckout.php`, `tests/Feature/Registration/IntegratedCheckoutConsentTest.php`.
 
+**Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Registration/IntegratedCheckoutConsentTest.php`
+
 ### Checkpoint setelah P15
 
-- [ ] Focused tests tiga tugas terakhir dan regresi terkait lulus tanpa skip gerbang.
-- [ ] Pint, PHPStan, lint/typecheck frontend, dan build lulus sesuai perintah plan.
-- [ ] Slice berjalan end-to-end pada lingkungan test; RLS/concurrency memakai PostgreSQL bila terkait. Catat bukti dan tinjau bersama pengguna sebelum kelompok berikutnya.
+- [ ] Focused tests dan regresi terkait lulus tanpa skip; bukti baru dicatat di docs/ORGANIZATION_CHECKOUT_VALIDATION.md.
+- [ ] Pint/PHPStan dan lint/typecheck/build sesuai dampak; UI diperiksa browser, RLS/race memakai PostgreSQL terisolasi.
+- [ ] Tinjau slice dengan pengguna sebelum kelompok berikutnya; tidak ada deploy, transaksi, atau notifikasi nyata.
 
-## P16: Halaman checkout peserta
+## P16: Halaman checkout mandiri/kolektif/gratis
 
-**Deskripsi / acceptance:**
+**Acceptance:**
 
-- [ ] Profil lengkap tanpa registrasi ulang; self/org/free menuju state benar tanpa invoice kedua; UI mobile/keyboard memakai identitas ONCAM dan nominal dari server.
-
-**Verification:** `php artisan test --filter=IntegratedCheckoutPageTest` pada environment test terisolasi; jumlah tes harus nonzero. Untuk P18, verifikasi tautan/runbook dan kesesuaian dengan bukti P17, bukan menjalankan deploy.
+- [ ] Profil lengkap tidak registrasi ulang; mandiri memakai reservasi self, organization melihat menunggu cabang/batch/paid sendiri. Free lewat jalur eksplisit; responsive/keyboard/brand ONCAM, no client-authoritative pricing.
 
 **Dependencies:** P15. **Scope:** M.
 
 **Files likely touched:** `resources/js/pages/integrated-checkout.tsx`, `resources/js/types/integrated-checkout.ts`, `app/Http/Controllers/IntegratedCheckoutController.php`, `tests/Feature/Integrations/IntegratedCheckoutPageTest.php`.
 
-## P17: Regresi lintas alur
+**Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Integrations/IntegratedCheckoutPageTest.php`
 
-**Deskripsi / acceptance:**
+## P17a: Regresi alur dan privasi
 
-- [ ] Fake kedua sumber seleksi mencakup alur lengkap dan parsial; dua attempt/cross-tenant/replay/paralel diuji PostgreSQL; browser dan suite lama tetap lulus.
+**Acceptance:**
 
-**Verification:** `php artisan test --filter=OrganizationCheckout` pada environment test terisolasi; jumlah tes harus nonzero. Untuk P18, verifikasi tautan/runbook dan kesesuaian dengan bukti P17, bukan menjalankan deploy.
+- [ ] Kedua sumber seleksi fake, profil lengkap/parsial, sepuluh peserta mixed package, free+konsultasi, lintas cabang, dua attempt, unpaid/paid tanpa consent. Proyeksi peserta dan panel tidak bocor klinis/batch.
 
 **Dependencies:** P16. **Scope:** M.
 
-**Files likely touched:** `tests/Feature/Integrations/OrganizationCheckoutAcceptanceTest.php`, `tests/Feature/Database/OrganizationCheckoutRlsTest.php`, `tests/Feature/Payments/OrganizationCheckoutConcurrencyTest.php`, `docs/ORGANIZATION_CHECKOUT_VALIDATION.md`.
+**Files likely touched:** `tests/Feature/Integrations/OrganizationCheckoutAcceptanceTest.php`, `tests/Postgres/OrganizationCheckoutRlsTest.php`, `docs/ORGANIZATION_CHECKOUT_VALIDATION.md`.
+
+**Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Integrations/OrganizationCheckoutAcceptanceTest.php` Jalankan juga runner PostgreSQL disposable.
+
+## P17b: Uji konkurensi dan pemulihan crash
+
+**Acceptance:**
+
+- [ ] Dua koneksi/proses runtime nyata dengan barrier: overlapping batch, self vs batch, parallel webhook/manual, crash setelah item kelima dan claim issuance, replay/reorder. Bukan sequential test yang disebut concurrency.
+
+**Dependencies:** P17a. **Scope:** M.
+
+**Files likely touched:** `tests/Postgres/OrganizationBillingConcurrencyTest.php`, `tools/testing/organization-billing-race-worker.php`, `tools/testing/run-org-postgres.ps1`, `docs/ORGANIZATION_CHECKOUT_VALIDATION.md`.
+
+**Verification:** `powershell -NoProfile -ExecutionPolicy Bypass -File tools/testing/run-org-postgres.ps1`
+
+### Checkpoint setelah P17b
+
+- [ ] Focused tests dan regresi terkait lulus tanpa skip; bukti baru dicatat di docs/ORGANIZATION_CHECKOUT_VALIDATION.md.
+- [ ] Pint/PHPStan dan lint/typecheck/build sesuai dampak; UI diperiksa browser, RLS/race memakai PostgreSQL terisolasi.
+- [ ] Tinjau slice dengan pengguna sebelum kelompok berikutnya; tidak ada deploy, transaksi, atau notifikasi nyata.
+
+## P17c: Browser menu cabang dan peserta
+
+**Acceptance:**
+
+- [ ] Verifikasi desktop/mobile/keyboard: multi-select 10 → satu invoice fake → semua paid; alasan disabled, stale preview, reload, expired, consent tertunda, IDOR. Gunakan test-only origin dan data sintetis; rekam bukti tanpa token.
+
+**Dependencies:** P17b. **Scope:** S.
+
+**Files likely touched:** `tests/Browser/organization-collective-checkout.spec.ts`, `docs/ORGANIZATION_CHECKOUT_VALIDATION.md`.
+
+**Verification:** Browser skill pada origin test saja; command runner E2E ditentukan setelah tool/package yang sudah tersedia diperiksa. Catat screenshot/alur dan hasil, tidak membuat klaim uji sebelum dijalankan.
 
 ## P18: Runbook dan serah-terima
 
-**Deskripsi / acceptance:**
+**Acceptance:**
 
-- [ ] Bukti test dan batasan dicatat tanpa secret; cutover/rollback aplikasi mempertahankan histori pembayaran; tidak ada deploy/notifikasi nyata tanpa izin terpisah.
+- [ ] Dokumentasi operasi menjelaskan unknown/expired/rejected tanpa auto-release/reinvoice, konsistensi allocation, rollback aplikasi yang mempertahankan histori, dan cutover opt-in tanpa fallback. Tidak deploy atau mengirim pesan nyata.
 
-**Verification:** `git diff --check` pada environment test terisolasi; jumlah tes harus nonzero. Untuk P18, verifikasi tautan/runbook dan kesesuaian dengan bukti P17, bukan menjalankan deploy.
-
-**Dependencies:** P17. **Scope:** M.
+**Dependencies:** P17c. **Scope:** M.
 
 **Files likely touched:** `docs/ORGANIZATION_CHECKOUT_OPERATIONS.md`, `docs/ORGANIZATION_CHECKOUT_VALIDATION.md`, `tasks/organization-payment/todo.md`.
 
+**Verification:** `git diff --check`; verifikasi tautan dan cocokkan runbook dengan bukti P17 (bukan tes kosong).
+
 ### Checkpoint setelah P18
 
-- [ ] Focused tests tiga tugas terakhir dan regresi terkait lulus tanpa skip gerbang.
-- [ ] Pint, PHPStan, lint/typecheck frontend, dan build lulus sesuai perintah plan.
-- [ ] Slice berjalan end-to-end pada lingkungan test; RLS/concurrency memakai PostgreSQL bila terkait. Catat bukti dan tinjau bersama pengguna sebelum kelompok berikutnya.
+- [ ] Focused tests dan regresi terkait lulus tanpa skip; bukti baru dicatat di docs/ORGANIZATION_CHECKOUT_VALIDATION.md.
+- [ ] Pint/PHPStan dan lint/typecheck/build sesuai dampak; UI diperiksa browser, RLS/race memakai PostgreSQL terisolasi.
+- [ ] Tinjau slice dengan pengguna sebelum kelompok berikutnya; tidak ada deploy, transaksi, atau notifikasi nyata.

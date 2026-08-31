@@ -30,9 +30,10 @@ final class SelectionLaunchController extends Controller
     private function page(?string $participantToken, ?string $error, int $status): Response
     {
         $nonce = base64_encode(random_bytes(18));
+        $cleanPath = '/participant/lobby';
 
         return response()
-            ->view('selection-launch', compact('participantToken', 'error', 'nonce'), $status)
+            ->view('selection-launch', compact('participantToken', 'error', 'nonce', 'cleanPath'), $status)
             ->header('Cache-Control', 'no-store, private')
             ->header('Pragma', 'no-cache')
             ->header('Referrer-Policy', 'no-referrer')

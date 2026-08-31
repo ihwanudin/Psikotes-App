@@ -22,6 +22,7 @@ final readonly class DispatchNotificationOutbox
 
         $now = now()->toImmutable()->utc();
         $messageIds = $this->runner->runAsService(fn (): array => OutboxMessage::query()
+            ->where('topic', 'participant.activation')
             ->where('attempts', '<', 5)
             ->where('available_at', '<=', $now)
             ->where('expires_at', '>', $now)

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\ApplyRlsContext;
+use App\Http\Middleware\AuthenticateIntegrationClient;
 use App\Http\Middleware\AuthenticateParticipantJwt;
 use App\Http\Middleware\AuthenticateSelectionIntegration;
 use App\Http\Middleware\HandleAppearance;
@@ -26,6 +27,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'rls' => ApplyRlsContext::class,
             'participant.jwt' => AuthenticateParticipantJwt::class,
+            'integration.client' => AuthenticateIntegrationClient::class,
             'selection.integration' => AuthenticateSelectionIntegration::class,
         ]);
 

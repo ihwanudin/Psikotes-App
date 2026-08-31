@@ -10,6 +10,7 @@ enum AdminAbility: string
     case ManageAdmins = 'manage_admins';
     case ManageTestPackages = 'manage_test_packages';
     case ManagePaymentMethods = 'manage_payment_methods';
+    case ManageIntegrations = 'manage_integrations';
     case ViewParticipants = 'view_participants';
     case EditParticipants = 'edit_participants';
     case VerifyPayments = 'verify_payments';

@@ -9,6 +9,9 @@
     <testsuites>
         <testsuite name="OrganizationPayment">
             <file>tests/Feature/Database/OrganizationPaymentTestEnvironmentTest.php</file>
+            <file>tests/Feature/Database/PayerPolicySchemaTest.php</file>
+            <file>tests/Unit/Payments/PayerPolicyTest.php</file>
+            <file>tests/Feature/Payments/PayerPolicyIntegrationTest.php</file>
         </testsuite>
     </testsuites>
     <php>

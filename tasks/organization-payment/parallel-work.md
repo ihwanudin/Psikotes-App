@@ -1,0 +1,173 @@
+# Koordinasi task paralel organization-payment
+
+## Keputusan dan status
+
+Pengguna menyetujui tiga chat kerja dan koordinator pada 2026-08-31 melalui
+"ok silahkan di split dan lanjutkan sesuai rencana". Persetujuan mencakup
+kelanjutan P8a ke P8b, bukan pengesahan kesiapan produksi. Rencana ini memperinci
+plan.md/todo.md existing tanpa mengganti acceptance criteria bisnis.
+
+Koordinator menyiapkan checkpoint lokal dari hasil kerja existing P1–P8a,
+termasuk sumber integrasi yang belum committed. Ini baseline pengembangan,
+bukan release atau bukti audit seluruh proyek. Tidak push atau deploy.
+
+## Aturan bersama
+
+- Baca CLAUDE.md, spec terkait, plan.md, todo.md, dan dokumen implementasi sebelum coding.
+- Verifikasi skill pada masing-masing task. Baca SKILL.md yang digunakan dan
+  referensi wajibnya. Pertahankan Laravel 13, Filament 5, Inertia 3, React 19.
+- Kerja di worktree sendiri; jangan menulis ke D:/LSI/Web/Psikotes dari task pekerja.
+- Jangan salin .env, secrets, data peserta, SQLite aktif, atau runtime cache dari induk.
+- Dependencies vendor/node_modules boleh disalin sebagai salinan independen dari
+  induk jika cocok lockfile; jangan memakai junction/symlink writable bersama.
+  Jangan jalankan composer setup, migrate, queue worker, atau test tanpa target terisolasi.
+- PHPUnit wajib phpunit.organization-payment.xml; PostgreSQL hanya runner disposable
+  tools/testing/run-org-postgres.ps1. Tidak ada tes pada database aktif.
+- Skill Browser bawaan tersedia; Chrome DevTools MCP tidak tersedia saat audit.
+  Setiap task browser memverifikasi koneksi sendiri. Gunakan origin/data test,
+  jangan mengubah tab pengguna Cloudflare/n8n/Xendit. Port uji: frontend 8011,
+  portal 8012; backend tidak perlu server publik. Periksa port kosong sebelum bind.
+- Jangan mengubah dependency lockfiles, shared fixtures/harness, routes,
+  config, schema, atau dokumen kanonik tanpa kebutuhan dalam ownership dan
+  koordinasi. Laporkan kebutuhan lintas pemilik sebelum mengedit.
+- Harga integer IDR berasal dari server/database, bukan literal runtime UI.
+  DASS opsional, tidak menentukan kelayakan, dan data klinis tidak untuk cabang.
+- Tidak ada invoice/notifikasi nyata, aktivasi flag, cutover, dana talang,
+  reinvoice otomatis, perubahan skoring atau deploy.
+- Setiap task menulis laporan sendiri di tasks/organization-payment/reports/.
+  Hanya koordinator mengedit checklist/status kanonik dan menggabungkan hasil.
+- Jangan spawn task/agent tambahan. Selesaikan slice pertama, laporkan tes dan
+  commit/diff, lalu tunggu review koordinator. Tidak otomatis lanjut seluruh roadmap.
+
+## Gelombang pertama
+
+### Backend: P8b aktivasi per attempt
+
+Scope: action aktivasi, outbox aktivasi dan token/start yang sungguh diperlukan
+oleh acceptance P8b. Baca docs/ASSESSMENT_ACCESS_GATE.md, schema, reservation,
+dan jalur token legacy sebelum memilih perubahan. Boleh memecah P8b menjadi
+dua increment kecil bila token/start membutuhkan lebih banyak file.
+
+Ownership: app/Actions/Payments/ActivateSettledAssessment.php,
+app/Actions/Notifications/EnqueueAssessmentActivation.php, jalur
+app/Services/ParticipantAuth/ dan controller/request start terkait, tes baru
+tests/Feature/Auth/SettledAssessmentActivationTest.php serta tes token/PG baru
+yang diperlukan. Tidak mengedit UI/Filament. Perubahan schema atau route baru
+harus diajukan dahulu, jangan memperluas token checkout menjadi token tes.
+
+Acceptance:
+- Aktivasi hanya dari settlement tepat + consent/identitas per attempt;
+  legacy entitlement tidak memberi akses attempt baru; DASS decline tidak
+  memblokir tes utama yang sah.
+- Ready/outbox idempotent dan atomik, retry tidak menggandakan notifikasi;
+  peserta yang belum memenuhi syarat tidak memblokir peserta lain.
+- Scope token/start terverifikasi, gagal tertutup untuk attempt asing/unpaid
+  dan token salah tujuan; alur legacy tidak rusak.
+
+Verification: TDD focused PHPUnit, lint Pint pada file perubahan, PHPStan,
+tes regression auth relevan; PostgreSQL disposable jika menyentuh transaksi,
+RLS atau race. Catat hasil nyata, bukan hasil historis 626/144.
+
+Skills: Laravel Specialist, Auth & Tenant Access, Security & Hardening,
+Queues Webhooks & Cache, TDD, Git Workflow; Postgres saat menyentuh DB.
+Laporan: reports/backend.md. Dependensi: baseline P8a. Stop setelah P8b/review.
+
+### Frontend peserta: P16-prep (presentasi, belum endpoint)
+
+Scope: tampilan checkout terisolasi dengan typed props dan fixture sintetis.
+Ini persiapan P16, bukan melompati P13–P15. Pelajari komponen dan token ONCAM
+yang sudah ada. Jangan mengganti form register existing atau menciptakan
+API/session/handoff baru. Kontrak props tahap ini internal presentasi/draft,
+bukan kontrak HTTP final; tulis usulan mapping untuk ditinjau koordinator.
+
+Ownership: resources/js/components/integrated-checkout/,
+resources/js/types/integrated-checkout.ts dan tests/Frontend/IntegratedCheckout/
+jika runner existing mendukung; harness preview test-only khusus frontend bila
+diperlukan. Jangan edit package.json/routes/controller/global CSS.
+
+Acceptance:
+- Ringkasan profil lengkap, field kurang saja, cabang terkunci, consent terpisah,
+  self/organization/free/paid serta loading/error/expired ditampilkan jelas.
+- Tidak menghitung tagihan atau memberi status paid/akses sendiri; organization
+  tidak menampilkan invoice/total/anggota batch, tombol bayar mandiri disembunyikan.
+- Gunakan logo/palette ONCAM existing, mobile/keyboard, state data sintetis;
+  consent tidak prechecked dan tautan/tombol tanpa handler nyata tidak berpura-pura bekerja.
+
+Verification: typecheck/lint targeted dan build aman, browser pada fixture
+test-only tanpa .env aktif; kalau harness belum tersedia laporkan batas
+verifikasi, jangan klaim sudah diuji browser. Props hanya menampilkan keputusan
+server dengan callback injected; fixture tidak boleh terpasang ke route produksi.
+
+Skills: Frontend UI Engineering, UI/UX Pro Max, React Best Practices, Browser,
+TDD bila mengubah behavior, Git Workflow. Laporan: reports/frontend.md.
+Dependensi: baseline; wiring final menunggu P14/P15 dan kontrak server review.
+
+### Portal cabang: P12a-prep (baca-saja)
+
+Scope: list/detail tagihan cabang di Filament dengan data model existing,
+gated/default tidak terlihat sampai integrasi siap. Jangan membuat invoice,
+reservasi, proof upload atau finalizer. P12a tetap terbuka sampai P11c dan
+verifikasi end-to-end selesai. Jangan menambah schema/config toggle baru
+semata untuk preview; gunakan gate existing bila cocok atau test-only harness.
+
+Ownership: app/Filament/Resources/OrganizationBills/,
+tests/Feature/Admin/OrganizationBillAccessTest.php,
+resources/views/filament/organization-bills/ bila perlu,
+tools/testing/serve-organization-bills-panel.php bila harness perlu.
+Jangan mengedit resource AssessmentParticipants (P12b belum dimulai), shared
+policies, routes, billing actions atau konfigurasi global.
+
+Acceptance:
+- Hanya BranchAdmin organisasi pemilik melihat list/detail; direct URL dan
+  role salah/lintas cabang ditolak server, bukan sekadar sembunyikan menu.
+- Jumlah peserta/total/status dari server, riwayat dari bill yang sama;
+  tidak memuat data klinis atau kontrol verifikasi bayar oleh cabang.
+- Filter/pagination/detail dapat diuji dengan fixture sintetis; terminal
+  expired/rejected tidak memberi reinvoice otomatis. Jangan tautkan gateway nyata.
+
+Verification: focused PHPUnit + negative role/tenant tests, Pint/PHPStan,
+browser test-only jika runtime tersedia; PostgreSQL role runtime bila query
+menyentuh RLS. Laporan: reports/branch-portal.md.
+Skills: Laravel Specialist, Auth & Tenant Access, Security, Frontend UI,
+Browser, TDD, Git Workflow; dokumentasi Filament versi terpasang.
+
+## Checkpoint koordinator
+
+- [x] Tiga task dibuat; baseline lengkap ada di setiap worktree tanpa .env aktif,
+  dan masing-masing task melaporkan pengecekan skill sebelum implementasi.
+- [ ] Setiap task selesai slice awal dengan bukti tes dan daftar batas yang belum diuji.
+- [ ] Tinjau ownership, kontrak props vs backend, privasi, dan diff sebelum merge.
+- [ ] Gabungkan satu slice sekali; ulang regression yang terdampak dan build.
+- [ ] P12/P16 tidak ditandai selesai hanya karena preview UI tersedia.
+- [ ] Beri pengguna status dan checkpoint berikutnya; tidak deploy otomatis.
+
+Risiko: konflik shared file ditangani ownership; ketergantungan API ditangani
+presentasi terisolasi; resource laptop dibatasi dengan focused tests dahulu
+dan full regression oleh koordinator. Chat terpisah tidak otomatis tersinkron
+dan tidak berarti pemantauan latar terus-menerus.
+
+## Registri task (2026-08-31)
+
+| Lane | Task ID | Worktree |
+| --- | --- | --- |
+| Backend | 01a05839-3b48-7801-8175-0392e8764c23 | C:/Users/ThinkPad/.codex/worktrees/14a0/Psikotes |
+| Frontend | 01a05839-3b39-7d83-b59f-9e7432d7883e | C:/Users/ThinkPad/.codex/worktrees/d4ea/Psikotes |
+| Portal cabang | 01a05839-3b18-73e0-8fdc-8db3b02f835d | C:/Users/ThinkPad/.codex/worktrees/6e61/Psikotes |
+
+Worktree dibuat dari working tree lengkap (base HEAD 58da1de dengan perubahan
+P1–P8a), bukan checkout main yang tertinggal. Perubahan baseline awal di worktree
+pekerja bukan pekerjaan baru mereka; commit pekerja hanya mencakup lane sendiri.
+Koordinator memeriksa status via wait_threads. Bila tool pesan lintas task tidak
+tersedia di pekerja, laporan lane menjadi sarana handoff; ini tidak menghalangi
+koordinator membaca status dan memberi instruksi.
+
+## Validasi checkpoint sebelum split
+
+Pada giliran split, regresi lokal dijalankan ulang: 626 tes lulus, 2.869
+assertions, 327.261 ms, dengan sandbox eksternal dikecualikan. Pint seluruh
+proyek dan PHPStan (0 error) lulus; staged diff check lulus. PostgreSQL dan
+browser alur aplikasi tidak dijalankan ulang pada giliran koordinasi ini.
+Pemeriksaan pola credential pada 132 kandidat file awal tidak menemukan pola
+secret yang dicari; ini bukan jaminan audit secret menyeluruh. Tidak ada .env,
+private key atau database SQLite yang masuk daftar staged. Commit baseline
+menyimpan hasil kerja existing serta rencana split, bukan fitur baru selesai.

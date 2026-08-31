@@ -24,6 +24,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string|null $test_number
  */
 #[Fillable([
+    'package_id',
+    'source_system',
+    'attribution_source',
     'branch_id',
     'referral_branch_id',
     'referral_source',

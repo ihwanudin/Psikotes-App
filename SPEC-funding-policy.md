@@ -2,7 +2,7 @@
 
 ## Status dan objective
 
-DRAFT untuk ditinjau. Modul pertama pada
+Lingkup dan rencana teknis revisi disetujui; implementasi bertahap lokal. Modul pertama pada
 [peta kapabilitas](CAPABILITY-MAP-organization-payment.md).
 Tujuan: admin ONCAM menentukan pembayar yang diperbolehkan per lembaga, tanpa
 menyamakan jenis pembayar dengan metode pembayaran maupun status lunas.

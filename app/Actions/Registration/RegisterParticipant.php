@@ -140,6 +140,8 @@ final readonly class RegisterParticipant
             'branch_id' => $assignment->branch->id,
             'referral_branch_id' => $assignment->branch->id,
             'referral_source' => $assignment->source,
+            'source_system' => 'DIRECT_PUBLIC',
+            'attribution_source' => $assignment->branch->ref_code,
             'full_name' => $input['full_name'],
             'gender' => $input['gender'],
             'birth_date' => $input['birth_date'],

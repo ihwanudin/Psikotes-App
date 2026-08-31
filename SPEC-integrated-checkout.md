@@ -2,7 +2,8 @@
 
 ## Status dan objective
 
-DRAFT untuk ditinjau; bergantung pada `funding-policy` dan `organization-billing`
+Lingkup dan rencana teknis revisi disetujui; implementasi bertahap lokal.
+Bergantung pada `funding-policy` dan `organization-billing`
 dalam [peta kapabilitas](CAPABILITY-MAP-organization-payment.md).
 Peserta dari `seleksi.beasiswajepang.id` dan `seleksi.serbaindo.com` tidak mengisi
 ulang identitas yang sudah lengkap dan terverifikasi dari integrasi server.

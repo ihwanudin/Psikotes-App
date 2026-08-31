@@ -6,7 +6,9 @@ Lingkup fungsional dikonfirmasi dalam percakapan: ONCAM hanya menangani **bayar
 sendiri** dan **dibayar lembaga**. Dana talang, persetujuan pinjaman, pencairan,
 cicilan, pengembalian, dan sisa utang peserta menjadi urusan sistem lembaga.
 Modul `advance-repayment` dari usulan awal dibatalkan, bukan pekerjaan tertunda.
-Spesifikasi teknis di bawah masih **DRAFT — menunggu tinjauan pengguna**.
+Lingkup kolektif disetujui melalui jawaban "lanjutkan" pada 2026-08-31.
+Rencana teknis revisi kemudian disetujui melalui jawaban "lanjhutkan";
+implementasi bertahap dimulai dari kontrol pembayar admin (P4a).
 Dokumen ini tidak membuktikan fitur sudah diterapkan atau diaktifkan.
 
 Revisi lingkup 2026-08-31: pengguna menegaskan pembayaran kolektif cabang
@@ -38,7 +40,7 @@ Billing menyediakan keputusan pembayaran; tidak bergantung pada UI checkout.
 Temuan ini berasal dari working tree, termasuk perubahan integrasi yang belum
 di-commit. Jangan menyimpulkan image Docker publik sudah memuat kode tersebut.
 
-## Usulan batas tahap awal untuk ditinjau
+## Batas tahap awal disetujui
 
 - Pembayaran mandiri per attempt atau satu tagihan kolektif milik satu cabang
   untuk beberapa attempt. Rincian dan hak tes tetap terpisah per attempt.
@@ -50,6 +52,7 @@ di-commit. Jangan menyimpulkan image Docker publik sudah memuat kode tersebut.
 
 ## Gerbang selanjutnya
 
-Tinjau spesifikasi per modul, lalu susun rencana dan tugas teknis. Implementasi
-dimulai setelah gerbang tersebut diterima. Uji integrasi menggunakan data
+Ikuti [rencana teknis revisi](tasks/organization-payment/plan.md) dan
+[rincian tugas](tasks/organization-payment/todo.md) yang telah disetujui.
+Tinjau hasil pada checkpoint sebelum kelompok berikutnya. Uji integrasi menggunakan data
 sintetis; tidak membangun ulang image dari perubahan lain yang belum ditinjau.

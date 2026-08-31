@@ -13,6 +13,65 @@ Base: `https://psikotes.oncam.id`. Rute peserta (Inertia+React) dan API internal
 - `GET /selection/launch?ticket=<jwt>` adalah bridge browser: server menandatangani request konsumsi ke `POST <SELECTION_APP_BASE_URL>/api/v1/integrations/psychotest/launch-tickets/consume`, mencocokkan ketiga ID respons dengan ledger lokal, lalu menerbitkan JWT peserta. Ticket satu kali tidak diteruskan ke lobby dan respons memakai CSP nonce, `no-store`, serta `no-referrer`.
 - Bridge menyimpan JWT peserta di `sessionStorage`, membersihkan query URL, lalu berpindah ke `GET /participant/lobby`. Lobby mengambil profil dan entitlement melalui API Bearer; tidak ada token atau data peserta di props server.
 
+Endpoint Selection v1 di atas tetap menjadi compatibility surface. Integrasi baru memakai boundary generik berikut.
+
+## Integrasi Asesmen Multi-Organisasi
+
+### Autentikasi
+
+Registry server-side mengikat `integration_clients.client_id` ke satu participating organization (`branches` dipertahankan sebagai nama tabel backward-compatible), credential reference, source allow-list, paket, funding mode, delivery mode, serta masa berlaku. Secret HMAC hanya berasal dari runtime secret store melalui `ASSESSMENT_INTEGRATION_CREDENTIALS_JSON`; database tidak menyimpan secret yang dapat dipakai menandatangani request.
+
+Semua request memakai `X-Client-Id`, `X-Timestamp`, dan `X-Signature`. Signature hex HMAC-SHA256 dihitung dari `timestamp + "\n" + sha256(raw_body)`. Request mutasi juga wajib memiliki `Idempotency-Key` stabil.
+
+### POST `/api/integrations/v1/assessments/participants`
+
+Payload bersifat strict; field top-level, profile, atau metadata yang tidak dikenal ditolak.
+
+```json
+{
+  "sourceSystem": "LPK_SAKURA_SELECTION",
+  "externalCandidateId": "SKR-2026-0001",
+  "externalProcessId": "SEL-SKR-2026-0001",
+  "externalRegistrationId": "REG-SKR-0001",
+  "assessmentRoundId": "ROUND-2026-08",
+  "organizationCode": "LPK_SAKURA",
+  "assessmentPackageCode": "SELEKSI_KERJA_JEPANG_V1",
+  "fundingMode": "SPONSORED",
+  "profile": {
+    "fullName": "Nama Peserta",
+    "birthDate": "2001-04-15",
+    "gender": "FEMALE",
+    "educationLevel": "SMA",
+    "email": "participant@example.test",
+    "phone": "6281234567890"
+  },
+  "metadata": {"cohortCode": "2026-08"}
+}
+```
+
+Respons baru `201`, replay identik `200`: `{data:{participantId,assessmentAttemptId,assessmentStatus}}`. Key sama dengan payload berbeda menghasilkan `409 IDEMPOTENCY_CONFLICT`. Error kontrak stabil: `SOURCE_NOT_ALLOWED`, `ORGANIZATION_MISMATCH`, `PACKAGE_NOT_ALLOWED`, dan `FUNDING_MODE_NOT_ALLOWED`. Organization selalu berasal dari client terautentikasi; `organizationCode` hanya assertion. Provisioning kontrak tidak membuat order komersial.
+
+### GET `/api/integrations/v1/assessments/participants/{externalCandidateId}/result`
+
+Tersedia hanya untuk delivery mode `POLL` atau `CALLBACK_AND_POLL`. Filter opsional: `externalProcessId`, `assessmentRoundId`. Query selalu dibatasi `integration_client_id` terautentikasi. Projection hanya berisi `participantId`, external IDs, status, recommendation, resultVersion, finalizedAt, dan revokedAt.
+
+Status asesmen: `PROVISIONED`, `READY`, `IN_PROGRESS`, `COMPLETED`, `UNDER_REVIEW`, `FINALIZED`, `REVOKED`, `VOID`. Recommendation: `RECOMMENDED`, `RECOMMENDED_WITH_NOTES`, `NOT_RECOMMENDED`, `NEEDS_REVIEW`. Psikotes tidak menerbitkan keputusan penerimaan/kelulusan seleksi.
+
+### Callback
+
+Delivery mode callback mengirim event v1 dari transactional outbox ke URL registry server-side dengan header autentikasi yang sama dan `Idempotency-Key = eventId`. Timeout setelah send menghasilkan status `UNKNOWN`; dispatcher tidak mengirim ulang sampai endpoint reconciliation client memastikan event sudah diterima atau belum. Payload tidak memuat jawaban mentah, nilai per soal, evidence, diagnosis, narasi internal, object key, signed URL, credential, atau PII profile.
+
+Provisioning baru secara transactional menerbitkan `PSYCHOTEST_PARTICIPANT_PROVISIONED`. Hook state machine `start()` dan `complete()` menerbitkan `PSYCHOTEST_STARTED` dan `PSYCHOTEST_COMPLETED` tanpa menaikkan `resultVersion`; versi hasil hanya berubah pada finalisasi, revoke, atau void. Replay provisioning/transisi tidak membuat event kedua.
+
+## Portal organisasi
+
+- `GET /admin/assessment-participants` menyediakan daftar/filter tenant-scoped.
+- Record action undangan menghasilkan URL sekali tampil. URL memakai `/assessment/invitations/{publicId}#token={opaqueToken}`; token fragment tidak dikirim ke server atau access log.
+- `POST /assessment/invitations/{publicId}/consume` menukar token satu kali dan mengembalikan participant JWT dengan `Cache-Control: no-store`. Endpoint dilindungi CSRF dan throttle.
+- `GET /admin/assessment-participants/export.csv` mengekspor hanya ID operasional, periode, paket, status, rekomendasi, versi hasil, dan waktu finalisasi. Nama, email, telepon, jawaban mentah, object key, signed URL, dan credential tidak tersedia pada ekspor.
+
+Registry client/source dikelola super-admin melalui Filament. Database hanya menyimpan `credential_reference`; material HMAC secret tetap pada konfigurasi runtime. Callback base URL harus HTTPS publik dan callback path harus relatif tanpa query/fragment.
+
 ## Publik
 - `GET  /r/:ref_code` — resolusi referral: set cookie first-touch 30 hari + catat `referral_visits`, redirect ke halaman daftar. ref tak dikenal → cabang default (pusat).
 - `POST /registrations` — body form + `ref` (dari cookie/query; opsional) + `package_id` + `payment_method_code`. Paket wajib aktif, memiliki jenis tes, berharga positif dalam IDR; metode pembayaran wajib aktif. Server mengunci dan memvalidasi ulang keduanya saat transaksi, lalu membuat order `pending` dan entitlement `locked`, sehingga status ON→OFF yang bersamaan tidak dapat menghasilkan order baru. Kode metode yang tidak aktif/tidak dikenal menghasilkan validasi `payment_method_code: "Metode pembayaran tidak tersedia."`. Server menetapkan `referral_branch_id` (first-touch menang; kosong→default). Untuk `xendit`, invoice dibuat setelah transaksi registrasi commit; order menyimpan ID invoice, hosted-checkout URL, dan expiry lalu browser diarahkan ke checkout. Claim lokal menahan retry bersamaan; hasil provider yang tetap tidak diketahui tidak membatalkan registrasi dan entitlement tetap locked.

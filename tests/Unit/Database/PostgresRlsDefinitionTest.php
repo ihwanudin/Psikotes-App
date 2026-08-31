@@ -98,6 +98,38 @@ final class PostgresRlsDefinitionTest extends TestCase
         $this->assertStringContainsString("app_private.app_role() = 'service'", $migration);
     }
 
+    public function test_multi_organization_registry_forces_rls_and_portal_reads_are_tenant_scoped(): void
+    {
+        $migration = file_get_contents(dirname(__DIR__, 3).'/database/migrations/2026_08_29_000200_add_multi_organization_integration_registry.php');
+
+        $this->assertIsString($migration);
+        $this->assertStringContainsString("['integration_clients', 'integration_sources', 'assessment_participants']", $migration);
+        $this->assertStringContainsString('ALTER TABLE {$table} FORCE ROW LEVEL SECURITY', $migration);
+        $this->assertStringContainsString('organization_id = app_private.app_branch_id()', $migration);
+        $this->assertStringContainsString("app_private.app_role() = 'service'", $migration);
+        $this->assertStringContainsString("['integration_clients', 'integration_sources']", $migration);
+        $this->assertStringContainsString("app_private.app_role() = 'super_admin'", $migration);
+    }
+
+    public function test_callback_delivery_ledger_is_service_only_and_forces_rls(): void
+    {
+        $migration = file_get_contents(dirname(__DIR__, 3).'/database/migrations/2026_08_29_000300_create_integration_callback_deliveries.php');
+
+        $this->assertIsString($migration);
+        $this->assertStringContainsString('ALTER TABLE integration_callback_deliveries FORCE ROW LEVEL SECURITY', $migration);
+        $this->assertStringContainsString("app_private.app_role() = 'service'", $migration);
+    }
+
+    public function test_assessment_invitation_ledger_is_service_only_and_forces_rls(): void
+    {
+        $migration = file_get_contents(dirname(__DIR__, 3).'/database/migrations/2026_08_29_000400_create_assessment_invitations.php');
+
+        $this->assertIsString($migration);
+        $this->assertStringContainsString('ALTER TABLE assessment_invitations FORCE ROW LEVEL SECURITY', $migration);
+        $this->assertStringContainsString("app_private.app_role() = 'service'", $migration);
+        $this->assertStringContainsString("unique(['assessment_participant_id', 'active_marker']", $migration);
+    }
+
     private function section(string $start, string $end): string
     {
         $matches = [];

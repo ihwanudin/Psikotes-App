@@ -63,6 +63,7 @@ final class SelectionParticipantProvisioningTest extends TestCase
             'full_name' => 'Ayu Pratiwi',
             'education_level' => 'SMA/SMK',
             'intended_field' => 'UMUM',
+            'source_system' => 'SELEKSI_BEASISWA_JEPANG',
             'email' => 'ayu@example.test',
         ]);
         $this->assertDatabaseHas('entitlements', [

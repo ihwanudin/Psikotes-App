@@ -1,4 +1,4 @@
-# DATABASE_SCHEMA.md (v4.1)
+# DATABASE_SCHEMA.md (v4.2)
 
 Skema penuh + RLS ada di SPEC.md §3 dan migrasi `db/`. Dokumen ini merangkum relasi, indeks, dan policy per tabel. ERD tekstual:
 
@@ -17,6 +17,20 @@ branches 1─n commission_entries / withdrawal_requests / branch_fee_rules
   papi_items/papi_descriptions/rmib_jobs/rmib_category_texts/
   kraepelin_configs/kraepelin_category_bounds/aspect_formulas/aspect_narratives
 ```
+
+## Multi-organization dan integration registry
+
+`branches` dipertahankan untuk backward compatibility tetapi domain meaning-nya adalah **participating organization**. Kolom additive: `organization_code`, `organization_type`, `display_name`, `status`, `capabilities`, dan `allowed_funding_modes`; kolom legacy `code`, `name`, `ref_code`, `is_default`, dan `is_active` tetap ada.
+
+- `integration_clients`: organization owner, public client ID, credential reference (bukan secret), callback base URL opsional, delivery mode, enabled, rate-limit policy, effective dates.
+- `integration_sources`: allow-listed and versioned source per client, auth mode, allowed package codes, provisioning/commercial mode, allowed funding modes, callback path/config, status, effective dates.
+- `assessment_participants`: mapping proses/attempt dari client+source ke participant lokal; menyimpan external candidate/process/registration/round IDs, package, funding mode, operational status, recommendation, result version, dan idempotency claim/hash. Identity lookup memakai `(integration_client_id, source_system, external_candidate_id)` sehingga ID yang sama pada dua LPK tidak collision dan tidak memicu auto-link lintas organization.
+- `assessment_invitations`: ledger undangan sekali pakai. Menyimpan public ULID, HMAC token (bukan plaintext), nomor penerbitan, expiry/consumption, dan nullable active marker. Unique `(assessment_participant_id, active_marker)` memastikan maksimal satu undangan aktif per attempt.
+- `integration_callback_deliveries`: satu ledger per outbox event dengan status `PENDING|SENDING|UNKNOWN|FAILED|DELIVERED`, attempt count, safe error code, HTTP status, serta reconciliation timestamps. Tidak ada raw response body atau credential.
+
+Seluruh tabel registry/assessment/callback/invitation memaksa PostgreSQL RLS. Registry dapat dimutasi service atau super-admin; callback dan invitation ledger hanya service. Assessment mapping dapat dibaca super admin/psikolog atau admin/staf dengan `organization_id = app.branch_id`. Participant dan seluruh child data tetap mengikuti policy tenant existing.
+
+`participants.source_system` merekam asal kandidat (`DIRECT_PUBLIC` untuk registrasi publik); `participants.attribution_source` merekam kanal first-touch secara terpisah dan tidak diubah oleh provisioning ulang.
 
 Perubahan v4.0 (payment+referral): `branches`+`ref_code text unique`+`is_default bool`; `participants`+`referral_branch_id`+`referral_source enum(link|manual|default)`; `orders.gateway_ref` menyimpan ID invoice Xendit sedangkan `external_id` Xendit adalah `orders.public_id`; order juga menyimpan `invoice_url`+`expires_at`. `payment_webhook_events` menyimpan provider, ID event logis, kedua reference, status ternormalisasi, snapshot uang, intent hash, outcome/error code, dan waktu proses—tanpa payload mentah/PII—dengan unique `(provider,event_id)`. Tabel baru `referral_visits(ref_code, branch_id, ip, ua, first_seen, participant_id null)` untuk audit atribusi first-touch. Indeks: `branches(ref_code)`, `orders(gateway_ref)` unique, `payment_webhook_events(provider,event_id)` unique, `referral_visits(participant_id)`. Gating: `entitlements.status` locked→ready hanya via webhook terverifikasi / verifikasi manual / aktivasi super_admin. Perubahan v3.0: +`hpp_config`(sub_aspek, sumber[], bobot, tunduk_knockout bool), +`hpp_thresholds`(label, min_total, syarat), +`kraepelin_norms`(grup, faktor, lo, hi, skor, kategori), +`kraepelin_group_map`, +`papi_color_bands`(dimensi, lo, hi, zona, skor), +`aspect_narratives`(sub_aspek, band, teks), +`report_closings`(label, teks), +`norm_table_versions`(dipakai di tiap `reports`). `reports` +`status(draft|reviewed|final)`, +`integration_draft`, +`integration_final`, +`closing_final`, +`norm_version`. Perubahan v2.0: `ist_norms` tanpa kolom usia (norma tunggal; kolom usia dipertahankan nullable untuk fallback GE); +`aspect_formulas` (aspek, sumber, bobot, arah/zona), +`aspect_narratives` (aspek × band → teks), +`papi_dimensions` (7 grup), `kraepelin_category_bounds(+education_level null)`.
 

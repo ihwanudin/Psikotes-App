@@ -22,3 +22,13 @@ Schedule::command('notifications:dispatch-outbox')
     ->everyMinute()
     ->withoutOverlapping()
     ->onOneServer();
+
+Schedule::command('integrations:dispatch-outbox')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->onOneServer();
+
+Schedule::command('integrations:reconcile-callbacks')
+    ->everyFiveMinutes()
+    ->withoutOverlapping()
+    ->onOneServer();

@@ -2,10 +2,12 @@
 
 ## Status dan objective
 
-DRAFT revisi pembayaran kolektif, 2026-08-31. Pengguna mengonfirmasi kebutuhan:
+Lingkup dan batas pembayaran kolektif disetujui melalui jawaban "lanjutkan"
+setelah tinjauan pada 2026-08-31. Pengguna mengonfirmasi kebutuhan:
 cabang dapat memilih, misalnya, 10 peserta dan membayar sekali; bayar mandiri
 tetap tersedia. Batas lama yang menunda tagihan gabungan tidak berlaku lagi.
-Rincian di bawah perlu ditinjau sebelum revisi rencana teknis dan implementasi.
+Rencana teknis revisi disusun di tasks/organization-payment/; persetujuan ini
+bukan bukti implementasi atau izin migrasi DB aktif/deploy/transaksi nyata.
 Bergantung pada `funding-policy` dalam
 [peta kapabilitas](CAPABILITY-MAP-organization-payment.md).
 Mencatat pembayaran biaya tes kepada ONCAM dengan identitas pembayar yang benar.
@@ -197,13 +199,13 @@ output verifikasi terpisah sebagaimana docs/ORGANIZATION_PAYMENT_TESTING.md.
 13. Harga berubah, salah total, pembayaran parsial, timeout, invoice expired,
     callback duplikat/terlambat, dan perubahan daftar setelah terbit diuji.
 
-## Boundaries dan open review
+## Batas disetujui dan tinjauan teknis
 
 - Always: audit verifikasi, pemisahan pembayar/peserta, minimisasi informasi.
 - Ask first: rincian skema/alokasi kolektif, konversi entitlement lama, refund,
   tempo, pembatalan/reinvoice otomatis, deploy, transaksi atau notifikasi nyata.
 - Never: paid dari redirect browser, dana talang lokal, membuka akses karena
   payload sumber mengaku sudah membayar, akses laporan klinis bagi pembayar.
-- Untuk ditinjau: satu cabang per tagihan, pelunasan seluruh total, daftar
+- Disetujui: satu cabang per tagihan, pelunasan seluruh total, daftar
   terkunci setelah reservasi, dan penanganan expired/reinvoice oleh petugas.
   Pembayaran kolektif termasuk lingkup; tempo/dana talang tetap tidak termasuk.
