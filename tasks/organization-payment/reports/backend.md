@@ -389,3 +389,117 @@ entitlement ready dan mengantre event provisioning.
 Delta commit preflight hanya laporan backend ini. Tidak ada baseline yang
 diikutsertakan, agent tambahan atau kelanjutan P10. **Menunggu pilihan/approval
 prasyarat schema/kontrak dari koordinator sebelum implementasi P9a.**
+
+## P9a0 — implementasi prasyarat nullable sesuai ADR-004
+
+Opsi A disetujui koordinator; ADR-004, P9a0 todo.md dan bagian terbaru
+parallel-work.md dibaca dari induk tanpa ditulis. Ini persetujuan implementasi
+lokal, bukan migration database aktif atau izin action P9a/intendedField.
+Skills Laravel, Auth, Security, DB/Postgres, TDD, Incremental, Git dan Code Review
+dipakai. Tidak ada task/agent tambahan, reset/merge baseline, atau perubahan writer.
+
+### Perubahan dan invariant
+
+- Migration baru 2026_08_31_000600_allow_checkout_partial_profiles.php membuat
+  full_name, gender, birth_date, education_level, intended_field, phone nullable.
+  Tidak menulis ulang nilai existing atau menambah nomor tes, rights, consent,
+  identity verification, credential, charge/bill/invoice/notifikasi.
+- funding_mode NULL hanya untuk marker checkout-v2 dan status PROVISIONED,
+  REVOKED atau VOID. PostgreSQL memakai CHECK bernama
+  assessment_participants_checkout_funding_check dengan COALESCE(..., FALSE).
+  SQL NULL, missing key, JSON null, tipe marker salah dan versi lain ditolak.
+  Nilai funding non-null mempertahankan perilaku storage legacy existing.
+- PostgreSQL memakai ALTER COLUMN DROP/SET NOT NULL, sehingga tipe/panjang,
+  check enum, FK, index/unique, default, pemilik tabel dan RLS tidak diubah.
+  DDL kedua tabel berada dalam transaksi dengan ACCESS EXCLUSIVE lock sebelum
+  preflight/down; perubahan tidak boleh berlomba dengan writer saat restore.
+  Lock dapat memblokir trafik: ini bukan klaim migration tanpa downtime.
+- Down memeriksa seluruh tujuh kolom sebelum DDL. NULL apa pun yang tidak
+  kompatibel menyebabkan penolakan eksplisit tanpa menghapus/mengisi data.
+  Preflight PG memakai SET LOCAL row_security=off agar query yang akan difilter
+  policy gagal, bukan memberi hasil scan parsial. Ini **tidak bypass RLS** dan
+  tidak mengubah policy/config permanen; role migrator yang tidak dapat melihat
+  semua baris ditolak. Runtime tetap non-owner/NOBYPASSRLS.
+- SQLite memakai rebuild kolom Laravel dalam transaksi, memulihkan pragma FK
+  dan memeriksa foreign_key_check sebelum commit. Karena SQLite tidak mendukung
+  ADD CHECK, dua trigger INSERT/UPDATE menerapkan predicate funding setara.
+  Migration SQLite menolak surrounding transaction sebelum mutasi karena pragma
+  FK tidak dapat diubah efektif di dalam transaksi. Ini hanya dialek tes lokal;
+  bukti constraint CHECK/RLS produksi menggunakan PostgreSQL.
+- PHPDoc kedua model mengikuti nullable; tidak mengubah casts/fillable/reader.
+  Gate existing tetap menolak profil parsial. Validasi v1 dan registrasi tetap
+  required; optional profile.intendedField belum diimplementasikan.
+
+Rujukan: [PG17 CHECK dan NULL](https://www.postgresql.org/docs/17/ddl-constraints.html),
+[PG17 row_security](https://www.postgresql.org/docs/17/runtime-config-client.html#GUC-ROW-SECURITY),
+[PG17 table locks](https://www.postgresql.org/docs/17/explicit-locking.html),
+[SQLite ALTER TABLE](https://www.sqlite.org/lang_altertable.html) serta
+SQLiteGrammar Laravel terpasang (compileAlter). Tidak menambah dependency.
+
+### Bukti aktual
+
+- RED feature sebelum migration: 23 tes, 14 lulus, 1 failure, 8 error. Kasus
+  negatif NULL funding sudah ditolak schema lama, sedangkan penyimpanan profil
+  parsial/nullable funding dan lifecycle belum tersedia. GREEN: **23/124**.
+- Regresi terkait **127 tes/422 assertions lulus**:
+  `php -d opcache.enable_cli=0 vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Database/CheckoutPartialProfileSchemaTest.php tests/Feature/Integrations/CheckoutContractCompatibilityTest.php tests/Feature/Integrations/GenericAssessmentProvisioningTest.php tests/Feature/Auth/AttemptEntitlementGateTest.php tests/Feature/Auth/SettledAssessmentActivationTest.php --debug`
+- Dua tes HTTP registrasi existing (test_valid_input dan test_invalid_input)
+  **2 tes/22 assertions lulus**. Tidak menjalankan ulang tes render yang belum
+  memiliki manifest di worker dan tidak membuat manifest palsu.
+- PostgreSQL disposable pertama **188 tes/883 assertions lulus**, termasuk 39
+  tes lane baru. Runner membersihkan container/network unik miliknya. Startup
+  sempat menunggu I/O bind mount Windows (p9_client_rpc), bukan menunggu DB lock.
+  Verifikasi akhir menambahkan tes penolakan preflight yang difilter RLS.
+- PostgreSQL final: `powershell -NoProfile -ExecutionPolicy Bypass -File tools/testing/run-org-postgres.ps1`
+  **189 tes/888 assertions lulus**, termasuk **40 tes lane baru**, tanpa skip.
+  PostgreSQL 17 disposable; koneksi runtime non-owner/NOBYPASSRLS. Run final
+  selesai dan membersihkan container/network miliknya. Schema feature final
+  setelah guard RLS tetap **23 tes/124 assertions lulus**.
+- Pint lima file PHP perubahan lulus. PHPStan awal setelah PHPDoc nullable:
+  **0 error**; tidak memerlukan perubahan reader di luar ownership.
+  Environment eksplisit testing, SQLite memory, DB_URL kosong, cache/session
+  array, queue sync. PHPStan final seluruh cakupan proyek setelah guard RLS juga
+  **0 error**, dan Pint final kelima file PHP lulus.
+
+Log lokal (tidak dicommit): p9a0-schema-red.log, p9a0-schema-green.log,
+p9a0-focused-regression.log, p9a0-registration.log, p9a0-postgres.log,
+p9a0-schema-final.log, p9a0-postgres-final.log, p9a0-phpstan-final.log di storage/logs.
+Tes DDL owner hanya pada DB disposable bermarker yang diverifikasi; tes constraint,
+gate dan lintas tenant memakai psikotes_runtime non-superuser/non-owner/NOBYPASSRLS.
+Tidak mengklaim tes owner sebagai bukti otorisasi runtime.
+
+### Handoff delta model dan batas commit
+
+Enam file kerja lane:
+1. database/migrations/2026_08_31_000600_allow_checkout_partial_profiles.php (baru).
+2. app/Models/Participant.php (PHPDoc saja).
+3. app/Models/AssessmentParticipant.php (PHPDoc saja; baseline untracked).
+4. tests/Feature/Database/CheckoutPartialProfileSchemaTest.php (baru).
+5. tests/Postgres/CheckoutPartialProfileSchemaTest.php (baru).
+6. tasks/organization-payment/reports/backend.md.
+
+Participant masih membawa tiga baris Fillable baseline (package_id/source_system/
+attribution_source). Hanya hunk PHPDoc yang dimasukkan index; tiga baris baseline
+tetap di luar commit. AssessmentParticipant sepenuhnya untracked sejak snapshot:
+agar tidak commit ulang baseline, **file itu tidak ditambahkan Git**. Perubahan
+lokalnya telah ikut Pint/PHPStan, dan delta tepat terhadap induk adalah:
+
+```diff
+--- a/app/Models/AssessmentParticipant.php
++++ b/app/Models/AssessmentParticipant.php
+@@ -25 +25 @@
+- * @property string $funding_mode
++ * @property string|null $funding_mode
+```
+
+Koordinator perlu menerapkan satu baris PHPDoc tersebut pada model tracked di
+induk saat integrasi. Ini penyerahan delta eksplisit, bukan izin menyalin seluruh
+model/snapshot worker. Selain dua hunk PHPDoc, file baseline lain tidak disentuh.
+Status global worktree tetap memuat baseline lama; jangan menafsirkan seluruh
+git status sebagai pekerjaan P9a0. Index diperiksa sebelum commit lane saja.
+
+P9a0 belum memberi izin sumber aktif, route publik, perubahan request, action
+provisioning, payer writer, pembatalan lifecycle, atau P10. Consumer/engine tetap
+di luar scope. Data NULL tetap harus dilengkapi secara sah sebelum akses, dan
+rollback atas data tersebut sengaja menolak. **P9a0 siap review lokal dengan
+delta model untracked di atas; STOP sebelum action P9a/kontrak intendedField.**

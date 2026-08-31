@@ -19,8 +19,12 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property int|null $package_id
  * @property int $branch_id
  * @property int $referral_branch_id
- * @property string $full_name
- * @property CarbonInterface $birth_date
+ * @property string|null $full_name
+ * @property string|null $gender
+ * @property CarbonInterface|null $birth_date
+ * @property string|null $education_level
+ * @property string|null $intended_field
+ * @property string|null $phone
  * @property string|null $test_number
  */
 #[Fillable([
