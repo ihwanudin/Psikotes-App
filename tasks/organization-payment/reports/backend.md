@@ -582,3 +582,102 @@ Index diperiksa kosong sebelum staging; commit dibatasi pada tes baru dan
 laporan ini. Perubahan baseline lama termasuk model/Fillable tidak disentuh.
 Tidak ada baseline induk yang di-reset/merge. **Siap review lokal; STOP sebelum
 action P9a maupun increment lain.**
+
+## P9a internal provisioning — 2026-09-01
+
+Koordinator menerima kontrak intendedField melalui dcfd96f dan mengizinkan
+action internal + tes feature/PG + laporan. Implementasi ini memakai ADR-004,
+acceptance P9a terbaru, request/adapter/policy existing, dan pola mutex organisasi
+reservation/activation. Skill Laravel/Auth/Security/TDD/Incremental/Git existing
+tetap digunakan; DB/schema dan Supabase Postgres (RLS dan transaksi singkat)
+dibaca kembali. Tidak ada schema/request/controller/route/config/v1 baru atau
+perubahan baseline pada increment ini. Tidak ada task/agent tambahan.
+
+### Boundary dan semantik yang diimplementasikan
+
+- Entry internal `ProvisionCheckoutParticipant::handle(ProvisionCheckoutParticipantRequest)`.
+  Caller wajib mengautentikasi request lebih dahulu dan membentuk service RLS
+  context. Action **tidak** memanggil runAsService untuk menaikkan hak sendiri.
+  Tanpa context serta participant/branch_admin/staff/psychologist/super_admin
+  ditolak sebelum query. FormRequest tervalidasi dan atribut client authenticated
+  wajib; Idempotency-Key memakai validator helper existing.
+- Dalam transaksi/savepoint, lock branch organisasi lalu reload/lock client,
+  source checkout-v2, paket dan satu item paket yang membuktikan tidak kosong.
+  Client ID, client_id dan organization_id harus tetap cocok principal yang
+  terautentikasi. Adapter existing memeriksa flag opt-in, organisasi, keaktifan/
+  masa berlaku client/source/package serta payer policy **sebelum replay**.
+- Identity mapping hanya exact organization + source_system + external_candidate_id.
+  Email/phone/nama tidak pernah digunakan untuk mencari identitas. Sumber atau
+  organisasi berbeda menghasilkan participant berbeda meskipun kontak sama.
+  Client pengganti dalam organisasi/source yang sama dapat memakai mapping orang
+  untuk round baru; replay attempt milik client lain ditolak. Mapping ambigu,
+  participant soft-deleted atau branch tidak cocok gagal tertutup.
+- Profil baru menyimpan tujuh nilai sah yang tersedia; absent/null tetap NULL.
+  Gender MALE/FEMALE dipetakan eksplisit ke male/female; tidak ada default UMUM.
+  Round baru pada mapping yang sama boleh mengisi field yang masih NULL, tetapi
+  konflik nilai non-NULL ditolak. Replay tidak menulis profil sehingga data yang
+  dilengkapi belakangan tidak dihapus oleh payload awal parsial.
+- Attempt baru selalu PROVISIONED, result_version=0, marker server
+  metadata.checkout_contract_version=checkout-v2. Hanya metadata cohortCode
+  diikutkan. Payer hasil resolver self/organization dipetakan ke funding existing;
+  jika resolver belum memilih, funding_mode NULL. Tidak menulis paid/verified/
+  consent, nomor tes, credential, entitlement, charge, bill/item, order, outbox,
+  audit/notifier atau sesi. Keluaran berisi ID/status/replayed, bukan token/hak.
+- Hash request mengurutkan key object; absent vs explicit-null tetap berbeda
+  untuk konflik replay. Logical key purpose checkout-v2 mencakup source,
+  candidate, process, round dan package (registration ID tetap bagian hash request).
+  Key yang sama dengan payload lain ditolak; logical retry dengan key lain memakai
+  attempt existing. Key alternatif **tidak** disimpan sebagai alias baru karena
+  schema hanya menyimpan satu idempotency key per attempt; client sebaiknya tetap
+  mengirim key asli. Package/round berbeda dengan key baru adalah attempt berbeda.
+- Lookup memeriksa benturan key client dan logical attempt organisasi sekaligus;
+  beda client/tenant/source/package/payer/hash atau dua hasil bertabrakan ditolak.
+  Payer berubah akibat policy sesudah provisioning juga konflik, bukan update
+  diam-diam. REVOKED/VOID atau revoked_at tidak direplay. Status lain tidak diubah.
+  Constraint unique existing tetap backstop; action tidak menangkap semua error
+  SQL sebagai replay. Savepoint mencakup participant + attempt: crash setelah
+  insert attempt rollback keduanya meskipun caller menangkap exception dan commit.
+
+Mutex organisasi memberi serialization untuk writer ini termasuk saat belum ada
+identity row. Ini bukan jaminan terhadap writer eksternal yang tidak memakai
+mutex, bukan izin menjalankan v1 dan v2 bersamaan saat cutover, dan bukan bukti
+throughput produksi. Transaksi tidak melakukan network I/O. Dasar primitive:
+[PostgreSQL 17 row locks](https://www.postgresql.org/docs/17/explicit-locking.html#LOCKING-ROWS)
+dan [Laravel 13 Form Requests](https://laravel.com/docs/13.x/validation#form-request-validation).
+
+### Bukti feature dan batas tahap pertama
+
+- RED awal sebelum action: 24 tes, 1 lulus, 7 gagal, 16 error (class action belum
+  ada), 8 assertions. Setelah implementasi, tiga assertion memakai nama tabel
+  credential yang tidak ada dikoreksi; absence credential dibuktikan dari
+  test_number/registration token NULL dan tidak memanggil issuer, bukan tabel palsu.
+- Focused awal: **34 tes/125 assertions lulus**. Empat kasus tambahan memeriksa
+  key order/collision, client dipindah tenant, client dihapus, dan attempt revoked.
+- Focused final (action, CheckoutContractCompatibility, CheckoutIntendedFieldContract,
+  GenericAssessmentProvisioning, AttemptEntitlementGate): **133 tes/406 assertions
+  lulus**, tanpa skip. Seluruh PHPUnit memakai phpunit.organization-payment.xml,
+  testing SQLite memory.
+- Regresi direktori integrations sebelum empat tes terakhir: **102 tes, 101 lulus,
+  1 gagal, 431 assertions**. Satu kegagalan existing SelectionLaunchTest lobby
+  disebabkan public/build/manifest.json tidak tersedia di worker; tidak memalsukan
+  manifest/withoutVite atau mengubah harness. Suite direktori penuh tidak diklaim
+  lulus. Root memiliki build dan perlu mengulang tes UI itu saat integrasi.
+- Pint ketiga file PHP lane lulus. PHPStan seluruh proyek awal mendeteksi dua
+  isu (collection call tidak perlu dan match mixed tidak exhaustive); diperbaiki
+  dengan query first dan default penolakan gender. PHPStan final **0 error**, env
+  testing/SQLite memory/DB_URL kosong/cache dan session array/queue sync.
+- Tes PostgreSQL khusus telah ditulis; runner disposable existing sedang berjalan
+  saat checkpoint pertama ini, sehingga **belum dihitung lulus**. Observasi startup
+  `p9_cli` menunjukkan I/O bind mount, bukan bukti lock DB atau test failure.
+
+File lane: app/Actions/Integrations/ProvisionCheckoutParticipant.php (baru),
+tests/Feature/Integrations/CheckoutProvisioningTest.php (baru),
+tests/Postgres/CheckoutProvisioningTest.php (baru), dan laporan ini.
+Commit tahap pertama hanya action + feature test + laporan; tes PG menunggu bukti
+runner sebelum commit kedua. Baseline untracked termasuk request tidak dimasukkan
+ke index. Tidak memakai .env/DB aktif, sumber nyata, gateway, atau notifikasi.
+Log lokal: p9-action-red.log, p9-action-green.log, p9-action-regression.log,
+p9-action-focused-final.log, p9-action-phpstan-final.log, p9-action-postgres.log.
+
+Public wiring, P10 dan lifecycle berikutnya tetap belum dikerjakan. Penyerahan
+akhir menunggu hasil PG dan pemeriksaan delta; checklist kanonik tidak diedit.
