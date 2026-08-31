@@ -46,14 +46,36 @@ Gunakan domain HTTPS untuk alur pendaftaran/login. HTTP loopback
 - Callback dengan token salah menghasilkan 401. Data tetap satu payment event,
   satu entitlement, dan satu outbox aktivasi berstatus processed.
 - Health check lokal 200 dan ketiga layanan kembali berjalan.
-- HTTP publik `/register` masih menghasilkan 200, bukan redirect. Pengalihan
-  HTTP ke HTTPS khusus hostname ini masih perlu disiapkan di edge. Jangan
-  mengaktifkan pengaturan seluruh zona tanpa menilai subdomain lain.
+- HTTP publik `/`, `/register`, `/health`, dan jalur referral menghasilkan
+  redirect 308 ke HTTPS; path, query string, dan encoding parameter terjaga.
+- HTTPS `/register` dan `/health` tetap 200 tanpa loop. POST HTTP ke endpoint
+  webhook menghasilkan 308; POST HTTPS dengan token salah tetap 401.
+
+## Aturan redirect Cloudflare
+
+Single Redirect aktif pada zona `oncam.id`:
+
+- Nama: `Psikotes - HTTP to HTTPS`.
+- Rule ID: `4836dffcecca4b43aeec57a29502c865`.
+- Request URL: `http://psikotes.oncam.id/*`.
+- Target URL: `https://psikotes.oncam.id/${1}`.
+- Status: 308 (permanen, mempertahankan metode HTTP).
+- Preserve query string: aktif.
+
+Aturan hanya mencocokkan hostname tersebut dan tidak mengubah subdomain lain.
+Pengaturan Always Use HTTPS seluruh zona tidak diubah. Redirect bukan pengganti
+penggunaan HTTPS sejak permintaan pertama: jangan mengirim kredensial/data ke
+HTTP lalu mengandalkan redirect. Callback Xendit tetap memakai URL HTTPS langsung.
 
 ## Pemulihan
 
 Jika ada gangguan, pertahankan Secure cookie dan periksa health/log layanan
-lebih dahulu. Untuk kembali ke pengembangan HTTP-only, hentikan publikasi
+lebih dahulu. Jika redirect salah, koreksi target pada rule ID di atas. Untuk
+pemulihan darurat, nonaktifkan hanya rule tersebut setelah persetujuan operator;
+perubahan ini akan membuka kembali akses HTTP dan redirect permanen mungkin
+masih tersimpan pada browser. Jangan mengubah aturan domain lain.
+
+Untuk kembali ke pengembangan HTTP-only, hentikan publikasi
 tunnel terlebih dahulu; baru kembalikan `APP_URL=http://localhost:8000` dan
 `SESSION_SECURE_COOKIE=false`, lalu jalankan kembali perintah Compose di atas.
 Jangan menonaktifkan Secure cookie ketika aplikasi masih tersedia publik.
@@ -61,3 +83,4 @@ Tidak perlu menghapus volume atau mengganti token/key.
 
 Referensi: [sesi Laravel](https://laravel.com/framework/docs/13.x/session) dan
 [rekreasi layanan Compose](https://docs.docker.com/reference/cli/docker/compose/up/).
+Lihat juga [parameter Single Redirects Cloudflare](https://developers.cloudflare.com/rules/url-forwarding/single-redirects/settings/).
