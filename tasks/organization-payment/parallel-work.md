@@ -236,3 +236,14 @@ tetapi hanya koordinator yang menulis dokumen status kanonik.
   tidak menghilangkan pemeriksaan otorisasi persisted saat aksi/hydration.
 - Focused tests lalu runner disposable saat backend tidak memakai runner;
   catat bukti, commit, dan batas browser/keyboard. Stop untuk review.
+
+## Review gelombang kedua
+
+Frontend 6f72711 dan portal 2e8ae42 sudah diintegrasikan lokal terbatas.
+Verifikasi gabungan: 670 tes aplikasi/3.186 assertions, 156 PostgreSQL/921
+assertions, 19 tes SSR; typecheck, lint, preview build, Pint dan PHPStan lulus.
+Backend f505c2f hanya proposal; 29 tes RED tidak dihitung sebagai fitur selesai.
+Koordinator menyetujui kontrak credential opaque framework untuk implementasi
+lokal dan mengirim kelanjutan ke task backend yang sama. Frontend dan portal
+menunggu dependensi, tidak membuka endpoint/gate publik. Keputusan, batas dan
+hasil verifikasi: [reports/integration-wave-2.md](reports/integration-wave-2.md).
