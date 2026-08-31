@@ -26,6 +26,9 @@ ADR-008 menerima P10c-a single-intent: strict lookup terhadap issuing/processing
 atau unknown/failed1, tanpa create/rearm. Exact result memakai persistence boundary
 bersama; unknown tetap fail-closed. Command/discovery/scheduler tetap P10c-b.
 
-Backend cursor `163af1e1-5f6a-4358-82dd-3e4d2134e4ed:40`, turn selesai/idle.
+Backend cursor `163af1e1-5f6a-4358-82dd-3e4d2134e4ed:41`, turn
+`01a059f0-c6b2-7ed3-ac8a-48677e4c7f80` aktif setelah tepat satu instruksi
+P10c-a; jangan kirim ulang selama aktif.
 Frontend/portal tetap not-loaded pada cursor :33 dan menunggu dependency. Satu
-kelanjutan P10c-a akan dikirim ke backend task existing; jangan duplikasi saat aktif.
+Instruksi tetap lookup-only, nol create/command/scheduler/outbound; review delta
+dan uji root wajib sebelum integrasi.
