@@ -65,9 +65,10 @@ Semua proses verifikasi koordinator selesai; tidak ada perubahan produksi aktif.
 ## Snapshot lanjutan 2026-08-31T19:56:32Z
 
 Backend tetap aktif pada turn yang sama; cursor terbaru
-163af1e1-5f6a-4358-82dd-3e4d2134e4ed:33. Worker melaporkan feature tests
-claim GREEN dan sedang menguji PostgreSQL dua proses commit/rollback. Ini belum
-hasil final atau acceptance koordinator. Frontend/portal tetap idle dengan cursor
+163af1e1-5f6a-4358-82dd-3e4d2134e4ed:34. Worker melaporkan runner PostgreSQL
+disposable lulus 209 tes/1.324 assertions serta cleanup selesai, lalu menambah
+pemeriksaan eksplisit count, overflow, dan expiry. Ini belum hasil final atau
+acceptance koordinator. Frontend/portal tetap idle dengan cursor
 dan dependensi yang sama pada tabel di atas. Tidak ada instruksi ulang, integrasi,
 tes koordinator, atau perubahan runtime. Pemeriksaan berikutnya menunggu backend
 selesai; instruksi claim-only ADR-006 tetap berlaku. Baseline root9315a64 bersih
