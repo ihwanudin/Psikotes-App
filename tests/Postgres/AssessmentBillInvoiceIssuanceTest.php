@@ -7,6 +7,7 @@ namespace Tests\Postgres;
 use App\Actions\Payments\ClaimAssessmentBillInvoice;
 use App\Actions\Payments\IssueAssessmentBillInvoice;
 use App\Actions\Payments\PreviewAssessmentBill;
+use App\Actions\Payments\ReconcileAssessmentBillInvoice;
 use App\Actions\Payments\ReserveAssessmentBill;
 use App\Contracts\PaymentProvider;
 use App\Data\Payments\CreateInvoiceRequest;
@@ -20,6 +21,7 @@ use App\Models\AssessmentBill;
 use App\Models\OutboxMessage;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
+use App\Services\Payments\Exceptions\PaymentProviderException;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -34,6 +36,7 @@ use Throwable;
 /** Real runtime role, independent PostgreSQL processes, and a disposable database only. */
 final class AssessmentBillInvoiceIssuanceTest extends TestCase
 {
+    /** @var list<array{organization: int, participant: int, package: int, attempt: int, charge: int, bill: int, payer: string, source: int, client: int}> */
     private array $fixtures = [];
 
     private Admin $admin;
@@ -74,17 +77,20 @@ final class AssessmentBillInvoiceIssuanceTest extends TestCase
         Http::preventStrayRequests();
         Http::fake([]);
         app(RlsContextRunner::class)->runAsService(function (): void {
-            $this->fixtures[] = Fixture::create();
+            $this->fixtures[] = $this->createFixture();
             $org = $this->fixtures[0]['organization'];
             for ($index = 1; $index < 10; $index++) {
-                $this->fixtures[] = Fixture::create(['organization' => $org]);
+                $this->fixtures[] = $this->createFixture(['organization' => $org]);
             }
             DB::table('assessment_participants')->where('organization_id', $org)->update(['funding_mode' => 'INVOICED_TO_ORGANIZATION',
                 'metadata' => '{"checkout_contract_version":"checkout-v2","checkout_initial_funding_mode":null}']);
             $this->admin = Admin::create(['branch_id' => $org, 'name' => 'Synthetic PG issuer',
                 'email' => Str::ulid().'@example.test', 'password' => 'synthetic', 'role' => AdminRole::BranchAdmin]);
             $this->method = DB::table('payment_methods')->insertGetId(['code' => 'xendit', 'display_name' => 'Synthetic PG', 'is_active' => true]);
-            $selection = array_map(Fixture::selection(...), $this->fixtures);
+            $selection = array_map(fn (array $fixture): array => [
+                'assessmentParticipantId' => $fixture['attempt'],
+                'consultationRequested' => false,
+            ], $this->fixtures);
             $preview = app(PreviewAssessmentBill::class)->execute($org, $selection, PayerType::Organization);
             $this->bill = app(ReserveAssessmentBill::class)->execute($this->admin, $selection, $this->method, $preview['selectionHash'], 'pg-issue-ten');
             app(ClaimAssessmentBillInvoice::class)->execute($org, $this->bill->id);
@@ -196,6 +202,40 @@ final class AssessmentBillInvoiceIssuanceTest extends TestCase
         $this->assertSame(0, $provider->lookups);
     }
 
+    public function test_two_runtime_reconcilers_persist_one_exact_result_without_create(): void
+    {
+        app(IssueAssessmentBillInvoice::class)->consume($this->intent->message_id);
+        [$first, $second] = $this->race('reconcile');
+        $decisions = [$first['decision'], $second['decision']];
+        sort($decisions);
+        $this->assertSame(['issued', 'recovery_required'], $decisions);
+        $this->assertSame(0, $first['creates'] + $second['creates']);
+        $this->assertContains($first['lookups'] + $second['lookups'], [1, 2],
+            'P10c-a has no durable lookup lease, so overlapping workers may both perform the read-only GET.');
+        app(RlsContextRunner::class)->runAsService(function (): void {
+            $this->assertSame('pending', $this->bill->fresh()->status);
+            $this->assertSame('processed', $this->intent->fresh()->status);
+            $this->assertSame(1, $this->intent->fresh()->attempts);
+            $this->assertSame(1, DB::table('audit_logs')->where('action', 'assessment_bill.invoice_issued')->count());
+        });
+    }
+
+    public function test_two_runtime_reconcilers_move_unknown_once_without_create_or_audit_spam(): void
+    {
+        app(IssueAssessmentBillInvoice::class)->consume($this->intent->message_id);
+        [$first, $second] = $this->race('reconcile', true);
+        $this->assertSame(['unknown', 'unknown'], [$first['decision'], $second['decision']]);
+        $this->assertSame(0, $first['creates'] + $second['creates']);
+        $this->assertContains($first['lookups'] + $second['lookups'], [1, 2]);
+        app(RlsContextRunner::class)->runAsService(function (): void {
+            $this->assertSame('unknown', $this->bill->fresh()->status);
+            $this->assertSame('failed', $this->intent->fresh()->status);
+            $this->assertSame(1, $this->intent->fresh()->attempts);
+            $this->assertSame('INVOICE_OUTCOME_UNKNOWN', $this->intent->fresh()->last_error);
+            $this->assertSame(1, DB::table('audit_logs')->where('action', 'assessment_bill.invoice_unknown')->count());
+        });
+    }
+
     public function test_ambient_service_and_user_contexts_cannot_enter_handler(): void
     {
         foreach (['service', 'participant', 'branch_admin', 'super_admin'] as $role) {
@@ -213,7 +253,7 @@ final class AssessmentBillInvoiceIssuanceTest extends TestCase
     }
 
     /** @return array{array<string, mixed>, array<string, mixed>} */
-    private function race(): array
+    private function race(string $operation = 'issue', bool $unknown = false): array
     {
         DB::purge('pgsql'); // Never inherit a live PDO into either child.
         $workers = [];
@@ -237,9 +277,11 @@ final class AssessmentBillInvoiceIssuanceTest extends TestCase
                         if (fgets($pair[1]) !== "go\n") {
                             throw new RuntimeException('Barrier timed out.');
                         }
-                        $provider = new SyntheticIssuanceProvider($this->bill->public_reference, $this->bill->amount);
+                        $provider = new SyntheticIssuanceProvider($this->bill->public_reference, $this->bill->amount, $unknown);
                         app()->instance(PaymentProvider::class, $provider);
-                        $result = app(IssueAssessmentBillInvoice::class)->execute($this->intent->message_id);
+                        $result = $operation === 'reconcile'
+                            ? app(ReconcileAssessmentBillInvoice::class)->execute($this->intent->message_id)
+                            : app(IssueAssessmentBillInvoice::class)->execute($this->intent->message_id);
                         $result['creates'] = $provider->creates;
                         $result['lookups'] = $provider->lookups;
                         Http::assertNothingSent();
@@ -281,10 +323,18 @@ final class AssessmentBillInvoiceIssuanceTest extends TestCase
             });
             $results = [];
             foreach ($workers as $worker) {
-                $results[] = json_decode((string) fgets($worker['socket']), true, flags: JSON_THROW_ON_ERROR);
+                $result = json_decode((string) fgets($worker['socket']), true, flags: JSON_THROW_ON_ERROR);
+                if (! is_array($result)) {
+                    throw new RuntimeException('Invalid worker result.');
+                }
+                $results[] = $result;
             }
 
-            return $results;
+            if (count($results) !== 2) {
+                throw new RuntimeException('Both worker results are required.');
+            }
+
+            return [$results[0], $results[1]];
         } finally {
             foreach ($workers as $worker) {
                 fclose($worker['socket']);
@@ -294,6 +344,28 @@ final class AssessmentBillInvoiceIssuanceTest extends TestCase
             }
         }
     }
+
+    /**
+     * @param  array{organization: int}|null  $identity
+     * @return array{organization: int, participant: int, package: int, attempt: int, charge: int, bill: int, payer: string, source: int, client: int}
+     */
+    private function createFixture(?array $identity = null): array
+    {
+        $fixture = Fixture::create($identity);
+        foreach (['organization', 'participant', 'package', 'attempt', 'charge', 'bill', 'source', 'client'] as $key) {
+            if (! is_int($fixture[$key] ?? null)) {
+                throw new RuntimeException('Synthetic billing fixture is invalid.');
+            }
+        }
+        if (! is_string($fixture['payer'] ?? null)) {
+            throw new RuntimeException('Synthetic billing fixture payer is invalid.');
+        }
+
+        return ['organization' => $fixture['organization'], 'participant' => $fixture['participant'],
+            'package' => $fixture['package'], 'attempt' => $fixture['attempt'], 'charge' => $fixture['charge'],
+            'bill' => $fixture['bill'], 'payer' => $fixture['payer'], 'source' => $fixture['source'],
+            'client' => $fixture['client']];
+    }
 }
 
 final class SyntheticIssuanceProvider implements PaymentProvider
@@ -302,7 +374,11 @@ final class SyntheticIssuanceProvider implements PaymentProvider
 
     public int $lookups = 0;
 
-    public function __construct(private readonly string $reference, private readonly int $amount) {}
+    public function __construct(
+        private readonly string $reference,
+        private readonly int $amount,
+        private readonly bool $unknown = false,
+    ) {}
 
     public function createInvoice(CreateInvoiceRequest $request): PaymentInvoice
     {
@@ -316,6 +392,9 @@ final class SyntheticIssuanceProvider implements PaymentProvider
         $this->lookups++;
         if ($merchantReference !== $this->reference || $amount !== $this->amount || $currency !== 'IDR') {
             throw new RuntimeException('Unexpected strict lookup input.');
+        }
+        if ($this->unknown) {
+            throw new PaymentProviderException('Synthetic unknown lookup.');
         }
 
         return $this->invoice();

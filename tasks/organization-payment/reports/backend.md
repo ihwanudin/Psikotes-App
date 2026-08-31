@@ -1598,3 +1598,78 @@ push, reset/merge/rebase baseline atau task/agent baru.
 P10b-b ini membuktikan permit dan persistence lokal, bukan delivery queue,
 exactly-once provider, production recovery atau settlement. **STOP untuk review;
 P10c/P11/public wiring tetap memerlukan instruksi berikutnya.**
+
+## P10c-a — rekonsiliasi satu intent tanpa create ulang
+
+### Kontrak dan implementasi
+
+ADR-008 dan wave-16 dibaca penuh bersama ADR-006/007, plan/todo/parallel,
+proposal issuance, lookup P10a, claim P10b-a dan issuance P10b-b. Increment ini
+menambah entrypoint internal `ReconcileAssessmentBillInvoice` dengan satu input
+persisted `message_id`. Tidak ada command, job, dispatcher, scheduler atau route.
+
+Entrypoint menolak ambient RLS context dan transaksi sebelum membaca state.
+Preflight service transaction memakai routing hint outbox lalu menjalankan claim
+canonical yang sama untuk mengunci/reload organization, registry, bill/items,
+attempt/participant/package/charge, payer, current policy/channel/revoke dan
+intent. Hanya pasangan issuing + processing/attempts1 tanpa error atau unknown +
+failed/attempts1 dengan `INVOICE_OUTCOME_UNKNOWN` yang lolos. Pending0,
+processed, paid/expired/rejected, corrupt/lost, foreign scope, policy/channel OFF
+dan revoked berhenti sebelum provider. Transaksi dan context selesai sebelum
+network.
+
+Fase network hanya memanggil satu `lookupInvoice(reference, amount, currency)`;
+kode action tidak memiliki jalur `createInvoice`. Exact result, termasuk expiry
+provider yang sudah lewat, mempertahankan expiry asli dan menempelkan reference/
+URL lewat `PersistAssessmentInvoiceOutcome`. Ini penting karena lookup P10a
+secara sengaja dapat menemukan invoice expired dan recovery tidak boleh
+memperpanjang expiry. Empty/ambiguous/mismatch/timeout/error diperlakukan unknown.
+
+Boundary persist P10b dipindahkan utuh ke service bersama agar issuance dan
+reconciliation memakai lock, snapshot/item/linkage checks dan late-state fence
+yang sama. Issuing/processing unknown berubah atomik ke unknown/failed1 dengan
+satu audit. Unknown/failed1 existing mengembalikan unknown tanpa update timestamp,
+reset counter, perubahan expiry atau audit tambahan. Exact dari kedua pasangan
+recoverable menjadi bill pending + intent processed/attempts1 + satu audit.
+Paid/terminal/changed state setelah GET tidak ditimpa. Persistence dan audit satu
+transaksi; kegagalan audit menggulung balik invoice fields dan status.
+
+Tidak ada settlement, consent, identity verification, entitlement, order,
+credential, notification atau hak assessment. Consumer legacy tetap mengabaikan
+topic invoice issuance.
+
+### Bukti aktual
+
+- Selama ekstraksi boundary, regresi issuance pertama menemukan **8 error**
+  `undefined audit` dari 22 tes (14 lulus/163 assertions). Helper audit permit
+  dikembalikan ke action issuance; ini menangkap regresi refactor sebelum final.
+- Focused reconciliation final: **26/26 tes, 256 assertions**. Bukti mencakup
+  crash-state exact, unknown exact, empty/error/mismatch pada kedua state,
+  repeated unknown stabil, Xendit `Http::fake` GET-only/no POST, expiry provider
+  lama tanpa extension, invalid/terminal states, ambient roles/transaksi, current
+  policy/channel/revoke, corrupt/lost/foreign, late paid, rollback persistence dan
+  consumer legacy.
+- Regresi P10a lookup + P10b claim/issuance + P10c reconciliation:
+  **160/160 tes, 1.205 assertions** dengan konfigurasi
+  `phpunit.organization-payment.xml` SQLite memory.
+- PostgreSQL disposable runtime non-owner/NOBYPASSRLS: **216/216 tes,
+  1.473 assertions**, cleanup selesai. Dua process benar-benar overlap pada
+  organization lock. Exact menghasilkan satu persistence/audit dan nol create;
+  unknown menghasilkan satu transisi/audit dan nol create. Total lookup 1 atau 2
+  tergantung jadwal lock; P10c-a tidak mengklaim lease atau global single-lookup.
+- Pint seluruh lima file PHP yang disentuh lulus. PHPStan seluruh project dengan
+  environment testing eksplisit lulus **0 error**. `git diff --check` lulus.
+
+### Files dan batas
+
+Delta lane terdiri dari `IssueAssessmentBillInvoice` (refactor pemanggil),
+`PersistAssessmentInvoiceOutcome`, `ReconcileAssessmentBillInvoice`, feature test,
+tambahan race di test PostgreSQL issuance, dan laporan ini. Commit dipisahkan
+karena total enam file: core + feature proof, lalu PG proof + laporan. Baseline
+dirty/untracked, termasuk config shared, tidak distage ulang.
+
+Tidak ada perubahan provider interface/adapter/fake, schema/migration, config,
+route/console/scheduler, source/gate, credential/.env/data aktif, outbound nyata,
+deploy, push, reset/merge/rebase atau task/agent baru. P10c-a hanya single-intent;
+discovery, durable lease, operasional scheduler dan observability tetap P10c-b.
+**STOP untuk review sebelum P10c-b/P11.**
