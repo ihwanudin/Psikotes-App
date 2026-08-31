@@ -85,6 +85,8 @@ Tidak commit generated output atau snapshot awal. Lima file perubahan utama:
 types/integrated-checkout.ts, checkout-payment.tsx, fixtures.ts, checkout.test.tsx
 dan laporan ini. Helper keenam unselected-payment.mjs diserahkan sebagai commit
 bukti browser terpisah sesudah perubahan utama, sesuai izin ownership.
+Urutan review/integrasi: **4d146bc** (lima file utama), lalu commit
+`F16: record browser proof for unselected payer` (helper dan catatan urutan ini).
 **Stop review; varian DRAFT ini tidak menyelesaikan P16 end-to-end/P15/server mapper.**
 
 ## Wave-7 tooling — cakupan ESLint generated output (2026-09-01)
