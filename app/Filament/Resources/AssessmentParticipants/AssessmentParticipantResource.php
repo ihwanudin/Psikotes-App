@@ -65,7 +65,7 @@ final class AssessmentParticipantResource extends Resource
     {
         return $table
             ->columns([
-                TextColumn::make('participant.full_name')->label('Peserta')->searchable()->sortable(),
+                TextColumn::make('participant.full_name')->label('Peserta')->placeholder('Nama belum dilengkapi')->searchable()->sortable(),
                 TextColumn::make('external_candidate_id')->label('ID Kandidat')->searchable(),
                 TextColumn::make('assessment_round_id')->label('Periode')->searchable(),
                 TextColumn::make('assessment_status')->label('Status')->badge()->sortable(),

@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P8a selesai lokal. Core aktivasi/outbox/token dan schema P9a0 terverifikasi; bukti terbaru reports/integration-wave-5.md. P8b–P18 keseluruhan tetap belum selesai; berikutnya kontrak intendedField sebelum action P9a. Tidak ada deploy atau migrasi database aktif.**
+Status: **P1–P8a selesai lokal. Core aktivasi/outbox/token, schema P9a0 dan kontrak intendedField terverifikasi; bukti terbaru reports/integration-wave-6.md. P8b–P18 keseluruhan tetap belum selesai; action P9a internal sedang dikerjakan. Tidak ada deploy atau migrasi database aktif.**
 
 ## Gerbang revisi kolektif
 
@@ -355,7 +355,7 @@ Preflight menemukan NOT NULL tidak sesuai kontrak checkout-v2 existing.
 - [x] Audit statis reader frontend/portal diserahkan pada 3105383 dan diintegrasikan 793d494; temuan dan batas pada reports/frontend.md. Ini bukan pengujian runtime profil nullable.
 - [x] Model/readers diaudit; gate profil parsial tetap fail-closed. Uji rollback aman, compatibility legacy dan PG disposable lulus. Perbaikan label portal tetap prep sebelum wiring publik; tidak menjalankan migration pada database aktif.
 - [x] Review schema P9a0 lulus lokal: 751 tes aplikasi/3.491 assertions, PG 196/1.070, Pint/PHPStan. Ini belum action provisioning atau izin cutover.
-- [ ] Tambahkan profile.intendedField opsional checkout-v2 beserta tes kontrak, tanpa fallback UMUM; review terpisah sebelum action P9a.
+- [x] Tambahkan profile.intendedField opsional checkout-v2 beserta tes kontrak, tanpa fallback UMUM; review lulus, bukti reports/integration-wave-6.md. Action P9a kini dikerjakan, belum selesai.
 
 ### P9a: increment internal provisioning (sebelum endpoint publik)
 

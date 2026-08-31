@@ -356,3 +356,17 @@ Tidak mengimplementasikan mapper, mengubah tipe/endpoint/schema, atau memutuskan
 akses dari browser. Data lengkap tetap locked, data kurang menjadi missing,
 tanpa placeholder atau key hilang. Commit dokumen lalu review; jangan kirim ulang
 instruksi ini selama task aktif. Backend/portal melanjutkan increment sebelumnya.
+
+## Heartbeat kontrak terintegrasi (2026-09-01)
+
+Checkpoint reports/integration-wave-6.md: intendedField, pasangan fixture lobby,
+proposal profil DRAFT dan fallback nama portal diintegrasikan. Root 779/3782,
+Pint/PHPStan serta typecheck/lint/build fixture lulus; PG tidak diulang karena
+schema/query tidak berubah. Patch request/resource untracked worker diterapkan
+sebagai delta kecil, bukan baseline snapshot.
+
+Kelanjutan sudah dikirim: backend mengimplementasikan P9a internal sesuai todo;
+frontend memperbaiki email opsional pada dua komponen dan tes (bukan mapper);
+portal menyusun proposal P12b collective selection (dua dokumen, bukan writer/UI).
+Semua aktif pada snapshot terakhir. Scope, guard dan cursor tersimpan pada laporan
+wave-6; jangan menduplikasi instruksi. Endpoint/akses produksi tetap tertutup.
