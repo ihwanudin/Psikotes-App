@@ -1,7 +1,7 @@
 # Rencana: pembayaran lembaga dan checkout terintegrasi
 
 Tanggal: 2026-08-31
-Status: **Disetujui untuk dilanjutkan pada 2026-08-31; P1 sedang dikerjakan lokal. Tidak ada izin deploy.**
+Status: **Disetujui untuk dilanjutkan pada 2026-08-31; P1 selesai lokal, P2 berikutnya. Tidak ada izin deploy.**
 
 ## Lingkup dan status persetujuan
 

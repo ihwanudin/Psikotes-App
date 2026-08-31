@@ -1,22 +1,24 @@
 # Tugas: organization-payment
 
-Status: **Pengguna meminta lanjut setelah review plan/checklist pada 2026-08-31. P1 berjalan; checkpoint berikutnya belum lulus.**
+Status: **P1 selesai pada 2026-08-31. P2 berikutnya; checkpoint setelah P3 belum lulus.**
 
 Rujuk [plan.md](plan.md). Tinjau rincian file/kontrak tiap tugas sebelum coding. Lokasi `<new>` adalah nama migrasi yang belum dialokasikan; path baru lain adalah usulan, bukan klaim file sudah ada. Jika satu tugas melebar melebihi lima file, pecah dahulu. Tes selain yang memiliki bukti masih direncanakan; filter tanpa tes bukan keberhasilan.
 
-Tidak ada butir implementasi selesai. Checklist F1 lama tetap terpisah.
+P1 selesai dengan bukti di dokumen pengujian. Checklist F1 lama tetap terpisah.
 
 ## P1: Harness dan baseline aman
 
 **Deskripsi / acceptance:**
 
-- [ ] Runner menolak database aktif dan outbound nyata; baseline existing dicatat tanpa menandai skip sebagai lulus.
+- [x] Runner menolak database aktif dan outbound nyata; baseline existing dicatat tanpa menandai skip sebagai lulus.
 
-**Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml`. Pengaman lulus 10 tes/22 assertions. Regresi + harness: 350 lulus, 2 skip registrasi Fortify nonaktif (exit 1); sandbox dikecualikan karena butuh izin transaksi eksternal. P1 belum dicentang selesai. Bukti: `docs/ORGANIZATION_PAYMENT_TESTING.md`. Runner ini khusus SQLite memori; PostgreSQL ditolak sampai runner terpisah tersedia.
+**Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml`: 10 tes/22 assertions. Setelah penyelarasan legacy, regresi lokal 353 tes/1.776 assertions lulus tanpa skip (sandbox eksternal tidak dijalankan). `powershell -NoProfile -ExecutionPolicy Bypass -File tools/testing/run-org-postgres.ps1`: 8 tes/52 assertions PostgreSQL lulus. Bukti dan batas: `docs/ORGANIZATION_PAYMENT_TESTING.md`.
 
 **Dependencies:** None. **Scope:** M.
 
 **Files likely touched:** `tests/Feature/Database/OrganizationPaymentTestEnvironmentTest.php`, `tests/OrganizationPaymentTestCase.php`, `phpunit.organization-payment.xml`, `docs/ORGANIZATION_PAYMENT_TESTING.md`.
+
+**Increment terpisah:** penyelarasan `tests/Feature/Auth/RegistrationTest.php`; runner `tools/testing/run-org-postgres.ps1`, `tools/testing/bootstrap-org-postgres.php`, `phpunit.organization-postgres.xml`, dan `tests/Postgres/OrganizationPaymentRlsTest.php`. Tidak mengubah skema/kode aplikasi atau checklist F1.
 
 ## P2: Konfigurasi pembayar
 

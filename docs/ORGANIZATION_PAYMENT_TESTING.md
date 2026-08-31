@@ -25,9 +25,9 @@ mengubah cache layanan publik untuk mengatasinya. Gunakan checkout test bersih.
 
 ## Jaminan dan batas
 
-- Hanya koneksi SQLite memori tersedia. Permintaan koneksi pgsql eksplisit gagal,
-  tidak diam-diam dijalankan pada SQLite. PostgreSQL bernama *_test pun ditolak
-  oleh runner ini: runner PostgreSQL perlu ditinjau dan disiapkan tersendiri.
+- Pada runner SQLite, hanya koneksi memori tersedia. Permintaan koneksi pgsql
+  eksplisit gagal, tidak diam-diam dijalankan pada SQLite. PostgreSQL bernama
+  *_test pun ditolak; gunakan runner PostgreSQL terpisah di bagian bawah.
 - PaymentProvider dan Notifier terikat ke fake setiap aplikasi dibuat ulang.
 - Laravel HTTP menolak request tanpa fixture. Tes adapter boleh memakai
   Http::fake untuk respons sintetis, bukan allowStrayRequests untuk layanan nyata.
@@ -76,9 +76,9 @@ gerbang F1 lulus. Skip/failure lain harus tetap dicatat, tidak disembunyikan.
   chunk >500 kB dan fontaine opsional belum terpasang; tidak mengubah dependency
   atau menaikkan batas peringatan pada tugas harness ini.
 
-P1 belum dicentang selesai pada checklist karena gate regresi masih memiliki
-skip. Hasil focused harness sudah hijau; penyelarasan tes registrasi legacy dan
-runner PostgreSQL tidak dicampur ke perubahan ini.
+Pada increment awal, P1 belum dicentang selesai karena regresi masih memiliki
+skip. Penyelarasan legacy dan runner PostgreSQL dikerjakan sebagai increment
+terpisah; lihat pembaruan berikut untuk status terbaru.
 
 Tidak ada migrasi database aktif, invoice eksternal, pengiriman WhatsApp,
 perubahan harga, atau deployment pada langkah ini.
@@ -100,4 +100,61 @@ Hasil: focused RegistrationTest + ParticipantRegistrationTest 10 tes lulus,
 93 assertions. Regresi lokal 353 tes lulus, 1.776 assertions, tanpa skip;
 grup sandbox tetap tidak dijalankan. Pint file yang diubah lulus.
 Catatan 350 lulus/2 skip di atas adalah bukti historis sebelum perbaikan tes.
-Pengujian PostgreSQL sedang disiapkan secara terpisah, bukan pada DB aktif.
+Pengujian PostgreSQL dijalankan terpisah seperti di bawah, bukan pada DB aktif.
+
+## Runner PostgreSQL disposable
+
+Prasyarat: Docker berjalan; image postgres:17.6-alpine dan psikotes-app:dev sudah
+tersedia lokal; vendor development terpasang. Tidak perlu memasang driver pgsql
+pada PHP Windows dan tidak perlu membuka port PostgreSQL aplikasi.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/testing/run-org-postgres.ps1
+```
+
+Runner membuat network internal ber-ID acak, satu container PostgreSQL dengan
+data tmpfs, dan satu container PHP untuk pengujian. Tidak ada port dipublikasikan,
+tidak memakai volume database aplikasi, tidak memanggil Docker Compose, tidak
+pull/build image, dan tidak menjalankan entrypoint aplikasi/supervisor.
+Source/vendor di-mount read-only; storage dan bootstrap/cache memakai tmpfs.
+Environment Laravel tidak membaca .env workspace.
+
+PostgreSQL memakai trust authentication **hanya pada network disposable ini**.
+Ini bukan konfigurasi produksi. Runner tidak memakai credential aplikasi.
+Sebelum migrate, bootstrap memeriksa Docker, ID run, environment testing,
+database tepat psikotes_organization_test, owner org_test_owner, marker unik
+ONCAM_ORG_TEST:<run-id>, serta belum adanya tabel migrations. Pemanggilan langsung
+di Windows ditolak sebelum memuat aplikasi atau menghubungi database.
+
+Migrasi existing dari working tree berjalan sebagai owner hanya di database baru
+tersebut. Setelah migrasi, koneksi owner diputus dan pengujian menggunakan login
+psikotes_runtime yang tidak memiliki SUPERUSER/BYPASSRLS. Ini tidak membuktikan
+bahwa image publik sudah menjalankan semua migrasi working tree.
+
+Cleanup menargetkan nama container persis dan label run unik, lalu memeriksa
+label network sebelum menghapusnya. Tidak menggunakan prune atau prefix umum.
+Data sintetis/caches tmpfs dibuang sesudah run dan tidak dapat dipulihkan; fixture
+dibuat kembali pada run berikutnya. Bila proses dimatikan paksa, periksa nama
+network/ID run yang tercetak dan labelnya sebelum cleanup manual, jangan prune.
+
+## Hasil PostgreSQL dan status P1
+
+- RED awal: tes PostgreSQL menolak berjalan tanpa bootstrap khusus.
+- Pengaman pemanggilan langsung di Windows: ditolak sebelum koneksi/migrasi.
+- Bootstrap diperbaiki setelah direktori compiled view tmpfs belum tersedia;
+  cleanup Windows diperbaiki setelah native quoting gagal. Resource percobaan
+  gagal sudah dibersihkan berdasarkan ID dan label yang diverifikasi.
+- Smoke awal: 2 tes/21 assertions lulus; runner membersihkan resource miliknya.
+- Suite final: **8 tes/52 assertions lulus, tanpa skip**, PostgreSQL 17.6,
+  PHP 8.3.26, PHPUnit 12.5.33. Network internal=true, port bindings kosong.
+- Bukti mencakup runtime bukan owner/superuser/BYPASSRLS, FORCE RLS pada tabel
+  yang diperiksa, penolakan akses tanpa context, isolasi baca/update lintas cabang,
+  order/DASS milik peserta sendiri, DASS tersembunyi dari admin, context bersih
+  setelah exception, dan Laravel HTTP tanpa fixture ditolak.
+- Pint seluruh file PHP yang diubah/ditambah: lulus. Build/typecheck/frontend
+  dari increment sebelumnya tetap relevan karena tidak ada perubahan aplikasi,
+  frontend, dependency, atau konfigurasi build pada increment test-only ini.
+
+**P1 selesai.** Ini gerbang harness, bukan audit seluruh RLS aplikasi, bukti
+concurrency pembayaran, atau persetujuan go-live. P2 dan seterusnya belum
+diimplementasikan; perlu memperluas tes PostgreSQL untuk schema/fitur masing-masing.
