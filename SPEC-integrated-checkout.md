@@ -21,7 +21,9 @@ Ini sasaran implementasi, bukan klaim kedua situs sudah terhubung end-to-end.
    berlaku. DASS tetap pilihan terpisah; persetujuan tidak dianggap otomatis
    hanya karena identitas lengkap. Tidak mengesahkan naskah legal draft.
 5. Bayar sendiri menuju metode pembayaran aktif. Dibayar lembaga menuju status
-   tagihan lembaga. Gratis/sudah lunas tidak membuat invoice baru.
+   menunggu lembaga: belum ditagihkan, menunggu pembayaran kolektif, atau lunas
+   sesuai alokasi attempt sendiri. Jangan membuat invoice individual baru saat
+   attempt menunggu/terikat tagihan kolektif. Gratis/sudah lunas tidak membuat invoice baru.
 6. Pembukaan akses mengikuti keputusan pembayaran server dan prasyarat
    identitas/persetujuan yang sudah berlaku; tidak melewati tahapan wajib lain.
 
@@ -41,6 +43,10 @@ Ini sasaran implementasi, bukan klaim kedua situs sudah terhubung end-to-end.
   sah. Reissue handoff terkontrol tidak menciptakan participant/order kedua.
 - Ada data order aktif, jangan mengizinkan ganti pembayar atau paket tanpa
   penanganan pembatalan/reconciliation eksplisit pada modul billing.
+- Tagihan kolektif cabang tidak ditampilkan utuh kepada peserta. Peserta hanya
+  melihat biaya dan status attempt sendiri, bukan peserta lain, total batch,
+  tautan pembayaran cabang, atau bukti transfer lembaga. Setelah alokasi lunas,
+  persetujuan/identitas yang masih kurang dilengkapi tanpa pembayaran kedua.
 
 ## Tech stack dan project structure
 
@@ -94,6 +100,8 @@ Uji PostgreSQL terpisah untuk RLS; jangan menjalankan migrasi test pada DB aktif
 6. Paid/gratis melewati gateway, pending melanjutkan order yang sama.
 7. Dibayar lembaga menampilkan status lembaga, tanpa tagihan pengembalian peserta.
 8. Persetujuan dan privasi DASS tidak dilewati atau dibagikan kepada pembayar.
+9. Attempt yang ditanggung kolektif tidak dapat memulai pembayaran mandiri
+   paralel; reload menampilkan status alokasi sendiri tanpa membuka data batch.
 
 ## Boundaries dan open review
 

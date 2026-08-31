@@ -30,6 +30,11 @@ menyamakan jenis pembayar dengan metode pembayaran maupun status lunas.
   eksplisit; tidak ada nilai legacy yang otomatis membuktikan pembayaran.
 - Menonaktifkan pilihan mencegah order baru, bukan membatalkan pembayaran yang
   sudah sah. Perubahan konfigurasi dicatat dengan aktor dan waktu.
+- Pembayaran kolektif cabang memakai payer organization yang sama, bukan enum
+  pembayar ketiga. Billing memvalidasi setiap attempt dengan policy server
+  terbaru saat reservasi batch. Memilih sepuluh peserta tidak boleh mengabaikan
+  lock/izin salah satu sumber; satu item tidak layak menolak seluruh konfirmasi.
+  Snapshot tagihan existing yang sah tetap berlaku saat policy kemudian OFF.
 
 ## Tech stack dan project structure
 
