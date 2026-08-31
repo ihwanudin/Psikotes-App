@@ -4,6 +4,10 @@ Tanggal: 2026-09-01
 Status: proposal untuk review; tidak ada schema, command, scheduler, provider call,
 atau wiring produksi yang diimplementasikan pada increment ini.
 
+Revisi review: acquisition dipisah menjadi reservasi provisional outbox-only dan
+validasi canonical organization-first. Tidak ada transaksi yang memegang outbox
+lalu meminta organization.
+
 ## Tujuan dan batas
 
 P10c-a sudah dapat merekonsiliasi satu `message_id` persisted tanpa pernah
@@ -63,23 +67,30 @@ best-effort, tetapi bukan authority. **Ditolak sebagai lease canonical.**
 
 ### Opsi 3 — migration additive metadata lease
 
-Tambahkan empat kolom nullable/terpisah pada `outbox_messages`:
+Tambahkan empat kolom terpisah pada `outbox_messages` dengan tipe konkret:
 
-- `reconciliation_lease_token` string/UUID nullable;
-- `reconciliation_lease_expires_at` timestamp with timezone nullable;
-- `reconciliation_next_at` timestamp with timezone nullable;
-- `reconciliation_lookup_attempts` unsigned small integer default 0.
+- `reconciliation_lease_token`: Laravel `uuid`, PostgreSQL native `uuid` nullable,
+  dan SQLite text nullable sesuai grammar schema builder;
+- `reconciliation_lease_expires_at`: `timestampTz` nullable;
+- `reconciliation_next_at`: `timestampTz` nullable;
+- `reconciliation_lookup_attempts`: `unsignedSmallInteger` default 0, dengan
+  CHECK eksplisit `0 <= value AND value <= 100` pada semua engine uji.
 
 Constraint wajib memasangkan token dan expiry (keduanya NULL atau keduanya non-
 NULL), melarang nilai lease/counter/cooldown non-default pada topic selain invoice
-issuance, dan membatasi counter. Partial index PostgreSQL memilih topic invoice,
-attempts1, processed NULL, status processing/failed, lalu mengurutkan
-`reconciliation_next_at`, lease expiry, dan id. SQLite boleh memakai index biasa
-untuk feature semantics; hanya PostgreSQL menjadi bukti concurrency.
+issuance, dan membatasi counter. Index PostgreSQL memakai kolom
+`topic,status,attempts,processed_at,reconciliation_next_at,
+reconciliation_lease_expires_at,id`. Predicate partial, bila dipakai, hanya
+memuat perbandingan kolom/konstanta untuk topic/status/attempts/processed NULL;
+ia tidak boleh memuat `CURRENT_TIMESTAMP`/`now()` yang volatil. Kondisi nullable
+`next_at IS NULL OR next_at <= database_now` dan lease kosong/kedaluwarsa tetap
+berada di query. SQLite memakai index biasa; hanya PostgreSQL menjadi bukti
+`SKIP LOCKED` dan concurrency.
 
-Token dibuat dengan UUID/ULID framework existing, bukan random/crypto buatan
-sendiri. Semua perbandingan due/expiry memakai database UTC clock pada statement
-conditional, sehingga skew jam antarpod tidak dapat mencuri lease lebih awal.
+Token konkret adalah UUID dari primitive Laravel/framework existing, bukan
+random/crypto buatan sendiri. Semua perbandingan due/expiry memakai database UTC
+clock pada statement conditional, sehingga skew jam antarpod tidak dapat mencuri
+lease lebih awal.
 
 Kolom baru tidak ikut payload canonical dan tidak mengubah `available_at`,
 `attempts`, status bisnis, expiry retensi, atau timestamps klaim. Query builder
@@ -94,10 +105,18 @@ INELIGIBLE
   └─ tidak pernah provider
 
 ELIGIBLE
-  canonical pair + due + lookup_attempts < max + lease kosong/kedaluwarsa
-  └─ atomic acquire → LEASED(token, expires_at, attempts+1)
+  outbox hint topic/status/attempts/due + lookup_attempts < max
+  + lease kosong/kedaluwarsa
+  └─ fase 1 SKIP LOCKED → PROVISIONAL(token, expires_at), counter tetap
 
-LEASED
+PROVISIONAL
+  ├─ hint invalid saat full validation
+  │    → clear token secara token-fenced; counter/audit/provider tetap nol
+  ├─ crash → token dibiarkan expire → ELIGIBLE
+  └─ fase 2 canonical valid + token/expiry masih cocok
+       → VALIDATED(token, expires_at, lookup_attempts+1) + permit
+
+VALIDATED
   ├─ crash sebelum/selama GET → tetap leased sampai expiry → ELIGIBLE
   ├─ exact + token masih owner + late state canonical
   │    → bill pending, message processed/1, lease cleared, audit issued
@@ -112,65 +131,112 @@ LEASED
   └─ max lookup tercapai → EXHAUSTED/manual review, tanpa create/rearm
 ```
 
-`lookup_attempts` menghitung GET rekonsiliasi, bukan permit/create attempts.
-Acquisition increment atomik memberikan fencing generation bersama token unik.
-Worker lama wajib gagal persist bila token tidak lagi cocok, walaupun response
-provider exact. Tidak ada klaim globally single GET: crash/expiry dapat membuat
-lookup ulang, tetapi satu lease aktif dan late persistence tetap fenced.
+`lookup_attempts` menghitung permit GET rekonsiliasi yang sudah lolos validasi,
+bukan hint provisional, provider response, atau permit/create attempts P10b.
+Crash setelah fase 2 commit tetapi sebelum GET tetap mengonsumsi satu hitungan;
+ini fail-closed dan membatasi retry. Token UUID menjadi fencing owner. Worker lama
+wajib gagal persist bila token tidak lagi cocok, walaupun response provider exact.
+Tidak ada klaim globally single GET: crash/expiry dapat membuat lookup ulang,
+tetapi satu token aktif dan late persistence tetap fenced.
 
 ## Bounded discovery dan urutan lock
 
-Discovery dipanggil internal tanpa ambient RLS context/transaksi. Ia menerima
-limit tervalidasi, membaca maksimal `scan_limit` kandidat dari query service yang
-topic/state/due-nya sempit, dan tidak menerima tenant/message dari browser.
-Hint hasil query bukan authority.
+Discovery dipanggil internal tanpa ambient RLS context/transaksi, menerima limit
+tervalidasi, dan tidak menerima tenant/message dari browser. Acquisition wajib
+dua fase dengan transaksi terpisah:
 
-Setiap kandidat diakuisisi dalam service transaction terpisah agar satu tenant
-besar tidak menahan seluruh batch. Urutan lock mempertahankan P7/P8b/P10b:
+### Fase 1 — reservasi provisional outbox-only
+
+Satu service transaction sangat pendek memilih maksimal
+`min(remaining_batch, remaining_scan)` row
+`outbox_messages` dengan topic invoice, aggregate type bill, attempts1,
+processed NULL, status processing/failed, last-error hint yang sesuai status,
+counter di bawah maksimum, cooldown due, dan lease kosong/kedaluwarsa. Query
+mengunci row memakai `FOR UPDATE SKIP LOCKED`, mengurutkan due/id, memasang UUID +
+expiry secara conditional, **tidak** mengunci organization/bill/registry, **tidak**
+menambah lookup counter, dan segera commit.
+
+Coordinator memvalidasi provisional tersebut pada fase 2 sebelum meminta chunk
+berikutnya. Hint invalid menambah scanned count lalu dibersihkan; loop berhenti
+saat permit valid mencapai batch size atau total hint mencapai scan limit. Dengan
+demikian satu invocation tidak menahan provisional melebihi batch size dan tidak
+memindai tanpa batas.
+
+Inilah satu-satunya tempat yang diklaim non-blocking karena `SKIP LOCKED`.
+Discovery worker kedua tidak menunggu organization lock sebelum mencapainya.
+Mengunci outbox lebih dulu aman hanya karena transaksi fase 1 sudah selesai
+sebelum fase 2 mulai; tidak ada transaksi yang memegang outbox lalu meminta
+organization. Token provisional boleh mengenai payload, bill pair, tenant,
+policy, channel, atau revoke yang kemudian terbukti invalid. Hal itu aman karena
+token bukan authority dan tidak dapat menghasilkan provider permit.
+
+### Fase 2 — validasi canonical dan permit
+
+Setiap token provisional divalidasi dalam service transaction baru. Urutan lock
+persis P7/P8b/P10b:
 
 1. organization;
 2. integration clients dan sources terurut;
 3. bill lalu bill items terurut;
 4. attempts, participants, packages, charges terurut;
 5. payment method;
-6. canonical outbox intent dengan `FOR UPDATE SKIP LOCKED`;
-7. row lease metadata/field pada outbox yang sama.
+6. outbox intent terakhir.
 
-Validator canonical harus diekstrak/reuse dari claim; discovery dilarang menyalin
-predicate payer/policy/snapshot/linkage. Setelah seluruh scope, policy, channel,
-revoke, state, counter, due dan lease diperiksa, update token/expiry/counter
-dilakukan conditional dalam transaksi yang sama, dengan syarat lease NULL atau
-expired, `next_at` NULL/due, dan lookup count masih di bawah maksimum. Jika row
-sedang dikunci, `SKIP LOCKED` menghasilkan skip, bukan wait atau fallback tidak
-terotorisasi.
-Batch boleh terisi kurang dari limit saat contention.
+Validator canonical harus diekstrak/reuse dari claim; dilarang menyalin predicate
+payer/policy/snapshot/linkage. Setelah full tenant/scope, exact state pair,
+policy/channel/revoke, payload, count/sum dan linkage valid, outbox terakhir harus
+masih mempunyai UUID provisional yang sama dan expiry menurut database clock
+belum lewat. Baru pada titik itu update conditional menambah lookup counter tepat
+satu dan menghasilkan DTO permit. Commit dan pelepasan RLS context terjadi
+sebelum GET.
 
-Transaksi service selesai dan RLS context kembali kosong sebelum DTO lease
-diberikan ke caller. GET kemudian memakai P10a strict reference/amount/currency.
+Jika kandidat invalid, fase 2 membersihkan token/expiry hanya dengan kondisi
+token masih sama; tidak mengubah counter, cooldown, state bisnis, atau audit, dan
+tidak memanggil provider. Jika proses crash sebelum cleanup, token aman dibiarkan
+expire. Jika validator melempar, cleanup boleh dilakukan setelah transaksi
+validator selesai/rollback melalui transaksi outbox-only yang token-fenced;
+cleanup tidak boleh menahan organization lock sambil menunggu outbox asing.
+
+GET memakai P10a strict reference/amount/currency di luar transaksi/context.
 Persist membuka transaksi service baru, mengulang canonical/late-state checks,
-dan mensyaratkan token pemilik yang belum kedaluwarsa. Tidak ada transaksi atau
-RLS context yang melintasi network call.
+dan mensyaratkan token UUID serta lookup generation permit masih sama dan lease
+belum kedaluwarsa. Worker lama setelah expiry/steal selalu gagal. Tidak ada
+transaksi atau RLS context yang melintasi network call.
 
 ## API internal yang diusulkan
 
 ```php
-AcquireAssessmentInvoiceReconciliationLeases::execute(int $limit):
-    list<AssessmentInvoiceReconciliationLease>
+ReserveAssessmentInvoiceReconciliationHints::execute(int $scanLimit):
+    list<ProvisionalAssessmentInvoiceLease>
 
-AssessmentInvoiceReconciliationLease {
+ValidateAssessmentInvoiceReconciliationLease::execute(
+    ProvisionalAssessmentInvoiceLease $lease
+): AssessmentInvoiceReconciliationPermit|null
+
+ProvisionalAssessmentInvoiceLease {
     messageId: string,
     leaseToken: string,
     leaseExpiresAt: CarbonImmutable
 }
 
+AssessmentInvoiceReconciliationPermit {
+    messageId: string,
+    leaseToken: string,
+    lookupAttempt: int,
+    merchantReference: string,
+    amount: int,
+    currency: string
+}
+
 ReconcileAssessmentBillInvoice::executeLeased(
-    string $messageId,
-    string $leaseToken,
+    AssessmentInvoiceReconciliationPermit $permit,
 ): array{decision: string, messageId: string}
 ```
 
-Acquirer tidak memanggil provider. `executeLeased` menolak token dari URL/query,
-caller/user/admin, ambient context, lease expired/foreign, atau outer transaction.
+Reservasi maupun validator tidak memanggil provider. Hanya permit hasil fase 2
+boleh diteruskan ke `executeLeased`; UUID provisional mentah bukan authority.
+`executeLeased` menolak token dari URL/query, caller/user/admin, ambient context,
+lease expired/foreign, generation berbeda, atau outer transaction.
 Method single-intent P10c-a tidak boleh menjadi bypass scheduler; sebelum wiring,
 tetap internal/test-only. Persistence boundary bersama perlu entrypoint
 reconciliation yang membawa fence token, sementara jalur issuance P10b tetap
@@ -195,13 +261,15 @@ outbound.
 
 ## Observability tanpa PII
 
-Metrics/counter yang disarankan: candidates scanned, lease acquired, skip-locked,
-ineligible per reason-code enum, lookup exact/empty/ambiguous/mismatch/timeout/
-error, lease lost/expired, persist conflict, dan exhausted. Histogram: acquisition
-latency, GET latency, serta lease age. Structured log hanya operation code,
-attempt count, duration, dan hash `message_id`; jangan log payload, participant,
-merchant reference, provider reference, invoice URL, credential, SQL bindings,
-atau exception body provider.
+Metrics/counter yang disarankan: hints scanned, provisional reserved,
+phase-1 skip-locked, provisional invalid/cleared/expired, validation success dan
+reason-code failure, lookup permit issued, lookup exact/empty/ambiguous/mismatch/
+timeout/error, lease lost/stolen, persist conflict, dan exhausted. Pisahkan jumlah
+provisional dari lookup counter agar hint invalid tidak terlihat sebagai provider
+attempt. Histogram: durasi fase 1, validasi fase 2, GET, serta lease age.
+Structured log hanya phase/operation code, lookup generation, duration, dan hash
+`message_id`; jangan log UUID lease, payload, participant, merchant/provider
+reference, invoice URL, credential, SQL bindings, atau exception body provider.
 
 Lease/cooldown tidak membuat audit bisnis. Audit `invoice_unknown` dan
 `invoice_issued` tetap berasal dari persistence boundary dan maksimal sekali per
@@ -213,6 +281,12 @@ retensinya perlu keputusan P11b/runbook terpisah.
 Up migration hanya additive, mempertahankan tipe/index/RLS outbox existing,
 menambah columns, CHECK dan index. Existing rows mendapat counter 0 serta lease/
 cooldown NULL; tidak ada backfill state bisnis atau perubahan payload.
+
+Rolling order: deploy migration dengan kolom nullable/default0 terlebih dahulu,
+lalu code yang masih default OFF, dan baru aktifkan wiring pada tahap P11b setelah
+semua node memahami schema. Code lama tetap kompatibel karena writer existing
+tidak menyentuh kolom baru dan canonical hash tidak memuatnya. Rollback berjalan
+terbalik: nonaktifkan wiring, drain/expire lease, rollback code, lalu schema.
 
 Down migration wajib preflight dan menolak rollback bila ada token/expiry aktif,
 counter nonzero, atau `next_at` non-NULL. Ia tidak boleh menghapus/mengosongkan
@@ -227,15 +301,22 @@ Kegagalan preflight harus terjadi sebelum constraint/index/column apa pun dihapu
 
 - schema defaults, pair constraint, topic isolation, config bounds dan rollback
   preflight tanpa mutasi parsial;
-- discovery hanya dua pasangan canonical; pending0/processed/paid/expired/
-  rejected/noncanonical/corrupt/foreign/policy OFF/channel OFF/revoked tidak leased;
-- batch/scan bounds, deterministic ordering, due/cooldown/max-attempt filtering;
-- acquire menulis token+expiry+counter atomik; acquisition rollback tidak
-  meninggalkan lease;
+- fase 1 hanya topic/status/counter/due hints, batch/scan bounds, ordering
+  deterministic, dan tidak mengklaim hint sebagai canonical;
+- reservasi provisional menulis UUID+expiry tanpa menaikkan lookup counter;
+  rollback fase 1 tidak meninggalkan token;
+- hint yang full state-nya invalid boleh mendapat provisional, lalu fase 2
+  membersihkannya tanpa counter/provider/audit;
+- fase 2 hanya menerbitkan permit untuk dua pasangan canonical; pending0/
+  processed/paid/expired/rejected/noncanonical/corrupt/foreign/policy OFF/channel
+  OFF/revoked dibersihkan secara token-fenced tanpa provider/counter/audit;
+- token berubah/expired antara fase 1 dan 2 menolak permit; cleanup tidak
+  menghapus token owner baru;
 - handler menolak ambient role/transaksi, token salah/expired/lost, dan tidak
   memanggil create;
-- crash lease dapat diambil ulang setelah clock advance; worker lama tidak dapat
-  persist exact atau unknown;
+- crash provisional sebelum validasi dapat diambil ulang setelah clock advance
+  tanpa increment; crash setelah permit dapat diambil ulang dengan generation
+  berikutnya; worker lama tidak dapat persist exact atau unknown;
 - exact/unknown memakai shared boundary, cleanup/cooldown conditional token,
   repeated unknown tidak audit spam, terminal late response tidak overwrite;
 - legacy notification/integration consumers mengabaikan topic dan kolom baru;
@@ -246,13 +327,25 @@ SQLite membuktikan state machine/CAS, bukan `SKIP LOCKED` atau RLS concurrency.
 ### PostgreSQL disposable dua proses
 
 - runtime `psikotes_runtime` non-owner/NOBYPASSRLS;
-- dua discovery worker overlap: `FOR UPDATE SKIP LOCKED`, token unik, satu owner
-  per intent, total leased <= limit, tidak deadlock dan tenant lain aman;
-- dua bill satu organization mengikuti organization-first lock; dua organization
-  dapat maju tanpa cross-tenant leakage;
-- rollback setelah token update mengembalikan counter/lease seluruhnya;
-- crash process meninggalkan durable lease; sebelum expiry worker kedua skip,
-  setelah expiry memperoleh token baru dan counter bertambah;
+- dua worker fase 1 overlap langsung pada outbox `FOR UPDATE SKIP LOCKED`: tidak
+  menunggu organization, token provisional unik, total provisional aktif per
+  invocation <= batch size dan total hint diperiksa <= scan limit;
+- saat process ketiga sengaja menahan organization lock, fase 1 tetap selesai;
+  fase 2 yang sesuai baru menunggu/serialize setelah provisional commit;
+- bukti query/lock menunjukkan tidak ada transaksi memegang outbox sambil meminta
+  organization; fase 2 baru mulai setelah fase 1 commit;
+- race dengan `ClaimAssessmentBillInvoice` membuktikan claim organization-first
+  dapat menunggu transaksi provisional yang pendek, tetapi tidak membentuk cycle:
+  provisional tidak pernah meminta organization dan fase 2 belum dimulai;
+- dua fase 2 untuk kandidat/organization sama boleh serialize pada organization
+  lock existing, tetapi hanya owner token valid yang increment/menerima permit;
+- dua bill satu organization mengikuti organization-first; dua organization dapat
+  maju tanpa cross-tenant leakage atau deadlock dengan Claim P10b;
+- rollback fase 1 menghapus seluruh provisional; rollback fase 2 mempertahankan
+  token provisional dan counter lama, lalu cleanup token-fenced dapat berjalan;
+- crash provisional meninggalkan durable token: sebelum expiry worker kedua skip,
+  setelah expiry memperoleh token baru tanpa increment lama; crash setelah permit
+  membuat generation berikutnya increment setelah validasi ulang;
 - response worker lama setelah steal gagal conditional persist; hanya token baru
   dapat menulis satu outcome/audit;
 - unknown concurrent/cooldown tidak menghasilkan rewrite atau audit spam;
@@ -272,6 +365,8 @@ SQLite membuktikan state machine/CAS, bukan `SKIP LOCKED` atau RLS concurrency.
   status mereka.
 - Claim P10b membandingkan `available_at`, payload dan expiry; kolom additive tidak
   boleh masuk canonical hash atau replay comparison.
+- UUID native PostgreSQL dibaca sebagai string oleh model; cast SQLite tetap text.
+  Query/index tidak boleh bergantung pada predicate waktu volatil.
 - Generic outbox retention/purge belum memberi izin menghapus active lease;
   purge policy harus mengecualikan lease aktif bila kelak dibuat.
 
@@ -282,8 +377,9 @@ Tidak ada bagian berikut yang diizinkan oleh proposal ini. Rekomendasi slice:
 1. **P10c-b1 schema contract**: migration additive, model casts/PHPDoc, config,
    feature schema tests, PG migration tests (maksimal 5 file); laporan commit
    terpisah bila menjadi file keenam.
-2. **P10c-b2 acquisition**: DTO, acquisition action, ekstraksi validator canonical
-   dari claim, feature tests, PG two-process tests (maksimal 5 file). Refactor
+2. **P10c-b2 acquisition**: DTO provisional/permit, reservasi fase 1, validator
+   fase 2 + ekstraksi canonical dari claim, feature tests, PG two-process tests.
+   Bila melewati 5 file, pisah reservasi schema-aware dari validator; refactor
    claim wajib membuktikan P10b tidak berubah.
 3. **P10c-b3 leased execution**: reconciliation action, shared persistence fence,
    feature/PG tests dan laporan (pecah commit bila lebih dari 5 file).

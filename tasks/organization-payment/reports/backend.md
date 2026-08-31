@@ -1704,12 +1704,20 @@ Audit proposal-only selesai. Field outbox existing tidak aman di-overload:
 memiliki arti issuance/terminal, dan `updated_at` tidak memiliki owner fence serta
 dipakai stale recovery legacy. Advisory/cache lock juga bukan authority durable.
 
-Rekomendasi untuk review adalah migration additive empat metadata lease terpisah
-(token, expiry, cooldown, lookup counter), acquisition service transaction dengan
-organization-first canonical locks dan outbox `FOR UPDATE SKIP LOCKED`, lalu GET
-setelah commit/context kosong. Late persist wajib token-fenced; crash dapat
-direbut setelah expiry tanpa create/rearm, dan unknown memakai cooldown tanpa
-audit spam. Command/scheduler tetap tidak terdaftar sampai P11b.
+Review lock-order merevisi acquisition menjadi dua transaksi. Fase 1 sangat
+pendek dan outbox-only memakai `FOR UPDATE SKIP LOCKED` untuk memasang UUID
+provisional + expiry tanpa counter atau authority provider. Setelah commit, fase
+2 memakai urutan organization-first existing untuk full canonical validation,
+memeriksa token terakhir, lalu conditional increment lookup counter dan permit.
+Hint invalid dibersihkan token-fenced tanpa provider/counter/audit atau dibiarkan
+expire bila crash. Dengan pemisahan transaksi ini tidak ada outbox-first lock yang
+dibawa menuju organization dan tidak ada klaim non-blocking palsu.
+
+Rekomendasi schema tetap migration additive: PostgreSQL/Laravel native UUID
+(SQLite text), `timestampTz` expiry/cooldown, dan smallint counter CHECK 0..100.
+Index/query menangani nullable due tanpa predicate waktu volatil. Late persist
+wajib token+generation-fenced; worker lama gagal setelah expiry/steal. Rolling
+schema-first/default-OFF dan rollback drain-first dijelaskan di proposal.
 
 State machine, API internal, config bounds, observability tanpa PII, rollback
 refusal, risiko consumer legacy, matriks SQLite/PG dua proses, dan pembagian
