@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P8a selesai lokal. Split dan kelanjutan disetujui pengguna pada 2026-08-31; penugasan gelombang pertama di parallel-work.md. P8b–P18 belum selesai. Tidak ada deploy atau migrasi database aktif.**
+Status: **P1–P8a selesai lokal. Slice awal tiga lane sudah diintegrasikan (lihat reports/integration-wave-1.md); P8b–P18 tetap belum selesai. Kelanjutan autentikasi attempt, interaksi UI dan verifikasi portal PostgreSQL di parallel-work.md. Tidak ada deploy atau migrasi database aktif.**
 
 ## Gerbang revisi kolektif
 

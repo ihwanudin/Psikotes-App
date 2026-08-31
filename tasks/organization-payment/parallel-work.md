@@ -135,10 +135,10 @@ Browser, TDD, Git Workflow; dokumentasi Filament versi terpasang.
 
 - [x] Tiga task dibuat; baseline lengkap ada di setiap worktree tanpa .env aktif,
   dan masing-masing task melaporkan pengecekan skill sebelum implementasi.
-- [ ] Setiap task selesai slice awal dengan bukti tes dan daftar batas yang belum diuji.
-- [ ] Tinjau ownership, kontrak props vs backend, privasi, dan diff sebelum merge.
-- [ ] Gabungkan satu slice sekali; ulang regression yang terdampak dan build.
-- [ ] P12/P16 tidak ditandai selesai hanya karena preview UI tersedia.
+- [x] Setiap task selesai slice awal dengan bukti tes dan daftar batas yang belum diuji.
+- [x] Tinjau ownership, kontrak props vs backend, privasi, dan diff sebelum merge.
+- [x] Gabungkan satu slice sekali; ulang regression yang terdampak dan build.
+- [x] P12/P16 tidak ditandai selesai hanya karena preview UI tersedia.
 - [ ] Beri pengguna status dan checkpoint berikutnya; tidak deploy otomatis.
 
 Risiko: konflik shared file ditangani ownership; ketergantungan API ditangani
@@ -171,3 +171,68 @@ Pemeriksaan pola credential pada 132 kandidat file awal tidak menemukan pola
 secret yang dicari; ini bukan jaminan audit secret menyeluruh. Tidak ada .env,
 private key atau database SQLite yang masuk daftar staged. Commit baseline
 menyimpan hasil kerja existing serta rencana split, bukan fitur baru selesai.
+
+## Integrasi dan gelombang kedua (2026-08-31)
+
+Pengguna menyatakan task lain selesai dan meminta kelanjutan. Ketiga slice awal
+ditinjau dan diintegrasikan lokal melalui ed8bf7a (backend), c7b9280 (frontend),
+dan 9decef5 (portal). Regresi gabungan: 668 tes/3.080 assertions; PostgreSQL
+disposable: 149/739; frontend SSR: 17 tes. Pint, PHPStan, typecheck global dan
+targeted, ESLint targeted serta build preview lulus. Bukti dan keterbatasan:
+[reports/integration-wave-1.md](reports/integration-wave-1.md).
+
+Lanjutkan pada tiga task existing, bukan membuat task tambahan. Worktree pekerja
+memiliki baseline snapshot yang berbeda dari commit induk: jangan reset, merge
+atau cherry-pick baseline induk secara otomatis. Kirim delta sejak commit lane
+terakhir; koordinator mengintegrasikannya. Dokumen ini boleh dibaca dari induk,
+tetapi hanya koordinator yang menulis dokumen status kanonik.
+
+### Backend: increment autentikasi attempt P8b
+
+- Prioritas: kredensial bertujuan khusus assessment/attempt dan adapter gate
+  untuk permintaan start. Jangan memakai checkout credential sebagai izin tes.
+- Pelajari verifier/middleware legacy sebelum memilih integrasi. Gunakan
+  primitive/library terpelihara yang sudah tersedia; jangan menambah kriptografi
+  buatan sendiri, dependency, schema atau route baru tanpa review.
+- Ownership P8b tetap; middleware/request khusus attempt dan tes auth baru
+  boleh ditambah. Perubahan shared controller harus minimal dan menjaga legacy.
+- Buktikan purpose, expiry, signature, tenant/participant/attempt, unpaid,
+  revoked/finalized, consent/identitas terkini, dan penolakan token legacy
+  untuk attempt baru. Token tidak mengabadikan status paid/consent.
+- StartParticipantSessionController masih 501 SESSION_ENGINE_PENDING: jangan
+  menggantinya dengan sukses palsu atau membangun session engine di increment ini.
+  Bila integrasi aman memerlukan keputusan kontrak baru, laporkan proposal dahulu.
+- Pending outbox bukan notifikasi terkirim. Jangan mengaktifkan consumer nyata.
+  Hindari salinan ketiga settlement predicate; usulkan konsolidasi terpisah jika perlu.
+- Focused auth tests, Pint/PHPStan, PG hanya bila ada perubahan transaksi/RLS;
+  laporkan commit dan sisa acceptance P8b, lalu berhenti untuk review.
+
+### Frontend: penguatan interaksi P16-prep
+
+- Ownership tetap pada komponen, types dan harness checkout terisolasi.
+- legalReviewPending saat ini hanya peringatan. Jadikan konfirmasi consent
+  fail-closed selama review pending, termasuk guard handler, dengan tes regresi.
+  Ini tidak mengesahkan teks legal fixture atau mengganti kebijakan consent server.
+- Tambah bukti interaksi nyata: checkbox Space, radio arrow keys, urutan Tab,
+  submit/callback, busy, fokus error, dan reset state saat formKey/versi consent
+  berganti. SSR saja tidak membuktikan behavior tersebut.
+- Gunakan input browser native; jangan mengklaim uji keyboard dari mutasi DOM
+  melalui JavaScript. Catat keterbatasan tool bila tidak dapat diuji.
+- Tetap tidak ada endpoint/wiring produksi, perhitungan harga atau hak akses UI.
+  Focused tests, typecheck/lint/build aman; laporan dan commit, lalu review.
+
+### Portal cabang: bukti PostgreSQL P12a-prep
+
+- Ownership tambahan: tes baru tests/Postgres/OrganizationBillPortalTest.php
+  (atau nama khusus setara), tanpa perubahan shared runner/schema/config.
+- Jalankan query resource/detail yang baru pada PostgreSQL disposable runtime
+  non-owner NOBYPASSRLS, bukan hanya mengulang suite baseline. Buktikan lintas
+  tenant/role ditolak, membership berubah, dan context berganti pada koneksi ulang.
+- Jika harness PostgreSQL tidak dapat menjalankan Livewire, pisahkan bukti query
+  runtime dari HTTP/Livewire SQLite dan tulis batas itu; jangan klaim keduanya sama.
+- Gunakan snapshot charge valid. Pertahankan gate test-only dan larangan data
+  klinis/invoice/proof/gateway pada proyeksi cabang.
+- Catat query count halaman berpaginasi. Perbaikan N+1 hanya dalam ownership,
+  tidak menghilangkan pemeriksaan otorisasi persisted saat aksi/hydration.
+- Focused tests lalu runner disposable saat backend tidak memakai runner;
+  catat bukti, commit, dan batas browser/keyboard. Stop untuk review.

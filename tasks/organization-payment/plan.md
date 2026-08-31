@@ -1,7 +1,7 @@
 # Rencana: pembayaran lembaga dan checkout terintegrasi
 
 Tanggal: 2026-08-31
-Status: **P1–P8a selesai lokal; pengguna menyetujui split dan kelanjutan pada 2026-08-31. Gelombang pertama mengikuti parallel-work.md. Tidak ada izin deploy atau cutover sumber aktif.**
+Status: **P1–P8a selesai lokal. Slice aktivasi/outbox P8b, presentasi P16-prep dan portal baca-saja test-only P12a-prep sudah diintegrasikan serta diuji bersama pada 2026-08-31. P8b/P12/P16 belum selesai end-to-end; gelombang kedua di parallel-work.md. Tidak ada izin deploy atau cutover sumber aktif.**
 
 ## Perubahan lingkup: pembayaran kolektif cabang
 
