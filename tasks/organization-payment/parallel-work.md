@@ -409,3 +409,17 @@ hanya pada tes; frontend presentasi payer belum dipilih readonly; portal kompone
 preview selection di tests/Support tanpa writer/route publik. Ownership, cursor,
 turn dan batas ada di wave-9. Jangan menjalankan .env/DB aktif/outbound atau
 mengaktifkan gate; jangan menggandakan kelanjutan saat task masih aktif.
+
+## Checkpoint HTTP dan preview (2026-09-01)
+
+[Wave-10](reports/integration-wave-10.md): P9b e3d0b74, payer unselected
+27cea1f+b7a6fb8 dan komponen preview test-only e1b9ecc direview. Root 927/5200,
+26 SSR, typecheck/ESLint/Pint/PHPStan dan build fixture lulus. Kontrak P5/P9
+diselaraskan melalui delta dokumen worker, bukan baseline snapshot. PG wave-9
+tetap historis; endpoint publik dan P12/P16 belum end-to-end.
+
+Ketiga task existing aktif setelah tepat satu instruksi: backend boundary P9c
+no-store untuk seluruh pipeline, frontend tes props payment pada instance sama,
+portal browser keyboard/reflow komponen sintetis. Scope/cursor/turn ada di wave-10.
+Tidak menduplikasi kelanjutan; review dulu setelah selesai. Tidak ada gate/source
+ON, data aktif, deploy/push, pembayaran/notifikasi nyata atau task/agent baru.

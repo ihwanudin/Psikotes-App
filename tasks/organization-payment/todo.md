@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P8a dan P9a internal selesai lokal; replay ADR-005 terverifikasi. Bukti terbaru reports/integration-wave-9.md: root 880/4.652 dan PG 222/1.659 lulus. P9b HTTP test-only dikerjakan; P8b–P18 keseluruhan tetap belum selesai end-to-end. Tidak ada deploy atau migrasi database aktif.**
+Status: **P1–P8a, P9a dan P9b internal selesai lokal. Bukti reports/integration-wave-10.md: root 927/5.200 dan 26 SSR lulus; PG 222/1.659 adalah bukti wave-9. P9c privacy seluruh pipeline dikerjakan; P8b–P18 keseluruhan tetap belum selesai end-to-end. Tidak ada deploy atau migrasi database aktif.**
 
 ## Gerbang revisi kolektif
 
@@ -384,7 +384,10 @@ Prasyarat P9 berikutnya: **P9b adapter HTTP test-only**, controller baru + tes
 dengan middleware HMAC existing + dokumentasi kontrak + laporan. Route hanya
 didaftarkan tes, shared routes/config/middleware tidak berubah. Respons minimal
 dan error generik, no-store, create/replay/denial tanpa efek akses/billing diuji.
-P9b belum selesai; public wiring masih memerlukan review terpisah. P10 belum dimulai.
+P9b internal lulus review wave-10. Header controller belum mencakup early auth,
+validation dan unexpected error: increment P9c middleware khusus checkout yang
+belum diregistrasi produksi + tes pipeline + laporan telah ditugaskan. Public
+wiring masih memerlukan review terpisah; P10 belum dimulai.
 
 **Acceptance:**
 
