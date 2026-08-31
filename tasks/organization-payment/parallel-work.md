@@ -435,3 +435,12 @@ Backend menerima P10a lookup/recovery read-only internal; frontend fixture dan
 tes profil tujuh field missing. Portal masih memperbaiki keyboard/reflow sesuai
 instruksi wave-10, tidak mendapat prompt duplikat. Scope/cursor/turn dicatat di
 wave-11; jangan reset/merge baseline atau mengaktifkan sistem nyata.
+
+## Checkpoint profil parsial (2026-09-01)
+
+[Wave-12](reports/integration-wave-12.md): frontend dac8c67 -> a24f11b diterima,
+27 SSR, global tsc, lint focused dan build fixture lulus. Sembilan checkpoint
+browser worker direview; tidak perubahan produksi/wire P15. Frontend menerima
+satu regresi gabungan helper pada fixture terbaru, lalu prep UI menunggu P14/P15.
+Backend P10a dan portal keyboard/reflow masih aktif pada snapshot, tanpa prompt
+duplikat atau integrasi hasil belum selesai. Cursor/turn/batas ada di wave-12.

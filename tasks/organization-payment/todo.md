@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P8a dan P9a/b/c internal selesai lokal. Bukti reports/integration-wave-11.md: focused 199/1.091 dan 26 SSR lulus; full root 927/5.200 dan PG222/1.659 historis. P10a lookup internal dikerjakan; P8b–P18 keseluruhan tetap belum selesai end-to-end. Tidak ada deploy atau migrasi database aktif.**
+Status: **P1–P8a dan P9a/b/c internal selesai lokal. Bukti reports/integration-wave-12.md: 27 SSR lulus; focused199/1091, full927/5200 dan PG222/1659 historis. P10a lookup internal dikerjakan; P8b–P18 keseluruhan tetap belum selesai end-to-end. Tidak ada deploy atau migrasi database aktif.**
 
 ## Gerbang revisi kolektif
 

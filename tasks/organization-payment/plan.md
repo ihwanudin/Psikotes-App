@@ -1,7 +1,7 @@
 # Rencana: pembayaran lembaga dan checkout terintegrasi
 
 Tanggal: 2026-08-31
-Status: **P1–P8a dan P9a/b/c internal selesai lokal. Checkpoint reports/integration-wave-11.md: focused 199 tes dan 26 SSR lulus; full root 927 serta PG 222 adalah bukti historis. P10a lookup internal dikerjakan, endpoint publik belum dipasang. Preview portal dan frontend tetap prep; P8b/P9/P12/P16 belum selesai end-to-end. Tidak ada izin deploy atau cutover sumber aktif.**
+Status: **P1–P8a dan P9a/b/c internal selesai lokal. Checkpoint reports/integration-wave-12.md: 27 SSR lulus; focused199, full root927 dan PG222 adalah bukti historis. P10a lookup internal dikerjakan, endpoint publik belum dipasang. Preview portal dan frontend tetap prep; P8b/P9/P12/P16 belum selesai end-to-end. Tidak ada izin deploy atau cutover sumber aktif.**
 
 ## Perubahan lingkup: pembayaran kolektif cabang
 
