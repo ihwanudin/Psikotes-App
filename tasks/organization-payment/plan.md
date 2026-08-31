@@ -1,7 +1,7 @@
 # Rencana: pembayaran lembaga dan checkout terintegrasi
 
 Tanggal: 2026-08-31
-Status: **P1–P8a selesai lokal. Core autentikasi P8b, schema P9a0 dan kontrak intendedField terverifikasi; checkpoint terbaru reports/integration-wave-8.md. Action P9a ditahan untuk perbaikan replay sesuai ADR-005. Preview portal test-only dan browser checkout terverifikasi sesuai batas laporan; P8b/P12/P16 belum selesai end-to-end. Tidak ada izin deploy atau cutover sumber aktif.**
+Status: **P1–P8a dan P9a internal selesai lokal; replay ADR-005 terverifikasi. Checkpoint terbaru reports/integration-wave-9.md: root 880 tes dan PG 222 tes lulus. P9b adapter HTTP test-only dimulai; endpoint publik belum dipasang. Preview portal dan frontend tetap prep; P8b/P9/P12/P16 belum selesai end-to-end. Tidak ada izin deploy atau cutover sumber aktif.**
 
 ## Perubahan lingkup: pembayaran kolektif cabang
 

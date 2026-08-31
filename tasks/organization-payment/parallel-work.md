@@ -396,3 +396,16 @@ Sudah dispatch satu kali ke ketiga task: backend GREEN ADR-005; portal tes PG
 adapter; frontend cakupan ESLint generated output (izin shared config sempit,
 patch delta bila baseline untracked). Scope, cursor dan turn aktif ada di wave-8.
 Tidak mengirim ulang selama aktif atau menutup acceptance dari klaim task saja.
+
+## Checkpoint P9a GREEN dan PG preview (2026-09-01)
+
+[Wave-9](reports/integration-wave-9.md) merekam rangkaian P9a hingga fix ADR-005
+e540983, PG preview 0c64314 dan lint ignore 563fa6e. Root 880/4652 dan PostgreSQL
+222/1659 lulus; Pint/PHPStan serta global ESLint bersih. P9a internal diterima,
+tetapi P9 endpoint dan seluruh checkout belum end-to-end.
+
+Task existing telah dilanjutkan satu kali: backend P9b controller dengan route
+hanya pada tes; frontend presentasi payer belum dipilih readonly; portal komponen
+preview selection di tests/Support tanpa writer/route publik. Ownership, cursor,
+turn dan batas ada di wave-9. Jangan menjalankan .env/DB aktif/outbound atau
+mengaktifkan gate; jangan menggandakan kelanjutan saat task masih aktif.

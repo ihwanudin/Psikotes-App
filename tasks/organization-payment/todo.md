@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P8a selesai lokal. Core aktivasi/outbox/token, schema P9a0 dan kontrak intendedField terverifikasi; bukti terbaru reports/integration-wave-8.md. P8b–P18 keseluruhan tetap belum selesai; action P9a ditahan untuk perbaikan replay ADR-005. Root 804 tes/4.200 assertions lulus, bukan acceptance end-to-end. Tidak ada deploy atau migrasi database aktif.**
+Status: **P1–P8a dan P9a internal selesai lokal; replay ADR-005 terverifikasi. Bukti terbaru reports/integration-wave-9.md: root 880/4.652 dan PG 222/1.659 lulus. P9b HTTP test-only dikerjakan; P8b–P18 keseluruhan tetap belum selesai end-to-end. Tidak ada deploy atau migrasi database aktif.**
 
 ## Gerbang revisi kolektif
 
@@ -359,9 +359,9 @@ Preflight menemukan NOT NULL tidak sesuai kontrak checkout-v2 existing.
 
 ### P9a: increment internal provisioning (sebelum endpoint publik)
 
-- [ ] Action internal memakai client/sumber/paket persisted dan kontrak checkout-v2 existing; policy/opt-in tetap diperiksa. Cabang tidak berasal dari referral/input bebas, identitas tidak digabung lintas organisasi lewat email/telepon.
-- [ ] Persist profil yang tersedia dan attempt PROVISIONED dengan marker checkout-v2 server-side secara atomik/idempotent. Tidak membuat ready entitlement, bill/invoice, credential atau notifikasi; metadata browser tidak boleh menjadi bukti paid/verified/consent.
-- [ ] Replay yang konsisten tidak menggandakan participant/attempt; konflik payload, sumber/tenant/paket tidak sah dan concurrent request ditolak/ditangani deterministik. Kegagalan rollback; tidak menambah placeholder identitas palsu demi memenuhi kolom wajib.
+- [x] Action internal memakai client/sumber/paket persisted dan kontrak checkout-v2 existing; policy/opt-in tetap diperiksa. Cabang tidak berasal dari referral/input bebas, identitas tidak digabung lintas organisasi lewat email/telepon.
+- [x] Persist profil yang tersedia dan attempt PROVISIONED dengan marker checkout-v2 server-side secara atomik/idempotent. Tidak membuat ready entitlement, bill/invoice, credential atau notifikasi; metadata browser tidak boleh menjadi bukti paid/verified/consent.
+- [x] Replay yang konsisten tidak menggandakan participant/attempt; konflik payload, sumber/tenant/paket tidak sah dan concurrent request ditolak/ditangani deterministik. Kegagalan rollback; tidak menambah placeholder identitas palsu demi memenuhi kolom wajib. Snapshot awal ADR-005, lifecycle replay dan PG race lulus; bukti wave-9.
 
 Dependencies P9a: core P8b yang sudah diverifikasi + policy/reservasi existing
 dan P9a0 yang telah direview. P9 keseluruhan dan endpoint masih unchecked. Review kontrak/rute
@@ -379,6 +379,12 @@ PHPStan, PG disposable untuk RLS/race. Koordinator mengulang regresi gabungan.
 **Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Integrations/CheckoutProvisioningTest.php`
 
 ## P10a: Lookup invoice dengan reference tetap
+
+Prasyarat P9 berikutnya: **P9b adapter HTTP test-only**, controller baru + tes
+dengan middleware HMAC existing + dokumentasi kontrak + laporan. Route hanya
+didaftarkan tes, shared routes/config/middleware tidak berubah. Respons minimal
+dan error generik, no-store, create/replay/denial tanpa efek akses/billing diuji.
+P9b belum selesai; public wiring masih memerlukan review terpisah. P10 belum dimulai.
 
 **Acceptance:**
 
