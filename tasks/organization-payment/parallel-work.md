@@ -456,3 +456,12 @@ Portal 1c6afba+3c1dfa3 ditahan: build assets belum explicit envDir:false.
 Task menerima fix isolasi/probe sintetis saja. Backend menerima proposal P10b
 dua dokumen sebelum writer/claim implementation. Cursor/turn dan batas wave-13
 mencegah duplikasi; tidak operasi sistem aktif atau baseline reset/merge.
+
+## Checkpoint isolasi portal dan claim invoice (2026-09-01)
+
+[Wave-14](reports/integration-wave-14.md): portal 1c6afba+3c1dfa3+49c0ff4 diterima
+sebagai 2e42519+70a424b+20cd529 setelah probe env/PostCSS dan89/995 root lulus.
+Proposal backend cf28c72 -> 848a396 direview; ADR006 b1dbda2 menerima claim-only
+P10b-a lokal. Backend aktif dengan satu penugasan, tanpa HTTP/job/permit consume.
+Frontend menunggu P14/P15, portal menunggu writer P10/P11; tidak prep duplikat.
+Scope/cursor/turn dan DB sintetis baru tercatat wave-14; tidak operasi data aktif.

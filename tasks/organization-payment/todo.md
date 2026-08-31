@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P8a, P9a/b/c dan P10a internal selesai lokal. Bukti reports/integration-wave-13.md: full988/5569 lulus; browser frontend44 checkpoint direview, SSR27/PG222 historis. P10b baru proposal; harness portal ditahan untuk fix isolasi. P8b–P18 keseluruhan belum end-to-end. Tidak ada deploy atau migrasi database aktif.**
+Status: **P1–P8a, P9a/b/c dan P10a internal selesai lokal. Wave-14: portal89/995 dan probe isolasi lulus; full988/5569, frontend44, SSR27/PG222 historis. P10b-a claim-only dimulai sesuai ADR006. Frontend/portal menunggu dependency backend. P8b–P18 keseluruhan belum end-to-end; tidak deploy atau migrasi DB aktif.**
 
 ## Gerbang revisi kolektif
 
@@ -406,6 +406,10 @@ ditugaskan setelah core P9 diterima, tanpa mengklaim dependensi public/E2E seles
 - [ ] Tinjau slice dengan pengguna sebelum kelompok berikutnya; tidak ada deploy, transaksi, atau notifikasi nyata.
 
 ## P10b: Satu invoice untuk satu bill
+
+Increment lokal disetujui: P10b-a claim saja, mengikuti ADR-006 dan wave-14.
+Guard/lock -> issuing + intent outbox pending/0 + audit atomik; belum dispatch,
+konsumsi izin POST atau HTTP. P10b-b dan acceptance keseluruhan tetap terpisah.
 
 **Acceptance:**
 
