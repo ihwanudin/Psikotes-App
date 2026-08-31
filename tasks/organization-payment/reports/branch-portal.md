@@ -1,5 +1,95 @@
 # P12a-prep — portal cabang baca-saja
 
+## Bukti PostgreSQL adapter kolektif — delta dari f4ca0c6
+
+Tanggal 2026-09-01. Adapter f4ca0c6 telah diintegrasikan koordinator sebagai
+521b49e. Increment ini hanya menambah `tests/Postgres/CollectiveBillPreviewTest.php`
+dan laporan ini; tidak mengubah adapter, backend, resource, query bersama,
+schema, route, flag, atau harness. Parallel-work, plan/todo dan ADR-004 induk
+dibaca read-only. Skill PostgreSQL/RLS (termasuk role runtime, FORCE RLS dan
+koneksi reuse), Laravel, auth/tenant, TDD serta panduan Git/review digunakan.
+
+Empat belas kasus baru memanggil **adapter sebenarnya**, bukan salinan query:
+
+- Role koneksi `psikotes_runtime`, non-superuser, NOBYPASSRLS dan bukan owner;
+  FORCE RLS diperiksa pada participant, attempt, charge, bill, item dan entitlement.
+  Query cabang biasa hanya melihat A, dan preview service tetap menyaring B.
+- Item A mendapat whitelist 14 field; B dan ID tidak ada mendapat tiga field
+  ID/status/reason identik (`ASSESSMENT_NOT_AVAILABLE`), total/hash null dan
+  canReserve false. Proyeksi tidak memuat sentinel privat, metadata, policy,
+  testTypes, invoice/proof/gateway. ID kandidat tetap berbeda per attempt.
+- Branch session yang dipalsukan dalam memori tidak mengganti membership DB.
+  Sesudah membership A→B, context A ditolak oleh `admins_read` RLS sebelum
+  elevation; context B pada PDO/backend PID yang sama hanya memproyeksikan B.
+  Ini perbedaan penting terhadap SQLite: context lama tidak boleh otomatis
+  menerobos RLS untuk memuat principal baru. Request berikutnya perlu context
+  yang disiapkan ulang sesuai kontrak autentikasi existing.
+- Guest, GenericUser non-Admin, admin soft-deleted/branchless, role persisted
+  SuperAdmin/Staff/Psychologist ditolak meskipun session stale BranchAdmin,
+  flag verifier legacy true dan pemanggil sudah berada di service context.
+- Sesudah sukses maupun InvalidArgumentException, instance context PHP dan
+  ketiga GUC PG role/branch/participant dipulihkan. Foreign row tetap tersembunyi.
+  Setelah transaksi fixture diakhiri, ketiga GUC kosong pada PDO yang sama.
+  Pemeriksaan dilakukan langsung setelah adapter, sebelum helper pembanding
+  rows melakukan elevation sendiri, agar helper tidak menutupi kebocoran GUC.
+- Helper read-only membandingkan **semua kolom/baris** 10 tabel dalam service
+  context sebelum/sesudah setiap panggilan biasa, termasuk error; query adapter
+  hanya SELECT (termasuk set_config). Tabel: charge, bill, bill_item, entitlement
+  assessment/legacy, order, audit, outbox, consent dan identity verification.
+  Kasus khusus mengisi charge dengan snapshot valid serta bill/item/entitlement
+  sentinel sehingga bukan hanya membandingkan tabel kosong. Harga katalog
+  berubah 100→999 tetapi preview charge existing tetap 100 dan rows identik.
+- Batch 10 versus batas konfigurasi existing 100 item diukur pada seluruh
+  adapter: principal reload, preview, label, service elevation/restoration;
+  tidak termasuk setup fixture dan query pembanding rows. Batas tes ≤16 query
+  dan jumlah keduanya harus sama, sehingga lookup label per baris akan gagal.
+- Hook `QueryExecuted` sekali jalan setelah read terakhir backend preview
+  mengubah participant yang sudah dimuat: soft-delete atau pindah branch.
+  Query label berikutnya menolak seluruh hasil dengan BILL_PAYER_NOT_AUTHORIZED,
+  lalu context PHP/PG dipulihkan. Dispatcher koneksi diklon sementara dan
+  dipulihkan di finally; action tidak diberi hook atau mock. Mutasi berasal dari
+  tes ini saja, sehingga dua kasus hook **bukan** bukti adapter read-only.
+
+Verifikasi dan koreksi tes:
+
+- Run pertama `fa8da2c733284de68782e4f81e51217b`: 165 tes / 1145 assertions,
+  dua error setup/ekspektasi tes. Asumsi context cabang lama dapat memuat admin
+  baru ternyata ditolak aman oleh admins_read; tes diperbaiki untuk mengharapkan
+  denial sebelum berpindah context. Fixture policy_snapshot `[]` ditolak CHECK
+  object PG, diganti object sintetis; paket sentinel juga diaktifkan sebelum
+  capture snapshot sesuai kontrak existing. Tidak mengubah kode produksi.
+  Run ini sudah mengukur 14 query pada 10 maupun 100 item dan hook keduanya lulus.
+- Run kedua `5c41cbd54bd04e8ebffd4f4073dad875`: **165 tes / 1239 assertions
+  lulus**, 35.041 detik waktu suite (tidak termasuk bootstrap). Review berikutnya
+  memperketat urutan assertion context agar helper pembanding rows tidak dapat
+  memulihkan GUC terlebih dahulu.
+- Run akhir `b23d1574dd8c44abb40ae1e397d7c3f4`: **165 tes / 1291 assertions
+  lulus**, tanpa error/skip, 53.830 detik waktu suite, 62.50 MB. Termasuk 14
+  kasus baru adapter. Batch 10 dan 100 tetap masing-masing **14 query**.
+  Angka ini milik snapshot worktree portal, bukan regresi seluruh baseline
+  terbaru induk. Ketiga run selesai cleanup; lookup exact label container dan
+  network sesudah run kosong.
+- Pint pada file tes lulus. PHPStan targeted pada adapter unchanged lulus,
+  0 error, memakai APP_ENV=testing/SQLite :memory:/cache-session array; ini
+  bukan klaim analisis statis seluruh suite tes atau proyek induk.
+
+Perintah PG tetap `powershell -NoProfile -ExecutionPolicy Bypass -File tools/testing/run-org-postgres.ps1`.
+Runner existing tidak menyediakan filter, sehingga suite PG worktree dijalankan
+seluruhnya. DB baru memakai tmpfs/network internal berlabel run ID, tanpa port
+publik; source worktree bind read-only dan storage/cache tmpfs. Tidak membaca
+.env (file worktree juga tidak ada), DB aktif, atau memanggil outbound nyata.
+Overlay migration nullable yang telah diizinkan tetap lokal/unstaged dan identik
+dengan root (SHA256 B0AB61731EA1C1CFC49507FAF2C4FB5251F56BE87DEDC49752DB0DCA9A70F027).
+Adapter juga identik root (SHA256 6EABA63CB016CF7FB00E3973E13C75D08A4D96FF64F59D0B408161BD78899B03).
+
+Batas: ini bukti query/proyeksi PG runtime dan context reuse, bukan HTTP/Livewire,
+browser, PgBouncer, EXPLAIN/load test, atau race dua koneksi. Hook membuktikan
+fail-closed antar-query pada satu koneksi, **bukan snapshot transaksi konfirmasi**
+atau immutabilitas identitas. Tidak ada komponen/UI/action publik, reserve,
+invoice, settlement atau intent resume. P10/P11 dan keputusan identitas tetap
+dependensi; P12b belum accepted. Hanya dua file lane akan di-commit; baseline
+snapshot dan overlay tidak ikut. Berhenti setelah bukti untuk review koordinator.
+
 ## Adapter preview kolektif test-only — delta dari 6a7aaf7
 
 Tanggal 2026-09-01. Proposal diterima koordinator sebagai DRAFT prep, bukan
