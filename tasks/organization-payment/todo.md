@@ -428,6 +428,10 @@ Increment P10c-a lokal mengikuti ADR-008: satu intent unknown/processing,
 strict lookup tanpa create dan persistence boundary bersama. Command/discovery
 bounded serta scheduler tetap P10c-b terpisah dan nonaktif.
 
+ADR-009 menerima desain P10c-b dua fase. P10c-b1 dibatasi pada metadata lease
+additive, model/config dan bukti migrasi; token provisional belum boleh memanggil
+provider atau menjadi authority sampai acquisition/validator berikutnya direview.
+
 **Acceptance:**
 
 - [x] P10c-a single-intent memvalidasi canonical state/policy/snapshot, commit sebelum strict GET, menempelkan exact atau mempertahankan unknown tanpa create/rearm/audit spam. Race late-state noncanonical fail-closed; bukti wave-16 final.

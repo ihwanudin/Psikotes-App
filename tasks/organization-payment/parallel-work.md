@@ -492,3 +492,8 @@ diintegrasikan sebagai `6facbda`/`89c8732`/`1900b78`. Root lookup sampai
 reconciliation 163/1241, PostgreSQL disposable 237/2074, Pint dan PHPStan lulus.
 P10c-b berikutnya harus memisahkan discovery bounded/lease dari aktivasi command
 atau scheduler; tidak ada provider credential maupun operasi aktif saat review.
+
+Proposal P10c-b0 `306f3a7` direvisi pada `7c96535` setelah review lock-order dan
+diintegrasikan sebagai `9d1db26`/`d99ffa4`. ADR009 menerima schema lease additive
+serta acquisition dua fase; P10c-b1 berikutnya hanya kontrak schema/model/config
+dan tes disposable, tanpa acquisition atau wiring.
