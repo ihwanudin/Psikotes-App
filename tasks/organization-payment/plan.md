@@ -1,7 +1,7 @@
 # Rencana: pembayaran lembaga dan checkout terintegrasi
 
 Tanggal: 2026-08-31
-Status: **P1–P8a, P9a/b/c dan P10a internal selesai lokal. Wave-14: isolasi portal dan89 tes terkait lulus; full988 serta frontend44 checkpoint historis. P10b-a claim-only dimulai sesuai ADR006; portal menunggu writer, frontend menunggu P14/P15. Endpoint publik belum dipasang, P8b/P9/P12/P16 belum end-to-end. Tidak ada izin deploy atau cutover sumber aktif.**
+Status: **P1–P8a, P9a/b/c, P10a dan P10b-a internal selesai lokal. Wave-15: claim60/444, regresi489/2692 dan PG231/1954 lulus; P10b-b berikutnya dibatasi ADR007. Portal menunggu writer, frontend menunggu P14/P15. Endpoint publik belum dipasang, P8b/P9/P10b/P12/P16 belum end-to-end. Tidak ada izin deploy atau cutover sumber aktif.**
 
 ## Perubahan lingkup: pembayaran kolektif cabang
 

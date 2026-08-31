@@ -465,3 +465,14 @@ Proposal backend cf28c72 -> 848a396 direview; ADR006 b1dbda2 menerima claim-only
 P10b-a lokal. Backend aktif dengan satu penugasan, tanpa HTTP/job/permit consume.
 Frontend menunggu P14/P15, portal menunggu writer P10/P11; tidak prep duplikat.
 Scope/cursor/turn dan DB sintetis baru tercatat wave-14; tidak operasi data aktif.
+
+## Checkpoint claim invoice dan permit berikutnya (2026-09-01)
+
+[Wave-15](reports/integration-wave-15.md): backend d72051d+1ccc01c diterima sebagai
+1e79f44+fe49304; config durasi exact c642e50. Root claim60/444, regresi489/2692,
+dan PostgreSQL disposable231/1954 lulus. Runner readiness socket sementara
+diperbaiki terpisah pada2696e7d. P10b-a diterima, P10b keseluruhan tetap terbuka.
+
+ADR007 membatasi P10b-b pada konsumsi permit sekali pakai + provider fake/HTTP
+fake, tanpa dispatcher/route/scheduler/credential nyata. Frontend dan portal
+tetap idle menunggu kontrak writer; tidak prep duplikat atau sistem aktif.
