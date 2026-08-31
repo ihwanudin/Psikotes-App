@@ -1673,3 +1673,26 @@ route/console/scheduler, source/gate, credential/.env/data aktif, outbound nyata
 deploy, push, reset/merge/rebase atau task/agent baru. P10c-a hanya single-intent;
 discovery, durable lease, operasional scheduler dan observability tetap P10c-b.
 **STOP untuk review sebelum P10c-b/P11.**
+
+### Review fix — canonical `last_error` pada late-state fence
+
+Review koordinator menemukan shared persistence masih menerima setiap pasangan
+unknown/failed tanpa mengikat kode error. Predicate boundary sekarang eksplisit:
+issuing/processing hanya canonical bila `last_error` NULL, sedangkan
+unknown/failed hanya canonical bila `last_error` tepat
+`INVOICE_OUTCOME_UNKNOWN`. Predicate yang sama dipakai untuk hasil exact dan
+unknown/null. State lain melempar conflict; action reconciliation mengembalikan
+`recovery_required` tanpa update atau audit.
+
+Tes baru membuktikan state awal unknown/failed dengan error noncanonical berhenti
+sebelum provider. Dua race memutasi bill/message setelah preflight, di dalam
+callback lookup: exact dan exception/unknown. Sebelum fix keduanya RED dengan
+hasil aktual `issued` dan `unknown` (**29 tes, 27 lulus, 2 gagal, 278 assertions**).
+Sesudah fix keduanya `recovery_required`, mempertahankan error noncanonical dan
+tidak menulis gateway, outcome audit atau perubahan state tambahan.
+
+Bukti final review fix: issuance + reconciliation **51/51 tes, 565 assertions**;
+regresi lookup/claim/issuance/reconciliation **163/163 tes, 1.241 assertions**;
+PostgreSQL disposable **216/216 tes, 1.473 assertions** dengan cleanup selesai.
+Pint file delta dan PHPStan seluruh project lulus. Tidak ada perubahan PG test,
+schema, provider, wiring, atau perilaku P10b canonical. **STOP untuk review.**

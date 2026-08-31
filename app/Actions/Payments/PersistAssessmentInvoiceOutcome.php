@@ -54,12 +54,16 @@ final readonly class PersistAssessmentInvoiceOutcome
             $message = OutboxMessage::query()->where('message_id', $permit->messageId)->lockForUpdate()->sole();
 
             $this->assertPersistedState($permit, $bill, $items, $attempts, $participants, $packages, $charges, $clients, $sources, $method, $message);
+            $processing = $bill->status === 'issuing' && $message->status === 'processing'
+                && $message->last_error === null;
+            $unknown = $bill->status === 'unknown' && $message->status === 'failed'
+                && $message->last_error === 'INVOICE_OUTCOME_UNKNOWN';
             $at = now();
             if ($invoice === null) {
-                if ($bill->status === 'unknown' && $message->status === 'failed') {
+                if ($unknown) {
                     return ['decision' => 'unknown', 'messageId' => $permit->messageId];
                 }
-                if ($bill->status !== 'issuing' || $message->status !== 'processing') {
+                if (! $processing) {
                     throw new DomainException('INVOICE_RESULT_CONFLICT');
                 }
                 $bill->update(['status' => 'unknown']);
@@ -68,9 +72,8 @@ final readonly class PersistAssessmentInvoiceOutcome
 
                 return ['decision' => 'unknown', 'messageId' => $permit->messageId];
             }
-            $recoverable = ($bill->status === 'issuing' && $message->status === 'processing')
-                || ($bill->status === 'unknown' && $message->status === 'failed');
-            if (! $recoverable || $bill->paid_at !== null || $bill->gateway_ref !== null || $bill->invoice_url !== null) {
+            if ((! $processing && ! $unknown) || $bill->paid_at !== null
+                || $bill->gateway_ref !== null || $bill->invoice_url !== null) {
                 throw new DomainException('INVOICE_RESULT_CONFLICT');
             }
             $bill->update(['status' => 'pending', 'gateway_ref' => $invoice->providerReference,

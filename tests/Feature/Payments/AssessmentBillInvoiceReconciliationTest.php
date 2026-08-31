@@ -241,6 +241,58 @@ final class AssessmentBillInvoiceReconciliationTest extends OrganizationPaymentT
         $this->assertSame('processing', $this->intent->fresh()->status);
     }
 
+    public function test_initial_unknown_failed_with_noncanonical_error_stops_before_provider(): void
+    {
+        $this->crashState();
+        $this->noncanonicalUnknownState();
+        app()->instance(PaymentProvider::class, $this->neverProvider());
+        $bill = $this->bill->fresh()->getAttributes();
+        $message = $this->intent->fresh()->getAttributes();
+
+        try {
+            app(ReconcileAssessmentBillInvoice::class)->execute($this->intent->message_id);
+            $this->fail('A noncanonical error must fail closed.');
+        } catch (DomainException) {
+            $this->assertSame($bill, $this->bill->fresh()->getAttributes());
+            $this->assertSame($message, $this->intent->fresh()->getAttributes());
+            $this->assertSame(0, DB::table('audit_logs')->whereIn('action', [
+                'assessment_bill.invoice_unknown', 'assessment_bill.invoice_issued',
+            ])->count());
+        }
+    }
+
+    #[DataProvider('lateNoncanonicalOutcomes')]
+    public function test_last_error_changed_after_preflight_cannot_persist_any_outcome(string $outcome): void
+    {
+        $this->crashState();
+        $provider = $this->createMock(PaymentProvider::class);
+        $provider->expects($this->never())->method('createInvoice');
+        $provider->expects($this->once())->method('lookupInvoice')->willReturnCallback(function () use ($outcome): PaymentInvoice {
+            $this->noncanonicalUnknownState();
+            if ($outcome === 'unknown') {
+                throw new PaymentProviderException('Synthetic late unknown lookup.');
+            }
+
+            return $this->invoice();
+        });
+
+        $this->assertSame('recovery_required', $this->reconcile($provider)['decision']);
+        $this->assertSame('unknown', $this->bill->fresh()->status);
+        $this->assertNull($this->bill->fresh()->gateway_ref);
+        $this->assertSame('failed', $this->intent->fresh()->status);
+        $this->assertSame('NONCANONICAL_LATE_ERROR', $this->intent->fresh()->last_error);
+        $this->assertSame(0, DB::table('audit_logs')->whereIn('action', [
+            'assessment_bill.invoice_unknown', 'assessment_bill.invoice_issued',
+        ])->count());
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function lateNoncanonicalOutcomes(): iterable
+    {
+        yield 'exact result' => ['exact'];
+        yield 'unknown result' => ['unknown'];
+    }
+
     public function test_persistence_failure_rolls_back_invoice_and_audit(): void
     {
         $this->crashState();
@@ -281,6 +333,12 @@ final class AssessmentBillInvoiceReconciliationTest extends OrganizationPaymentT
     {
         $this->bill->update(['status' => 'unknown']);
         $this->intent->forceFill(['status' => 'failed', 'last_error' => 'INVOICE_OUTCOME_UNKNOWN'])->save();
+    }
+
+    private function noncanonicalUnknownState(): void
+    {
+        $this->bill->update(['status' => 'unknown']);
+        $this->intent->forceFill(['status' => 'failed', 'last_error' => 'NONCANONICAL_LATE_ERROR'])->save();
     }
 
     /** @return array{decision: string, messageId: string} */
