@@ -324,3 +324,19 @@ Task frontend sudah dilanjutkan untuk bukti visual/reflow 320/390/1280 pada fixt
 yang sama; ownership hanya browser.test.mjs dan laporan, tidak produksi.
 Backend masih menyimpan hasil P9a0 pada snapshot terakhir, perlu review sebelum
 request intendedField/action P9a. Detail/cursor: reports/integration-wave-4.md.
+
+## Heartbeat 2026-09-01: schema lulus, koreksi fixture
+
+Backend b6589d5 diintegrasikan bfc0587; root lulus 751/3491 dan PG 196/1070,
+Pint/PHPStan. P9a0 schema lulus lokal, bukan provisioning atau cutover. Backend
+existing berikutnya hanya request checkout-v2 profile.intendedField opsional
+sesuai ADR-004, tes kontrak baru dan laporan; tidak default UMUM, v1/action/route.
+
+Frontend e7a0fd3 visual RED belum diintegrasikan. Kelanjutan yang sudah dikirim
+memperbaiki CSS entry fixture, bukan CSS produksi, lalu mengulang guard geometri.
+Portal existing berikutnya fallback nama null/blank pada dua tabel resource
+AssessmentParticipant/Order dan tes focused; query/scope/akses tidak berubah.
+Untuk tes portal, migration 2026_08_31_000600 root boleh disalin identik via
+apply_patch sebagai overlay lokal tanpa men-stage atau commit ulang baseline.
+Tidak ada perubahan schema aktif atau reset/merge worktree. Bukti, batas dan
+checkpoint pengiriman: reports/integration-wave-5.md.

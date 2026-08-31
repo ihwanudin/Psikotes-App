@@ -22,7 +22,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $external_process_id
  * @property string|null $external_registration_id
  * @property string|null $assessment_round_id
- * @property string $funding_mode
+ * @property string|null $funding_mode
  * @property string $assessment_status
  * @property string|null $recommendation
  * @property int $result_version

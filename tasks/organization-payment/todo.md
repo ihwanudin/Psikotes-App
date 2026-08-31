@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P8a selesai lokal. Core aktivasi/outbox/token dan persiapan frontend/portal tersedia; bukti integrasi terakhir di reports/integration-wave-3.md. P8b–P18 keseluruhan tetap belum selesai; P9a menunggu prasyarat schema P9a0. Tidak ada deploy atau migrasi database aktif.**
+Status: **P1–P8a selesai lokal. Core aktivasi/outbox/token dan schema P9a0 terverifikasi; bukti terbaru reports/integration-wave-5.md. P8b–P18 keseluruhan tetap belum selesai; berikutnya kontrak intendedField sebelum action P9a. Tidak ada deploy atau migrasi database aktif.**
 
 ## Gerbang revisi kolektif
 
@@ -350,11 +350,12 @@ keseluruhan atau mengizinkan endpoint/cutover. Semua acceptance tetap tercatat.
 Keputusan: [ADR-004](../../docs/decisions/0004-checkout-partial-profile.md).
 Preflight menemukan NOT NULL tidak sesuai kontrak checkout-v2 existing.
 
-- [ ] Migration baru untuk enam kolom profil nullable; nilai existing, FK/index/RLS dan enum tetap utuh. Validasi v1/registrasi publik tidak dilonggarkan.
-- [ ] funding_mode NULL dibatasi ke marker checkout-v2 dengan status PROVISIONED/REVOKED/VOID; metadata hilang/NULL dan status akses ditolak oleh constraint.
+- [x] Migration baru untuk enam kolom profil nullable; nilai existing, FK/index/RLS dan enum tetap utuh. Validasi v1/registrasi publik tidak dilonggarkan. Integrasi bfc0587 dan bukti reports/integration-wave-5.md.
+- [x] funding_mode NULL dibatasi ke marker checkout-v2 dengan status PROVISIONED/REVOKED/VOID; metadata hilang/NULL dan status akses ditolak oleh constraint.
 - [x] Audit statis reader frontend/portal diserahkan pada 3105383 dan diintegrasikan 793d494; temuan dan batas pada reports/frontend.md. Ini bukan pengujian runtime profil nullable.
-- [ ] Model/readers diaudit; gate profil parsial tetap fail-closed. Uji rollback aman, compatibility legacy dan PG disposable; tidak menjalankan migration pada database aktif.
-- [ ] Review hasil P9a0 sebelum action P9a; field intendedField opsional checkout-v2 menjadi increment kontrak berikutnya, bukan fallback UMUM.
+- [x] Model/readers diaudit; gate profil parsial tetap fail-closed. Uji rollback aman, compatibility legacy dan PG disposable lulus. Perbaikan label portal tetap prep sebelum wiring publik; tidak menjalankan migration pada database aktif.
+- [x] Review schema P9a0 lulus lokal: 751 tes aplikasi/3.491 assertions, PG 196/1.070, Pint/PHPStan. Ini belum action provisioning atau izin cutover.
+- [ ] Tambahkan profile.intendedField opsional checkout-v2 beserta tes kontrak, tanpa fallback UMUM; review terpisah sebelum action P9a.
 
 ### P9a: increment internal provisioning (sebelum endpoint publik)
 
