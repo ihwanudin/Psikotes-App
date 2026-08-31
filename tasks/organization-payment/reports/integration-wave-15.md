@@ -33,7 +33,7 @@ sebelum provider fake, satu create maksimum, strict lookup P10a, attach atau
 unknown fail-closed, dan late response guards. Tidak ada dispatcher/route/
 scheduler/credential/provider nyata. P10c tetap recovery terpisah.
 
-Cursor backend `163af1e1-5f6a-4358-82dd-3e4d2134e4ed:37`, turn
+Cursor backend `163af1e1-5f6a-4358-82dd-3e4d2134e4ed:38`, turn
 `01a059c5-8a81-7c70-b54c-40f71372b8aa` aktif setelah menerima tepat satu
 increment P10b-b ADR-007; jangan kirim ulang selama aktif.
 Frontend `a428d2aa-49a3-4a6e-80ad-288f45f9a2ae:33` dan portal
@@ -41,3 +41,6 @@ Frontend `a428d2aa-49a3-4a6e-80ad-288f45f9a2ae:33` dan portal
 terakhir tetap selesai dan sudah diterima; keduanya menunggu dependency.
 Instruksi membatasi handler/tes/PG tanpa dispatcher, route, credential atau
 outbound nyata. Review commit/delta dan uji root wajib sebelum integrasi.
+Snapshot terakhir: feature issuance + regresi claim 80 tes/686 assertions lulus;
+worker sedang memperbaiki dua type-boundary PHPStan pada snapshot mixed, belum
+hasil final atau acceptance koordinator.
