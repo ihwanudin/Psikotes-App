@@ -277,3 +277,36 @@ feature/PG khusus dan laporan backend; tidak menyentuh frontend/portal, route,
 schema, shared config, v1 atau sumber aktif tanpa review. Gunakan kontrak request
 dan CheckoutContractAdapter existing; tidak menerbitkan invoice/notifikasi/token.
 Setiap increment tetap review dan berhenti, tidak lanjut P10 otomatis.
+
+## Prasyarat P9a0 dan audit nullable (2026-08-31)
+
+Preflight backend 6146ef0 dan bukti keyboard portal b7e0504 diintegrasikan sebagai
+30e651f/c1c8a02, keduanya laporan saja. Portal membuktikan input native dan reflow
+320/390/1280; zoom 200% serta browser-history Back belum terbukti. Tidak mengubah
+status portal prep menjadi production-ready. Tidak ada regresi kode baru pada
+integrasi laporan ini; angka suite sebelumnya tetap bukti checkpoint sebelumnya.
+
+Keputusan schema: [ADR-004](../../docs/decisions/0004-checkout-partial-profile.md).
+Backend existing mengerjakan P9a0 dahulu: migration baru, PHPDoc nullable pada
+Participant/AssessmentParticipant, tes feature/PG khusus serta laporan backend.
+Koordinator menyetujui ownership shared terbatas itu; tidak mengubah migration
+historis, request, writer/action, route, frontend, portal, config atau sumber aktif.
+Tes tambahan legacy/gate boleh ditulis di file tes baru khusus increment ini.
+Pint/PHPStan wajib; perubahan consumer produksi di luar ownership dilaporkan dulu.
+Maksimal dua commit logis untuk schema dan bukti uji, lalu stop untuk review.
+
+Frontend existing melakukan audit read-only dampak nullable pada props dan portal,
+commit laporan saja. Tidak ada task/agent baru. Portal selesai pada checkpoint
+bukti browser; tidak membangun billing writer atau menyalakan gate publik.
+Tidak memakai database aktif, .env, atau layanan pembayaran/notifikasi nyata.
+
+Audit frontend 3105383 ditinjau dan diintegrasikan 793d494. Tindak lanjut yang
+disetujui: frontend boleh menyesuaikan tipe dan label null/blank pada
+resources/js/pages/participant/lobby.tsx, beserta tes focused/harness terisolasi
+dan laporan sendiri. Nomor tes nullable sudah merupakan kondisi schema lama.
+Jangan memperlebar union field locked checkout, mengubah API/auth/entitlement,
+atau membangun mapper P16. Tes dengan data sintetis, tanpa DB atau login nyata.
+Jika file baseline belum tracked di worktree, laporkan sebelum commit agar tidak
+memasukkan snapshot baseline. Berhenti setelah increment kecil untuk review.
+Perbaikan label tabel Filament dan mapper null-ke-missing dicatat sebagai pekerjaan
+berikutnya setelah review schema; belum diimplementasikan oleh laporan audit.

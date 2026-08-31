@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P8a selesai lokal. Core aktivasi/outbox/token dan persiapan frontend/portal tersedia; bukti integrasi terakhir di reports/integration-wave-3.md. P8b–P18 keseluruhan tetap belum selesai; berikutnya P9a internal. Tidak ada deploy atau migrasi database aktif.**
+Status: **P1–P8a selesai lokal. Core aktivasi/outbox/token dan persiapan frontend/portal tersedia; bukti integrasi terakhir di reports/integration-wave-3.md. P8b–P18 keseluruhan tetap belum selesai; P9a menunggu prasyarat schema P9a0. Tidak ada deploy atau migrasi database aktif.**
 
 ## Gerbang revisi kolektif
 
@@ -345,14 +345,25 @@ keseluruhan atau mengizinkan endpoint/cutover. Semua acceptance tetap tercatat.
 
 **Dependencies:** P8b. **Scope:** M.
 
+### P9a0: prasyarat schema profil parsial (review terpisah)
+
+Keputusan: [ADR-004](../../docs/decisions/0004-checkout-partial-profile.md).
+Preflight menemukan NOT NULL tidak sesuai kontrak checkout-v2 existing.
+
+- [ ] Migration baru untuk enam kolom profil nullable; nilai existing, FK/index/RLS dan enum tetap utuh. Validasi v1/registrasi publik tidak dilonggarkan.
+- [ ] funding_mode NULL dibatasi ke marker checkout-v2 dengan status PROVISIONED/REVOKED/VOID; metadata hilang/NULL dan status akses ditolak oleh constraint.
+- [x] Audit statis reader frontend/portal diserahkan pada 3105383 dan diintegrasikan 793d494; temuan dan batas pada reports/frontend.md. Ini bukan pengujian runtime profil nullable.
+- [ ] Model/readers diaudit; gate profil parsial tetap fail-closed. Uji rollback aman, compatibility legacy dan PG disposable; tidak menjalankan migration pada database aktif.
+- [ ] Review hasil P9a0 sebelum action P9a; field intendedField opsional checkout-v2 menjadi increment kontrak berikutnya, bukan fallback UMUM.
+
 ### P9a: increment internal provisioning (sebelum endpoint publik)
 
 - [ ] Action internal memakai client/sumber/paket persisted dan kontrak checkout-v2 existing; policy/opt-in tetap diperiksa. Cabang tidak berasal dari referral/input bebas, identitas tidak digabung lintas organisasi lewat email/telepon.
 - [ ] Persist profil yang tersedia dan attempt PROVISIONED dengan marker checkout-v2 server-side secara atomik/idempotent. Tidak membuat ready entitlement, bill/invoice, credential atau notifikasi; metadata browser tidak boleh menjadi bukti paid/verified/consent.
 - [ ] Replay yang konsisten tidak menggandakan participant/attempt; konflik payload, sumber/tenant/paket tidak sah dan concurrent request ditolak/ditangani deterministik. Kegagalan rollback; tidak menambah placeholder identitas palsu demi memenuhi kolom wajib.
 
-Dependencies P9a: core P8b yang sudah diverifikasi + policy/schema/reservasi
-existing. P9 keseluruhan dan endpoint masih unchecked. Review kontrak/rute
+Dependencies P9a: core P8b yang sudah diverifikasi + policy/reservasi existing
+dan P9a0 yang telah direview. P9 keseluruhan dan endpoint masih unchecked. Review kontrak/rute
 terpisah sebelum wiring publik; tidak mengubah v1 atau mengaktifkan sumber.
 
 Files: `app/Actions/Integrations/ProvisionCheckoutParticipant.php`,
