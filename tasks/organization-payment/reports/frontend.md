@@ -1,5 +1,36 @@
 # Frontend — P16-prep
 
+## Proposal pemetaan profil nullable — dokumen saja (2026-09-01)
+
+Deliverable: [frontend-profile-mapping-proposal.md](frontend-profile-mapping-proposal.md).
+**DRAFT internal, belum disetujui sebagai kontrak server/HTTP final atau mapper.**
+Delta lane dari 0e727db hanya dua dokumen. Pasangan e7a0fd3 → 0e727db masih menunggu
+review/verifikasi integrasi koordinator; tidak mengklaim sudah masuk root.
+
+ADR-004, SPEC-integrated-checkout, todo P14/P15/P16, request provisioning,
+CheckoutContractAdapter, prasyarat akses, validasi publik, types/components checkout,
+dan audit nullable lane dibaca. Sumber induk pada HEAD
+`0b3c739af2ffff4e7e620f4414114633185d2ebf` dibaca read-only. Skill API and Interface
+Design serta Documentation and ADRs tersedia/dibaca dan dipakai.
+
+Proposal memilih satu presenter server read-only sebelum props diserahkan ke React:
+tujuh key selalu hadir, null/blank menjadi missing yang diizinkan server, enam field
+wajib dan email opsional, locked displayValue tetap string nonblank. Nilai invalid
+tidak dipalsukan menjadi missing; izin update diputuskan ulang P15 saat submit.
+Field lengkap dipertahankan, tanpa registrasi ulang, default UMUM atau asumsi payer.
+
+Dua gap sebelum wiring dicatat eksplisit: copy/konfirmasi untuk email saja yang
+kosong, serta union pembayaran yang belum mewakili payer belum dipilih. Matriks
+20 kasus mencakup formatting/enum, required/opsional, payload missing-only, tampering,
+race, scope dan paid yang belum memenuhi syarat akses. P14/P15 dan review metadata
+server tetap dependensi; penambahan intendedField backend bukan response HTTP final.
+
+Verifikasi hanya review statis konsistensi source/kontrak dan git diff --check.
+Tidak menjalankan browser/build/tes/DB atau membuat file produksi, mapping executable,
+runner, endpoint, schema/config atau perubahan naskah legal. Tidak membuat task/agent
+baru, reset/merge baseline atau mengedit checklist kanonik. **Stop review sebelum
+implementasi mapper; P16 tidak ditandai selesai.**
+
 ## GREEN fixture lobby dan reflow (2026-09-01)
 
 Delta setelah **e7a0fd3**. Integrasikan secara atomik dalam urutan **e7a0fd3 (RED)
