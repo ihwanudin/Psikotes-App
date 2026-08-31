@@ -1,5 +1,120 @@
 # Frontend — P16-prep
 
+## Verifikasi checkout gabungan — harness saja (2026-09-01)
+
+Delta dari **1650115**, yang menurut handoff sudah diintegrasikan koordinator
+sebagai **83e116d** (root SSR 22/22). Tidak reset/merge root atau snapshot baseline.
+Ownership hanya `tests/Frontend/IntegratedCheckout/browser-interactions.mjs`, helper
+baru `tests/Frontend/IntegratedCheckout/keyboard-reflow.mjs`, dan laporan ini.
+Tidak ada perubahan produksi, props/payer types, API, schema, mapper, dependency,
+config bersama atau gate. Skill Playwright yang tersedia dibaca/dipakai kembali.
+
+**Hasil mounted browser gabungan:** seluruh **10 kelompok existing + 9 kelompok
+optional-email + 6 kelompok keyboard native** lulus dalam satu invocation. Sepuluh
+kasus lama dipindahkan dari Browser-tab API ke Playwright Page tanpa membuang
+assertion: fokus dibaca langsung dari activeElement, bukan annotation snapshot.
+Assertion kecil portable menggantikan import node:assert agar source yang sama
+dapat dijalankan melalui CLI run-code. Sembilan kasus optional tetap dijalankan.
+
+| Bukti keyboard tambahan | Hasil |
+| --- | --- |
+| Tab/Space/Enter pada email opsional blank, terisi, lalu dihapus | Blank tidak punya submit/callback; terisi mengirim hanya email; dihapus tidak mengirim update kosong |
+| Tab ke submit lalu Enter dengan email invalid | Native typeMismatch menolak callback dan memindahkan fokus ke email |
+| Callback absen, legal pending, busy, formKey | Enter tidak memanggil callback; kontrol busy dilewati Tab; formKey menghapus edit tanpa submit kosong |
+| Phone wajib + email opsional | Enter memfokuskan phone kosong; email invalid juga ditolak; phone valid + email whitespace mengirim phone saja |
+| Error summary dan consent terpisah | Error mendapat fokus, Tab/Enter pada tautan internal menuju phone; Space memilih consent utama, Space/ArrowDown memilih DASS decline, Enter mengirim pilihan terpisah |
+| formKey dan kedua revisi consent | Aktivasi tombol dengan Tab/Enter mereset field dan kedua pilihan; guard bertahan, kemudian consent-only submit tetap dapat dilakukan |
+
+Keyboard memakai `page.keyboard.press/type`, **tanpa** focus(), dispatchEvent,
+penetapan value/checked atau mutasi DOM untuk mensimulasikan keyboard. evaluate
+hanya membaca state/fokus/geometri. Observer React existing menunjukkan
+`trusted=true` untuk input dalam root; Tab awal dari body berada di luar observer
+itu dan dibuktikan oleh native key serta fokus berikutnya. Probe requestSubmit
+programmatic tetap ada dalam 19 kelompok lama/optional, bukan bukti keyboard.
+Pengujian keyboard final memakai viewport 1280×900 di Chrome desktop Windows;
+tidak mengklaim keyboard fisik perangkat mobile atau audit screen reader.
+
+**Visual:** enam screenshot asli (optional-only kosong dan mixed required kosong)
+diperiksa. Logo/palette ONCAM, heading, label, input, copy dan tombol utuh. Pada
+320/390 konten satu kolom; pada 1280 ringkasan pembayaran di kanan dan input mixed
+dua kolom. Optional-only tanpa CTA; mixed tetap punya CTA. Tidak ada page overflow
+horizontal atau clipping teks yang terdeteksi pada enam capture berikut.
+
+| Viewport CSS px | clientWidth = scrollWidth | Padding content / card | h1 / radius card | Kasus |
+| --- | --- | --- | --- | --- |
+| 320 | 305 | 16 / 20 px | 30 / 10 px | optional, mixed |
+| 390 | 375 | 16 / 20 px | 30 / 10 px | optional, mixed |
+| 1280 | 1265 | 32 / 28 px | 30 / 10 px | optional, mixed |
+
+Lebar konten dikurangi scrollbar Windows 15 px; guard membandingkan scrollWidth
+dengan clientWidth, bukan mengasumsikan sama dengan innerWidth. Radius 10 px
+ditelusuri ke app.css `--radius: 0.625rem`/rounded-lg. Guard styling padding/h1/radius
+tetap eksplisit. Pemeriksaan Range teks menguji batas viewport konten dan ancestor
+yang benar-benar melakukan clipping, tidak menyalahartikan line box sebagai clip.
+Kegagalan awal adalah asumsi harness (observer body, scrollbar/radius), bukan bug
+produksi yang diperbaiki diam-diam. CLI VM juga tidak menyediakan global URL;
+pemeriksaan origin memakai pemisahan URL string, tetap mengunci origin 8011.
+
+Bukti ignored: `output/playwright/checkout-combined/run.log`, `run.js`, dan
+`{320,390,1280}-{optional,mixed}.png`. Enam screenshot menampilkan main checkout;
+guard overflow tetap mengukur keseluruhan dokumen termasuk kontrol fixture.
+Tidak commit screenshot/log/storage output. Bukti ini bukan snapshot test piksel.
+
+**Console/network:** final memakai session terisolasi `checkout-combined-d4ea`
+yang dibuka di about:blank; monitor dipasang sebelum navigasi fixture. Guard
+menolak origin luar/API, console error/warning, pageerror, HTTP >=400 dan request
+gagal. **Final: 104 request lokal; 0 request eksternal/API, 0 request gagal/HTTP
+error, 0 pageerror dan 0 console error/warning.** Fixture tidak memiliki favicon;
+browser harness menyuplai respons sintetis
+204 hanya untuk `/favicon.ico`. Ini menghilangkan 404 favicon yang terlihat pada
+open awal sebelum monitor; tidak mengubah atau menyembunyikan error aset aplikasi.
+Tidak ada backend, .env aktif, login, token, data peserta/payment/WA nyata.
+Port 8011 diperiksa kosong sebelum server dimulai. Session Chrome dan server Vite
+milik lane sudah ditutup setelah run final; port 8011 kembali kosong.
+
+Perintah reproduksi (PowerShell, cwd worktree sendiri, dependencies cached existing):
+
+```powershell
+# Terminal A: pastikan origin kosong, lalu hidupkan hanya server fixture ini.
+if (Get-NetTCPConnection -LocalPort 8011 -State Listen -ErrorAction SilentlyContinue) {
+    throw 'Port 8011 sudah dipakai; jangan hentikan server lain.'
+}
+node node_modules/vite/bin/vite.js --config tests/Frontend/IntegratedCheckout/vite.config.ts --mode preview
+```
+
+```powershell
+# Terminal B: CLI cached yang tersedia pada run ini; tidak install dependency.
+$checkoutCli = 'C:/Users/ThinkPad/AppData/Local/npm-cache/_npx/31e32ef8478fbf80/node_modules/@playwright/cli/playwright-cli.js'
+node $checkoutCli -s=checkout-combined-d4ea open about:blank --headed
+New-Item -ItemType Directory -Path output/playwright/checkout-combined -Force | Out-Null
+$checkoutSources = @(
+    'tests/Frontend/IntegratedCheckout/browser-interactions.mjs'
+    'tests/Frontend/IntegratedCheckout/keyboard-reflow.mjs'
+) | ForEach-Object { (Get-Content $_ -Raw).Replace('export async function', 'async function') }
+$checkoutRun = 'async (page) => {' + "`n" + ($checkoutSources -join "`n") + "`n" +
+    'return verifyCombinedCheckout(page, verifyCheckoutInteractions, verifyOptionalEmail);' + "`n}"
+[System.IO.File]::WriteAllText((Join-Path (Get-Location) 'output/playwright/checkout-combined/run.js'), $checkoutRun)
+node $checkoutCli -s=checkout-combined-d4ea run-code --filename output/playwright/checkout-combined/run.js > output/playwright/checkout-combined/run.log 2>&1
+if ((Get-Content output/playwright/checkout-combined/run.log -First 1) -ne '### Result') {
+    throw 'Browser run gagal; baca log, jangan hanya mengandalkan exit code CLI.'
+}
+node $checkoutCli -s=checkout-combined-d4ea close
+# Ctrl+C hanya pada server milik lane di Terminal A.
+```
+
+Focused lint kedua helper, node --check kedua file, Prettier check, typecheck
+`node node_modules/typescript/bin/tsc --project tests/Frontend/IntegratedCheckout/tsconfig.json --noEmit`
+dan preview build `node node_modules/vite/bin/vite.js build --config tests/Frontend/IntegratedCheckout/vite.config.ts --mode preview`
+lulus. Typecheck tersebut mencakup TS komponen/fixture existing; JS helper diverifikasi
+oleh lint/syntax dan eksekusi browser. Build JS 247.37 kB (gzip 76.99), CSS 70.37 kB
+(gzip 11.84), tanpa perubahan produksi. Tidak mengulang SSR/full suite/global tsc
+pada increment verifikasi ini; angka root 22/22 di atas adalah laporan koordinator.
+
+**Batas:** ini uji presentasi mounted dan callback sintetis, bukan E2E backend,
+otorisasi, P15, atau wiring P16. Tidak membuka akses atau menganggap paid siap.
+Tidak ada task/agent baru, reset/merge baseline, atau staging snapshot awal.
+**P16 tetap belum end-to-end; stop untuk review sebelum increment berikutnya.**
+
 ## Email opsional — increment presentasi (2026-09-01)
 
 Delta kecil setelah **aae2ffd**; tidak reset/merge snapshot baseline. Menurut

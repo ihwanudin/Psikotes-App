@@ -1,4 +1,21 @@
-import assert from 'node:assert/strict';
+// Portable assertions keep the same cases callable from Playwright CLI run-code.
+const assert = {
+    equal(actual, expected, message = 'Values differ') {
+        if (actual !== expected) {
+            throw new Error(`${message}: ${actual} !== ${expected}`);
+        }
+    },
+    match(actual, pattern) {
+        if (!pattern.test(actual)) {
+            throw new Error(`Expected ${pattern}: ${actual}`);
+        }
+    },
+    doesNotMatch(actual, pattern) {
+        if (pattern.test(actual)) {
+            throw new Error(`Unexpected ${pattern}: ${actual}`);
+        }
+    },
+};
 
 /** Mounted Playwright CLI check on the existing synthetic preview; no backend. */
 export async function verifyOptionalEmail(page) {
@@ -19,6 +36,10 @@ export async function verifyOptionalEmail(page) {
             errors.push('Unexpected external/API request');
 
             return route.abort();
+        }
+
+        if (route.request().url() === `${origin}/favicon.ico`) {
+            return route.fulfill({ status: 204, body: '' });
         }
 
         return route.continue();
@@ -266,16 +287,18 @@ export async function verifyOptionalEmail(page) {
     return results;
 }
 
-/** Run through the documented Browser skill tab API on the test-only 8011 preview.
+/** Run the original ten groups through Playwright Page on the test-only 8011 preview.
  * Click/check/fill and programmatic requestSubmit probes are NOT native keyboard proof.
  * Native Tab/Space/arrows/Enter are audited separately with the visible trusted flag.
  */
-export async function verifyCheckoutInteractions(tab) {
-    assert.equal(new URL(await tab.url()).origin, 'http://127.0.0.1:8011');
-    await tab.reload();
-    assert.match(await tab.playwright.domSnapshot(), /PREVIEW INTERNAL/);
-    const role = (type, name) =>
-        tab.playwright.getByRole(type, { name, exact: true });
+export async function verifyCheckoutInteractions(page) {
+    assert.equal(
+        page.url().split('/').slice(0, 3).join('/'),
+        'http://127.0.0.1:8011',
+    );
+    await page.reload();
+    assert.match(await page.locator('body').ariaSnapshot(), /PREVIEW INTERNAL/);
+    const role = (type, name) => page.getByRole(type, { name, exact: true });
     const confirm = () => role('button', 'Konfirmasi data dan persetujuan');
     const mainConsent = () =>
         role(
@@ -344,8 +367,13 @@ export async function verifyCheckoutInteractions(tab) {
     await mainConsent().check();
     await role('radio', 'Saya tidak ingin mengikuti DASS-21.').check();
     await role('button', 'Simulasikan error validasi').click();
-    let snapshot = await tab.playwright.domSnapshot();
-    assert.match(snapshot, /alert \[active\]/);
+    let snapshot = await page.locator('body').ariaSnapshot();
+    assert.equal(
+        await role('alert', '').evaluate(
+            (element) => document.activeElement === element,
+        ),
+        true,
+    );
     assert.match(
         snapshot,
         /link "Nomor WhatsApp: Gunakan nomor WhatsApp yang dapat dihubungi\./,
@@ -374,7 +402,7 @@ export async function verifyCheckoutInteractions(tab) {
         'Revisi versi DASS fixture',
     ]) {
         await role('button', reset).click();
-        snapshot = await tab.playwright.domSnapshot();
+        snapshot = await page.locator('body').ariaSnapshot();
         assert.doesNotMatch(
             snapshot,
             /checkbox "Saya telah membaca[^\n]*\[checked\]/,
@@ -390,9 +418,11 @@ export async function verifyCheckoutInteractions(tab) {
             previous,
             'required phone must be empty after reset',
         );
-        assert.match(
-            await tab.playwright.domSnapshot(),
-            /textbox "Nomor WhatsApp \*" \[active\]/,
+        assert.equal(
+            await role('textbox', 'Nomor WhatsApp *').evaluate(
+                (element) => document.activeElement === element,
+            ),
+            true,
         );
         await role('textbox', 'Nomor WhatsApp *').fill('080000000002');
         await confirm().click();
