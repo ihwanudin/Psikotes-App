@@ -37,12 +37,11 @@ cleanup berhasil; Pint file delta dan PHPStan seluruh proyek lulus. Nol
 create ulang, settlement, public wiring, command atau scheduler. P10c-a diterima;
 discovery/lease/operasional tetap P10c-b.
 
-Backend cursor `163af1e1-5f6a-4358-82dd-3e4d2134e4ed:48`; proposal awal
-`306f3a7` belum diintegrasikan. Review menemukan organization-first lock akan
-memblokir sebelum mencapai `SKIP LOCKED`; turn
-`01a05a28-293b-7400-8190-2b3d94d15a6e` aktif merevisi menjadi lease provisional
-outbox singkat lalu validasi canonical organization-first terpisah. Tetap
-proposal-only tanpa code/schema/command/scheduler.
+Backend cursor `163af1e1-5f6a-4358-82dd-3e4d2134e4ed:50`. Proposal P10c-b0
+`306f3a7`/`7c96535` diintegrasikan sebagai `9d1db26`/`d99ffa4`; ADR009 menerima
+lease dua fase. Turn `01a05a2e-0dcd-7001-8a4d-efcbd1092a9e` aktif pada P10c-b1
+schema/model/config dan tes disposable saja. Acquisition, provider, command dan
+scheduler tetap di luar scope.
 Frontend/portal tetap not-loaded pada cursor :33 dan menunggu dependency. Satu
 increment P10c-b berikutnya wajib didesain bounded dan tetap nonaktif sampai
 review; jangan menggandakan instruksi saat task aktif.
