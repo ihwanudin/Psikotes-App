@@ -108,6 +108,10 @@ export default [
             'node_modules',
             'public',
             'bootstrap/ssr',
+            // Generated verification builds and local browser artifacts only.
+            'storage/app/private/verification/**',
+            'output/playwright/**',
+            '.playwright-cli/**',
             'tailwind.config.js',
             'vite.config.ts',
             'resources/js/actions/**',

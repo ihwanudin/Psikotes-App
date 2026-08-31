@@ -1,5 +1,99 @@
 # Frontend — P16-prep
 
+## Wave-7 tooling — cakupan ESLint generated output (2026-09-01)
+
+Delta setelah **12f777c**, yang menurut handoff diintegrasikan root **a84d9bb**.
+Preflight: eslint.config.js tracked, bersih sebelum perubahan, dan SHA-256 sama
+dengan root yang dibaca read-only. Tidak commit snapshot atau reset/merge baseline.
+Ownership tiga file: eslint.config.js, tests/Frontend/eslint-scope.test.mjs,
+dan laporan ini. Skill debugging/Git workflow dipakai; tidak ada task baru.
+
+**Perbaikan:** empat baris ditambahkan pada object global ignores existing:
+komentar dan tiga pola `storage/app/private/verification/**`,
+`output/playwright/**`, `.playwright-cli/**`. Tidak mengabaikan seluruh storage,
+tests, resources, atau direktori source tetangga; tidak mengubah rules/settings.
+Output verification ditetapkan kedua config Vite fixture di tests/Frontend dan
+docs/ORGANIZATION_PAYMENT_TESTING.md. Browser artifacts sudah ditetapkan .gitignore;
+storage/app/private/.gitignore juga mengecualikan output privat. .gitignore sendiri
+tidak membuat ESLint otomatis mengabaikan bundle ketika `lint:check` = `eslint .`.
+
+**Hasil nyata worktree (bukan angka root 44.154):**
+
+| Kelompok | Sebelum: file / error | Sesudah: file / error |
+| --- | --- | --- |
+| Generated verification | 8 / 51.764 | 0 / 0 |
+| Generated output/playwright | 2 / 2 | 0 / 0 |
+| Source existing | 86 / 14 | 86 / 14 |
+| Probe source baru | belum ada saat baseline | 1 / 0 |
+| Total | 96 / 51.780 | 87 / 14 |
+
+Kedua run `npm run lint:check` exit **1**. Penyebab generated terselesaikan,
+tetapi **global lint belum hijau** karena 14 error source existing. Perbedaan jumlah
+dengan root berasal dari snapshot/output bundle lokal; tidak mengklaim menjalankan
+lint root. Tidak ada warning dalam kedua hasil global worktree.
+
+Semua 86 file source baseline tetap muncul setelah perubahan; seluruh daftar pesan
+lint per file dibandingkan deepEqual dan **tidak berubah**. File tambahan hanya
+probe baru. Full effective rules untuk checkout-form.tsx, checkout.test.tsx dan
+probe sendiri juga dibandingkan deepEqual sebelum/sesudah: identik.
+
+Sisa error semuanya `import/order`, sudah ada sebelum ignore dan tidak diperbaiki:
+
+| Source di resources/js/ | Error |
+| --- | --- |
+| components/app-header.tsx | 1 |
+| components/app-sidebar.tsx | 1 |
+| components/delete-user.tsx | 1 |
+| components/manage-passkeys.tsx | 1 |
+| components/user-menu-content.tsx | 1 |
+| layouts/auth/auth-simple-layout.tsx | 1 |
+| layouts/auth/auth-split-layout.tsx | 1 |
+| layouts/settings/layout.tsx | 1 |
+| pages/auth/confirm-password.tsx | 1 |
+| pages/auth/login.tsx | 1 |
+| pages/settings/profile.tsx | 2 |
+| pages/settings/security.tsx | 2 |
+
+**Regresi:** RED awal 1 lulus / 1 gagal karena bundle verification belum ignored.
+GREEN **2 tes lulus, 0 gagal/skip**: lima path generated dicek isPathIgnored dan
+lintText tidak menghasilkan input lint; 12 path app/tests/tetangga tetap included
+dan kode sintetis invalid masih menghasilkan error `curly` severity 2. Probe
+mencakup checkout/lobby source, SSR/browser tests, storage/output tetangga, dan
+nama output/playwright yang berada di dalam tests (tidak boleh ikut diabaikan).
+Probe lintText tidak membuat file palsu di direktori source. Lint focused config
+dan probe, syntax check kedua file, serta Prettier check probe lulus. Prettier pada
+eslint.config.js exit 1; baseline `git show HEAD:eslint.config.js` melalui stdin
+Prettier juga exit 1. Formatting config existing tidak diperbaiki di luar empat
+baris ignore. Tidak ada rule yang dimatikan.
+
+Perintah reproduksi dari worktree sendiri, tanpa install atau --fix:
+
+```powershell
+New-Item -ItemType Directory -Path output/playwright/eslint-scope -Force | Out-Null
+node --test tests/Frontend/eslint-scope.test.mjs
+node node_modules/eslint/bin/eslint.js eslint.config.js tests/Frontend/eslint-scope.test.mjs
+node --check eslint.config.js
+node --check tests/Frontend/eslint-scope.test.mjs
+node node_modules/prettier/bin/prettier.cjs --check eslint.config.js tests/Frontend/eslint-scope.test.mjs
+npm.cmd run lint:check -- --format json --output-file output/playwright/eslint-scope/after.json > output/playwright/eslint-scope/after-cli.log 2>&1
+$checkoutLintExit = $LASTEXITCODE
+"Global lint exit: $checkoutLintExit"
+node --input-type=module -e "import fs from 'node:fs'; const rows=JSON.parse(fs.readFileSync('output/playwright/eslint-scope/after.json','utf8')); console.log(JSON.stringify({files:rows.length,errors:rows.reduce((n,r)=>n+r.errorCount,0),warnings:rows.reduce((n,r)=>n+r.warningCount,0)}));"
+```
+
+Baseline command sama dengan output before.json/before-cli.log, dijalankan sebelum
+perubahan. Log penuh JSON sengaja disimpan ignored, tidak dicetak sebagai puluhan
+ribu error bundle. Bukti lokal: output/playwright/eslint-scope/{before,after}.json,
+summary.json, rules-before.json, probe-red.log/probe-green.log dan log CLI.
+summary.json mencatat source yang dipertahankan, pesan identik, dan sisa error.
+Tidak commit semua output tersebut.
+
+**Batas/serah-terima:** patch tooling tidak menyelesaikan 14 error source existing
+atau seluruh wave-7. Tidak menjalankan browser/build/typecheck/DB/full suite karena
+tidak ada perubahan TS/UI/runtime. Tidak mengubah dependencies, API/auth/schema,
+.env, data aktif, gate atau mapper. P16 tetap belum end-to-end. **Stop untuk review;
+perbaikan source import/order unrelated membutuhkan scope terpisah.**
+
 ## Verifikasi checkout gabungan — harness saja (2026-09-01)
 
 Delta dari **1650115**, yang menurut handoff sudah diintegrasikan koordinator
