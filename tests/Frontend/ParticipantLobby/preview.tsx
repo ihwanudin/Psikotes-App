@@ -1,6 +1,6 @@
 import { createInertiaApp } from '@inertiajs/react';
 import ParticipantLobby from '../../../resources/js/pages/participant/lobby';
-import '../../../resources/css/app.css';
+import './preview.css';
 
 // Standalone fixture: browser tests intercept both API requests before navigation.
 void createInertiaApp({

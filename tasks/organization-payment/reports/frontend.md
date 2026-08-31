@@ -1,5 +1,62 @@
 # Frontend — P16-prep
 
+## GREEN fixture lobby dan reflow (2026-09-01)
+
+Delta setelah **e7a0fd3**. Integrasikan secara atomik dalam urutan **e7a0fd3 (RED)
+→ commit GREEN yang memuat bagian ini** (`F16: restore lobby fixture styles and verify reflow`).
+Jangan mengintegrasikan checkpoint RED sendirian. Baseline tidak di-reset/merge;
+perubahan ini mengikuti ownership tambahan yang disetujui koordinator.
+
+CSS baru `tests/Frontend/ParticipantLobby/preview.css` mengimpor app.css dan
+mendeklarasikan @source eksplisit lobby.tsx; preview.tsx mengimpor entry baru itu.
+Tidak mengubah CSS global, komponen produksi, konfigurasi bersama, dependency,
+auth/API/schema, atau mapper checkout. Skill Playwright, frontend, debugging dan
+review yang telah dibaca tetap dipakai; tidak ada task/agent tambahan.
+
+Ada satu koreksi pengukuran pada browser.test.mjs: setelah CSS aktif, Range heading
+di 320 px memiliki top/bottom 150/190 sementara line box 152/188. Overflow visible
+dan screenshot memperlihatkan teks utuh, sehingga membandingkan batas vertikal
+font dengan line box adalah false positive clipping. Tes kini memeriksa batas
+ancestor yang benar-benar melakukan clipping (hidden/clip/auto/scroll), tetap
+memeriksa overflow horizontal dan ellipsis. **Guard styling 16px/30px/16px tidak
+dihapus, diubah, atau dilonggarkan.**
+
+**Hasil nyata run final:** 9 kasus perilaku existing dan 12 capture/geometri lulus,
+0 pageerror. Keempat state loading/null/complete/error pada tiap lebar diperiksa
+dari screenshot asli, bukan hanya assertion DOM:
+
+| Lebar CSS px | scrollWidth | Padding main / h1 / radius section | Hasil visual |
+| --- | --- | --- | --- |
+| 320 | 320 | 16px / 30px / 16px | Fallback utuh; nomor lengkap membungkus dua baris, tanpa terpotong |
+| 390 | 390 | 16px / 30px / 16px | Nama/nomor null dan lengkap utuh; status dan card tidak bertabrakan |
+| 1280 | 1280 | 16px / 30px / 16px | Konten terpusat; heading, nomor, loading/error tampil utuh |
+
+Screenshot loading menunjukkan skeleton berukuran benar; error menampilkan ikon,
+heading dan pesan utuh. Tidak ada page overflow horizontal atau label terpotong
+dalam fixture yang diperiksa. Entitlement locked/Siap tetap seperti respons
+sintetis, tanpa tombol akses. Native Tab tidak mengubah URL; tetap 0 kontrol atau
+tautan pada lobby informasional ini, sehingga tidak mengklaim audit focus ring.
+
+Build fixture lulus: CSS **16.41 kB (gzip 4.12)**, JS **320.19 kB (gzip 101.09)**.
+Typecheck focused dan ESLint preview.tsx/browser.test.mjs lulus. Origin 8011
+diperiksa kosong sebelum server dinyalakan; Chrome memakai session baru
+`oncam-lobby-green-d4ea` dan profil sementara. Semua respons API tetap intercepted
+fixture, token literal sintetis; tidak ada jaringan luar, DB, login nyata atau
+penyimpanan placeholder. Error HTTP 401 dari skenario negatif memang diharapkan;
+tidak mengklaim console zero-error. Server dan browser uji ditutup setelah tes.
+
+Artifact ignored di `output/playwright/lobby-visual/`: results-green.log dan 12 PNG
+`{320,390,1280}-{loading,null,complete,error}.png` sekarang berisi capture GREEN.
+PNG RED sebelumnya diarsipkan ke subfolder `red-before-css/`; results-guarded.log
+tetap menjadi bukti kegagalan styling terdahulu. Screenshot/log tidak di-commit.
+Pengulangan memakai perintah build/typecheck/lint/run-code yang dicatat di bawah,
+dengan session `oncam-lobby-green-d4ea`; path script browser dan config Vite tetap sama.
+
+**Empat file delta:** preview.css (baru), preview.tsx, browser.test.mjs, laporan ini.
+Bukti hanya fixture Chrome pada tiga ukuran, bukan auth/server end-to-end, semua
+panjang nama/nomor, screen reader, zoom atau lintas browser. P9a0/P16/akses checkout
+tidak ditandai selesai. **Stop untuk review dan integrasi atomik RED + GREEN.**
+
 ## Verifikasi visual lobby — fixture belum layak bukti geometri (2026-08-31)
 
 Delta dari **e46bca4**, yang telah diintegrasikan koordinator sebagai 78d7c53.

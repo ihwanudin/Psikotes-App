@@ -211,19 +211,36 @@ async (page) => {
                     range.selectNodeContents(element)
                     const lines = [...range.getClientRects()]
                     const style = getComputedStyle(element)
+                    const clippingAncestors = []
+                    let ancestor = element
+
+                    while (ancestor) {
+                        const ancestorStyle = getComputedStyle(ancestor)
+                        const ancestorBox = ancestor.getBoundingClientRect()
+                        const clippingValues = ['hidden', 'clip', 'auto', 'scroll']
+                        clippingAncestors.push({
+                            x: clippingValues.includes(ancestorStyle.overflowX),
+                            y: clippingValues.includes(ancestorStyle.overflowY),
+                            left: ancestorBox.left + ancestor.clientLeft,
+                            top: ancestorBox.top + ancestor.clientTop,
+                            right: ancestorBox.left + ancestor.clientLeft + ancestor.clientWidth,
+                            bottom: ancestorBox.top + ancestor.clientTop + ancestor.clientHeight,
+                        })
+                        ancestor = ancestor.parentElement
+                    }
 
                     return {
                         text: element.textContent,
                         textFragments: lines.length,
                         outside: lines.some((line) =>
                             line.left < -1 || line.right > viewport + 1 ||
-                            line.left < box.left - 1 || line.right > box.right + 1 ||
-                            line.top < box.top - 1 || line.bottom > box.bottom + 1,
+                            line.left < box.left - 1 || line.right > box.right + 1,
                         ),
-                        clipped: (
-                            ['hidden', 'clip'].includes(style.overflowY) &&
-                            element.scrollHeight > element.clientHeight + 1
-                        ) || style.textOverflow === 'ellipsis',
+                        // Font bounds may exceed line-height without clipping when overflow is visible.
+                        clipped: clippingAncestors.some((clip) => lines.some((line) =>
+                            (clip.x && (line.left < clip.left - 1 || line.right > clip.right + 1)) ||
+                            (clip.y && (line.top < clip.top - 1 || line.bottom > clip.bottom + 1)),
+                        )) || style.textOverflow === 'ellipsis',
                     }
                 })
 
