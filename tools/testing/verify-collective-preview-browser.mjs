@@ -1,5 +1,12 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import assert from 'node:assert/strict';
+import {
+    existsSync,
+    mkdirSync,
+    mkdtempSync,
+    realpathSync,
+    writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import process from 'node:process';
@@ -25,7 +32,6 @@ mkdirSync(artifacts, { recursive: true });
 
 if (process.argv[2] === 'assets') {
     const { build } = await import('vite');
-    const { default: tailwindcss } = await import('@tailwindcss/vite');
     const entry = join(artifacts, 'fixture.css');
     writeFileSync(
         entry,
@@ -34,17 +40,9 @@ if (process.argv[2] === 'assets') {
 @source '../../../vendor/filament/support/resources/views/components/button';
 `,
     );
-    const built = await build({
-        root,
-        configFile: false,
-        plugins: [tailwindcss()],
-        build: {
-            outDir: join(artifacts, 'css-build'),
-            emptyOutDir: false,
-            rolldownOptions: { input: entry },
-            cssCodeSplit: true,
-        },
-    });
+    const built = await build(
+        await fixtureAssetConfig(root, entry, join(artifacts, 'css-build')),
+    );
     const css = (Array.isArray(built) ? built : [built])
         .flatMap((result) => result.output)
         .filter(
@@ -58,6 +56,86 @@ if (process.argv[2] === 'assets') {
 
     writeFileSync(join(directory, 'fixture.css'), css[0].source);
     console.log(`Local fixture CSS built: ${directory}`);
+} else if (process.argv[2] === 'probe-assets') {
+    const { build, resolveConfig } = await import('vite');
+    const probeRoot = mkdtempSync(join(directory, 'vite-isolation-'));
+    const envFiles = [
+        '.env',
+        '.env.local',
+        '.env.production',
+        '.env.production.local',
+    ];
+    const markers = envFiles.map(
+        (_, index) => `VITE_ONCAM_ISOLATION_PROBE_${index}`,
+    );
+
+    for (const [index, file] of envFiles.entries()) {
+        assert.equal(
+            process.env[markers[index]],
+            undefined,
+            'Probe marker must not already exist',
+        );
+        writeFileSync(
+            join(probeRoot, file),
+            `${markers[index]}=synthetic-only\n`,
+        );
+    }
+
+    for (const file of ['vite.config.cjs', 'postcss.config.cjs']) {
+        writeFileSync(
+            join(probeRoot, file),
+            'throw new Error("Synthetic project config must never execute");\n',
+        );
+    }
+
+    const control = await resolveConfig(
+        { root: probeRoot, configFile: false },
+        'build',
+        'production',
+    );
+    assert.ok(
+        markers.every((key) => control.env[key] === 'synthetic-only'),
+        'Control must detect all synthetic env files',
+    );
+    const entry = join(probeRoot, 'input.css');
+    writeFileSync(entry, '.synthetic-probe { color: #123456; }\n');
+    const config = await fixtureAssetConfig(
+        probeRoot,
+        entry,
+        join(probeRoot, 'output'),
+    );
+    let observed = false;
+    config.plugins.push({
+        name: 'oncam-isolation-probe',
+        configResolved(resolved) {
+            assert.ok(
+                markers.every((key) => !(key in resolved.env)),
+                'Fixture build loaded synthetic workspace env',
+            );
+            assert.equal(resolved.envDir, false);
+            assert.equal(resolved.configFile, undefined);
+            assert.ok(
+                !resolved.plugins.some((plugin) =>
+                    plugin.name.includes('laravel'),
+                ),
+            );
+            observed = true;
+        },
+    });
+    await build(config);
+    assert.ok(observed, 'Probe must observe the actual build configuration');
+    const report = {
+        passed: true,
+        syntheticEnvFiles: envFiles.length,
+        projectConfigTraps: 2,
+        envDir: false,
+        configFile: false,
+    };
+    writeFileSync(
+        join(artifacts, 'asset-isolation-probe.json'),
+        JSON.stringify(report, null, 2),
+    );
+    console.log(JSON.stringify(report));
 } else if (process.argv[2] === 'verify') {
     const cli = process.env.ONCAM_PLAYWRIGHT_CLI;
 
@@ -130,8 +208,27 @@ if (process.argv[2] === 'assets') {
     }
 } else {
     throw new Error(
-        'Use assets or verify. The PHP server must be started separately on 127.0.0.1:8012.',
+        'Use assets, probe-assets or verify. The PHP server must be started separately on 127.0.0.1:8012.',
     );
+}
+
+async function fixtureAssetConfig(assetRoot, entry, outDir) {
+    const { default: tailwindcss } = await import('@tailwindcss/vite');
+
+    return {
+        root: assetRoot,
+        // Vite config, env files and PostCSS discovery are independent switches.
+        configFile: false,
+        envDir: false,
+        css: { postcss: { plugins: [] } },
+        plugins: [tailwindcss()],
+        build: {
+            outDir,
+            emptyOutDir: false,
+            rolldownOptions: { input: entry },
+            cssCodeSplit: true,
+        },
+    };
 }
 
 async function prepareBrowser(page) {

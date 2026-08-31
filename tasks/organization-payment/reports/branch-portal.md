@@ -1,5 +1,73 @@
 # P12a-prep — portal cabang baca-saja
 
+## Koreksi isolasi Vite — delta dari 3c1dfa3
+
+Tanggal 2026-09-01. Koordinator **belum menerima/mengintegrasikan 1c6afba dan
+3c1dfa3**. Klaim isolasi build pada laporan sebelumnya perlu dibatasi: run lama
+di worker memang tidak memakai .env karena file itu tidak ada, tetapi
+`configFile: false` sendiri masih memungkinkan Vite membaca file env dari root.
+Run tersebut tidak membuktikan build aman pada workspace yang mempunyai .env.
+Guard PHP terpisah tidak melindungi proses build Node.
+
+Perubahan hanya helper `tools/testing/verify-collective-preview-browser.mjs`
+dan laporan ini; commit baru di atas dua commit sebelumnya, tanpa amend/reset.
+Skills TDD, Playwright dan Git workflow digunakan. Source Vite 8.2.2 terpasang
+diperiksa: penonaktifan config Vite, env files, dan pencarian PostCSS adalah
+kontrol berbeda. `fixtureAssetConfig()` kini digunakan bersama oleh mode assets
+dan probe-assets, dengan:
+
+- `configFile: false`: tidak mengimpor vite.config project.
+- **`envDir: false`**: tidak memuat .env/.env.local/.env.production/
+  .env.production.local dari workspace pada build production.
+- `css: { postcss: { plugins: [] } }`: tidak mencari/mengimpor konfigurasi
+  PostCSS project secara implisit. Plugin eksplisit tetap hanya Tailwind;
+  tidak ada Laravel plugin atau impor vite.config project. CSS Filament yang
+  dipakai tidak memiliki directive @config.
+- Output tetap di direktori bukti ignored dan temp fixture; tidak ada install,
+  perubahan dependency/config project atau perubahan browser deny outbound.
+
+Probe sintetis dan bukti RED → GREEN:
+
+1. Mode `probe-assets` membuat child directory temp unik, bukan file di root
+   worker/induk. Empat file env berisi marker VITE sintetis berbeda. Kontrol
+   positif resolveConfig pada root sintetis dengan configFile false membaca
+   keempat marker, sehingga probe tidak sekadar menguji direktori tanpa env.
+2. Probe memakai konfigurasi build yang sama dengan mode assets dan mengamati
+   configResolved: semua marker harus tidak ada dalam resolved.env,
+   resolved.envDir false, configFile undefined, tanpa plugin Laravel. Build
+   sebelum fix gagal dengan **Fixture build loaded synthetic workspace env**.
+3. `vite.config.cjs` dan `postcss.config.cjs` sintetis sengaja melempar error
+   bila dieksekusi. Setelah hanya envDir diperbaiki, build masih gagal pada
+   trap PostCSS. Setelah konfigurasi PostCSS inline ditambahkan, probe build
+   CSS selesai dan kedua trap tidak dieksekusi. Empat marker env tidak dimuat.
+4. Probe GREEN dan build assets nyata di fixture **lulus**. Artifact probe:
+   `output/playwright/oncam-collective-a447822e414f4aa59dc1268a77be8649/asset-isolation-probe.json`.
+   Tidak membaca, menyalin, menulis atau memakai .env nyata untuk pembuktian.
+   Kontrol positif hanya memuat file sintetis. envDir false bukan penghapusan
+   environment proses Node yang diwariskan; probe tidak mencetak nilainya.
+
+Build ulang menghasilkan `fixture-Di1XTtKC.css`, SHA256
+`3DC78D35F40BE50A6CC6036BFCBD432F74DDB7CEFD52BA77725B9CC87E7CCEE1`.
+Nama hash output sama dengan build sebelumnya. View, komponen, adapter dan
+harness PHP tetap sama. Browser **diulang penuh**, bukan hanya bukti historis:
+20 aksi native / 211 event tercatat, 12 reflow pada 320/390/1280, checkbox minimum
+16×16px, tidak ada clipping/overflow. Total 10 item IDR 1.140 (8 berbiaya/2 gratis),
+perubahan konsultasi menjadi IDR 1.110, invalid/empty/refresh tidak menampilkan
+hasil lama. Seluruh 26 respons <400, nol console warning/error, nol request gagal
+atau percobaan request eksternal. Bukti report.json/screenshot/CLI diperbarui
+di direktori ignored yang sama dengan increment sebelumnya.
+
+ESLint helper, Prettier check, node --check dan diff --check lulus. PHPUnit,
+Pint/PHPStan dan PG **tidak diulang** pada fix Node ini; 28/319 dan PHP lint pada
+bagian sebelumnya adalah hasil historis source PHP/view yang tidak berubah.
+SQLite fixture sintetis existing dipakai ulang; sepuluh tabel side effect tetap
+0. Tidak menjalankan migrasi/DB aktif/outbound atau mengubah gate/source.
+Port 8012 diperiksa kosong sebelum start; server PID59420 bind loopback saja,
+command line diverifikasi lalu dihentikan. Port kembali bebas dan CLI memastikan
+session oncam-collective-77be8649 sudah tertutup. Temp/probe sintetis tetap ada
+untuk inspeksi, tidak masuk commit. Batas race/PG/zoom dan belum acceptance P12b
+tetap berlaku. Menunggu review koreksi ini sebelum kelanjutan P12.
+
 ## Browser native collective preview — delta dari 7ead376
 
 Tanggal 2026-09-01. Root telah mengintegrasikan 7ead376 sebagai e1b9ecc.
@@ -17,6 +85,8 @@ File increment:
 - `tools/testing/verify-collective-preview-browser.mjs`: build CSS Filament
   lokal dan driver CLI Playwright cached, tanpa install browser/dependency.
   Asset build dapat diulang tanpa menghapus direktori atau memilih hash lama.
+  Catatan review: pada commit 3c1dfa3 guard env build belum eksplisit; lihat
+  koreksi isolasi Vite di atas sebelum mereproduksi pada workspace lain.
 - `tests/Support/views/collective-bill-preview.blade.php`: perbaikan fokus dan
   reflow test-only yang dijelaskan di bawah, sudah commit terpisah.
 - Laporan ini; tidak mengedit checklist atau dokumen kanonik koordinator.
