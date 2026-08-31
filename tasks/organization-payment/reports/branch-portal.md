@@ -1,5 +1,34 @@
 # P12a-prep — portal cabang baca-saja
 
+## Proposal P12b kolektif — delta dari 5d625e6
+
+Tanggal 2026-09-01. Koordinator sudah mengintegrasikan fallback nama melalui
+c22515b dan patch AssessmentParticipant satu baris; regresi gabungan root
+779 tes/3782 assertions dan Pint dilaporkan lulus. Angka itu bukan run baru lane.
+
+Deliverable: [collective-selection-proposal.md](collective-selection-proposal.md).
+Membaca spec, P12b/dependency P9–P11, preview/reservasi, policy/snapshot, schema/RLS,
+resource dan tes existing dari induk read-only (HEAD teramati ed2e100). Proposal
+memuat alur selection → preview server → konfirmasi → bill existing; exact reason,
+input minimal ID attempt + bool konsultasi, matriks 10 peserta mixed-package,
+replay/race/self-pay, pagination, scope/role dan proyeksi tanpa data klinis.
+
+Temuan utama: paidCount berarti item berbayar, bukan sudah lunas; semua claim
+bill tetap menghalangi reservasi baru termasuk expired/rejected. Gratis masuk
+hash tetapi tidak diklaim/diselesaikan oleh ReserveAssessmentBill. Hash bukan
+otorisasi dan tidak mencakup seluruh metadata identitas tampilan. Invoice P10,
+finalizer/verifikasi P11, jalur gratis, resume intent dan kontrak perubahan
+identitas attempt tetap dependency. Button tidak boleh aktif publik; tidak
+ada dana talang atau kewajiban utang peserta otomatis.
+
+Usulan berikutnya hanya adapter preview Filament read-only test-only + tes
+focused, tanpa registrasi bulk action publik atau writer baru; masih perlu
+review. Increment sekarang **hanya dua dokumen**: proposal dan laporan ini.
+Tidak mengubah aplikasi/model/config/routes/schema/fixture atau gate, tidak
+browser/DB/test suite/Pint/PHPStan, tidak menyalin ulang migration/baseline.
+Pemeriksaan statis mencocokkan kode/reason/field, dependency, diff dan daftar
+file commit; berhenti menunggu review setelah commit dokumen.
+
 ## Increment nama profil parsial — delta dari b7e0504
 
 Tanggal 2026-09-01. ADR-004, parallel-work.md dan integration-wave-5.md induk
