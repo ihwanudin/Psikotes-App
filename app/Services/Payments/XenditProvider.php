@@ -20,10 +20,65 @@ use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use InvalidArgumentException;
+use JsonException;
+use stdClass;
 use Throwable;
 
 final class XenditProvider implements PaymentProvider
 {
+    public function lookupInvoice(string $merchantReference, int $amount, string $currency): PaymentInvoice
+    {
+        if (! preg_match('/^[A-Za-z0-9_-]{1,64}$/D', $merchantReference) || $amount < 1 || $currency !== 'IDR') {
+            throw new InvalidArgumentException('Invoice lookup input is invalid.');
+        }
+
+        try {
+            // No status/date filters: they could conceal another invoice for the same intent.
+            $response = $this->request()->get('/v2/invoices', ['external_id' => $merchantReference, 'limit' => 2]);
+            if (! $response->ok()) {
+                throw new PaymentProviderException('Invoice lookup outcome is unknown.');
+            }
+
+            // Preserve JSON array/object types; associative decoding accepts {"0": ...} as a list.
+            $payload = json_decode($response->body(), false, 16, JSON_THROW_ON_ERROR);
+            if (! is_array($payload) || count($payload) !== 1 || ! $payload[0] instanceof stdClass) {
+                throw new PaymentProviderException('Invoice lookup outcome is unknown.');
+            }
+
+            $candidate = $payload[0];
+            if (($candidate->external_id ?? null) !== $merchantReference
+                || ($candidate->amount ?? null) !== $amount || ($candidate->currency ?? null) !== $currency
+                || ! in_array($candidate->status ?? null, ['PENDING', 'PAID', 'SETTLED', 'EXPIRED'], true)
+                || ! is_string($candidate->id ?? null) || ! is_string($candidate->invoice_url ?? null)
+                || ! is_string($candidate->expiry_date ?? null)
+                || ! preg_match('/^[A-Za-z0-9_-]{1,160}$/D', $candidate->id)
+                || ! preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/D', $candidate->expiry_date)) {
+                throw new PaymentProviderException('Invoice lookup outcome is unknown.');
+            }
+
+            $url = parse_url($candidate->invoice_url);
+            $host = is_array($url) ? ($url['host'] ?? null) : null;
+            if (! is_string($host) || ($host !== 'xendit.co' && ! str_ends_with($host, '.xendit.co'))
+                || isset($url['user']) || isset($url['pass']) || isset($url['port'])) {
+                throw new PaymentProviderException('Invoice lookup outcome is unknown.');
+            }
+
+            $rawExpiry = $candidate->expiry_date;
+            $format = str_contains($rawExpiry, '.') ? '!Y-m-d\TH:i:s.uP' : '!Y-m-d\TH:i:sP';
+            $expiry = CarbonImmutable::createFromFormat($format, $rawExpiry);
+            $errors = CarbonImmutable::getLastErrors();
+            if ($expiry === null || ($errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))) {
+                throw new PaymentProviderException('Invoice lookup outcome is unknown.');
+            }
+
+            return new PaymentInvoice($candidate->id, $candidate->invoice_url, $amount, $currency, $expiry);
+        } catch (ConnectionException|JsonException|InvalidArgumentException|PaymentProviderException) {
+            // Do not attach transport exceptions: their URL/body can contain private provider data.
+            throw new PaymentProviderException('Invoice lookup outcome is unknown.');
+        }
+    }
+
     public function createInvoice(CreateInvoiceRequest $request): PaymentInvoice
     {
         $startedAt = hrtime(true);

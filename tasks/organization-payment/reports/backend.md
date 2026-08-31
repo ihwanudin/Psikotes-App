@@ -1236,3 +1236,124 @@ tersedia, dan angka regresi root dari coordinator bukan hasil run worker ini.
 
 **Siap review P9c lokal; STOP sebelum registrasi route produksi, gate/source
 aktif, P9 publik atau P10.**
+
+## P10a — lookup invoice internal berdasarkan merchant reference tetap
+
+P9c 5417326 diterima coordinator sebagai root 451cc73. Instruksi berikutnya
+mengizinkan P10a internal saja, bukan P9 publik/E2E atau writer P10b. Plan,
+todo, parallel-work serta ADR-004/005 root dibaca read-only. Skill API/interface,
+Laravel (termasuk local guidance), Security, Queues/Webhooks dan TDD digunakan;
+stack tetap Laravel 13.26.1, tanpa dependency/config/schema baru.
+
+Audit menemukan hanya XenditProvider dan FakePaymentProvider mengimplementasikan
+PaymentProvider. Tidak ditemukan anonymous implementation/mock interface yang
+memerlukan perluasan massal. Consumer existing CreateRegistrationInvoice,
+ReconcilePendingXenditPayments, webhook controller dan binding provider dibaca;
+tidak ada consumer/writer yang diubah atau mulai memakai lookup baru.
+
+### Kontrak dan implementasi
+
+`PaymentProvider::lookupInvoice(string $merchantReference, int $amount,
+string $currency): PaymentInvoice` adalah operasi terpisah dari create/status/
+expire/webhook. Input reference ASCII 1–64 karakter, amount integer positif,
+currency IDR sesuai domain create existing. Invalid input melempar
+InvalidArgumentException generik sebelum HTTP, termasuk amount nol/negatif,
+reference kosong/terlalu panjang/injection/newline dan currency tidak didukung.
+Tidak memakai CreateInvoiceRequest karena recovery harus menerima invoice yang
+expiry-nya sudah lampau tanpa membutuhkan description atau expiry baru.
+
+Satu hasil valid mengembalikan PaymentInvoice existing; bukan event paid, izin
+akses, atau bukti settlement. Empty/ambiguous/malformed/mismatch/transport/config
+failure melempar PaymentProviderException dengan pesan tetap
+`Invoice lookup outcome is unknown.` tanpa previous exception/provider payload.
+Unknown tidak pernah menjadi izin POST ulang. Tidak ada automatic retry, create,
+expire, DB write, queue atau notifikasi di lookup.
+
+Xendit memakai GET `/v2/invoices?external_id=<reference>&limit=2`, dengan request
+builder existing (fixed HTTPS host, Basic auth, connect/total timeout, tanpa
+redirect). Tidak memakai filter status/tanggal yang bisa menyembunyikan kandidat.
+Respons harus HTTP 200, JSON array dengan tepat satu objek. Dua kandidat, termasuk
+satu yang amount-nya salah, atau foreign result bersama exact match tetap unknown.
+Tidak memilih kandidat pertama atau melakukan pagination/retry mutatif.
+
+Reference, amount dan currency diperiksa exact sebelum DTO dibuat. Lookup juga
+memvalidasi provider ID, status yang dikenal, HTTPS URL host Xendit tanpa
+userinfo/port, serta expiry bertipe timestamp dengan zona eksplisit dan tanggal
+kalender sah. JSON object dengan key numerik tidak disamakan dengan array.
+Parser lookup sengaja terpisah dari helper recovery create legacy: tidak mengubah
+semantik legacy yang mengambil kandidat pertama setelah create gagal.
+Fake membaca record yang sudah ada, memakai guard input/mismatch dan unknown
+yang sama, serta mempertahankan seluruh state pending/paid/expired pada lookup.
+
+### Verifikasi dokumentasi provider
+
+Sebelum menambahkan HTTP request baru, dokumentasi resmi SDK Xendit dibaca tanpa
+credential. [InvoiceApi resmi](https://github.com/xendit/xendit-php/blob/master/docs/InvoiceApi.md)
+menyatakan GET `/v2/invoices`, filter external_id, limit dan hasil array Invoice.
+[Source SDK resmi](https://raw.githubusercontent.com/xendit/xendit-php/master/lib/Invoice/InvoiceApi.php)
+mengonfirmasi Basic auth; tidak memasang SDK atau mengirim request ke API payment.
+[Model Invoice resmi](https://github.com/xendit/xendit-php/blob/master/docs/Invoice/Invoice.md)
+memuat field identitas, amount, currency, status, URL dan expiry ISO8601.
+Endpoint dokumentasi `docs.xendit.co/apidocs/get-invoices` tidak dapat dibaca oleh
+tool, sehingga rujukan yang benar-benar diverifikasi adalah repo resmi tersebut.
+
+Kebijakan fail-closed aplikasi lebih sempit daripada seluruh tipe SDK: hanya IDR
+integer JSON diterima, konsisten dengan parser create/status existing. String atau
+float amount (termasuk `350000.0`) tidak dikoersi. Ini belum bukti response akun
+provider nyata. Satu observasi lookup juga bukan jaminan uniqueness global atau
+read-after-write consistency provider; claim/unknown/reconciliation tetap perlu
+ditangani writer P10b/P10c kelak tanpa menganggap empty sebagai aman recreate.
+
+### Bukti TDD dan regresi aktual
+
+- RED pertama: 47 tes/4 assertions, 47 undefined-method errors sebelum kontrak
+  dan method lookup ditambahkan; exit 1 (`p10a-lookup-red.log`).
+- RED boundary lanjutan: dua tes membuktikan provider ID newline dan named-zone
+  expiry semula diterima. Keduanya diperketat khusus lookup, bukan parser legacy;
+  2 tes/2 assertions, 2 gagal, exit 1 (`p10a-lookup-boundary-red.log`).
+- RED review offset: parser Carbon menerima `+99:99`; 1 tes/1 assertion gagal,
+  exit 1 (`p10a-lookup-offset-red.log`). Guard format lookup menolak offset di
+  luar rentang jam/menit tanpa mengubah parsing legacy.
+- GREEN akhir lookup: **52 tes/232 assertions**, exit 0
+  (`p10a-lookup-final.log`). Seluruh tes baru memakai Http::fake dan
+  preventStrayRequests; setup fake kosong tidak menelan fixture per skenario.
+  Timeout/redirect guards, exact GET/filter/Basic auth, no POST/expiry, sanitasi
+  unknown serta state fake tidak berubah dibuktikan tanpa outbound nyata.
+- Regresi focused: **147 tes/541 assertions**, exit 0. Files:
+  AssessmentInvoiceLookupTest, PaymentProviderContractTest, XenditProviderTest,
+  PaymentDataValidationTest, XenditWebhookTest, XenditStatusReconciliationTest,
+  PaymentWebhookProcessorTest, PaymentEventApplierTest, AssessmentBillReservationTest
+  dan AssessmentBillPreviewTest (`p10a-lookup-focused-regression.log`).
+- Percobaan regresi luas Unit/Payments + Feature/Payments + Feature/Registration,
+  exclude-group sandbox: **278 tes, 272 lulus, 6 gagal, 1.189 assertions**, exit 1
+  (`p10a-lookup-related.log`). Keenam kegagalan memuat ViteManifestNotFoundException:
+  ManualPaymentProofUploadTest received page; PackageSelectionTest dua screen;
+  ParticipantRegistrationTest screen; PaymentMethodSelectionTest dua screen.
+  Tidak di-skip, tidak membuat fake manifest/mengubah harness, dan tidak diklaim
+  lulus. Regresi root yang mempunyai build tetap diperlukan saat review.
+- Pint `--test` empat PHP file lane lulus. PHPStan seluruh project dengan
+  APP_ENV=testing, SQLite :memory:, DB_URL kosong, cache/session array:
+  **0 error**, exit 0 (`p10a-lookup-phpstan.log`). Semua PHPUnit memakai
+  phpunit.organization-payment.xml; log lokal di storage/logs tidak di-commit.
+
+### Delta dan batas serah-terima
+
+Lima file lane: PaymentProvider.php, XenditProvider.php, FakePaymentProvider.php,
+tests/Feature/Payments/AssessmentInvoiceLookupTest.php, dan laporan ini. Tiga
+shared PHP files sudah tracked dan bersih sebelum edit; blob baseline worker
+dan root sama, berurutan interface/Xendit/fake:
+`56d94b2184d0ad6f8c4279ab679d52f1a2646d9e`,
+`5435376fed4da63f43a63fc22aeacbad228e6919`,
+`f4b47559e796bf07909d367e0449ec3134c7292c`.
+Tidak perlu patch untracked untuk increment ini. Index kosong sebelum staging;
+commit hanya lima path di atas, tanpa snapshot lama/reset/merge/rebase root.
+
+Tidak ada PG run karena tidak ada query/schema/transaksi/RLS yang diubah.
+Tidak ada .env/DB aktif, credential nyata, payment sandbox/live call, deployment,
+push, route/gate/source ON, consumer/notifier, atau task/agent baru. HTTP fake
+membuktikan kontrak adapter, bukan interoperabilitas akun Xendit nyata. Return
+PaymentInvoice tidak memutasi settlement atau hak. Legacy retry policy tetap
+existing dan tidak menjadi pola claim/recovery baru secara otomatis.
+
+**P10a internal siap review dengan batas regresi UI di atas; STOP sebelum P10b,
+P11, integrasi writer/reconciliation atau public wiring.**

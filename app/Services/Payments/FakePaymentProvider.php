@@ -24,6 +24,23 @@ final class FakePaymentProvider implements PaymentProvider
     /** @var array<string, string> */
     private array $referencesByOrder = [];
 
+    public function lookupInvoice(string $merchantReference, int $amount, string $currency): PaymentInvoice
+    {
+        if (! preg_match('/^[A-Za-z0-9_-]{1,64}$/D', $merchantReference) || $amount < 1 || $currency !== 'IDR') {
+            throw new InvalidArgumentException('Invoice lookup input is invalid.');
+        }
+
+        $reference = $this->referencesByOrder[$merchantReference] ?? null;
+        $record = $reference === null ? null : ($this->records[$reference] ?? null);
+
+        if ($record === null || $record->request->orderReference !== $merchantReference
+            || $record->invoice->amount !== $amount || $record->invoice->currency !== $currency) {
+            throw new PaymentProviderException('Invoice lookup outcome is unknown.');
+        }
+
+        return $record->invoice;
+    }
+
     public function createInvoice(CreateInvoiceRequest $request): PaymentInvoice
     {
         $existingReference = $this->referencesByOrder[$request->orderReference] ?? null;
