@@ -5,6 +5,15 @@ import type { IntegratedCheckoutProps } from '../../../resources/js/types/integr
 import { scenarios } from './fixtures';
 import './preview.css';
 
+const paymentRefreshScenarios = [
+    'Pembayar belum dipilih',
+    'Mandiri · pending',
+    'Lembaga · menunggu',
+    'Mandiri · lunas',
+    'Gratis · consent belum',
+    'Pembayar belum dipilih · nol',
+];
+
 function Preview() {
     const [scenario, setScenario] = useState('Lembaga · menunggu');
     const [callbacks, setCallbacks] = useState(true);
@@ -13,6 +22,11 @@ function Preview() {
         useState<IntegratedCheckoutProps['feedback']>();
     const [receipt, setReceipt] = useState('Belum ada callback.');
     const [confirmations, setConfirmations] = useState(0);
+    const [paymentCalls, setPaymentCalls] = useState(0);
+    const [paymentRefreshIndex, setPaymentRefreshIndex] = useState(-1);
+    const [visibility, setVisibility] = useState<
+        'ready' | 'loading' | 'expired'
+    >('ready');
     const [legalPending, setLegalPending] = useState(true);
     const [formRevision, setFormRevision] = useState(0);
     const [psychotestRevision, setPsychotestRevision] = useState(0);
@@ -20,12 +34,17 @@ function Preview() {
     const [keyboard, setKeyboard] = useState('Belum ada input keyboard.');
     const [focus, setFocus] = useState('Belum ada fokus.');
     const base = scenarios[scenario];
+    const refreshed = scenarios[paymentRefreshScenarios[paymentRefreshIndex]];
     const screen: IntegratedCheckoutProps['screen'] =
         base.state === 'ready'
             ? {
                   state: 'ready',
                   summary: {
                       ...base.summary,
+                      payment:
+                          refreshed?.state === 'ready'
+                              ? refreshed.summary.payment
+                              : base.summary.payment,
                       formKey: `${base.summary.formKey}:${formRevision}`,
                       consents: {
                           ...base.summary.consents,
@@ -91,6 +110,8 @@ function Preview() {
                             value={scenario}
                             onChange={(event) => {
                                 setScenario(event.target.value);
+                                setPaymentRefreshIndex(-1);
+                                setVisibility('ready');
                                 setFeedback(undefined);
                                 setReceipt('Belum ada callback.');
                             }}
@@ -182,6 +203,51 @@ function Preview() {
                         Simulasikan error validasi
                     </button>
                 </div>
+                <div className="flex flex-wrap items-center gap-4">
+                    <button
+                        type="button"
+                        className="min-h-11 rounded border border-slate-500 bg-white px-3"
+                        onClick={() =>
+                            setPaymentRefreshIndex(
+                                (value) =>
+                                    (value + 1) %
+                                    paymentRefreshScenarios.length,
+                            )
+                        }
+                    >
+                        Refresh payment fixture
+                    </button>
+                    <label>
+                        Visibilitas fixture
+                        <select
+                            aria-label="Visibilitas fixture"
+                            className="ml-2 min-h-11 rounded border border-slate-500 bg-white px-3"
+                            value={visibility}
+                            onChange={(event) => {
+                                const value = event.target.value;
+
+                                if (
+                                    value === 'ready' ||
+                                    value === 'loading' ||
+                                    value === 'expired'
+                                ) {
+                                    setVisibility(value);
+                                }
+                            }}
+                        >
+                            <option value="ready">Ringkasan</option>
+                            <option value="loading">Memuat</option>
+                            <option value="expired">Kedaluwarsa</option>
+                        </select>
+                    </label>
+                    <output aria-label="Jumlah callback pembayaran">
+                        {paymentCalls}
+                    </output>
+                    <output aria-label="Payment refresh fixture">
+                        {paymentRefreshScenarios[paymentRefreshIndex] ??
+                            'Sesuai skenario'}
+                    </output>
+                </div>
                 <output
                     aria-label="Hasil callback simulasi"
                     className="block text-sm wrap-anywhere"
@@ -210,7 +276,7 @@ function Preview() {
             </section>
             <IntegratedCheckout
                 key={scenario}
-                screen={screen}
+                screen={visibility === 'ready' ? screen : { state: visibility }}
                 busy={busy}
                 feedback={feedback}
                 onConfirm={
@@ -226,10 +292,12 @@ function Preview() {
                 }
                 onPayment={
                     callbacks
-                        ? () =>
+                        ? () => {
+                              setPaymentCalls((value) => value + 1);
                               setReceipt(
                                   'SIMULASI: callback pembayaran dipanggil. Tidak ada invoice atau navigasi gateway; status tetap sama.',
-                              )
+                              );
+                          }
                         : undefined
                 }
                 onRefresh={

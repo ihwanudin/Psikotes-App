@@ -1,5 +1,88 @@
 # Frontend — P16-prep
 
+## Payment refresh pada instance form yang sama (2026-09-01)
+
+Delta dari **89822dc**. Menurut handoff, 4d146bc/89822dc diintegrasikan root
+27cea1f/b7a6fb8; root 26 SSR, global tsc/ESLint dan fixture build lulus.
+Dokumen parallel-work dan laporan frontend induk dibaca read-only. Tidak
+reset/merge baseline. Skill frontend/Playwright yang telah dibaca dipakai.
+
+Hanya tiga file lane: preview.tsx, helper baru payment-refresh.mjs (keduanya di
+tests/Frontend/IntegratedCheckout), dan laporan ini. **Tidak ada perubahan produksi.**
+Fixture mendapat tombol "Refresh payment fixture" yang mengambil payment dari
+skenario sintetis existing; state indeks refresh tidak mengubah key scenario,
+formKey, profil, access atau consents. Kontrol visibilitas terpisah memasok screen
+loading/expired. Counter callback pembayaran menyediakan bukti callback otomatis
+vs aktivasi pengguna tanpa payment/service nyata. Pergantian scenario lama tetap
+me-remount sesuai fungsi awalnya; helper baru tidak memakai itu saat refresh.
+
+**GREEN, 8 checkpoint mounted browser:**
+
+| Payment/screen terbaru | Bukti |
+| --- | --- |
+| unselected, nominal null | Tanpa CTA; callback 0; form/input lama tetap terhubung |
+| self pending | CTA muncul; native Enter memanggil callback tepat sekali |
+| organization pending | CTA self dihapus; klik native pada handle tombol lama ditolak; counter tetap 1 |
+| paid | Tidak ada CTA; akses tetap locked; counter tetap 1 |
+| free | Tidak ada CTA; akses tetap locked; counter tetap 1 |
+| unselected, nominal 0 | Tanpa CTA; Rp 0 bukan label free/paid; handle self lama tetap tidak dapat diklik |
+| expired | Dimulai dari ringkasan dengan nama/email dan phone edit; form dilepas dan PII tidak ada di main |
+| loading | Kembali ke ready dan mengisi phone lagi dahulu; loading secara independen melepas form dan PII |
+
+Di seluruh enam refresh payment, helper membandingkan identitas node form dan
+input dengan ElementHandle awal (`node === original`), bukan hanya mengecek teks
+yang mirip. Nilai phone sintetis `080000000004`, checkbox psikotes utama dan radio
+DASS decline tetap bertahan. Counter konfirmasi selalu 0, jadi tidak ada consent
+tersimpan otomatis. Counter payment hanya naik pada kontrol positif self.
+Setelah expiry/loading, handle form yang tadinya berisi data tidak terhubung lagi;
+ini memang unmount saat private summary tidak ditampilkan, berbeda dari refresh.
+
+Input dan consent diisi dengan native keyboard Tab/Space/ArrowDown/type; tombol
+refresh dan pembayaran diaktifkan Enter dengan observer fixture `trusted=true`.
+Evaluasi DOM hanya membaca fokus/identitas/koneksi node, nilai, dan teks. Tidak
+memanggil handler lewat JavaScript atau memakai dispatchEvent/focus/value assignment.
+Setup scenario serta screen visibility memakai selectOption pada kontrol fixture.
+
+Tiga screenshot asli `retained.png`, `expired.png`, `loading.png` diperiksa pada
+viewport 1280×900: isian dan pilihan tetap terlihat pada unselected setelah refresh,
+lalu private summary hilang pada kedua state non-ready. Tidak mengklaim audit
+reflow 320/390 atau pengulangan seluruh 25 kelompok browser/26 SSR sebelumnya.
+Final **0 pageerror, console error/warning, request gagal/HTTP error, eksternal/API**.
+Origin 8011 diperiksa kosong sebelum Vite envDir:false dimulai; Chrome session baru
+payment-refresh-d4ea, semua data/callback sintetis. Browser/server telah ditutup,
+port 8011 kembali kosong. Tidak ada .env aktif, DB, login, outbound/payment/WA nyata.
+
+Typecheck focused, ESLint preview/helper, syntax helper, Prettier check dan build
+preview lulus. JS **248.98 kB (gzip 77.32)**, CSS **70.37 kB (gzip 11.84)**.
+Tidak menjalankan global tsc/ESLint, SSR, PHP/full suite pada increment harness ini.
+
+Reproduksi dari worktree sendiri: jalankan server Vite fixture pada port kosong
+seperti bagian sebelumnya, lalu gunakan CLI cached existing:
+
+```powershell
+$checkoutCli = 'C:/Users/ThinkPad/AppData/Local/npm-cache/_npx/31e32ef8478fbf80/node_modules/@playwright/cli/playwright-cli.js'
+New-Item -ItemType Directory -Path output/playwright/payment-refresh -Force | Out-Null
+node $checkoutCli -s=payment-refresh-d4ea open about:blank --headed
+$refreshRun = (Get-Content tests/Frontend/IntegratedCheckout/payment-refresh.mjs -Raw).Trim().TrimEnd(';')
+[System.IO.File]::WriteAllText((Join-Path (Get-Location) 'output/playwright/payment-refresh/run.js'), $refreshRun)
+node $checkoutCli -s=payment-refresh-d4ea run-code --filename output/playwright/payment-refresh/run.js > output/playwright/payment-refresh/browser.log 2>&1
+if ((Get-Content output/playwright/payment-refresh/browser.log -First 1) -ne '### Result') { throw 'Browser failed; inspect log' }
+node $checkoutCli -s=payment-refresh-d4ea close
+# Hentikan hanya server fixture sendiri setelah selesai.
+node node_modules/typescript/bin/tsc --project tests/Frontend/IntegratedCheckout/tsconfig.json --noEmit
+node node_modules/eslint/bin/eslint.js tests/Frontend/IntegratedCheckout/preview.tsx tests/Frontend/IntegratedCheckout/payment-refresh.mjs
+node node_modules/vite/bin/vite.js build --config tests/Frontend/IntegratedCheckout/vite.config.ts --mode preview
+```
+
+Log, runner salinan dan screenshot di output/playwright/payment-refresh tetap
+ignored, tidak di-commit. **Batas race/E2E:** tes membuktikan UI menggunakan props
+terbaru dan target DOM self yang dilepas tidak bisa dipakai lewat native click.
+Ini tidak membuktikan pembatalan request in-flight, penolakan callback JavaScript
+yang disimpan pihak lain, urutan respons server yang berlomba, atau otorisasi P15.
+Server tetap wajib memvalidasi payer/akses saat aksi. Tidak ditemukan bug produksi
+pada cakupan ini, tidak membuat aturan server/endpoint/gate baru. **Stop review;
+P16 tetap belum end-to-end.**
+
 ## P16-prep — payer unselected (2026-09-01)
 
 Delta setelah **723bf2b**, yang menurut handoff diintegrasikan root **563fa6e**.
