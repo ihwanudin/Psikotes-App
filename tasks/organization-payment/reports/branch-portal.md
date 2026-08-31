@@ -1,5 +1,98 @@
 # P12a-prep — portal cabang baca-saja
 
+## Komponen Livewire preview sintetis — delta dari b8e3f6c
+
+Tanggal 2026-09-01. Koordinator telah mengintegrasikan bukti PG b8e3f6c sebagai
+0c64314. Kelanjutan ini hanya P12b-prep UI baca-saja; bukan wiring publik atau
+acceptance P12b. Parallel-work/todo dan ADR-004 induk dibaca read-only. Skills
+Laravel Specialist (local implementation, Livewire/testing), Auth and Tenant
+Access, TDD dan Frontend UI Engineering dipakai. API lifecycle/Locked serta
+Blade button dicocokkan dengan source Livewire/Filament installed; contoh skill
+Livewire lama tidak disalin sebagai API aplikasi baru.
+
+Empat file increment, tanpa fixture/helper bersama tambahan:
+
+- `tests/Support/CollectiveBillPreviewComponent.php`: Livewire component khusus
+  tes. Mount menerima daftar ID attempt fixture dari server, dikunci Locked;
+  tidak menerima scope/payer/harga atau mencari daftar publik. Render memuat
+  label ulang melalui PreviewCollectiveBillSelection, sehingga membership atau
+  role lama tidak cukup untuk mempertahankan label dalam snapshot browser.
+- `tests/Support/views/collective-bill-preview.blade.php`: view testing dengan
+  checkbox native attempt/konsultasi dan satu button Filament **Tinjau**.
+  Menampilkan semua pilihan fixture, ID kandidat/attempt/periode, fallback
+  nama, komponen nominal IDR server, jumlah berbiaya/gratis, alasan item aman
+  serta total belum tersedia saat null. Tidak ada input nominal/payer, tombol
+  bayar/konfirmasi, upload, invoice link atau kontrol reservasi.
+- `tests/Feature/Admin/CollectiveBillPreviewComponentTest.php`: 28 kasus baru,
+  memakai fixture existing dan penyesuaian sintetis privat dalam setup tes.
+  Komponen diregistrasikan hanya dalam test setup, bukan provider/resource
+  app/Filament. Tidak ada route/server/harness HTTP baru.
+- Laporan ini. Tidak mengubah adapter/backend/auth, schema, shared fixture,
+  runner, konfigurasi, route, gate produksi atau checklist kanonik.
+
+Perilaku state dan batas otoritas:
+
+- Selection berisi attempt ID eksplisit + boolean konsultasi. Toggle membentuk
+  input, sedangkan validasi empty/duplicate/limit+1/tipe/field asing tetap milik
+  adapter. Baris malformed tidak dibuang untuk mengubah request invalid menjadi
+  valid. Harga, policy, klasifikasi free/payable dan hash tidak dihitung UI.
+- Preview merupakan property Locked dan selalu dibuang sebelum review, ketika
+  selection/konsultasi diperbarui, dan pada setiap hydration. Refresh tidak
+  melanjutkan hasil/hash sebelumnya, bahkan bila selection tidak berubah.
+  Data selection hanya state Livewire; tidak membuat draft DB/session/intent.
+  View menyembunyikan hasil saat request berlangsung dengan wire:loading.remove.
+- Hanya request Tinjau menghasilkan hasil sementara baru. Policy source yang
+  menjadi null menghasilkan PAYER_POLICY_UNCONFIGURED, total/hash null; harga
+  yang berubah dimuat ulang dari server. Profile nama null/blank memakai fallback
+  existing tanpa menulis placeholder. Refresh menghilangkan label lama setelah
+  nama berubah null atau membership berpindah cabang.
+- Tinjau dan render memakai adapter asli, termasuk auth persisted. Guest,
+  deleted admin, Staff/Psychologist/SuperAdmin dan environment production ditolak
+  pada mount serta direct action meski session sebelumnya BranchAdmin dan flag
+  verifier true. ID foreign/nonexistent menghasilkan reason yang sama tanpa
+  label; perubahan browser pada daftar fixture dan preview ditolak Locked.
+
+Verifikasi nyata:
+
+- RED: setelah nama helper tes diperbaiki agar tidak bertabrakan dengan
+  TestCase::component, 25 kasus gagal karena komponen belum tersedia.
+- GREEN awal: 25/199; setelah tambahan pemeriksaan mount denial, query read-only,
+  nullable profile berubah saat refresh dan malformed row, regresi akhir
+  **89 tes / 995 assertions lulus**, tanpa skip (26.357 detik), termasuk 28 kasus
+  komponen serta adapter/preview backend/portal list-detail existing.
+- Fixture 10 attempt/3 paket: IDR 1140, berbiaya 8/gratis 2. Free tanpa konsultasi
+  tetap IDR 0; konsultasi menjadikannya IDR 30 menurut server. Semua nama/attempt
+  berbeda terlihat; fallback null/empty/whitespace tidak mengubah nilai DB.
+- Semua tes membandingkan seluruh rows 10 tabel efek sebelum/sesudah: charge,
+  bill/item, entitlement assessment/legacy, order, audit, outbox, consent dan
+  identity verification. Query log alur mount→toggle→review→konsultasi→review→refresh
+  juga tidak mengandung DML/DDL. Tidak ada efek billing/outbound nyata.
+- Pint kedua file PHP lulus. PHPStan component + adapter lulus, 0 error. Pemeriksaan
+  awal mendeteksi guard offset array bertentangan dengan shape PHPDoc; accessor
+  data_get dipakai agar input malformed tetap utuh dan dapat ditolak adapter,
+  tanpa ignore/baseline atau perubahan signature backend. Kasus itu diuji.
+
+Perintah utama:
+
+```powershell
+php -d opcache.enable_cli=0 vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Admin/CollectiveBillPreviewComponentTest.php tests/Feature/Admin/CollectiveBillPreviewTest.php tests/Feature/Payments/AssessmentBillPreviewTest.php tests/Feature/Admin/OrganizationBillAccessTest.php
+php -d opcache.enable_cli=0 vendor/bin/pint --test tests/Support/CollectiveBillPreviewComponent.php tests/Feature/Admin/CollectiveBillPreviewComponentTest.php
+# PHPStan: APP_ENV=testing, DB_CONNECTION=sqlite, DB_DATABASE=:memory:, DB_URL kosong,
+# CACHE_STORE/SESSION_DRIVER=array, QUEUE_CONNECTION=sync; .env worktree tidak ada.
+php -d opcache.enable_cli=0 vendor/bin/phpstan analyse --no-progress tests/Support/CollectiveBillPreviewComponent.php app/Filament/Actions/PreviewCollectiveBillSelection.php
+```
+
+Batas: pengujian ini memanggil lifecycle/state/render Livewire pada SQLite
+:memory:, bukan keyboard native, screenshot/reflow, race request browser atau
+HTTP publik end-to-end. Tidak memulai browser/server baru sesuai instruksi;
+native/reflow menunggu review increment ini. Tidak mengulang PG karena query
+adapter/schema tidak berubah; bukti PG sebelumnya bukan uji komponen browser.
+Label pilihan dimuat batch ulang saat render melalui adapter, termasuk saat
+review; belum dioptimasi sebagai daftar produksi. Preview bukan snapshot
+transaksi konfirmasi atau intent resume. P10/P11, identitas dan wiring produksi
+tetap dependency. Hanya empat file lane di-commit, tanpa snapshot baseline atau
+overlay migration nullable. Berhenti untuk review, tidak melanjutkan billing.
+
 ## Bukti PostgreSQL adapter kolektif — delta dari f4ca0c6
 
 Tanggal 2026-09-01. Adapter f4ca0c6 telah diintegrasikan koordinator sebagai
