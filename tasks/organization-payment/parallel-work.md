@@ -310,3 +310,17 @@ Jika file baseline belum tracked di worktree, laporkan sebelum commit agar tidak
 memasukkan snapshot baseline. Berhenti setelah increment kecil untuk review.
 Perbaikan label tabel Filament dan mapper null-ke-missing dicatat sebagai pekerjaan
 berikutnya setelah review schema; belum diimplementasikan oleh laporan audit.
+
+## Kelanjutan otomatis dan checkpoint lobby
+
+Pengguna meminta task aktif dilanjutkan lagi setelah selesai. Heartbeat aplikasi
+`lanjutkan-task-psikotes-setelah-selesai` aktif setiap 10 menit pada Koordinator.
+Periksa status dahulu; hanya kirim satu increment setelah hasil sebelumnya
+direview. Jangan menumpuk instruksi pada task aktif atau menggandakan automation.
+Tetap tidak ada izin deploy, DB aktif, pembayaran/notifikasi nyata atau gate publik.
+
+Frontend e46bca4 diintegrasikan 78d7c53: label lobby nullable dan tes mounted-browser.
+Task frontend sudah dilanjutkan untuk bukti visual/reflow 320/390/1280 pada fixture
+yang sama; ownership hanya browser.test.mjs dan laporan, tidak produksi.
+Backend masih menyimpan hasil P9a0 pada snapshot terakhir, perlu review sebelum
+request intendedField/action P9a. Detail/cursor: reports/integration-wave-4.md.
