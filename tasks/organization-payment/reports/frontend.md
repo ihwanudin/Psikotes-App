@@ -1,5 +1,111 @@
 # Frontend — P16-prep
 
+## Audit read-only prasyarat P9a — profil nullable (2026-08-31)
+
+**Status: temuan untuk review, bukan persetujuan migrasi atau aktivasi profil parsial.**
+Delta lane terhadap **6f72711** hanya laporan ini. Proposal backend dibaca melalui
+`git show 6146ef0 -- tasks/organization-payment/reports/backend.md`; consumer terbaru
+dibaca read-only dari induk pada HEAD **c1c8a02e76e498d55a37a9134776890016e894fb**.
+Path frontend, views, model Participant, profile controller dan Filament yang diaudit
+tidak menunjukkan perubahan lokal di induk saat diperiksa. Tidak reset/merge baseline.
+Skill Code Review and Quality dibaca dan dipakai bersama konteks frontend sebelumnya;
+tidak mendelegasikan task/agent tambahan.
+
+**Temuan yang perlu ditangani bila nullable disetujui:**
+
+1. **Required — kontrak lobby tidak mencerminkan nama nullable.**
+   `resources/js/pages/participant/lobby.tsx:11` menetapkan `full_name: string`,
+   melakukan cast respons tanpa validasi di baris 68, lalu merendernya langsung ke
+   heading di baris 151. `app/Http/Controllers/ParticipantProfileController.php:28`
+   meneruskan nilai model apa adanya. Null menghasilkan heading kosong, bukan crash
+   formatter/string. `/api/me` memakai JWT/RLS (`routes/api.php:32`);
+   `AuthenticateParticipantJwt::participantExists()` memeriksa keberadaan dan cabang,
+   bukan kelengkapan profil. Karena itu gate akses assessment bukan jaminan nama
+   non-null pada API ini. Dampak bersyarat: participant parsial mempunyai token valid
+   atau profil pemegang token menjadi parsial; audit ini tidak menyatakan checkout-v2
+   sudah menerbitkan token tersebut. Minimal: sepakati `full_name: string | null`
+   di boundary ini serta label tampilan seperti "Nama belum dilengkapi" untuk
+   null/kosong; jangan simpan label ke database atau menganggapnya bukti identitas.
+   FYI terkait: `test_number: string` di baris 12 juga tidak sesuai nullable yang
+   **sudah ada** di schema/model; evaluasi `string | null` dan label "Belum tersedia"
+   bersamaan tanpa mengklaim mismatch tersebut disebabkan proposal baru.
+
+2. **Required untuk portal yang menampilkan peserta parsial — nama tabel kosong.**
+   `app/Filament/Resources/AssessmentParticipants/AssessmentParticipantResource.php:68`
+   dan `app/Filament/Resources/Orders/OrderResource.php:76` menggunakan kolom
+   `participant.full_name` tanpa placeholder/normalisasi blank. Tabel peserta mencakup
+   PROVISIONED sehingga tidak boleh mengandalkan profil sudah lengkap. Tabel order
+   terdampak jika participant parsial memiliki order manual; bukan klaim alur itu
+   sudah aktif. Minimal: fallback tampilan untuk null/blank, pertahankan ID kandidat
+   atau order yang sudah tersedia untuk membedakan baris; tidak menambah PII/akses.
+   Tidak ditemukan callback nama bertipe string yang langsung memformat null pada
+   kedua kolom; risiko yang teridentifikasi adalah label kosong, belum bukti crash.
+   `OrganizationBills/Pages/ViewOrganizationBill.php:87` **sudah** memakai fallback
+   `?? 'Tidak tersedia'` dan menampilkan ID attempt terpisah. Null aman secara statis;
+   string kosong/whitespace tidak terkena `??`. Normalisasi blank hanya perlu bila
+   boundary mengizinkannya. Jangan hilangkan fallback aman relasi yang tidak tersedia.
+
+3. **Required sebelum wiring P16 — null harus menjadi field `missing`.**
+   `resources/js/types/integrated-checkout.ts:10` adalah union presentasi DRAFT,
+   bukan raw Participant DTO. Cabang locked sengaja memiliki `displayValue: string`;
+   missing sudah mendukung text/date/tel/select tanpa nilai awal. Pertahankan tipe
+   itu; jangan memperlebar semua props menjadi nullable. Adapter yang kelak disetujui
+   harus memetakan enam kolom null ke field missing, beserta label/options non-null
+   dan required sesuai aturan completion server. Email tetap mengikuti kebijakan
+   opsional yang ada. `checkout-profile.tsx:30` menyebut data lengkap ketika tidak
+   ada field missing: menghilangkan key null dari array atau menguncinya dengan
+   displayValue kosong akan memberi pesan keliru serta menghilangkan input koreksi.
+   `checkout-form.tsx:63` hanya mengirim field missing. `intendedField` ada dalam
+   tipe UI tetapi tidak dalam allowlist profil provisioning; sumber/pengisian yang
+   sah harus direview, bukan default UMUM atau asumsi dari paket. Input string kosong
+   adalah state form, bukan izin menyimpan placeholder. Tidak ada mapper HTTP yang
+   diimplementasikan atau disahkan oleh audit ini.
+
+4. **Required pada perubahan model — PHPDoc non-null perlu diselaraskan.**
+   `app/Models/Participant.php:22` dan `:23` menyatakan `string $full_name` dan
+   `CarbonInterface $birth_date`. Jika schema berubah, gunakan nullable pada keduanya
+   dan pastikan metadata tipe empat atribut lain mengikuti schema; jangan mengubah
+   typed input registrasi lengkap menjadi opsional secara global. Tidak ditemukan
+   raw Participant interface bersama di TypeScript selain proyeksi kecil lobby.
+
+**Pembacaan lain dan batas dampak:**
+
+- Tidak ditemukan formatter birth_date, gender, education_level, intended_field atau
+  phone pada frontend/portal yang diaudit. Checkout merender displayValue yang sudah
+  disiapkan; tidak memanggil Date/Carbon pada profil. Adapter mendatang perlu guard
+  tanggal null sebelum formatting, tanpa tanggal hari ini/epoch sebagai pengganti.
+  `ParticipantLogin.php:31` sudah memakai nullsafe format dan sentinel pembanding;
+  null DOB tidak dapat dipakai login dengan input tanggal valid. Jangan longgarkan
+  autentikasi sebagai perbaikan UI. `AssessmentAccessPrerequisites.php:18–25`
+  memeriksa string kosong, enum gender dan null DOB sebelum operasi tanggal; ini
+  inspeksi statis, bukan bukti keseluruhan aktivasi/session aman pada schema baru.
+- `use-initials.tsx:11` memang memanggil trim pada string, tetapi call site yang
+  ditemukan adalah auth User (`user-info.tsx:19`, `app-header.tsx:225`), bukan
+  Participant. Tidak ada dasar memperlebar User.name atau mengklaim crash avatar
+  participant. Pertahankan pemisahan tipe User dan Participant.
+- Registrasi publik `pages/registration/create.tsx` menerima konfigurasi, bukan
+  profil participant tersimpan; required input dan StoreParticipantRegistrationRequest
+  tetap berlaku. received/order-status dan kedua launch Blade tidak memformat enam
+  atribut profil. Ekspor AssessmentParticipantExportController memakai ID dan hasil,
+  bukan nama/DOB/phone. Tidak perlu menambah profil sensitif ke props/ekspor untuk
+  mengatasi nullable. FYI: copy paid pada order-status.tsx:44 menyatakan akses aktif;
+  jangan pakai ulang copy legacy itu untuk checkout parsial, karena paid bukan
+  bukti completion. P16 tetap memakai access props terpisah.
+
+**Verifikasi dan tindak lanjut minimal (belum dijalankan):**
+
+Audit berupa pencarian `rg`, pembacaan call site, kontrak serta tes existing;
+tidak mengubah kode/tipe/schema dan tidak menjalankan browser, tes, build, install,
+server atau database. Bukti tes gelombang sebelumnya di bawah **bukan** bukti nullable.
+Setelah keputusan schema/kontrak: uji API+lobby nama null/kosong dan nomor belum ada;
+uji tabel portal dengan nama null sambil menjaga tenant scope; uji mapper checkout
+dengan seluruh enam field hilang serta kombinasi field locked/missing (termasuk
+intendedField dan DOB), label/select/date tidak palsu, dan payload hanya field missing.
+Tes checkout sekarang mencontohkan phone missing, bukan pemetaan raw null; tes API
+menegaskan birth_date/phone tidak ikut respons. Pertahankan batas tersebut.
+Pemeriksaan akses/aktivasi dan migrasi tetap milik review backend koordinator.
+**Hanya reports/frontend.md diserahkan; P9a/P16 tidak ditandai selesai. Stop review.**
+
 ## Gelombang kedua — hardening interaksi (2026-08-31)
 
 Delta terhadap commit lane terakhir **895aeb8**, bukan baseline/checkpoint induk.
