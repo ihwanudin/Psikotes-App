@@ -37,7 +37,9 @@ cleanup berhasil; Pint file delta dan PHPStan seluruh proyek lulus. Nol
 create ulang, settlement, public wiring, command atau scheduler. P10c-a diterima;
 discovery/lease/operasional tetap P10c-b.
 
-Backend cursor `163af1e1-5f6a-4358-82dd-3e4d2134e4ed:45`; turn review-fix selesai.
+Backend cursor `163af1e1-5f6a-4358-82dd-3e4d2134e4ed:46`; turn
+`01a05a1f-9805-7b62-b587-05695b3c2c02` aktif pada proposal-only P10c-b0 untuk
+bounded discovery dan durable lease, tanpa code/schema/command/scheduler.
 Frontend/portal tetap not-loaded pada cursor :33 dan menunggu dependency. Satu
 increment P10c-b berikutnya wajib didesain bounded dan tetap nonaktif sampai
 review; jangan menggandakan instruksi saat task aktif.
