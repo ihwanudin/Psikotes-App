@@ -126,3 +126,52 @@ Review mandiri memeriksa correctness, scope tenant, rollback, dedup, minimisasi
 payload dan lock order. Tidak ada agent tambahan. Konsolidasi predicate settlement
 dan integrasi token/start tetap perlu review koordinator; ini bukan persetujuan
 merge atau rilis. **Slice pertama siap review; berhenti sebelum increment berikutnya.**
+
+## Gelombang kedua — proposal sebelum implementasi
+
+Instruksi terbaru parallel-work.md dan reports/integration-wave-1.md dibaca
+read-only dari induk. Baseline worktree tidak di-reset/merge; delta berikut
+dimulai dari cad7828. Tool pesan lintas task tetap tidak tersedia.
+
+Keputusan yang diajukan untuk review koordinator:
+
+- Credential opaque melalui Laravel Encrypter existing (authenticated encryption,
+  MAC/tag diverifikasi framework), bukan implementasi JWT/HMAC baru.
+- Purpose autentik `assessment-start`, version 1, issuer/audience terpisah dari
+  legacy, scope participant/organization/assessmentParticipant, iat dan exp;
+  TTL usulan 600 detik. Tidak ada paid/ready/consent, PII, URL atau credential
+  legacy di payload. APP_KEY/cipher existing melalui dependency Encrypter;
+  tidak menambah key/config/dependency baru.
+- Credential adalah bearer akses berumur pendek, **bukan** handoff sekali pakai.
+  Replay selama TTL tidak membuat sesi: gate diperiksa ulang pada setiap request
+  dan controller tetap 501 SESSION_ENGINE_PENDING. Tidak mengklaim revocation
+  token individual tanpa storage; revoke attempt/withdraw consent mengunci gate.
+- Middleware khusus memverifikasi token dan menghasilkan AssessmentPrincipal;
+  tidak mengambil scope dari input browser dan tidak fallback ke ParticipantJwt.
+  Adapter controller start memilih gate attempt hanya dari principal ini.
+- Route produksi tetap tidak berubah, termasuk middleware legacy. Verifikasi
+  HTTP menggunakan route test-only menuju middleware dan controller asli;
+  wiring endpoint publik memerlukan review terpisah. Token assessment tidak
+  akan diterima endpoint legacy /me atau endpoint start legacy existing.
+- Request yang meminta attempt dengan credential legacy ditolak, tidak diarahkan
+  ke entitlement participant+test_type. Scope/prasyarat dibaca melalui gate P8a,
+  tanpa salinan settlement predicate ketiga dan tanpa transisi sesi.
+
+Sebelum review kontrak diterima, hanya persiapan tes/proposal; belum implementasi
+verifier atau perubahan kode produksi gelombang kedua. Permintaan review juga
+disampaikan melalui pesan async agar koordinator dapat memberi keputusan.
+PG belum diperlukan oleh rencana read-only adapter ini; portal dapat memakai
+runner. Bila perubahan RLS/transaksi ternyata diperlukan akan dikoordinasikan.
+
+Persiapan TDD sudah tersedia pada tests/Unit/Auth/AssessmentAccessTokenTest.php:
+**29 tes RED** (22 error + 7 failure), semuanya karena AssessmentAccessToken
+belum diimplementasikan. Perintah memakai phpunit.organization-payment.xml
+dan --debug, log lokal storage/logs/p8b-token-red.log. Ini bukan tes lulus dan
+belum dicommit sebagai fitur selesai. Controller/middleware legacy serta lockfile
+dicocokkan ke induk: hash sama, belum ada delta produksi gelombang kedua.
+
+Rujukan primitive: Laravel 13 EncryptionServiceProvider menyediakan StringEncrypter
+dengan key/cipher serta previous keys existing; encryptString/decryptString
+mematikan serialisasi PHP. Signature/integritas pada usulan ini berarti MAC/tag
+authenticated encryption, bukan klaim tanda tangan asimetris/JWT standar.
+[Dokumentasi Laravel encryption](https://laravel.com/framework/docs/13.x/encryption).
