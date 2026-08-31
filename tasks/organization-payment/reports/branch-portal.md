@@ -1,5 +1,82 @@
 # P12a-prep — portal cabang baca-saja
 
+## Adapter preview kolektif test-only — delta dari 6a7aaf7
+
+Tanggal 2026-09-01. Proposal diterima koordinator sebagai DRAFT prep, bukan
+acceptance P12b/wiring publik. Plan/todo/parallel-work terbaru dan ADR-004 induk
+dibaca read-only. Skills Laravel Specialist (termasuk local implementation dan
+testing), Auth and Tenant Access, TDD, Security and Hardening, serta panduan
+Git/review yang sudah dibaca dipakai tanpa mengubah batas ownership.
+
+Tiga file increment:
+
+- `app/Filament/Actions/PreviewCollectiveBillSelection.php`: adapter internal
+  `execute(selection)` tanpa parameter principal/organisasi/payer/total. Gate
+  menolak selain environment testing; aktor dari guard panel Filament harus
+  Admin persisted, role BranchAdmin dan branch non-null dimuat ulang dari DB.
+  Flag can_verify_payments bukan izin. Baru setelah auth, jalankan preview
+  existing di RlsContextRunner service context; tidak menduplikasi policy/harga.
+- `tests/Feature/Admin/CollectiveBillPreviewTest.php`: 25 kasus sintetis untuk
+  total mixed-package, all-free, field whitelist, null/blank/nonblank name,
+  foreign/missing ID, policy berubah, snapshot charge existing, role/membership
+  stale, scope palsu dalam memori/input, guest/non-Admin/deleted/branchless,
+  environment local/production ditolak, dan pemulihan context setelah error.
+- Laporan ini. Tidak memasang Filament action/resource, route, flag, config,
+  schema atau writer; shared fixture/backend/auth tetap tidak berubah.
+
+Proyeksi top-level hanya items, currency, totalAmount, paidCount, freeCount,
+canReserve, selectionHash. Item tersedia memiliki 14 field: ID/status/reason,
+nama peserta, ID kandidat, ID attempt, periode, kode/nama paket snapshot dan
+komponen harga/konsultasi/IDR. Item unavailable hanya ID/status/reason, tanpa
+label atau nominal. Snapshot/policy mentah, metadata, testTypes, proof/invoice/
+gateway, data klinis dan request hash tidak diteruskan. Nama nonblank tetap;
+fallback null/empty/whitespace hanya proyeksi. SelectionHash tetap fingerprint,
+bukan token atau konfirmasi; canReserve bukan tanda akses publik/kanal aktif.
+
+Label dimuat secara batch dengan scope organization dan participant.branch_id,
+kolom terbatas serta eager load; tidak lookup per row. Jika label/peserta yang
+sebelumnya tersedia hilang/berubah scope saat pemuatan label, adapter menolak
+seluruh keluaran. Ini bukan kontrak snapshot transaksi konfirmasi: perubahan
+identitas dalam organisasi yang sama dan immutabilitas attempt tetap dependency.
+
+Verifikasi nyata:
+
+- RED pertama: 25 tes gagal/error, adapter belum tersedia; satu setup negatif
+  juga diperbaiki karena Participant bukan Authenticatable guard admin. Kasus
+  tersebut memakai GenericUser non-Admin (tanpa mengubah guard/model shared).
+  Implementasi awal menemukan callback eager load menerima relation, bukan
+  Builder; tipe callback disesuaikan dengan source Laravel installed/pola portal.
+  Pembandingan snapshot charge dibetulkan memakai raw DB pada kedua sisi agar
+  perbedaan hydration bool/int dan kolom default tidak dianggap write aplikasi.
+- GREEN focused: **61 tes / 676 assertions lulus**, termasuk seluruh 25 tes baru.
+  Perintah: `php -d opcache.enable_cli=0 vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Admin/CollectiveBillPreviewTest.php tests/Feature/Payments/AssessmentBillPreviewTest.php tests/Feature/Admin/OrganizationBillAccessTest.php`.
+- Fixture 10 attempt/3 paket menghasilkan total IDR 1140 (8 berbayar, 2 gratis);
+  konsultasi pada dua item gratis menghasilkan IDR 1200 (10 berbayar). Urutan
+  selection terbalik menghasilkan proyeksi/hash identik. Fixture privat mengatur
+  tiga paket/sumber terkait tanpa mengubah helper bersama atau harga aktif.
+- Setiap panggilan adapter pada tes memeriksa jumlah row 10 tabel efek tetap
+  sama dan query log tidak mengandung INSERT/UPDATE/DELETE/DDL; mencakup charge,
+  bill, bill_item, entitlement baru/legacy, order, audit, outbox, consent/identity.
+  Charge snapshot existing juga dibandingkan sebelum/sesudah. Tidak reserve,
+  settlement, invoice, aktivasi, audit atau outbox dari adapter.
+- Pint dua file PHP lulus; PHPStan adapter lulus **0 error**, environment proses
+  testing/SQLite :memory:/array cache+session. Tidak membuat .env.
+- PreviewAssessmentBill lokal identik dengan induk (SHA256
+  `27088E41199F7B26CC72A62FB1C99E953A3A6177AC5BEF3165D70828303C67A1`).
+  Overlay migration nullable dari increment sebelumnya tetap identik SHA256
+  `B0AB61731EA1C1CFC49507FAF2C4FB5251F56BE87DEDC49752DB0DCA9A70F027`,
+  hanya untuk tes dan tetap tidak di-stage/commit; tidak menyalin baseline lagi.
+
+Batas: query adapter baru hanya diuji SQLite terisolasi; context restoration
+di atas membuktikan state runner PHP, **bukan PostgreSQL FORCE RLS**. Tidak
+menjalankan PG baru/full regression/browser/server pada increment tiga file ini.
+Bukti PG baru dapat menjadi increment terpisah sebelum integrasi query publik;
+hasil PG portal lama tidak diklaim sebagai bukti adapter ini. Belum ada UI
+selection/keyboard, draft/resume intent, invoice P10, finalizer/verifier P11 atau
+keputusan immutabilitas identitas attempt. Gate tetap tertutup publik. Tidak
+menyentuh DB aktif, outbound nyata, dana talang atau deploy. Commit terbatas
+tiga file milik lane, kemudian stop untuk review koordinator.
+
 ## Proposal P12b kolektif — delta dari 5d625e6
 
 Tanggal 2026-09-01. Koordinator sudah mengintegrasikan fallback nama melalui
