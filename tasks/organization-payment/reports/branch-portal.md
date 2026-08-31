@@ -1,5 +1,76 @@
 # P12a-prep — portal cabang baca-saja
 
+## Increment nama profil parsial — delta dari b7e0504
+
+Tanggal 2026-09-01. ADR-004, parallel-work.md dan integration-wave-5.md induk
+dibaca read-only setelah integrasi schema P9a0 bfc0587. Increment ini menambahkan
+`placeholder('Nama belum dilengkapi')` hanya pada kolom `participant.full_name`
+AssessmentParticipantResource dan OrderResource. Tidak mengubah nilai tersimpan,
+query/search/sort, scope/role, identifier kandidat/order, atau aksi existing.
+Tidak mengubah model, schema, config, shared fixture atau gate publik.
+
+### Delta dan cara integrasi
+
+- `app/Filament/Resources/Orders/OrderResource.php`: satu baris placeholder;
+  resource ini tracked sehingga delta biasa masuk commit lane.
+- `app/Filament/Resources/AssessmentParticipants/AssessmentParticipantResource.php`:
+  satu baris lokal berubah, tetapi file merupakan **baseline untracked**, bukan
+  file baru milik increment. Snapshot resource **tidak di-stage/commit**.
+  Delta eksplisit diserahkan melalui
+  `tasks/organization-payment/reports/participant-name-display.patch`.
+  Koordinator perlu meninjau lalu menerapkan patch tersebut selain delta commit
+  Order/test/laporan. `git apply --reverse --check` pada hasil lokal lulus.
+- `tests/Feature/Admin/ParticipantNameDisplayTest.php`: tujuh tes baru dengan
+  fixture privat sintetis; tidak mengubah fixture bersama.
+- Laporan ini dan patch di atas merupakan artefak handoff lane.
+
+SHA256 AssessmentParticipantResource sebelum edit sama persis dengan induk:
+`7454E36668961F4DF21A42F0E0F0D0CB0304974719EF67A9BED1FEC17030A502`.
+Migration `2026_08_31_000600_allow_checkout_partial_profiles.php` disalin melalui
+apply_patch sebagai overlay lokal untuk tes nullable. SHA256 kedua salinan sama:
+`B0AB61731EA1C1CFC49507FAF2C4FB5251F56BE87DEDC49752DB0DCA9A70F027`.
+Migration ini **tidak di-stage/commit**, dan tidak dijalankan terhadap DB aktif.
+Integrasi tes memerlukan migration P9a0 yang sudah tersedia di induk.
+
+### Bukti pengujian
+
+- TDD: run setup pertama gagal pada mass-assignment PaymentMethod di fixture
+  baru; diperbaiki mengikuti pola forceFill tes existing, tanpa edit model.
+  Run RED berikutnya: **7 tes, 2 lulus, 5 gagal, 94 assertions**. Kelima dataset
+  gagal karena sel AssessmentParticipant kosong tanpa placeholder (termasuk row
+  pembanding null pada dataset nama lengkap). Itu bukti RED rendering, bukan
+  kegagalan akses/schema. Kedua resource lalu mendapat placeholder.
+- GREEN focused dengan `phpunit.organization-payment.xml`:
+  `ParticipantNameDisplayTest.php`, `ManualTransferFilamentTest.php`, dan
+  `OrganizationPortalIsolationTest.php`: **12 tes / 239 assertions lulus**.
+  Perintah: `php -d opcache.enable_cli=0 vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Admin/ParticipantNameDisplayTest.php tests/Feature/Admin/ManualTransferFilamentTest.php tests/Feature/Admin/OrganizationPortalIsolationTest.php`.
+- Tes baru merender kolom kedua resource untuk null, string kosong, whitespace
+  spasi/tab/CR/LF, nama lengkap, serta nama nonblank dengan spasi tepi. Nama
+  nonblank dan raw state tetap sama; seluruh row peserta di DB sebelum/sesudah
+  render identik. Dua row tetap dapat dibedakan lewat ID kandidat/order existing.
+- Sort nama, search nama, dan search teks placeholder diuji: placeholder bukan
+  nilai database yang dapat dicari. Row lintas cabang tidak tampil dan resolve
+  record asing mengembalikan null pada kedua resource. Order menolak BranchAdmin
+  dan Staff tanpa hak verifikasi serta Psychologist; guest ditolak kedua daftar.
+  AssessmentParticipant memang mengizinkan role staff terautentikasi menurut
+  matriks existing; increment tidak mengarang pembatasan role baru.
+- Pint tiga file PHP perubahan lulus. PHPStan dua resource dijalankan dengan
+  environment proses testing, SQLite `:memory:`, cache/session array: **lulus,
+  nol error**. Percobaan awal tanpa environment testing ditolak
+  guard production (worktree tidak memiliki `.env`), tanpa mengubah config.
+
+Implementasi memakai placeholder native Filament 5.7.6: renderer TextColumn
+memeriksa blank state sebelum format dan menghasilkan placeholder ter-escape.
+Rujukan: [Filament 5 column placeholders](https://filamentphp.com/docs/5.x/tables/columns/overview#adding-placeholder-text-if-a-column-is-empty)
+dan source installed `vendor/filament/tables/src/Columns/TextColumn.php`.
+Tidak menambahkan formatter/model accessor atau default data baru.
+
+Batas: bukti increment ini adalah render komponen Livewire/HTTP SQLite sintetis,
+bukan pemeriksaan visual browser atau PG. Tidak menjalankan PG/full regression,
+server/browser, DB aktif, invoice/gateway/notifikasi nyata atau deploy. Review
+mandiri memakai skill code-review-and-quality; review/integrasi akhir milik
+koordinator. Berhenti setelah commit delta dan menunggu review slice berikutnya.
+
 ## Increment verifikasi keyboard/responsif — delta dari 2e8ae42
 
 Tanggal 2026-08-31. Gelombang kedua diintegrasikan induk sebagai 3a17d64.

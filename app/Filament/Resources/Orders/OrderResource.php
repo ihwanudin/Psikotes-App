@@ -75,6 +75,7 @@ final class OrderResource extends Resource
                     ->searchable(),
                 TextColumn::make('participant.full_name')
                     ->label('Peserta')
+                    ->placeholder('Nama belum dilengkapi')
                     ->searchable()
                     ->sortable(),
                 TextColumn::make('amount')
