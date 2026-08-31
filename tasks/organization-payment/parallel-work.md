@@ -370,3 +370,16 @@ frontend memperbaiki email opsional pada dua komponen dan tes (bukan mapper);
 portal menyusun proposal P12b collective selection (dua dokumen, bukan writer/UI).
 Semua aktif pada snapshot terakhir. Scope, guard dan cursor tersimpan pada laporan
 wave-6; jangan menduplikasi instruksi. Endpoint/akses produksi tetap tertutup.
+
+## Heartbeat review replay dan penugasan lanjutan (2026-09-01)
+
+Checkpoint [wave-7](reports/integration-wave-7.md): frontend 1650115 diintegrasikan
+83e116d (email opsional), portal proposal 6a7aaf7 diintegrasikan 261aecc sebagai
+DRAFT. Backend eb53cfd + 5f4bb3b ditahan untuk review replay funding lifecycle;
+P9a tidak dicentang selesai. Tidak ada perubahan schema/query PHP di root.
+
+Ketiga task existing sudah diberi tepat satu kelanjutan dan aktif: backend
+reproduksi/perbaikan replay P9a; frontend regresi gabungan browser, keyboard dan
+reflow; portal adapter preview read-only test-only tanpa memasang bulk action.
+Scope, commit, cursor/status dan batas bukti ada di wave-7. Tidak task/agent baru,
+reset/merge worker, akses publik, DB aktif, pembayaran atau notifikasi nyata.
