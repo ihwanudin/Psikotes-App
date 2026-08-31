@@ -36,13 +36,16 @@ try {
 
     $ready = $false
     for ($attempt = 0; $attempt -lt 40; $attempt++) {
-        docker exec $databaseContainer pg_isready -U org_test_owner -d psikotes_organization_test | Out-Null
+        # PostgreSQL's init phase briefly exposes a temporary Unix socket before
+        # restarting the final server. Probe TCP so that transient socket cannot
+        # be mistaken for durable readiness by the following marker command.
+        docker exec $databaseContainer pg_isready -h 127.0.0.1 -U org_test_owner -d psikotes_organization_test | Out-Null
         if ($LASTEXITCODE -eq 0) { $ready = $true; break }
         Start-Sleep -Milliseconds 500
     }
     if (-not $ready) { throw 'Disposable PostgreSQL did not become ready.' }
 
-    docker exec $databaseContainer psql -U org_test_owner -d psikotes_organization_test `
+    docker exec $databaseContainer psql -h 127.0.0.1 -U org_test_owner -d psikotes_organization_test `
         -v ON_ERROR_STOP=1 -c "COMMENT ON DATABASE psikotes_organization_test IS 'ONCAM_ORG_TEST:$runId'" | Out-Null
     Assert-DockerSuccess 'Disposable database marker'
 
