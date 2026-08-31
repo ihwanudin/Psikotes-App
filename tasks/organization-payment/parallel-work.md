@@ -340,3 +340,19 @@ Untuk tes portal, migration 2026_08_31_000600 root boleh disalin identik via
 apply_patch sebagai overlay lokal tanpa men-stage atau commit ulang baseline.
 Tidak ada perubahan schema aktif atau reset/merge worktree. Bukti, batas dan
 checkpoint pengiriman: reports/integration-wave-5.md.
+
+## Penugasan frontend setelah GREEN fixture (2026-09-01)
+
+Pengguna meminta task yang selesai diberi pekerjaan berikutnya. Snapshot backend
+cursor :15 dan portal :11 masih aktif, sehingga tidak diberi instruksi duplikat.
+Frontend cursor :12 selesai pada 0e727db. Pasangan e7a0fd3 + 0e727db sudah dibaca,
+namun belum diintegrasikan root; review/verifikasi pasangan tetap milik koordinator.
+
+Frontend menerima increment independen P16-prep: proposal pemetaan profil nullable
+ke kontrak presentasi existing, matriks tujuh field dan kasus uji, serta batas
+otoritas server dan dependensi P14/P15. Hanya dokumen baru
+reports/frontend-profile-mapping-proposal.md dan pembaruan reports/frontend.md.
+Tidak mengimplementasikan mapper, mengubah tipe/endpoint/schema, atau memutuskan
+akses dari browser. Data lengkap tetap locked, data kurang menjadi missing,
+tanpa placeholder atau key hilang. Commit dokumen lalu review; jangan kirim ulang
+instruksi ini selama task aktif. Backend/portal melanjutkan increment sebelumnya.
