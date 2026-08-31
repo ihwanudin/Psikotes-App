@@ -247,3 +247,17 @@ Koordinator menyetujui kontrak credential opaque framework untuk implementasi
 lokal dan mengirim kelanjutan ke task backend yang sama. Frontend dan portal
 menunggu dependensi, tidak membuka endpoint/gate publik. Keputusan, batas dan
 hasil verifikasi: [reports/integration-wave-2.md](reports/integration-wave-2.md).
+
+## Pekerjaan independen saat token backend berjalan
+
+Pengguna meminta kelanjutan tanpa menunggu backend. Koordinator melakukan
+pengujian keyboard native checkout menggunakan Chrome terpisah melalui Playwright
+CLI: Tab/Space/ArrowDown/Enter, validasi required, fokus error dan reflow empat
+ukuran lolos pada fixture. Bukti: [reports/checkout-keyboard-verification.md](reports/checkout-keyboard-verification.md).
+Gap alat in-app sebelumnya tidak lagi menghalangi bukti keyboard Chrome ini;
+audit screen reader/zoom lintas browser dan wiring produksi belum tercakup.
+
+Task portal existing menerima increment verifikasi keyboard/responsive pada
+port 8012/session browser tersendiri. Tidak ada overlap backend/token, perubahan
+shared routes atau pembukaan gate. Frontend koordinator memakai 8011 hanya selama
+pengujian. Tidak ada task/agent baru; seluruh hasil portal tetap perlu review.
