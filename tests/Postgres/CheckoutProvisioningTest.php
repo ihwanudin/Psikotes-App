@@ -19,6 +19,7 @@ use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use LogicException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Throwable;
@@ -82,7 +83,7 @@ final class CheckoutProvisioningTest extends TestCase
         app(RlsContextRunner::class)->runAsService(function (): void {
             $attempt = AssessmentParticipant::where('organization_id', $this->f['organization'])->sole();
             $this->assertNull($attempt->funding_mode);
-            $this->assertSame(['checkout_contract_version' => 'checkout-v2'], $attempt->metadata);
+            $this->assertSame(['checkout_contract_version' => 'checkout-v2', 'checkout_initial_funding_mode' => null], $attempt->metadata);
             $p = $attempt->participant;
             foreach (['full_name', 'birth_date', 'gender', 'intended_field', 'phone', 'education_level', 'test_number'] as $field) {
                 $this->assertNull($p->getAttribute($field));
@@ -144,6 +145,72 @@ final class CheckoutProvisioningTest extends TestCase
         $this->assertSame(IntegrationContractViolation::class, $second['class']);
         $this->assertSame('SOURCE_NOT_ALLOWED', $second['error']);
         $this->assertRows(0, 0);
+    }
+
+    #[DataProvider('lifecycleCommits')]
+    public function test_retry_waits_for_lifecycle_commit_and_preserves_initial_decision(string $funding, bool $changePolicy): void
+    {
+        $created = $this->provision();
+        [$first, $second] = $this->race(function () use ($created, $funding, $changePolicy): array {
+            app(RlsContextRunner::class)->runAsService(function () use ($created, $funding, $changePolicy): void {
+                DB::table('branches')->where('id', $this->f['organization'])->lockForUpdate()->first();
+                DB::table('assessment_participants')->where('assessment_attempt_id', $created['assessment_attempt_id'])
+                    ->update(['funding_mode' => $funding, 'assessment_status' => 'IN_PROGRESS']);
+                DB::table('participants')->where('id', $created['participant_id'])->update([
+                    'full_name' => 'Completed Person', 'gender' => 'female', 'birth_date' => '2000-01-01',
+                    'education_level' => 'SMA', 'intended_field' => 'KAIGO', 'phone' => '628123456789',
+                ]);
+                if ($changePolicy) {
+                    DB::table('integration_sources')->where('id', $this->f['source'])->update(['locked_payer_type' => 'self']);
+                }
+            });
+
+            return ['committed'];
+        }, fn () => $this->provision());
+        $this->assertSame(['committed'], $first);
+        if ($changePolicy) {
+            $this->assertSame(IdempotencyConflict::class, $second['class']);
+        } else {
+            $this->assertSame($created['assessment_attempt_id'], $second['assessment_attempt_id']);
+            $this->assertSame('IN_PROGRESS', $second['assessment_status']);
+            $this->assertTrue($second['replayed']);
+        }
+        app(RlsContextRunner::class)->runAsService(function () use ($funding): void {
+            $attempt = AssessmentParticipant::where('organization_id', $this->f['organization'])->sole();
+            $this->assertSame($funding, $attempt->funding_mode);
+            $this->assertSame('IN_PROGRESS', $attempt->assessment_status);
+            $this->assertSame(['checkout_contract_version' => 'checkout-v2', 'checkout_initial_funding_mode' => null], $attempt->metadata);
+            $this->assertSame('Completed Person', $attempt->participant->full_name);
+        });
+        $this->assertRows(1, 1);
+    }
+
+    public static function lifecycleCommits(): iterable
+    {
+        yield 'self chosen' => ['COMMERCIAL_SELF_PAY', false];
+        yield 'organization chosen' => ['INVOICED_TO_ORGANIZATION', false];
+        yield 'matching lifecycle cannot hide policy change' => ['COMMERCIAL_SELF_PAY', true];
+    }
+
+    public function test_missing_or_invalid_snapshot_is_not_inferred_or_backfilled(): void
+    {
+        $this->provision(['payerType' => 'self']);
+        foreach ([['checkout_contract_version' => 'checkout-v2'],
+            ['checkout_contract_version' => 'checkout-v2', 'checkout_initial_funding_mode' => false],
+            ['checkout_contract_version' => 'v1', 'checkout_initial_funding_mode' => 'COMMERCIAL_SELF_PAY']] as $metadata) {
+            app(RlsContextRunner::class)->runAsService(function () use ($metadata): void {
+                $attempt = AssessmentParticipant::where('organization_id', $this->f['organization'])->sole();
+                $attempt->update(['metadata' => $metadata]);
+                $before = $attempt->fresh()->getAttributes();
+                try {
+                    $this->provision(['payerType' => 'self']);
+                    $this->fail('Invalid snapshot accepted');
+                } catch (IdempotencyConflict) {
+                    $this->assertSame($before, $attempt->fresh()->getAttributes());
+                }
+            });
+        }
+        $this->assertRows(1, 1);
     }
 
     public function test_post_insert_failure_rolls_back_savepoint_even_if_caller_commits(): void

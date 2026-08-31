@@ -74,11 +74,26 @@ final readonly class ProvisionCheckoutParticipant
                 ->orderBy('id')->lockForUpdate()->limit(2)->get();
             if ($matches->isNotEmpty()) {
                 $existing = $matches->first();
+                $metadata = $existing->metadata;
                 if ($matches->count() !== 1 || $existing->integration_client_id !== $client->id
                     || $existing->organization_id !== $organization->id || $existing->package_id !== $package->id
-                    || $existing->source_system !== $source->source_system || $existing->funding_mode !== $funding
-                    || ($existing->metadata['checkout_contract_version'] ?? null) !== CheckoutContractAdapter::VERSION
+                    || $existing->source_system !== $source->source_system
+                    || ! is_array($metadata) || ($metadata['checkout_contract_version'] ?? null) !== CheckoutContractAdapter::VERSION
+                    || ! array_key_exists('checkout_initial_funding_mode', $metadata)
+                    || ! in_array($metadata['checkout_initial_funding_mode'], [null, 'COMMERCIAL_SELF_PAY', 'INVOICED_TO_ORGANIZATION'], true)
+                    || $metadata['checkout_initial_funding_mode'] !== $funding
                     || ! hash_equals($existing->request_hash, $hash)) {
+                    throw new IdempotencyConflict;
+                }
+                // Initial policy decision is immutable; the lifecycle may select an initially unresolved payer.
+                $lifecyclePayer = match ($existing->funding_mode) {
+                    null => null,
+                    'COMMERCIAL_SELF_PAY' => PayerType::SelfPay,
+                    'INVOICED_TO_ORGANIZATION' => PayerType::Organization,
+                    default => throw new IdempotencyConflict,
+                };
+                if (($funding !== null && $existing->funding_mode !== $funding)
+                    || ($lifecyclePayer !== null && ! in_array($lifecyclePayer, $payer->allowedPayerTypes, true))) {
                     throw new IdempotencyConflict;
                 }
                 if ($existing->revoked_at !== null || in_array($existing->assessment_status, ['REVOKED', 'VOID'], true)) {
@@ -129,7 +144,7 @@ final readonly class ProvisionCheckoutParticipant
                 'funding_mode' => $funding, 'assessment_status' => 'PROVISIONED', 'result_version' => 0,
                 'idempotency_key' => $key, 'request_hash' => $hash, 'logical_assessment_key' => $logical,
                 'metadata' => [...array_intersect_key($input['metadata'] ?? [], ['cohortCode' => true]),
-                    'checkout_contract_version' => CheckoutContractAdapter::VERSION],
+                    'checkout_contract_version' => CheckoutContractAdapter::VERSION, 'checkout_initial_funding_mode' => $funding],
             ]);
 
             return $this->result($attempt, false);

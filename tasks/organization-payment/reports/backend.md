@@ -841,3 +841,109 @@ regresi negatif, bukti ambiguitas dan laporan; **bukan commit perbaikan siap mer
 Action/PG/shared files/baseline tetap utuh. Tidak ada .env/DB aktif, network
 outbound, migrasi, sumber/gate aktif, reset/merge atau commit snapshot awal.
 **STOP untuk review kontrak sebelum RED→GREEN; P9a belum diterima.**
+
+## P9a fix opsi A / ADR-005 — 2026-09-01
+
+Koordinator menyetujui opsi A setelah d0ed7cf. ADR-005
+`docs/decisions/0005-checkout-initial-funding-snapshot.md` dibaca read-only dari
+root setelah tersedia; instruksi dan implementasi cocok. Tidak mengubah dokumen
+kanonik, schema/request/shared files atau public wiring. Skill Laravel, Auth,
+Security, DB/Postgres, TDD, incremental dan Git yang telah dibaca tetap dipakai.
+
+### Delta perilaku
+
+- Create menulis metadata server `checkout_initial_funding_mode` dari keputusan
+  resolver awal, hanya null/COMMERCIAL_SELF_PAY/INVOICED_TO_ORGANIZATION. Request
+  existing tetap melarang field tersebut dari payload. Tidak ada default/infer.
+- Replay mewajibkan metadata array, marker checkout-v2, `array_key_exists` untuk
+  snapshot (null sah), allowlist tipe/nilai strict, dan keputusan resolver saat
+  ini sama dengan snapshot awal. Scope, request_hash, reload/lock registry dan
+  policy existing tidak dikurangi. Key hilang/metadata null/tipe invalid/versi
+  salah ditolak tanpa backfill, inferensi dari funding mutable atau mutasi.
+- Funding lifecycle diperiksa terpisah: initial null boleh tetap null atau payer
+  self/organization dalam `PayerDecision::allowedPayerTypes`; initial selected
+  harus tetap funding yang sama. Mode legacy seperti SPONSORED bukan pilihan
+  lifecycle checkout yang sah. Tidak menyalin predicate resolver/policy baru.
+- Replay sah mengembalikan ID/status existing tanpa menulis profil, funding,
+  status, snapshot, hash atau efek samping. Revoked/void tetap tertutup. Pilihan
+  lifecycle yang kebetulan sama dengan keputusan policy baru tidak lagi menutupi
+  perubahan keputusan awal: snapshot null versus resolver self tetap konflik.
+- Immutability snapshot adalah kontrak writer aplikasi ADR-005; **bukan constraint
+  database baru**. Tidak ada data aktif yang dimigrasikan; writer lifecycle
+  berikutnya wajib mempertahankan snapshot. Tidak ada bukti settlement/consent/
+  identitas/entitlement dari nilai funding ini.
+
+### TDD dan verifikasi berjalan
+
+Sebelum mengubah action, perluasan tes menghasilkan **RED: 68 tes, 45 lulus,
+22 gagal, 1 error, 148 assertions**. Error berasal dari cabang revoked yang masih
+tertutup oleh IdempotencyConflict lama; assertion metadata create serta replay
+lifecycle juga RED. Log p9-initial-funding-red.log. Implementasi awal kemudian
+**GREEN 68 tes/358 assertions** (p9-initial-funding-green.log).
+
+Tes riwayat ambigu lama tidak di-skip: diubah menjadi pembuktian hash/funding/
+policy akhir sama tetapi snapshot awal berbeda (NULL versus self otomatis).
+Tes negatif lama dipertahankan. Tambahan mencakup payload snapshot ditolak,
+snapshot absent/invalid/metadata null, keputusan policy berubah termasuk funding
+lifecycle kebetulan sama, initial selected berganti/di-null-kan, dan funding legacy.
+Replay positif mencakup kedua payer dengan profil lengkap dan semua status dari
+PROVISIONED sampai FINALIZED; initial selected juga direplay tanpa menulis snapshot.
+State lifecycle disiapkan sebagai fixture sintetis, bukan writer/engine baru.
+
+Focused terkait (P9a feature + CheckoutContractCompatibility +
+CheckoutIntendedFieldContract + GenericAssessmentProvisioning +
+AttemptEntitlementGate): **171 tes/725 assertions lulus**. PHPUnit selalu memakai
+phpunit.organization-payment.xml, testing SQLite memory. Pint tiga file PHP lulus;
+PHPStan seluruh proyek **0 error** dalam env eksplisit testing/SQLite memory,
+DB_URL kosong, cache+session array, queue sync. Tidak ada perbaikan harness.
+
+Empat kasus PG baru ditambahkan dalam file P9a existing: retry menunggu commit
+pilihan self dan organization, race lifecycle yang bertepatan perubahan policy,
+serta snapshot absent/invalid/version mismatch tanpa backfill. Barrier dua proses
+existing dipakai tanpa modifikasi helper atau runner. Runner disposable sedang
+berjalan pada saat catatan ini ditulis; hasil akhirnya dicatat di bawah, bukan
+menggunakan ulang angka PG sebelumnya. Regresi integrations penuh juga berjalan;
+batas manifest Vite worker tetap akan dilaporkan jika kegagalan UI yang sama muncul.
+
+Ownership tetap empat file: app/Actions/Integrations/ProvisionCheckoutParticipant.php,
+tests/Feature/Integrations/CheckoutProvisioningTest.php,
+tests/Postgres/CheckoutProvisioningTest.php, dan reports/backend.md ini.
+Baseline/overlay dipertahankan; tidak reset/merge/commit snapshot. Tidak ada .env,
+DB aktif, schema, route, source activation, outbound nyata, public wiring atau P10.
+
+### Hasil final ADR-005 dan commit fix
+
+- Feature P9a sendiri: **76 tes/452 assertions lulus**, tanpa skip
+  (p9-initial-funding-feature-final.log).
+- Focused terkait: **171 tes/725 assertions lulus**
+  (p9-initial-funding-focused.log).
+- Direktori tests/Feature/Integrations penuh: **144 tes, 143 lulus, 1 gagal,
+  758 assertions** (p9-initial-funding-integrations.log). Kegagalan tunggal
+  `SelectionLaunchTest::test_participant_lobby_is_available_without_exposing_server_data`
+  masih ViteManifestNotFoundException: public/build/manifest.json tidak ada pada
+  worker. Tidak mengubah withoutVite, manifest palsu, harness atau tes UI itu.
+  Suite penuh tidak diklaim GREEN; root perlu memakai build sah saat integrasi.
+- PostgreSQL runner established exit 0: **201 tes/1.058 assertions lulus**,
+  tanpa skip (p9-initial-funding-postgres.log). Seluruh test runtime memakai
+  psikotes_runtime non-owner/non-superuser/NOBYPASSRLS, diverifikasi dalam suite.
+  Empat kasus baru lulus: dua payer lifecycle commit lalu retry, policy berubah
+  meskipun lifecycle funding cocok, dan snapshot hilang/invalid/versi salah.
+  Tiga race baru memakai dua proses/backend PID berbeda dengan observed lock
+  wait dan barrier yang sama. State committed tidak di-reset oleh replay.
+- Waktu PHPUnit PG 29.976 detik setelah startup bind mount Windows; bukan bukti
+  throughput aplikasi. Runner cleanup selesai. Pengecekan ulang label run
+  59bdbd0ce2164824884968eb9071c36d menunjukkan nol container/network tersisa.
+- Pint final ketiga file PHP **lulus**, PHPStan seluruh proyek **0 error**.
+  Diff check lulus. Log hanya lokal, tidak dicommit.
+
+Delta action hanya 18 baris tambah/3 hapus: snapshot create dan pemisahan dua
+guard replay. Tes riwayat lama direvisi menjadi pembuktian snapshot, bukan
+di-skip; semua delapan reproduksi awal GREEN. Empat file ownership saja masuk
+commit fix sejak d0ed7cf. Index sebelumnya kosong dan diperiksa ulang; tidak ada
+baseline untracked/model/Fillable atau overlay induk yang ikut commit.
+
+Tidak ada schema baru, backfill, immutable DB constraint, writer lifecycle,
+HTTP endpoint, token, gate publik, pembayaran, consent, notifikasi, atau P10.
+Keberhasilan replay tidak membuktikan status akses/settlement dari fixture;
+gate akses tetap bertanggung jawab memeriksa bukti persisted pada endpointnya.
+**Fix ADR-005 siap review lokal; STOP sebelum integrasi/public wiring/P10.**

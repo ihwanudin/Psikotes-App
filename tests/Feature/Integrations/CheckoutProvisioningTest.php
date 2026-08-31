@@ -64,7 +64,7 @@ final class CheckoutProvisioningTest extends OrganizationPaymentTestCase
         }
         $a = AssessmentParticipant::sole();
         $this->assertNull($a->funding_mode);
-        $this->assertSame(['checkout_contract_version' => 'checkout-v2'], $a->metadata);
+        $this->assertSame(['checkout_contract_version' => 'checkout-v2', 'checkout_initial_funding_mode' => null], $a->metadata);
         $this->assertSame($this->client->organization_id, $p->branch_id);
         $this->assertSame($p->branch_id, $p->referral_branch_id);
         $this->assertNoSideEffects();
@@ -87,7 +87,7 @@ final class CheckoutProvisioningTest extends OrganizationPaymentTestCase
         $this->assertSame('628123456789', $p->phone);
         $this->assertSame('p9@example.test', $p->getAttribute('email'));
         $this->assertSame($funding, AssessmentParticipant::sole()->funding_mode);
-        $this->assertSame(['cohortCode' => 'BATCH-1', 'checkout_contract_version' => 'checkout-v2'], AssessmentParticipant::sole()->metadata);
+        $this->assertSame(['cohortCode' => 'BATCH-1', 'checkout_contract_version' => 'checkout-v2', 'checkout_initial_funding_mode' => $funding], AssessmentParticipant::sole()->metadata);
         $this->assertNoSideEffects();
     }
 
@@ -322,7 +322,7 @@ final class CheckoutProvisioningTest extends OrganizationPaymentTestCase
     public static function selectedLifecycleStates(): iterable
     {
         foreach (['COMMERCIAL_SELF_PAY', 'INVOICED_TO_ORGANIZATION'] as $funding) {
-            foreach (['PROVISIONED', 'READY', 'IN_PROGRESS', 'COMPLETED'] as $status) {
+            foreach (['PROVISIONED', 'READY', 'IN_PROGRESS', 'COMPLETED', 'UNDER_REVIEW', 'FINALIZED'] as $status) {
                 yield $funding.' '.$status => [$funding, $status];
             }
         }
@@ -346,7 +346,7 @@ final class CheckoutProvisioningTest extends OrganizationPaymentTestCase
         $this->provision();
     }
 
-    public function test_stored_request_and_funding_cannot_distinguish_initial_policy_from_later_choice(): void
+    public function test_initial_snapshot_distinguishes_initial_policy_from_later_choice(): void
     {
         DB::beginTransaction();
         try {
@@ -369,7 +369,12 @@ final class CheckoutProvisioningTest extends OrganizationPaymentTestCase
             'attempt' => AssessmentParticipant::sole()->only(['request_hash', 'funding_mode', 'metadata']),
             'policy' => $this->source->fresh()->only(['allowed_payer_types', 'locked_payer_type']),
         ];
-        $this->assertSame($afterLaterChoice, $initialPolicyChoice);
+        $this->assertSame($afterLaterChoice['policy'], $initialPolicyChoice['policy']);
+        $this->assertSame($afterLaterChoice['attempt']['request_hash'], $initialPolicyChoice['attempt']['request_hash']);
+        $this->assertSame($afterLaterChoice['attempt']['funding_mode'], $initialPolicyChoice['attempt']['funding_mode']);
+        $this->assertArrayHasKey('checkout_initial_funding_mode', $afterLaterChoice['attempt']['metadata']);
+        $this->assertNull($afterLaterChoice['attempt']['metadata']['checkout_initial_funding_mode']);
+        $this->assertSame('COMMERCIAL_SELF_PAY', $initialPolicyChoice['attempt']['metadata']['checkout_initial_funding_mode']);
     }
 
     public function test_later_payer_selection_does_not_bypass_invalid_payer_policy(): void
@@ -391,13 +396,104 @@ final class CheckoutProvisioningTest extends OrganizationPaymentTestCase
         try {
             $this->provision();
             $this->fail('Revoked attempt accepted');
-        } catch (IdempotencyConflict|IntegrationContractViolation) {
-            // Current funding conflict masks the revoked-specific error; denial must remain after the fix.
+        } catch (IntegrationContractViolation $exception) {
+            $this->assertSame('ASSESSMENT_NOT_PROVISIONABLE', $exception->errorCode);
             $this->assertSame($stored, AssessmentParticipant::sole()->getAttributes());
             $this->assertDatabaseCount('participants', 1);
             $this->assertDatabaseCount('assessment_participants', 1);
             $this->assertNoSideEffects();
         }
+    }
+
+    public function test_lifecycle_matching_new_policy_does_not_hide_changed_initial_decision(): void
+    {
+        $this->provision();
+        AssessmentParticipant::sole()->update(['funding_mode' => 'COMMERCIAL_SELF_PAY']);
+        $this->source->update(['locked_payer_type' => 'self']);
+        $this->expectException(IdempotencyConflict::class);
+        $this->provision();
+    }
+
+    #[DataProvider('invalidInitialMetadata')]
+    public function test_snapshot_missing_invalid_or_wrong_version_fails_without_mutation(?array $metadata): void
+    {
+        $input = [...$this->payload(), 'payerType' => 'self'];
+        $this->provision($input);
+        $attempt = AssessmentParticipant::sole();
+        $attempt->update(['metadata' => $metadata]);
+        $before = $attempt->fresh()->getAttributes();
+        try {
+            $this->provision($input);
+            $this->fail('Invalid initial snapshot accepted');
+        } catch (IdempotencyConflict) {
+            $this->assertSame($before, AssessmentParticipant::sole()->getAttributes());
+            $this->assertDatabaseCount('participants', 1);
+            $this->assertDatabaseCount('assessment_participants', 1);
+        }
+    }
+
+    public static function invalidInitialMetadata(): iterable
+    {
+        yield 'null metadata' => [null];
+        yield 'missing snapshot' => [['checkout_contract_version' => 'checkout-v2']];
+        yield 'missing version' => [['checkout_initial_funding_mode' => 'COMMERCIAL_SELF_PAY']];
+        yield 'wrong version' => [['checkout_contract_version' => 'v1', 'checkout_initial_funding_mode' => 'COMMERCIAL_SELF_PAY']];
+        foreach (['self', 'SPONSORED', '', 0, true, false, [], ['funding' => 'COMMERCIAL_SELF_PAY']] as $index => $value) {
+            yield 'invalid snapshot '.$index => [['checkout_contract_version' => 'checkout-v2', 'checkout_initial_funding_mode' => $value]];
+        }
+    }
+
+    #[DataProvider('changedSelectedFunding')]
+    public function test_initially_selected_funding_cannot_be_changed_or_cleared(string $initial, ?string $later): void
+    {
+        $input = [...$this->payload(), 'payerType' => $initial];
+        $this->provision($input);
+        AssessmentParticipant::sole()->update(['funding_mode' => $later]);
+        $this->expectException(IdempotencyConflict::class);
+        $this->provision($input);
+    }
+
+    public static function changedSelectedFunding(): iterable
+    {
+        yield ['self', null];
+        yield ['self', 'INVOICED_TO_ORGANIZATION'];
+        yield ['organization', null];
+        yield ['organization', 'COMMERCIAL_SELF_PAY'];
+    }
+
+    public function test_initial_snapshot_cannot_be_supplied_by_input(): void
+    {
+        $this->expectException(ValidationException::class);
+        $this->provision([...$this->payload(), 'metadata' => ['checkout_initial_funding_mode' => null]]);
+    }
+
+    public function test_unresolved_initial_snapshot_does_not_accept_legacy_funding_as_lifecycle_payer(): void
+    {
+        $this->provision();
+        AssessmentParticipant::sole()->update(['funding_mode' => 'SPONSORED']);
+        $this->expectException(IdempotencyConflict::class);
+        $this->provision();
+    }
+
+    #[DataProvider('selectedPayers')]
+    public function test_initial_selected_snapshot_is_preserved_by_valid_replay(string $payer, string $funding): void
+    {
+        $input = [...$this->payload(), 'payerType' => $payer];
+        $first = $this->provision($input);
+        AssessmentParticipant::sole()->update(['assessment_status' => 'COMPLETED']);
+        $before = AssessmentParticipant::sole()->getAttributes();
+        $this->assertSame($funding, AssessmentParticipant::sole()->metadata['checkout_initial_funding_mode']);
+        $retry = $this->provision($input);
+        $this->assertTrue($retry['replayed']);
+        $this->assertSame($first['assessment_attempt_id'], $retry['assessment_attempt_id']);
+        $this->assertSame('COMPLETED', $retry['assessment_status']);
+        $this->assertSame($before, AssessmentParticipant::sole()->getAttributes());
+    }
+
+    public static function selectedPayers(): iterable
+    {
+        yield ['self', 'COMMERCIAL_SELF_PAY'];
+        yield ['organization', 'INVOICED_TO_ORGANIZATION'];
     }
 
     #[DataProvider('badScopes')]
