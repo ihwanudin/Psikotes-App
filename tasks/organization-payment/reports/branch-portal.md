@@ -1,5 +1,47 @@
 # P12a-prep — portal cabang baca-saja
 
+## P12b core default-off — delta dari 49c0ff4
+
+Tanggal 2026-09-01. P11c dan P12a telah diterima root sebagai implementasi lokal
+default-off (integration-wave-24). Increment ini menambah boundary Filament
+testing-only: pilih attempt cabang, preview server-authoritative, lalu konfirmasi
+tepat satu delegasi ke ReserveAssessmentBill. Harga, policy, predicate, lock,
+writer, stale hash dan idempotency tetap milik action pembayaran existing.
+
+`CreateCollectiveBillAction` memuat ulang Admin persisted pada choices, preview,
+metode, dan confirm; hanya BranchAdmin bercabang pada environment testing.
+Attempt query selalu memakai organisasi persisted. Choices memproyeksikan label
+allowlist melalui PreviewCollectiveBillSelection; legacy/status/self/free/claimed
+disabled dengan alasan generik. Preview kolektif menolak setiap item non-payable.
+Confirm memakai hash preview dan idempotency canonical `p12b:{admin}:{hash}`;
+Reserve mengunci dan re-preview sehingga harga/status/scope berubah menghasilkan
+PREVIEW_CHANGED, sedangkan replay selection yang sama kembali ke bill yang sama.
+
+Page resource testing-only memakai checkbox native, konsultasi, total IDR, metode
+aktif existing dan tombol preview terpisah dari konfirmasi. Perubahan selection/
+konsultasi menghapus preview; state preview dan reviewed selection Locked.
+Error UI generik dan tidak memuat data klinis. Tidak ada invoice/provider,
+notifikasi, entitlement, proof, reviewer/finalizer atau route produksi.
+
+TDD: RED awal gagal karena class belum ada. GREEN final
+`php vendor/bin/phpunit -c phpunit.organization-payment.xml tests/Feature/Admin/CollectiveBillSelectionTest.php`:
+**13 tes/35 assertions lulus**. Kasus mencakup 2 attempt→1 bill, replay, stale
+harga, role/tenant/deleted/non-testing, legacy/status/free/self/claimed, foreign,
+duplicate, dan confirm tanpa preview. Pint lulus. PHPStan scoped dijalankan dengan
+testing/SQLite memory/cache-array; hasil dicatat pada handoff final. Tidak PG:
+boundary tidak menambah query lock/RLS; concurrency canonical Reserve sudah diuji.
+Browser ditunda sampai review UI stabil, jadi keyboard/mobile baru dari struktur
+native dan belum diklaim sebagai browser acceptance P12b.
+
+Catatan integrasi: AssessmentParticipantResource dan ListAssessmentParticipants
+adalah baseline untracked di worktree. Jangan cherry-pick snapshot kedua file itu.
+Terapkan hanya dua delta berikut pada baseline root: import CreateCollectiveBill,
+ubah getPages agar menambah `collective-bill => CreateCollectiveBill::route('/collective-bill')`
+hanya saat `app()->environment('testing')`; lalu pada List page tambahkan header
+Action `collectiveBill` yang visible testing dan URL resource page tersebut.
+File baru Page/action/view/test dapat diambil langsung. Tidak ada baseline lain
+yang distage. P12b belum acceptance dan seluruh discovery non-testing tetap OFF.
+
 ## Koreksi isolasi Vite — delta dari 3c1dfa3
 
 Tanggal 2026-09-01. Koordinator **belum menerima/mengintegrasikan 1c6afba dan
