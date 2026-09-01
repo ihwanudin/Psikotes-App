@@ -674,3 +674,10 @@ membersihkan preview, serta redirect ke bill canonical terbukti. Root focused
 **19/19 tes, 61 assertions**, Pint dan PHPStan lulus; diff-check bersih. Core P12b
 diterima default-off; browser desktop/mobile/keyboard dan UI replay/stale menjadi
 increment berikutnya sebelum acceptance P12b ditutup.
+
+Portal task existing turn `01a05d5d-91cb-7111-80ed-d877ed157ae9` (cursor
+`d086efb9-85a2-4a90-a2e5-0b0ff954212c:5`) aktif pada browser acceptance P12b
+testing-only. Harness wajib mem-boot Laravel/Filament nyata dengan fixture temp,
+deny outbound, role/tenant/direct-URL denial, keyboard/mobile/desktop, 10 attempt
+→ satu bill canonical, replay/stale mutation dan secrecy; production discovery,
+route, provider/notifier, DB aktif serta P12c tetap dilarang.
