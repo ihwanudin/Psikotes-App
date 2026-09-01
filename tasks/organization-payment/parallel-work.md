@@ -639,3 +639,14 @@ Backend turn `01a05ce5-c61f-7861-a42a-491cde1b4564` (cursor
 `67fb332a-ee06-4280-b3fe-55c3b79bcc9c:21`) aktif pada P11c3c browser acceptance
 testing-only untuk desktop/mobile/keyboard dan role denial. Production discovery,
 route, DB aktif, dan layanan eksternal tetap dilarang.
+
+P11c3c `d00a1ea`/`4b797f0` diintegrasikan root sebagai `d5b7163`/`cbd861a`.
+Review memastikan harness mem-boot Laravel/Filament asli dengan environment path,
+storage, cache, session dan SQLite disposable; provider/notifier fake, stray HTTP
+diblokir, serta origin hanya loopback. Browser Chrome cached lulus lima kelompok
+acceptance desktop/mobile/keyboard, approve/reject/replay/replacement fence dan
+role denial tanpa kebocoran DOM/URL. Root mengulang syntax Node/PHP dan focused
+reviewer **36/36 tes, 234 assertions**. Percobaan reproduksi browser root tidak
+dimulai karena orkestrasi cleanup proses/temp ditolak kebijakan command; bukti
+browser worker yang sudah direview tetap otoritatif. P11c selesai lokal default-off;
+discovery/route produksi, DB aktif dan layanan nyata tetap tidak diaktifkan.
