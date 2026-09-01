@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P8a, P9a/b/c, P10a, core P10b, P10c-a, dan P10c-b1–b3 internal selesai lokal. P10c-b3 root 32/476 dan PostgreSQL disposable 260/2292 lulus. Koordinator bounded P10c-b4 belum dibuat; command/scheduler tetap tertutup. Frontend/portal menunggu dependency backend. P8b–P18 keseluruhan belum end-to-end; tidak deploy atau migrasi DB aktif.**
+Status: **P1–P8a, P9a/b/c, P10a, core P10b, serta P10c-a/b internal selesai lokal. P10c-b4 root 46/479 dan PostgreSQL disposable 261/2302 lulus. Command/scheduler tetap tertutup sampai P11b. P11a core finalizer berikutnya; frontend/portal menunggu dependency backend. P8b–P18 keseluruhan belum end-to-end; tidak deploy atau migrasi DB aktif.**
 
 ## Gerbang revisi kolektif
 
@@ -439,7 +439,7 @@ provider atau menjadi authority sampai acquisition/validator berikutnya direview
 - [x] P10c-b2a reservasi provisional outbox-only memakai database clock dan PostgreSQL SKIP LOCKED; token bukan permit, counter/state bisnis tidak berubah. Root invoice182/1323 serta PG256/2195 lulus.
 - [x] P10c-b2b validator reuse claim canonical, mengonsumsi provisional dengan UUID permit baru dan generation atomik; invalid cleanup token-fenced. Root invoice197/1524 serta PG258/2247 lulus; belum provider/persist leased.
 - [x] P10c-b3 strict GET reference yang sama dengan nominal/currency snapshot, late token/generation/expiry fence, cooldown database, dan race issuance exact. Tidak pernah create ulang; root 32/476 serta PG260/2292 lulus.
-- [ ] P10c-b4 koordinator internal bounded menggabungkan reserve → validate → execute leased memakai batch/scan/max-lookups konfigurabel, mengisolasi kegagalan satu hint, dan mengembalikan ringkasan keputusan. Tidak ada command/job/scheduler/route atau aktivasi akses; wiring operasional tetap menunggu P11b.
+- [x] P10c-b4 koordinator internal bounded menggabungkan reserve → validate → execute leased memakai batch/scan/max-lookups konfigurabel, mengisi ulang lookup setelah validation rejected tanpa melewati scan, dan mengembalikan ringkasan tanpa identifier. Root 46/479 serta PG261/2302 lulus; tidak ada command/job/scheduler/route atau aktivasi akses.
 
 **Dependencies:** P10b. **Scope:** M.
 

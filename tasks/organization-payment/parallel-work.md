@@ -518,3 +518,10 @@ review independen. Root focused32/476, Pint, PHPStan dan PostgreSQL disposable
 260/2292 lulus dengan cleanup sukses. P10c-b4 berikutnya hanya koordinator batch
 internal bounded reserve → validate → execute; command/job/scheduler/route dan
 wiring P11 tetap dilarang.
+
+P10c-b4 awal `1766c65`/`4940da1` memerlukan perbaikan karena scan tidak mengisi
+ulang lookup setelah validation rejected. Fix `8a79d0a`/`ef5f5d8` diterima dan
+seluruh rangkaian diintegrasikan sebagai `11cb271`/`afd003b`/`0ad06ad`/`67902c0`.
+Root focused46/479, Pint, PHPStan dan PostgreSQL disposable261/2302 lulus dengan
+cleanup sukses. P10c internal selesai; kelanjutan backend adalah P11a core
+finalizer atomik tanpa webhook/route/scheduler atau layanan nyata.
