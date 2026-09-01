@@ -1881,3 +1881,57 @@ memakai satu parser canonical, bukan near-duplicate.
 Tidak ada PaymentProvider GET/POST/create, persistence outcome, command/job/
 scheduler/route, schema/config baru, source/gate, credential/.env/data aktif,
 outbound, deploy atau push. **STOP sebelum P10c-b3/P11**.
+
+## P10c-b3 — strict lookup leased dan outcome fence
+
+Commit kode lokal `75c72d8` menambah entrypoint internal
+`ReconcileAssessmentBillInvoice::executeLeased`. Entrypoint menolak ambient RLS
+context dan outer transaction, memvalidasi cooldown, lalu menjalankan transaksi
+service sangat pendek yang hanya mengunci outbox dan membaca database clock.
+Preflight memeriksa topic/aggregate, message dan digest payload, UUID token,
+generation, expiry exact dan belum kedaluwarsa, serta pasangan message canonical.
+Transaksi dan context selesai sebelum tepat satu `lookupInvoice` berdasarkan
+reference/amount/currency snapshot. Jalur ini tidak pernah memanggil
+`createInvoice`.
+
+`PersistAssessmentInvoiceOutcome` kini menyediakan persistence khusus permit
+rekonsiliasi dengan seluruh lock/predicate late-state canonical yang sama dengan
+issuance. Fence token, generation, expiry dan database clock diperiksa setelah
+seluruh row authoritative dikunci. Exact membuat bill pending dan message
+processed secara atomik, mempertahankan generation, membersihkan token/expiry/
+cooldown, serta menyimpan expiry asli provider dan satu audit. Outcome unknown
+dari issuing membuat pasangan unknown/failed canonical dan satu audit; unknown
+existing tidak ditulis ulang dan tidak menambah audit. Keduanya mengonsumsi lease
+dan memasang cooldown dari database clock tanpa mengubah counter.
+
+Worker dengan token hilang/dicuri/kedaluwarsa, generation atau digest berubah,
+atau bill/message terminal mendapat `recovery_required` tanpa mutasi, audit, atau
+provider call bila gagal pada preflight. Race khusus ADR-009 juga ditutup pada
+boundary bersama: exact issuance P10b membersihkan metadata lease dalam update
+processed yang sama, sehingga constraint PostgreSQL tetap valid dan hasil worker
+leased lama kemudian gagal fence. Unknown issuance tetap mempertahankan lease
+canonical untuk rekonsiliasi.
+
+### Bukti aktual
+
+- RED awal: **16 tes**, **1 passed + 15 errors**, **132 assertions**, karena
+  `executeLeased` belum tersedia.
+- Feature P10c-b3 final mencakup processing/unknown exact, expiry provider lama,
+  error/mismatch/unknown stabil, cooldown tepat 300 detik, counter unchanged,
+  UUID/generation/digest/token/expiry stale, late stolen/paid, rollback audit,
+  ambient context/transaction, dan Xendit `Http::fake` GET-only tanpa POST.
+  File khusus ini lulus **17/17 tes, 275 assertions**.
+- Regresi focused P10b/P10c final: **83/83 tes, 1.041 assertions**. Default suite
+  `phpunit.organization-payment.xml`: **75/75 tes, 414 assertions**.
+- Runner PostgreSQL disposable pertama menemukan tes race yang belum menjamin GET
+  telah dimulai sebelum issuance (**239 tes, 1 failure, 1.686 assertions**). Tes
+  diperbaiki memakai barrier provider. Final: **239/239 tes, 1.691 assertions**,
+  cleanup sukses. Runtime adalah `psikotes_runtime` non-owner/NOBYPASSRLS; exact
+  issuance saat GET leased tertahan menghasilkan tepat satu persistence/audit,
+  dan hasil leased setelah token dicuri dibuang tanpa menghapus owner baru.
+- Pint empat file kode/tes dan `git diff --check` lulus. PHPStan seluruh project
+  dengan environment testing eksplisit/SQLite memory lulus **0 error**.
+
+Tidak ada batch coordinator, command/job/scheduler/route, schema/config/source
+aktif, create/POST, settlement/finalizer/entitlement/notifikasi, credential/.env/
+data aktif, outbound nyata, deploy atau push. **STOP sebelum P10c-b4/P11**.
