@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P8a, P9a/b/c, P10a, core P10b, serta P10c-a/b internal selesai lokal. P10c-b4 root 46/479 dan PostgreSQL disposable 261/2302 lulus. Command/scheduler tetap tertutup sampai P11b. P11a core finalizer berikutnya; frontend/portal menunggu dependency backend. P8b–P18 keseluruhan belum end-to-end; tidak deploy atau migrasi DB aktif.**
+Status: **P1–P8a, P9a/b/c, P10a, core P10b, P10c-a/b, dan P11a core finalizer selesai lokal. Bukti finalizer PostgreSQL disposable 262/2320 lulus. Command/scheduler tetap tertutup; P11b routing berikutnya. Frontend/portal menunggu dependency backend. P8b–P18 keseluruhan belum end-to-end; tidak deploy atau migrasi DB aktif.**
 
 ## Gerbang revisi kolektif
 
@@ -322,7 +322,7 @@ Rincian checkpoint (acceptance gabungan di atas tetap wajib):
 
 - [x] Core aktivasi/outbox atomik per attempt, diuji dan diintegrasikan pada gelombang pertama.
 - [x] Token purpose-bound dan adapter read-only start: implementasi ee7ba62/fe96239 diintegrasikan; regresi 728/3.367 dan PostgreSQL 156/921 lulus. Bukan endpoint publik atau engine sesi.
-- [ ] Panggilan setelah settlement: dibuktikan bersama finalizer P11a, termasuk rollback aktivasi/outbox dalam transaksi induk.
+- [x] Panggilan setelah settlement: finalizer P11a memanggil aktivasi per attempt dan membuktikan rollback aktivasi/outbox dalam transaksi induk; PostgreSQL dua proses lulus pada runner root.
 - [ ] Panggilan setelah pemenuhan consent/profil: dibuktikan bersama P15; tanpa invoice ulang dan tanpa auto-consent.
 - [ ] Wiring publik autentikasi/RLS, producer credential dan delivery intent diverifikasi sebelum cutover; engine sesi tetap dependensi terpisah, tidak boleh diganti respons sukses palsu.
 
@@ -451,7 +451,7 @@ provider atau menjadi authority sampai acquisition/validator berikutnya direview
 
 **Acceptance:**
 
-- [ ] Paid bill dan semua settled_at, audit, aktivasi yang memenuhi syarat, serta outbox commit atomik; kegagalan setelah item kelima rollback semuanya. Event replay no-op; nominal parsial/berlebih ditolak, paid tidak turun oleh expired.
+- [x] Paid bill dan semua settled_at, audit, aktivasi yang memenuhi syarat, serta outbox commit atomik; kegagalan setelah item kelima rollback semuanya. Event replay no-op; nominal parsial/berlebih ditolak, paid tidak turun oleh expired. P11a1 `2f668b9`/`974ded1`, PG262/2320 lulus.
 
 **Dependencies:** P10c. **Scope:** M.
 
@@ -461,8 +461,8 @@ provider atau menjadi authority sampai acquisition/validator berikutnya direview
 
 ### Checkpoint setelah P11a
 
-- [ ] Focused tests dan regresi terkait lulus tanpa skip; bukti baru dicatat di docs/ORGANIZATION_CHECKOUT_VALIDATION.md.
-- [ ] Pint/PHPStan dan lint/typecheck/build sesuai dampak; UI diperiksa browser, RLS/race memakai PostgreSQL terisolasi.
+- [x] Focused tests dan regresi terkait lulus tanpa skip; bukti finalizer dicatat pada laporan backend dan integration wave.
+- [x] Pint/PHPStan lulus sesuai dampak; race dua finalizer memakai PostgreSQL disposable terisolasi.
 - [ ] Tinjau slice dengan pengguna sebelum kelompok berikutnya; tidak ada deploy, transaksi, atau notifikasi nyata.
 
 ## P11b: Routing webhook dan pemeriksaan status

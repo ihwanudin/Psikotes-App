@@ -1,7 +1,7 @@
 # Rencana: pembayaran lembaga dan checkout terintegrasi
 
 Tanggal: 2026-08-31
-Status: **P1–P8a, P9a/b/c, P10a, core P10b dan P10c internal selesai lokal. Bukti P10c-b4: root46/479 dan PostgreSQL disposable261/2302 lulus; command/scheduler tetap nonaktif sampai P11b. P11a core finalizer berikutnya. Portal menunggu P11, frontend menunggu P14/P15. Endpoint publik belum dipasang, P8b/P9/P12/P16 belum end-to-end. Tidak ada izin deploy atau cutover sumber aktif.**
+Status: **P1–P8a, P9a/b/c, P10a, core P10b, P10c internal dan P11a core finalizer selesai lokal. PostgreSQL disposable finalizer 262/2320 lulus; command/scheduler tetap nonaktif. P11b routing berikutnya. Portal menunggu P11c, frontend menunggu P14/P15. Endpoint publik belum dipasang, P8b/P9/P12/P16 belum end-to-end. Tidak ada izin deploy atau cutover sumber aktif.**
 
 ## Perubahan lingkup: pembayaran kolektif cabang
 

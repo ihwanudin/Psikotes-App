@@ -103,3 +103,9 @@ berulang dan kelanjutan aman memerlukan pemulihan/restart Docker Desktop yang da
 mengganggu container aplikasi aktif, automation koordinasi dijeda. P11a tetap
 conditional dan P11b tidak dimulai sampai pengguna memulihkan Docker lalu meminta
 kelanjutan.
+
+Pengguna meminta lanjut; Docker Desktop daemon ditemukan berhenti lalu dijalankan
+kembali dari instalasi user. Setelah warm-up bind-mount, root PostgreSQL disposable
+lulus **262/262 tes, 2.320 assertions** termasuk concurrency finalizer, dan cleanup
+sukses tanpa menargetkan container aplikasi. P11a1 kini diterima; P11b dimulai dari
+audit kontrak routing/status legacy sebelum perubahan kode.

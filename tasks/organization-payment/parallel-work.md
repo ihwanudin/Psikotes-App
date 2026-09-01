@@ -525,3 +525,9 @@ seluruh rangkaian diintegrasikan sebagai `11cb271`/`afd003b`/`0ad06ad`/`67902c0`
 Root focused46/479, Pint, PHPStan dan PostgreSQL disposable261/2302 lulus dengan
 cleanup sukses. P10c internal selesai; kelanjutan backend adalah P11a core
 finalizer atomik tanpa webhook/route/scheduler atau layanan nyata.
+
+P11a1 `de7e6f2`/`6d97aa7` diintegrasikan sebagai `2f668b9`/`974ded1`. Setelah
+Docker Desktop dipulihkan, root PostgreSQL disposable262/2320 membuktikan dua
+finalizer hanya menghasilkan satu settlement/audit/outbox; cleanup sukses.
+P11a core diterima. Backend berikutnya mengaudit kontrak P11b lebih dahulu agar
+routing bill AB_ dan status check tidak mengubah fallback/order legacy.
