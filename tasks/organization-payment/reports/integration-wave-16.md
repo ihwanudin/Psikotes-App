@@ -144,3 +144,8 @@ cleanup sukses. Percobaan SQLite campuran pertama gagal karena dua strategi
 reset database berbeda dalam satu proses, lalu kedua kelompok fixture lulus saat
 dijalankan terpisah. P11b diterima; P11c dimulai dari audit authority/tenant
 SuperAdmin tanpa wiring UI atau transfer nyata.
+
+Backend turn `01a05bde-42aa-7333-8337-dea639720218` (cursor
+`67fb332a-ee06-4280-b3fe-55c3b79bcc9c:6`) aktif pada P11c0 proposal-only:
+actor/resource matrix SuperAdmin, lifecycle bukti, reuse finalizer, storage
+private, dan threat model. Belum ada approval writer, UI, gate, atau data nyata.
