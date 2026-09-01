@@ -32,6 +32,7 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 use Tests\Support\AssessmentPreviewFixture as Fixture;
+use Tests\Support\MinimalFilamentActionFixture;
 
 // Dedicated SQLite fixture only; neither workspace .env nor active caches are read.
 $directory = getenv('ONCAM_COLLECTIVE_PAGE_DIRECTORY');
@@ -62,7 +63,7 @@ if ($mode === 'http') {
         }
     }
     // No other application, admin, integration, payment or storage routes are reachable.
-    if (! in_array($path, ['/preview', '/fixture-control', '/fixture.css', '/fixture-livewire.js', '/fixture-update', '/livewire/upload-file', '/favicon.ico'], true)
+    if (! in_array($path, ['/preview', '/action-probe', '/fixture-control', '/fixture.css', '/fixture-livewire.js', '/fixture-update', '/livewire/upload-file', '/favicon.ico'], true)
         && ! preg_match('#^/(?:admin/organization-bills/[0-9]+|fixture-proof/[1-9][0-9]*|livewire-[a-f0-9]+/upload-file)$#D', (string) $path)) {
         http_response_code(404);
         exit;
@@ -279,6 +280,7 @@ foreach ($attemptIds as $id) {
 }
 Filament::setCurrentPanel(Filament::getPanel('admin'));
 Livewire::component('collective-page-fixture', CreateCollectiveBill::class);
+Livewire::component('minimal-filament-action-fixture', MinimalFilamentActionFixture::class);
 Livewire::setUpdateRoute(fn ($handler) => Route::post('/fixture-update', $handler)->middleware('web'));
 Livewire::setScriptRoute(fn ($handler) => Route::get('/fixture-livewire.js', $handler));
 Route::middleware('web')->get('/preview', function () use ($adminId): string {
@@ -300,6 +302,22 @@ Route::middleware('web')->get('/preview', function () use ($adminId): string {
         {!! \Filament\Support\Facades\FilamentAsset::renderStyles([]) !!}
         <style>body.fixture-body{font-family:system-ui,sans-serif;margin:0}.fixture-main{box-sizing:border-box;max-width:60rem;margin:auto;padding:1rem}</style>
         </head><body class="fixture-body"><main class="fixture-main"><livewire:collective-page-fixture /></main>@filamentScripts(withCore: true)</body></html>
+        BLADE, deleteCachedView: true);
+});
+Route::middleware('web')->get('/action-probe', function () use ($adminId): string {
+    $admin = Admin::findOrFail($adminId);
+    abort_unless($admin->email === 'collective-browser@example.test', 403);
+    Filament::auth()->login($admin);
+
+    return Blade::render(<<<'BLADE'
+        <!doctype html><html lang="id"><head><meta charset="utf-8">
+        <meta name="viewport" content="width=device-width,initial-scale=1">
+        <meta name="csrf-token" content="{{ csrf_token() }}">
+        <title>ONCAM · minimal Filament action probe</title><link rel="stylesheet" href="/fixture.css">
+        @livewireStyles
+        {!! \Filament\Support\Facades\FilamentAsset::renderStyles([]) !!}
+        </head><body><main style="padding:2rem"><livewire:minimal-filament-action-fixture /></main>
+        @filamentScripts(withCore: true)</body></html>
         BLADE, deleteCachedView: true);
 });
 Route::middleware('web')->get('/fixture-proof/{alias}', function (string $alias) use ($directory): Response {
