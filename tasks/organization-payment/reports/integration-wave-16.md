@@ -37,7 +37,7 @@ cleanup berhasil; Pint file delta dan PHPStan seluruh proyek lulus. Nol
 create ulang, settlement, public wiring, command atau scheduler. P10c-a diterima;
 discovery/lease/operasional tetap P10c-b.
 
-Backend cursor `163af1e1-5f6a-4358-82dd-3e4d2134e4ed:63`. Proposal P10c-b0
+Backend cursor `163af1e1-5f6a-4358-82dd-3e4d2134e4ed:64`. Proposal P10c-b0
 `306f3a7`/`7c96535` diintegrasikan sebagai `9d1db26`/`d99ffa4`; ADR009 menerima
 lease dua fase. Turn `01a05a2e-0dcd-7001-8a4d-efcbd1092a9e` aktif pada P10c-b1
 schema/model/config dan tes disposable saja. Acquisition, provider, command dan
@@ -69,3 +69,7 @@ PostgreSQL disposable **260/260 tes, 2.292 assertions** dengan cleanup sukses.
 Tidak ada create/POST, command, scheduler, route atau operasi aktif. Backend siap
 menerima satu increment P10c-b4 koordinator internal bounded; frontend/portal
 tetap menunggu dependency masing-masing.
+
+Turn backend `01a05aaa-d776-7913-a171-c8afde2536ff` aktif mengerjakan P10c-b4
+dengan tes RED lebih dahulu. Instruksi tidak mencakup command/job/scheduler/route
+atau P11; task frontend dan portal tidak diberi pekerjaan duplikat.
