@@ -622,3 +622,8 @@ Reviewer resource 10/96, portal cabang 14/210, legacy Filament 4/27,
 Pint/PHPStan dan default synthetic 1320/8214 lulus. PostgreSQL tidak diulang
 karena tidak ada schema/lock/RLS writer baru. P11c3a diterima; approve/reject UI
 dan seluruh discovery/route non-testing tetap belum aktif.
+
+Backend turn `01a05cae-fc8a-7c23-8359-25cac78c020e` (cursor
+`67fb332a-ee06-4280-b3fe-55c3b79bcc9c:19`) aktif pada P11c3b decision actions
+default-off. Fingerprint harus berasal dari audit proof-access reviewer terbaru,
+bukan current proof yang belum dilihat; aktivasi produksi tetap dilarang.

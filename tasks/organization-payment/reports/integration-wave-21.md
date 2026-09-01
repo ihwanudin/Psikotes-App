@@ -24,3 +24,8 @@ Resource OrganizationBills cabang dan Orders legacy tidak diubah.
 
 Belum ada approve/reject UI, production route/discovery/navigation, browser
 acceptance, outbound, DB aktif, deploy, atau push.
+
+Backend task existing menerima P11c3b approve/reject actions default-off. Turn
+`01a05cae-fc8a-7c23-8359-25cac78c020e`, cursor
+`67fb332a-ee06-4280-b3fe-55c3b79bcc9c:19`; route/discovery non-testing dan
+rollout browser tetap di luar scope.
