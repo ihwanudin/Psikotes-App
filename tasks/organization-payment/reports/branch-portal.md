@@ -1,5 +1,27 @@
 # P12a-prep — portal cabang baca-saja
 
+## P12b core review fix — delta dari 97f3774
+
+Review root menahan rangkaian awal. Fix ini tidak memperluas scope. Page kini
+hanya memetakan AuthorizationException, DomainException, dan InvalidArgumentException
+ke pesan generik; RuntimeException/QueryException/error programmer tidak ditelan.
+Fault injection pada event creating AssessmentBill membuktikan error sintetis
+keluar dari Livewire dan transaksi meninggalkan bill/item/charge/audit seluruhnya 0.
+
+Confirm setelah preview memuat ulang membership persisted: perubahan role,
+branch, atau deleted_at ditolak tanpa bill/charge. Perubahan branch menghasilkan
+PREVIEW_CHANGED generik karena admin masih sah pada organisasi barunya; role dan
+deleted ditolak authorization. Tidak ada scope lama yang dipakai.
+
+Tes Livewire penuh mengirim nilai checkbox attempt sebagai string seperti browser,
+konsultasi boolean, payment method persisted, memanggil review lalu confirm,
+dan membuktikan redirect ke bill canonical serta total IDR130. Boundary hanya
+mengubah digit-string positif menjadi ID integer; nilai lain tetap invalid.
+Perubahan consultation setelah review menghapus preview/reviewed selection dan
+confirm tidak menulis. Focused final: **19 tes/61 assertions lulus**; Pint lulus.
+PHPStan application scope dan diff-check dijalankan setelah perubahan. Browser
+tetap ditunda sesuai instruksi review. Default-off/testing-only tetap sama.
+
 ## P12b core default-off — delta dari 49c0ff4
 
 Tanggal 2026-09-01. P11c dan P12a telah diterima root sebagai implementasi lokal
@@ -979,4 +1001,3 @@ aksi selain viewAny/view, serta query scope dan hydration check. Acuan:
 [testing tables](https://filamentphp.com/docs/5.x/testing/testing-tables),
 [Laravel authorization](https://laravel.com/framework/docs/13.x/authorization),
 dan [OWASP authorization](https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html).
-
