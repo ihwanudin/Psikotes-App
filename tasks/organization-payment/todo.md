@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P8a, P9a/b/c, P10a, core P10b, P10c-a/b, P11a, P11b, P11c1a–b, P11c2a–c, dan P11c3a reviewer list/detail/open-proof default-off selesai lokal. P11c decision UI berikutnya; route produksi belum aktif. Root synthetic default 1320/8214 dan PostgreSQL disposable terakhir 293/2519 lulus. Command/scheduler tetap tertutup. Frontend/portal menunggu dependency backend. P8b–P18 keseluruhan belum end-to-end; tidak deploy atau migrasi DB aktif.**
+Status: **P1–P8a, P9a/b/c, P10a, core P10b, P10c-a/b, P11a, P11b, P11c1a–b, P11c2a–c, dan P11c3a–b reviewer UI default-off selesai lokal. Browser acceptance P11c berikutnya; route/discovery produksi belum aktif. Root synthetic default 1346/8352 dan PostgreSQL disposable terakhir 293/2519 lulus. Command/scheduler tetap tertutup. Frontend/portal menunggu checkpoint backend. P8b–P18 keseluruhan belum end-to-end; tidak deploy atau migrasi DB aktif.**
 
 ## Gerbang revisi kolektif
 
@@ -487,6 +487,7 @@ provider atau menjadi authority sampai acquisition/validator berikutnya direview
 - [x] P11c2b policy dan internal private-proof issuer selesai lokal pada `3a605c9`/`0887725`: hanya persisted SuperAdmin aktif, storage di luar lock, second recheck actor+fingerprint, dan audit sukses tanpa URL/key/PII. Root default 1283/7922 dan PostgreSQL disposable 293/2519 lulus; belum controller/route/UI/decision wiring.
 - [x] P11c2c HTTP adapter test-only selesai lokal pada `3214126`/`9ee8768`: proof redirect privat, request decision strict, error mapping generik, header no-store/no-referrer, dan route sintetis membuktikan POST+web middleware. Root default 1310/8118 lulus; `routes/web.php` belum berubah dan UI belum dibuat.
 - [x] P11c3a reviewer resource default-off selesai lokal pada `e262714`/`354d7b2`: SuperAdmin-only list/detail projection aman, hydration reauthorization, pagination/filter bounded, dan aksi buka bukti melalui issuer privat. Root default 1320/8214 lulus; approve/reject dan discovery non-testing belum aktif.
+- [x] P11c3b decision actions default-off selesai lokal pada `877f0a3`/`fb8fd88`: approve/reject hanya memakai fingerprint dari audit proof-access reviewer terbaru, stale/replaced/expired/tampered/wrong-actor context fail closed, lalu delegasi ke finalizer canonical. Root default 1346/8352 lulus; browser acceptance dan aktivasi produksi belum dilakukan.
 
 **Acceptance:**
 

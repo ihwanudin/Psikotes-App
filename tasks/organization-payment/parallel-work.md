@@ -627,3 +627,10 @@ Backend turn `01a05cae-fc8a-7c23-8359-25cac78c020e` (cursor
 `67fb332a-ee06-4280-b3fe-55c3b79bcc9c:19`) aktif pada P11c3b decision actions
 default-off. Fingerprint harus berasal dari audit proof-access reviewer terbaru,
 bukan current proof yang belum dilihat; aktivasi produksi tetap dilarang.
+
+P11c3b `3d39987`/`ae58935` diintegrasikan root sebagai `877f0a3`/`fb8fd88`.
+Decision UI 26/134, reviewer/finalizer/issuer 54/294, portal+legacy 18/237,
+Pint/PHPStan dan default synthetic 1346/8352 lulus. Suite penuh lebih lama tetapi
+proses tetap aktif dan berakhir sukses. PostgreSQL tidak diulang karena audit
+lookup read-only dan writer/concurrency tetap finalizer yang sudah dibuktikan.
+Browser acceptance default-off berikutnya; aktivasi produksi tetap dilarang.
