@@ -708,3 +708,16 @@ role salah, tenant lama dan bill asing tanpa kebocoran. Exact DB count tetap
 2 bill/11 charge/11 item/2 audit dan side-effect lain nol. Root gabungan empat
 suite P12a/P12b **86/86 tes, 1.010 assertions**, PHP/Node syntax dan Pint lulus.
 P12b diterima lokal default-off; sequential SQLite bukan klaim concurrency PG.
+
+P12c awal `2bf56b6`/`7558915` ditahan karena rejection enum dipetakan lowercase,
+subheading bertentangan dengan action upload, serta branch URL issuer belum
+menyamai guard config/channel reviewer. Fix `889ed26`/`80f1cf2` diterima dan
+seluruh rangkaian diintegrasikan root sebagai `4b8ff72`/`4f051af`/`6a87caa`/
+`8fbf3cb`. Upload/replace tetap mendelegasikan writer P11c canonical; branch
+issuer memuat ulang persisted role/tenant, manual channel, current fingerprint,
+disk+TTL config, URL nonempty, lalu second locked recheck dan audit aman. Storage
+failure disanitasi; DB/audit failure propagate dan rollback. Root storage+P12c
+**50/50 tes, 278 assertions**, P12a terisolasi **14/14, 212 assertions**, Pint
+dan PHPStan lulus. Run campuran nonotoritatif gagal hanya karena reset skema
+SQLite antarsuite; tiap kelompok lulus terisolasi. Core P12c diterima default-off;
+browser upload/open/replace/history berikutnya.

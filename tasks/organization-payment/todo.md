@@ -537,6 +537,8 @@ provider atau menjadi authority sampai acquisition/validator berikutnya direview
 
 ## P12c: Bukti transfer privat dan riwayat
 
+- [x] Core lokal default-off selesai pada `4b8ff72`/`6a87caa`: upload/replace memakai writer P11c canonical, projection riwayat aman, branch issuer short-lived dengan role/tenant/fingerprint second recheck, config/channel guard ketat, dan audit tanpa URL/key/PII. Root storage+P12c 50/278 serta P12a terisolasi 14/212 lulus; browser belum dijalankan.
+
 **Acceptance:**
 
 - [ ] Cabang unggah bukti satu bill; tipe/ukuran/path divalidasi server, download privat berotorisasi. Status unggahan bukan paid; riwayat/verifikasi hanya dibaca sesuai peran.
