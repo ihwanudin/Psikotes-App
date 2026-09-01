@@ -605,3 +605,9 @@ Backend turn `01a05c82-124c-7093-a9a4-434c66ae206c` (cursor
 `67fb332a-ee06-4280-b3fe-55c3b79bcc9c:15`) aktif pada P11c2c HTTP adapter
 test-only. Scope tidak mengizinkan registrasi route produksi, Filament/UI, atau
 perubahan writer; frontend/portal tetap menunggu.
+
+P11c2c `e4f82a9`/`db55abc` diintegrasikan root sebagai `3214126`/`9ee8768`.
+Focused HTTP 27/196, regresi P11c 91/460, legacy proof 12/104, Pint/PHPStan dan
+default synthetic 1310/8118 lulus. PostgreSQL tidak diulang karena query/lock/RLS/
+schema P11c2b tidak berubah; bukti terakhir tetap 293/2519. Adapter diterima;
+production route dan reviewer Filament/UI tetap belum aktif.

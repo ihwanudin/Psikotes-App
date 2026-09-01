@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P8a, P9a/b/c, P10a, core P10b, P10c-a/b, P11a, P11b, P11c1a–b, dan P11c2a–b proof storage serta private reviewer access/policy selesai lokal. P11c HTTP adapter/UI berikutnya; route belum aktif. Root synthetic default 1283/7922 dan PostgreSQL disposable 293/2519 lulus. Command/scheduler tetap tertutup. Frontend/portal menunggu dependency backend. P8b–P18 keseluruhan belum end-to-end; tidak deploy atau migrasi DB aktif.**
+Status: **P1–P8a, P9a/b/c, P10a, core P10b, P10c-a/b, P11a, P11b, P11c1a–b, dan P11c2a–c proof storage/access/policy serta HTTP adapter test-only selesai lokal. P11c reviewer UI default-off berikutnya; route produksi belum aktif. Root synthetic default 1310/8118 dan PostgreSQL disposable terakhir 293/2519 lulus. Command/scheduler tetap tertutup. Frontend/portal menunggu dependency backend. P8b–P18 keseluruhan belum end-to-end; tidak deploy atau migrasi DB aktif.**
 
 ## Gerbang revisi kolektif
 
@@ -485,6 +485,7 @@ provider atau menjadi authority sampai acquisition/validator berikutnya direview
 - [x] P11c1b core typed review/finalizer selesai lokal pada `d8e21b7`/`ca4e21a`: persisted SuperAdmin aktif saja, approve/reject atomik, exact replay, bounded rejection, dan provider/legacy compatibility. Root default 1224/7629 dan PostgreSQL disposable 289/2471 lulus; belum storage access/upload, policy, route, atau UI.
 - [x] P11c2a core private proof storage selesai lokal pada `b9a819e`/`8bf0660`: BranchAdmin pembayar atau exact participant principal self saja, MIME/size/checksum server-side, replacement fingerprint-fenced, expiry/revocation locked recheck, dan cleanup best-effort di luar transaksi. Root default 1261/7830 dan PostgreSQL disposable 292/2508 lulus; belum HTTP access/policy/UI.
 - [x] P11c2b policy dan internal private-proof issuer selesai lokal pada `3a605c9`/`0887725`: hanya persisted SuperAdmin aktif, storage di luar lock, second recheck actor+fingerprint, dan audit sukses tanpa URL/key/PII. Root default 1283/7922 dan PostgreSQL disposable 293/2519 lulus; belum controller/route/UI/decision wiring.
+- [x] P11c2c HTTP adapter test-only selesai lokal pada `3214126`/`9ee8768`: proof redirect privat, request decision strict, error mapping generik, header no-store/no-referrer, dan route sintetis membuktikan POST+web middleware. Root default 1310/8118 lulus; `routes/web.php` belum berubah dan UI belum dibuat.
 
 **Acceptance:**
 
