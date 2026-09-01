@@ -150,7 +150,7 @@ final class AssessmentBillPaymentFinalizationTest extends OrganizationPaymentTes
 
     public function test_pending_nonpaid_event_does_not_mutate_payment_state(): void
     {
-        $this->assertSame('ignored', $this->finalize($this->event(PaymentStatus::Expired))['decision']);
+        $this->assertSame('ignored', $this->finalize($this->event(PaymentStatus::Pending))['decision']);
         $this->assertDatabaseHas('assessment_bills', ['id' => $this->bill['bill'], 'status' => 'pending', 'paid_at' => null]);
         $this->assertDatabaseHas('assessment_bill_items', ['id' => $this->bill['item'], 'settled_at' => null]);
         $this->assertDatabaseCount('audit_logs', 0);

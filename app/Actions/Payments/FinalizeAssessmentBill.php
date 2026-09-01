@@ -92,11 +92,19 @@ final readonly class FinalizeAssessmentBill
 
             return $this->result('replayed', $items->count(), 0);
         }
-        if ($event->status !== PaymentStatus::Paid) {
-            return $this->result('ignored', $items->count(), 0);
+        if (in_array($bill->status, ['expired', 'rejected'], true)) {
+            $this->assertTerminalReplay($event, $bill, $items);
+
+            return $this->result('replayed', $items->count(), 0);
         }
         if ($bill->status !== 'pending' || $bill->paid_at !== null) {
             throw new DomainException('ASSESSMENT_PAYMENT_STATE_INVALID');
+        }
+        if ($event->status === PaymentStatus::Pending) {
+            return $this->result('ignored', $items->count(), 0);
+        }
+        if (in_array($event->status, [PaymentStatus::Expired, PaymentStatus::Cancelled], true)) {
+            return $this->transitionTerminal($event, $bill, $items);
         }
 
         $paidAt = CarbonImmutable::instance($event->occurredAt)->utc()->startOfSecond();
@@ -125,6 +133,27 @@ final readonly class FinalizeAssessmentBill
         }
 
         return $this->result('settled', $items->count(), $activated);
+    }
+
+    /** @param  Collection<int, AssessmentBillItem>  $items
+     * @return array{decision: string, allocationCount: int, activatedAttemptCount: int}
+     */
+    private function transitionTerminal(PaymentEvent $event, AssessmentBill $bill, Collection $items): array
+    {
+        $occurredAt = CarbonImmutable::instance($event->occurredAt)->utc()->startOfSecond();
+        if ($occurredAt->isFuture()) {
+            throw new DomainException('ASSESSMENT_PAYMENT_TIME_INVALID');
+        }
+        foreach ($items as $item) {
+            if ($item->settled_at !== null) {
+                throw new DomainException('ASSESSMENT_PAYMENT_ALLOCATION_INVALID');
+            }
+        }
+        $status = $event->status === PaymentStatus::Expired ? 'expired' : 'rejected';
+        $bill->update(['status' => $status]);
+        $this->auditTerminal($event, $bill, $items, $occurredAt, $status);
+
+        return $this->result('transitioned', $items->count(), 0);
     }
 
     private function assertEvent(PaymentEvent $event, AssessmentBill $bill): void
@@ -221,6 +250,28 @@ final readonly class FinalizeAssessmentBill
         }
     }
 
+    /** @param  Collection<int, AssessmentBillItem>  $items */
+    private function assertTerminalReplay(PaymentEvent $event, AssessmentBill $bill, Collection $items): void
+    {
+        $expectedStatus = $event->status === PaymentStatus::Expired ? 'expired'
+            : ($event->status === PaymentStatus::Cancelled ? 'rejected' : null);
+        if ($expectedStatus !== $bill->status || $bill->paid_at !== null) {
+            throw new DomainException('ASSESSMENT_PAYMENT_STATE_INVALID');
+        }
+        foreach ($items as $item) {
+            if ($item->settled_at !== null) {
+                throw new DomainException('ASSESSMENT_PAYMENT_REPLAY_MISMATCH');
+            }
+        }
+        $occurredAt = CarbonImmutable::instance($event->occurredAt)->utc()->startOfSecond();
+        $audit = DB::table('audit_logs')->where('action', 'assessment_bill.'.$expectedStatus)
+            ->where('subject_type', AssessmentBill::class)->where('subject_id', (string) $bill->id)->get();
+        if ($audit->count() !== 1 || json_decode((string) $audit->first()->context, true, 512, JSON_THROW_ON_ERROR)
+            !== $this->terminalAuditContext($event, $items, $occurredAt, $expectedStatus)) {
+            throw new DomainException('ASSESSMENT_PAYMENT_REPLAY_MISMATCH');
+        }
+    }
+
     /** @param Collection<int, AssessmentBillItem> $items */
     private function audit(PaymentEvent $event, AssessmentBill $bill, Collection $items, CarbonImmutable $paidAt): void
     {
@@ -238,6 +289,24 @@ final readonly class FinalizeAssessmentBill
         ]);
     }
 
+    /** @param  Collection<int, AssessmentBillItem>  $items */
+    private function auditTerminal(PaymentEvent $event, AssessmentBill $bill, Collection $items,
+        CarbonImmutable $occurredAt, string $status): void
+    {
+        $now = now()->toImmutable();
+        DB::table('audit_logs')->insert([
+            'branch_id' => $bill->organization_id,
+            'actor_type' => 'system',
+            'actor_id' => null,
+            'action' => 'assessment_bill.'.$status,
+            'subject_type' => AssessmentBill::class,
+            'subject_id' => (string) $bill->id,
+            'context' => json_encode($this->terminalAuditContext($event, $items, $occurredAt, $status), JSON_THROW_ON_ERROR),
+            'occurred_at' => $now,
+            'expires_at' => $now->addYearsNoOverflow(2),
+        ]);
+    }
+
     /** @param Collection<int, AssessmentBillItem> $items
      * @return array<string, mixed>
      */
@@ -250,6 +319,24 @@ final readonly class FinalizeAssessmentBill
             'amount' => $event->amount,
             'currency' => $event->currency,
             'paidAt' => $paidAt->format('Y-m-d\TH:i:s.u\Z'),
+            'billItemIds' => $items->pluck('id')->map(static fn (mixed $id): int => (int) $id)->all(),
+        ];
+    }
+
+    /** @param  Collection<int, AssessmentBillItem>  $items
+     * @return array<string, mixed>
+     */
+    private function terminalAuditContext(PaymentEvent $event, Collection $items, CarbonImmutable $occurredAt,
+        string $status): array
+    {
+        return [
+            'version' => 1,
+            'eventIdHash' => hash('sha256', $event->eventId),
+            'providerReferenceHash' => hash('sha256', $event->providerReference),
+            'status' => $status,
+            'amount' => $event->amount,
+            'currency' => $event->currency,
+            'occurredAt' => $occurredAt->format('Y-m-d\TH:i:s.u\Z'),
             'billItemIds' => $items->pluck('id')->map(static fn (mixed $id): int => (int) $id)->all(),
         ];
     }

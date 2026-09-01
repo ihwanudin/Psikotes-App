@@ -10,6 +10,7 @@ use App\Enums\PaymentWebhookOutcome;
 use App\Models\PaymentWebhookEvent;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
+use App\Services\Payments\Exceptions\AssessmentBillPaymentRejected;
 use App\Services\Payments\Exceptions\InvalidOrderTransition;
 use App\Services\Payments\Exceptions\PaymentAmountMismatch;
 use App\Services\Payments\Exceptions\PaymentReferenceMismatch;
@@ -21,7 +22,7 @@ final readonly class PaymentWebhookProcessor
 {
     public function __construct(
         private RlsContextRunner $runner,
-        private OrderPaymentEventHandler $handler,
+        private PaymentEventDispatcher $dispatcher,
     ) {}
 
     public function process(string $provider, PaymentEvent $event): PaymentWebhookResult
@@ -79,7 +80,8 @@ final readonly class PaymentWebhookProcessor
             ->firstOrFail();
 
         if ($claimed === 0) {
-            if (! hash_equals($record->intent_hash, $intentHash)) {
+            if (! hash_equals($record->intent_hash, $intentHash)
+                || $record->merchant_reference !== $event->merchantReference) {
                 return new PaymentWebhookResult(PaymentWebhookOutcome::Conflict, 'intent_mismatch');
             }
 
@@ -91,22 +93,24 @@ final readonly class PaymentWebhookProcessor
         }
 
         try {
-            $transition = $this->handler->applyInCurrentServiceTransaction($event);
+            $changed = $this->dispatcher->applyInCurrentServiceTransaction($provider, $event);
         } catch (InvalidOrderTransition) {
             return $this->reject($record, 'invalid_transition');
         } catch (PaymentReferenceMismatch) {
             return $this->reject($record, 'reference_mismatch');
         } catch (PaymentAmountMismatch) {
             return $this->reject($record, 'money_mismatch');
+        } catch (AssessmentBillPaymentRejected) {
+            return $this->reject($record, 'bill_invalid');
         }
 
         $record->forceFill([
-            'outcome' => $transition->changed ? 'applied' : 'ignored',
+            'outcome' => $changed ? 'applied' : 'ignored',
             'processed_at' => now(),
         ])->save();
 
         return new PaymentWebhookResult(
-            $transition->changed ? PaymentWebhookOutcome::Applied : PaymentWebhookOutcome::Ignored,
+            $changed ? PaymentWebhookOutcome::Applied : PaymentWebhookOutcome::Ignored,
         );
     }
 
