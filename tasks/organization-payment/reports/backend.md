@@ -2421,3 +2421,76 @@ tidak di-stage sebagai file penuh. Patch integrasi yang diperlukan:
 Tidak ada route/controller/policy/resource, writer/upload/storage call, schema
 historis, config/.env/data aktif, provider/notifier/outbound, command/scheduler,
 UI, deploy, push, atau P11c1b. **STOP untuk review P11c1a**.
+
+## P11c1b — core typed review/finalizer transfer manual
+
+Commit kode/tes lokal `8bc0310` menambah boundary internal
+`ReviewAssessmentBillTransfer` yang hanya menerima
+`AssessmentBillManualReview`. DTO memerlukan actor admin positif, reference
+`AB_`+ULID, fingerprint proof 64 lowercase hex, decision enum APPROVE/REJECT,
+dan rejection code enum. Constructor menolak approve dengan reason maupun reject
+tanpa reason. Allowlist rejection adalah `AMOUNT_MISMATCH`,
+`UNREADABLE_PROOF`, `WRONG_BENEFICIARY`, `DUPLICATE_PROOF`, dan
+`OTHER_UNVERIFIABLE`; tidak ada free text.
+
+`FinalizeAssessmentBill::executeManual()` menjadi sibling typed dari provider
+entrypoint. Ia menolak ambient RLS context/transaction, masuk service transaction,
+lalu lock/reload Admin terlebih dahulu dan hanya menerima persisted non-deleted
+SuperAdmin. Missing/stale/deleted/role-changed actor serta BranchAdmin owner atau
+foreign, Staff dengan legacy flag, Psychologist, dan ID non-admin ditolak sebelum
+query `assessment_bills`, sehingga reference tidak menjadi oracle. Ability
+`can_verify_payments` dan policy order legacy tidak dibaca.
+
+Sesudah actor sah, graph loader yang sama dipakai oleh finalizer provider dan
+manual dengan urutan organization→bill→items→attempts→participants→packages→
+charges→payment method. Manual path mengharuskan method persisted tepat
+`manual_transfer` walaupun kini inactive, gateway/invoice NULL, lima proof field
+lengkap dan canonical, serta fingerprint recompute exact. Money, currency, item,
+charge, attempt, participant, package, payer, snapshot, dan checkout metadata
+seluruhnya direload dari DB; browser tidak menyediakan authority tersebut.
+
+APPROVE menggunakan waktu server sebagai paid/verified time, mengisi actor,
+melunasi semua item melalui private settlement primitive yang juga dipakai
+provider, menulis satu audit `assessment_bill.paid`, lalu menjalankan primitive
+activation/outbox P8b dalam transaksi yang sama. Consent/identity incomplete
+tetap paid+locked/PROVISIONED. REJECT mengubah bill menjadi rejected dengan code
+bounded dan satu audit actor admin, tanpa settlement, activation, entitlement,
+release/reinvoice, atau outbox. Context audit version 1 hanya membawa source,
+decision/code, fingerprint, canonical money, review time, dan item IDs; tidak
+membawa object key, path, URL, organization ID, atau PII.
+
+Exact replay actor+proof+decision+reason yang sama adalah no-op. Actor lain,
+opposite decision, reason/proof berbeda, state/channel/allocation/snapshot/money
+korup, serta terminal noncanonical gagal tertutup tanpa audit/outbox baru.
+Provider `PaymentEvent`, provider audit context, terminal behavior, dan webhook
+dispatcher tidak diubah.
+
+### Bukti aktual
+
+- RED pertama: **3 tes, 0 passed, 0 assertions**, seluruhnya karena action typed
+  belum tersedia; tidak ada query bill yang tercapai.
+- GREEN feature + provider finalizer: **32/32 tes, 167 assertions**. Cakupan
+  termasuk constructor matrix, authority-before-lookup, owner/foreign legacy
+  flags, missing/deleted/role-changed actor, approve/reject 1 dan 10 item, mixed
+  prerequisites, exact/opposite/stale replay, proof/channel/scope/snapshot/money
+  corruption, serta rollback item kelima, activation, outbox dan ambient context.
+- Provider dispatcher/webhook legacy terpisah: **19/19 tes, 85 assertions**.
+  Legacy manual order/proof: **18 passed, 93 assertions**; satu received-page
+  gagal karena `public/build/manifest.json` tidak tersedia. Tidak dibuat fake
+  manifest atau perubahan harness.
+- PostgreSQL disposable runtime `psikotes_runtime`, non-owner,
+  `rolsuper=false`, `rolbypassrls=false`: **268/268 tes, 1.870 assertions**,
+  cleanup sukses. Tiga test baru membuktikan same-review race menghasilkan satu
+  settlement/replay, opposite decision hanya satu terminal audit/outbox set,
+  dan revocation actor yang commit saat worker menunggu lock ditinjau ulang
+  sebelum bill lookup/mutasi.
+- Full default synthetic `--exclude-group=sandbox`: **1.149 tes**, 1.126 passed,
+  6.203 assertions, 23 failure render halaman karena Vite manifest worker tidak
+  tersedia. Tidak ada sandbox/external service yang dijalankan. Root memiliki
+  baseline build dan regresi default otoritatif terpisah.
+- Pint sembilan file lane lulus. PHPStan seluruh project dalam environment
+  testing/SQLite eksplisit lulus **0 error**. `git diff --check` lulus.
+
+Tidak ada upload/object-storage I/O, policy/route/controller/Filament/UI,
+command/job/scheduler, schema/migration/config/.env, provider/notifier nyata,
+DB aplikasi, deploy, push, atau P11c2. **STOP untuk review P11c1b**.
