@@ -1818,3 +1818,66 @@ Tidak ada perubahan schema/config/model existing, validator canonical, claim,
 provider GET/POST, persistence outcome, command/job/scheduler/route, source/gate,
 credential/.env/data aktif, outbound, deploy atau push. **STOP sebelum
 P10c-b2b/P10c-b3/P11**.
+
+## P10c-b2b — validasi canonical dan permit ber-token rotasi
+
+Increment ini menambah `ValidateAssessmentInvoiceReconciliationLease` dengan
+input tunggal DTO provisional P10c-b2a. Entrypoint menolak ambient RLS context,
+outer transaction, message ID bukan ULID, token bukan UUID, dan seluruh config
+ADR-009 yang invalid. Ia tidak menerima organization/bill dari caller.
+
+Fase 2 membuka service transaction baru. Routing hint dibaca tanpa lock dan hanya
+dipakai untuk menemukan organization/bill; seluruh authority canonical tetap
+didelegasikan ke `ClaimAssessmentBillInvoice::execute`, sehingga urutan lock
+organization-first serta predicate payer/policy/snapshot/item/linkage tidak
+disalin. Hanya hasil `recovery_required` untuk message yang sama dilanjutkan.
+Outbox dikunci terakhir lalu diperiksa ulang terhadap topic/aggregate/linkage,
+pasangan issuing+processing/null-error atau unknown+failed/error canonical,
+attempts1, processed NULL, token+expiry provisional exact pada presisi database,
+belum expired, serta lookup counter di bawah maksimum.
+
+Update conditional mengganti UUID provisional dengan UUID permit baru, refresh
+expiry dari database clock, dan increment generation tepat satu. Query builder
+tidak menyentuh `updated_at`, available/status/attempts/processed/error/next atau
+audit. DTO `AssessmentInvoiceReconciliationPermit` membungkus
+`AssessmentInvoicePermit` existing, UUID permit, generation, dan expiry.
+Provisional replay/lost/stolen hanya menghasilkan null; owner token baru tidak
+dihapus.
+
+Candidate yang gagal dengan `DomainException` menggulung balik transaksi
+organization-first lalu menjalankan cleanup outbox-only dengan fence token+expiry,
+tanpa counter/audit/provider. Unexpected programming/database exception tetap
+propagate dan lease provisional dibiarkan expire. Decoder payload permit P10c-a
+dipindahkan utuh ke `AssessmentInvoicePermitFactory`; P10c-a dan validator kini
+memakai satu parser canonical, bukan near-duplicate.
+
+### Bukti aktual
+
+- RED setelah setup fixture benar: **14 tes, 14 errors, 98 assertions** karena
+  validator belum ada.
+- Focused feature final: **15/15 tes, 201 assertions**. Processing dan unknown
+  canonical menerbitkan permit; token diputar, expiry direfresh dan generation
+  naik. Replay, lost/expired/stolen, max exhausted, policy/channel OFF, revoked,
+  corrupt/foreign/paid, ambient/config, cleanup, audit/business-column stability,
+  serta rollback unexpected failure terbukti.
+- Regresi P10c-a bersama validator setelah ekstraksi factory: **43/43 tes,
+  480 assertions**. Regresi lookup/claim/issuance/P10c-a/reservation/validation
+  final: **197/197 tes, 1.524 assertions**.
+- Runner PostgreSQL pertama menemukan mismatch presisi mikrodetik antara database
+  clock dan binding timestamp (**237 tes, 1 failure, 1.636 assertions**). Validator
+  dinormalisasi ke presisi penyimpanan detik. Run kedua menemukan fixture hint
+  mengambil model stale (**237 tes, 1 failure, 1.641 assertions**); fixture
+  diperbaiki memakai row fresh. Final disposable: **237/237 tes, 1.646
+  assertions**, cleanup sukses.
+- Tes PG menjalankan runtime `psikotes_runtime` non-owner/NOBYPASSRLS: dua
+  validator benar-benar menunggu mutex organization, hanya satu mendapat permit
+  generation1 dan satu null; worker fase 1 tetap menyelesaikan hint berbeda saat
+  organization lock ditahan; expired/stolen fence tidak increment atau menghapus
+  owner baru. Tidak ada deadlock atau provider call.
+- PHPStan seluruh project dengan environment testing eksplisit lulus **0 error**;
+  scoped check setelah perubahan terakhir juga nol. Pint enam file kode/tes dan
+  `git diff --check` lulus.
+
+Tidak ada PaymentProvider GET/POST/create, persistence outcome, command/job/
+scheduler/route, schema/config baru, source/gate, credential/.env/data aktif,
+outbound, deploy atau push. **STOP sebelum P10c-b3/P11**.
