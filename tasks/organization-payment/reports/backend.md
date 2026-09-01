@@ -2168,3 +2168,58 @@ HTTP/body/state regression, serta PostgreSQL non-owner/RLS/two-process.
 Tidak ada source produksi, route, controller, provider, command/scheduler,
 schema/config, credential/.env/data aktif, outbound, notifier, deploy atau push
 yang berubah. **STOP untuk review P11b0 sebelum dispatcher implementation**.
+
+## P11b1 — dispatcher event pembayaran internal
+
+Commit kode/tes lokal `2c94e8e` menempatkan `PaymentEventDispatcher` setelah
+autentikasi/normalisasi provider dan durable claim existing di
+`PaymentWebhookProcessor`. Namespace merchant reference dipisahkan tegas: semua
+prefix `AB_`, termasuk malformed atau tidak ditemukan, hanya melewati finalizer
+assessment bill; reference non-AB tetap menuju handler order legacy. Bill hanya
+menerima provider `xendit`. Dispatcher juga mensyaratkan service RLS context yang
+sudah aktif sehingga ia tidak menjadi entrypoint publik baru.
+
+Duplicate `(provider,event_id)` kini tetap memakai intent hash historis dan juga
+membandingkan `merchant_reference` persisted secara exact. Formula hash tidak
+diubah. Hasil finalizer `settled|transitioned` menjadi applied, sedangkan
+`replayed|ignored` menjadi no-op. Domain failure dipetakan lewat allowlist sempit
+ke reference, money, atau bill-invalid generik; exception DB/programming yang
+tidak dikenal tetap keluar dan membatalkan claim.
+
+Finalizer P11a tetap menjadi satu-satunya writer bill. Selain settlement paid,
+state pending sekarang memetakan event pending menjadi no-op, expired menjadi
+bill expired, dan cancelled sintetis menjadi rejected. Transisi terminal tidak
+menyentuh allocation, activation, entitlement, atau outbox serta menulis satu
+audit terminal. Replay terminal exact tidak menambah audit. Bill paid canonical
+mengabaikan pending/expired/cancelled yang terlambat; bill expired/rejected tidak
+dapat dihidupkan kembali atau dipindahkan ke terminal lawan.
+
+### Bukti aktual
+
+- RED awal: **10 tes, 2 passed, 8 failures, 20 assertions**. Kegagalan
+  membuktikan reference AB masih jatuh ke lookup order legacy, merchant reference
+  duplicate belum dibandingkan, terminal belum ditransisikan, dan rollback
+  finalizer belum tercapai melalui processor.
+- GREEN kontrak dispatcher: **12/12 tes, 73 assertions**. Cakupan: malformed dan
+  unknown AB tanpa query order, spoof provider, amount mismatch, merchant
+  duplicate conflict, pending/expired/cancelled, paid late-state, terminal
+  fail-closed/replay, rollback event claim beserta seluruh efek finalizer,
+  service-context denial, dan order legacy non-AB.
+- Regresi finalizer P11a: **10/10 tes, 65 assertions**. Ekspektasi no-op lama
+  diperjelas memakai event pending; coverage expired/cancelled kini berada di
+  suite dispatcher sesuai kontrak P11b1.
+- Regresi webhook/provider/reconciliation/order legacy: **40/40 tes, 149
+  assertions**. Default XML organization-payment: **75/75 tes, 414 assertions**.
+- PostgreSQL disposable runtime non-owner: **241/241 tes, 1.719 assertions**;
+  resource cleanup sukses dan container aplikasi tidak disentuh. Angka lebih
+  kecil dari root terbaru karena worker mempertahankan snapshot baseline sesuai
+  instruksi; runner ini memverifikasi regresi transaksi/RLS yang tersedia di
+  snapshot, sementara concurrency finalizer dua proses telah diverifikasi root
+  pada integrasi P11a.
+- Pint enam file kode/tes bersih, PHPStan seluruh project **0 error**, dan
+  `git diff --check` lulus.
+
+Tidak ada route/controller baru, perubahan autentikasi/normalisasi provider,
+status reconciler assessment, command/job/scheduler, provider call, schema/config,
+credential/.env/data aktif, settlement manual, notifikasi terkirim, deploy, push,
+atau aktivasi source/gate. **STOP untuk review P11b1 sebelum P11b2/P11c**.
