@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P8a, P9a/b/c, P10a, core P10b, P10c-a/b, P11a, dan P11b1 dispatcher selesai lokal. Root default 1187/7440 serta PostgreSQL disposable 262/2320 lulus. Command/scheduler tetap tertutup; P11b2 status reconciliation internal berikutnya. Frontend/portal menunggu dependency backend. P8b–P18 keseluruhan belum end-to-end; tidak deploy atau migrasi DB aktif.**
+Status: **P1–P8a, P9a/b/c, P10a, core P10b, P10c-a/b, P11a, serta P11b dispatcher/reconciliation internal selesai lokal. Root default 1195/7472 dan PostgreSQL disposable 263/2332 lulus. Command/scheduler tetap tertutup; P11c verifikasi transfer berikutnya. Frontend/portal menunggu dependency backend. P8b–P18 keseluruhan belum end-to-end; tidak deploy atau migrasi DB aktif.**
 
 ## Gerbang revisi kolektif
 
@@ -471,7 +471,7 @@ provider atau menjadi authority sampai acquisition/validator berikutnya direview
 
 **Acceptance:**
 
-- [ ] Setelah autentikasi provider, dispatcher membedakan bill vs legacy dalam event processor idempotent. AB_ tak dikenal ditolak tanpa fallback; checkStatus/reconciliation memakai finalizer yang sama; regresi webhook/order legacy tetap lulus.
+- [x] Setelah autentikasi provider, dispatcher membedakan bill vs legacy dalam event processor idempotent. AB_ tak dikenal ditolak tanpa fallback; checkStatus/reconciliation memakai finalizer yang sama; regresi webhook/order legacy tetap lulus. P11b2 root `f104801`/`c850af3`; default 1195/7472 dan PG263/2332 lulus.
 
 **Dependencies:** P11a. **Scope:** M.
 

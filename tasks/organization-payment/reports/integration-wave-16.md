@@ -136,3 +136,11 @@ Backend turn `01a05bc9-48c6-7ed3-8e74-626c50d62606` (cursor
 internal bounded. Scope hanya selection singkat → GET fake di luar transaksi/RLS
 → processor/finalizer yang sama; command/job/scheduler dan outbound nyata tetap
 tidak diaktifkan.
+
+P11b2 `71dc062`/`0f3f623` direview dan diintegrasikan sebagai `f104801`/
+`c850af3`. Focused root **30/177**, legacy terisolasi **22/98**, default
+**1.195/7.472**, Pint/PHPStan, serta PostgreSQL disposable **263/2.332** lulus;
+cleanup sukses. Percobaan SQLite campuran pertama gagal karena dua strategi
+reset database berbeda dalam satu proses, lalu kedua kelompok fixture lulus saat
+dijalankan terpisah. P11b diterima; P11c dimulai dari audit authority/tenant
+SuperAdmin tanpa wiring UI atau transfer nyata.

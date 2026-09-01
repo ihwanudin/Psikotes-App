@@ -543,3 +543,10 @@ diterima dan rangkaian diintegrasikan root sebagai `419de35`/`a2fa256`/
 1187/7440, Pint, PHPStan, serta PostgreSQL disposable 262/2320 lulus dan cleanup
 sukses. P11b2 berikutnya hanya reconciler assessment internal bounded; belum
 command/scheduler atau layanan nyata.
+
+P11b2 `71dc062`/`0f3f623` diintegrasikan root sebagai `f104801`/`c850af3`.
+Review memastikan hanya pending Xendit terpilih secara bounded, GET berlangsung
+di luar transaksi/RLS, dan hasil kembali ke processor/finalizer yang sama. Root
+focused 30/177, legacy 22/98, default 1195/7472, Pint/PHPStan dan PostgreSQL
+disposable 263/2332 lulus; cleanup sukses. P11b selesai internal, tetap tanpa
+command/scheduler. Kelanjutan backend adalah audit authority P11c.
