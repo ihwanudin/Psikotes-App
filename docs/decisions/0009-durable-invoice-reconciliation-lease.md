@@ -44,11 +44,14 @@ discovery dan validasi harus dipisah.
   Token provisional bukan izin provider.
 - Fase 2 memakai transaksi baru dengan urutan lock canonical organization-first.
   Setelah seluruh scope/policy/snapshot/state valid, outbox dikunci terakhir dan
-  token/expiry diverifikasi; counter baru bertambah tepat satu dan permit GET
-  diterbitkan. Hint invalid dibersihkan secara token-fenced tanpa provider,
+  token/expiry provisional diverifikasi. Update conditional mengonsumsi token
+  provisional dengan menggantinya memakai UUID permit baru, menyegarkan expiry
+  dari database clock, serta menaikkan counter tepat satu sebelum permit GET
+  diterbitkan. Token provisional yang direplay tidak dapat menghasilkan permit
+  kedua. Hint invalid dibersihkan secara token-fenced tanpa provider,
   counter, atau audit; crash boleh menunggu expiry.
 - GET selalu di luar transaksi dan RLS context. Persist exact/unknown membuka
-  transaksi baru dan wajib cocok token, generation counter, lease belum expired,
+  transaksi baru dan wajib cocok UUID permit baru, generation counter, lease belum expired,
   serta late state canonical. Worker lama tidak boleh menulis hasil.
 - Config server-side awal: batch 25 (1..100), scan 100 (batch..400), lease 60
   detik (30..300), cooldown 300 detik (60..86400), maksimum lookup 12 (1..100).

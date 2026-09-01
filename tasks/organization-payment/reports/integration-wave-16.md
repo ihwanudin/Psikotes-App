@@ -37,7 +37,7 @@ cleanup berhasil; Pint file delta dan PHPStan seluruh proyek lulus. Nol
 create ulang, settlement, public wiring, command atau scheduler. P10c-a diterima;
 discovery/lease/operasional tetap P10c-b.
 
-Backend cursor `163af1e1-5f6a-4358-82dd-3e4d2134e4ed:56`. Proposal P10c-b0
+Backend cursor `163af1e1-5f6a-4358-82dd-3e4d2134e4ed:57`. Proposal P10c-b0
 `306f3a7`/`7c96535` diintegrasikan sebagai `9d1db26`/`d99ffa4`; ADR009 menerima
 lease dua fase. Turn `01a05a2e-0dcd-7001-8a4d-efcbd1092a9e` aktif pada P10c-b1
 schema/model/config dan tes disposable saja. Acquisition, provider, command dan
@@ -48,9 +48,10 @@ Bukti root: database terkait **37/37 tes, 185 assertions**; PostgreSQL disposabl
 **252/252 tes, 2.140 assertions**, cleanup berhasil; Pint file delta dan PHPStan
 seluruh proyek lulus. Schema lease diterima lokal, tanpa migrasi database aktif.
 Turn `01a05a5a-44b2-74a3-9020-76bdcb7c4489` aktif pada P10c-b2a reservasi
-provisional outbox-only; worker melaporkan regresi invoice 182/1322 dan PG
-235/1594 lulus, lalu sedang melakukan review diff/commit final. Validator dan
-provider tetap belum dimulai.
+provisional outbox-only. `8ffd771`/`1e4bcbe` diintegrasikan sebagai
+`fccfedf`/`c54d895`; root invoice **182/182 tes, 1.323 assertions**, PG
+**256/256 tes, 2.195 assertions**, Pint/PHPStan lulus dan cleanup berhasil.
+Validator dan provider tetap belum dimulai.
 Frontend/portal tetap not-loaded pada cursor :33 dan menunggu dependency. Satu
 increment P10c-b berikutnya wajib didesain bounded dan tetap nonaktif sampai
 review; jangan menggandakan instruksi saat task aktif.

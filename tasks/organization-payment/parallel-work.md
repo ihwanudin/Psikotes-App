@@ -502,3 +502,8 @@ P10c-b1 `3dd1c6e`/`dec48ae` diintegrasikan sebagai `256148f`/`3af4372`, dengan
 config root `062815e`. Root database37/185 dan PostgreSQL disposable252/2140,
 Pint serta PHPStan lulus. P10c-b2 berikutnya dibatasi reservasi provisional
 outbox-only; validator canonical dan provider tetap increment terpisah.
+
+P10c-b2a `8ffd771`/`1e4bcbe` diintegrasikan sebagai `fccfedf`/`c54d895`. Root
+invoice182/1323 dan PostgreSQL disposable256/2195 lulus. Untuk mencegah replay
+token provisional menerbitkan dua permit, ADR009 menetapkan fase 2 mengonsumsi
+token dengan UUID permit baru + expiry baru + increment generation atomik.
