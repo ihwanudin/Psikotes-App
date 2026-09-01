@@ -681,3 +681,19 @@ testing-only. Harness wajib mem-boot Laravel/Filament nyata dengan fixture temp,
 deny outbound, role/tenant/direct-URL denial, keyboard/mobile/desktop, 10 attempt
 → satu bill canonical, replay/stale mutation dan secrecy; production discovery,
 route, provider/notifier, DB aktif serta P12c tetap dilarang.
+
+Browser P12b worker `2e2c788`/`e28d3ee`/`69857b7` diintegrasikan root sebagai
+`71fc95a`/`fc8313f`/`697e210`. Setelah run monolitik timeout, harness dipecah tiga
+fase bounded dan fresh run lulus selection/preview/confirm: 10 attempt, 20 aksi
+native, 488 trusted events, enam geometry check 320/390/1280, stale consultation/
+price, double-enter satu bill canonical, reload, secrecy, role/tenant/guest denial,
+serta exact DB count 2 bill/11 charge/11 item/2 audit dan side-effect lain nol.
+Root mengulang focused **19/19 tes, 61 assertions**, PHP/Node syntax dan Pint.
+Bukti diterima parsial: detail existing masih overflow pada 320px dan asset bundle
+detail belum lengkap sehingga diagnostic 404/Alpine/avatar muncul setelah redirect;
+direct-detail denial browser juga belum lengkap. Acceptance P12b belum ditutup.
+
+Portal task existing melanjutkan hardening P12a-detail/P12b default-off: perbaiki
+overflow tanpa menyembunyikan data, sediakan asset/avatar lokal pada harness,
+bersihkan console/network sampai detail reload, dan buktikan direct detail denial.
+P12c serta seluruh aktivasi/layanan produksi tetap dilarang.

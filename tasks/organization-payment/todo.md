@@ -522,7 +522,8 @@ provider atau menjadi authority sampai acquisition/validator berikutnya direview
 
 ## P12b: Bayar banyak peserta dari menu cabang
 
-- [x] Core lokal default-off selesai pada `e872b4b`–`ec86591`: pilihan tenant-scoped, preview server-authoritative, satu delegasi ReserveAssessmentBill, replay canonical, stale/tampered hash fail closed, reauthorization persisted saat confirm, dan unexpected failure tidak disamarkan. Root focused 19/61, Pint dan PHPStan lulus; browser acceptance belum dijalankan.
+- [x] Core lokal default-off selesai pada `e872b4b`–`ec86591`: pilihan tenant-scoped, preview server-authoritative, satu delegasi ReserveAssessmentBill, replay canonical, stale/tampered hash fail closed, reauthorization persisted saat confirm, dan unexpected failure tidak disamarkan. Root focused 19/61, Pint dan PHPStan lulus.
+- [ ] Browser selection/preview/confirm pada `71fc95a`/`fc8313f` lulus: 10 attempt, keyboard, enam geometry check, stale price, double-enter canonical, replay/reload, secrecy dan exact DB count. Acceptance masih terbuka sampai overflow detail 320px, asset diagnostics, dan direct-detail denial browser diperbaiki/dibuktikan.
 
 **Acceptance:**
 
