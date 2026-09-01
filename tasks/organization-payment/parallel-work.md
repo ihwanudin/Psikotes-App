@@ -697,3 +697,14 @@ Portal task existing melanjutkan hardening P12a-detail/P12b default-off: perbaik
 overflow tanpa menyembunyikan data, sediakan asset/avatar lokal pada harness,
 bersihkan console/network sampai detail reload, dan buktikan direct detail denial.
 P12c serta seluruh aktivasi/layanan produksi tetap dilarang.
+
+Hardening worker `f76be8d`/`4b92520`/`0a0d774` diintegrasikan root sebagai
+`279450f`/`d5cf4d2`/`cd59d1e`. Breadcrumb detail kini pendek sementara referensi
+lengkap tetap di ringkasan. Harness hanya melayani asset Filament yang lolos
+realpath di public dan avatar data-URI; CSP/deny outbound tetap ketat. Fresh
+browser lulus sembilan geometry check selection/preview/detail 320/390/1280,
+console/network bersih setelah detail reload, serta direct detail denial guest,
+role salah, tenant lama dan bill asing tanpa kebocoran. Exact DB count tetap
+2 bill/11 charge/11 item/2 audit dan side-effect lain nol. Root gabungan empat
+suite P12a/P12b **86/86 tes, 1.010 assertions**, PHP/Node syntax dan Pint lulus.
+P12b diterima lokal default-off; sequential SQLite bukan klaim concurrency PG.

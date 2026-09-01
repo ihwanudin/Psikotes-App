@@ -523,11 +523,11 @@ provider atau menjadi authority sampai acquisition/validator berikutnya direview
 ## P12b: Bayar banyak peserta dari menu cabang
 
 - [x] Core lokal default-off selesai pada `e872b4b`–`ec86591`: pilihan tenant-scoped, preview server-authoritative, satu delegasi ReserveAssessmentBill, replay canonical, stale/tampered hash fail closed, reauthorization persisted saat confirm, dan unexpected failure tidak disamarkan. Root focused 19/61, Pint dan PHPStan lulus.
-- [ ] Browser selection/preview/confirm pada `71fc95a`/`fc8313f` lulus: 10 attempt, keyboard, enam geometry check, stale price, double-enter canonical, replay/reload, secrecy dan exact DB count. Acceptance masih terbuka sampai overflow detail 320px, asset diagnostics, dan direct-detail denial browser diperbaiki/dibuktikan.
+- [x] Browser P12b selesai pada `71fc95a`/`fc8313f` dengan hardening `279450f`/`d5cf4d2`: 10 attempt, keyboard, sembilan geometry check selection/preview/detail pada 320/390/1280, stale price, double-enter canonical, replay/reload, secrecy, console/network bersih, dan direct-detail denial guest/role/tenant/foreign. Root gabungan P12a/P12b 86/1010 lulus; tetap default-off.
 
 **Acceptance:**
 
-- [ ] Bulk selection attempt layak → preview → konfirmasi ReserveAssessmentBill; tampilkan alasan disabled dan perubahan harga/item. Invoice sekali, anggota terkunci, reload melanjutkan bill yang sama; keyboard/mobile diuji.
+- [x] Bulk selection attempt layak → preview → konfirmasi ReserveAssessmentBill; tampilkan alasan disabled dan perubahan harga/item. Invoice sekali, anggota terkunci, reload melanjutkan bill yang sama; keyboard/mobile diuji. Selesai lokal default-off; aktivasi produksi terpisah.
 
 **Dependencies:** P12a. **Scope:** M.
 
