@@ -556,3 +556,10 @@ untuk implementasi lokal bertahap. Keputusan memerlukan proof identity durable
 sebelum writer dan entrypoint manual typed pada finalizer tanpa fake event Xendit.
 P11c1a berikutnya schema-only; belum upload, review writer, UI, atau migration
 database aktif.
+
+P11c1a `1fb1da9`/`27631db` diintegrasikan sebagai `e6a53b3`/`3e36e2b`;
+model/historical migration compatibility `41bffb9` dan portal fixture contract
+`c72a304` ditambahkan saat review root. Synthetic default 1202/7527, focused 30/162,
+Pint/PHPStan, serta PostgreSQL disposable 286/2428 lulus dengan cleanup sukses.
+Default PHPUnit kini mengecualikan sandbox eksternal (`d864517`). P11c1b core
+typed review/finalizer berikutnya; schema belum diterapkan ke database aktif.

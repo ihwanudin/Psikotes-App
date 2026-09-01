@@ -159,3 +159,13 @@ Backend turn `01a05beb-92a5-78f2-894d-f5b55cc9c329` (cursor
 `67fb332a-ee06-4280-b3fe-55c3b79bcc9c:7`) aktif pada P11c1a schema proof identity.
 Scope hanya migration/model/tests dengan preflight up/down dan PostgreSQL CHECK;
 writer, upload, UI, serta migrasi database aplikasi tetap dilarang.
+
+P11c1a `1fb1da9`/`27631db` diintegrasikan root sebagai `e6a53b3`/`3e36e2b`.
+Patch root `41bffb9` memasang casts dan menjaga historical migration test; PG
+pertama menemukan portal fixture object-key-only, diperbaiki `c72a304`. Hasil
+akhir: focused **30/162**, synthetic default **1.202/7.527**, Pint/PHPStan, dan
+PostgreSQL disposable **286/2.428** lulus; cleanup sukses. Satu run default awal
+tanpa exclude sempat memanggil test Xendit development dan gagal dengan outcome
+unknown; gerbang diperbaiki `d864517` agar default selalu mengecualikan sandbox
+dan sandbox hanya punya konfigurasi eksplisit. P11c1a diterima; tidak ada migrasi
+database aplikasi.

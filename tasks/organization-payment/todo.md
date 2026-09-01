@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P8a, P9a/b/c, P10a, core P10b, P10c-a/b, P11a, serta P11b dispatcher/reconciliation internal selesai lokal. ADR-010 P11c diterima; P11c1a schema proof identity berikutnya. Root default 1195/7472 dan PostgreSQL disposable 263/2332 lulus. Command/scheduler tetap tertutup. Frontend/portal menunggu dependency backend. P8b–P18 keseluruhan belum end-to-end; tidak deploy atau migrasi DB aktif.**
+Status: **P1–P8a, P9a/b/c, P10a, core P10b, P10c-a/b, P11a, P11b, dan P11c1a schema proof identity selesai lokal. P11c1b core review/finalizer berikutnya. Root synthetic default 1202/7527 dan PostgreSQL disposable 286/2428 lulus. Command/scheduler tetap tertutup. Frontend/portal menunggu dependency backend. P8b–P18 keseluruhan belum end-to-end; tidak deploy atau migrasi DB aktif.**
 
 ## Gerbang revisi kolektif
 
@@ -480,6 +480,8 @@ provider atau menjadi authority sampai acquisition/validator berikutnya direview
 **Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Payments/AssessmentBillWebhookTest.php`
 
 ## P11c: Verifikasi transfer oleh ONCAM
+
+- [x] P11c0 ADR-010 dan P11c1a schema proof identity additive selesai lokal; metadata all-or-none, format/range/key CHECK, up/down preflight, casts, RLS dan historical rollback diuji. Root `e6a53b3`/`41bffb9`/`c72a304`; belum writer/upload/UI.
 
 **Acceptance:**
 
