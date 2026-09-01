@@ -1,5 +1,40 @@
 # P12a-prep — portal cabang baca-saja
 
+## P12b browser page — delta dari 55672a9
+
+Tanggal 2026-09-02. Increment ini menguji `CreateCollectiveBill` yang tetap
+default-off melalui harness loopback khusus. Fix view `2e2c788` memberi label/id
+native dan membandingkan ID hasil hidrasi browser secara type-stable tanpa
+mengubah harga, query, policy, atau writer. Harness `e28d3ee` memakai SQLite,
+storage/session/cache disposable, `envDir: false`, `configFile: false`, seluruh
+provider outbound fake/deny, dan hanya menerima `127.0.0.1:8012`.
+
+Playwright dibagi menjadi tiga `run-code` bounded pada page/session yang sama;
+masing-masing menulis `phase-selection-preview.txt`, `phase-confirm.txt`, dan
+`phase-authorization.txt` ke artifact ignored. Fase pertama membuktikan 10
+pilihan sintetis, empat disabled reason aman, Tab/Space/Enter native, total
+server IDR 2.040, dan enam geometry check selection/preview pada 320/390/1280.
+Fase kedua membuktikan perubahan konsultasi menghapus preview, mutasi harga
+ditolak generik, restore + double Enter menuju satu canonical bill, dan reload
+mempertahankan URL. Fase ketiga membuktikan secrecy serta denial guest, role yang
+dicabut, dan membership tenant yang berubah. Total 20 aksi native dan 488 trusted
+events.
+
+Run final memakai fixture
+`oncam-collective-page-7abba5dbf8e947a5a3eb8b9374b2bf3d`. Verify database:
+2 bill (termasuk baseline claimed), 11 charge, 11 item, 2 audit; entitlement,
+outbox, order, consent, dan identity verification tetap nol. PHPUnit focused
+19/61, Pint, PHPStan 0 error, PHP lint, Node check, ESLint, Prettier, dan diff
+check lulus. Server/session ditutup dan port 8012 bebas.
+
+Batas: detail `OrganizationBill` existing melebar pada 320px dan tidak diubah
+karena di luar ownership; ini temuan untuk P12a UI hardening. Harness tidak
+mempublikasikan bundle asset Filament halaman detail, sehingga detail mencatat
+diagnostic 404/Alpine dan avatar eksternal diblokir CSP. Console/network yang
+disahkan bersih adalah selection/preview sebelum redirect; diagnostic detail dan
+denial tetap direkam. Ini bukti SQLite berurutan, bukan race/PostgreSQL, dan
+bukan acceptance P12b/P12c.
+
 ## P12b core review fix — delta dari 97f3774
 
 Review root menahan rangkaian awal. Fix ini tidak memperluas scope. Page kini
