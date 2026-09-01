@@ -111,27 +111,37 @@ final class AssessmentBillWebhookDispatchTest extends OrganizationPaymentTestCas
         $this->assertDatabaseCount('payment_webhook_events', 1);
     }
 
-    public function test_pending_expired_and_cancelled_have_explicit_bill_mapping(): void
+    public function test_every_current_payment_status_has_an_explicit_bill_mapping_and_only_paid_settles(): void
     {
-        $pending = $this->assessmentBill();
-        $expired = $this->assessmentBill();
-        $cancelled = $this->assessmentBill();
+        $expected = [
+            PaymentStatus::Pending->value => [PaymentWebhookOutcome::Ignored, 'pending', false],
+            PaymentStatus::Paid->value => [PaymentWebhookOutcome::Applied, 'paid', true],
+            PaymentStatus::Expired->value => [PaymentWebhookOutcome::Applied, 'expired', false],
+            PaymentStatus::Cancelled->value => [PaymentWebhookOutcome::Applied, 'rejected', false],
+        ];
+        $this->assertSame(array_keys($expected), array_map(
+            static fn (PaymentStatus $status): string => $status->value,
+            PaymentStatus::cases(),
+        ));
 
-        $this->assertSame(PaymentWebhookOutcome::Ignored,
-            $this->process($this->event($pending, PaymentStatus::Pending, 'bill-pending'))->outcome);
-        $this->assertSame(PaymentWebhookOutcome::Applied,
-            $this->process($this->event($expired, PaymentStatus::Expired, 'bill-expired'))->outcome);
-        $this->assertSame(PaymentWebhookOutcome::Applied,
-            $this->process($this->event($cancelled, PaymentStatus::Cancelled, 'bill-cancelled'))->outcome);
+        foreach (PaymentStatus::cases() as $status) {
+            $bill = $this->assessmentBill();
+            [$outcome, $billStatus, $settled] = $expected[$status->value];
 
-        $this->assertDatabaseHas('assessment_bills', ['id' => $pending['bill'], 'status' => 'pending', 'paid_at' => null]);
-        $this->assertDatabaseHas('assessment_bills', ['id' => $expired['bill'], 'status' => 'expired', 'paid_at' => null]);
-        $this->assertDatabaseHas('assessment_bills', ['id' => $cancelled['bill'], 'status' => 'rejected', 'paid_at' => null]);
-        $this->assertSame(0, DB::table('assessment_bill_items')->whereIn('bill_id', [$pending['bill'], $expired['bill'], $cancelled['bill']])
-            ->whereNotNull('settled_at')->count());
+            $this->assertSame($outcome,
+                $this->process($this->event($bill, $status, 'bill-'.$status->value))->outcome);
+            $this->assertDatabaseHas('assessment_bills', [
+                'id' => $bill['bill'],
+                'status' => $billStatus,
+            ]);
+            $this->assertSame($settled, DB::table('assessment_bill_items')->where('id', $bill['item'])
+                ->whereNotNull('settled_at')->exists());
+        }
+
         $this->assertSame(1, DB::table('audit_logs')->where('action', 'assessment_bill.expired')->count());
         $this->assertSame(1, DB::table('audit_logs')->where('action', 'assessment_bill.rejected')->count());
-        $this->assertDatabaseCount('outbox_messages', 0);
+        $this->assertSame(1, DB::table('audit_logs')->where('action', 'assessment_bill.paid')->count());
+        $this->assertDatabaseCount('outbox_messages', 1);
     }
 
     public function test_paid_bill_ignores_late_nonpaid_events_without_downgrade(): void

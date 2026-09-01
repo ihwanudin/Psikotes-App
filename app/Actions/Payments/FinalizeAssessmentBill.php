@@ -106,6 +106,7 @@ final readonly class FinalizeAssessmentBill
         if (in_array($event->status, [PaymentStatus::Expired, PaymentStatus::Cancelled], true)) {
             return $this->transitionTerminal($event, $bill, $items);
         }
+        $this->assertPaidEvent($event);
 
         $paidAt = CarbonImmutable::instance($event->occurredAt)->utc()->startOfSecond();
         if ($paidAt->isFuture()) {
@@ -133,6 +134,13 @@ final readonly class FinalizeAssessmentBill
         }
 
         return $this->result('settled', $items->count(), $activated);
+    }
+
+    private function assertPaidEvent(PaymentEvent $event): void
+    {
+        if ($event->status !== PaymentStatus::Paid) {
+            throw new DomainException('ASSESSMENT_PAYMENT_STATE_INVALID');
+        }
     }
 
     /** @param  Collection<int, AssessmentBillItem>  $items
