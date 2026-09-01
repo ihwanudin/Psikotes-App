@@ -4,8 +4,14 @@ declare(strict_types=1);
 
 namespace App\Actions\Payments;
 
+use App\Data\Payments\AssessmentBillManualReview;
 use App\Data\Payments\PaymentEvent;
+use App\Enums\AdminRole;
+use App\Enums\AssessmentBillManualDecision;
+use App\Enums\AssessmentBillManualReviewError;
 use App\Enums\PaymentStatus;
+use App\Exceptions\AssessmentBillManualReviewException;
+use App\Models\Admin;
 use App\Models\AssessmentBill;
 use App\Models\AssessmentBillItem;
 use App\Models\AssessmentCharge;
@@ -19,6 +25,7 @@ use App\Security\RlsContextRunner;
 use App\Services\ParticipantAuth\AssessmentPrincipal;
 use App\Services\Payments\AssessmentPriceSnapshot;
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use DomainException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -55,30 +62,21 @@ final readonly class FinalizeAssessmentBill
     }
 
     /** @return array{decision: string, allocationCount: int, activatedAttemptCount: int} */
-    private function finalize(PaymentEvent $event): array
+    public function executeManual(AssessmentBillManualReview $review): array
     {
-        // Routing is an unlocked hint under service RLS. Authority starts after the organization mutex.
-        $organizationId = AssessmentBill::query()->where('public_reference', $event->merchantReference)->value('organization_id');
-        if (! is_int($organizationId) || Branch::query()->lockForUpdate()->find($organizationId) === null) {
-            throw new DomainException('ASSESSMENT_PAYMENT_REFERENCE_MISMATCH');
+        if ($this->contexts->current() !== null || DB::connection()->transactionLevel() !== 0) {
+            throw new LogicException('Assessment bill manual review requires an isolated service transaction.');
         }
 
-        $bill = AssessmentBill::query()->where('organization_id', $organizationId)
-            ->where('public_reference', $event->merchantReference)->lockForUpdate()->first();
-        if ($bill === null) {
-            throw new DomainException('ASSESSMENT_PAYMENT_REFERENCE_MISMATCH');
-        }
-        $items = AssessmentBillItem::query()->where('bill_id', $bill->id)->orderBy('id')->lockForUpdate()->get();
-        $chargeHints = AssessmentCharge::query()->whereIn('id', $items->pluck('charge_id'))->get(['id', 'assessment_participant_id']);
-        $attempts = AssessmentParticipant::query()->where('organization_id', $organizationId)
-            ->whereIn('id', $chargeHints->pluck('assessment_participant_id'))->orderBy('id')->lockForUpdate()->get()->keyBy('id');
-        $participants = Participant::query()->where('branch_id', $organizationId)
-            ->whereIn('id', $attempts->pluck('participant_id'))->orderBy('id')->lockForUpdate()->get()->keyBy('id');
-        $packages = TestPackage::query()->whereIn('id', $attempts->pluck('package_id'))
-            ->orderBy('id')->lockForUpdate()->get()->keyBy('id');
-        $charges = AssessmentCharge::query()->whereIn('id', $items->pluck('charge_id'))
-            ->orderBy('assessment_participant_id')->lockForUpdate()->get()->keyBy('id');
-        $method = PaymentMethod::query()->lockForUpdate()->find($bill->payment_method_id);
+        return $this->contexts->run(new RlsContext('service'),
+            fn (): array => DB::transaction(fn (): array => $this->finalizeManual($review)));
+    }
+
+    /** @return array{decision: string, allocationCount: int, activatedAttemptCount: int} */
+    private function finalize(PaymentEvent $event): array
+    {
+        ['bill' => $bill, 'items' => $items, 'attempts' => $attempts, 'participants' => $participants,
+            'packages' => $packages, 'charges' => $charges, 'method' => $method] = $this->lockGraph($event->merchantReference);
 
         $this->assertEvent($event, $bill);
         $this->assertAllocations($bill, $items, $attempts, $participants, $packages, $charges, $method);
@@ -112,7 +110,190 @@ final readonly class FinalizeAssessmentBill
         if ($paidAt->isFuture()) {
             throw new DomainException('ASSESSMENT_PAYMENT_TIME_INVALID');
         }
-        $bill->update(['status' => 'paid', 'paid_at' => $paidAt]);
+
+        return $this->settle($bill, $items, $attempts, $paidAt,
+            ['status' => 'paid', 'paid_at' => $paidAt],
+            function () use ($event, $bill, $items, $paidAt): void {
+                $this->audit($event, $bill, $items, $paidAt);
+            });
+    }
+
+    /** @return array{decision: string, allocationCount: int, activatedAttemptCount: int} */
+    private function finalizeManual(AssessmentBillManualReview $review): array
+    {
+        $actor = Admin::withTrashed()->lockForUpdate()->find($review->actorAdminId);
+        if ($actor === null || $actor->deleted_at !== null || $actor->role !== AdminRole::SuperAdmin) {
+            throw new AssessmentBillManualReviewException(AssessmentBillManualReviewError::NotFound);
+        }
+
+        ['bill' => $bill, 'items' => $items, 'attempts' => $attempts, 'participants' => $participants,
+            'packages' => $packages, 'charges' => $charges, 'method' => $method] = $this->lockGraph(
+                $review->billReference,
+                true,
+            );
+        try {
+            $this->assertAllocations($bill, $items, $attempts, $participants, $packages, $charges, $method);
+        } catch (DomainException) {
+            throw new AssessmentBillManualReviewException(AssessmentBillManualReviewError::ScopeInvalid);
+        }
+        foreach ($items as $item) {
+            if ($item->settled_at !== null && $bill->status === 'pending') {
+                throw new AssessmentBillManualReviewException(AssessmentBillManualReviewError::ScopeInvalid);
+            }
+        }
+        $fingerprint = $this->assertManualIdentity($review, $bill, $method);
+
+        if (in_array($bill->status, ['paid', 'rejected'], true)) {
+            return $this->assertManualReplay($review, $actor, $bill, $items, $fingerprint);
+        }
+        if ($bill->status !== 'pending' || $bill->paid_at !== null || $bill->verified_at !== null
+            || $bill->verified_by_admin_id !== null || $bill->rejection_reason !== null) {
+            throw new AssessmentBillManualReviewException(AssessmentBillManualReviewError::StateInvalid);
+        }
+
+        $reviewedAt = now()->toImmutable()->utc()->startOfSecond();
+        if ($review->decision === AssessmentBillManualDecision::Reject) {
+            foreach ($items as $item) {
+                if ($item->settled_at !== null) {
+                    throw new AssessmentBillManualReviewException(AssessmentBillManualReviewError::ScopeInvalid);
+                }
+            }
+            $bill->update([
+                'status' => 'rejected',
+                'verified_at' => $reviewedAt,
+                'verified_by_admin_id' => $actor->id,
+                'rejection_reason' => $review->rejectionCode?->value,
+            ]);
+            $this->auditManual($review, $actor, $bill, $items, $reviewedAt, $fingerprint);
+
+            return $this->result('rejected', $items->count(), 0);
+        }
+
+        return $this->settle($bill, $items, $attempts, $reviewedAt, [
+            'status' => 'paid',
+            'paid_at' => $reviewedAt,
+            'verified_at' => $reviewedAt,
+            'verified_by_admin_id' => $actor->id,
+            'rejection_reason' => null,
+        ], function () use ($review, $actor, $bill, $items, $reviewedAt, $fingerprint): void {
+            $this->auditManual($review, $actor, $bill, $items, $reviewedAt, $fingerprint);
+        });
+    }
+
+    /**
+     * @return array{bill: AssessmentBill, items: Collection<int, AssessmentBillItem>,
+     *   attempts: Collection<int, AssessmentParticipant>, participants: Collection<int, Participant>,
+     *   packages: Collection<int, TestPackage>, charges: Collection<int, AssessmentCharge>, method: PaymentMethod|null}
+     */
+    private function lockGraph(string $reference, bool $manual = false): array
+    {
+        // The reference is only an unlocked routing hint. Authority starts at the organization mutex.
+        $organizationId = AssessmentBill::query()->where('public_reference', $reference)->value('organization_id');
+        if (! is_int($organizationId) || Branch::query()->lockForUpdate()->find($organizationId) === null) {
+            $this->throwReferenceMismatch($manual);
+        }
+
+        $bill = AssessmentBill::query()->where('organization_id', $organizationId)
+            ->where('public_reference', $reference)->lockForUpdate()->first();
+        if ($bill === null) {
+            $this->throwReferenceMismatch($manual);
+        }
+        $items = AssessmentBillItem::query()->where('bill_id', $bill->id)->orderBy('id')->lockForUpdate()->get();
+        $chargeHints = AssessmentCharge::query()->whereIn('id', $items->pluck('charge_id'))->get(['id', 'assessment_participant_id']);
+        $attempts = AssessmentParticipant::query()->where('organization_id', $organizationId)
+            ->whereIn('id', $chargeHints->pluck('assessment_participant_id'))->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+        $participants = Participant::query()->where('branch_id', $organizationId)
+            ->whereIn('id', $attempts->pluck('participant_id'))->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+        $packages = TestPackage::query()->whereIn('id', $attempts->pluck('package_id'))
+            ->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+        $charges = AssessmentCharge::query()->whereIn('id', $items->pluck('charge_id'))
+            ->orderBy('assessment_participant_id')->lockForUpdate()->get()->keyBy('id');
+        $method = PaymentMethod::query()->lockForUpdate()->find($bill->payment_method_id);
+
+        return compact('bill', 'items', 'attempts', 'participants', 'packages', 'charges', 'method');
+    }
+
+    private function throwReferenceMismatch(bool $manual): never
+    {
+        if ($manual) {
+            throw new AssessmentBillManualReviewException(AssessmentBillManualReviewError::NotFound);
+        }
+
+        throw new DomainException('ASSESSMENT_PAYMENT_REFERENCE_MISMATCH');
+    }
+
+    private function assertManualIdentity(AssessmentBillManualReview $review, AssessmentBill $bill,
+        ?PaymentMethod $method): string
+    {
+        if ($method === null || $method->code !== 'manual_transfer' || $bill->gateway_ref !== null
+            || $bill->invoice_url !== null) {
+            throw new AssessmentBillManualReviewException(AssessmentBillManualReviewError::ChannelInvalid);
+        }
+        if (! is_string($bill->proof_object_key) || ! is_string($bill->proof_checksum_sha256)
+            || ! is_string($bill->proof_mime_type) || ! is_int($bill->proof_size_bytes)
+            || $bill->proof_uploaded_at === null
+            || ! preg_match('/^assessment-bills\/[a-z0-9]{2}\/[a-z0-9]{62}\.(jpg|png|pdf)$/D', $bill->proof_object_key)
+            || ! preg_match('/^[0-9a-f]{64}$/D', $bill->proof_checksum_sha256)
+            || ! in_array($bill->proof_mime_type, ['image/jpeg', 'image/png', 'application/pdf'], true)
+            || $bill->proof_size_bytes < 1 || $bill->proof_size_bytes > 5_120_000) {
+            throw new AssessmentBillManualReviewException(AssessmentBillManualReviewError::ProofInvalid);
+        }
+        $fingerprint = hash('sha256', implode("\0", [
+            $bill->proof_object_key,
+            $bill->proof_checksum_sha256,
+            $bill->proof_mime_type,
+            (string) $bill->proof_size_bytes,
+            $bill->proof_uploaded_at->utc()->format('Y-m-d\TH:i:s.u\Z'),
+        ]));
+        if (! hash_equals($fingerprint, $review->expectedProofFingerprint)) {
+            throw new AssessmentBillManualReviewException(AssessmentBillManualReviewError::Conflict);
+        }
+
+        return $fingerprint;
+    }
+
+    /** @param Collection<int, AssessmentBillItem> $items
+     * @return array{decision: string, allocationCount: int, activatedAttemptCount: int}
+     */
+    private function assertManualReplay(AssessmentBillManualReview $review, Admin $actor, AssessmentBill $bill,
+        Collection $items, string $fingerprint): array
+    {
+        $statusMatches = ($review->decision === AssessmentBillManualDecision::Approve && $bill->status === 'paid')
+            || ($review->decision === AssessmentBillManualDecision::Reject && $bill->status === 'rejected');
+        if (! $statusMatches || $bill->verified_at === null || $bill->verified_by_admin_id !== $actor->id
+            || ($bill->status === 'paid' && ($bill->paid_at === null || ! $bill->paid_at->equalTo($bill->verified_at)
+                || $bill->rejection_reason !== null))
+            || ($bill->status === 'rejected' && ($bill->paid_at !== null
+                || $bill->rejection_reason !== $review->rejectionCode?->value))) {
+            throw new AssessmentBillManualReviewException(AssessmentBillManualReviewError::Conflict);
+        }
+        foreach ($items as $item) {
+            if (($bill->status === 'paid' && ($item->settled_at === null || ! $item->settled_at->equalTo($bill->paid_at)))
+                || ($bill->status === 'rejected' && $item->settled_at !== null)) {
+                throw new AssessmentBillManualReviewException(AssessmentBillManualReviewError::Conflict);
+            }
+        }
+        $audit = DB::table('audit_logs')->where('action', 'assessment_bill.'.$bill->status)
+            ->where('subject_type', AssessmentBill::class)->where('subject_id', (string) $bill->id)->get();
+        $expected = $this->manualAuditContext($review, $bill, $items, $bill->verified_at, $fingerprint);
+        if ($audit->count() !== 1 || $audit->first()->actor_type !== 'admin'
+            || (int) $audit->first()->actor_id !== $actor->id
+            || json_decode((string) $audit->first()->context, true, 512, JSON_THROW_ON_ERROR) !== $expected) {
+            throw new AssessmentBillManualReviewException(AssessmentBillManualReviewError::Conflict);
+        }
+
+        return $this->result('replayed', $items->count(), 0);
+    }
+
+    /** @param Collection<int, AssessmentBillItem> $items
+     * @param  Collection<int, AssessmentParticipant>  $attempts
+     * @param  array<string, mixed>  $attributes
+     * @return array{decision: string, allocationCount: int, activatedAttemptCount: int}
+     */
+    private function settle(AssessmentBill $bill, Collection $items, Collection $attempts, CarbonImmutable $paidAt,
+        array $attributes, callable $audit): array
+    {
+        $bill->update($attributes);
         foreach ($items as $item) {
             if ($item->settled_at !== null) {
                 throw new DomainException('ASSESSMENT_PAYMENT_ALLOCATION_INVALID');
@@ -120,7 +301,7 @@ final readonly class FinalizeAssessmentBill
             $item->settled_at = $paidAt;
             $item->save();
         }
-        $this->audit($event, $bill, $items, $paidAt);
+        $audit();
 
         $activated = 0;
         foreach ($attempts->sortKeys() as $attempt) {
@@ -297,6 +478,27 @@ final readonly class FinalizeAssessmentBill
         ]);
     }
 
+    /** @param Collection<int, AssessmentBillItem> $items */
+    private function auditManual(AssessmentBillManualReview $review, Admin $actor, AssessmentBill $bill,
+        Collection $items, CarbonImmutable $reviewedAt, string $fingerprint): void
+    {
+        $now = now()->toImmutable();
+        DB::table('audit_logs')->insert([
+            'branch_id' => $bill->organization_id,
+            'actor_type' => 'admin',
+            'actor_id' => (string) $actor->id,
+            'action' => 'assessment_bill.'.$bill->status,
+            'subject_type' => AssessmentBill::class,
+            'subject_id' => (string) $bill->id,
+            'context' => json_encode(
+                $this->manualAuditContext($review, $bill, $items, $reviewedAt, $fingerprint),
+                JSON_THROW_ON_ERROR,
+            ),
+            'occurred_at' => $now,
+            'expires_at' => $now->addYearsNoOverflow(2),
+        ]);
+    }
+
     /** @param  Collection<int, AssessmentBillItem>  $items */
     private function auditTerminal(PaymentEvent $event, AssessmentBill $bill, Collection $items,
         CarbonImmutable $occurredAt, string $status): void
@@ -327,6 +529,25 @@ final readonly class FinalizeAssessmentBill
             'amount' => $event->amount,
             'currency' => $event->currency,
             'paidAt' => $paidAt->format('Y-m-d\TH:i:s.u\Z'),
+            'billItemIds' => $items->pluck('id')->map(static fn (mixed $id): int => (int) $id)->all(),
+        ];
+    }
+
+    /** @param Collection<int, AssessmentBillItem> $items
+     * @return array<string, mixed>
+     */
+    private function manualAuditContext(AssessmentBillManualReview $review, AssessmentBill $bill, Collection $items,
+        CarbonInterface $reviewedAt, string $fingerprint): array
+    {
+        return [
+            'version' => 1,
+            'source' => 'manual_transfer',
+            'decision' => $review->decision->value,
+            'rejectionCode' => $review->rejectionCode?->value,
+            'proofFingerprint' => $fingerprint,
+            'amount' => $bill->amount,
+            'currency' => $bill->currency,
+            'reviewedAt' => $reviewedAt->format('Y-m-d\TH:i:s.u\Z'),
             'billItemIds' => $items->pluck('id')->map(static fn (mixed $id): int => (int) $id)->all(),
         ];
     }
