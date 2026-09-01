@@ -122,3 +122,11 @@ assertions. Tidak ada source produksi pada proposal. Backend turn
 `01a05bb5-1951-76a0-839d-777d3c653712` (cursor
 `67fb332a-ee06-4280-b3fe-55c3b79bcc9c:3`) aktif pada P11b1 dispatcher dan
 terminal mapping melalui TDD, tetap tanpa route/provider/command/scheduler.
+
+P11b1 awal `2c94e8e` ditahan karena settlement belum menegaskan status `Paid`
+secara eksplisit. Fix `df2a2a6` menambah guard fail-closed dan matriks seluruh
+`PaymentStatus::cases()`, lalu diintegrasikan root sebagai `419de35`/`a2fa256`/
+`573b278`/`f389211`. Bukti root: dispatcher+finalizer **22/145**, legacy terdampak
+**22/98**, default **1.187/7.440**, Pint/PHPStan lulus, PostgreSQL disposable
+**262/2.320** dengan cleanup sukses. P11b1 diterima; P11b2 status reconciliation
+internal berikutnya, tetap tanpa command/scheduler/wiring aktif.

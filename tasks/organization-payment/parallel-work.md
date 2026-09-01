@@ -536,3 +536,10 @@ P11b0 proposal `61c3310` diterima root sebagai `60489e7` setelah review
 correctness, architecture, dan security serta smoke regression 22/98. P11b1
 dispatcher/terminal mapping berjalan dengan TDD; raw webhook auth, route,
 provider mapping, command/scheduler, dan status reconciler belum berubah.
+
+P11b1 worker `2c94e8e` memerlukan guard paid-only eksplisit; fix `df2a2a6`
+diterima dan rangkaian diintegrasikan root sebagai `419de35`/`a2fa256`/
+`573b278`/`f389211`. Root dispatcher+finalizer 22/145, legacy 22/98, default
+1187/7440, Pint, PHPStan, serta PostgreSQL disposable 262/2320 lulus dan cleanup
+sukses. P11b2 berikutnya hanya reconciler assessment internal bounded; belum
+command/scheduler atau layanan nyata.

@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P8a, P9a/b/c, P10a, core P10b, P10c-a/b, dan P11a core finalizer selesai lokal. Bukti finalizer PostgreSQL disposable 262/2320 lulus. Command/scheduler tetap tertutup; P11b routing berikutnya. Frontend/portal menunggu dependency backend. P8b–P18 keseluruhan belum end-to-end; tidak deploy atau migrasi DB aktif.**
+Status: **P1–P8a, P9a/b/c, P10a, core P10b, P10c-a/b, P11a, dan P11b1 dispatcher selesai lokal. Root default 1187/7440 serta PostgreSQL disposable 262/2320 lulus. Command/scheduler tetap tertutup; P11b2 status reconciliation internal berikutnya. Frontend/portal menunggu dependency backend. P8b–P18 keseluruhan belum end-to-end; tidak deploy atau migrasi DB aktif.**
 
 ## Gerbang revisi kolektif
 
@@ -466,6 +466,8 @@ provider atau menjadi authority sampai acquisition/validator berikutnya direview
 - [ ] Tinjau slice dengan pengguna sebelum kelompok berikutnya; tidak ada deploy, transaksi, atau notifikasi nyata.
 
 ## P11b: Routing webhook dan pemeriksaan status
+
+- [x] P11b0 audit kontrak dan P11b1 dispatcher: namespace `AB_` fail-closed tanpa fallback, duplicate merchant reference exact, terminal mapping, dan regresi legacy lulus. Implementasi root `419de35` + guard paid-only `573b278`; P11b2 masih terbuka.
 
 **Acceptance:**
 
