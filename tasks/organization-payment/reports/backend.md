@@ -2108,3 +2108,63 @@ yang korup gagal tertutup tanpa rewrite/audit tambahan.
 Tidak ada route, webhook dispatcher, command/job/scheduler, provider GET/POST,
 proof transfer, P11b/P11c, schema/migration/config, credential/.env/data aktif,
 notifikasi terkirim, deploy atau push. **STOP untuk review P11a1**.
+
+## P11b0 — audit kontrak routing event pembayaran
+
+Increment proposal-only ini membaca baseline root `c027140`, wave-16 final,
+todo/plan/parallel-work, SPEC organization billing, ADR-002 dan ADR-006–009,
+serta source autentikasi webhook, provider normalization, event claim, order
+legacy, status reconciliation, dan finalizer P11a. Proposal lengkap ada di
+`tasks/organization-payment/reports/backend-payment-event-routing-proposal.md`.
+
+Boundary yang direkomendasikan mempertahankan autentikasi di controller/provider
+existing: callback token diverifikasi `hash_equals` dan payload dinormalisasi
+sebelum `PaymentWebhookProcessor`. Dispatcher baru kelak berada **sesudah** event
+claim dalam transaksi service yang sama. Semua merchant reference yang dimulai
+`AB_`, termasuk malformed/unknown, hanya menuju bill finalizer dan tidak pernah
+fallback ke order. Reference non-AB_ tetap memakai handler/state machine legacy.
+Bill namespace hanya menerima provider Xendit; transfer manual P11c tetap
+authority terpisah.
+
+Processor dapat memakai hasil dispatcher `applied|ignored`: settlement baru
+menjadi applied; replay/nonpaid no-op menjadi ignored. Error finalizer dipetakan
+dengan allowlist ke reference/money/bill-invalid; exception programming/DB tidak
+disamarkan dan rollback claim. Formula intent hash lama tidak diubah agar row
+historis replay-compatible. Gap merchant reference ditutup kelak dengan compare
+kolom persisted exact pada duplicate, bukan mengganti hash version diam-diam.
+
+Mapping bill yang diajukan untuk review: pending+paid memakai settlement P11a;
+pending+expired menjadi expired; pending+cancelled menjadi rejected; pending
+event ignored. Paid canonical mengabaikan pending/expired/cancelled terlambat,
+sedangkan paid setelah expired/rejected ditolak. Terminal tidak melepaskan item,
+tidak memberi reinvoice, settlement, entitlement, atau activation. Perubahan
+terminal harus berada di finalizer yang sama agar scope/lock/replay/late-state
+predicate tidak disalin ke writer kedua. Xendit adapter existing belum mengenal
+raw CANCELLED dan tidak diubah tanpa kontrak provider.
+
+Status reconciliation assessment direkomendasikan sebagai action bounded
+terpisah yang memilih pending Xendit dengan gateway_ref, menutup transaksi/RLS
+context sebelum GET, lalu meneruskan normalized event ke processor/dispatcher/
+finalizer yang sama. Reconciler dan command legacy tidak diubah karena union akan
+mengubah arti limit, ordering, counter, dan log existing. Action assessment belum
+didaftarkan ke command/scheduler.
+
+Matriks proposal mencakup missing/wrong token, malformed payload, spoofed/
+malformed/unknown AB_, provider/merchant/reference/money mismatch, duplicate
+intent merchant conflict, PAID-vs-SETTLED, webhook-vs-status race, seluruh status
+bill, rollback item kelima/outbox, GET-only/no POST, selection bounded, legacy
+HTTP/body/state regression, serta PostgreSQL non-owner/RLS/two-process.
+
+### Bukti audit aktual
+
+- Kontrak webhook/provider/status/order legacy existing: **40/40 tes, 149
+  assertions**, lulus memakai XML organization-payment dan HTTP fake existing.
+- Finalizer P11a existing: **10/10 tes, 65 assertions**, lulus pada proses
+  terpisah agar `DatabaseTruncation` tidak bercampur dengan RefreshDatabase.
+- Tidak dibuat RED tests tracked karena terminal mapping dan bentuk dispatcher
+  masih menunggu keputusan review. Matriks proposal adalah kontrak TDD untuk
+  increment berikutnya; suite repository tetap hijau.
+
+Tidak ada source produksi, route, controller, provider, command/scheduler,
+schema/config, credential/.env/data aktif, outbound, notifier, deploy atau push
+yang berubah. **STOP untuk review P11b0 sebelum dispatcher implementation**.
