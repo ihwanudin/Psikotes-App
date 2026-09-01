@@ -21,6 +21,10 @@ use Illuminate\Database\Eloquent\Model;
  * @property CarbonInterface|null $processed_at
  * @property CarbonInterface $expires_at
  * @property string|null $last_error
+ * @property string|null $reconciliation_lease_token
+ * @property CarbonInterface|null $reconciliation_lease_expires_at
+ * @property CarbonInterface|null $reconciliation_next_at
+ * @property int $reconciliation_lookup_attempts
  * @property CarbonInterface $updated_at
  */
 final class OutboxMessage extends Model
@@ -34,6 +38,9 @@ final class OutboxMessage extends Model
             'available_at' => 'immutable_datetime',
             'processed_at' => 'immutable_datetime',
             'expires_at' => 'immutable_datetime',
+            'reconciliation_lease_expires_at' => 'immutable_datetime',
+            'reconciliation_next_at' => 'immutable_datetime',
+            'reconciliation_lookup_attempts' => 'integer',
         ];
     }
 }
