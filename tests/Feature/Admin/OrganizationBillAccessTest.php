@@ -155,6 +155,8 @@ final class OrganizationBillAccessTest extends OrganizationPaymentTestCase
             ->assertDontSee('Peserta FOREIGN')->assertDontSee('CLINICAL-SENTINEL')
             ->assertDontSee('CATALOG-CHANGED')->assertDontSee(self::PROOF_KEY)
             ->assertDontSee('PRIVATE-GATEWAY')->assertDontSee('DO-NOT-EXPOSE')->assertDontSee('PRIVATE-REVIEW-NOTE');
+        $this->assertSame('Tagihan terpilih', array_values($component->instance()->getBreadcrumbs())[1]);
+        $this->assertNotContains($bill->public_reference, $component->instance()->getBreadcrumbs());
         $component->call('refreshFormData', ['invoice_url', 'proof_object_key', 'gateway_ref', 'request_hash'])
             ->assertDontSee(self::PROOF_KEY)->assertDontSee('DO-NOT-EXPOSE');
         foreach (['create', 'update', 'delete', 'deleteAny', 'forceDelete', 'restore', 'replicate', 'reorder', 'verifyPayment'] as $action) {

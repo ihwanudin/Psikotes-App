@@ -25,6 +25,16 @@ final class ViewOrganizationBill extends ViewRecord
         return 'Daftar alokasi terkunci. Pratinjau ini tidak menyediakan pembayaran, unggah bukti, atau verifikasi. Lunas tidak otomatis berarti peserta sudah memenuhi syarat akses tes.';
     }
 
+    /** @return array<string> */
+    public function getBreadcrumbs(): array
+    {
+        return [
+            OrganizationBillResource::getUrl() => OrganizationBillResource::getBreadcrumb(),
+            OrganizationBillResource::getUrl('view', ['record' => $this->getRecord()]) => 'Tagihan terpilih',
+            $this->getBreadcrumb(),
+        ];
+    }
+
     public function infolist(Schema $schema): Schema
     {
         return $schema->components([
