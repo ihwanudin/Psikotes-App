@@ -32,3 +32,8 @@ serta key/checksum/MIME/size/timestamp korup sebelum fingerprint atau delete.
 Belum ada HTTP controller/route, proof reader/temporary URL reviewer, policy,
 Filament/UI, purge, config/schema baru, layanan eksternal, migrasi DB aktif,
 deploy, atau push. P11c2b tetap increment terpisah dan default-off.
+
+Task backend existing menerima P11c2b policy + internal private-proof issuer.
+Turn `01a05c68-8fed-7990-8901-c9609b08c687` aktif pada cursor
+`67fb332a-ee06-4280-b3fe-55c3b79bcc9c:13`; jangan mengirim prompt lain selama
+aktif. Controller, route, Filament/UI, dan decision wiring tetap ditunda.

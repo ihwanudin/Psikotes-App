@@ -588,3 +588,8 @@ Root storage 37/201, P11c1b/provider 32/167, legacy upload 9/94, default
 1261/7830, Pint/PHPStan, serta PostgreSQL disposable 292/2508 lulus dan cleanup
 sukses. P11c2a diterima; P11c2b private reviewer access/policy berikutnya, tetap
 tanpa route/UI aktif atau layanan nyata.
+
+Backend turn `01a05c68-8fed-7990-8901-c9609b08c687` (cursor
+`67fb332a-ee06-4280-b3fe-55c3b79bcc9c:13`) aktif pada P11c2b policy dan internal
+private-proof issuer. Scope berhenti sebelum controller/route/Filament/UI dan
+decision wiring; frontend/portal tidak mendapat instruksi duplikat.
