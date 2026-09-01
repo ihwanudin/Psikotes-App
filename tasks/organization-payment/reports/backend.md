@@ -2244,3 +2244,66 @@ dua file, PHPStan seluruh project **0 error**, dan `git diff --check` lulus.
 Perubahan tidak menyentuh transaksi, lock, schema, atau RLS, sehingga runner PG
 241/1.719 dari increment P11b1 tetap menjadi bukti runtime yang relevan dan tidak
 diulang. **STOP untuk review ulang P11b1; belum P11b2/P11c**.
+
+## P11b2 — status reconciliation assessment bill internal
+
+Commit kode/tes lokal `71dc062` menambah action internal
+`ReconcilePendingAssessmentBills` tanpa command, scheduler, job, route, atau
+controller. Action menerima `limit` dan `scan` 1–500 dengan `limit <= scan`.
+Selection service yang singkat mengambil pasangan ID/gateway reference secara
+urut `assessment_bills.id`, hanya untuk bill `pending`, gateway reference
+non-NULL, dan payment method persisted berkode `xendit`. Status reserved,
+issuing, unknown, paid, expired, rejected, gateway kosong, serta kanal manual
+tidak dipilih.
+
+Transaksi selection selesai sebelum loop provider. Boundary menolak ambient DB
+transaction atau RLS context dan memeriksa kembali keduanya sebelum setiap GET.
+`scan` membatasi row snapshot dan `limit` membatasi panggilan provider. Setiap
+`PaymentEvent` normalized dari `PaymentProvider::checkStatus` selalu diteruskan
+ke `PaymentWebhookProcessor`, sehingga durable claim, dispatcher namespace, dan
+`FinalizeAssessmentBill` P11a/P11b1 tetap satu-satunya writer status/settlement.
+
+Result typed hanya membawa counter `scanned`, `checked`, `applied`, `ignored`,
+dan `failed`; tidak membawa bill/reference, URL invoice, atau identitas peserta.
+Timeout/HTTP/payload provider dihitung gagal generik dan kandidat berikutnya
+tetap diproses. Warning kegagalan tidak memiliki context identifier, sedangkan
+completion log hanya memiliki lima counter tersebut. Unexpected DB/programming
+exception tidak ditangkap. `XenditProvider::checkStatus` kini membungkus
+`ConnectionException` menjadi `PaymentProviderException` generik tanpa previous
+exception, sehingga URL/credential tidak menyeberangi boundary. Request existing
+tetap HTTPS allowlist `api.xendit.co`, Basic Auth, timeout, dan no redirect.
+
+### Bukti aktual
+
+- RED awal: **8 tes, 0 passed, 8 errors, 0 assertions**, seluruhnya karena action
+  belum tersedia (satu tes juga menemukan `Log::fake` bukan API facade yang sah;
+  assertion dipindahkan ke counter typed dan implementasi log generik diaudit
+  langsung).
+- GREEN feature action: **8/8 tes, 32 assertions**. Cakupan: selection/order
+  deterministic; budget scan 3/outbound 2; seluruh status dan kanal ineligible;
+  GET pada transaction level 0 dengan RLS context NULL; paid/expired melalui
+  claim-dispatcher-finalizer; timeout dan payload malformed tidak menghentikan
+  paid berikutnya; race webhook menang saat GET menghasilkan duplicate tanpa
+  audit/outbox ganda; invalid bounds; serta GET-only tanpa POST/expire.
+- Gabungan action + dispatcher + finalizer: **30/30 tes, 177 assertions**.
+  Regresi webhook/status reconciliation/provider/order legacy: **40/40 tes,
+  149 assertions**. Default XML organization-payment: **75/75 tes, 414
+  assertions**.
+- PostgreSQL disposable final pada runtime `psikotes_runtime` non-owner dan
+  NOBYPASSRLS: **242/242 tes, 1.731 assertions**, cleanup sukses. Tes baru
+  membuktikan selection service dapat membaca kandidat RLS, commit/context clear
+  sebelum GET, lalu event expired masuk lagi ke processor dan menghasilkan satu
+  claim serta satu audit terminal.
+- Run PG pertama menemukan `Http::fake` tes baru bocor ke tes stray-request
+  berikutnya; factory kini dipulihkan fail-closed pada teardown. Run kedua
+  melewati masalah itu tetapi terkena assertion race rollback existing di
+  `AssessmentInvoiceClaimTest`; run ketiga pada DB/network disposable baru lulus
+  penuh, sehingga dicatat sebagai flake concurrency baseline, bukan hasil yang
+  disembunyikan.
+- Pint lima file kode/tes, PHPStan seluruh project **0 error**, dan
+  `git diff --check` lulus.
+
+Reconciler/command legacy tidak berubah. Tidak ada createInvoice/expireInvoice,
+POST, status writer kedua, command/job/scheduler/route/controller, schema/
+migration/config/.env, credential/data aktif, provider nyata, notifier, deploy,
+push, atau P11c. **STOP untuk review P11b2 sebelum wiring operasional**.
