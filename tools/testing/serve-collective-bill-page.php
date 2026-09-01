@@ -2,13 +2,17 @@
 
 declare(strict_types=1);
 
+use App\Actions\Payments\StoreAssessmentBillProof;
 use App\Contracts\Notifier;
 use App\Contracts\PaymentProvider;
+use App\Data\Payments\AssessmentBillProofUpload;
 use App\Enums\AdminRole;
 use App\Filament\Actions\CreateCollectiveBillAction;
 use App\Filament\Resources\AssessmentParticipants\Pages\CreateCollectiveBill;
 use App\Models\Admin;
+use App\Models\AssessmentBill;
 use App\Services\Notifications\FakeNotifier;
+use App\Services\Payments\AssessmentBillProofIdentity;
 use App\Services\Payments\FakePaymentProvider;
 use Filament\AvatarProviders\Contracts\AvatarProvider;
 use Filament\Facades\Filament;
@@ -17,12 +21,15 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Bootstrap\LoadConfiguration;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 use Tests\Support\AssessmentPreviewFixture as Fixture;
 
@@ -55,8 +62,8 @@ if ($mode === 'http') {
         }
     }
     // No other application, admin, integration, payment or storage routes are reachable.
-    if (! in_array($path, ['/preview', '/fixture-control', '/fixture.css', '/fixture-livewire.js', '/fixture-update', '/favicon.ico'], true)
-        && ! preg_match('#^/admin/organization-bills/[0-9]+$#D', (string) $path)) {
+    if (! in_array($path, ['/preview', '/fixture-control', '/fixture.css', '/fixture-livewire.js', '/fixture-update', '/livewire/upload-file', '/favicon.ico'], true)
+        && ! preg_match('#^/(?:admin/organization-bills/[0-9]+|fixture-proof/[1-9][0-9]*|livewire-[a-f0-9]+/upload-file)$#D', (string) $path)) {
         http_response_code(404);
         exit;
     }
@@ -84,6 +91,22 @@ if ($mode === 'init') {
     foreach (['framework/cache/data', 'framework/sessions', 'framework/views', 'logs'] as $storagePath) {
         mkdir($directory.'/storage/'.$storagePath, 0700, true);
     }
+    mkdir($directory.'/uploads', 0700, true);
+    file_put_contents($directory.'/uploads/proof.jpg', base64_decode('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAX/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAEf/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABBQJ//8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAgBAwEBPwF//8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAgBAgEBPwF//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQAGPwJ//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPyF//9oADAMBAAIAAwAAABD/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAEDAQE/EH//xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAECAQE/EH//xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAE/EH//2Q==', true));
+    file_put_contents($directory.'/uploads/proof.png', base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', true));
+    file_put_contents($directory.'/uploads/proof.pdf', "%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n");
+    file_put_contents($directory.'/uploads/invalid.txt', 'synthetic invalid proof');
+    $oversize = fopen($directory.'/uploads/oversize.pdf', 'wb');
+    if ($oversize === false) {
+        throw new RuntimeException('Cannot create synthetic oversized proof.');
+    }
+    fwrite($oversize, "%PDF-1.4\n");
+    for ($written = 9; $written < 5_120_001; $written += $chunk) {
+        $chunk = min(65_536, 5_120_001 - $written);
+        fwrite($oversize, str_repeat('x', $chunk));
+    }
+    fclose($oversize);
+    file_put_contents($directory.'/proof-aliases.json', '{}');
 } elseif (! is_file($database) || ! is_file($directory.'/manifest.json')) {
     throw new RuntimeException('Initialize a new disposable fixture first.');
 }
@@ -114,7 +137,7 @@ $app = require $root.'/bootstrap/app.php';
 $app->addAbsoluteCachePathPrefix($directory);
 $app->useEnvironmentPath($directory);
 $app->useStoragePath($directory.'/storage');
-$app->afterBootstrapping(LoadConfiguration::class, function (Application $app) use ($database): void {
+$app->afterBootstrapping(LoadConfiguration::class, function (Application $app) use ($database, $directory): void {
     $config = $app->make('config');
     if ($app->configurationIsCached() || $config->get('app.env') !== 'testing'
         || $config->get('database.default') !== 'sqlite'
@@ -124,7 +147,13 @@ $app->afterBootstrapping(LoadConfiguration::class, function (Application $app) u
     }
     $config->set('database.connections', ['sqlite' => $config->get('database.connections.sqlite')]);
     $config->set('database.redis', []);
-    $config->set('filesystems.disks', ['local' => ['driver' => 'local', 'root' => $app->storagePath('app/private')]]);
+    $config->set('filesystems.disks', [
+        'local' => ['driver' => 'local', 'root' => $app->storagePath('app/private')],
+        'payment-proofs' => ['driver' => 'local', 'root' => $directory.'/storage/app/private/payment-proofs',
+            'visibility' => 'private', 'throw' => true, 'report' => false],
+    ]);
+    $config->set('payments.manual_proof_disk', 'payment-proofs');
+    $config->set('payments.manual_proof_temporary_url_minutes', 15);
 });
 $app->booting(function (Application $app): void {
     $app->instance(PaymentProvider::class, new FakePaymentProvider);
@@ -134,6 +163,18 @@ $app->booting(function (Application $app): void {
 });
 $app->make(Kernel::class)->bootstrap();
 Filament::getPanel('admin')->defaultAvatarProvider(SyntheticCollectiveAvatarProvider::class);
+
+Storage::disk('payment-proofs')->buildTemporaryUrlsUsing(function (string $key, DateTimeInterface $expiresAt) use ($directory): string {
+    if (preg_match('#^assessment-bills/[a-z0-9]{2}/[a-z0-9]{62}\.(?:jpg|png|pdf)$#D', $key) !== 1) {
+        throw new RuntimeException('Invalid synthetic proof object key.');
+    }
+    $aliases = json_decode((string) file_get_contents($directory.'/proof-aliases.json'), true, flags: JSON_THROW_ON_ERROR);
+    $id = count($aliases) + 1;
+    $aliases[(string) $id] = ['key' => $key, 'expires' => $expiresAt->getTimestamp()];
+    file_put_contents($directory.'/proof-aliases.json', json_encode($aliases, JSON_THROW_ON_ERROR), LOCK_EX);
+
+    return '/fixture-proof/'.$id;
+});
 
 if ($mode === 'init') {
     if (Artisan::call('migrate', ['--force' => true, '--no-interaction' => true]) !== 0) {
@@ -176,6 +217,9 @@ if ($mode === 'init') {
     $claimedSelection = [['assessmentParticipantId' => $ids[13], 'consultationRequested' => false]];
     $claimedPreview = app(CreateCollectiveBillAction::class)->preview($claimedSelection);
     $claimedBill = app(CreateCollectiveBillAction::class)->confirm($claimedSelection, $method, $claimedPreview['selectionHash']);
+    DB::table('assessment_bills')->where('id', $claimedBill->id)->update([
+        'status' => 'pending', 'expires_at' => now()->addHour(),
+    ]);
     Filament::auth()->logout();
     $foreign = Fixture::create();
     $foreignAdmin = Admin::create(['name' => 'Admin cabang asing', 'email' => 'foreign-browser@example.test',
@@ -258,7 +302,29 @@ Route::middleware('web')->get('/preview', function () use ($adminId): string {
         </head><body class="fixture-body"><main class="fixture-main"><livewire:collective-page-fixture /></main>@filamentScripts(withCore: true)</body></html>
         BLADE, deleteCachedView: true);
 });
-Route::post('/fixture-control', function () use ($manifest, $control): array {
+Route::middleware('web')->get('/fixture-proof/{alias}', function (string $alias) use ($directory): Response {
+    abort_unless(preg_match('/^[1-9][0-9]*$/D', $alias) === 1, 404);
+    $sessionAdmin = Filament::auth()->user();
+    $admin = $sessionAdmin instanceof Admin ? Admin::withTrashed()->find($sessionAdmin->getKey()) : null;
+    abort_unless($admin instanceof Admin && $admin->deleted_at === null && $admin->role === AdminRole::BranchAdmin
+        && is_int($admin->branch_id), 404);
+    $aliases = json_decode((string) file_get_contents($directory.'/proof-aliases.json'), true, flags: JSON_THROW_ON_ERROR);
+    $entry = $aliases[$alias] ?? null;
+    abort_unless(is_array($entry) && is_string($entry['key'] ?? null) && is_int($entry['expires'] ?? null)
+        && $entry['expires'] >= now()->getTimestamp(), 404);
+    $bill = AssessmentBill::query()->where('organization_id', $admin->branch_id)
+        ->where('payer_type', 'organization')->where('proof_object_key', $entry['key'])->first();
+    abort_unless($bill !== null && Storage::disk('payment-proofs')->exists($entry['key']), 404);
+    $mime = match (pathinfo($entry['key'], PATHINFO_EXTENSION)) {
+        'jpg' => 'image/jpeg', 'png' => 'image/png', 'pdf' => 'application/pdf', default => abort(404),
+    };
+
+    return response(Storage::disk('payment-proofs')->get($entry['key']), 200, [
+        'Content-Type' => $mime, 'Cache-Control' => 'no-store, private',
+        'Referrer-Policy' => 'no-referrer', 'X-Content-Type-Options' => 'nosniff',
+    ]);
+});
+Route::post('/fixture-control', function () use ($manifest, $control, $directory): array {
     abort_unless(request()->header('X-Oncam-Fixture') === $control, 404);
 
     return match (request()->string('action')->toString()) {
@@ -270,10 +336,56 @@ Route::post('/fixture-control', function () use ($manifest, $control): array {
         'role-on' => tap(['ok' => true], fn () => DB::table('admins')->where('id', $manifest['admin'])->update(['role' => AdminRole::BranchAdmin->value])),
         'tenant-off' => tap(['ok' => true], fn () => DB::table('admins')->where('id', $manifest['admin'])->update(['branch_id' => $manifest['foreignOrganization']])),
         'tenant-on' => tap(['ok' => true], fn () => DB::table('admins')->where('id', $manifest['admin'])->update(['branch_id' => $manifest['organization']])),
+        'deleted-off' => tap(['ok' => true], fn () => DB::table('admins')->where('id', $manifest['admin'])->update(['deleted_at' => now()])),
+        'deleted-on' => tap(['ok' => true], fn () => DB::table('admins')->where('id', $manifest['admin'])->update(['deleted_at' => null])),
+        'bill-rejected' => tap(['ok' => true], fn () => DB::table('assessment_bills')->where('id', $manifest['baselineBill'])->update([
+            'status' => 'rejected', 'rejection_reason' => 'UNREADABLE_PROOF',
+        ])),
+        'bill-expired' => tap(['ok' => true], fn () => DB::table('assessment_bills')->where('id', $manifest['baselineBill'])->update([
+            'status' => 'expired', 'rejection_reason' => null,
+        ])),
+        'bill-paid' => tap(['ok' => true], fn () => DB::table('assessment_bills')->where('id', $manifest['baselineBill'])->update([
+            'status' => 'paid', 'paid_at' => now(), 'rejection_reason' => null,
+        ])),
+        'bill-nonmanual' => tap(['ok' => true], fn () => DB::table('payment_methods')->where('id', $manifest['method'])->update([
+            'code' => 'synthetic_nonmanual',
+        ])),
+        'bill-pending' => tap(['ok' => true], function () use ($manifest): void {
+            DB::table('payment_methods')->where('id', $manifest['method'])->update(['code' => 'manual_transfer']);
+            DB::table('assessment_bills')->where('id', $manifest['baselineBill'])->update([
+                'status' => 'pending', 'paid_at' => null, 'verified_at' => null,
+                'verified_by_admin_id' => null, 'rejection_reason' => null, 'expires_at' => now()->addHour(),
+            ]);
+        }),
+        'replace-proof-outside' => tap(['ok' => true], function () use ($manifest, $directory): void {
+            $admin = Admin::findOrFail($manifest['admin']);
+            $bill = AssessmentBill::findOrFail($manifest['baselineBill']);
+            $fingerprint = app(AssessmentBillProofIdentity::class)->fingerprint($bill, now());
+            app(StoreAssessmentBillProof::class)->execute(new AssessmentBillProofUpload(
+                $admin, (string) $bill->public_reference,
+                new UploadedFile($directory.'/uploads/proof.png', 'external.png', 'image/png', null, true),
+                $fingerprint,
+            ));
+        }),
+        'proof-summary' => (function () use ($manifest): array {
+            $bill = DB::table('assessment_bills')->where('id', $manifest['baselineBill'])->first();
+            $contexts = DB::table('audit_logs')->where('action', 'assessment_bill.branch_proof_temporary_url_issued')
+                ->pluck('context')->implode('\n');
+
+            return [
+                'status' => $bill?->status, 'proofMime' => $bill?->proof_mime_type,
+                'proofSize' => $bill?->proof_size_bytes, 'proofFiles' => count(Storage::disk('payment-proofs')->allFiles()),
+                'accessAudits' => DB::table('audit_logs')->where('action', 'assessment_bill.branch_proof_temporary_url_issued')->count(),
+                'auditSecretLeak' => preg_match('#assessment-bills/|fixture-proof|proof_object_key|checksum|https?://#i', $contexts) === 1,
+                'charges' => DB::table('assessment_charges')->count(), 'items' => DB::table('assessment_bill_items')->count(),
+                'entitlements' => DB::table('assessment_entitlements')->count(), 'outbox' => DB::table('outbox_messages')->count(),
+                'orders' => DB::table('orders')->count(), 'settledItems' => DB::table('assessment_bill_items')->whereNotNull('settled_at')->count(),
+            ];
+        })(),
         default => abort(422),
     };
 });
 header('Cache-Control: no-store');
 header('Referrer-Policy: no-referrer');
-header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; frame-src 'none'; form-action 'self'");
+header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; font-src 'self'; frame-src 'none'; form-action 'self'");
 $app->handleRequest(Request::capture());
