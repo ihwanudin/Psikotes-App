@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P8a, P9a/b/c, P10a, core P10b, P10c-a/b, P11a, P11b, P11c1a–P11c3c reviewer, dan P12a portal cabang default-off selesai lokal. Browser acceptance P11c/P12a lulus; route/discovery produksi belum aktif. Root synthetic default terakhir 1346/8352, focused reviewer 36/234, focused P12a 14/210, dan PostgreSQL disposable terakhir 293/2519 lulus. Command/scheduler tetap tertutup. P12b core default-off berjalan; frontend menunggu kontrak P14/P15. P8b–P18 keseluruhan belum end-to-end; tidak deploy atau migrasi DB aktif.**
+Status: **P1–P8a, P9a/b/c, P10a, core P10b, P10c-a/b, P11a, P11b, P11c1a–P11c3c reviewer, P12a portal cabang, dan core P12b kolektif default-off selesai lokal. Browser acceptance P11c/P12a lulus; route/discovery produksi belum aktif. Root synthetic default terakhir 1346/8352, focused reviewer 36/234, focused P12a 14/210, focused P12b 19/61, dan PostgreSQL disposable terakhir 293/2519 lulus. Command/scheduler tetap tertutup. Browser acceptance P12b berikutnya; frontend menunggu kontrak P14/P15. P8b–P18 keseluruhan belum end-to-end; tidak deploy atau migrasi DB aktif.**
 
 ## Gerbang revisi kolektif
 
@@ -521,6 +521,8 @@ provider atau menjadi authority sampai acquisition/validator berikutnya direview
 - [ ] Tinjau slice dengan pengguna sebelum kelompok berikutnya; tidak ada deploy, transaksi, atau notifikasi nyata.
 
 ## P12b: Bayar banyak peserta dari menu cabang
+
+- [x] Core lokal default-off selesai pada `e872b4b`–`ec86591`: pilihan tenant-scoped, preview server-authoritative, satu delegasi ReserveAssessmentBill, replay canonical, stale/tampered hash fail closed, reauthorization persisted saat confirm, dan unexpected failure tidak disamarkan. Root focused 19/61, Pint dan PHPStan lulus; browser acceptance belum dijalankan.
 
 **Acceptance:**
 

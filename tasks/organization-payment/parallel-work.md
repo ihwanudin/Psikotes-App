@@ -663,3 +663,14 @@ Portal task existing turn `01a05d47-74aa-7e80-ac47-602e911bc189` (cursor
 multi-select attempt eligible → preview server-authoritative → satu reservasi
 canonical. Route/discovery produksi, schema/config toggle, Xendit, proof,
 reviewer/finalizer, command/scheduler dan layanan nyata tetap dilarang.
+
+P12b awal `addccee`–`97f3774` ditahan karena page menangkap seluruh Throwable,
+belum membuktikan reauthorization setelah preview, dan belum menguji lifecycle
+checkbox Livewire sampai confirm. Fix `2f9c4ff`/`55672a9` diterima dan seluruh
+rangkaian diintegrasikan root sebagai `e872b4b`–`ec86591`. Unexpected writer
+failure kini propagate dan rollback, role/branch/deleted setelah preview ditolak,
+digit-string checkbox dikanonisasi ketat, perubahan selection/consultation
+membersihkan preview, serta redirect ke bill canonical terbukti. Root focused
+**19/19 tes, 61 assertions**, Pint dan PHPStan lulus; diff-check bersih. Core P12b
+diterima default-off; browser desktop/mobile/keyboard dan UI replay/stale menjadi
+increment berikutnya sebelum acceptance P12b ditutup.
