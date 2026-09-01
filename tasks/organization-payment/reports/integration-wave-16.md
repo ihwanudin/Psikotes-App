@@ -169,3 +169,8 @@ tanpa exclude sempat memanggil test Xendit development dan gagal dengan outcome
 unknown; gerbang diperbaiki `d864517` agar default selalu mengecualikan sandbox
 dan sandbox hanya punya konfigurasi eksplisit. P11c1a diterima; tidak ada migrasi
 database aplikasi.
+
+Backend turn `01a05c12-68ff-7d93-994c-708fb29e0efc` (cursor
+`67fb332a-ee06-4280-b3fe-55c3b79bcc9c:8`) aktif pada P11c1b core typed manual
+review/finalizer. Scope berhenti sebelum storage access/upload, policy, route,
+Filament/UI, notification delivery, dan seluruh layanan eksternal.
