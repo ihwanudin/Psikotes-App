@@ -109,3 +109,9 @@ kembali dari instalasi user. Setelah warm-up bind-mount, root PostgreSQL disposa
 lulus **262/262 tes, 2.320 assertions** termasuk concurrency finalizer, dan cleanup
 sukses tanpa menargetkan container aplikasi. P11a1 kini diterima; P11b dimulai dari
 audit kontrak routing/status legacy sebelum perubahan kode.
+
+Heartbeat koordinasi diaktifkan kembali setelah blocker Docker hilang. Backend
+turn `01a05baa-b35c-7091-9b4c-ee8d547afad2` (cursor
+`67fb332a-ee06-4280-b3fe-55c3b79bcc9c:2`) menerima P11b0 audit/kontrak saja:
+dispatcher `AB_` harus fail-closed, order legacy tetap kompatibel, status check
+berkonvergensi ke finalizer yang sama, dan belum ada wiring produksi.
