@@ -580,3 +580,11 @@ Backend turn `01a05c39-f02f-7481-912d-9d194c7ecfe5` (cursor
 storage/replacement proof. Scope berhenti sebelum HTTP, reviewer proof access,
 policy, route, Filament/UI, purge, dan layanan nyata; frontend/portal tidak diberi
 instruksi baru.
+
+P11c2a awal `24c9591`/`ec1e36b` ditahan karena expiry, participant revocation
+race, dan canonical existing-proof belum tertutup. Fix `22407ad`/`b951c2e`
+diintegrasikan seluruhnya sebagai `b9a819e`/`a8efd18`/`8bf0660`/`a113702`.
+Root storage 37/201, P11c1b/provider 32/167, legacy upload 9/94, default
+1261/7830, Pint/PHPStan, serta PostgreSQL disposable 292/2508 lulus dan cleanup
+sukses. P11c2a diterima; P11c2b private reviewer access/policy berikutnya, tetap
+tanpa route/UI aktif atau layanan nyata.
