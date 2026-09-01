@@ -2565,3 +2565,53 @@ purge/reconciliation object tetap di luar scope. Tidak ada proof access/review
 UI atau public authorization wiring, dan tidak ada schema/config/.env/data aktif,
 provider/notifier/outbound, deploy, atau push. **STOP untuk review P11c2a sebelum
 P11c2b**.
+
+### P11c2a review fix — expiry, participant race, dan proof canonicality
+
+Commit fix lokal `22407ad` menutup tiga finding review root tanpa memperluas
+boundary. Locked recheck kini mengharuskan `expires_at` persisted dapat diparse
+dan strictly future terhadap waktu server; NULL, past, dan exact-now menjadi
+`STATE_INVALID`. Baik upload awal maupun replacement expired membersihkan object
+baru, tidak mengubah lima metadata, dan mempertahankan object lama.
+
+Untuk uploader participant, fase persist sekarang mengunci dan reload
+`Participant::withTrashed()` lalu exact `AssessmentParticipant` sebelum Branch
+atau query bill. Participant harus non-deleted dengan organization/ID exact dan
+attempt harus masih memetakan organization+participant yang sama serta belum
+revoked. Ini mempertahankan urutan authority participant→attempt→organization→
+bill→allocations. Revocation atau stale mapping sesudah storage precheck menjadi
+generic `NOT_FOUND`, tidak membuka oracle bill, dan object baru dibersihkan.
+
+Existing proof all-or-none kini juga harus memenuhi regex namespace private key,
+checksum lowercase 64 hex, MIME allowlist, ukuran 1–5.120.000, dan date cast yang
+sah sebelum fingerprint dihitung atau old-key delete dijadwalkan. Timestamp masa
+lalu tetap canonical dan replaceable dengan fingerprint exact; timestamp masa
+depan fail closed sebagai `SCOPE_INVALID` karena writer hanya menghasilkan waktu
+server current/past. Malformed cast disanitasi menjadi error domain. Path
+traversal, prefix/case key salah, checksum uppercase, MIME asing, zero/oversize,
+malformed/future timestamp tidak mengubah metadata, tidak menghapus old key, dan
+hanya membersihkan object replacement baru.
+
+Bukti RED: focused bertambah menjadi 37 tes dan menghasilkan **11 failure + 1
+error, 142 assertions** pada expiry, participant race, canonical metadata, dan
+malformed timestamp. Sesudah implementasi:
+
+- storage focused **37/37 tes, 201 assertions**;
+- storage + P11c1b manual review + provider finalizer **69/69 tes,
+  368 assertions**;
+- legacy upload **8 passed, 45 assertions**, dengan satu received-page failure
+  yang tetap hanya `public/build/manifest.json` tidak tersedia; harness/build
+  tidak diubah;
+- PostgreSQL disposable penuh **271/271 tes, 1.907 assertions**, cleanup sukses.
+  Test proses ganda baru menahan worker tepat sesudah private write, meng-commit
+  soft-delete participant dari proses lain, lalu membuktikan recheck menolak,
+  metadata tetap NULL, dan object dibersihkan. Run PG pertama mencapai 270 tes
+  lain tetapi fixture self-payer baru gagal sebelum action karena composite FK
+  immediate; fixture diperbaiki dengan remove/reinsert satu item dalam transaksi
+  setup, lalu run kedua lulus penuh;
+- Pint tiga file delta lulus; PHPStan seluruh project pada environment testing
+  eksplisit lulus **0 error**; staged `git diff --check` lulus.
+
+Tidak ada perubahan DTO/error contract, schema/config, finalizer/manual review,
+HTTP/policy/UI/reader, provider/outbound, DB aktif, sandbox, deploy, atau push.
+**STOP untuk review ulang P11c2a; P11c2b belum dimulai.**
