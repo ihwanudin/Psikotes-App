@@ -1935,3 +1935,56 @@ canonical untuk rekonsiliasi.
 Tidak ada batch coordinator, command/job/scheduler/route, schema/config/source
 aktif, create/POST, settlement/finalizer/entitlement/notifikasi, credential/.env/
 data aktif, outbound nyata, deploy atau push. **STOP sebelum P10c-b4/P11**.
+
+## P10c-b4 — koordinator internal bounded
+
+Commit kode lokal `1766c65` menambah
+`CoordinateAssessmentInvoiceReconciliation`. Entrypoint tanpa argumen membaca
+`invoice_reconciliation_batch_size`, `invoice_reconciliation_scan_limit`, dan
+`invoice_reconciliation_max_lookups` dari config canonical. Ia tidak memiliki
+default atau literal kebijakan sendiri. Phase-1 reservation existing tetap
+memvalidasi seluruh range dan relasi config secara fail-closed serta menjadi
+satu-satunya boundary outbox-only/SKIP LOCKED.
+
+Setiap provisional lease kemudian diproses berurutan melalui
+`ValidateAssessmentInvoiceReconciliationLease::execute` dan, bila mendapat
+permit, `ReconcileAssessmentBillInvoice::executeLeased`. Dengan demikian urutan
+lock organization-first, commit sebelum GET, UUID/generation/expiry fence,
+cooldown, dan strict lookup tetap berada pada boundary yang sudah diterima;
+koordinator tidak menambah transaksi, query, lock, provider POST, atau predicate
+canonical baru. Hint invalid/stale dihitung recovery-required dan loop lanjut.
+Provider lookup yang unknown ditangani boundary leased sebagai unknown lalu loop
+juga lanjut ke hint berikutnya. Programming/database failure unexpected tetap
+propagate, bukan disamarkan sebagai hasil bisnis.
+
+Ringkasan hasil memiliki urutan key tetap dan hanya memuat tiga limit serta
+counter `reserved`, `validated`, `issued`, `unknown`, dan `recoveryRequired`.
+Tidak ada message ID, merchant reference, invoice URL, payload, participant,
+organization, token, credential, atau metadata lain. Invariant yang dibuktikan:
+setiap reserved hint terhitung sebagai validation rejection atau validated;
+setiap permit validated berakhir issued, unknown, atau execution recovery.
+
+### Bukti aktual
+
+- RED: **8 tes, 0 passed, 5 errors + 3 failures, 50 assertions**, karena class
+  koordinator belum ada.
+- Tes khusus final: **8/8 tes, 92 assertions**. Bukti mencakup empty deterministic,
+  config batch/scan satu, max-lookups exhausted, invalid config fail-closed,
+  ambient context/transaction, mixed issued/unknown/recovery-required, invalid
+  lease di tengah batch, provider failure di tengah batch, hint sesudah kegagalan
+  tetap issued, urutan provider deterministic, no `createInvoice`, dan summary
+  tidak memuat identifier/reference.
+- Regresi reserve/validate/leased/issuance/reconciliation: **110/110 tes, 1.215
+  assertions**. Default `phpunit.organization-payment.xml`: **75/75 tes, 414
+  assertions**.
+- PostgreSQL disposable existing penuh: **239/239 tes, 1.691 assertions**,
+  cleanup sukses. Tidak ditambah tes PG coordinator baru karena action tidak
+  menambah transaksi/query/lock; suite ini tetap membuktikan SKIP LOCKED dua
+  proses, organization-first serialization, runtime non-owner/NOBYPASSRLS,
+  token fence, dan race persistence yang benar-benar dipakai komposisi.
+- Pint kedua file kode/tes dan `git diff --check` lulus. PHPStan seluruh project
+  dengan environment testing eksplisit/SQLite memory lulus **0 error**.
+
+Tidak ada command/job/scheduler/route/webhook, finalizer P11, schema/migration/
+config change, credential/.env/data aktif, provider nyata, notifikasi, deploy,
+push, atau source/gate activation. **STOP sebelum wiring operasional/P11**.
