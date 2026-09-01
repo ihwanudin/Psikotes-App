@@ -173,6 +173,121 @@ final class AssessmentBillProofStorageTest extends OrganizationPaymentTestCase
         $this->assertCount(1, Storage::disk('payment-proofs')->allFiles());
     }
 
+    public function test_expired_bill_rejects_initial_and_replacement_upload_at_exact_server_now(): void
+    {
+        DB::table('assessment_bills')->where('id', $this->bill['bill'])->update(['expires_at' => now()]);
+        $this->assertStorageError($this->upload($this->branchAdmin, $this->proof('jpeg')),
+            'ASSESSMENT_BILL_PROOF_STATE_INVALID');
+        $this->assertNull(AssessmentBill::query()->findOrFail($this->bill['bill'])->proof_object_key);
+        Storage::disk('payment-proofs')->assertDirectoryEmpty('/');
+
+        DB::table('assessment_bills')->where('id', $this->bill['bill'])->update(['expires_at' => now()->addSecond()]);
+        $first = $this->execute($this->upload($this->branchAdmin, $this->proof('jpeg')));
+        $before = AssessmentBill::query()->findOrFail($this->bill['bill'])->only([
+            'proof_object_key', 'proof_checksum_sha256', 'proof_mime_type', 'proof_size_bytes', 'proof_uploaded_at',
+        ]);
+        DB::table('assessment_bills')->where('id', $this->bill['bill'])->update(['expires_at' => now()]);
+
+        $this->assertStorageError($this->upload($this->branchAdmin, $this->proof('png'), $first->proofFingerprint),
+            'ASSESSMENT_BILL_PROOF_STATE_INVALID');
+        $after = AssessmentBill::query()->findOrFail($this->bill['bill']);
+        $this->assertSame($before['proof_object_key'], $after->proof_object_key);
+        $this->assertSame($before['proof_checksum_sha256'], $after->proof_checksum_sha256);
+        $this->assertCount(1, Storage::disk('payment-proofs')->allFiles());
+        Storage::disk('payment-proofs')->assertExists((string) $before['proof_object_key']);
+    }
+
+    #[DataProvider('participantAuthorityRevocations')]
+    public function test_participant_authority_revoked_after_storage_is_rechecked_before_bill_lookup(string $mutation): void
+    {
+        $this->makeSelfBill();
+        $principal = new AssessmentPrincipal($this->bill['participant'], $this->bill['organization'], $this->bill['attempt']);
+        $disk = Storage::disk('payment-proofs');
+        $this->proxyDisk($disk, function (string $path, string $contents, array $options) use ($disk, $mutation): bool {
+            $stored = $disk->put($path, $contents, $options);
+            $column = $mutation === 'participant_deleted' ? 'participants' : 'assessment_participants';
+            DB::table($column)->where('id', $mutation === 'participant_deleted'
+                ? $this->bill['participant'] : $this->bill['attempt'])->update([
+                    $mutation === 'participant_deleted' ? 'deleted_at' : 'revoked_at' => now(),
+                ]);
+
+            return $stored;
+        });
+        $queries = [];
+        DB::listen(static function ($query) use (&$queries): void {
+            $queries[] = $query->sql;
+        });
+
+        $this->assertStorageError($this->upload($principal, $this->proof('jpeg')),
+            'ASSESSMENT_BILL_PROOF_NOT_FOUND');
+        $billQueries = array_values(array_filter($queries,
+            static fn (string $sql): bool => str_contains($sql, 'assessment_bills')));
+        $this->assertSame([], $billQueries);
+        $disk->assertDirectoryEmpty('/');
+        $this->assertNull(DB::table('assessment_bills')->where('id', $this->bill['bill'])->value('proof_object_key'));
+    }
+
+    public static function participantAuthorityRevocations(): iterable
+    {
+        yield 'participant soft deleted' => ['participant_deleted'];
+        yield 'attempt revoked' => ['attempt_revoked'];
+    }
+
+    #[DataProvider('corruptExistingProofs')]
+    public function test_corrupt_existing_proof_is_rejected_without_replacement_or_old_delete(array $corruption): void
+    {
+        $first = $this->execute($this->upload($this->branchAdmin, $this->proof('jpeg')));
+        $bill = AssessmentBill::query()->findOrFail($this->bill['bill']);
+        $oldKey = (string) $bill->proof_object_key;
+        DB::table('assessment_bills')->where('id', $bill->id)->update($corruption);
+        $corruptKey = (string) ($corruption['proof_object_key'] ?? $oldKey);
+        $disk = Storage::disk('payment-proofs');
+        $deleted = [];
+        $this->proxyDisk($disk,
+            fn (string $path, string $contents, array $options): bool => $disk->put($path, $contents, $options),
+            function (string $path) use ($disk, &$deleted): bool {
+                $deleted[] = $path;
+
+                return $disk->delete($path);
+            });
+
+        $this->assertStorageError($this->upload($this->branchAdmin, $this->proof('png'), $first->proofFingerprint),
+            'ASSESSMENT_BILL_PROOF_SCOPE_INVALID');
+        $this->assertNotContains($corruptKey, $deleted);
+        $this->assertNotContains($oldKey, $deleted);
+        $disk->assertExists($oldKey);
+        $this->assertCount(1, $disk->allFiles());
+        foreach ($corruption as $column => $value) {
+            $this->assertSame((string) $value,
+                (string) DB::table('assessment_bills')->where('id', $bill->id)->value($column));
+        }
+    }
+
+    public static function corruptExistingProofs(): iterable
+    {
+        yield 'key traversal' => [['proof_object_key' => '../assessment-bills/proof.pdf']];
+        yield 'wrong key prefix' => [['proof_object_key' => 'other/aa/'.str_repeat('b', 62).'.pdf']];
+        yield 'uppercase key' => [['proof_object_key' => 'assessment-bills/AA/'.str_repeat('b', 62).'.pdf']];
+        yield 'uppercase checksum' => [['proof_checksum_sha256' => str_repeat('A', 64)]];
+        yield 'foreign MIME' => [['proof_mime_type' => 'image/gif']];
+        yield 'zero size' => [['proof_size_bytes' => 0]];
+        yield 'oversize' => [['proof_size_bytes' => 5_120_001]];
+        yield 'malformed timestamp' => [['proof_uploaded_at' => 'not-a-timestamp']];
+        yield 'future timestamp' => [['proof_uploaded_at' => '2099-01-01 00:00:00']];
+    }
+
+    public function test_past_existing_upload_timestamp_remains_replaceable_with_exact_fingerprint(): void
+    {
+        $this->execute($this->upload($this->branchAdmin, $this->proof('jpeg')));
+        $past = now()->subDay()->toImmutable()->utc()->startOfSecond();
+        DB::table('assessment_bills')->where('id', $this->bill['bill'])->update(['proof_uploaded_at' => $past]);
+        $bill = AssessmentBill::query()->findOrFail($this->bill['bill']);
+        $fingerprint = $this->proofFingerprint($bill, $past);
+
+        $this->assertTrue($this->execute($this->upload($this->branchAdmin, $this->proof('png'), $fingerprint))->replaced);
+        $this->assertCount(1, Storage::disk('payment-proofs')->allFiles());
+    }
+
     public function test_authoritative_recheck_failure_after_store_cleans_new_object(): void
     {
         $disk = Storage::disk('payment-proofs');
@@ -309,7 +424,8 @@ final class AssessmentBillProofStorageTest extends OrganizationPaymentTestCase
         DB::table('assessment_bills')->where('id', $f['bill'])->update([
             'status' => 'pending', 'paid_at' => null, 'verified_at' => null, 'verified_by_admin_id' => null,
             'rejection_reason' => null, 'gateway_ref' => null, 'invoice_url' => null, 'proof_object_key' => null,
-            'proof_checksum_sha256' => null, 'proof_mime_type' => null, 'proof_size_bytes' => null, 'proof_uploaded_at' => null]);
+            'proof_checksum_sha256' => null, 'proof_mime_type' => null, 'proof_size_bytes' => null,
+            'proof_uploaded_at' => null, 'expires_at' => now()->addHour()]);
 
         return [...$f, 'method' => $method, 'reference' => DB::table('assessment_bills')->where('id', $f['bill'])->value('public_reference')];
     }
@@ -399,5 +515,14 @@ final class AssessmentBillProofStorageTest extends OrganizationPaymentTestCase
         $mock->shouldReceive('put')->andReturnUsing($put);
         $mock->shouldReceive('delete')->andReturnUsing($delete ?? fn (string $path): bool => $real->delete($path));
         Storage::shouldReceive('disk')->with('payment-proofs')->andReturn($mock);
+    }
+
+    private function proofFingerprint(AssessmentBill $bill, \DateTimeInterface $uploadedAt): string
+    {
+        return hash('sha256', implode("\0", [
+            $bill->proof_object_key, $bill->proof_checksum_sha256, $bill->proof_mime_type,
+            (string) $bill->proof_size_bytes,
+            $uploadedAt->format('Y-m-d\TH:i:s.u\Z'),
+        ]));
     }
 }

@@ -23,6 +23,7 @@ use App\Security\RlsContextRunner;
 use App\Services\ParticipantAuth\AssessmentPrincipal;
 use App\Services\Payments\AssessmentPriceSnapshot;
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use DomainException;
 use finfo;
 use Illuminate\Database\Eloquent\Collection;
@@ -94,7 +95,7 @@ final readonly class StoreAssessmentBillProof
             ->where('participant_id', $uploader->participantId)->first();
         $participant = Participant::query()->where('id', $uploader->participantId)
             ->where('branch_id', $uploader->organizationId)->first();
-        if ($attempt === null || $participant === null) {
+        if ($attempt === null || $attempt->revoked_at !== null || $participant === null) {
             $this->fail(AssessmentBillProofStorageError::NotFound);
         }
 
@@ -167,6 +168,19 @@ final readonly class StoreAssessmentBillProof
                 || $admin->branch_id !== $authority['organizationId']) {
                 $this->fail(AssessmentBillProofStorageError::NotFound);
             }
+        } else {
+            $participant = Participant::withTrashed()->lockForUpdate()->find($authority['actorId']);
+            if ($participant === null || $participant->deleted_at !== null
+                || $participant->id !== $authority['participantId']
+                || $participant->branch_id !== $authority['organizationId']) {
+                $this->fail(AssessmentBillProofStorageError::NotFound);
+            }
+            $attempt = AssessmentParticipant::query()->where('id', $authority['attemptId'])
+                ->where('organization_id', $authority['organizationId'])
+                ->where('participant_id', $authority['participantId'])->lockForUpdate()->first();
+            if ($attempt === null || $attempt->revoked_at !== null) {
+                $this->fail(AssessmentBillProofStorageError::NotFound);
+            }
         }
         if (Branch::query()->lockForUpdate()->find($authority['organizationId']) === null) {
             $this->fail(AssessmentBillProofStorageError::NotFound);
@@ -236,7 +250,13 @@ final readonly class StoreAssessmentBillProof
             || $bill->invoice_url !== null) {
             $this->fail(AssessmentBillProofStorageError::ChannelInvalid);
         }
-        if ($bill->status !== 'pending' || $bill->paid_at !== null || $bill->verified_at !== null
+        try {
+            $expiresAt = $this->dateAttribute($bill, 'expires_at');
+        } catch (Throwable) {
+            $this->fail(AssessmentBillProofStorageError::StateInvalid);
+        }
+        if ($bill->status !== 'pending' || $expiresAt === null || ! $expiresAt->isAfter(now())
+            || $bill->paid_at !== null || $bill->verified_at !== null
             || $bill->verified_by_admin_id !== null || $bill->rejection_reason !== null) {
             $this->fail(AssessmentBillProofStorageError::StateInvalid);
         }
@@ -308,19 +328,37 @@ final readonly class StoreAssessmentBillProof
 
     private function currentFingerprint(AssessmentBill $bill): ?string
     {
+        $rawUploadedAt = $bill->getRawOriginal('proof_uploaded_at');
         $values = [$bill->proof_object_key, $bill->proof_checksum_sha256, $bill->proof_mime_type,
-            $bill->proof_size_bytes, $bill->proof_uploaded_at];
+            $bill->proof_size_bytes, $rawUploadedAt];
         if (array_filter($values, static fn (mixed $value): bool => $value !== null) === []) {
             return null;
         }
         if (! is_string($bill->proof_object_key) || ! is_string($bill->proof_checksum_sha256)
             || ! is_string($bill->proof_mime_type) || ! is_int($bill->proof_size_bytes)
-            || $bill->proof_uploaded_at === null) {
+            || $rawUploadedAt === null
+            || ! preg_match('/^assessment-bills\/[a-z0-9]{2}\/[a-z0-9]{62}\.(jpg|png|pdf)$/D', $bill->proof_object_key)
+            || ! preg_match('/^[0-9a-f]{64}$/D', $bill->proof_checksum_sha256)
+            || ! in_array($bill->proof_mime_type, ['image/jpeg', 'image/png', 'application/pdf'], true)
+            || $bill->proof_size_bytes < 1 || $bill->proof_size_bytes > 5_120_000) {
+            $this->fail(AssessmentBillProofStorageError::ScopeInvalid);
+        }
+
+        try {
+            $uploadedAt = $this->dateAttribute($bill, 'proof_uploaded_at');
+        } catch (Throwable) {
+            $this->fail(AssessmentBillProofStorageError::ScopeInvalid);
+        }
+        if ($uploadedAt === null) {
+            $this->fail(AssessmentBillProofStorageError::ScopeInvalid);
+        }
+        $canonicalUploadedAt = CarbonImmutable::instance($uploadedAt)->utc();
+        if ($canonicalUploadedAt->isAfter(now())) {
             $this->fail(AssessmentBillProofStorageError::ScopeInvalid);
         }
 
         return $this->fingerprint($bill->proof_object_key, $bill->proof_checksum_sha256, $bill->proof_mime_type,
-            $bill->proof_size_bytes, CarbonImmutable::instance($bill->proof_uploaded_at));
+            $bill->proof_size_bytes, $canonicalUploadedAt);
     }
 
     private function fingerprint(string $key, string $checksum, string $mime, int $size,
@@ -329,6 +367,14 @@ final readonly class StoreAssessmentBillProof
         return hash('sha256', implode("\0", [
             $key, $checksum, $mime, (string) $size, $uploadedAt->utc()->format('Y-m-d\TH:i:s.u\Z'),
         ]));
+    }
+
+    /** @throws Throwable when an Eloquent date cast cannot parse persisted data. */
+    private function dateAttribute(AssessmentBill $bill, string $attribute): ?CarbonInterface
+    {
+        $value = $bill->getAttribute($attribute);
+
+        return $value instanceof CarbonInterface ? $value : null;
     }
 
     private function deleteBestEffort(string $key): void

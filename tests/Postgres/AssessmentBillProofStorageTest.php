@@ -10,6 +10,7 @@ use App\Enums\AdminRole;
 use App\Models\Admin;
 use App\Models\AssessmentBill;
 use App\Security\RlsContextRunner;
+use App\Services\ParticipantAuth\AssessmentPrincipal;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Date;
@@ -51,7 +52,7 @@ final class AssessmentBillProofStorageTest extends TestCase
                 'verified_by_admin_id' => null, 'rejection_reason' => null,
                 'gateway_ref' => null, 'invoice_url' => null,
                 'proof_object_key' => null, 'proof_checksum_sha256' => null, 'proof_mime_type' => null,
-                'proof_size_bytes' => null, 'proof_uploaded_at' => null,
+                'proof_size_bytes' => null, 'proof_uploaded_at' => null, 'expires_at' => now()->addHour(),
             ]);
             $adminId = Admin::query()->insertGetId([
                 'branch_id' => $fixture['organization'], 'name' => 'Synthetic proof uploader',
@@ -121,12 +122,96 @@ final class AssessmentBillProofStorageTest extends TestCase
         $this->assertCount(1, Storage::disk('payment-proofs')->allFiles());
     }
 
+    public function test_participant_revocation_committed_after_object_write_is_rechecked_before_persist(): void
+    {
+        $this->makeSelfBill();
+        $principal = new AssessmentPrincipal(
+            $this->fixture['participant'], $this->fixture['organization'], $this->fixture['attempt'],
+        );
+        DB::purge('pgsql');
+        $pair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
+        $this->assertNotFalse($pair);
+        $pid = pcntl_fork();
+        $this->assertNotSame(-1, $pid);
+        if ($pid === 0) {
+            fclose($pair[0]);
+            stream_set_timeout($pair[1], 20);
+            try {
+                DB::statement("SET lock_timeout = '12s'");
+                $real = Storage::disk('payment-proofs');
+                $mock = Mockery::mock(FilesystemAdapter::class);
+                $mock->shouldReceive('put')->andReturnUsing(function (string $path, string $contents,
+                    array $options) use ($real, $pair): bool {
+                    $stored = $real->put($path, $contents, $options);
+                    fwrite($pair[1], "stored\n");
+                    if (fgets($pair[1]) !== "persist\n") {
+                        throw new RuntimeException('Revocation barrier timed out.');
+                    }
+
+                    return $stored;
+                });
+                $mock->shouldReceive('delete')->andReturnUsing(fn (string $path): bool => $real->delete($path));
+                Storage::shouldReceive('disk')->with('payment-proofs')->andReturn($mock);
+                app(StoreAssessmentBillProof::class)->execute(new AssessmentBillProofUpload(
+                    $principal, $this->fixture['reference'], $this->pdf('revoked.pdf'), null,
+                ));
+                $result = ['unexpected' => true];
+            } catch (Throwable $exception) {
+                $result = ['error' => $exception->getMessage(), 'class' => $exception::class];
+            }
+            fwrite($pair[1], json_encode($result, JSON_THROW_ON_ERROR)."\n");
+            fclose($pair[1]);
+            DB::disconnect('pgsql');
+            exit(0);
+        }
+
+        fclose($pair[1]);
+        stream_set_timeout($pair[0], 20);
+        try {
+            $this->assertSame("stored\n", fgets($pair[0]));
+            app(RlsContextRunner::class)->runAsService(fn (): int => DB::table('participants')
+                ->where('id', $this->fixture['participant'])->update(['deleted_at' => now()]));
+            fwrite($pair[0], "persist\n");
+            $result = json_decode((string) fgets($pair[0]), true, flags: JSON_THROW_ON_ERROR);
+            $this->assertSame('ASSESSMENT_BILL_PROOF_NOT_FOUND', $result['error'] ?? null);
+            app(RlsContextRunner::class)->runAsService(function (): void {
+                $this->assertNull(AssessmentBill::query()->findOrFail($this->fixture['bill'])->proof_object_key);
+            });
+            $this->assertCount(0, Storage::disk('payment-proofs')->allFiles());
+        } finally {
+            fclose($pair[0]);
+            pcntl_waitpid($pid, $status);
+            $this->assertTrue(pcntl_wifexited($status));
+            $this->assertSame(0, pcntl_wexitstatus($status));
+        }
+    }
+
     private function assertRuntimeRole(): void
     {
         $role = DB::selectOne('SELECT current_user AS name, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user');
         $this->assertSame('psikotes_runtime', $role->name);
         $this->assertFalse($role->rolsuper);
         $this->assertFalse($role->rolbypassrls);
+    }
+
+    private function makeSelfBill(): void
+    {
+        app(RlsContextRunner::class)->runAsService(function (): void {
+            $item = (array) DB::table('assessment_bill_items')->where('id', $this->fixture['item'])->firstOrFail();
+            DB::table('assessment_bill_items')->where('id', $this->fixture['item'])->delete();
+            DB::table('assessment_participants')->where('id', $this->fixture['attempt'])->update([
+                'funding_mode' => 'COMMERCIAL_SELF_PAY',
+                'metadata' => json_encode(['checkout_contract_version' => 'checkout-v2',
+                    'checkout_initial_funding_mode' => 'COMMERCIAL_SELF_PAY'], JSON_THROW_ON_ERROR),
+            ]);
+            DB::table('assessment_charges')->where('id', $this->fixture['charge'])->update(['payer_type' => 'self']);
+            DB::table('assessment_bills')->where('id', $this->fixture['bill'])->update([
+                'payer_type' => 'self', 'payer_participant_id' => $this->fixture['participant'],
+            ]);
+            $item['payer_type'] = 'self';
+            $item['payer_participant_id'] = $this->fixture['participant'];
+            DB::table('assessment_bill_items')->insert($item);
+        });
     }
 
     /** @param array<string, mixed> $first @param array<string, mixed> $second */
