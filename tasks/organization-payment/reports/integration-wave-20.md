@@ -26,3 +26,8 @@ web dan memastikan production `routes/web.php` tidak memuat controller.
 
 Belum ada route produksi, reviewer Filament/resource/UI, outbound, schema/config,
 DB aktif, deploy, atau push. P11c UI tetap increment terpisah dan default-off.
+
+Task backend existing menerima P11c3a reviewer resource testing-only. Turn
+`01a05c96-3d2f-75a0-8518-ed6671ee9e34`, cursor
+`67fb332a-ee06-4280-b3fe-55c3b79bcc9c:17`; decision UI, route produksi, dan
+discovery non-testing tetap dilarang.
