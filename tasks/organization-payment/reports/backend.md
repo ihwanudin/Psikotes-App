@@ -2223,3 +2223,24 @@ Tidak ada route/controller baru, perubahan autentikasi/normalisasi provider,
 status reconciler assessment, command/job/scheduler, provider call, schema/config,
 credential/.env/data aktif, settlement manual, notifikasi terkirim, deploy, push,
 atau aktivasi source/gate. **STOP untuk review P11b1 sebelum P11b2/P11c**.
+
+### P11b1 review fix — explicit paid-only settlement guard
+
+Commit lokal `df2a2a6` menambahkan `assertPaidEvent()` tepat sebelum pembentukan
+`paidAt` dan seluruh mutasi settlement. Status normalized selain `Paid` yang tidak
+memiliki cabang eksplisit sekarang gagal tertutup dengan
+`ASSESSMENT_PAYMENT_STATE_INVALID`; dispatcher memetakannya menjadi
+`bill_invalid`. Guard tidak bergantung pada exhaustiveness enum saat ini.
+
+Tes kontrak status dirapikan menjadi matriks `PaymentStatus::cases()`: Pending
+ignored dan tidak settled; Paid applied serta settled; Expired applied menjadi
+expired tanpa settlement; Cancelled applied menjadi rejected tanpa settlement.
+Daftar expected juga dibandingkan exact dengan seluruh case enum saat ini agar
+penambahan status baru memaksa keputusan tes dan implementasi.
+
+Bukti setelah fix: dispatcher + finalizer **22/22 tes, 145 assertions**; regresi
+webhook/provider/reconciliation/order legacy **40/40 tes, 149 assertions**; Pint
+dua file, PHPStan seluruh project **0 error**, dan `git diff --check` lulus.
+Perubahan tidak menyentuh transaksi, lock, schema, atau RLS, sehingga runner PG
+241/1.719 dari increment P11b1 tetap menjadi bukti runtime yang relevan dan tidak
+diulang. **STOP untuk review ulang P11b1; belum P11b2/P11c**.
