@@ -563,3 +563,14 @@ model/historical migration compatibility `41bffb9` dan portal fixture contract
 Pint/PHPStan, serta PostgreSQL disposable 286/2428 lulus dengan cleanup sukses.
 Default PHPUnit kini mengecualikan sandbox eksternal (`d864517`). P11c1b core
 typed review/finalizer berikutnya; schema belum diterapkan ke database aktif.
+
+P11c1b `8bc0310`/`235c991` diintegrasikan root sebagai `d8e21b7`/`ca4e21a`.
+Review memastikan authority SuperAdmin persisted mendahului lookup bill, replay
+terikat actor+proof+decision+reason, reject tidak melakukan settlement, dan
+approve memakai settlement/activation/outbox primitive yang sama dengan provider.
+Root manual review 22/102, provider terkait 73/710, legacy manual terisolasi 7/38,
+default synthetic 1224/7629, Pint/PHPStan, serta PostgreSQL disposable 289/2471
+lulus dan cleanup sukses. Kegagalan run campuran hanya berasal dari strategi
+reset SQLite berbeda; masing-masing kelompok lulus terisolasi. P11c1b diterima;
+P11c2 proof upload/access/policy/UI tetap berikutnya dan schema belum diterapkan
+ke database aktif.
