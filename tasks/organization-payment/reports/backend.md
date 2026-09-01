@@ -1770,3 +1770,51 @@ Tidak ada acquisition/permit/action/provider call, command/job/scheduler/route,
 RLS policy, schema historis, source/gate, credential/.env/data aktif, outbound,
 deploy atau push. P10c-b1 hanya kontrak schema; **STOP untuk review sebelum
 P10c-b2/P11**.
+
+## P10c-b2a — reservasi provisional hint outbox-only
+
+Increment ini menambah `ReserveAssessmentInvoiceReconciliationHints` dengan
+entrypoint internal `execute(remainingBatch, remainingScan)`. Caller wajib tanpa
+ambient RLS context dan tanpa outer transaction. Action memvalidasi seluruh
+config ADR-009 beserta relasinya, serta meminta remaining batch/scan positif dan
+tidak melebihi config; jumlah kandidat maksimal adalah minimum keduanya.
+
+Satu service transaction singkat membaca database clock dan hanya memilih row
+`outbox_messages`. Filter membatasi topic invoice, aggregate `AssessmentBill`,
+attempts1, processed NULL, pasangan processing/null-error atau
+failed/`INVOICE_OUTCOME_UNKNOWN`, counter di bawah maksimum, cooldown NULL/due,
+serta lease kosong atau expired. Urutan deterministic adalah cooldown NULL,
+cooldown due, lalu id. PostgreSQL memakai `FOR UPDATE SKIP LOCKED`; SQLite hanya
+membuktikan semantik. Update conditional menulis UUID dan expiry saja, tanpa
+menyentuh `updated_at`, available/status/attempts/processed/error/next/counter,
+audit, organization, bill, registry, policy atau provider. Transaction commit
+selesai sebelum list DTO dikembalikan.
+
+DTO `ProvisionalAssessmentInvoiceLease` hanya membawa message ID, UUID token, dan
+expiry immutable. Token ini bukan permit validator, provider authority, hak
+create/rearm, settlement, atau entitlement.
+
+### Bukti aktual
+
+- RED feature sebelum class ada: **19 tes, 19 errors, 19 assertions**.
+- Focused feature final dengan SQLite memory: **19/19 tes, 82 assertions**.
+  Bukti mencakup bounds/config, order dan database clock, seluruh ineligible
+  hints, active skip, expired reclaim, rollback, ambient context/transaction,
+  business columns unchanged, nol audit dan tidak ada query organization/bill/
+  registry.
+- Regresi lookup/claim/issuance/reconciliation/reservation: **182/182 tes,
+  1.322 assertions**.
+- PostgreSQL disposable final: **235/235 tes, 1.594 assertions**, cleanup sukses.
+  Empat tes baru menjalankan runtime `psikotes_runtime` non-owner/NOBYPASSRLS:
+  dua process mendapat set disjoint dan bounded; worker melewati row outbox yang
+  dikunci dan selesai saat organization lock masih ditahan; active/cooldown/max/
+  ineligible skip; expired reclaim mendapat token baru tanpa counter; synthetic
+  failure menggulung balik token. Tidak ada deadlock.
+- Pint empat file kode/tes dan `git diff --check` lulus. PHPStan seluruh project
+  dengan environment testing eksplisit/SQLite memory lulus **0 error**; scoped
+  check setelah perubahan assertion terakhir juga nol error.
+
+Tidak ada perubahan schema/config/model existing, validator canonical, claim,
+provider GET/POST, persistence outcome, command/job/scheduler/route, source/gate,
+credential/.env/data aktif, outbound, deploy atau push. **STOP sebelum
+P10c-b2b/P10c-b3/P11**.
