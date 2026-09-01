@@ -25,6 +25,8 @@ final class OrganizationBillAccessTest extends OrganizationPaymentTestCase
 {
     use RefreshDatabase;
 
+    private const string PROOF_KEY = 'assessment-bills/ab/cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.jpg';
+
     private array $own;
 
     private array $foreign;
@@ -138,7 +140,9 @@ final class OrganizationBillAccessTest extends OrganizationPaymentTestCase
     {
         $bill = AssessmentBill::findOrFail($this->own['bill']);
         $bill->update(['status' => 'expired', 'invoice_url' => 'https://gateway.example.test/DO-NOT-EXPOSE',
-            'proof_object_key' => 'PRIVATE-PROOF', 'gateway_ref' => 'PRIVATE-GATEWAY',
+            'proof_object_key' => self::PROOF_KEY, 'proof_checksum_sha256' => str_repeat('a', 64),
+            'proof_mime_type' => 'image/jpeg', 'proof_size_bytes' => 1, 'proof_uploaded_at' => now(),
+            'gateway_ref' => 'PRIVATE-GATEWAY',
             'rejection_reason' => 'PRIVATE-REVIEW-NOTE']);
         DB::table('assessment_participants')->where('id', $this->own['attempt'])->update([
             'metadata' => json_encode(['clinical' => 'CLINICAL-SENTINEL']),
@@ -149,10 +153,10 @@ final class OrganizationBillAccessTest extends OrganizationPaymentTestCase
             ->assertSee('Kedaluwarsa')->assertSee('Hubungi petugas ONCAM')
             ->assertSee('Paket snapshot OWN')->assertSee('Peserta OWN')->assertSee('Periode OWN')
             ->assertDontSee('Peserta FOREIGN')->assertDontSee('CLINICAL-SENTINEL')
-            ->assertDontSee('CATALOG-CHANGED')->assertDontSee('PRIVATE-PROOF')
+            ->assertDontSee('CATALOG-CHANGED')->assertDontSee(self::PROOF_KEY)
             ->assertDontSee('PRIVATE-GATEWAY')->assertDontSee('DO-NOT-EXPOSE')->assertDontSee('PRIVATE-REVIEW-NOTE');
         $component->call('refreshFormData', ['invoice_url', 'proof_object_key', 'gateway_ref', 'request_hash'])
-            ->assertDontSee('PRIVATE-PROOF')->assertDontSee('DO-NOT-EXPOSE');
+            ->assertDontSee(self::PROOF_KEY)->assertDontSee('DO-NOT-EXPOSE');
         foreach (['create', 'update', 'delete', 'deleteAny', 'forceDelete', 'restore', 'replicate', 'reorder', 'verifyPayment'] as $action) {
             $this->assertFalse(OrganizationBillResource::can($action, $bill), $action);
         }

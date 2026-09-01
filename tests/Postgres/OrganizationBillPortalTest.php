@@ -26,6 +26,8 @@ use Tests\Support\AssessmentBillingFixture as Fixture;
 /** Query/projection evidence only: the PG bootstrap is not an HTTP/Livewire test case. */
 final class OrganizationBillPortalTest extends TestCase
 {
+    private const string PROOF_KEY = 'assessment-bills/ab/cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.jpg';
+
     private array $own;
 
     private array $foreign;
@@ -95,7 +97,7 @@ final class OrganizationBillPortalTest extends TestCase
             $this->assertSame(0, $rows[0]['consultation_amount']);
             $this->assertSame(['participant', 'attempt', 'period', 'package', 'base_amount', 'consultation_amount', 'amount', 'settled_at'], array_keys($rows[0]));
             $serialized = json_encode([$bill->toArray(), $rows], JSON_THROW_ON_ERROR);
-            foreach (['CLINICAL-SENTINEL', 'PRIVATE-PROOF', 'PRIVATE-GATEWAY', 'PRIVATE-INVOICE', 'PRIVATE-REVIEW', 'FOREIGN', 'CATALOG-CHANGED'] as $private) {
+            foreach (['CLINICAL-SENTINEL', self::PROOF_KEY, 'PRIVATE-GATEWAY', 'PRIVATE-INVOICE', 'PRIVATE-REVIEW', 'FOREIGN', 'CATALOG-CHANGED'] as $private) {
                 $this->assertStringNotContainsString($private, $serialized);
             }
             foreach ([$this->foreign['bill'], $this->self['bill'], PHP_INT_MAX] as $deniedId) {
@@ -228,7 +230,7 @@ final class OrganizationBillPortalTest extends TestCase
             $this->assertLessThanOrEqual(7, count($queries));
             fwrite(STDERR, "\nPortal PG detail 10 allocations: ".count($queries)." queries\n");
             foreach ($queries as $query) {
-                $this->assertDoesNotMatchRegularExpression('/"(?:metadata|invoice_url|proof_object_key|gateway_ref|rejection_reason)"/', $query['query']);
+                $this->assertDoesNotMatchRegularExpression('/"(?:metadata|invoice_url|proof_object_key|proof_checksum_sha256|proof_mime_type|proof_size_bytes|proof_uploaded_at|gateway_ref|rejection_reason)"/', $query['query']);
             }
         });
     }
@@ -272,7 +274,9 @@ final class OrganizationBillPortalTest extends TestCase
             'assessment_round_id' => 'Periode '.$label, 'metadata' => '{"clinical":"CLINICAL-SENTINEL"}',
         ]);
         DB::table('assessment_bills')->where('id', $fixture['bill'])->update([
-            'invoice_url' => 'https://gateway.example.test/PRIVATE-INVOICE', 'proof_object_key' => 'PRIVATE-PROOF',
+            'invoice_url' => 'https://gateway.example.test/PRIVATE-INVOICE', 'proof_object_key' => self::PROOF_KEY,
+            'proof_checksum_sha256' => str_repeat('a', 64), 'proof_mime_type' => 'image/jpeg',
+            'proof_size_bytes' => 1, 'proof_uploaded_at' => now(),
             'gateway_ref' => 'PRIVATE-GATEWAY-'.$label, 'rejection_reason' => 'PRIVATE-REVIEW',
         ]);
         DB::table('packages')->where('id', $fixture['package'])->update(['name' => 'CATALOG-CHANGED', 'amount' => 999999]);
