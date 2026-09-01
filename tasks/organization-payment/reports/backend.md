@@ -1958,7 +1958,8 @@ juga lanjut ke hint berikutnya. Programming/database failure unexpected tetap
 propagate, bukan disamarkan sebagai hasil bisnis.
 
 Ringkasan hasil memiliki urutan key tetap dan hanya memuat tiga limit serta
-counter `reserved`, `validated`, `issued`, `unknown`, dan `recoveryRequired`.
+counter `reserved`, `validated`, `issued`, `unknown`, `validationRejected`, dan
+`recoveryRequired`.
 Tidak ada message ID, merchant reference, invoice URL, payload, participant,
 organization, token, credential, atau metadata lain. Invariant yang dibuktikan:
 setiap reserved hint terhitung sebagai validation rejection atau validated;
@@ -1988,3 +1989,53 @@ setiap permit validated berakhir issued, unknown, atau execution recovery.
 Tidak ada command/job/scheduler/route/webhook, finalizer P11, schema/migration/
 config change, credential/.env/data aktif, provider nyata, notifikasi, deploy,
 push, atau source/gate activation. **STOP sebelum wiring operasional/P11**.
+
+### P10c-b4 review fix — scan budget dan refill lookup
+
+Review menemukan commit awal `1766c65` hanya memanggil reservation sekali,
+sehingga `scanLimit > batchLimit` tidak pernah dipakai untuk mengganti slot lookup
+yang ditolak validator. Commit fix lokal `8a79d0a` menggantinya dengan loop budget
+eksplisit. `remainingScan` berkurang untuk setiap provisional lease yang benar-benar
+diperiksa; `remainingLookups` hanya berkurang setelah validator menerbitkan permit
+yang kemudian dieksekusi. Loop berhenti saat lookup budget nol, scan budget nol,
+atau reservation mengembalikan kosong.
+
+Phase-1 reservation mendapat parameter optional exclusion set yang divalidasi
+sebagai list ULID unik dan dibatasi scan config. Query awal memakai `whereNotIn`
+untuk message yang sudah diperiksa, sedangkan conditional update row terpilih tetap
+memakai predicate canonical existing. Ini diperlukan karena validator sengaja
+membersihkan provisional token kandidat invalid; tanpa exclusion, row invalid yang
+due akan langsung terpilih ulang dan dapat menghabiskan scan tanpa maju. Tidak ada
+cooldown/backfill/mutasi bisnis baru pada kandidat invalid.
+
+Summary kini memisahkan `validationRejected` dari `recoveryRequired` hasil
+`executeLeased`. Karena itu invariant observable menjadi `reserved = validated +
+validationRejected`, `validated = issued + unknown + recoveryRequired`,
+`reserved <= scanLimit`, dan `validated <= batchLimit`. Tidak ada identifier yang
+ditambahkan ke summary.
+
+Regresi wajib batch2/scan4 membuat urutan due invalid, valid, valid, valid. Hasil
+aktual adalah reserved3, validationRejected1, validated2, issued2; kandidat keempat
+tetap processing tanpa lease. Tes mixed terpisah membuktikan provider unknown dan
+execution recovery di tengah urutan tidak mencegah kandidat setelahnya menjadi
+issued.
+
+#### Bukti aktual review fix
+
+- RED khusus: **1 tes, 1 failure, 10 assertions**; implementasi awal mengembalikan
+  reserved2, bukan reserved3.
+- Tes coordinator final: **9/9 tes, 117 assertions**. Coordinator + reservation:
+  **29/29 tes, 204 assertions**.
+- Regresi reserve/validate/leased/issuance/reconciliation final: **112/112 tes,
+  1.245 assertions**. Default suite organisasi: **75/75 tes, 414 assertions**.
+- PostgreSQL run pertama terganggu oleh timeout barrier proses existing saat host
+  lambat; child terlambat melanjutkan suite dan menimbulkan output berulang serta
+  collision fixture. Resource disposable dibersihkan. Run kedua pada network/DB
+  baru lulus **240/240 tes, 1.701 assertions**, cleanup sukses. Satu tes PG baru
+  membuktikan exclusion set melewati row awal dan mereservasi dua row due berikutnya
+  pada runtime non-owner.
+- Pint lima file kode/tes, PHPStan seluruh project, dan `git diff --check` lulus.
+
+Tetap tidak ada command/job/scheduler/route/P11, POST/create provider, perubahan
+config/schema, credential/.env/data aktif, notifikasi, deploy, push, atau aktivasi
+source/gate. **STOP untuk review integrasi P10c-b4**.
