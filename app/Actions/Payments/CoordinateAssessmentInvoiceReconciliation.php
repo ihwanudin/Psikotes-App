@@ -24,6 +24,7 @@ final readonly class CoordinateAssessmentInvoiceReconciliation
      *     validated: int,
      *     issued: int,
      *     unknown: int,
+     *     validationRejected: int,
      *     recoveryRequired: int
      * }
      */
@@ -36,38 +37,54 @@ final readonly class CoordinateAssessmentInvoiceReconciliation
             throw new LogicException('Invoice reconciliation configuration is invalid.');
         }
 
-        // Phase one owns the canonical config validation and outbox-only reservation.
-        $leases = $this->reservations->execute($batch, $scan);
+        $remainingLookups = $batch;
+        $remainingScan = $scan;
+        $seen = [];
+        $reserved = 0;
         $validated = 0;
         $issued = 0;
         $unknown = 0;
+        $validationRejected = 0;
         $recoveryRequired = 0;
 
-        foreach ($leases as $lease) {
-            $permit = $this->validation->execute($lease);
-            if ($permit === null) {
-                $recoveryRequired++;
-
-                continue;
+        while ($remainingLookups > 0 && $remainingScan > 0) {
+            // Phase one owns canonical config validation and outbox-only reservation.
+            $leases = $this->reservations->execute($remainingLookups, $remainingScan, $seen);
+            if ($leases === []) {
+                break;
             }
-            $validated++;
-            $result = $this->reconciliation->executeLeased($permit);
-            match ($result['decision']) {
-                'issued' => $issued++,
-                'unknown' => $unknown++,
-                'recovery_required' => $recoveryRequired++,
-                default => throw new LogicException('Invoice reconciliation returned an invalid decision.'),
-            };
+
+            foreach ($leases as $lease) {
+                $reserved++;
+                $remainingScan--;
+                $seen[] = $lease->messageId;
+                $permit = $this->validation->execute($lease);
+                if ($permit === null) {
+                    $validationRejected++;
+
+                    continue;
+                }
+                $validated++;
+                $remainingLookups--;
+                $result = $this->reconciliation->executeLeased($permit);
+                match ($result['decision']) {
+                    'issued' => $issued++,
+                    'unknown' => $unknown++,
+                    'recovery_required' => $recoveryRequired++,
+                    default => throw new LogicException('Invoice reconciliation returned an invalid decision.'),
+                };
+            }
         }
 
         return [
             'batchLimit' => $batch,
             'scanLimit' => $scan,
             'maxLookups' => $max,
-            'reserved' => count($leases),
+            'reserved' => $reserved,
             'validated' => $validated,
             'issued' => $issued,
             'unknown' => $unknown,
+            'validationRejected' => $validationRejected,
             'recoveryRequired' => $recoveryRequired,
         ];
     }

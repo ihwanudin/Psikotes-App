@@ -155,6 +155,23 @@ final class AssessmentInvoiceReconciliationHintReservationTest extends Organizat
         $this->assertNull(DB::table('outbox_messages')->where('id', $id)->value('reconciliation_lease_token'));
     }
 
+    public function test_rejects_invalid_or_duplicate_exclusion_identity_without_writes(): void
+    {
+        config()->set('assessment_billing.invoice_reconciliation_batch_size', 1);
+        config()->set('assessment_billing.invoice_reconciliation_scan_limit', 2);
+        $id = $this->insertHint();
+        $valid = (string) Str::ulid();
+        foreach ([[1 => $valid], ['not-an-ulid'], [$valid, $valid]] as $excluded) {
+            try {
+                app(ReserveAssessmentInvoiceReconciliationHints::class)->execute(1, 2, $excluded);
+                $this->fail('Invalid exclusions must fail.');
+            } catch (DomainException $exception) {
+                $this->assertSame('INVOICE_RECONCILIATION_HINT_LIMIT_INVALID', $exception->getMessage());
+            }
+        }
+        $this->assertNull(DB::table('outbox_messages')->where('id', $id)->value('reconciliation_lease_token'));
+    }
+
     /** @param array<string, mixed> $override */
     #[DataProvider('invalidLimits')]
     public function test_rejects_invalid_config_and_requested_limits(array $override, int $batch, int $scan,

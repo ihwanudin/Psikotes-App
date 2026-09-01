@@ -22,20 +22,35 @@ final readonly class ReserveAssessmentInvoiceReconciliationHints
 
     public function __construct(private RlsContextRunner $contexts) {}
 
-    /** @return list<ProvisionalAssessmentInvoiceLease> */
-    public function execute(int $remainingBatch, int $remainingScan): array
+    /**
+     * @param  array<array-key, mixed>  $excludedMessageIds
+     * @return list<ProvisionalAssessmentInvoiceLease>
+     */
+    public function execute(int $remainingBatch, int $remainingScan, array $excludedMessageIds = []): array
     {
         $this->assertOutsideTransaction();
         $config = $this->validatedConfig();
         if ($remainingBatch < 1 || $remainingBatch > $config['batch']
-            || $remainingScan < 1 || $remainingScan > $config['scan']) {
+            || $remainingScan < 1 || $remainingScan > $config['scan']
+            || ! array_is_list($excludedMessageIds) || count($excludedMessageIds) > $config['scan']) {
             throw new DomainException('INVOICE_RECONCILIATION_HINT_LIMIT_INVALID');
+        }
+        $uniqueMessageIds = [];
+        foreach ($excludedMessageIds as $messageId) {
+            if (! is_string($messageId) || ! Str::isUlid($messageId) || isset($uniqueMessageIds[$messageId])) {
+                throw new DomainException('INVOICE_RECONCILIATION_HINT_LIMIT_INVALID');
+            }
+            $uniqueMessageIds[$messageId] = true;
         }
         $limit = min($remainingBatch, $remainingScan);
 
-        $leases = $this->contexts->runAsService(function () use ($config, $limit): array {
+        $leases = $this->contexts->runAsService(function () use ($config, $limit, $excludedMessageIds): array {
             $now = $this->databaseNow();
-            $query = $this->eligible($now, $config['max'])
+            $query = $this->eligible($now, $config['max']);
+            if ($excludedMessageIds !== []) {
+                $query->whereNotIn('message_id', $excludedMessageIds);
+            }
+            $query
                 ->select(['id', 'message_id'])
                 ->orderByRaw('CASE WHEN reconciliation_next_at IS NULL THEN 0 ELSE 1 END')
                 ->orderBy('reconciliation_next_at')

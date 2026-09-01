@@ -183,6 +183,27 @@ final class AssessmentInvoiceReconciliationHintReservationTest extends TestCase
             ->where('id', '<>', $this->messageIds[3])->count()));
     }
 
+    public function test_postgres_exclusion_set_advances_to_later_due_rows(): void
+    {
+        $excluded = $this->insertHint();
+        $first = $this->insertHint();
+        $second = $this->insertHint();
+
+        $leases = app(ReserveAssessmentInvoiceReconciliationHints::class)->execute(
+            2,
+            3,
+            [$this->messageId($excluded)],
+        );
+
+        $this->assertSame(
+            [$this->messageId($first), $this->messageId($second)],
+            array_map(fn ($lease): string => $lease->messageId, $leases),
+        );
+        $this->assertNull($this->token($excluded));
+        $this->assertNotNull($this->token($first));
+        $this->assertNotNull($this->token($second));
+    }
+
     public function test_postgres_failure_rolls_back_provisional_token(): void
     {
         $id = $this->insertHint();

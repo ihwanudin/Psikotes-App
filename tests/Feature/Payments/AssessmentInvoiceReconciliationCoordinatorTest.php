@@ -25,6 +25,7 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Str;
 use LogicException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -83,6 +84,7 @@ final class AssessmentInvoiceReconciliationCoordinatorTest extends OrganizationP
             'validated' => 0,
             'issued' => 0,
             'unknown' => 0,
+            'validationRejected' => 0,
             'recoveryRequired' => 0,
         ], $summary);
     }
@@ -126,20 +128,48 @@ final class AssessmentInvoiceReconciliationCoordinatorTest extends OrganizationP
         $this->assertNull($exhausted['intent']->fresh()->reconciliation_lease_token);
     }
 
+    public function test_invalid_hint_consumes_scan_but_refills_lookup_budget_without_revisiting_it(): void
+    {
+        config()->set('assessment_billing.invoice_reconciliation_batch_size', 2);
+        config()->set('assessment_billing.invoice_reconciliation_scan_limit', 4);
+        $invalid = $this->prepareInvoice('refill-invalid');
+        $first = $this->prepareInvoice('refill-first');
+        $second = $this->prepareInvoice('refill-second');
+        $unscanned = $this->prepareInvoice('refill-unscanned');
+        $payload = $invalid['intent']->payload;
+        $payload['snapshot']['amount']++;
+        $invalid['intent']->forceFill(['payload' => $payload])->save();
+
+        $summary = $this->execute($this->exactProvider([$first, $second]));
+
+        $this->assertSame(3, $summary['reserved']);
+        $this->assertSame(2, $summary['validated']);
+        $this->assertSame(2, $summary['issued']);
+        $this->assertSame(1, $summary['validationRejected']);
+        $this->assertSame(0, $summary['recoveryRequired']);
+        $this->assertSame(0, $invalid['intent']->fresh()->reconciliation_lookup_attempts);
+        $this->assertNull($invalid['intent']->fresh()->reconciliation_lease_token);
+        $this->assertSame('processed', $first['intent']->fresh()->status);
+        $this->assertSame('processed', $second['intent']->fresh()->status);
+        $this->assertSame('processing', $unscanned['intent']->fresh()->status);
+        $this->assertNull($unscanned['intent']->fresh()->reconciliation_lease_token);
+    }
+
     public function test_invalid_hint_and_provider_failure_are_isolated_from_other_reserved_hints(): void
     {
         config()->set('assessment_billing.invoice_reconciliation_batch_size', 4);
-        config()->set('assessment_billing.invoice_reconciliation_scan_limit', 4);
+        config()->set('assessment_billing.invoice_reconciliation_scan_limit', 5);
         $issued = $this->prepareInvoice('mixed-issued');
         $invalid = $this->prepareInvoice('mixed-invalid');
         $unknown = $this->prepareInvoice('mixed-unknown');
+        $recovery = $this->prepareInvoice('mixed-recovery');
         $issuedAfterFailure = $this->prepareInvoice('mixed-issued-after-failure');
         $seen = [];
         $provider = $this->createMock(PaymentProvider::class);
         $provider->expects($this->never())->method('createInvoice');
-        $provider->expects($this->exactly(3))->method('lookupInvoice')
+        $provider->expects($this->exactly(4))->method('lookupInvoice')
             ->willReturnCallback(function (string $reference, int $amount, string $currency) use (
-                $issued, $invalid, $unknown, $issuedAfterFailure, &$seen,
+                $issued, $invalid, $unknown, $recovery, $issuedAfterFailure, &$seen,
             ): PaymentInvoice {
                 $seen[] = $reference;
                 if ($reference === $issued['bill']->public_reference) {
@@ -154,6 +184,12 @@ final class AssessmentInvoiceReconciliationCoordinatorTest extends OrganizationP
                     $this->assertSame($unknown['bill']->currency, $currency);
                     throw new PaymentProviderException('Synthetic bounded lookup failure.');
                 }
+                if ($reference === $recovery['bill']->public_reference) {
+                    DB::table('outbox_messages')->where('id', $recovery['intent']->id)
+                        ->update(['reconciliation_lease_token' => (string) Str::uuid()]);
+
+                    return $this->invoice($recovery['bill']);
+                }
                 $this->assertSame($issuedAfterFailure['bill']->public_reference, $reference);
 
                 return $this->invoice($issuedAfterFailure['bill']);
@@ -163,17 +199,19 @@ final class AssessmentInvoiceReconciliationCoordinatorTest extends OrganizationP
 
         $this->assertSame([
             'batchLimit' => 4,
-            'scanLimit' => 4,
+            'scanLimit' => 5,
             'maxLookups' => 12,
-            'reserved' => 4,
-            'validated' => 3,
+            'reserved' => 5,
+            'validated' => 4,
             'issued' => 2,
             'unknown' => 1,
+            'validationRejected' => 1,
             'recoveryRequired' => 1,
         ], $summary);
         $this->assertSame([
             $issued['bill']->public_reference,
             $unknown['bill']->public_reference,
+            $recovery['bill']->public_reference,
             $issuedAfterFailure['bill']->public_reference,
         ], $seen);
         $this->assertSame('processed', $issued['intent']->fresh()->status);
@@ -182,9 +220,10 @@ final class AssessmentInvoiceReconciliationCoordinatorTest extends OrganizationP
         $this->assertSame(0, $invalid['intent']->fresh()->reconciliation_lookup_attempts);
         $this->assertSame('failed', $unknown['intent']->fresh()->status);
         $this->assertSame('INVOICE_OUTCOME_UNKNOWN', $unknown['intent']->fresh()->last_error);
+        $this->assertSame('processing', $recovery['intent']->fresh()->status);
         $this->assertSame('processed', $issuedAfterFailure['intent']->fresh()->status);
         $encoded = json_encode($summary, JSON_THROW_ON_ERROR);
-        foreach ([$issued, $invalid, $unknown, $issuedAfterFailure] as $state) {
+        foreach ([$issued, $invalid, $unknown, $recovery, $issuedAfterFailure] as $state) {
             $this->assertStringNotContainsString($state['intent']->message_id, $encoded);
             $this->assertStringNotContainsString($state['bill']->public_reference, $encoded);
         }
@@ -294,7 +333,7 @@ final class AssessmentInvoiceReconciliationCoordinatorTest extends OrganizationP
         );
     }
 
-    /** @return array{batchLimit: int, scanLimit: int, maxLookups: int, reserved: int, validated: int, issued: int, unknown: int, recoveryRequired: int} */
+    /** @return array{batchLimit: int, scanLimit: int, maxLookups: int, reserved: int, validated: int, issued: int, unknown: int, validationRejected: int, recoveryRequired: int} */
     private function execute(PaymentProvider $provider): array
     {
         app()->instance(PaymentProvider::class, $provider);
