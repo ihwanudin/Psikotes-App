@@ -149,3 +149,8 @@ Backend turn `01a05bde-42aa-7333-8337-dea639720218` (cursor
 `67fb332a-ee06-4280-b3fe-55c3b79bcc9c:6`) aktif pada P11c0 proposal-only:
 actor/resource matrix SuperAdmin, lifecycle bukti, reuse finalizer, storage
 private, dan threat model. Belum ada approval writer, UI, gate, atau data nyata.
+
+P11c0 `6566cd7` direview dan diintegrasikan sebagai `5ff488c`. ADR-010 diterima:
+persisted SuperAdmin saja reviewer, metadata proof all-or-none wajib tersedia,
+dan finalizer memperoleh entrypoint manual typed tanpa memalsukan Xendit. P11c1a
+dimulai schema-only; tidak ada izin menerapkan migrasi ke database aktif.

@@ -2,8 +2,9 @@
 
 ## Status
 
-Proposed untuk review P11c0. Dokumen ini belum mengizinkan writer, upload,
-proof-access endpoint, resource Filament, route, atau wiring produksi.
+Accepted untuk implementasi lokal bertahap P11c1a/P11c1b. Keputusan ini belum
+mengizinkan upload, proof-access endpoint, resource Filament, route, deployment,
+atau wiring produksi.
 
 ## Date
 

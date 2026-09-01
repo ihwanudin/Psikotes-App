@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P8a, P9a/b/c, P10a, core P10b, P10c-a/b, P11a, serta P11b dispatcher/reconciliation internal selesai lokal. Root default 1195/7472 dan PostgreSQL disposable 263/2332 lulus. Command/scheduler tetap tertutup; P11c verifikasi transfer berikutnya. Frontend/portal menunggu dependency backend. P8b–P18 keseluruhan belum end-to-end; tidak deploy atau migrasi DB aktif.**
+Status: **P1–P8a, P9a/b/c, P10a, core P10b, P10c-a/b, P11a, serta P11b dispatcher/reconciliation internal selesai lokal. ADR-010 P11c diterima; P11c1a schema proof identity berikutnya. Root default 1195/7472 dan PostgreSQL disposable 263/2332 lulus. Command/scheduler tetap tertutup. Frontend/portal menunggu dependency backend. P8b–P18 keseluruhan belum end-to-end; tidak deploy atau migrasi DB aktif.**
 
 ## Gerbang revisi kolektif
 

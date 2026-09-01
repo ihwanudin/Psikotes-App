@@ -1,7 +1,7 @@
 # Rencana: pembayaran lembaga dan checkout terintegrasi
 
 Tanggal: 2026-08-31
-Status: **P1–P8a, P9a/b/c, P10a, core P10b, P10c internal, P11a, serta P11b dispatcher/reconciliation internal selesai lokal. Root default 1195/7472 dan PostgreSQL disposable 263/2332 lulus; command/scheduler tetap nonaktif. P11c verifikasi transfer berikutnya. Portal menunggu P11c, frontend menunggu P14/P15. Endpoint publik belum dipasang, P8b/P9/P12/P16 belum end-to-end. Tidak ada izin deploy atau cutover sumber aktif.**
+Status: **P1–P8a, P9a/b/c, P10a, core P10b, P10c internal, P11a, serta P11b dispatcher/reconciliation internal selesai lokal. ADR-010 P11c diterima; P11c1a schema proof identity berikutnya. Root default 1195/7472 dan PostgreSQL disposable 263/2332 lulus; command/scheduler tetap nonaktif. Portal menunggu P11c, frontend menunggu P14/P15. Endpoint publik belum dipasang, P8b/P9/P12/P16 belum end-to-end. Tidak ada izin deploy atau cutover sumber aktif.**
 
 ## Perubahan lingkup: pembayaran kolektif cabang
 

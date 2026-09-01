@@ -550,3 +550,9 @@ di luar transaksi/RLS, dan hasil kembali ke processor/finalizer yang sama. Root
 focused 30/177, legacy 22/98, default 1195/7472, Pint/PHPStan dan PostgreSQL
 disposable 263/2332 lulus; cleanup sukses. P11b selesai internal, tetap tanpa
 command/scheduler. Kelanjutan backend adalah audit authority P11c.
+
+P11c0 proposal `6566cd7` diintegrasikan root sebagai `5ff488c`; ADR-010 diterima
+untuk implementasi lokal bertahap. Keputusan memerlukan proof identity durable
+sebelum writer dan entrypoint manual typed pada finalizer tanpa fake event Xendit.
+P11c1a berikutnya schema-only; belum upload, review writer, UI, atau migration
+database aktif.
