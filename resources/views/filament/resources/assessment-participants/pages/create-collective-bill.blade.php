@@ -4,16 +4,16 @@
         <fieldset class="min-w-0 space-y-3"><legend class="font-semibold">Attempt tersedia</legend>
             @foreach ($choices as $choice)
                 <div class="space-y-2 rounded-lg border border-gray-200 p-4 dark:border-gray-700">
-                    <label class="flex items-start gap-3">
-                        <input type="checkbox" class="fi-checkbox-input shrink-0" wire:model.live="selected"
+                    <label for="attempt-{{ $choice['assessmentParticipantId'] }}" class="flex items-start gap-3">
+                        <input id="attempt-{{ $choice['assessmentParticipantId'] }}" type="checkbox" class="fi-checkbox-input shrink-0" wire:model.live="selected"
                             value="{{ $choice['assessmentParticipantId'] }}" @disabled(! $choice['enabled'])>
                         <span class="min-w-0 break-words"><strong>{{ $choice['participantName'] ?? 'Attempt tidak tersedia' }}</strong>
                             <span class="block">ID attempt: {{ $choice['assessmentAttemptId'] ?? $choice['assessmentParticipantId'] }}</span>
                             @if (! $choice['enabled'])<span class="block">{{ $choice['disabledReason'] }}</span>@endif
                         </span>
                     </label>
-                    @if ($choice['enabled'] && in_array($choice['assessmentParticipantId'], $selected, true))
-                        <label class="flex items-center gap-3"><input type="checkbox" class="fi-checkbox-input shrink-0"
+                    @if ($choice['enabled'] && collect($selected)->contains(fn ($value): bool => (string) $value === (string) $choice['assessmentParticipantId']))
+                        <label for="consultation-{{ $choice['assessmentParticipantId'] }}" class="flex items-center gap-3"><input id="consultation-{{ $choice['assessmentParticipantId'] }}" type="checkbox" class="fi-checkbox-input shrink-0"
                             wire:model.live="consultation.{{ $choice['assessmentParticipantId'] }}"> Sertakan konsultasi</label>
                     @endif
                 </div>
