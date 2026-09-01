@@ -497,3 +497,8 @@ Proposal P10c-b0 `306f3a7` direvisi pada `7c96535` setelah review lock-order dan
 diintegrasikan sebagai `9d1db26`/`d99ffa4`. ADR009 menerima schema lease additive
 serta acquisition dua fase; P10c-b1 berikutnya hanya kontrak schema/model/config
 dan tes disposable, tanpa acquisition atau wiring.
+
+P10c-b1 `3dd1c6e`/`dec48ae` diintegrasikan sebagai `256148f`/`3af4372`, dengan
+config root `062815e`. Root database37/185 dan PostgreSQL disposable252/2140,
+Pint serta PHPStan lulus. P10c-b2 berikutnya dibatasi reservasi provisional
+outbox-only; validator canonical dan provider tetap increment terpisah.

@@ -1,7 +1,7 @@
 # Rencana: pembayaran lembaga dan checkout terintegrasi
 
 Tanggal: 2026-08-31
-Status: **P1–P8a, P9a/b/c, P10a, core P10b dan P10c-a internal selesai lokal. Wave-16 final: rekonsiliasi163/1241 dan PG237/2074 lulus; P10c-b discovery/operasional masih nonaktif. Portal menunggu P11, frontend menunggu P14/P15. Endpoint publik belum dipasang, P8b/P9/P12/P16 belum end-to-end. Tidak ada izin deploy atau cutover sumber aktif.**
+Status: **P1–P8a, P9a/b/c, P10a, core P10b, P10c-a dan schema P10c-b1 selesai lokal. Bukti terbaru: database37/185 dan PG252/2140 lulus; acquisition/operasional P10c-b masih nonaktif. Portal menunggu P11, frontend menunggu P14/P15. Endpoint publik belum dipasang, P8b/P9/P12/P16 belum end-to-end. Tidak ada izin deploy atau cutover sumber aktif.**
 
 ## Perubahan lingkup: pembayaran kolektif cabang
 
