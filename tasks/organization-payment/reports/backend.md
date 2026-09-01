@@ -2494,3 +2494,74 @@ dispatcher tidak diubah.
 Tidak ada upload/object-storage I/O, policy/route/controller/Filament/UI,
 command/job/scheduler, schema/migration/config/.env, provider/notifier nyata,
 DB aplikasi, deploy, push, atau P11c2. **STOP untuk review P11c1b**.
+
+## P11c2a — core private storage dan replacement bukti transfer
+
+Commit kode/tes lokal `24c9591` menambah boundary internal
+`StoreAssessmentBillProof`. Input typed hanya menerima persisted BranchAdmin
+payer organisasi atau `AssessmentPrincipal` exact untuk bill self. Actor selalu
+direload; guest/raw ID, SuperAdmin, Staff, Psychologist, foreign branch, stale
+principal, deleted/missing actor, dan legacy verification flag tidak menjadi
+authority maupun oracle bill.
+
+Boundary memakai empat fase terisolasi: preauthorization service transaction
+singkat, private object write di luar transaksi/context RLS, canonical locked
+recheck dan persist dalam service transaction kedua, lalu best-effort deletion
+object lama sesudah commit. Kegagalan recheck/persist menghapus object baru
+secara best effort. Kegagalan delete lama tidak membatalkan identitas proof baru
+yang sudah commit. Outer transaction dan ambient RLS context ditolak.
+
+Konten dideteksi dari byte server dengan `finfo`, hanya JPEG/PNG/PDF, ukuran byte
+nyata 1–5.120.000, dan SHA-256 lowercase. Object key random private berbentuk
+`assessment-bills/<2>/<62>.<ext>` pada disk existing `payment-proofs`; filename,
+PII, reference bill, dan object key tidak dikembalikan. Receipt hanya membawa
+boolean replacement dan fingerprint opaque untuk optimistic replacement fence.
+
+Locked recheck memuat organization, bill, item, attempt, participant, package,
+charge, dan payment method dengan urutan canonical. Bill harus pending manual
+transfer, gateway/invoice/verification/terminal kosong, payer serta allocation
+graph/snapshot/checkout metadata canonical, dan belum settled. Inactive manual
+method tetap sah karena channel persisted, tanpa menjadikannya pilihan baru.
+Replacement memerlukan fingerprint seluruh lima field proof saat ini. Upload
+awal memerlukan expected fingerprint NULL. Dua writer pada versi sama hanya
+memiliki satu pemenang; loser fail closed dan membersihkan object barunya.
+
+Tidak ada audit review, settlement, activation, entitlement, outbox, purge,
+proof reader, signed URL, policy, HTTP/controller, Filament/UI, atau public
+wiring pada increment ini.
+
+### Bukti aktual
+
+- RED awal: **1 tes, 0 assertions**, error class
+  `AssessmentBillProofUpload` belum ada. Percobaan GREEN pertama juga menemukan
+  spoof `.jpg` lolos bila MIME berasal dari helper upload; implementasi kemudian
+  memakai `finfo` pada byte nyata dan regresi spoof menjadi hijau.
+- Focused storage SQLite memory: **24/24 tes, 129 assertions**. Cakupan termasuk
+  tiga tipe, ukuran tepat maksimum, spoof/GIF/empty/oversize, private/random key,
+  I/O tanpa transaksi/context, actor matrix, self-vs-organization ownership,
+  state/channel/scope corruption, fingerprint replacement, rollback, cleanup
+  failure, storage failure, dan ambient transaction/RLS context.
+- Focused storage + manual review P11c1b + provider finalizer:
+  **56/56 tes, 296 assertions**.
+- Legacy manual upload: **8 passed, 45 assertions**; satu received-page render
+  gagal karena `public/build/manifest.json` tidak tersedia di worker. Tidak ada
+  manifest palsu, build, atau pelonggaran harness.
+- Full default `--exclude-group=sandbox`: **1.174 tes**, 1.151 passed,
+  6.336 assertions; seluruh 23 failure adalah render halaman yang sama karena
+  Vite manifest worker tidak tersedia. Tidak ada kegagalan backend lain dan
+  sandbox/external service tidak dijalankan.
+- PostgreSQL disposable penuh pada runtime non-owner: **270/270 tes,
+  1.898 assertions**, cleanup sukses. Dua-process proof tests membuktikan initial
+  upload dan replacement concurrent menghasilkan tepat satu fingerprint/object,
+  satu conflict, serta cleanup old/loser tanpa deadlock.
+- Pint seluruh tujuh file lane lulus. PHPStan seluruh project pada environment
+  testing/SQLite eksplisit lulus **0 error**. `git diff --check` lulus sebelum
+  commit kode.
+
+Batas verifikasi: private disk menggunakan fake storage pada tes; tidak ada
+credential atau object store nyata. Cleanup bersifat best effort sehingga
+kegagalan delete dapat meninggalkan object orphan yang tidak authoritative;
+purge/reconciliation object tetap di luar scope. Tidak ada proof access/review
+UI atau public authorization wiring, dan tidak ada schema/config/.env/data aktif,
+provider/notifier/outbound, deploy, atau push. **STOP untuk review P11c2a sebelum
+P11c2b**.
