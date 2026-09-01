@@ -26,6 +26,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string|null $gateway_ref
  * @property string|null $invoice_url
  * @property string|null $proof_object_key
+ * @property string|null $proof_checksum_sha256
+ * @property string|null $proof_mime_type
+ * @property int|null $proof_size_bytes
+ * @property CarbonInterface|null $proof_uploaded_at
  * @property CarbonInterface|null $expires_at
  * @property CarbonInterface|null $paid_at
  * @property CarbonInterface|null $verified_at
@@ -34,7 +38,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 #[Fillable(['organization_id', 'payer_type', 'payer_participant_id', 'public_reference', 'amount', 'currency',
     'item_count', 'selection_hash', 'idempotency_key', 'request_hash', 'status', 'payment_method_id',
-    'gateway_ref', 'invoice_url', 'proof_object_key', 'expires_at', 'paid_at', 'verified_at',
+    'gateway_ref', 'invoice_url', 'proof_object_key', 'proof_checksum_sha256', 'proof_mime_type',
+    'proof_size_bytes', 'proof_uploaded_at', 'expires_at', 'paid_at', 'verified_at',
     'verified_by_admin_id', 'rejection_reason'])]
 final class AssessmentBill extends Model
 {
@@ -64,7 +69,8 @@ final class AssessmentBill extends Model
 
     protected function casts(): array
     {
-        return ['amount' => 'integer', 'item_count' => 'integer', 'expires_at' => 'immutable_datetime',
+        return ['amount' => 'integer', 'item_count' => 'integer', 'proof_size_bytes' => 'integer',
+            'proof_uploaded_at' => 'immutable_datetime', 'expires_at' => 'immutable_datetime',
             'paid_at' => 'immutable_datetime', 'verified_at' => 'immutable_datetime'];
     }
 }

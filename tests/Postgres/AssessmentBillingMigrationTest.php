@@ -51,7 +51,13 @@ final class AssessmentBillingMigrationTest extends TestCase
             }
             $billing = [];
             foreach (['assessment_charges', 'assessment_bills', 'assessment_bill_items', 'assessment_entitlements'] as $table) {
-                $billing[$table] = (array) DB::table($table)->where('organization_id', $fixture['organization'])->first();
+                $columns = Schema::getColumnListing($table);
+                if ($table === 'assessment_bills') {
+                    $columns = array_values(array_diff($columns, [
+                        'proof_checksum_sha256', 'proof_mime_type', 'proof_size_bytes', 'proof_uploaded_at',
+                    ]));
+                }
+                $billing[$table] = (array) DB::table($table)->where('organization_id', $fixture['organization'])->first($columns);
             }
             $migrations = [];
             foreach (['000200_create_assessment_billing', '000300_create_assessment_bill_items',
@@ -61,14 +67,14 @@ final class AssessmentBillingMigrationTest extends TestCase
 
             $migrations[3]->down();
             foreach ($billing as $table => $row) {
-                $this->assertEquals($row, (array) DB::table($table)->where('id', $row['id'])->first());
+                $this->assertEquals($row, (array) DB::table($table)->where('id', $row['id'])->first(array_keys($row)));
                 $policies = DB::table('pg_policies')->where('schemaname', 'public')->where('tablename', $table)->pluck('policyname')->all();
                 $this->assertSame([$table.'_service'], $policies);
                 $this->assertTrue(DB::selectOne('SELECT relforcerowsecurity FROM pg_class WHERE oid = to_regclass(?)', [$table])->relforcerowsecurity);
             }
             $migrations[3]->up();
             foreach ($billing as $table => $row) {
-                $this->assertEquals($row, (array) DB::table($table)->where('id', $row['id'])->first());
+                $this->assertEquals($row, (array) DB::table($table)->where('id', $row['id'])->first(array_keys($row)));
                 $this->assertSame(2, DB::table('pg_policies')->where('schemaname', 'public')->where('tablename', $table)->count());
             }
 
@@ -86,7 +92,7 @@ final class AssessmentBillingMigrationTest extends TestCase
             }
             foreach ($billing as $table => $row) {
                 DB::table($table)->insert($row);
-                $this->assertEquals($row, (array) DB::table($table)->where('id', $row['id'])->first());
+                $this->assertEquals($row, (array) DB::table($table)->where('id', $row['id'])->first(array_keys($row)));
             }
             $this->assertSame('locked', DB::table('assessment_entitlements')->where('organization_id', $fixture['organization'])->value('status'));
             foreach ($legacy as $table => $row) {
