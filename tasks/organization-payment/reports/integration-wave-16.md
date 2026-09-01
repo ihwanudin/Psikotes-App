@@ -154,3 +154,8 @@ P11c0 `6566cd7` direview dan diintegrasikan sebagai `5ff488c`. ADR-010 diterima:
 persisted SuperAdmin saja reviewer, metadata proof all-or-none wajib tersedia,
 dan finalizer memperoleh entrypoint manual typed tanpa memalsukan Xendit. P11c1a
 dimulai schema-only; tidak ada izin menerapkan migrasi ke database aktif.
+
+Backend turn `01a05beb-92a5-78f2-894d-f5b55cc9c329` (cursor
+`67fb332a-ee06-4280-b3fe-55c3b79bcc9c:7`) aktif pada P11c1a schema proof identity.
+Scope hanya migration/model/tests dengan preflight up/down dan PostgreSQL CHECK;
+writer, upload, UI, serta migrasi database aplikasi tetap dilarang.
