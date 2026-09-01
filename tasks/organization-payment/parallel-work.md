@@ -721,3 +721,13 @@ failure disanitasi; DB/audit failure propagate dan rollback. Root storage+P12c
 dan PHPStan lulus. Run campuran nonotoritatif gagal hanya karena reset skema
 SQLite antarsuite; tiap kelompok lulus terisolasi. Core P12c diterima default-off;
 browser upload/open/replace/history berikutnya.
+
+P12c browser harness `628d6bd`/`27a9bc9` diintegrasikan root sebagai `3f84181`/
+`bf82667` sebagai evidence **belum lulus**, bukan acceptance. Fixture private
+storage/alias URL lokal/control state selesai dan regresi P12b tetap hijau,
+tetapi native activation hanya mengisi Livewire mountedActions `uploadProof`;
+modal Filament/Alpine tetap x-show=false sehingga FileUpload tidak actionable.
+Tidak ada source workaround atau klaim upload palsu. Port/session dibersihkan.
+Kelanjutan task portal adalah reproduksi minimal modal Filament 5 dengan asset/
+layout sama untuk membedakan bug harness dari konfigurasi header action; browser
+atau driver lain belum dipakai sebelum akar sebab lokal diketahui.
