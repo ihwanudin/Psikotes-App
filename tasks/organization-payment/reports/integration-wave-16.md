@@ -130,3 +130,9 @@ secara eksplisit. Fix `df2a2a6` menambah guard fail-closed dan matriks seluruh
 **22/98**, default **1.187/7.440**, Pint/PHPStan lulus, PostgreSQL disposable
 **262/2.320** dengan cleanup sukses. P11b1 diterima; P11b2 status reconciliation
 internal berikutnya, tetap tanpa command/scheduler/wiring aktif.
+
+Backend turn `01a05bc9-48c6-7ed3-8e74-626c50d62606` (cursor
+`67fb332a-ee06-4280-b3fe-55c3b79bcc9c:5`) aktif pada P11b2 reconciler assessment
+internal bounded. Scope hanya selection singkat → GET fake di luar transaksi/RLS
+→ processor/finalizer yang sama; command/job/scheduler dan outbound nyata tetap
+tidak diaktifkan.
