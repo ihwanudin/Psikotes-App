@@ -512,3 +512,9 @@ P10c-b2b `dabc6f4`/`6163bff` diintegrasikan sebagai `56b681c`/`20f376b`. Root
 invoice197/1524 dan PG disposable258/2247 lulus. P10c-b3 berikutnya hanya strict
 GET + token-fenced outcome/cooldown; race issuance exact wajib membersihkan lease
 secara atomik agar constraint processed tidak gagal.
+
+P10c-b3 `75c72d8`/`6faf0df` diintegrasikan sebagai `43a1a3d`/`b511b59` setelah
+review independen. Root focused32/476, Pint, PHPStan dan PostgreSQL disposable
+260/2292 lulus dengan cleanup sukses. P10c-b4 berikutnya hanya koordinator batch
+internal bounded reserve → validate → execute; command/job/scheduler/route dan
+wiring P11 tetap dilarang.

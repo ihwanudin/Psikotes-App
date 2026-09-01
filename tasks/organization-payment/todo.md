@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P8a, P9a/b/c, P10a, core P10b dan P10c-a internal selesai lokal. Wave-16 final: rekonsiliasi163/1241 dan PG237/2074 lulus. P10c-b discovery/operasional masih tertutup; frontend/portal menunggu dependency backend. P8b–P18 keseluruhan belum end-to-end; tidak deploy atau migrasi DB aktif.**
+Status: **P1–P8a, P9a/b/c, P10a, core P10b, P10c-a, dan P10c-b1–b3 internal selesai lokal. P10c-b3 root 32/476 dan PostgreSQL disposable 260/2292 lulus. Koordinator bounded P10c-b4 belum dibuat; command/scheduler tetap tertutup. Frontend/portal menunggu dependency backend. P8b–P18 keseluruhan belum end-to-end; tidak deploy atau migrasi DB aktif.**
 
 ## Gerbang revisi kolektif
 
@@ -438,7 +438,8 @@ provider atau menjadi authority sampai acquisition/validator berikutnya direview
 - [x] P10c-b1 schema durable lease additive, topic isolation, PostgreSQL CHECK/index, rollback refusal, model casts dan config bounded default-OFF. Root 37/185 serta PG252/2140 lulus; belum ada acquisition/provider/wiring.
 - [x] P10c-b2a reservasi provisional outbox-only memakai database clock dan PostgreSQL SKIP LOCKED; token bukan permit, counter/state bisnis tidak berubah. Root invoice182/1323 serta PG256/2195 lulus.
 - [x] P10c-b2b validator reuse claim canonical, mengonsumsi provisional dengan UUID permit baru dan generation atomik; invalid cleanup token-fenced. Root invoice197/1524 serta PG258/2247 lulus; belum provider/persist leased.
-- [ ] Lookup reference yang sama, cocokkan nominal/currency/reference; lanjutkan tanpa create ulang setelah unknown. Jadwal hanya memproses bill yang diizinkan dan bounded; perbedaan/ketidakpastian menuju petugas, bukan release claim. Tahap ini menghasilkan event ternormalisasi tanpa aktivasi akses; finalizer dihubungkan pada P11b, scheduler tetap nonaktif sampai itu teruji.
+- [x] P10c-b3 strict GET reference yang sama dengan nominal/currency snapshot, late token/generation/expiry fence, cooldown database, dan race issuance exact. Tidak pernah create ulang; root 32/476 serta PG260/2292 lulus.
+- [ ] P10c-b4 koordinator internal bounded menggabungkan reserve → validate → execute leased memakai batch/scan/max-lookups konfigurabel, mengisolasi kegagalan satu hint, dan mengembalikan ringkasan keputusan. Tidak ada command/job/scheduler/route atau aktivasi akses; wiring operasional tetap menunggu P11b.
 
 **Dependencies:** P10b. **Scope:** M.
 
