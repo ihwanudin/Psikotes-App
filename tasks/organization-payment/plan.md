@@ -1,7 +1,7 @@
 # Rencana: pembayaran lembaga dan checkout terintegrasi
 
 Tanggal: 2026-08-31
-Status: **P1–P8a, P9a/b/c, P10a, core P10b, P10c internal, P11a, P11b, serta P11c1a–P11c3c reviewer default-off selesai lokal. Browser acceptance P11c lulus pada aplikasi Laravel/Filament nyata dengan fixture SQLite disposable; route/discovery produksi tetap belum aktif. Root synthetic default terakhir 1346/8352, focused reviewer 36/234, dan PostgreSQL disposable terakhir 293/2519 lulus; command/scheduler tetap nonaktif. P12a dapat dilanjutkan secara default-off, frontend menunggu P14/P15. Endpoint publik belum dipasang, P8b/P9/P12/P16 belum end-to-end. Tidak ada izin deploy atau cutover sumber aktif.**
+Status: **P1–P8a, P9a/b/c, P10a, core P10b, P10c internal, P11a, P11b, P11c1a–P11c3c reviewer, serta P12a portal tagihan cabang default-off selesai lokal. Browser acceptance P11c dan P12a menggunakan aplikasi Laravel/Filament nyata dengan fixture disposable; route/discovery produksi tetap belum aktif. Root synthetic default terakhir 1346/8352, focused reviewer 36/234, focused P12a 14/210, dan PostgreSQL disposable terakhir 293/2519 lulus; command/scheduler tetap nonaktif. P12b core default-off berjalan pada task portal existing; frontend menunggu P14/P15. Endpoint publik belum dipasang, P8b/P9/P12b+/P16 belum end-to-end. Tidak ada izin deploy atau cutover sumber aktif.**
 
 ## Perubahan lingkup: pembayaran kolektif cabang
 

@@ -650,3 +650,16 @@ reviewer **36/36 tes, 234 assertions**. Percobaan reproduksi browser root tidak
 dimulai karena orkestrasi cleanup proses/temp ditolak kebijakan command; bukti
 browser worker yang sudah direview tetap otoritatif. P11c selesai lokal default-off;
 discovery/route produksi, DB aktif dan layanan nyata tetap tidak diaktifkan.
+
+Checkpoint P12a-prep diterima sebagai P12a lokal default-off setelah dependensi
+P11c terpenuhi. Implementasi `9decef5`/`3a17d64` dan hardening berikutnya sudah
+membuktikan list/detail cabang tenant-scoped, persisted reauthorization,
+filter/paginator/riwayat satu sumber, proyeksi aman, runtime PostgreSQL non-owner,
+serta browser desktop/mobile; focused root terakhir **14/14 tes, 210 assertions**.
+Discovery non-testing tetap OFF sehingga ini bukan aktivasi produksi.
+
+Portal task existing turn `01a05d47-74aa-7e80-ac47-602e911bc189` (cursor
+`d086efb9-85a2-4a90-a2e5-0b0ff954212c:2`) aktif pada P12b core default-off:
+multi-select attempt eligible → preview server-authoritative → satu reservasi
+canonical. Route/discovery produksi, schema/config toggle, Xendit, proof,
+reviewer/finalizer, command/scheduler dan layanan nyata tetap dilarang.

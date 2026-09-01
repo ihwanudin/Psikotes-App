@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P8a, P9a/b/c, P10a, core P10b, P10c-a/b, P11a, P11b, dan P11c1a–P11c3c reviewer default-off selesai lokal. Browser acceptance P11c lulus; route/discovery produksi belum aktif. Root synthetic default terakhir 1346/8352, focused reviewer 36/234, dan PostgreSQL disposable terakhir 293/2519 lulus. Command/scheduler tetap tertutup. P12a dapat dilanjutkan default-off; frontend menunggu kontrak P14/P15. P8b–P18 keseluruhan belum end-to-end; tidak deploy atau migrasi DB aktif.**
+Status: **P1–P8a, P9a/b/c, P10a, core P10b, P10c-a/b, P11a, P11b, P11c1a–P11c3c reviewer, dan P12a portal cabang default-off selesai lokal. Browser acceptance P11c/P12a lulus; route/discovery produksi belum aktif. Root synthetic default terakhir 1346/8352, focused reviewer 36/234, focused P12a 14/210, dan PostgreSQL disposable terakhir 293/2519 lulus. Command/scheduler tetap tertutup. P12b core default-off berjalan; frontend menunggu kontrak P14/P15. P8b–P18 keseluruhan belum end-to-end; tidak deploy atau migrasi DB aktif.**
 
 ## Gerbang revisi kolektif
 
@@ -502,9 +502,11 @@ provider atau menjadi authority sampai acquisition/validator berikutnya direview
 
 ## P12a: Daftar dan detail tagihan cabang
 
+- [x] Implementasi lokal default-off selesai pada `9decef5`/`3a17d64` dan hardening terkait: list/detail BranchAdmin tenant-scoped, reauthorization persisted, filter/paginator/riwayat satu sumber, proyeksi aman, PostgreSQL runtime non-owner, serta browser desktop/mobile. Focused root terakhir 14/210; discovery non-testing tetap OFF.
+
 **Acceptance:**
 
-- [ ] List/detail hanya cabang sendiri; jumlah peserta/total/status/due/invoice dari server. Paginator/filter paid menjadi riwayat dari data yang sama, tanpa ledger duplikat; peserta tidak masuk panel ini.
+- [x] List/detail hanya cabang sendiri; jumlah peserta/total/status/due/invoice dari server. Paginator/filter paid menjadi riwayat dari data yang sama, tanpa ledger duplikat; peserta tidak masuk panel ini. Selesai lokal default-off; aktivasi produksi terpisah.
 
 **Dependencies:** P11c. **Scope:** M.
 
