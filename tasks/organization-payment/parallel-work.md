@@ -574,3 +574,9 @@ lulus dan cleanup sukses. Kegagalan run campuran hanya berasal dari strategi
 reset SQLite berbeda; masing-masing kelompok lulus terisolasi. P11c1b diterima;
 P11c2 proof upload/access/policy/UI tetap berikutnya dan schema belum diterapkan
 ke database aktif.
+
+Backend turn `01a05c39-f02f-7481-912d-9d194c7ecfe5` (cursor
+`67fb332a-ee06-4280-b3fe-55c3b79bcc9c:10`) aktif pada P11c2a core
+storage/replacement proof. Scope berhenti sebelum HTTP, reviewer proof access,
+policy, route, Filament/UI, purge, dan layanan nyata; frontend/portal tidak diberi
+instruksi baru.

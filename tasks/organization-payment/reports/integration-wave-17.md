@@ -32,3 +32,9 @@ provider dan legacy kemudian lulus pada proses terpisah.
 P11c1b diterima lokal. Belum ada storage I/O, upload/access endpoint, policy,
 route, Filament/UI, command/job/scheduler, notifikasi/provider nyata, migrasi DB
 aktif, deploy, atau push. P11c2 harus dilanjutkan bertahap dan tetap default-off.
+
+Backend task existing menerima tepat satu increment P11c2a core storage/replacement
+proof, tanpa HTTP/access/policy/UI. Turn `01a05c39-f02f-7481-912d-9d194c7ecfe5`
+aktif pada cursor `67fb332a-ee06-4280-b3fe-55c3b79bcc9c:10`; jangan mengirim
+instruksi duplikat selama turn ini berjalan. Frontend dan portal tetap menunggu
+dependency masing-masing.
