@@ -2690,3 +2690,75 @@ upload writer behavior, schema/migration/config/.env, command/job/scheduler,
 purge, provider/notifier/outbound nyata, DB aktif, deploy, atau push. Temporary
 URL diuji dengan fake/mock private storage; tidak ada credential/object store
 nyata. **STOP untuk review P11c2b sebelum HTTP/UI atau P11c berikutnya.**
+
+## P11c2c — adapter HTTP internal proof redirect dan manual decision
+
+Commit kode/tes lokal `e4f82a9` menambah tiga file lane:
+`AssessmentBillManualReviewController`, `ReviewAssessmentBillTransferRequest`,
+dan test HTTP route-only. Tidak ada perubahan `routes/web.php`, route API,
+bootstrap, controller legacy, policy, issuer, finalizer, storage writer, atau UI.
+
+Method `proof` membaca actor hanya dari guard admin existing dan reference hanya
+dari route. Guest/non-Admin menjadi generic 404. Controller tidak membaca bill,
+amount, channel, object key, atau allocation; ia memanggil issuer dua-fase
+P11c2b. Success melakukan redirect away ke URL opaque. Not-found/unauthorized/
+missing menjadi 404 dan storage unavailable menjadi generic 503; driver path dan
+credential tidak dipantulkan. Redirect serta seluruh error proof menetapkan
+`Cache-Control: no-store, private`, `Pragma: no-cache`, dan
+`Referrer-Policy: no-referrer`.
+
+FormRequest decision hanya mengizinkan tiga root key. Fingerprint harus tepat 64
+hex lowercase; decision enum hanya APPROVE/REJECT; rejection code enum bounded
+wajib saat reject dan prohibited/NULL saat approve. Unknown key, bill reference
+di body, amount, tipe salah, dan free text ditolak 422. `authorize()` hanya
+memastikan user guard admin; role persisted tetap direload dan dikunci oleh
+finalizer, sehingga stale/deleted/role-changed session tidak menjadi authority.
+Failure authorization menjadi generic 404.
+
+Method `review` membangun `AssessmentBillManualReview` dengan actor ID dari
+server dan route reference, lalu hanya memanggil `ReviewAssessmentBillTransfer`.
+Tidak ada settlement writer/predicate kedua. Typed NotFound dipetakan 404,
+Conflict termasuk stale/opposite dipetakan 409, dan state/scope/channel/proof
+invalid dipetakan generic 422. Unexpected exception tidak ditangkap sebagai
+success. Response sukses minimal hanya `data.result` (`settled`, `rejected`, atau
+`replayed`), tanpa amount, organization, item, participant, object key, atau PII.
+Semua response controller juga private/no-store/no-referrer.
+
+Tes mendaftarkan GET proof dan POST review dengan middleware group `web` hanya di
+runtime test. Test membuktikan review GET menjadi 405, route POST memakai group
+web yang memuat `PreventRequestForgery`, dan source route produksi tidak memuat
+controller. PHPUnit menonaktifkan enforcement CSRF selama HTTP test seperti
+standar framework; kontrak future route tetap POST di bawah middleware web.
+
+### Bukti aktual
+
+- RED: **23 tes**, 1 passed, 22 failed, 26 assertions, 1 risky. Seluruh failure
+  adapter berasal dari controller yang belum ada; satu test method/absence route
+  dapat lulus tanpa controller.
+- Focused HTTP final: **27/27 tes, 196 assertions**. Cakupan guest, BranchAdmin/
+  Staff legacy flag, Psychologist, deleted/role-changed SuperAdmin, strict payload
+  matrix, route-body authority, proof redirect/privacy, storage unavailable,
+  missing/invalid reference, stale/opposite conflict, approve/reject, exact
+  replay, state/scope/channel/proof 422, response minimization, POST/web/CSRF
+  contract, dan no production route.
+- Gabungan HTTP + P11c2b issuer/policy + P11c2a storage + P11c1b manual review +
+  provider finalizer: **118/118 tes, 656 assertions**, dijalankan serial agar
+  `Storage::fake` tidak saling membersihkan direktori.
+- Legacy proof access tetap **3/3 tes, 10 assertions**. Legacy upload menghasilkan
+  **8 passed, 45 assertions** dan satu received-page failure karena
+  `public/build/manifest.json` tidak tersedia; tidak dibuat manifest palsu atau
+  perubahan harness.
+- Full default final `--exclude-group=sandbox`: **1.236 tes**, 1.213 passed,
+  6.696 assertions; seluruh 23 failure adalah render halaman karena Vite manifest
+  worker tidak tersedia. Tidak ada failure backend baru, skip, sandbox, atau
+  external service.
+- Pint tiga file lane lulus. PHPStan seluruh project pada environment testing
+  eksplisit lulus **0 error**. `git diff --check` dan staged diff-check lulus.
+
+PostgreSQL tidak diulang karena source delta hanya controller/FormRequest dan
+route sintetis test; tidak ada perubahan query lock, transaksi, RLS, schema,
+atau concurrency primitive. Bukti authority race PostgreSQL P11c2b 272/1.918
+tetap batas database terakhir. Tidak ada route/controller registration produksi,
+Filament/resource/UI, decision UI wiring, schema/config/.env, command/job/
+scheduler, purge, outbound nyata, DB aktif, deploy, atau push. **STOP untuk review
+P11c2c sebelum route/UI.**
