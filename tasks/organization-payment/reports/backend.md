@@ -2615,3 +2615,78 @@ malformed timestamp. Sesudah implementasi:
 Tidak ada perubahan DTO/error contract, schema/config, finalizer/manual review,
 HTTP/policy/UI/reader, provider/outbound, DB aktif, sandbox, deploy, atau push.
 **STOP untuk review ulang P11c2a; P11c2b belum dimulai.**
+
+## P11c2b — reviewer policy dan internal private-proof access
+
+Commit `aa98577` mengekstrak `AssessmentBillProofIdentity` sebagai satu primitive
+canonical untuk P11c1b manual decision, P11c2a storage/replacement, dan issuer
+baru. Primitive menangani all-null, all-present, key namespace, checksum, MIME,
+size, date cast, future timestamp, UTC serialization, dan formula fingerprint.
+Store memakai primitive yang sama untuk proof lama maupun byte baru; finalizer
+manual tidak lagi memiliki salinan formula sendiri. Provider finalization tidak
+berubah.
+
+Commit `458f327` menambah `AssessmentBillPolicy`, DTO akses opaque, dan
+`AssessmentBillProofUrlIssuer`. Policy terpisah dari `OrderPolicy`; `viewAny`,
+`view`, dan `viewProof` selalu reload actor persisted dan hanya menerima Admin
+non-deleted dengan role `SuperAdmin`. BranchAdmin payer, Staff dengan legacy
+flag, Psychologist, stale/deleted/unsaved Admin, guest, participant, dan uploader
+tidak memperoleh reviewer authority. Ability/order policy legacy tidak dibaca
+atau diubah.
+
+Issuer internal hanya menerima Admin object dan reference `AB_`. Ambient RLS
+context/outer transaction ditolak. Fase pertama service transaction mengunci
+reviewer sebelum bill lookup, membaca routing hint sesudah authority sah, lalu
+mengunci organization→bill→payment method dan snapshot fingerprint/key canonical.
+Hanya `manual_transfer` dengan gateway/invoice NULL dan lima proof field valid
+yang lolos. Missing, corrupt, non-manual, unauthorized, dan reference invalid
+menjadi generic `ASSESSMENT_BILL_PROOF_ACCESS_NOT_FOUND`.
+
+Sesudah commit/context kosong, disk private existing `payment-proofs` menjalankan
+`exists` dan `temporaryUrl` dengan durasi config existing 15 menit (validated
+1–60). Driver exception disanitasi menjadi `...ACCESS_UNAVAILABLE`; object
+missing menjadi not-found. Tidak ada storage I/O selama row lock/RLS context.
+DTO hanya membawa URL opaque, expiry, dan proof fingerprint; object key/path
+tidak menjadi property, audit, atau log.
+
+Fase kedua mengunci ulang reviewer→organization→bill→method, menghitung ulang
+fingerprint, dan menolak role/delete, replacement, metadata clear, channel/proof
+change, atau row stale setelah URL dibuat. URL yang gagal recheck tidak
+dikembalikan dan tidak dicatat. Hanya sukses menulis satu audit service-side
+`assessment_bill.proof_temporary_url_issued`; context version 1 hanya memuat
+source, fingerprint, dan URL expiry. Audit menyimpan actor admin/subject bill dan
+retention dua tahun pada kolom typed, tanpa URL, object key, payer, participant,
+atau data profil. Setiap access sukses adalah event audit baru; audit failure
+rollback dan tidak mengembalikan URL.
+
+### Bukti aktual
+
+- RED awal: **20 tes, 0 passed, 12 assertions**, dua failure dan 18 error karena
+  policy/issuer belum tersedia. Satu error fixture non-manual kosong ditemukan
+  dan diperbaiki sebelum GREEN agar RED hanya mewakili kontrak yang hilang.
+- Focused policy/issuer: **22/22 tes, 92 assertions**. Cakupan meliputi policy
+  role/persistence/guest Gate, unauthorized-before-bill query, I/O tanpa locks,
+  success/audit shape, actor delete/role race, replacement/clear race, object
+  missing, exists/temporaryUrl failure, canonical proof matrix, audit rollback,
+  repeated access, invalid reference, unsaved/deleted actor, dan ambient context.
+- Gabungan issuer + P11c2a storage + P11c1b manual review + provider finalizer:
+  **91/91 tes, 460 assertions**. Legacy manual proof access tetap **3/3 tes,
+  10 assertions**.
+- Full default `--exclude-group=sandbox`: **1.209 tes**, 1.186 passed,
+  6.500 assertions; seluruh 23 failure adalah render halaman karena
+  `public/build/manifest.json` tidak tersedia di worker. Tidak ada failure
+  backend baru, skip, sandbox, atau external service.
+- PostgreSQL disposable runtime non-owner: **272/272 tes, 1.918 assertions**,
+  cleanup sukses. Test proses ganda menghentikan worker sesudah temporary URL
+  dibuat, meng-commit soft-delete reviewer pada proses lain, lalu membuktikan
+  return dan audit fenced. Run pertama menjalankan 271 tes lain tetapi fixture
+  baru gagal sebelum issuer karena `paid_at` bawaan bertentangan dengan status
+  pending; fixture state sintetis dilengkapi, lalu run kedua lulus penuh.
+- Pint delapan file delta lulus. PHPStan seluruh project pada environment testing
+  eksplisit lulus **0 error**. Staged `git diff --check` lulus pada kedua commit.
+
+Tidak ada controller/route/Filament/resource/UI, decision wiring, perubahan
+upload writer behavior, schema/migration/config/.env, command/job/scheduler,
+purge, provider/notifier/outbound nyata, DB aktif, deploy, atau push. Temporary
+URL diuji dengan fake/mock private storage; tidak ada credential/object store
+nyata. **STOP untuk review P11c2b sebelum HTTP/UI atau P11c berikutnya.**
