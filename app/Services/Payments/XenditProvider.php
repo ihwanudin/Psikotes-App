@@ -109,7 +109,11 @@ final class XenditProvider implements PaymentProvider
 
     public function checkStatus(string $providerReference): PaymentEvent
     {
-        $response = $this->request()->get('/v2/invoices/'.$this->safeReference($providerReference));
+        try {
+            $response = $this->request()->get('/v2/invoices/'.$this->safeReference($providerReference));
+        } catch (ConnectionException) {
+            throw new PaymentProviderException('Xendit invoice status is unavailable.');
+        }
 
         if (! $response->successful()) {
             throw new PaymentProviderException('Xendit invoice status is unavailable.');
