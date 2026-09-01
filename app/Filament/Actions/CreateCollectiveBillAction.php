@@ -28,21 +28,31 @@ final readonly class CreateCollectiveBillAction
         $ids = AssessmentParticipant::query()->where('organization_id', $admin->branch_id)
             ->orderByDesc('id')->limit($limit)->pluck('id');
 
-        return $ids->map(function (int $id): array {
+        return array_values($ids->map(function (int $id): array {
             $item = $this->preview->execute([['assessmentParticipantId' => $id, 'consultationRequested' => false]])['items'][0];
             $enabled = $item['status'] === 'payable';
 
             return $item + ['enabled' => $enabled,
                 'disabledReason' => $enabled ? null : 'Tidak tersedia untuk tagihan kolektif.'];
-        })->values()->all();
+        })->all());
     }
 
-    /** @param list<array{assessmentParticipantId: int, consultationRequested: bool}> $selection */
+    /**
+     * @param  list<array{assessmentParticipantId: int, consultationRequested: bool}>  $selection
+     * @return array<string, mixed>
+     */
     public function preview(array $selection): array
     {
         $this->principal();
         $preview = $this->preview->execute($selection);
-        if (! $preview['canReserve'] || collect($preview['items'])->contains(fn (array $item): bool => $item['status'] !== 'payable')) {
+        $hasUnavailable = false;
+        foreach ($preview['items'] as $item) {
+            if ($item['status'] !== 'payable') {
+                $hasUnavailable = true;
+                break;
+            }
+        }
+        if (! $preview['canReserve'] || $hasUnavailable) {
             throw new DomainException('COLLECTIVE_SELECTION_NOT_AVAILABLE');
         }
 
