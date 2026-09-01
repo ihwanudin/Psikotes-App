@@ -616,3 +616,9 @@ Backend turn `01a05c96-3d2f-75a0-8518-ed6671ee9e34` (cursor
 `67fb332a-ee06-4280-b3fe-55c3b79bcc9c:17`) aktif pada P11c3a reviewer
 list/detail + open-proof action testing-only/default-off. Decision UI dan seluruh
 aktivasi produksi tetap di luar scope; task lain tidak mendapat prompt duplikat.
+
+P11c3a `d4eae99`/`20b0254` diintegrasikan root sebagai `e262714`/`354d7b2`.
+Reviewer resource 10/96, portal cabang 14/210, legacy Filament 4/27,
+Pint/PHPStan dan default synthetic 1320/8214 lulus. PostgreSQL tidak diulang
+karena tidak ada schema/lock/RLS writer baru. P11c3a diterima; approve/reject UI
+dan seluruh discovery/route non-testing tetap belum aktif.
