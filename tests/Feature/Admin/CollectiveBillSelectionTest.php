@@ -143,6 +143,12 @@ final class CollectiveBillSelectionTest extends OrganizationPaymentTestCase
             } catch (DomainException|\InvalidArgumentException) {
             }
         }
+        try {
+            app(CreateCollectiveBillAction::class)->confirm([Fixture::selection($this->own)], $this->method, str_repeat('a', 64));
+            $this->fail('Tampered preview hash accepted.');
+        } catch (DomainException $exception) {
+            $this->assertSame('PREVIEW_CHANGED', $exception->getMessage());
+        }
         $free = Fixture::create(['organization' => $this->own['organization']], 0);
         $this->expectException(DomainException::class);
         try {
