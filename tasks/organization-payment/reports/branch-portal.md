@@ -1,5 +1,65 @@
 # P12a-prep — portal cabang baca-saja
 
+## P12c browser acceptance probe — belum lulus
+
+Tanggal 2026-09-02. Commit `628d6bd` memperluas harness loopback P12b yang
+sudah diterima dengan fixture P12c saja: bill baseline manual dipindahkan ke
+pending dengan expiry future, JPEG/PNG/PDF serta MIME/size invalid dibuat di
+direktori temp, disk `payment-proofs` menunjuk hanya ke storage fixture, dan URL
+proof memakai alias angka lokal dengan pemeriksaan actor/tenant/current key.
+Alias lama menjadi 404 setelah key berubah. Response fixture proof menetapkan
+`no-store, private`, `no-referrer`, dan `nosniff`. Tidak ada path object, checksum,
+atau credential dalam URL. Control header sintetis dapat mengubah status,
+role/tenant/deleted, melakukan replacement kanonik, dan membaca summary counts
+tanpa mengembalikan key/checksum/fingerprint.
+
+Harness tetap menolak seluruh origin non-loopback dan route yang tidak di-
+allowlist. Livewire temporary upload hanya diizinkan pada path signed fixture;
+preview blob lokal ditambahkan ke CSP agar FileUpload tidak menghasilkan false
+positive. Environment path, cache, SQLite, session, storage, file proof, dan
+alias semuanya berada di direktori temp baru tanpa `.env`. Payment provider,
+notifier, HTTP, dan mail tetap fake/deny. Tidak ada route/config/schema produksi.
+
+Acceptance P12c **belum dapat dinyatakan lulus**. Reproduksi fresh Chrome CLI
+menemukan batas Filament/Alpine pada action modal halaman resource nyata:
+
+- Tab native mencapai tombol `Unggah bukti` dengan `:focus-visible`;
+- Space/Enter menghasilkan click native `isTrusted=true` dan state Livewire
+  `mountedActions` berisi `uploadProof` dengan record key yang benar;
+- elemen dialog kemudian tetap `x-show=false`/hidden selama wait 30 detik di
+  `run-code`, sehingga input FileUpload tidak dapat diuji sebagai pengguna;
+- aktivasi mouse dalam boundary `run-code` menunjukkan hasil hidden yang sama.
+  Snapshot CLI dapat melihat subtree dialog, tetapi visibility/actionability
+  tetap false; subtree hidden tidak dipakai untuk mengarang bukti upload.
+
+Eksperimen workaround key handler/DOM dispatch dibatalkan dan tidak masuk diff.
+Tidak ada perubahan resource produksi pada increment ini. Karena modal tidak
+actionable, laporan ini tidak mengklaim upload JPEG/PNG/PDF, replace/stale modal,
+open-proof headers/audit, invalid upload, atau denial direct action telah lulus
+di browser. Behavior tersebut tetap dibuktikan pada focused PHP tests, bukan
+disetarakan dengan acceptance browser.
+
+Bukti yang lulus:
+
+- storage kanonik + P12c feature: **50 tes / 278 assertions**;
+- P12a access: **14 tes / 212 assertions**, query tetap 7 untuk page size
+  10/25/50;
+- P12b selection/preview/component: **72 tes / 798 assertions**;
+- regresi browser fresh P12b pada fixture
+  `oncam-collective-page-d85a9546c4894e83a4fbba73af38ffe5` lulus: 20 aksi
+  native, 488 trusted events, 9 geometry check 320/390/1280, 85 response, dan
+  nol console error/warning, blocked outbound, atau request failure;
+- verify database fixture lulus: 11 charge, 2 bill, 11 item, 2 audit; seluruh
+  entitlement/outbox/order/consent/identity tetap nol;
+- PHP lint dan Pint harness lulus; Node syntax, Prettier, ESLint helper P12b
+  lulus; PHPStan resource/issuer **0 error**.
+
+PostgreSQL/race tidak dijalankan dan tidak diklaim. Server, browser session, dan
+port 8012 sudah ditutup. P12c tetap default-off dan berhenti untuk review sebelum
+P13/aktivasi. Langkah berikutnya memerlukan keputusan apakah modal harus diuji
+dengan driver/browser lain yang mampu menyelesaikan state Alpine, atau apakah
+bug integrasi Filament 5 ini perlu reproduksi minimal terpisah sebelum source fix.
+
 ## P12c review hardening — koreksi 2bf56b6/7558915
 
 Tanggal 2026-09-02. Commit `889ed26` memperbaiki kontrak internal setelah
