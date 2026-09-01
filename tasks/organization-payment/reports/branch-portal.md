@@ -1,5 +1,42 @@
 # P12a-prep — portal cabang baca-saja
 
+## P12c review hardening — koreksi 2bf56b6/7558915
+
+Tanggal 2026-09-02. Commit `889ed26` memperbaiki kontrak internal setelah
+review dan menggantikan dua klaim lama di bagian P12c core di bawah: expiry URL
+tidak lagi hardcoded 15 menit, dan payment method kini benar-benar dimuat serta
+dikunci ulang pada fase kedua. Disk harus tepat `payment-proofs`; TTL harus
+integer 1–60 dari konfigurasi kanonik. Konfigurasi salah berhenti sebelum akses
+storage. Object hilang tetap not-found, sedangkan exception `exists`, exception
+temporary URL, dan URL kosong menjadi error unavailable yang tidak membawa path,
+credential, atau URL privat.
+
+Kedua fase memuat PaymentMethod secara persisted; fase audit memakai
+`lockForUpdate` untuk admin, bill, dan method. Bill dengan `gateway_ref` atau
+`invoice_url` tidak boleh diperlakukan sebagai manual transfer. Proof identity
+dan expected fingerprint tetap diperiksa ulang. Kegagalan insert audit tidak
+disanitasi menjadi storage error: exception database sintetis merambat dan
+transaksi tidak meninggalkan baris audit.
+
+UI kini memetakan nilai enum kanonik uppercase ke lima label aman. Nilai unknown
+tidak ditampilkan dan tidak dikirim sebagai fallback mentah. Subheading juga
+menjelaskan bahwa halaman tidak melakukan pembayaran/verifikasi dan upload bukti
+tidak berarti tagihan lunas atau peserta memperoleh akses tes.
+
+Bukti terfokus dengan overlay P11c identik yang tidak di-stage:
+
+- storage kanonik P11c + portal P12c: **50 tes / 278 assertions lulus**;
+- regresi akses P12a: **14 tes / 212 assertions lulus**, termasuk query list
+  tetap 7 untuk page size 10/25/50;
+- Pint lulus, PHPStan dua class production **0 error**, PHP lint dan diff check
+  lulus. Percobaan PHPStan pertama berhenti pada guard bootstrap production
+  karena environment proses tidak lengkap; pengulangan eksplisit dengan
+  `APP_ENV=testing` lulus tanpa membaca atau mengubah `.env`.
+
+Tidak ada PostgreSQL atau browser baru pada review fix ini. Bukti race/RLS tetap
+belum diklaim. Resource tetap testing-only; tidak ada aktivasi gate, route,
+reviewer/finalizer, pembayaran, settlement, entitlement, outbox, atau outbound.
+
 ## P12c core default-off — delta dari 0a0d774
 
 Tanggal 2026-09-02. Commit `2bf56b6` menambah boundary internal P12c pada
