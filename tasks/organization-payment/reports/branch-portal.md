@@ -25,7 +25,7 @@ notifikasi, entitlement, proof, reviewer/finalizer atau route produksi.
 
 TDD: RED awal gagal karena class belum ada. GREEN final
 `php vendor/bin/phpunit -c phpunit.organization-payment.xml tests/Feature/Admin/CollectiveBillSelectionTest.php`:
-**13 tes/35 assertions lulus**. Kasus mencakup 2 attempt→1 bill, replay, stale
+**13 tes/36 assertions lulus**. Kasus mencakup 2 attempt→1 bill, replay, stale
 harga, role/tenant/deleted/non-testing, legacy/status/free/self/claimed, foreign,
 duplicate, dan confirm tanpa preview. Pint lulus. PHPStan scoped dijalankan dengan
 testing/SQLite memory/cache-array; hasil dicatat pada handoff final. Tidak PG:
@@ -979,3 +979,4 @@ aksi selain viewAny/view, serta query scope dan hydration check. Acuan:
 [testing tables](https://filamentphp.com/docs/5.x/testing/testing-tables),
 [Laravel authorization](https://laravel.com/framework/docs/13.x/authorization),
 dan [OWASP authorization](https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html).
+
