@@ -437,6 +437,7 @@ provider atau menjadi authority sampai acquisition/validator berikutnya direview
 - [x] P10c-a single-intent memvalidasi canonical state/policy/snapshot, commit sebelum strict GET, menempelkan exact atau mempertahankan unknown tanpa create/rearm/audit spam. Race late-state noncanonical fail-closed; bukti wave-16 final.
 - [x] P10c-b1 schema durable lease additive, topic isolation, PostgreSQL CHECK/index, rollback refusal, model casts dan config bounded default-OFF. Root 37/185 serta PG252/2140 lulus; belum ada acquisition/provider/wiring.
 - [x] P10c-b2a reservasi provisional outbox-only memakai database clock dan PostgreSQL SKIP LOCKED; token bukan permit, counter/state bisnis tidak berubah. Root invoice182/1323 serta PG256/2195 lulus.
+- [x] P10c-b2b validator reuse claim canonical, mengonsumsi provisional dengan UUID permit baru dan generation atomik; invalid cleanup token-fenced. Root invoice197/1524 serta PG258/2247 lulus; belum provider/persist leased.
 - [ ] Lookup reference yang sama, cocokkan nominal/currency/reference; lanjutkan tanpa create ulang setelah unknown. Jadwal hanya memproses bill yang diizinkan dan bounded; perbedaan/ketidakpastian menuju petugas, bukan release claim. Tahap ini menghasilkan event ternormalisasi tanpa aktivasi akses; finalizer dihubungkan pada P11b, scheduler tetap nonaktif sampai itu teruji.
 
 **Dependencies:** P10b. **Scope:** M.

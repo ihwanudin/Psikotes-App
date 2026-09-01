@@ -507,3 +507,8 @@ P10c-b2a `8ffd771`/`1e4bcbe` diintegrasikan sebagai `fccfedf`/`c54d895`. Root
 invoice182/1323 dan PostgreSQL disposable256/2195 lulus. Untuk mencegah replay
 token provisional menerbitkan dua permit, ADR009 menetapkan fase 2 mengonsumsi
 token dengan UUID permit baru + expiry baru + increment generation atomik.
+
+P10c-b2b `dabc6f4`/`6163bff` diintegrasikan sebagai `56b681c`/`20f376b`. Root
+invoice197/1524 dan PG disposable258/2247 lulus. P10c-b3 berikutnya hanya strict
+GET + token-fenced outcome/cooldown; race issuance exact wajib membersihkan lease
+secara atomik agar constraint processed tidak gagal.

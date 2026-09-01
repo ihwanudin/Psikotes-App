@@ -53,6 +53,12 @@ discovery dan validasi harus dipisah.
 - GET selalu di luar transaksi dan RLS context. Persist exact/unknown membuka
   transaksi baru dan wajib cocok UUID permit baru, generation counter, lease belum expired,
   serta late state canonical. Worker lama tidak boleh menulis hasil.
+- Writer issuance P10b yang lebih dahulu memperoleh exact result tetap boleh
+  menang dengan permit issuance canonical; dalam transaksi outcome yang sama ia
+  wajib membersihkan token/expiry/cooldown rekonsiliasi sebelum membuat message
+  processed. Permit rekonsiliasi lama kemudian gagal pada fence. Outcome unknown
+  issuance boleh mempertahankan lease aktif karena pasangan unknown/failed tetap
+  canonical dan validator/persist rekonsiliasi akan memeriksa tokennya.
 - Config server-side awal: batch 25 (1..100), scan 100 (batch..400), lease 60
   detik (30..300), cooldown 300 detik (60..86400), maksimum lookup 12 (1..100).
   Nilai ini tidak mengaktifkan command/scheduler.
