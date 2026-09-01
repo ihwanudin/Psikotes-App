@@ -2039,3 +2039,72 @@ issued.
 Tetap tidak ada command/job/scheduler/route/P11, POST/create provider, perubahan
 config/schema, credential/.env/data aktif, notifikasi, deploy, push, atau aktivasi
 source/gate. **STOP untuk review integrasi P10c-b4**.
+
+## P11a1 — finalizer pembayaran bill atomik
+
+Commit kode/tes lokal `de7e6f2` menambah boundary internal
+`FinalizeAssessmentBill`. Input memakai `PaymentEvent` typed existing: merchant
+reference `AB_`, provider reference, nominal integer, currency IDR, status,
+`occurredAt`, dan event ID. Boundary tidak melakukan autentikasi webhook atau
+wiring publik; P11b tetap harus memasok event yang sudah diautentikasi.
+
+Finalizer membaca bill hanya sebagai routing hint dalam service RLS, kemudian
+mengunci organization sebelum bill/items, attempt, participant, package, charge,
+dan payment method. Seluruh scope persisted, funding checkout-v2, snapshot harga,
+item count/sum, payer, reference, amount, dan currency diperiksa ulang. Policy dan
+status aktif saat ini tidak dipakai untuk membatalkan invoice existing yang sudah
+dibayar. Context non-service serta transaksi ambient tanpa authority ditolak;
+caller yang sudah berada dalam transaksi service sah tetap didukung, dan seluruh
+efek mengikuti commit/rollback transaksi induk.
+
+Event paid canonical mengubah bill menjadi `paid`, menetapkan `paid_at`, lalu
+menulis `settled_at` pada setiap bill item satu per satu dalam transaksi yang
+sama. Schema tidak memiliki timestamp settlement berbayar pada charge;
+`free_settled_at` sengaja tidak disalahgunakan karena hanya sah untuk charge nol.
+Satu audit `assessment_bill.paid` menyimpan hash event/provider, nilai pembayaran,
+paidAt, dan daftar ID allocation untuk trace bill-ke-item. Setelah itu primitive
+P8b dipanggil per attempt. Attempt dengan consent/identity lengkap dapat menjadi
+READY dan mendapat outbox; attempt yang belum lengkap tetap lunas tetapi locked,
+tanpa menggagalkan anggota lain atau membuat tagihan kedua. Audit aktivasi
+`assessment.activated` tetap terpisah dan hanya dibuat P8b untuk attempt yang
+benar-benar aktif.
+
+Replay paid exact memerlukan paidAt serta audit identity yang sama dan menjadi
+no-op. Provider/reference/amount/currency atau payload replay berbeda ditolak.
+Callback expired/cancelled terlambat hanya diabaikan bila state paid, seluruh
+allocation, dan audit masih canonical; ia tidak dapat menurunkan paid. State paid
+yang korup gagal tertutup tanpa rewrite/audit tambahan.
+
+### Bukti aktual
+
+- RED pertama: **8 tes, 0 passed, 2 failures + 6 errors, 2 assertions**. Selain
+  class finalizer yang belum ada, fixture kolektif awal juga menemukan reference
+  provider sintetis harus unik; fixture tes kemudian dibatasi satu reference
+  induk.
+- Feature final: **10/10 tes, 65 assertions**. Cakupan meliputi collective dua
+  attempt dengan consent tertunda, exact replay, late expired/cancelled, replay
+  identity berbeda, allocation/snapshot/metadata korup, partial/overpayment,
+  reference/provider/currency mismatch, nonpaid pending no-op, crash pada save
+  item kelima, context denial, transaksi ambient denial, serta rollback transaksi
+  service induk yang membatalkan bill/items/audit/activation/outbox.
+- Regresi terkait dijalankan per file karena satu proses yang mencampur test
+  `DatabaseTruncation` baru dan file lama `RefreshDatabase` kehilangan schema
+  SQLite setelah 48 tes. Per-file semuanya lulus: finalizer **10/65**, aktivasi
+  P8b **30/107**, gate **44/55**, issuance P10b **22/273**, leased reconciliation
+  **17/275**; total **123 tes, 775 assertions**. Default XML lulus **75/75 tes,
+  414 assertions**.
+- Pint tiga file kode/tes, PHPStan seluruh project **0 error**, dan
+  `git diff --check` lulus.
+- Tes PostgreSQL dua proses sudah ditambahkan dan memaksa dua backend runtime
+  berbeda menunggu mutex organization, dengan ekspektasi tepat satu `settled`,
+  satu `replayed`, satu audit payment, dan satu set activation/outbox. Namun dua
+  invocation runner disposable pada host ini sama-sama masuk status proses OS
+  `D` (I/O wait) selama 6–8 menit **sebelum ada koneksi `psikotes_runtime` di
+  `pg_stat_activity`**. Keduanya dihentikan dan container/network bernama exact
+  sudah dibersihkan. Karena itu bukti PG P11a1 masih **belum terverifikasi**, bukan
+  lulus atau failure assertion aplikasi; koordinator perlu menjalankan runner
+  disposable dari root/review host.
+
+Tidak ada route, webhook dispatcher, command/job/scheduler, provider GET/POST,
+proof transfer, P11b/P11c, schema/migration/config, credential/.env/data aktif,
+notifikasi terkirim, deploy atau push. **STOP untuk review P11a1**.
