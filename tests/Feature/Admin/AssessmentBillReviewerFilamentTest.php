@@ -76,7 +76,7 @@ final class AssessmentBillReviewerFilamentTest extends OrganizationPaymentTestCa
         $this->assertSame([10, 25], $component->instance()->getTable()->getPaginationPageOptions());
     }
 
-    public function test_detail_renders_only_safe_fields_and_has_no_mutating_actions(): void
+    public function test_detail_renders_only_safe_fields_and_has_only_bounded_review_actions(): void
     {
         $this->actingAs($this->reviewer, 'admin');
 
@@ -86,8 +86,10 @@ final class AssessmentBillReviewerFilamentTest extends OrganizationPaymentTestCa
             ->assertSee('Buka bukti')
             ->assertDontSee('Synthetic Candidate')
             ->assertDontSee($this->bill['proofKey'])
-            ->assertActionDoesNotExist('approve')
-            ->assertActionDoesNotExist('reject')
+            ->assertActionVisible('approve')
+            ->assertActionVisible('reject')
+            ->assertActionDoesNotExist('edit')
+            ->assertActionDoesNotExist('upload')
             ->assertActionDoesNotExist('delete');
 
         $payload = json_encode($component->instance(), JSON_THROW_ON_ERROR);
