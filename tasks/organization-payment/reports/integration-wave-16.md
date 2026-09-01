@@ -37,7 +37,7 @@ cleanup berhasil; Pint file delta dan PHPStan seluruh proyek lulus. Nol
 create ulang, settlement, public wiring, command atau scheduler. P10c-a diterima;
 discovery/lease/operasional tetap P10c-b.
 
-Backend cursor `163af1e1-5f6a-4358-82dd-3e4d2134e4ed:72`. Proposal P10c-b0
+Backend cursor `163af1e1-5f6a-4358-82dd-3e4d2134e4ed:73`. Proposal P10c-b0
 `306f3a7`/`7c96535` diintegrasikan sebagai `9d1db26`/`d99ffa4`; ADR009 menerima
 lease dua fase. Turn `01a05a2e-0dcd-7001-8a4d-efcbd1092a9e` aktif pada P10c-b1
 schema/model/config dan tes disposable saja. Acquisition, provider, command dan
@@ -89,3 +89,10 @@ operasional; backend siap menerima P11a core finalizer atomik.
 Turn backend `01a05acf-4ada-7543-afca-90f7a2db4238` aktif pada P11a1 core
 finalizer atomik. Scope berhenti sebelum route/webhook/dispatcher/scheduler,
 provider nyata dan P11b/P11c; frontend serta portal tetap menunggu dependency.
+
+P11a1 `de7e6f2`/`6d97aa7` diintegrasikan secara bersyarat sebagai
+`2f668b9`/`974ded1` untuk verifikasi root. Review source, satu feature smoke test,
+Pint dan PHPStan lulus. Acceptance belum ditutup: runner PostgreSQL task dan dua
+percobaan root berhenti sebelum bootstrap test akibat Docker Desktop bind-mount
+I/O; seluruh container/network disposable exact-name sudah dibersihkan. P11b
+tidak boleh dimulai sampai concurrency PostgreSQL P11a terbukti.
