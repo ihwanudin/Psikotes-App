@@ -1,5 +1,54 @@
 # P12a-prep — portal cabang baca-saja
 
+## P12c core default-off — delta dari 0a0d774
+
+Tanggal 2026-09-02. Commit `2bf56b6` menambah boundary internal P12c pada
+resource OrganizationBills yang tetap hanya discovered dalam environment
+testing. Tidak ada route publik, config toggle, reviewer/finalizer, provider,
+notifier, command, job, atau perubahan schema dalam commit lane ini.
+
+Upload header action menerima berkas temporer tanpa menduplikasi daftar MIME,
+ukuran, checksum, namespace key, state bill, allocation, atau replacement fence.
+Semua keputusan itu tetap dilakukan `StoreAssessmentBillProof` kanonik melalui
+`AssessmentBillProofUpload` dengan fingerprint current proof dari state Locked.
+BranchAdmin, membership, bill organization, manual-transfer pending, expiry,
+dan proof fingerprint dimuat ulang server. Upload/replace tidak mengubah paid,
+settlement, entitlement, audit pembayaran, atau outbox.
+
+Detail hanya memproyeksikan waktu upload UTC, label MIME JPEG/PNG/PDF, ukuran,
+status bill, dan rejection code yang dipetakan ke lima label bounded. Object key,
+checksum, gateway/invoice, URL privat, dan context audit tidak masuk Livewire/
+HTML. Partial legacy/corrupt proof identity ditampilkan fail-closed tanpa tombol
+open; writer kanonik tetap menolak penggantian ambigu.
+
+`OrganizationBillProofUrlIssuer` khusus cabang tidak memakai authority reviewer
+SuperAdmin. Ia hanya menerima BranchAdmin persisted dan bill organization milik
+branch persisted, memvalidasi fingerprint current proof, memastikan object
+private tersedia, membuat URL 15 menit di luar transaksi, lalu mengulang actor,
+tenant, bill, method, dan fingerprint di transaksi terpisah sebelum audit.
+Audit hanya berisi versi, fingerprint opaque, dan expiry; URL, key, checksum,
+PII, serta token tidak dicatat. Role/deleted/cross-tenant, proof replaced/cleared,
+foreign/nonmanual/missing proof gagal generik tanpa audit.
+
+Untuk menjalankan focused test pada snapshot worker lama, file P11c canonical
+Store/DTO/error/identity, model AssessmentBill, migration proof identity, dan
+`AssessmentBillProofStorageTest` disalin identik dari root sebagai overlay lokal;
+hash diverifikasi dan seluruh overlay tidak di-stage/commit. Bukti:
+
+- P11c storage canonical + P12c portal: **43 tes / 254 assertions lulus**,
+  mencakup MIME/size, cleanup, rollback, replacement/stale fence dan failure I/O;
+- P12a access regression terpisah: **14 tes / 212 assertions lulus**, query
+  pagination tetap 7 untuk ukuran 10/25/50;
+- Pint lulus, PHPStan dua class production **0 error**, PHP lint dan diff check
+  lulus.
+
+Tidak ada PostgreSQL atau browser baru pada increment core ini. Issuer memakai
+lock untuk mengikat recheck dan audit, tetapi hasil ini tidak mengklaim race atau
+RLS PostgreSQL; pembuktian concurrency harus memakai runner disposable pada
+increment terpisah bila diminta. Storage memakai fake private disk dan file
+sintetis. Gate tetap default-off dan pekerjaan berhenti sebelum browser/P12c
+activation.
+
 ## P12a-detail/P12b browser hardening — delta dari 69857b7
 
 Tanggal 2026-09-02. Root menerima tiga commit browser sebelumnya sebagai bukti
