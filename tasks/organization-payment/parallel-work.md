@@ -634,3 +634,8 @@ Pint/PHPStan dan default synthetic 1346/8352 lulus. Suite penuh lebih lama tetap
 proses tetap aktif dan berakhir sukses. PostgreSQL tidak diulang karena audit
 lookup read-only dan writer/concurrency tetap finalizer yang sudah dibuktikan.
 Browser acceptance default-off berikutnya; aktivasi produksi tetap dilarang.
+
+Backend turn `01a05ce5-c61f-7861-a42a-491cde1b4564` (cursor
+`67fb332a-ee06-4280-b3fe-55c3b79bcc9c:21`) aktif pada P11c3c browser acceptance
+testing-only untuk desktop/mobile/keyboard dan role denial. Production discovery,
+route, DB aktif, dan layanan eksternal tetap dilarang.

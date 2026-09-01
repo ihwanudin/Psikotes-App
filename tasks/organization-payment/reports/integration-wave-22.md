@@ -26,3 +26,8 @@ fingerprint/PII di state atau action arguments.
 
 Belum ada browser acceptance, route/discovery/navigation produksi, outbound,
 DB aktif, deploy, atau push.
+
+Task backend existing menerima P11c3c browser acceptance testing-only. Turn
+`01a05ce5-c61f-7861-a42a-491cde1b4564`, cursor
+`67fb332a-ee06-4280-b3fe-55c3b79bcc9c:21`; jangan menggandakan prompt selama
+aktif dan jangan mengaktifkan resource/route produksi.
