@@ -23,6 +23,7 @@ use App\Models\TestPackage;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
 use App\Services\ParticipantAuth\AssessmentPrincipal;
+use App\Services\Payments\AssessmentBillProofIdentity;
 use App\Services\Payments\AssessmentPriceSnapshot;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -38,6 +39,7 @@ final readonly class FinalizeAssessmentBill
         private RlsContextRunner $contexts,
         private AssessmentPriceSnapshot $prices,
         private ActivateSettledAssessment $activation,
+        private AssessmentBillProofIdentity $proofs,
     ) {}
 
     /** @return array{decision: string, allocationCount: int, activatedAttemptCount: int} */
@@ -229,22 +231,14 @@ final readonly class FinalizeAssessmentBill
             || $bill->invoice_url !== null) {
             throw new AssessmentBillManualReviewException(AssessmentBillManualReviewError::ChannelInvalid);
         }
-        if (! is_string($bill->proof_object_key) || ! is_string($bill->proof_checksum_sha256)
-            || ! is_string($bill->proof_mime_type) || ! is_int($bill->proof_size_bytes)
-            || $bill->proof_uploaded_at === null
-            || ! preg_match('/^assessment-bills\/[a-z0-9]{2}\/[a-z0-9]{62}\.(jpg|png|pdf)$/D', $bill->proof_object_key)
-            || ! preg_match('/^[0-9a-f]{64}$/D', $bill->proof_checksum_sha256)
-            || ! in_array($bill->proof_mime_type, ['image/jpeg', 'image/png', 'application/pdf'], true)
-            || $bill->proof_size_bytes < 1 || $bill->proof_size_bytes > 5_120_000) {
+        try {
+            $fingerprint = $this->proofs->fingerprint($bill, now());
+        } catch (DomainException) {
             throw new AssessmentBillManualReviewException(AssessmentBillManualReviewError::ProofInvalid);
         }
-        $fingerprint = hash('sha256', implode("\0", [
-            $bill->proof_object_key,
-            $bill->proof_checksum_sha256,
-            $bill->proof_mime_type,
-            (string) $bill->proof_size_bytes,
-            $bill->proof_uploaded_at->utc()->format('Y-m-d\TH:i:s.u\Z'),
-        ]));
+        if ($fingerprint === null) {
+            throw new AssessmentBillManualReviewException(AssessmentBillManualReviewError::ProofInvalid);
+        }
         if (! hash_equals($fingerprint, $review->expectedProofFingerprint)) {
             throw new AssessmentBillManualReviewException(AssessmentBillManualReviewError::Conflict);
         }

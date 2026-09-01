@@ -21,6 +21,7 @@ use App\Models\TestPackage;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
 use App\Services\ParticipantAuth\AssessmentPrincipal;
+use App\Services\Payments\AssessmentBillProofIdentity;
 use App\Services\Payments\AssessmentPriceSnapshot;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -42,6 +43,7 @@ final readonly class StoreAssessmentBillProof
     public function __construct(
         private RlsContextRunner $contexts,
         private AssessmentPriceSnapshot $prices,
+        private AssessmentBillProofIdentity $proofs,
     ) {}
 
     public function execute(AssessmentBillProofUpload $upload): AssessmentBillProofReceipt
@@ -202,8 +204,12 @@ final readonly class StoreAssessmentBillProof
         }
 
         $oldKey = $bill->proof_object_key;
-        $fingerprint = $this->fingerprint($stored['objectKey'], $stored['checksum'], $stored['mimeType'],
-            $stored['size'], $stored['uploadedAt']);
+        try {
+            $fingerprint = $this->proofs->fromValues($stored['objectKey'], $stored['checksum'], $stored['mimeType'],
+                $stored['size'], $stored['uploadedAt'], now());
+        } catch (DomainException) {
+            $this->fail(AssessmentBillProofStorageError::ScopeInvalid);
+        }
         $bill->update([
             'proof_object_key' => $stored['objectKey'],
             'proof_checksum_sha256' => $stored['checksum'],
@@ -328,45 +334,11 @@ final readonly class StoreAssessmentBillProof
 
     private function currentFingerprint(AssessmentBill $bill): ?string
     {
-        $rawUploadedAt = $bill->getRawOriginal('proof_uploaded_at');
-        $values = [$bill->proof_object_key, $bill->proof_checksum_sha256, $bill->proof_mime_type,
-            $bill->proof_size_bytes, $rawUploadedAt];
-        if (array_filter($values, static fn (mixed $value): bool => $value !== null) === []) {
-            return null;
-        }
-        if (! is_string($bill->proof_object_key) || ! is_string($bill->proof_checksum_sha256)
-            || ! is_string($bill->proof_mime_type) || ! is_int($bill->proof_size_bytes)
-            || $rawUploadedAt === null
-            || ! preg_match('/^assessment-bills\/[a-z0-9]{2}\/[a-z0-9]{62}\.(jpg|png|pdf)$/D', $bill->proof_object_key)
-            || ! preg_match('/^[0-9a-f]{64}$/D', $bill->proof_checksum_sha256)
-            || ! in_array($bill->proof_mime_type, ['image/jpeg', 'image/png', 'application/pdf'], true)
-            || $bill->proof_size_bytes < 1 || $bill->proof_size_bytes > 5_120_000) {
-            $this->fail(AssessmentBillProofStorageError::ScopeInvalid);
-        }
-
         try {
-            $uploadedAt = $this->dateAttribute($bill, 'proof_uploaded_at');
-        } catch (Throwable) {
+            return $this->proofs->fingerprint($bill, now());
+        } catch (DomainException) {
             $this->fail(AssessmentBillProofStorageError::ScopeInvalid);
         }
-        if ($uploadedAt === null) {
-            $this->fail(AssessmentBillProofStorageError::ScopeInvalid);
-        }
-        $canonicalUploadedAt = CarbonImmutable::instance($uploadedAt)->utc();
-        if ($canonicalUploadedAt->isAfter(now())) {
-            $this->fail(AssessmentBillProofStorageError::ScopeInvalid);
-        }
-
-        return $this->fingerprint($bill->proof_object_key, $bill->proof_checksum_sha256, $bill->proof_mime_type,
-            $bill->proof_size_bytes, $canonicalUploadedAt);
-    }
-
-    private function fingerprint(string $key, string $checksum, string $mime, int $size,
-        CarbonImmutable $uploadedAt): string
-    {
-        return hash('sha256', implode("\0", [
-            $key, $checksum, $mime, (string) $size, $uploadedAt->utc()->format('Y-m-d\TH:i:s.u\Z'),
-        ]));
     }
 
     /** @throws Throwable when an Eloquent date cast cannot parse persisted data. */
