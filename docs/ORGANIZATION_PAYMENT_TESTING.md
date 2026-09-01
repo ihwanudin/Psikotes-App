@@ -54,6 +54,12 @@ npm run lint:check
 npm run build
 ```
 
+`phpunit.xml` default juga mengecualikan grup `sandbox`, sehingga `php artisan
+test` tidak boleh membuat invoice eksternal walau credential development tersedia
+di lingkungan lokal. Contract Xendit hanya dapat dipilih secara sadar melalui
+`php vendor/bin/phpunit --configuration phpunit.xendit-sandbox.xml`; perintah itu
+memerlukan izin terpisah karena membuat dan mengubah invoice development.
+
 Direktori eksplisit memilih suite lokal tanpa memasukkan tes PostgreSQL yang
 memiliki runner terpisah. Grup sandbox sengaja tidak dijalankan
 karena membuat invoice eksternal membutuhkan izin terpisah; ini bukan laporan
