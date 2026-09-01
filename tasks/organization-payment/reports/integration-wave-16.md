@@ -96,3 +96,10 @@ Pint dan PHPStan lulus. Acceptance belum ditutup: runner PostgreSQL task dan dua
 percobaan root berhenti sebelum bootstrap test akibat Docker Desktop bind-mount
 I/O; seluruh container/network disposable exact-name sudah dibersihkan. P11b
 tidak boleh dimulai sampai concurrency PostgreSQL P11a terbukti.
+
+Retry heartbeat setelah jeda 40 menit kembali berhenti sebelum bootstrap PHPUnit;
+resource disposable exact-name/label dibersihkan. Karena blocker sama kini telah
+berulang dan kelanjutan aman memerlukan pemulihan/restart Docker Desktop yang dapat
+mengganggu container aplikasi aktif, automation koordinasi dijeda. P11a tetap
+conditional dan P11b tidak dimulai sampai pengguna memulihkan Docker lalu meminta
+kelanjutan.
