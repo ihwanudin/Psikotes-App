@@ -10,8 +10,10 @@ use App\Filament\Resources\AssessmentParticipants\Pages\CreateCollectiveBill;
 use App\Models\Admin;
 use App\Services\Notifications\FakeNotifier;
 use App\Services\Payments\FakePaymentProvider;
+use Filament\AvatarProviders\Contracts\AvatarProvider;
 use Filament\Facades\Filament;
 use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Bootstrap\LoadConfiguration;
 use Illuminate\Http\Request;
@@ -26,6 +28,7 @@ use Tests\Support\AssessmentPreviewFixture as Fixture;
 
 // Dedicated SQLite fixture only; neither workspace .env nor active caches are read.
 $directory = getenv('ONCAM_COLLECTIVE_PAGE_DIRECTORY');
+$root = dirname(__DIR__, 2);
 if (! is_string($directory) || realpath(dirname($directory)) !== realpath(sys_get_temp_dir())
     || ! preg_match('/^oncam-collective-page-[a-f0-9]{32}$/D', basename($directory))
     || ! is_dir($directory) || is_link($directory) || file_exists($directory.'/.env')) {
@@ -44,7 +47,14 @@ if ($mode === 'http') {
         http_response_code(403);
         exit;
     }
-    // No application, admin, integration, payment or storage routes are reachable.
+    if (preg_match('#^/(?:js|css|fonts)/filament/#D', (string) $path) === 1) {
+        $asset = realpath($root.'/public'.$path);
+        $public = realpath($root.'/public');
+        if ($asset !== false && $public !== false && str_starts_with($asset, $public.DIRECTORY_SEPARATOR) && is_file($asset)) {
+            return false;
+        }
+    }
+    // No other application, admin, integration, payment or storage routes are reachable.
     if (! in_array($path, ['/preview', '/fixture-control', '/fixture.css', '/fixture-livewire.js', '/fixture-update', '/favicon.ico'], true)
         && ! preg_match('#^/admin/organization-bills/[0-9]+$#D', (string) $path)) {
         http_response_code(404);
@@ -90,8 +100,16 @@ foreach ([
     putenv($key.'='.$value);
     $_ENV[$key] = $_SERVER[$key] = $value;
 }
-$root = dirname(__DIR__, 2);
 require $root.'/vendor/autoload.php';
+
+final class SyntheticCollectiveAvatarProvider implements AvatarProvider
+{
+    public function get(Model $record): string
+    {
+        return 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2232%22 height=%2232%22%3E%3Crect width=%2232%22 height=%2232%22 fill=%22%2309090b%22/%3E%3C/svg%3E';
+    }
+}
+
 $app = require $root.'/bootstrap/app.php';
 $app->addAbsoluteCachePathPrefix($directory);
 $app->useEnvironmentPath($directory);
@@ -115,6 +133,7 @@ $app->booting(function (Application $app): void {
     Mail::fake();
 });
 $app->make(Kernel::class)->bootstrap();
+Filament::getPanel('admin')->defaultAvatarProvider(SyntheticCollectiveAvatarProvider::class);
 
 if ($mode === 'init') {
     if (Artisan::call('migrate', ['--force' => true, '--no-interaction' => true]) !== 0) {
@@ -165,7 +184,8 @@ if ($mode === 'init') {
     $control = bin2hex(random_bytes(24));
     file_put_contents($directory.'/manifest.json', json_encode(['admin' => $admin->id, 'foreignAdmin' => $foreignAdmin->id,
         'organization' => $organization, 'foreignOrganization' => $foreign['organization'], 'ids' => $ids,
-        'method' => $method, 'control' => $control, 'baselineBill' => $claimedBill->id], JSON_THROW_ON_ERROR));
+        'method' => $method, 'control' => $control, 'baselineBill' => $claimedBill->id,
+        'foreignBill' => $foreign['bill']], JSON_THROW_ON_ERROR));
     echo "Disposable synthetic fixture initialized; no login to real accounts.\n";
     exit;
 }
@@ -219,7 +239,10 @@ Livewire::setUpdateRoute(fn ($handler) => Route::post('/fixture-update', $handle
 Livewire::setScriptRoute(fn ($handler) => Route::get('/fixture-livewire.js', $handler));
 Route::middleware('web')->get('/preview', function () use ($adminId): string {
     $as = request()->query('as', 'branch');
-    abort_unless($as === 'branch', 403);
+    if ($as !== 'branch') {
+        Filament::auth()->logout();
+        abort(403);
+    }
     $admin = Admin::findOrFail($adminId);
     abort_unless($admin->email === 'collective-browser@example.test', 403);
     Filament::auth()->login($admin);
@@ -232,7 +255,7 @@ Route::middleware('web')->get('/preview', function () use ($adminId): string {
         @livewireStyles
         {!! \Filament\Support\Facades\FilamentAsset::renderStyles([]) !!}
         <style>body.fixture-body{font-family:system-ui,sans-serif;margin:0}.fixture-main{box-sizing:border-box;max-width:60rem;margin:auto;padding:1rem}</style>
-        </head><body class="fixture-body"><main class="fixture-main"><livewire:collective-page-fixture /></main>@livewireScripts</body></html>
+        </head><body class="fixture-body"><main class="fixture-main"><livewire:collective-page-fixture /></main>@filamentScripts(withCore: true)</body></html>
         BLADE, deleteCachedView: true);
 });
 Route::post('/fixture-control', function () use ($manifest, $control): array {

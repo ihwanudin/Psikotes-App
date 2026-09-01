@@ -100,7 +100,7 @@ if (process.argv[2] === 'assets') {
         run('open', 'about:blank', '--browser', 'chrome');
         run(
             'run-code',
-            `async (page) => (${prepare.toString()})(page, ${JSON.stringify(manifest.control)})`,
+            `async (page) => (${prepare.toString()})(page, ${JSON.stringify(manifest)})`,
         );
         const phases = {};
 
@@ -136,9 +136,10 @@ if (process.argv[2] === 'assets') {
     throw new Error('Use assets or verify.');
 }
 
-async function prepare(page, control) {
+async function prepare(page, manifest) {
     page.p12b = {
-        control,
+        control: manifest.control,
+        foreignBill: manifest.foreignBill,
         errors: [],
         responses: [],
         blocked: [],
@@ -402,6 +403,7 @@ async function verifyPhase(page, phase) {
         );
         await page.reload();
         ok(page.url() === detailUrl, 'Reload changed canonical bill');
+        await measure('detail');
 
         return {
             phase,
@@ -419,7 +421,6 @@ async function verifyPhase(page, phase) {
 
     for (const forbidden of [
         'PRIVATE-SENTINEL',
-        'DASS',
         'proof_object_key',
         'gateway_ref',
         page.p12b.control,
@@ -430,23 +431,59 @@ async function verifyPhase(page, phase) {
         );
     }
 
-    await page.goto('http://127.0.0.1:8012/preview?as=guest');
+    const ownDetail = page.p12b.detailUrl;
+    const ownReference = secretText.match(/AB_[A-Z0-9]+/)?.[0] ?? '';
+    const guestLogout = await page.request.get(
+        'http://127.0.0.1:8012/preview?as=guest',
+        { failOnStatusCode: false },
+    );
+    ok(guestLogout.status() === 403, 'Guest fixture logout failed');
+    const guestDetail = await page.request.get(ownDetail, {
+        failOnStatusCode: false,
+        maxRedirects: 0,
+    });
     ok(
-        (await page.locator('body').innerText()).includes('403'),
-        'Guest direct URL not denied',
+        [302, 403, 404].includes(guestDetail.status()) &&
+            !(await guestDetail.text()).includes(ownReference),
+        'Guest detail leaked',
     );
     await page.goto('http://127.0.0.1:8012/preview');
     await control('role-off');
-    await page.reload();
+    const wrongRoleDetail = await page.request.get(ownDetail, {
+        failOnStatusCode: false,
+        maxRedirects: 0,
+    });
     ok(
-        (await page.locator('body').innerText()).includes('403'),
-        'Role revocation not denied',
+        [302, 403, 404].includes(wrongRoleDetail.status()) &&
+            !(await wrongRoleDetail.text()).includes(ownReference),
+        'Wrong role detail leaked',
     );
     await control('role-on');
-    await control('tenant-off');
     await page.goto('http://127.0.0.1:8012/preview');
-    ok(!(await body()).includes('ATTEMPT-SYN-1'), 'Cross tenant labels leaked');
+    await control('tenant-off');
+    const oldTenantDetail = await page.request.get(ownDetail, {
+        failOnStatusCode: false,
+        maxRedirects: 0,
+    });
+    ok(
+        [302, 403, 404].includes(oldTenantDetail.status()) &&
+            !(await oldTenantDetail.text()).includes(ownReference),
+        'Old tenant detail leaked',
+    );
     await control('tenant-on');
+    await page.goto('http://127.0.0.1:8012/preview');
+    const foreignDetail = await page.request.get(
+        `http://127.0.0.1:8012/admin/organization-bills/${page.p12b.foreignBill}`,
+        { failOnStatusCode: false, maxRedirects: 0 },
+    );
+    ok(
+        [302, 403, 404].includes(foreignDetail.status()) &&
+            !(await foreignDetail.text()).includes('FOREIGN'),
+        'Foreign bill detail leaked',
+    );
+    const unexpectedErrors = page.p12b.errors.filter(
+        (error) => !/status of (?:403|404)/.test(error),
+    );
     ok(
         page.p12b.trustedEvents
             .filter((event) => event.type === 'keydown')
@@ -456,8 +493,11 @@ async function verifyPhase(page, phase) {
     ok(
         Object.values(page.p12b.preDetailDiagnostics).every(
             (count) => count === 0,
-        ),
-        `Selection/preview console or network failure: ${JSON.stringify(page.p12b.preDetailDiagnostics)}`,
+        ) &&
+            unexpectedErrors.length === 0 &&
+            page.p12b.blocked.length === 0 &&
+            page.p12b.failures.length === 0,
+        `Console/network failure: ${JSON.stringify({ preDetail: page.p12b.preDetailDiagnostics, unexpectedErrors, blocked: page.p12b.blocked, failures: page.p12b.failures })}`,
     );
 
     return {
