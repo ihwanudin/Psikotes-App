@@ -531,3 +531,8 @@ Docker Desktop dipulihkan, root PostgreSQL disposable262/2320 membuktikan dua
 finalizer hanya menghasilkan satu settlement/audit/outbox; cleanup sukses.
 P11a core diterima. Backend berikutnya mengaudit kontrak P11b lebih dahulu agar
 routing bill AB_ dan status check tidak mengubah fallback/order legacy.
+
+P11b0 proposal `61c3310` diterima root sebagai `60489e7` setelah review
+correctness, architecture, dan security serta smoke regression 22/98. P11b1
+dispatcher/terminal mapping berjalan dengan TDD; raw webhook auth, route,
+provider mapping, command/scheduler, dan status reconciler belum berubah.

@@ -115,3 +115,10 @@ turn `01a05baa-b35c-7091-9b4c-ee8d547afad2` (cursor
 `67fb332a-ee06-4280-b3fe-55c3b79bcc9c:2`) menerima P11b0 audit/kontrak saja:
 dispatcher `AB_` harus fail-closed, order legacy tetap kompatibel, status check
 berkonvergensi ke finalizer yang sama, dan belum ada wiring produksi.
+
+P11b0 `61c3310` direview lintas correctness/architecture/security dan
+diintegrasikan sebagai `60489e7`; smoke regression root lulus 22 tes/98
+assertions. Tidak ada source produksi pada proposal. Backend turn
+`01a05bb5-1951-76a0-839d-777d3c653712` (cursor
+`67fb332a-ee06-4280-b3fe-55c3b79bcc9c:3`) aktif pada P11b1 dispatcher dan
+terminal mapping melalui TDD, tetap tanpa route/provider/command/scheduler.
