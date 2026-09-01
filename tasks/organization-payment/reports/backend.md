@@ -1725,3 +1725,48 @@ increment <=5 file ada di
 `reports/backend-invoice-reconciliation-lease-proposal.md`. Increment ini tidak
 mengubah kode/schema/config/command/provider dan tidak menjalankan test karena
 hanya dua dokumen. **STOP untuk review ADR/migration sebelum implementasi.**
+
+## P10c-b1 — kontrak schema durable reconciliation lease
+
+ADR-009 diimplementasikan sebagai migration additive yang tetap nonaktif. Empat
+kolom outbox baru adalah UUID lease nullable, expiry dan cooldown `timestampTz`
+nullable, serta counter `unsignedSmallInteger` default 0. PostgreSQL menegakkan
+pasangan token/expiry, counter 0..100, isolasi metadata untuk topic selain
+`assessment.bill.invoice-issuance`, dan active lease hanya pada aggregate
+`AssessmentBill` canonical: attempts1, belum processed, serta processing tanpa
+error atau failed dengan `INVOICE_OUTCOME_UNKNOWN`. Partial discovery index tidak
+memakai `now()`/`CURRENT_TIMESTAMP`. SQLite hanya mendapat ordinary index dan
+tidak diklaim membuktikan CHECK atau concurrency PostgreSQL.
+
+Rollback melakukan satu preflight sebelum DDL. Token, expiry, cooldown, atau
+counter nonzero mana pun membuat rollback gagal dengan error eksplisit; tidak ada
+kolom/index/constraint yang sudah terhapus dan tidak ada metadata yang diisi atau
+dibuang. Roundtrip populated legacy dan invoice mempertahankan kolom/data lama.
+Model menambah PHPDoc/cast immutable timestamp dan integer counter.
+
+Config lokal menambah default bounded `batch=25`, `scan=100`, `lease=60`,
+`cooldown=300`, `max=12` dengan komentar bahwa schema/config tidak mengaktifkan
+command, scheduler, atau source. Karena `config/assessment_billing.php` merupakan
+shared baseline untracked pada snapshot worker, file itu sengaja tidak distage.
+Patch yang perlu diterapkan koordinator adalah blok lima key tersebut setelah
+`invoice_duration_hours`; SHA-256 file lokal lengkap:
+`3F422A7DBA8420326AB5B1E564BBF1C1E5A2AF32F64871D2D262D4DD005EB9C9`.
+
+### Bukti aktual
+
+- RED sebelum migration/model/config: **6 tes, 1 failure + 5 errors, 7
+  assertions**; kolom, defaults, casts, index, config dan rollback belum ada.
+- Focused SQLite final: **6/6 tes, 41 assertions**. Regresi schema terkait
+  payment operations + checkout partial profile: **37/37 tes, 185 assertions**.
+- PostgreSQL disposable final: **231/231 tes, 1.539 assertions**, cleanup sukses.
+  Test baru berjalan melalui runtime `psikotes_runtime` non-owner,
+  NOBYPASSRLS; 13 direct-SQL negative cases mencakup setiap constraint, dan
+  owner transaction membuktikan index definition, up/down roundtrip serta
+  refusal down atomik.
+- Pint lima file lokal lulus. PHPStan seluruh project dengan environment testing
+  eksplisit/SQLite memory lulus **0 error**. `git diff --check` lulus.
+
+Tidak ada acquisition/permit/action/provider call, command/job/scheduler/route,
+RLS policy, schema historis, source/gate, credential/.env/data aktif, outbound,
+deploy atau push. P10c-b1 hanya kontrak schema; **STOP untuk review sebelum
+P10c-b2/P11**.
