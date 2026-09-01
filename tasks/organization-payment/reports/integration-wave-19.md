@@ -27,3 +27,8 @@ Run focused paralel pertama tidak otoritatif karena dua proses berbagi direktori
 Storage::fake dan saling membersihkan object; seluruh kelompok diulang serial dan
 lulus. Belum ada controller/route/Filament/UI, decision HTTP wiring, schema/config
 baru, outbound, migrasi DB aktif, deploy, atau push.
+
+Backend task existing menerima P11c2c controller/request dengan route yang hanya
+didaftarkan di tes. Turn `01a05c82-124c-7093-a9a4-434c66ae206c`, cursor
+`67fb332a-ee06-4280-b3fe-55c3b79bcc9c:15`; production route dan Filament/UI
+tetap dilarang sampai hasil direview.

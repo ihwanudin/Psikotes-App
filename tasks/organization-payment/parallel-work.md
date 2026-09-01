@@ -600,3 +600,8 @@ Storage::fake lintas proses; run serial otoritatif lulus issuer 22/92,
 storage+manual-review+provider 69/368, legacy access 3/10, Pint/PHPStan, default
 1283/7922, dan PostgreSQL disposable 293/2519 dengan cleanup sukses. P11c2b
 diterima; controller/route/Filament/UI dan decision wiring masih belum aktif.
+
+Backend turn `01a05c82-124c-7093-a9a4-434c66ae206c` (cursor
+`67fb332a-ee06-4280-b3fe-55c3b79bcc9c:15`) aktif pada P11c2c HTTP adapter
+test-only. Scope tidak mengizinkan registrasi route produksi, Filament/UI, atau
+perubahan writer; frontend/portal tetap menunggu.
