@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P8a, P9a/b/c, P10a, core P10b, P10c-a/b, P11a, P11b, P11c1a–b, dan P11c2a core proof storage selesai lokal. P11c2b private proof access/policy berikutnya; HTTP/UI belum aktif. Root synthetic default 1261/7830 dan PostgreSQL disposable 292/2508 lulus. Command/scheduler tetap tertutup. Frontend/portal menunggu dependency backend. P8b–P18 keseluruhan belum end-to-end; tidak deploy atau migrasi DB aktif.**
+Status: **P1–P8a, P9a/b/c, P10a, core P10b, P10c-a/b, P11a, P11b, P11c1a–b, dan P11c2a–b proof storage serta private reviewer access/policy selesai lokal. P11c HTTP adapter/UI berikutnya; route belum aktif. Root synthetic default 1283/7922 dan PostgreSQL disposable 293/2519 lulus. Command/scheduler tetap tertutup. Frontend/portal menunggu dependency backend. P8b–P18 keseluruhan belum end-to-end; tidak deploy atau migrasi DB aktif.**
 
 ## Gerbang revisi kolektif
 
@@ -484,6 +484,7 @@ provider atau menjadi authority sampai acquisition/validator berikutnya direview
 - [x] P11c0 ADR-010 dan P11c1a schema proof identity additive selesai lokal; metadata all-or-none, format/range/key CHECK, up/down preflight, casts, RLS dan historical rollback diuji. Root `e6a53b3`/`41bffb9`/`c72a304`; belum writer/upload/UI.
 - [x] P11c1b core typed review/finalizer selesai lokal pada `d8e21b7`/`ca4e21a`: persisted SuperAdmin aktif saja, approve/reject atomik, exact replay, bounded rejection, dan provider/legacy compatibility. Root default 1224/7629 dan PostgreSQL disposable 289/2471 lulus; belum storage access/upload, policy, route, atau UI.
 - [x] P11c2a core private proof storage selesai lokal pada `b9a819e`/`8bf0660`: BranchAdmin pembayar atau exact participant principal self saja, MIME/size/checksum server-side, replacement fingerprint-fenced, expiry/revocation locked recheck, dan cleanup best-effort di luar transaksi. Root default 1261/7830 dan PostgreSQL disposable 292/2508 lulus; belum HTTP access/policy/UI.
+- [x] P11c2b policy dan internal private-proof issuer selesai lokal pada `3a605c9`/`0887725`: hanya persisted SuperAdmin aktif, storage di luar lock, second recheck actor+fingerprint, dan audit sukses tanpa URL/key/PII. Root default 1283/7922 dan PostgreSQL disposable 293/2519 lulus; belum controller/route/UI/decision wiring.
 
 **Acceptance:**
 
