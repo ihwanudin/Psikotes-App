@@ -1,5 +1,35 @@
 # P12a-prep — portal cabang baca-saja
 
+## P12a-detail/P12b browser hardening — delta dari 69857b7
+
+Tanggal 2026-09-02. Root menerima tiga commit browser sebelumnya sebagai bukti
+parsial. Fix source `f76be8d` mengganti breadcrumb detail yang memuat referensi
+panjang dengan label `Tagihan terpilih`; referensi lengkap tetap tampil di
+Ringkasan tagihan, sehingga informasi tidak disembunyikan. Focused regression
+memastikan breadcrumb tidak mengulang public reference.
+
+Harness `4b92520` hanya melayani asset Filament yang benar-benar ada di bawah
+`public/{js,css,fonts}/filament`, dengan pemeriksaan realpath tetap di dalam
+public. Provider avatar sintetis mengembalikan data URI. CSP dan deny outbound
+tidak dilonggarkan. Browser menguji direct detail sebagai guest, role salah,
+membership lama, dan foreign bill melalui request tanpa redirect otomatis;
+status generik 302/403/404 diterima hanya bila response tidak memuat referensi
+atau label asing.
+
+Run fresh fixture `oncam-collective-page-697f0500db3c497abcfb147d649d401c`
+lulus tiga fase. Selection/preview/confirm lama tetap lulus; total 20 aksi native
+dan 488 trusted events. Geometry detail baru lulus pada 320/390/1280, sehingga
+seluruh sembilan check mempunyai document width tepat viewport dan nol elemen
+critical terpotong. Setelah detail reload dan seluruh denial check: 85 response,
+nol console error/warning, request failure, atau outbound block.
+
+Verify DB tetap tepat: 2 bill termasuk baseline claimed, 11 charge, 11 item,
+2 audit; entitlement, outbox, order, consent, dan identity verification nol.
+Focused P12a+P12b 61 tes/592 assertions lulus; Pint, PHPStan 0 error, PHP/Node
+syntax, ESLint, Prettier, dan diff check lulus. Server dan session ditutup, port
+8012 kembali bebas. Browser ini tetap sequential SQLite, bukan pembuktian race
+atau PostgreSQL. Gate tetap default-off dan tidak ada P12c.
+
 ## P12b browser page — delta dari 55672a9
 
 Tanggal 2026-09-02. Increment ini menguji `CreateCollectiveBill` yang tetap
