@@ -6,10 +6,15 @@ namespace Tests\Postgres;
 
 use App\Actions\Payments\ClaimAssessmentBillInvoice;
 use App\Actions\Payments\IssueAssessmentBillInvoice;
+use App\Actions\Payments\PersistAssessmentInvoiceOutcome;
 use App\Actions\Payments\PreviewAssessmentBill;
+use App\Actions\Payments\ReconcileAssessmentBillInvoice;
 use App\Actions\Payments\ReserveAssessmentBill;
 use App\Actions\Payments\ReserveAssessmentInvoiceReconciliationHints;
 use App\Actions\Payments\ValidateAssessmentInvoiceReconciliationLease;
+use App\Contracts\PaymentProvider;
+use App\Data\Payments\AssessmentInvoiceReconciliationPermit;
+use App\Data\Payments\PaymentInvoice;
 use App\Data\Payments\ProvisionalAssessmentInvoiceLease;
 use App\Enums\AdminRole;
 use App\Enums\PayerType;
@@ -22,6 +27,7 @@ use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
+use Mockery;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Tests\Support\AssessmentPreviewFixture as Fixture;
@@ -190,6 +196,158 @@ final class AssessmentInvoiceReconciliationLeaseValidationTest extends TestCase
             $this->assertSame($stolen, $this->intent->fresh()->reconciliation_lease_token);
             $this->assertSame(0, $this->intent->fresh()->reconciliation_lookup_attempts);
         });
+    }
+
+    public function test_issuance_and_leased_exact_results_serialize_to_one_persistence(): void
+    {
+        $permit = app(ValidateAssessmentInvoiceReconciliationLease::class)->execute($this->provisional);
+        $this->assertNotNull($permit);
+        $invoice = $this->invoice();
+
+        $result = $this->runIssuanceDuringLookup($permit, $invoice);
+
+        $this->assertSame('issued', $result['issuance']);
+        $this->assertSame('recovery_required', $result['leased']);
+        app(RlsContextRunner::class)->runAsService(function () use ($permit): void {
+            $message = $this->intent->fresh();
+            $bill = $this->bill->fresh();
+            $this->assertSame('pending', $bill->status);
+            $this->assertSame('processed', $message->status);
+            $this->assertSame(1, $message->reconciliation_lookup_attempts);
+            $this->assertNull($message->reconciliation_lease_token);
+            $this->assertNull($message->reconciliation_lease_expires_at);
+            $this->assertNull($message->reconciliation_next_at);
+            $this->assertSame(1, DB::table('audit_logs')->where('action', 'assessment_bill.invoice_issued')
+                ->where('subject_id', (string) $permit->invoice->billId)->count());
+        });
+    }
+
+    public function test_leased_exact_response_is_discarded_after_token_is_stolen_during_lookup(): void
+    {
+        $permit = app(ValidateAssessmentInvoiceReconciliationLease::class)->execute($this->provisional);
+        $this->assertNotNull($permit);
+        $stolen = (string) Str::uuid();
+        $result = $this->runBlockedLookup($permit, $stolen);
+
+        $this->assertSame('recovery_required', $result['decision']);
+        app(RlsContextRunner::class)->runAsService(function () use ($permit, $stolen): void {
+            $message = $this->intent->fresh();
+            $this->assertSame('issuing', $this->bill->fresh()->status);
+            $this->assertSame('processing', $message->status);
+            $this->assertSame($stolen, $message->reconciliation_lease_token);
+            $this->assertSame($permit->lookupGeneration, $message->reconciliation_lookup_attempts);
+            $this->assertSame(0, DB::table('audit_logs')->where('action', 'assessment_bill.invoice_issued')
+                ->where('subject_id', (string) $permit->invoice->billId)->count());
+        });
+    }
+
+    /** @return array{issuance: string, leased: string} */
+    private function runIssuanceDuringLookup(
+        AssessmentInvoiceReconciliationPermit $permit,
+        PaymentInvoice $invoice,
+    ): array {
+        DB::purge('pgsql');
+        $pair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
+        if ($pair === false || ($pid = pcntl_fork()) === -1) {
+            throw new RuntimeException('Unable to create invoice outcome worker.');
+        }
+        if ($pid === 0) {
+            fclose($pair[0]);
+            stream_set_timeout($pair[1], 15);
+            try {
+                $provider = Mockery::mock(PaymentProvider::class);
+                $provider->shouldReceive('lookupInvoice')->once()->andReturnUsing(function () use ($pair, $invoice): PaymentInvoice {
+                    fwrite($pair[1], "lookup\n");
+                    if (fgets($pair[1]) !== "continue\n") {
+                        throw new RuntimeException('Issuance race barrier timed out.');
+                    }
+
+                    return $invoice;
+                });
+                app()->instance(PaymentProvider::class, $provider);
+                $result = app(ReconcileAssessmentBillInvoice::class)->executeLeased($permit);
+                Mockery::close();
+            } catch (Throwable $exception) {
+                $result = ['error' => $exception->getMessage(), 'class' => $exception::class];
+            }
+            fwrite($pair[1], json_encode($result, JSON_THROW_ON_ERROR)."\n");
+            fclose($pair[1]);
+            DB::disconnect('pgsql');
+            exit(0);
+        }
+        fclose($pair[1]);
+        stream_set_timeout($pair[0], 15);
+        try {
+            $this->assertSame("lookup\n", fgets($pair[0]));
+            $issuance = app(PersistAssessmentInvoiceOutcome::class)->execute($permit->invoice, $invoice);
+            fwrite($pair[0], "continue\n");
+            $leased = json_decode((string) fgets($pair[0]), true, flags: JSON_THROW_ON_ERROR);
+            $this->assertArrayNotHasKey('error', $leased, json_encode($leased));
+
+            return ['issuance' => $issuance['decision'], 'leased' => $leased['decision']];
+        } finally {
+            fclose($pair[0]);
+            pcntl_waitpid($pid, $status);
+            $this->assertTrue(pcntl_wifexited($status));
+            $this->assertSame(0, pcntl_wexitstatus($status));
+        }
+    }
+
+    /** @return array{decision: string} */
+    private function runBlockedLookup(AssessmentInvoiceReconciliationPermit $permit, string $stolen): array
+    {
+        DB::purge('pgsql');
+        $pair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
+        if ($pair === false || ($pid = pcntl_fork()) === -1) {
+            throw new RuntimeException('Unable to create delayed lookup worker.');
+        }
+        if ($pid === 0) {
+            fclose($pair[0]);
+            stream_set_timeout($pair[1], 15);
+            try {
+                $provider = Mockery::mock(PaymentProvider::class);
+                $provider->shouldReceive('lookupInvoice')->once()->andReturnUsing(function () use ($pair): PaymentInvoice {
+                    fwrite($pair[1], "lookup\n");
+                    if (fgets($pair[1]) !== "continue\n") {
+                        throw new RuntimeException('Delayed lookup barrier timed out.');
+                    }
+
+                    return $this->invoice();
+                });
+                app()->instance(PaymentProvider::class, $provider);
+                $result = app(ReconcileAssessmentBillInvoice::class)->executeLeased($permit);
+                Mockery::close();
+            } catch (Throwable $exception) {
+                $result = ['error' => $exception->getMessage(), 'class' => $exception::class];
+            }
+            fwrite($pair[1], json_encode($result, JSON_THROW_ON_ERROR)."\n");
+            fclose($pair[1]);
+            DB::disconnect('pgsql');
+            exit(0);
+        }
+        fclose($pair[1]);
+        stream_set_timeout($pair[0], 15);
+        try {
+            $this->assertSame("lookup\n", fgets($pair[0]));
+            app(RlsContextRunner::class)->runAsService(fn () => DB::table('outbox_messages')
+                ->where('id', $this->intent->id)->update(['reconciliation_lease_token' => $stolen]));
+            fwrite($pair[0], "continue\n");
+            $result = json_decode((string) fgets($pair[0]), true, flags: JSON_THROW_ON_ERROR);
+            $this->assertArrayNotHasKey('error', $result);
+
+            return $result;
+        } finally {
+            fclose($pair[0]);
+            pcntl_waitpid($pid, $status);
+            $this->assertTrue(pcntl_wifexited($status));
+            $this->assertSame(0, pcntl_wexitstatus($status));
+        }
+    }
+
+    private function invoice(): PaymentInvoice
+    {
+        return new PaymentInvoice('inv-pg-leased', 'https://payments.example.test/pg-leased',
+            $this->bill->amount, $this->bill->currency, CarbonImmutable::now()->addHour());
     }
 
     /** @return array{list<array<string, mixed>>, array<string, mixed>} */
