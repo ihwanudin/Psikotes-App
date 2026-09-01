@@ -2918,3 +2918,54 @@ outbox sudah menjadi kontrak finalizer dengan bukti PG root terakhir **293/293,
 Tidak ada production discovery/route, browser rollout, provider/storage call
 baru, command/job/scheduler, outbound, DB aktif, migration/deploy/push, atau
 perubahan OrganizationBills/Orders legacy. **STOP untuk review P11c3b.**
+
+## P11c3c — acceptance browser reviewer testing-only
+
+Increment ini menambah harness browser sintetis dan skenario Playwright CLI di
+`tools/testing/tests/Browser` saja. Harness selalu memakai direktori temp baru
+bernama acak, menolak `.env`, memaksa SQLite disposable, `APP_DEBUG=false`,
+fake payment provider/notifier, `Http::preventStrayRequests()`, dan origin
+loopback. Route kontrol hanya menerima header fixture khusus dan mengembalikan
+status/counter tanpa identifier privat. Probe environment non-testing juga
+membuktikan resource `assessment-bill-reviews` tidak ditemukan. Tidak ada route,
+resource, panel provider, config, atau source produksi yang diubah.
+
+Chrome cached yang nyata menjalankan alur SuperAdmin dari login, navigation,
+list, detail, open proof, approve/reject, double-click replay, dan replacement
+race. Alur approve tanpa membuka proof ditolak; approve setelah open membayar
+sekali dengan satu decision audit, satu access audit, dan satu activation outbox.
+Reject dapat dicapai lewat keyboard dengan focus-visible, tampil sebagai action
+danger yang berbeda, Escape dan Cancel tidak memutasi, serta hanya menerima enum
+alasan bounded. Replacement proof setelah open tetap pending tanpa decision
+audit. BranchAdmin, Staff dengan flag legacy, Psychologist, dan guest tidak bisa
+mengakses navigation/detail. Tiga console 404 pada probe direct-URL role terlarang
+adalah hasil denial yang diharapkan; selain itu console dan daftar request gagal
+kosong.
+
+Pengujian juga memblokir seluruh origin eksternal dan memeriksa DOM serta URL
+network agar tidak memuat nama peserta sintetis, external candidate ID, object
+key, checksum, gateway reference, atau invoice URL. Fixture mengganti avatar
+default dengan data URI lokal agar pengujian tidak mengirim alamat akun ke
+layanan avatar eksternal. Ini hanya boundary testing; sebelum discovery produksi
+diaktifkan, perilaku avatar panel produksi tetap perlu dinilai tersendiri.
+
+### Bukti aktual
+
+- Browser GREEN: **5 kelompok acceptance**, tanpa console error tak terduga dan
+  tanpa request gagal/eksternal. Bukti visual aman tersimpan lokal sebagai
+  `desktop-list.png`, `mobile-list.png`, dan `keyboard-reject.png`; file gambar
+  tidak dimasukkan commit.
+- Focused Livewire P11c3a: **10/10 tes, 100 assertions**; P11c3b:
+  **26/26 tes, 134 assertions**. Total **36 tes, 234 assertions**, lulus serial
+  memakai `phpunit.organization-payment.xml` dan SQLite memory.
+- PHP syntax untuk server harness, Node `--check`, ESLint dengan dependency/config
+  root yang cocok, serta Pint scoped seluruhnya lulus. PHPStan scoped harness
+  lulus **0 error** dan `git diff --check` lulus.
+- PostgreSQL tidak diulang karena increment hanya harness acceptance, tanpa
+  perubahan schema, RLS, transaksi, lock, atau source produksi. Tidak ada klaim
+  concurrency baru dari browser/SQLite.
+
+Server Chrome/PHP, port 8023, browser session, marker lokal, dan seluruh direktori
+temp/database sintetis dibersihkan setelah run. Tidak ada endpoint/source/gate
+produksi yang diaktifkan, DB/data aktif, credential, outbound provider/notifier,
+upload nyata, migration, deploy, atau push. **STOP untuk review P11c3c.**
