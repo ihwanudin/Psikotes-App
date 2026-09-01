@@ -2363,3 +2363,61 @@ Tidak ada policy/action/resource/route/controller, writer, schema/migration,
 config/.env, akun/role/data aktif, provider/notifier/outbound, command/scheduler,
 deploy, push, atau P11c implementation. **STOP untuk review ADR-010 dan schema
 prerequisite sebelum P11c1**.
+
+## P11c1a — schema identitas proof transfer manual
+
+Commit kode/tes lokal `1fb1da9` menambah migration additive
+`2026_09_01_000200_add_manual_proof_identity_to_assessment_bills.php`. Empat
+kolom nullable baru adalah checksum SHA-256 lowercase, MIME, ukuran byte, dan
+waktu upload. PostgreSQL memberi lima named CHECK: seluruh metadata dan
+`proof_object_key` harus all-NULL atau all-non-NULL; checksum tepat 64 hex
+lowercase; MIME hanya JPEG/PNG/PDF; ukuran 1–5.120.000; dan key hanya berbentuk
+`assessment-bills/<2 lowercase alnum>/<62 lowercase alnum>.(jpg|png|pdf)`.
+Tidak ada index, writer, upload, atau akses object storage pada increment ini.
+
+`up()` menolak sebelum DDL bila satu kolom target sudah ada atau satu key legacy
+sudah terisi; tidak menebak checksum maupun metadata. `down()` menolak sebelum
+drop bila metadata baru mana pun berisi nilai, lalu hanya menjatuhkan empat
+kolom baru dan mempertahankan `proof_object_key`. Transactional DDL PostgreSQL
+dan SQLite membuktikan penolakan tidak meninggalkan schema parsial. RLS, FORCE
+RLS, owner, policy, index, urutan kolom legacy, tipe, dan default lama dibandingkan
+sebelum/sesudah roundtrip pada PostgreSQL.
+
+### Bukti aktual
+
+- RED schema: **8 tes, 0 passed, 1 failure + 7 errors, 9 assertions** karena
+  migration/kolom belum ada.
+- GREEN feature SQLite memory: **8/8 tes, 57 assertions**. Focused bersama
+  schema billing/items dan finalizer P11a: **40/40 tes, 227 assertions**.
+- PostgreSQL disposable runtime `psikotes_runtime`, non-owner,
+  `rolsuper=false`, `rolbypassrls=false`: **265/265 tes, 1.827 assertions**;
+  cleanup sukses. Test baru mencakup tipe nyata, lima named CHECK, seluruh
+  pasangan missing, checksum case/length, MIME, size, path absolute/traversal/
+  backslash/control/case/extension, RLS matrix, owner roundtrip, dan kedua
+  preflight atomik.
+- Run PG pertama menemukan test migrasi historis menyimpan empat kolom additive
+  ke snapshot yang kemudian dibuat ulang hanya oleh migrasi historis. Patch
+  kompatibilitas membatasi snapshot/comparison ke kolom yang memang dimiliki
+  rangkaian migrasi tersebut. Run kedua membuktikan satu comparison lain masih
+  mengambil seluruh row; sesudah semua comparison memakai key snapshot, run
+  ketiga lulus penuh. Tidak ada migration historis yang diubah.
+- Pint seluruh file lane dan patch kompatibilitas lulus. PHPStan seluruh project
+  dengan environment testing/SQLite eksplisit lulus **0 error**.
+  `git diff --check` lulus.
+
+Dua file existing merupakan baseline untracked pada snapshot worker dan sengaja
+tidak di-stage sebagai file penuh. Patch integrasi yang diperlukan:
+
+1. `app/Models/AssessmentBill.php`: PHPDoc empat property baru; tambahkan empat
+   nama ke `#[Fillable]`; cast `proof_size_bytes` ke integer dan
+   `proof_uploaded_at` ke immutable datetime. Hash file worker dicatat saat
+   handoff: `27A1BBF42F1FF102364467ABF9B1CADBE02B60E41FE64BC1A9F04D71BAA6E87A`.
+2. `tests/Postgres/AssessmentBillingMigrationTest.php`: saat membuat snapshot
+   historical `assessment_bills`, keluarkan empat kolom additive; pada tiga
+   comparison row gunakan `first(array_keys($row))`. Ini hanya membuat test
+   lifecycle historis sadar akan migration additive sesudahnya. Hash file worker:
+   `68605D28611D4587B8DABBF8A17536663FB5ABD570742FA94BA667AB9246AD9B`.
+
+Tidak ada route/controller/policy/resource, writer/upload/storage call, schema
+historis, config/.env/data aktif, provider/notifier/outbound, command/scheduler,
+UI, deploy, push, atau P11c1b. **STOP untuk review P11c1a**.
