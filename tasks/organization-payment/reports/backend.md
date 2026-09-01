@@ -2762,3 +2762,75 @@ tetap batas database terakhir. Tidak ada route/controller registration produksi,
 Filament/resource/UI, decision UI wiring, schema/config/.env, command/job/
 scheduler, purge, outbound nyata, DB aktif, deploy, atau push. **STOP untuk review
 P11c2c sebelum route/UI.**
+
+## P11c3a — reviewer Filament list/detail dan buka bukti default-off
+
+Commit kode/tes lokal `d4eae99` menambah resource reviewer assessment bill yang
+terpisah dari `OrderResource` legacy dan resource tagihan organisasi. Discovery
+serta navigation hanya aktif ketika environment tepat `testing`; tidak ada
+perubahan panel provider, route produksi, bootstrap, config, atau `.env`.
+
+Resource memakai `AssessmentBillPolicy` existing pada list, detail, hydration,
+dan direct record resolution. Hanya persisted active SuperAdmin yang lolos.
+BranchAdmin pembayar, Staff dengan flag verifikasi legacy, Psychologist, guest,
+serta SuperAdmin stale/deleted/role-changed ditolak. List unauthorized menjadi
+403, sedangkan detail dan aksi record fail closed sebagai 404 agar reference
+bill tidak menjadi oracle.
+
+Query reviewer hanya memilih ID teknis record serta field aman: public reference,
+nama organisasi, amount IDR, item count, status, proof upload time, verification
+time, dan bounded rejection reason. Lima atribut proof privat tidak dipilih;
+payment method manual dan lima metadata lengkap hanya menjadi predicate query.
+Tidak ada relation peserta atau allocation yang dimuat. Pagination dibatasi 10
+atau 25, default 10, filter status hanya pending/paid/rejected, dan urutan default
+berdasarkan waktu upload. Detail hanya memakai infolist readonly; tidak ada form,
+bulk action, upload, edit, delete, approve, reject, settlement, atau activation.
+
+Livewire sempat menemukan gap saat GREEN awal: record terproyeksi aman pada mount
+direhidrasi framework menjadi model dengan seluruh atribut sebelum action. Page
+kini selalu memuat ulang record melalui query proyeksi resource pada setiap
+hydration, lalu mengulang policy persisted sebelum action. Tes membuktikan key,
+checksum, external candidate ID, dan nama peserta tidak masuk HTML maupun state
+komponen sebelum atau sesudah redirect.
+
+Action `Buka bukti` hanya mengirim actor guard admin dan public reference
+persisted kepada `AssessmentBillProofUrlIssuer` P11c2b. URL opaque tetap variabel
+lokal dan redirect effect; URL, object key, dan fingerprint tidak disimpan dalam
+property, argument, notification, log, tabel, atau infolist. Livewire primitive
+`disableBackButtonCache()` diaktifkan dan redirect response membawa no-store,
+no-cache, serta no-referrer. Error storage/domain menjadi notification generik
+tanpa detail driver; sukses tetap menulis audit issuer existing.
+
+### Bukti aktual
+
+- RED pertama: **6 tes, 0 passed, 2 assertions, 6 errors** karena resource/page
+  belum tersedia; fixture kedua juga menemukan collision payment-method sintetis
+  dan diperbaiki tanpa mengubah source produksi.
+- Focused P11c3a final: **10/10 tes, 96 assertions**. Cakupan mencakup discovery
+  testing-only, navigation authority, list/filter/pagination, query projection dan
+  budget, safe detail/direct URL, seluruh role/guest/stale/deleted denial, revoke
+  setelah mount, no mutation actions, opaque redirect/audit, state minimization,
+  serta storage failure generik.
+- Regresi P11c2b issuer **22/22, 92 assertions**; P11c2c HTTP adapter **27/27,
+  196 assertions**; P11c1b manual finalizer **22/22, 102 assertions**. Bersama
+  focused baru: **81 tes, 486 assertions**, seluruhnya lulus saat dijalankan
+  serial.
+- Legacy `ManualTransferFilamentTest`: **4/4 tes, 27 assertions** lulus dalam run
+  terisolasi. Run campuran pertama menghasilkan empat error `branches` missing
+  hanya setelah suite `DatabaseTruncation`, sesuai incompatibility reset strategy
+  SQLite yang sudah diketahui; tidak ada assertion legacy yang gagal dan harness
+  tidak diubah.
+- Pint empat file kode/tes lulus. PHPStan seluruh project pada APP_ENV testing
+  dan SQLite memory lulus **0 error**. Staged `git diff --check` lulus.
+
+PostgreSQL tidak diulang: resource hanya menambah query baca terproyeksi dan tidak
+mengubah RLS policy, lock, transaksi, schema, atau concurrency primitive; bukti
+P11c2b terakhir tetap **293/293 tes, 2.519 assertions**. Test portal
+`OrganizationBillAccessTest` tidak ada pada snapshot worker ini sehingga tidak
+disalin dari root; koordinator perlu menjalankannya pada baseline integrasi.
+Full default tidak diulang karena scope meminta focused regression dan worker
+tetap tidak mempunyai Vite manifest; tidak dibuat manifest palsu.
+
+Tidak ada route produksi, decision UI, public wiring, source/gate ON, provider,
+notifier, object store nyata, DB aktif, migration/deploy/push, atau perubahan
+legacy. **STOP untuk review P11c3a sebelum P11c3b.**
