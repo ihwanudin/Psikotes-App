@@ -2307,3 +2307,59 @@ Reconciler/command legacy tidak berubah. Tidak ada createInvoice/expireInvoice,
 POST, status writer kedua, command/job/scheduler/route/controller, schema/
 migration/config/.env, credential/data aktif, provider nyata, notifier, deploy,
 push, atau P11c. **STOP untuk review P11b2 sebelum wiring operasional**.
+
+## P11c0 — audit authority dan kontrak transfer manual bill
+
+Increment proposal-only ini menghasilkan ADR-010 berstatus Proposed di
+`docs/decisions/0010-assessment-bill-manual-transfer-verification.md` dan audit
+rinci di `tasks/organization-payment/reports/backend-manual-bill-verification-proposal.md`.
+Tidak ada source produksi atau RED test tracked karena dua keputusan wajib masih
+menunggu review: migration metadata proof additive dan bentuk entrypoint manual
+typed pada finalizer.
+
+Temuan utama:
+
+- ability/order policy legacy tidak cocok: `can_verify_payments` saat ini dapat
+  memberi BranchAdmin/Staff hak review order; assessment bill wajib policy/resource
+  terpisah dengan persisted non-deleted SuperAdmin ONCAM saja;
+- `assessment_bills` hanya menyimpan object key, tanpa checksum/MIME/size/uploadedAt
+  durable. Proposal merekomendasikan empat kolom typed nullable dengan all-or-none
+  CHECK bersama key sebelum upload/review writer dibuat;
+- `PaymentEvent` mengharuskan gateway reference provider. Manual review tidak
+  boleh mengisi gateway palsu; proposal menambah DTO manual sibling dan membawa
+  approve/reject ke private lock/allocation/finalization primitive yang sama;
+- actor reload+lock mendahului organization→bill→allocation locks. Browser hanya
+  membawa bill reference, proof fingerprint, decision enum dan reason code;
+  canonical money/currency/status/scope berasal dari server;
+- exact replay actor/proof/decision sama adalah no-op; actor lain, stale proof,
+  opposite decision, terminal state, method bukan manual, atau allocation korup
+  fail closed. Reject tidak settle, release, reinvoice, activate, atau enqueue;
+- raw proof tetap private, short-lived dan reviewer-only. BranchAdmin payer atau
+  participant self kelak hanya boleh submit sesuai scope, bukan view reviewer atau
+  decide. Path/URL/PII dilarang di response/log/audit;
+- proof terminal dipertahankan setidaknya hingga audit dua tahun berakhir. Tidak
+  ada purge otomatis pada P11c.
+
+Proposal memuat actor/action/resource matrix, missing-vs-forbidden contract,
+lifecycle upload/review/replay/race, lock/transaction sequence, STRIDE threat
+model, compatibility legacy, matriks SQLite/PostgreSQL TDD, dan pembagian
+P11c1a schema, P11c1b core finalizer, P11c2a storage/access, P11c2b UI/wiring.
+
+### Bukti audit aktual
+
+- Finalizer + dispatcher existing: **22/22 tes, 145 assertions**, lulus.
+- Pure legacy manual verification/proof access: **10/10 tes, 48 assertions**;
+  upload validation/storage/replacement tanpa received-page render: **8/8 tes,
+  44 assertions**.
+- Run gabungan legacy 23 tes menghasilkan **20 passed, 107 assertions**, dengan
+  satu failure received-page karena Vite manifest worker tidak tersedia dan dua
+  error Filament karena Windows compiled-view rename access denied. Ini batas
+  harness worker, bukan diklaim passed; root sebelumnya mempunyai regresi default
+  hijau pada baseline terbaru.
+- `git diff --check` dua dokumen proposal lulus. Tidak perlu Pint/PHPStan/PG karena
+  tidak ada PHP, schema, query, lock, atau RLS implementation yang berubah.
+
+Tidak ada policy/action/resource/route/controller, writer, schema/migration,
+config/.env, akun/role/data aktif, provider/notifier/outbound, command/scheduler,
+deploy, push, atau P11c implementation. **STOP untuk review ADR-010 dan schema
+prerequisite sebelum P11c1**.
