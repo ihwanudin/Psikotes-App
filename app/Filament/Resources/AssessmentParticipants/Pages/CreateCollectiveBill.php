@@ -9,9 +9,10 @@ use App\Filament\Resources\AssessmentParticipants\AssessmentParticipantResource;
 use App\Filament\Resources\OrganizationBills\OrganizationBillResource;
 use DomainException;
 use Filament\Resources\Pages\Page;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\View\View;
+use InvalidArgumentException;
 use Livewire\Attributes\Locked;
-use Throwable;
 
 final class CreateCollectiveBill extends Page
 {
@@ -19,7 +20,7 @@ final class CreateCollectiveBill extends Page
 
     protected static ?string $title = 'Buat tagihan kolektif';
 
-    /** @var list<int> */
+    /** @var list<mixed> Browser-hydrated input; selection() performs strict canonicalization. */
     public array $selected = [];
 
     /** @var array<int|string, bool> */
@@ -56,7 +57,7 @@ final class CreateCollectiveBill extends Page
         try {
             $this->reviewedSelection = $this->selection();
             $this->preview = app(CreateCollectiveBillAction::class)->preview($this->reviewedSelection);
-        } catch (Throwable) {
+        } catch (AuthorizationException|DomainException|InvalidArgumentException) {
             $this->addError('selected', 'Pilihan tidak lagi tersedia. Perbarui daftar dan tinjau ulang.');
         }
     }
@@ -71,7 +72,7 @@ final class CreateCollectiveBill extends Page
                 $this->reviewedSelection, $this->paymentMethodId, (string) $this->preview['selectionHash'],
             );
             $this->redirect(OrganizationBillResource::getUrl('view', ['record' => $bill]));
-        } catch (Throwable) {
+        } catch (AuthorizationException|DomainException|InvalidArgumentException) {
             $this->clearPreview();
             $this->addError('selected', 'Tinjauan berubah atau tidak lagi tersedia. Tinjau ulang sebelum mengonfirmasi.');
         }
@@ -89,8 +90,15 @@ final class CreateCollectiveBill extends Page
     /** @return list<array{assessmentParticipantId: int, consultationRequested: bool}> */
     private function selection(): array
     {
-        return array_map(fn (int $id): array => ['assessmentParticipantId' => $id,
-            'consultationRequested' => (bool) ($this->consultation[$id] ?? false)], $this->selected);
+        return array_map(function (mixed $value): array {
+            if (! is_int($value) && (! is_string($value) || preg_match('/^[1-9][0-9]*$/D', $value) !== 1)) {
+                throw new InvalidArgumentException('INVALID_BILL_SELECTION');
+            }
+            $id = (int) $value;
+
+            return ['assessmentParticipantId' => $id,
+                'consultationRequested' => (bool) ($this->consultation[$id] ?? $this->consultation[(string) $id] ?? false)];
+        }, $this->selected);
     }
 
     private function clearPreview(): void

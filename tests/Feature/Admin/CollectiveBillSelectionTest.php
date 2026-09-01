@@ -7,7 +7,9 @@ namespace Tests\Feature\Admin;
 use App\Enums\AdminRole;
 use App\Filament\Actions\CreateCollectiveBillAction;
 use App\Filament\Resources\AssessmentParticipants\Pages\CreateCollectiveBill;
+use App\Filament\Resources\OrganizationBills\OrganizationBillResource;
 use App\Models\Admin;
+use App\Models\AssessmentBill;
 use App\Models\TestPackage;
 use App\Services\Payments\AssessmentPriceSnapshot;
 use DomainException;
@@ -15,6 +17,7 @@ use Filament\Facades\Filament;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Livewire\Livewire;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\OrganizationPaymentTestCase;
@@ -70,6 +73,77 @@ final class CollectiveBillSelectionTest extends OrganizationPaymentTestCase
             ->call('confirm')
             ->assertHasErrors(['selected']);
         $this->assertDatabaseCount('assessment_bills', 0);
+    }
+
+    public function test_livewire_checkbox_preview_confirm_and_redirect_use_canonical_bill(): void
+    {
+        $component = Livewire::test(CreateCollectiveBill::class)
+            ->set('selected', [(string) $this->own['attempt']])
+            ->set('consultation.'.$this->own['attempt'], true)
+            ->set('paymentMethodId', $this->method)
+            ->call('review')
+            ->assertSet('preview.totalAmount', 130)
+            ->call('confirm');
+        $bill = AssessmentBill::query()->sole();
+        $component->assertRedirect(OrganizationBillResource::getUrl('view', ['record' => $bill]));
+        $this->assertSame(130, $bill->amount);
+        $this->assertDatabaseCount('assessment_bills', 1);
+    }
+
+    public function test_livewire_selection_change_clears_preview_and_blocks_confirmation(): void
+    {
+        Livewire::test(CreateCollectiveBill::class)
+            ->set('selected', [(string) $this->own['attempt']])
+            ->call('review')->assertNotSet('preview', null)
+            ->set('consultation.'.$this->own['attempt'], true)->assertSet('preview', null)
+            ->call('confirm')->assertHasErrors(['selected']);
+        $this->assertDatabaseCount('assessment_bills', 0);
+    }
+
+    #[DataProvider('confirmRevocations')]
+    public function test_persisted_membership_is_reauthorized_after_preview_before_confirm(string $case): void
+    {
+        $selection = [Fixture::selection($this->own)];
+        $preview = app(CreateCollectiveBillAction::class)->preview($selection);
+        match ($case) {
+            'role' => DB::table('admins')->where('id', $this->admin->id)->update(['role' => AdminRole::Staff->value]),
+            'branch' => DB::table('admins')->where('id', $this->admin->id)->update(['branch_id' => Fixture::create()['organization']]),
+            'deleted' => DB::table('admins')->where('id', $this->admin->id)->update(['deleted_at' => now()]),
+        };
+        $this->expectException($case === 'branch' ? DomainException::class : AuthorizationException::class);
+        try {
+            app(CreateCollectiveBillAction::class)->confirm($selection, $this->method, $preview['selectionHash']);
+        } finally {
+            $this->assertDatabaseCount('assessment_bills', 0);
+            $this->assertDatabaseCount('assessment_charges', 0);
+        }
+    }
+
+    public static function confirmRevocations(): iterable
+    {
+        foreach (['role', 'branch', 'deleted'] as $case) {
+            yield $case => [$case];
+        }
+    }
+
+    public function test_unexpected_writer_failure_propagates_and_transaction_rolls_back(): void
+    {
+        $component = Livewire::test(CreateCollectiveBill::class)
+            ->set('selected', [(string) $this->own['attempt']])
+            ->set('paymentMethodId', $this->method)
+            ->call('review');
+        Event::listen('eloquent.creating: '.AssessmentBill::class, fn () => throw new \RuntimeException('synthetic-writer-failure'));
+        try {
+            $component->call('confirm');
+            $this->fail('Unexpected writer failure was disguised.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('synthetic-writer-failure', $exception->getMessage());
+        } finally {
+            Event::forget('eloquent.creating: '.AssessmentBill::class);
+        }
+        foreach (['assessment_bills', 'assessment_bill_items', 'assessment_charges', 'audit_logs'] as $table) {
+            $this->assertDatabaseCount($table, 0);
+        }
     }
 
     public function test_price_or_status_change_after_preview_fails_closed_without_partial_bill(): void
