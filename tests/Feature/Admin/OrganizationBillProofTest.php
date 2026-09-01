@@ -7,6 +7,7 @@ namespace Tests\Feature\Admin;
 use App\Actions\Payments\StoreAssessmentBillProof;
 use App\Data\Payments\AssessmentBillProofUpload;
 use App\Enums\AdminRole;
+use App\Enums\AssessmentBillManualRejectionCode;
 use App\Filament\Resources\OrganizationBills\Pages\ViewOrganizationBill;
 use App\Models\Admin;
 use App\Models\AssessmentBill;
@@ -123,8 +124,28 @@ final class OrganizationBillProofTest extends OrganizationPaymentTestCase
         Storage::disk('payment-proofs')->assertDirectoryEmpty('/');
     }
 
+    public function test_rejection_summary_uses_bounded_canonical_labels_and_explains_upload_state(): void
+    {
+        DB::table('assessment_bills')->where('id', $this->fixture['bill'])->update([
+            'status' => 'rejected',
+            'rejection_reason' => AssessmentBillManualRejectionCode::UnreadableProof->value,
+        ]);
+        Livewire::test(ViewOrganizationBill::class, ['record' => $this->fixture['bill']])
+            ->assertSee('Bukti tidak terbaca')
+            ->assertDontSee(AssessmentBillManualRejectionCode::UnreadableProof->value)
+            ->assertSee('Mengunggah bukti tidak berarti tagihan sudah lunas')
+            ->assertDontSee('tidak menyediakan pembayaran, unggah bukti, atau verifikasi');
+
+        DB::table('assessment_bills')->where('id', $this->fixture['bill'])
+            ->update(['rejection_reason' => 'UNRECOGNIZED_PRIVATE_REASON']);
+        $page = Livewire::test(ViewOrganizationBill::class, ['record' => $this->fixture['bill']])
+            ->assertDontSee('UNRECOGNIZED_PRIVATE_REASON');
+        $this->assertNull($page->instance()->proofSummary['rejection']);
+    }
+
     public function test_private_access_rechecks_branch_actor_and_current_fingerprint_and_audits_safely(): void
     {
+        config(['payments.manual_proof_temporary_url_minutes' => 9]);
         $receipt = app(StoreAssessmentBillProof::class)->execute(new AssessmentBillProofUpload(
             $this->admin, $this->fixture['reference'], UploadedFile::fake()->image('proof.jpg'), null,
         ));
@@ -134,6 +155,7 @@ final class OrganizationBillProofTest extends OrganizationPaymentTestCase
         $access = app(OrganizationBillProofUrlIssuer::class)
             ->issue($this->admin, $this->fixture['reference'], $receipt->proofFingerprint);
         $this->assertSame('https://private.example.test/synthetic-token', $access->url);
+        $this->assertTrue($access->expiresAt->equalTo(now()->utc()->addMinutes(9)));
         $audit = DB::table('audit_logs')->where('action', 'assessment_bill.branch_proof_temporary_url_issued')->sole();
         $this->assertStringNotContainsString('assessment-bills/', (string) $audit->context);
         $this->assertStringNotContainsString('private.example', (string) $audit->context);
@@ -170,6 +192,134 @@ final class OrganizationBillProofTest extends OrganizationPaymentTestCase
             $this->assertSame('ORGANIZATION_BILL_PROOF_NOT_FOUND', $exception->getMessage());
         }
         $this->assertDatabaseCount('audit_logs', 0);
+    }
+
+    public function test_access_rejects_invalid_private_disk_and_ttl_configuration_before_storage(): void
+    {
+        foreach ([
+            ['payments.manual_proof_disk' => 'public'],
+            ['payments.manual_proof_temporary_url_minutes' => '15'],
+            ['payments.manual_proof_temporary_url_minutes' => 0],
+            ['payments.manual_proof_temporary_url_minutes' => 61],
+        ] as $configuration) {
+            config([
+                'payments.manual_proof_disk' => 'payment-proofs',
+                'payments.manual_proof_temporary_url_minutes' => 15,
+                ...$configuration,
+            ]);
+            try {
+                app(OrganizationBillProofUrlIssuer::class)->issue(
+                    $this->admin, $this->fixture['reference'], str_repeat('a', 64),
+                );
+                $this->fail('Invalid proof access configuration must fail.');
+            } catch (\LogicException $exception) {
+                $this->assertSame('Organization bill proof access configuration is invalid.', $exception->getMessage());
+            }
+        }
+        $this->assertDatabaseCount('audit_logs', 0);
+    }
+
+    public function test_storage_existence_and_temporary_url_failures_are_sanitized_without_audit(): void
+    {
+        $receipt = app(StoreAssessmentBillProof::class)->execute(new AssessmentBillProofUpload(
+            $this->admin, $this->fixture['reference'], UploadedFile::fake()->image('proof.jpg'), null,
+        ));
+        $mock = Mockery::mock(FilesystemAdapter::class);
+        $mock->shouldReceive('exists')->andThrow(new \RuntimeException('private path must not escape'));
+        Storage::shouldReceive('disk')->with('payment-proofs')->andReturn($mock);
+
+        try {
+            app(OrganizationBillProofUrlIssuer::class)
+                ->issue($this->admin, $this->fixture['reference'], $receipt->proofFingerprint);
+            $this->fail('Storage failure must fail closed.');
+        } catch (\DomainException $exception) {
+            $this->assertSame('ORGANIZATION_BILL_PROOF_UNAVAILABLE', $exception->getMessage());
+        }
+        $this->assertDatabaseCount('audit_logs', 0);
+    }
+
+    public function test_empty_temporary_url_is_unavailable_without_audit(): void
+    {
+        $receipt = app(StoreAssessmentBillProof::class)->execute(new AssessmentBillProofUpload(
+            $this->admin, $this->fixture['reference'], UploadedFile::fake()->image('proof.jpg'), null,
+        ));
+        Storage::disk('payment-proofs')->buildTemporaryUrlsUsing(static fn (): string => '');
+
+        try {
+            app(OrganizationBillProofUrlIssuer::class)
+                ->issue($this->admin, $this->fixture['reference'], $receipt->proofFingerprint);
+            $this->fail('Empty temporary URL must fail closed.');
+        } catch (\DomainException $exception) {
+            $this->assertSame('ORGANIZATION_BILL_PROOF_UNAVAILABLE', $exception->getMessage());
+        }
+        $this->assertDatabaseCount('audit_logs', 0);
+    }
+
+    public function test_temporary_url_driver_failure_is_sanitized_without_audit(): void
+    {
+        $receipt = app(StoreAssessmentBillProof::class)->execute(new AssessmentBillProofUpload(
+            $this->admin, $this->fixture['reference'], UploadedFile::fake()->image('proof.jpg'), null,
+        ));
+        Storage::disk('payment-proofs')->buildTemporaryUrlsUsing(static function (): never {
+            throw new \RuntimeException('private credential must not escape');
+        });
+
+        try {
+            app(OrganizationBillProofUrlIssuer::class)
+                ->issue($this->admin, $this->fixture['reference'], $receipt->proofFingerprint);
+            $this->fail('Temporary URL failure must fail closed.');
+        } catch (\DomainException $exception) {
+            $this->assertSame('ORGANIZATION_BILL_PROOF_UNAVAILABLE', $exception->getMessage());
+        }
+        $this->assertDatabaseCount('audit_logs', 0);
+    }
+
+    public function test_gateway_or_invoice_contamination_fails_before_storage(): void
+    {
+        $receipt = app(StoreAssessmentBillProof::class)->execute(new AssessmentBillProofUpload(
+            $this->admin, $this->fixture['reference'], UploadedFile::fake()->image('proof.jpg'), null,
+        ));
+        Storage::shouldReceive('disk')->never();
+
+        foreach ([['gateway_ref' => 'synthetic-provider'], ['invoice_url' => 'https://private.example.test/invoice']] as $change) {
+            DB::table('assessment_bills')->where('id', $this->fixture['bill'])->update([
+                'gateway_ref' => null, 'invoice_url' => null, ...$change,
+            ]);
+            try {
+                app(OrganizationBillProofUrlIssuer::class)
+                    ->issue($this->admin, $this->fixture['reference'], $receipt->proofFingerprint);
+                $this->fail('Ambiguous payment channel must fail closed.');
+            } catch (\DomainException $exception) {
+                $this->assertSame('ORGANIZATION_BILL_PROOF_NOT_FOUND', $exception->getMessage());
+            }
+        }
+        $this->assertDatabaseCount('audit_logs', 0);
+    }
+
+    public function test_access_audit_failure_propagates_and_rolls_back(): void
+    {
+        $receipt = app(StoreAssessmentBillProof::class)->execute(new AssessmentBillProofUpload(
+            $this->admin, $this->fixture['reference'], UploadedFile::fake()->image('proof.jpg'), null,
+        ));
+        $disk = Storage::disk('payment-proofs');
+        $mock = Mockery::mock(FilesystemAdapter::class);
+        $mock->shouldReceive('exists')->andReturnUsing(fn (string $key): bool => $disk->exists($key));
+        $mock->shouldReceive('temporaryUrl')->andReturn('https://private.example.test/synthetic-token');
+        Storage::shouldReceive('disk')->with('payment-proofs')->andReturn($mock);
+        DB::statement(<<<'SQL'
+            CREATE TRIGGER reject_branch_proof_audit BEFORE INSERT ON audit_logs
+            WHEN NEW.action = 'assessment_bill.branch_proof_temporary_url_issued'
+            BEGIN SELECT RAISE(ABORT, 'synthetic branch proof audit failure'); END
+            SQL);
+        try {
+            app(OrganizationBillProofUrlIssuer::class)
+                ->issue($this->admin, $this->fixture['reference'], $receipt->proofFingerprint);
+            $this->fail('Audit failure must propagate.');
+        } catch (\Throwable $exception) {
+            $this->assertStringContainsString('synthetic branch proof audit failure', $exception->getMessage());
+        }
+        $this->assertDatabaseCount('audit_logs', 0);
+        DB::statement('DROP TRIGGER reject_branch_proof_audit');
     }
 
     public function test_wrong_role_deleted_and_cross_tenant_actors_cannot_probe_proof(): void

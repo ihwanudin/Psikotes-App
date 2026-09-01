@@ -8,6 +8,7 @@ use App\Data\Payments\AssessmentBillProofAccess;
 use App\Enums\AdminRole;
 use App\Models\Admin;
 use App\Models\AssessmentBill;
+use App\Models\PaymentMethod;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
 use Carbon\CarbonImmutable;
@@ -35,20 +36,33 @@ final readonly class OrganizationBillProofUrlIssuer
             $this->notFound();
         }
 
+        $diskName = config('payments.manual_proof_disk', 'payment-proofs');
+        $minutes = config('payments.manual_proof_temporary_url_minutes', 15);
+        if (! is_string($diskName) || $diskName !== 'payment-proofs'
+            || ! is_int($minutes) || $minutes < 1 || $minutes > 60) {
+            throw new LogicException('Organization bill proof access configuration is invalid.');
+        }
+
         $loaded = $this->contexts->run(new RlsContext('service'),
             fn (): array => $this->load($actor->getKey(), $billReference, $expectedFingerprint));
-        $expiresAt = CarbonImmutable::now()->addMinutes(15);
+        $expiresAt = CarbonImmutable::now()->utc()->addMinutes($minutes);
 
         try {
-            $disk = Storage::disk('payment-proofs');
-            if (! $disk->exists($loaded['key'])) {
-                $this->notFound();
-            }
-            $url = $disk->temporaryUrl($loaded['key'], $expiresAt);
-        } catch (DomainException $exception) {
-            throw $exception;
+            $disk = Storage::disk($diskName);
+            $exists = $disk->exists($loaded['key']);
         } catch (Throwable) {
-            throw new DomainException('ORGANIZATION_BILL_PROOF_UNAVAILABLE');
+            $this->unavailable();
+        }
+        if (! $exists) {
+            $this->notFound();
+        }
+        try {
+            $url = $disk->temporaryUrl($loaded['key'], $expiresAt);
+        } catch (Throwable) {
+            $this->unavailable();
+        }
+        if ($url === '') {
+            $this->unavailable();
         }
 
         $this->contexts->run(new RlsContext('service'), function () use (
@@ -84,7 +98,7 @@ final readonly class OrganizationBillProofUrlIssuer
     private function load(mixed $actorId, string $reference, string $expectedFingerprint, bool $lock = false): array
     {
         $adminQuery = Admin::withTrashed();
-        $billQuery = AssessmentBill::query()->with('paymentMethod');
+        $billQuery = AssessmentBill::query();
         if ($lock) {
             $adminQuery->lockForUpdate();
             $billQuery->lockForUpdate();
@@ -96,7 +110,16 @@ final readonly class OrganizationBillProofUrlIssuer
         }
         $bill = $billQuery->where('public_reference', $reference)
             ->where('organization_id', $admin->branch_id)->where('payer_type', 'organization')->first();
-        if ($bill === null || $bill->paymentMethod?->code !== 'manual_transfer'
+        if ($bill === null) {
+            $this->notFound();
+        }
+        $methodQuery = PaymentMethod::query();
+        if ($lock) {
+            $methodQuery->lockForUpdate();
+        }
+        $method = $methodQuery->find($bill->payment_method_id);
+        if ($method === null || $method->code !== 'manual_transfer'
+            || $bill->gateway_ref !== null || $bill->invoice_url !== null
             || ! is_string($bill->proof_object_key)) {
             $this->notFound();
         }
@@ -116,5 +139,10 @@ final readonly class OrganizationBillProofUrlIssuer
     private function notFound(): never
     {
         throw new DomainException('ORGANIZATION_BILL_PROOF_NOT_FOUND');
+    }
+
+    private function unavailable(): never
+    {
+        throw new DomainException('ORGANIZATION_BILL_PROOF_UNAVAILABLE');
     }
 }

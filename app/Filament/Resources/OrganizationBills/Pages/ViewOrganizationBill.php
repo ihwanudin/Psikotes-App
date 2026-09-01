@@ -6,6 +6,7 @@ namespace App\Filament\Resources\OrganizationBills\Pages;
 
 use App\Actions\Payments\StoreAssessmentBillProof;
 use App\Data\Payments\AssessmentBillProofUpload;
+use App\Enums\AssessmentBillManualRejectionCode;
 use App\Exceptions\AssessmentBillProofStorageException;
 use App\Filament\Resources\OrganizationBills\OrganizationBillResource;
 use App\Models\Admin;
@@ -50,7 +51,7 @@ final class ViewOrganizationBill extends ViewRecord
 
     public function getSubheading(): string
     {
-        return 'Daftar alokasi terkunci. Pratinjau ini tidak menyediakan pembayaran, unggah bukti, atau verifikasi. Lunas tidak otomatis berarti peserta sudah memenuhi syarat akses tes.';
+        return 'Daftar alokasi terkunci. Halaman ini tidak melakukan pembayaran atau verifikasi. Mengunggah bukti tidak berarti tagihan sudah lunas atau peserta sudah memenuhi syarat akses tes.';
     }
 
     /** @return array<string> */
@@ -225,12 +226,12 @@ final class ViewOrganizationBill extends ViewRecord
             'image/jpeg' => 'JPEG', 'image/png' => 'PNG', 'application/pdf' => 'PDF', default => null,
         };
         $status = OrganizationBillResource::statusLabels()[$bill->status] ?? 'Status belum dikenal';
-        $rejection = match ($bill->rejection_reason) {
-            'amount_mismatch' => 'Nominal tidak sesuai',
-            'unreadable_proof' => 'Bukti tidak terbaca',
-            'wrong_beneficiary' => 'Tujuan transfer tidak sesuai',
-            'duplicate_proof' => 'Bukti sudah pernah digunakan',
-            'other_unverifiable' => 'Bukti tidak dapat diverifikasi',
+        $rejection = match (AssessmentBillManualRejectionCode::tryFrom((string) $bill->rejection_reason)) {
+            AssessmentBillManualRejectionCode::AmountMismatch => 'Nominal tidak sesuai',
+            AssessmentBillManualRejectionCode::UnreadableProof => 'Bukti tidak terbaca',
+            AssessmentBillManualRejectionCode::WrongBeneficiary => 'Tujuan transfer tidak sesuai',
+            AssessmentBillManualRejectionCode::DuplicateProof => 'Bukti sudah pernah digunakan',
+            AssessmentBillManualRejectionCode::OtherUnverifiable => 'Bukti tidak dapat diverifikasi',
             default => null,
         };
         $this->proofSummary = [
