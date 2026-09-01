@@ -2834,3 +2834,87 @@ tetap tidak mempunyai Vite manifest; tidak dibuat manifest palsu.
 Tidak ada route produksi, decision UI, public wiring, source/gate ON, provider,
 notifier, object store nyata, DB aktif, migration/deploy/push, atau perubahan
 legacy. **STOP untuk review P11c3a sebelum P11c3b.**
+
+## P11c3b — keputusan reviewer terikat audit akses bukti
+
+Commit kode/tes lokal `3d39987` menambah `ReviewAssessmentBillFromProofAccess`
+dan dua action detail Filament testing-only. Resource tetap tidak ditemukan di
+luar environment `testing`; tidak ada perubahan route, panel provider,
+controller/request HTTP P11c2c, schema, config, atau source produksi.
+
+Boundary baru menerima actor Admin, public reference, decision enum, dan bounded
+rejection enum. Ia menolak ambient RLS context/transaction, membuka transaksi
+service baca yang singkat, memakai `AssessmentBillPolicy` existing untuk reload
+authority persisted, lalu mencari maksimal dua audit akses terbaru untuk actor,
+bill, organization, action, subject type, dan subject ID exact. Audit bukan input
+browser dan tidak ditulis oleh action decision.
+
+Context audit wajib mempunyai tepat empat key dalam urutan issuer existing:
+version 1, source `assessment_bill_manual_review`, fingerprint lowercase 64 hex,
+dan `url_expires_at` ISO-8601 UTC. `occurred_at` hanya menerima bentuk timestamp
+database UTC yang calendar-valid, tidak future; expiry harus future, sesudah
+occurred time, dan maksimal 60 menit. Context malformed, extra key, source salah,
+expired, wrong actor/bill, non-UTC/future/invalid date, atau missing ditolak.
+Dua audit pada timestamp terbaru hanya diterima bila fingerprint dan expiry
+identik; context berbeda pada timestamp sama dianggap ambigu dan fail closed.
+
+Sesudah transaksi baca commit dan RLS context kosong, fingerprint server-held
+dibungkus dalam `AssessmentBillManualReview` typed dan didelegasikan ke
+`ReviewAssessmentBillTransfer`/`FinalizeAssessmentBill` existing. Karena itu
+locked recheck actor, bill, channel, current proof fingerprint, allocation,
+settlement, activation, outbox, audit decision, rollback, dan exact replay tetap
+berasal dari writer canonical. Replacement/clear setelah open menjadi conflict
+atau proof-invalid tanpa settlement. Boundary tidak memanggil issuer, tidak
+membuat URL, tidak menulis access audit palsu, dan tidak mempunyai jalur paid
+sendiri.
+
+Detail reviewer kini menampilkan `Setujui pembayaran` dengan confirmation dan
+`Tolak pembayaran` dengan select lima enum berlabel Indonesia; tidak ada free
+text. Keduanya hanya visible pada record pending dari query aman. Missing/invalid
+review context serta conflict/state/proof failure menjadi notification generik
+yang meminta reviewer membuka bukti lagi; actor not-found/revoked menjadi 404.
+Unexpected DB/programming exception tidak ditangkap dan transaksi finalizer
+rollback. Sukses hanya menampilkan notification generik dan reload record lewat
+proyeksi aman. URL, key, checksum, fingerprint, participant identifier, amount
+override, atau allocation tidak disimpan dalam Livewire state/action argument.
+Tidak ada upload/edit/delete/bulk action.
+
+### Bukti aktual
+
+- RED: **19 tes**, 1 passed, 32 assertions, 12 failures, 6 errors. Failure utama
+  adalah action UI dan boundary audit yang belum ada. Fixture awal juga
+  memperlihatkan settled item bawaan; fixture decision lalu dinormalisasi menjadi
+  pending/locked tanpa mengubah source produksi.
+- Focused P11c3b final: **26/26 tes, 134 assertions**. Cakupan: no-open denial,
+  open→approve, open→reject + enum validation, exact replay, replacement/clear,
+  expired/malformed/tampered/wrong actor/wrong bill/ambiguous audit, equivalent
+  repeated access, timestamp canonicality, role/delete setelah modal mount,
+  seluruh role/guest denial, ambient boundary, state/HTML secrecy, unexpected DB
+  failure propagation, rollback, activation outbox, dan no duplicate audit.
+- Gabungan P11c3a + P11c3b + P11c1b finalizer + P11c2b issuer: **80/80 tes,
+  428 assertions**. P11c2c HTTP adapter tetap **27/27, 196 assertions**.
+- Legacy `ManualTransferFilamentTest` terisolasi: **4/4 tes, 27 assertions**.
+  `OrganizationBillAccessTest` tetap tidak ada pada snapshot worker dan tidak
+  disalin dari root; root perlu menjalankannya pada integrasi.
+- Suite XML terdaftar: **75/75 tes, 414 assertions**. Architecture: **2/2 tes,
+  6 assertions**.
+- Default synthetic final `tests/Feature tests/Unit --exclude-group=sandbox`:
+  **1.272 tes**, 1.249 passed, 6.930 assertions. Seluruh **23 failures** berasal
+  dari `public/build/manifest.json` worker yang tidak tersedia; 22 melaporkan
+  Vite manifest langsung dan satu `SecurityTest` melaporkan Inertia invalid dengan
+  exception Vite yang sama di log. Tidak dibuat manifest/build palsu atau
+  pelonggaran harness.
+- Pint empat file kode/tes lulus. PHPStan seluruh project pada APP_ENV testing
+  dan SQLite memory lulus **0 error**. Staged diff-check lulus.
+
+Satu run eksplorasi `tests` seluruhnya tidak dipakai sebagai bukti karena itu
+juga memasukkan `tests/Postgres` tanpa runner disposable dan menghasilkan
+`Target class [db] does not exist`; tidak ada DB PostgreSQL yang disentuh. Runner
+PG tidak dijalankan: fase audit baru read-only tanpa row lock/concurrency writer,
+sedangkan serialisasi dua reviewer, locked fingerprint recheck, rollback, dan
+outbox sudah menjadi kontrak finalizer dengan bukti PG root terakhir **293/293,
+2.519 assertions**. Tidak ada klaim concurrency baru dari SQLite.
+
+Tidak ada production discovery/route, browser rollout, provider/storage call
+baru, command/job/scheduler, outbound, DB aktif, migration/deploy/push, atau
+perubahan OrganizationBills/Orders legacy. **STOP untuk review P11c3b.**
