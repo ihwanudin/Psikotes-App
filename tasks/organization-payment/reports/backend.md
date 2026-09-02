@@ -3033,3 +3033,17 @@ regression **138/967**, Pint dan PHPStan scoped lulus. Config default-OFF/TTL 60
 diserahkan sebagai patch kecil karena file config baseline untracked di worker.
 Rincian bukti ada di `backend-p13a2-issuance.md`. PostgreSQL concurrency tetap
 P13a3. **STOP review sebelum P13a3/P13b/P14.**
+
+### P13a2 review fix — clock final dan rollback reissue
+
+Issuer kini membaca database clock lagi setelah seluruh graph/history terkunci,
+memvalidasi ulang effective window client/source, lalu memakai clock final itu
+untuk seluruh transition, issue/expiry, dan audit timestamp. Package juga wajib
+active, source-allowed, mempunyai item, amount non-null >=0, currency IDR, serta
+consultation amount null atau >=0.
+
+Test baru membuktikan application clock bukan authority dan audit failure pada
+REISSUE mengembalikan old active byte-for-byte tanpa generation/audit baru.
+Focused lulus **13/156**, related regression **139/979**, Pint/PHPStan scoped
+lulus. Race waiter melewati `effective_until` dicatat wajib untuk P13a3
+two-process. **STOP sebelum P13a3/route/P13b/P14.**

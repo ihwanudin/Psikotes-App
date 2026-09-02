@@ -73,3 +73,34 @@ Tidak ada klaim concurrency PostgreSQL; two-process ISSUE/REISSUE tetap P13a3.
 Tidak ada migration aktif, `.env`, credential/data nyata, outbound, route,
 controller, consume, session, gate, command/scheduler, deploy, push, P13b, atau
 P14. **STOP untuk review P13a2.**
+
+## Review fix — post-lock database clock dan package contract
+
+Clock database pertama sekarang hanya menjadi observasi cepat. Setelah
+organization, client, source, package/items, attempt, participant, dan seluruh
+handoff history terkunci, action membaca clock database kedua. Client/source
+effective window divalidasi ulang terhadap clock final itu. Hanya clock final
+yang dipakai untuk transition EXPIRED/REVOKED, `issued_at`, `expires_at`, dan
+audit. Test menggeser application clock ke 2040 dan membuktikan timestamp issue
+tetap dekat `CURRENT_TIMESTAMP` database.
+
+P13a3 wajib menambah acceptance two-process eksplisit: worker issuer menunggu
+canonical lock sampai `effective_until` client atau source terlewati; setelah
+lock dilepas, final database clock recheck harus menolak tanpa handoff, audit,
+atau raw result. P13a2 tidak mengklaim bukti race tersebut dari SQLite.
+
+Package authoritative kini harus active, termasuk dalam allowlist source,
+mempunyai item, amount integer persisted non-null dan >=0, currency tepat IDR,
+serta consultation amount null atau >=0. Tidak ada harga tertentu yang
+dihardcode. Nilai null/negatif, currency asing, item kosong, inactive, dan tidak
+diizinkan semuanya fail closed.
+
+Rollback audit failure juga diuji pada REISSUE setelah prior active diubah dan
+generasi baru dimasukkan. Trigger audit menggagalkan transaksi; old active row
+tetap byte-for-byte sama, tidak ada generation/audit baru, dan tidak ada result
+raw. Existing insert failure serta first-issue audit failure tetap lulus.
+
+Bukti final review fix: focused **13 tes, 156 assertions**; related checkout/
+schema regression **139 tes, 979 assertions**; Pint dan PHPStan scoped lulus
+tanpa error; diff-check bersih. Config baseline worker tidak disentuh/commit.
+**STOP sebelum P13a3/route/P13b/P14.**
