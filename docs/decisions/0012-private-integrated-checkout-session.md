@@ -376,3 +376,228 @@ P14a0 hanya dokumen. Implementasi durable kelak memerlukan route gate OFF lebih
 dahulu, expiry/revoke active sessions, clear dedicated cookie, bounded cleanup,
 dan populated migration down preflight. Rollback tidak menyentuh global Laravel
 session/admin/participant cookies dan tidak menghapus history diam-diam.
+
+## Amendment P14b0: kontrak HTTP privat sebelum wiring
+
+Amendment ini menetapkan boundary HTTP yang dapat diimplementasikan dan diuji
+pada P14b1. Ia menggantikan bagian ADR sebelumnya yang mengatakan raw CSRF tidak
+pernah masuk cookie: redirect 303 tidak dapat membawa secret ke halaman tujuan,
+dan database sengaja hanya menyimpan digest. Tidak ada route atau middleware yang
+diaktifkan oleh amendment ini.
+
+### Endpoint, transport, dan origin
+
+Endpoint fixed kelak adalah:
+
+```text
+POST /checkout/session       exchange lintas-site
+GET  /checkout               hydrate dan render shell privat
+POST /checkout/logout        revoke session privat
+GET  /checkout/unavailable   halaman generik tanpa state
+```
+
+Exchange menerima hanya HTTPS `application/x-www-form-urlencoded` dengan tepat
+satu field `handoffToken`. Bearer harus cocok format dan panjang P13. Query string,
+path parameter, fragment, JSON, multipart, Authorization/header, cookie, field
+tambahan, return URL, tenant/attempt/participant/package ID, Host, Origin, dan
+Referer tidak pernah menjadi sumber bearer atau scope. Bearer tidak boleh muncul
+di URL, `Location`, response body, validation bag, exception, log, telemetry,
+audit, cache key, atau history browser.
+
+Destination host dibandingkan dengan host HTTPS fixed dari konfigurasi server
+yang telah di-review, bukan nilai Host yang dipilih browser. Reverse proxy hanya
+boleh memengaruhi scheme/host setelah trusted-proxy boundary yang dikonfigurasi
+operasional. Exchange juga mewajibkan header `Origin` exact salah satu:
+
+```text
+https://seleksi.beasiswajepang.id
+https://seleksi.serbaindo.com
+```
+
+Origin missing, `null`, HTTP, foreign, port tambahan, subdomain lookalike, atau
+multiple values ditolak generik. Referer tidak menjadi fallback authority.
+Hydrate GET biasanya tidak mempunyai Origin dan memakai fixed destination host +
+selector saja. Logout dan seluruh mutasi checkout berikutnya mewajibkan Origin
+exact origin ONCAM fixed selain selector dan CSRF; SameSite bukan pengganti check
+ini.
+
+Sukses exchange membuat session durable melalui P14a2 lalu merespons `303` dengan
+`Location: /checkout` fixed. Invalid/malformed/replay/expired/revoked/foreign
+memberi redirect fixed `/checkout/unavailable` tanpa identifier dan tanpa cookie
+baru. Feature flag OFF memberi 404 generik sebelum body diparsing. Error tak
+terduga tetap 500 framework yang disanitasi; exception aplikasi tidak boleh
+mengubah system/DB failure menjadi invalid credential palsu.
+
+### Dua cookie privat dan delivery CSRF setelah redirect
+
+Response sukses menulis tepat dua cookie khusus, tanpa memakai Laravel session:
+
+```text
+__Secure-oncam_checkout_session = ocs1_<64 lowercase hex>
+__Secure-oncam_checkout_csrf    = ocsrf1_<64 lowercase hex>
+Domain                          = omitted (host-only)
+Path                            = /checkout
+Secure                          = true
+HttpOnly                        = true
+SameSite                        = Lax
+```
+
+Cookie selector adalah credential principal; database hanya menyimpan digest.
+Cookie CSRF adalah kanal delivery raw secret yang dihasilkan sekali bersama
+session dan database juga hanya menyimpan digest. Keduanya memiliki expiry browser
+paling lama absolute expiry persisted; server tetap authority atas idle/absolute
+expiry. Cookie CSRF sengaja HttpOnly: progressive JS mendapat token dari meta yang
+dihasilkan server, bukan membaca cookie. Cookie tidak dienkripsi oleh global
+`EncryptCookies`, tidak bergantung APP_KEY, dan dipasang langsung pada response
+boundary khusus. Prefix `__Secure-`, Secure, host-only, path, dan SameSite wajib
+diuji sebagai atribut exact, bukan dipakai sebagai bukti authority.
+
+Pada GET `/checkout`, server menerima kedua cookie, menghitung digest, lalu dalam
+boundary service memverifikasi selector, latest persisted graph, dan CSRF digest
+secara constant-time. Hanya setelah pasangan cocok server boleh menaruh raw CSRF
+dari cookie delivery ke:
+
+- hidden input bernama `_checkout_csrf` pada form server-rendered; dan
+- `<meta name="checkout-csrf-token">` untuk progressive JavaScript.
+
+HTML tidak menyimpan token di localStorage/sessionStorage, URL, Inertia history,
+JSON bootstrap global, log, atau telemetry. Progressive JS membaca meta pada
+halaman aktif dan mengirim `X-Checkout-CSRF`; form tanpa JavaScript mengirim
+`_checkout_csrf`. Mutasi menerima tepat salah satu kanal eksplisit tersebut.
+Header+form bersamaan, nilai berbeda, array/non-string, missing, atau format salah
+ditolak 419 generik. Cookie CSRF yang otomatis terkirim **tidak pernah cukup**:
+server membandingkan token eksplisit terhadap raw delivery cookie dan digest DB
+dengan `hash_equals`. Dengan demikian cross-site form tidak dapat bermutasi hanya
+karena browser mengirim cookie; Origin exact dan token eksplisit adalah lapisan
+tambahan di luar SameSite.
+
+GET hydrate tidak memerlukan token eksplisit, tetapi cookie CSRF missing/mismatch
+tidak boleh diproyeksikan. Pilihan fail-closed adalah membersihkan kedua cookie
+dan redirect fixed unavailable; ia tidak membuat token baru dari digest. Recovery
+P13 membuat handoff generation baru, dan exchange berikutnya membuat selector +
+CSRF baru. Secret lama tidak dipulihkan atau dirotasi in-place.
+
+### Isolasi cookie login Laravel dan urutan middleware
+
+Repository saat ini memasang `routes/web.php` melalui grup `web`; grup itu membawa
+session/cookie/CSRF Laravel. Route checkout tidak boleh ditaruh pada grup tersebut.
+P14b1 test-only mendaftarkan route dengan middleware konkret minimal dan tanpa
+`StartSession`, `ShareErrorsFromSession`, `EncryptCookies`,
+`AddQueuedCookiesToResponse`, global `ValidateCsrfToken`, guard `auth`, Filament,
+atau participant JWT. Tidak ada `config()->set('session.*')` per request.
+
+Urutan outer-to-inner yang diwajibkan:
+
+```text
+trusted proxy/host global yang telah dikonfigurasi
+CheckoutPrivacyHeaders
+RequireCheckoutFeatureEnabled
+named per-IP throttle
+exchange: ValidateCheckoutExchangeTransportAndOrigin -> controller
+hydrate:  AuthenticateCheckoutSessionAndCsrfDelivery -> renderer
+mutation: AuthenticateCheckoutSessionAndCsrfDelivery
+          -> VerifyCheckoutMutationOriginAndCsrf -> controller
+```
+
+Privacy middleware harus menjadi pembungkus terluar route agar response sukses,
+303, 404 OFF, 419, 422, 429, error credential, dan 500 semuanya mendapat:
+
+```text
+Cache-Control: no-store, private
+Pragma: no-cache
+Referrer-Policy: no-referrer
+X-Frame-Options: DENY
+X-Content-Type-Options: nosniff
+Content-Security-Policy: default-src 'self'; base-uri 'none'; frame-ancestors 'none'
+```
+
+CSP halaman final hanya boleh ditambah berdasarkan asset Vite/Inertia nyata dan
+tidak boleh memakai `unsafe-inline` sebagai jalan pintas. Semua redirect memakai
+path fixed relative. Body error tidak memuat payload, PII, SQL, model, scope,
+selector/CSRF raw maupun digest.
+
+Middleware tidak membaca, menghapus, meregenerasi, atau menulis cookie login
+Laravel. Tes harus menanam cookie login sintetis byte-exact dan membuktikan
+cross-site exchange dari kedua source tidak menghasilkan `Set-Cookie` dengan nama
+session Laravel serta tidak mengubah akses login existing. Incoming checkout
+selector pada exchange diabaikan sebagai fixation input; sukses hanya menulis
+selector/CSRF yang dibuat server. Exchange invalid tidak membersihkan session
+checkout existing karena request cross-site yang tidak valid tidak boleh menjadi
+logout CSRF.
+
+### Hydration, logout, clear, dan recovery
+
+Selector memetakan hanya ke `CheckoutSessionPrincipal` P14a3. Request tidak boleh
+memilih ID lain. Projection HTTP pertama tetap minimum: safe session public ID,
+own assessment attempt/status/funding state dan timestamp yang telah disetujui;
+tidak memuat profile PII yang belum dibutuhkan, anggota/count/total batch, parent
+bill, merchant/gateway reference, invoice URL, proof, charge lain, credential,
+external identity, audit, atau clinical result.
+
+Hydrate invalid/terminal/expired/scope-revoked membersihkan kedua cookie dengan
+atribut identik (nama, host-only, Path `/checkout`, Secure, HttpOnly, SameSite Lax,
+Max-Age 0 dan expiry lampau) lalu redirect fixed unavailable. Logout valid harus
+melewati selector + CSRF + Origin, merevoke atomik sebagai LOGOUT, membersihkan
+kedua cookie, dan redirect fixed unavailable. Logout replay/terminal tetap
+generik dan tidak menulis audit kedua; response boleh membersihkan cookie lagi.
+CSRF salah memberi 419 tanpa merevoke atau membersihkan credential valid sehingga
+pengguna dapat memuat ulang halaman. Event expired/recovery tidak menghidupkan
+session lama.
+
+Commit database dan delivery cookie tidak exactly-once. Jika commit exchange
+berhasil tetapi response hilang, session orphan tetap ACTIVE dan bearer replay
+ditolak; source trusted harus memakai recovery P13. Jika hanya satu dari dua
+cookie tersimpan, GET gagal tertutup dan membersihkan keduanya. Tidak ada fallback
+ke login Laravel, referral, invitation, legacy start token, atau default tenant.
+
+### Rate limit dan flag
+
+`assessment_integration.checkout_session.enabled` tetap boolean strict dan default
+OFF. Gate OFF berjalan sebelum parsing bearer dan sebelum action. Limit awal yang
+harus menjadi named limiter dengan angka typed/bounded dari config yang direview:
+
+```text
+exchange POST: 10 per minute per IP
+hydrate GET:   60 per minute per IP
+mutation POST: 10 per minute per IP
+```
+
+Key tidak memuat bearer, selector/CSRF raw atau digest, PII, Host, Origin, atau
+attempt ID. Setelah hydration, observability boleh memakai session public ULID
+safe sebagai label terpisah, tetapi limiter bukan authority. Proxy-derived IP
+hanya dipakai setelah trusted-proxy configuration. P14b0 tidak menambah key config
+atau limiter produksi.
+
+### Strategi route test-only P14b1
+
+Tes mendaftarkan route sintetis pada router setelah bootstrap dengan controller,
+request, dan middleware produksi nyata sebagai daftar konkret. Ia tidak mengedit
+`routes/web.php`, `bootstrap/app.php`, config session/CSRF, atau exception handler.
+Tes menginspeksi gathered middleware dan gagal bila `web`, `StartSession`, cookie
+encryption/queue, global CSRF, auth guard, atau RLS-from-login ikut masuk. Feature
+flag dan credential synthetic hanya diubah in-memory. Route test tidak dianggap
+endpoint live.
+
+Matriks wajib P14b1:
+
+| Area | Bukti fail-closed |
+| --- | --- |
+| Source cross-site | POST form exact dari masing-masing dua Origin trusted sukses; missing/foreign/null/http/lookalike ditolak |
+| Login isolation | cookie login existing byte-identik; tidak ada Set-Cookie login; auth admin/participant tidak memberi checkout authority |
+| Transport | bearer hanya body form exact; query/path/header/cookie/JSON/multipart/unknown field ditolak; Location/history/referrer bebas token |
+| Fixation/replay | incoming selector diabaikan; selector+CSRF baru server-side; bearer replay/dua request hanya satu session |
+| Cookie contract | dua nama exact, host-only, `/checkout`, Secure, HttpOnly, Lax, expiry bounded; tidak ada Domain |
+| CSRF delivery | GET memproyeksikan hanya pasangan cookie yang digest-nya exact; raw tidak masuk serialized props/history/log |
+| Mutation CSRF | form atau header tunggal exact sukses; missing/wrong/foreign/array/double-channel ditolak 419; cookie-only ditolak |
+| IDOR/principal | tidak ada request ID; stale/latest-generation/foreign/corrupt selector generik; hanya own projection |
+| Expiry/recovery | idle/absolute/scope revoke clear dua cookie; orphan delivery memerlukan recovery; token lama tidak hidup |
+| Logout | POST same-origin + exact CSRF merevoke/clear; GET logout tidak ada; replay tidak audit ganda |
+| Privacy/errors | sukses/303/404/419/422/429/500 seluruhnya private headers dan tanpa credential/PII/SQL |
+| Rate limit | key IP tidak mengandung raw/digest; batas endpoint terpisah; throttle bukan authority |
+| Middleware | tidak ada global session/cookie/CSRF/auth; urutan privacy/flag/throttle/auth/CSRF exact |
+| Side effect | tidak ada billing, settlement, entitlement, assessment engine, outbox/notifier, atau global session mutation |
+
+Browser acceptance tetap terpisah setelah P14b1: dua controlled source host, cookie
+protocol attributes, back/refresh/history, multi-tab, JS-disabled form,
+progressive JS header, console/network, dan cookie login existing harus dibuktikan
+di browser nyata sebelum route produksi dipertimbangkan.
