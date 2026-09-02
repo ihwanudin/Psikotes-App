@@ -202,7 +202,8 @@ final readonly class IssueCheckoutHandoff
 
     private function databaseNow(): CarbonImmutable
     {
-        $row = DB::selectOne('SELECT CURRENT_TIMESTAMP AS current_time');
+        $clock = DB::getDriverName() === 'pgsql' ? 'clock_timestamp()' : 'CURRENT_TIMESTAMP';
+        $row = DB::selectOne("SELECT {$clock} AS current_time");
         if ($row === null || (! is_string($row->current_time) && ! $row->current_time instanceof \DateTimeInterface)) {
             throw new LogicException('Database clock is unavailable.');
         }
