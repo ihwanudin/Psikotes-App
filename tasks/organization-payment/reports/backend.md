@@ -3170,3 +3170,58 @@ sukses. Review juga menemukan mismatch rounding `timestampTz` PostgreSQL;
 recovery kini membandingkan `clock_timestamp()::timestamptz(0)` pada presisi
 storage. Pint lulus, PHPStan full **0 error**, syntax/diff-check bersih. Tidak ada
 schema/HTTP/cookie/config/P14 establish atau operasi aktif. **STOP review.**
+
+## P14a2 — atomic private checkout-session establishment (2026-09-02)
+
+Internal `EstablishCheckoutSession` now exchanges one P13 bearer for one durable
+checkout session without HTTP or Laravel's global session. The typed input holds
+only the sensitive handoff bearer. The result returns newly generated
+`ocs1_` selector and `ocsrf1_` CSRF secrets once through private properties;
+only SHA-256 digests are durable, hidden on the model, and absent from safe
+descriptors and audits.
+
+P13 consumption was narrowly extracted into
+`ConsumeCheckoutHandoffTransaction`, which requires an existing service RLS
+context and transaction. The public P13 `ConsumeCheckoutHandoff` still owns its
+transaction and keeps its prior signature/error contract. P14 owns one service
+transaction and calls the same canonical validator/lock sequence before locking
+checkout-session history, inserting the ACTIVE record, and writing the session
+audit. Therefore an insert or audit failure rolls back handoff consumption,
+both new audits, and the session. Package items are now locked as the complete
+ordered set, consistent with issuer/recovery lock order.
+
+Session time is derived from the database-clock consumption timestamp at storage
+precision. Config is strict and bounded: enabled must be exactly true, idle
+1..120 minutes, absolute 1..1440 minutes, terminal retention 1..365 days, and
+idle cannot exceed absolute. Defaults remain OFF with 30/120/30. This worker's
+`config/assessment_integration.php` is an untracked baseline file, so it was not
+staged. The exact local delta after the existing `checkout` block is:
+
+```php
+    'checkout_session' => [
+        'enabled' => false,
+        'idle_minutes' => 30,
+        'absolute_minutes' => 120,
+        'terminal_retention_days' => 30,
+    ],
+```
+
+The complete local config file SHA-256 is
+`e5a60f58ae5bfe47f6d23aaf0173b2829d44a514bf476bd9cbf159387e948645`.
+
+TDD RED was **6 errors / 17 assertions**, all caused by the intentionally absent
+DTO/action. GREEN focused P13/P14 feature regression is **32 tests / 459
+assertions**. PostgreSQL disposable full suite is **341 tests / 2,495
+assertions**, including runtime non-owner/NOBYPASSRLS two-process same-bearer
+serialization and establishment-vs-recovery linearizability with observed lock
+waits; cleanup succeeded. Pint and `git diff --check` pass. PHPStan full-project
+passes with **0 errors** under the test environment; an initial invocation without
+`APP_ENV=testing` was correctly rejected by the production-config guard before
+analysis.
+
+Commits: `5c13097` (canonical transaction refactor) and `c4ff646` (establishment,
+DTOs, feature/PG tests). No route, controller, middleware, cookie delivery, CSRF
+verification, hydration, cleanup, source activation, global session mutation,
+billing/access/order/outbox change, active migration, external call, deploy, or
+push was added. Browser delivery remains a documented fail-closed crash window
+requiring P13 recovery. **STOP review before P14 HTTP/hydration or P15/P16.**
