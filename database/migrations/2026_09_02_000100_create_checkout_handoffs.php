@@ -11,6 +11,19 @@ return new class extends Migration
 {
     public function up(): void
     {
+        Schema::table('assessment_participants', function (Blueprint $table): void {
+            $table->unique(
+                ['id', 'integration_client_id', 'organization_id', 'participant_id', 'package_id'],
+                'assessment_attempt_checkout_handoff_scope_unique',
+            );
+        });
+        Schema::table('integration_sources', function (Blueprint $table): void {
+            $table->unique(
+                ['id', 'integration_client_id', 'source_system', 'contract_version'],
+                'integration_sources_checkout_handoff_scope_unique',
+            );
+        });
+
         Schema::create('checkout_handoffs', function (Blueprint $table): void {
             $table->id();
             $table->ulid('public_id')->unique();
@@ -39,14 +52,17 @@ return new class extends Migration
             $table->timestampsTz();
 
             $table->foreign(
-                ['assessment_participant_id', 'organization_id', 'participant_id', 'package_id'],
+                ['assessment_participant_id', 'integration_client_id', 'organization_id', 'participant_id', 'package_id'],
                 'checkout_handoffs_attempt_scope_fk',
-            )->references(['id', 'organization_id', 'participant_id', 'package_id'])
+            )->references(['id', 'integration_client_id', 'organization_id', 'participant_id', 'package_id'])
                 ->on('assessment_participants')->cascadeOnDelete();
             $table->foreign('integration_client_id', 'checkout_handoffs_client_fk')
                 ->references('id')->on('integration_clients')->restrictOnDelete();
-            $table->foreign('integration_source_id', 'checkout_handoffs_source_fk')
-                ->references('id')->on('integration_sources')->restrictOnDelete();
+            $table->foreign(
+                ['integration_source_id', 'integration_client_id', 'source_system', 'contract_version'],
+                'checkout_handoffs_source_scope_fk',
+            )->references(['id', 'integration_client_id', 'source_system', 'contract_version'])
+                ->on('integration_sources')->restrictOnDelete();
             $table->unique(
                 ['integration_client_id', 'issue_idempotency_key_digest'],
                 'checkout_handoffs_client_idempotency_unique',
@@ -76,11 +92,70 @@ return new class extends Migration
 
     public function down(): void
     {
-        if (Schema::hasTable('checkout_handoffs') && DB::table('checkout_handoffs')->exists()) {
+        if ($this->checkoutHandoffHistoryExists()) {
             throw new RuntimeException('Checkout handoff history prevents rollback.');
         }
 
         Schema::dropIfExists('checkout_handoffs');
+        Schema::table('integration_sources', function (Blueprint $table): void {
+            $table->dropUnique('integration_sources_checkout_handoff_scope_unique');
+        });
+        Schema::table('assessment_participants', function (Blueprint $table): void {
+            $table->dropUnique('assessment_attempt_checkout_handoff_scope_unique');
+        });
+    }
+
+    private function checkoutHandoffHistoryExists(): bool
+    {
+        if (! Schema::hasTable('checkout_handoffs')) {
+            return false;
+        }
+
+        if (DB::getDriverName() !== 'pgsql') {
+            return DB::table('checkout_handoffs')->exists();
+        }
+
+        return DB::transaction(function (): bool {
+            $previous = DB::selectOne(<<<'SQL'
+                SELECT
+                    current_setting('app.role', true) AS role,
+                    current_setting('app.branch_id', true) AS branch_id,
+                    current_setting('app.participant_id', true) AS participant_id
+                SQL);
+            if ($previous === null) {
+                throw new RuntimeException('Checkout handoff rollback visibility could not be established.');
+            }
+
+            try {
+                DB::select(<<<'SQL'
+                    SELECT
+                        set_config('app.role', 'service', true),
+                        set_config('app.branch_id', '', true),
+                        set_config('app.participant_id', '', true)
+                    SQL);
+                $visibility = DB::selectOne(<<<'SQL'
+                    SELECT app_private.app_role() AS role, EXISTS (
+                        SELECT 1 FROM checkout_handoffs
+                    ) AS has_history
+                    SQL);
+                if ($visibility === null || $visibility->role !== 'service' || ! is_bool($visibility->has_history)) {
+                    throw new RuntimeException('Checkout handoff rollback visibility could not be established.');
+                }
+
+                return $visibility->has_history;
+            } finally {
+                DB::select(<<<'SQL'
+                    SELECT
+                        set_config('app.role', ?, true),
+                        set_config('app.branch_id', ?, true),
+                        set_config('app.participant_id', ?, true)
+                    SQL, [
+                    is_string($previous->role) ? $previous->role : '',
+                    is_string($previous->branch_id) ? $previous->branch_id : '',
+                    is_string($previous->participant_id) ? $previous->participant_id : '',
+                ]);
+            }
+        });
     }
 
     private function addPostgresContract(): void

@@ -77,6 +77,38 @@ final class CheckoutHandoffSchemaTest extends OrganizationPaymentTestCase
         CheckoutHandoff::query()->create($duplicate);
     }
 
+    public function test_portable_composite_foreign_keys_reject_every_cross_scope_binding(): void
+    {
+        $graph = $this->graph();
+        $foreign = $this->graph();
+        $foreignVersionSource = DB::table('integration_sources')->insertGetId([
+            'integration_client_id' => $graph['client'], 'source_system' => 'HANDOFF_SOURCE',
+            'contract_version' => 'v1', 'allowed_assessment_packages' => '["HANDOFF"]',
+            'allowed_funding_modes' => '[]', 'status' => 'ACTIVE',
+        ]);
+        $invalid = [
+            'attempt client' => ['integration_client_id' => $foreign['client'], 'integration_source_id' => $foreign['source']],
+            'source client' => ['integration_source_id' => $foreign['source']],
+            'source system' => ['source_system' => 'FOREIGN_SOURCE'],
+            'source contract' => ['integration_source_id' => $foreignVersionSource],
+            'organization' => ['organization_id' => $foreign['organization']],
+            'participant' => ['participant_id' => $foreign['participant']],
+            'package' => ['package_id' => $foreign['package']],
+        ];
+
+        foreach ($invalid as $label => $override) {
+            try {
+                CheckoutHandoff::query()->create([...$this->row($graph), ...$override]);
+                $this->fail("Cross-scope {$label} binding was accepted.");
+            } catch (QueryException) {
+                $this->assertDatabaseCount('checkout_handoffs', 0);
+            }
+        }
+
+        CheckoutHandoff::query()->create($this->row($graph));
+        $this->assertDatabaseCount('checkout_handoffs', 1);
+    }
+
     public function test_attempt_delete_cascades_while_source_and_client_delete_are_restricted(): void
     {
         $sourceGraph = $this->graph();

@@ -132,9 +132,46 @@ final class CheckoutHandoffSchemaTest extends TestCase
         });
     }
 
+    public function test_runtime_composite_foreign_keys_reject_every_cross_scope_binding(): void
+    {
+        app(RlsContextRunner::class)->runAsService(function (): void {
+            $graph = $this->graph();
+            $foreign = $this->graph();
+            $foreignVersionSource = DB::table('integration_sources')->insertGetId([
+                'integration_client_id' => $graph['client'], 'source_system' => 'HANDOFF_SOURCE',
+                'contract_version' => 'v1', 'allowed_assessment_packages' => '["HANDOFF"]',
+                'allowed_funding_modes' => '[]', 'status' => 'ACTIVE',
+            ]);
+            $invalid = [
+                'attempt client' => ['integration_client_id' => $foreign['client'], 'integration_source_id' => $foreign['source']],
+                'source client' => ['integration_source_id' => $foreign['source']],
+                'source system' => ['source_system' => 'FOREIGN_SOURCE'],
+                'source contract' => ['integration_source_id' => $foreignVersionSource],
+                'organization' => ['organization_id' => $foreign['organization']],
+                'participant' => ['participant_id' => $foreign['participant']],
+                'package' => ['package_id' => $foreign['package']],
+            ];
+
+            foreach ($invalid as $label => $override) {
+                $this->assertConstraintViolation('23503', function () use ($graph, $override): void {
+                    DB::table('checkout_handoffs')->insert([...$this->row($graph), ...$override]);
+                });
+                $this->assertSame(0, DB::table('checkout_handoffs')->count(), $label);
+            }
+
+            DB::table('checkout_handoffs')->insert($this->row($graph));
+            $this->assertSame(1, DB::table('checkout_handoffs')->count());
+        });
+    }
+
     public function test_runtime_no_context_and_non_service_are_denied_while_service_is_allowed(): void
     {
-        $graph = app(RlsContextRunner::class)->runAsService(fn (): array => $this->graph());
+        $graph = app(RlsContextRunner::class)->runAsService(function (): array {
+            $graph = $this->graph();
+            DB::table('checkout_handoffs')->insert($this->row($graph));
+
+            return $graph;
+        });
         DB::select("SELECT set_config('app.role', '', true), set_config('app.branch_id', '', true), set_config('app.participant_id', '', true)");
         $this->assertSame(0, DB::table('checkout_handoffs')->count());
         foreach (['participant', 'branch_admin', 'staff', 'psychologist', 'super_admin'] as $offset => $role) {
@@ -152,8 +189,8 @@ final class CheckoutHandoffSchemaTest extends TestCase
             }
         }
         app(RlsContextRunner::class)->runAsService(function () use ($graph): void {
-            DB::table('checkout_handoffs')->insert($this->row($graph));
             $this->assertSame(1, DB::table('checkout_handoffs')->count());
+            $this->assertSame($graph['attempt'], DB::table('checkout_handoffs')->value('assessment_participant_id'));
         });
     }
 
@@ -199,6 +236,7 @@ final class CheckoutHandoffSchemaTest extends TestCase
             $structure = $this->structure();
             $this->migrateDown();
             $this->assertFalse(Schema::hasTable('checkout_handoffs'));
+            $this->assertSame([], $this->parentScopeConstraints());
             $this->assertSame($counts, $this->graphCounts());
             $this->migrateUp();
             $this->assertEquals($structure, $this->structure());
@@ -207,13 +245,16 @@ final class CheckoutHandoffSchemaTest extends TestCase
             DB::statement("SELECT set_config('app.role', 'service', true)");
             DB::table('checkout_handoffs')->insert($this->row($graph));
             $before = DB::table('checkout_handoffs')->first();
+            DB::statement("SELECT set_config('app.role', '', true)");
             try {
                 $this->migrateDown();
                 $this->fail('Rollback discarded checkout handoff history.');
             } catch (RuntimeException $exception) {
                 $this->assertSame('Checkout handoff history prevents rollback.', $exception->getMessage());
             }
+            $this->assertNull(DB::selectOne('SELECT app_private.app_role() AS role')->role);
             $this->assertEquals($structure, $this->structure());
+            DB::statement("SELECT set_config('app.role', 'service', true)");
             $this->assertEquals($before, DB::table('checkout_handoffs')->first());
         } finally {
             if ($owner->transactionLevel() > 0) {
@@ -231,7 +272,7 @@ final class CheckoutHandoffSchemaTest extends TestCase
     private static function constraintNames(): array
     {
         return [
-            'checkout_handoffs_attempt_scope_fk', 'checkout_handoffs_client_fk', 'checkout_handoffs_source_fk',
+            'checkout_handoffs_attempt_scope_fk', 'checkout_handoffs_client_fk', 'checkout_handoffs_source_scope_fk',
             'checkout_handoffs_identity_check', 'checkout_handoffs_digest_check', 'checkout_handoffs_fixed_binding_check',
             'checkout_handoffs_ttl_check', 'checkout_handoffs_lifecycle_check',
         ];
@@ -362,6 +403,18 @@ final class CheckoutHandoffSchemaTest extends TestCase
                 WHERE schemaname = 'public' AND tablename = 'checkout_handoffs' ORDER BY policyname"),
             'security' => DB::select("SELECT relrowsecurity, relforcerowsecurity, relowner
                 FROM pg_class WHERE oid = 'checkout_handoffs'::regclass"),
+            'parent_scope_constraints' => $this->parentScopeConstraints(),
         ];
+    }
+
+    /** @return array<int, object> */
+    private function parentScopeConstraints(): array
+    {
+        return DB::select("SELECT conrelid::regclass::text AS table_name, conname,
+            pg_get_constraintdef(oid) AS definition FROM pg_constraint
+            WHERE conname IN (
+                'assessment_attempt_checkout_handoff_scope_unique',
+                'integration_sources_checkout_handoff_scope_unique'
+            ) ORDER BY conname");
     }
 }
