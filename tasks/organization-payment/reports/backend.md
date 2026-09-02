@@ -3016,3 +3016,20 @@ lain; keduanya ditolak database, sementara graph valid tetap masuk. Focused
 SQLite lulus **6/43**, related regression **53/305**, dan PostgreSQL disposable
 **299/2.054** dengan cleanup sukses. Pint/PHPStan scoped lulus. **Tetap STOP
 sebelum P13a2.**
+
+## P13a2 — internal checkout handoff issuer (2026-09-02)
+
+Core `IssueCheckoutHandoff` internal selesai tanpa route/controller/consume atau
+session. Typed surface hanya menerima authenticated persisted client, public
+attempt ULID, source selector, private sensitive idempotency key, dan enum
+ISSUE/REISSUE. Fixed purpose/destination/checkout-v2 berasal dari server. Bearer
+`och1_` berentropy 256-bit hanya disimpan sebagai SHA-256 digest; replay exact
+tidak mengembalikan raw token.
+
+Graph authoritative dikunci dalam urutan ADR-011, history/lifecycle diperiksa
+fail closed, reissue terminalizes prior active secara atomik, dan satu audit aman
+ditulis dalam transaksi. Focused GREEN **12/144**, related checkout/schema
+regression **138/967**, Pint dan PHPStan scoped lulus. Config default-OFF/TTL 600
+diserahkan sebagai patch kecil karena file config baseline untracked di worker.
+Rincian bukti ada di `backend-p13a2-issuance.md`. PostgreSQL concurrency tetap
+P13a3. **STOP review sebelum P13a3/P13b/P14.**
