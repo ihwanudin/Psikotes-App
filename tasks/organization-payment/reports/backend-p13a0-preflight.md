@@ -45,6 +45,10 @@ ADR-011 menetapkan:
 - raw token `och1_` + 64 hex dari `random_bytes(32)`, entropy 256 bit;
 - durable SHA-256 digest saja; alternatif HMAC/pepper beserta rotasi/key-id
   dibandingkan dan tidak dipilih;
+- surface action tidak menerima purpose/destination; dua nilai itu konstanta
+  server yang masuk canonical hash dan row persisted;
+- idempotency key wajib opaque `ih1_` + 32 hex, raw tidak durable, dan hanya
+  digest SHA-256 terpisah yang disimpan untuk replay;
 - TTL 60..600 detik, default 600, feature default-OFF, database clock;
 - exact replay no-op tanpa raw token; explicit reissue atomik mencabut active
   lama dan tidak menyentuh billing/access/session;
@@ -56,12 +60,14 @@ ADR-011 menetapkan:
 
 ## Keputusan yang masih memerlukan acceptance
 
-1. Replay exact tidak mengembalikan raw token; response loss memakai reissue.
+1. Replay exact mengembalikan descriptor explicit `replayed=true`, raw token
+   null, dan `reissueRequired=true`; response loss memakai reissue.
 2. SHA-256 atas bearer 256-bit dipilih tanpa pepper/key-id.
 3. Purpose/destination fixed dan future consume memakai POST body.
 4. TTL maksimum/default 600 detik serta feature default OFF.
-5. Attempt delete cascade, source/client restrict, down refusal bila berisi data,
-   dan usulan retention terminal 730 hari tanpa cleanup aktif.
+5. Attempt delete cascade membatalkan bearer dan privacy deletion mengalahkan
+   retention; source/client restrict, down refusal bila berisi data, dan retention
+   terminal maksimal 730 hari hanya selama parent graph masih ada.
 6. Tidak ada admin/participant issuer bypass; source/client/attempt deleted atau
    revoked selalu fail closed.
 
@@ -100,3 +106,17 @@ Hash SHA-256 root saat preflight sebelum delta:
   migration execution, deploy, atau push.
 
 **STOP untuk review ADR-011 sebelum P13a schema/action.**
+
+## Koreksi review root
+
+Koreksi docs-only berikut diterapkan setelah review awal:
+
+- purpose/destination dihapus dari caller input dan hanya berasal dari konstanta;
+- raw idempotency key diganti digest durable terpisah dengan format input ketat;
+- attempt cascade direkonsiliasi dengan retensi parent-bound;
+- replay descriptor dan hasil race dua reissue dibuat eksplisit: hanya generasi
+  commit terakhir valid;
+- lock naming/order memakai `AssessmentParticipant`, `Participant`, lalu handoff
+  terurut, dengan prefix owner sama untuk source/client revocation.
+
+Tidak ada keputusan teknis lain yang diubah dan belum ada izin implementasi.
