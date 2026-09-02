@@ -2,9 +2,11 @@
 
 ## Status
 
-Proposed untuk review P14a0 setelah koreksi alur cookie lintas-site. Dokumen ini
-belum mengizinkan implementation, migration, config, route, middleware, perubahan
-CSRF/session global, source aktif, atau wiring P14/P15/P16.
+Accepted untuk implementasi lokal bertahap setelah koreksi alur cookie
+lintas-site. Acceptance mengizinkan schema/model durable dan pengujian
+disposable lebih dahulu; belum mengizinkan config, route, middleware, perubahan
+CSRF/session global, source aktif, migration database aktif, atau wiring publik
+P14/P15/P16.
 
 ## Date
 

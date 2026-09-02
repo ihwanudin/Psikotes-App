@@ -831,3 +831,20 @@ lulus **331/331 tes, 2.811 assertions**, termasuk single-winner, consume versus
 reissue, dan revocation waiter pada koneksi runtime non-owner; cleanup sukses.
 P13b diterima. P14 berikutnya harus contract-first untuk session privat,
 CSRF/header/cookie/IDOR dan tetap default-off; tidak mengaktifkan endpoint publik.
+
+## P14a0 backend — cross-site session ADR accepted
+
+ADR awal worker `8ec66c4` ditahan karena global cookie `SameSite=Lax` tidak ikut
+pada POST lintas-site dari dua source seleksi, sehingga response session baru
+dapat mengganti pointer cookie login ONCAM yang tidak pernah dibaca request.
+Amendment `149a19c` mengganti pilihan menjadi record `checkout_sessions` durable
+service-only dengan selector-cookie khusus host-only, `Path=/checkout`, Secure,
+HttpOnly, dan SameSite=Lax. Global StartSession/cookie auth serta mutasi config
+request/Octane dilarang.
+
+Root mengintegrasikan dokumen sebagai `0290aeb`/`0f6d327` dan menerima ADR-012
+untuk implementasi lokal bertahap. Timeout idle 30 menit, absolute 120 menit,
+dan terminal retention 30 hari tetap default usulan configurable, bukan nilai
+bisnis hardcoded. Increment berikut hanya schema/model, migration additive,
+RLS, rollback, dan tes disposable; belum action establish/hydrate, recovery,
+HTTP, cookie runtime, route, config aktif, atau deploy.
