@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Postgres;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -64,6 +65,7 @@ final class AssessmentBillingMigrationTest extends TestCase
                 '000400_create_assessment_entitlements', '000500_secure_assessment_billing'] as $name) {
                 $migrations[] = require database_path('migrations/2026_08_31_'.$name.'.php');
             }
+            $checkoutStructure = $this->checkoutStructure();
 
             $migrations[3]->down();
             foreach ($billing as $table => $row) {
@@ -78,6 +80,10 @@ final class AssessmentBillingMigrationTest extends TestCase
                 $this->assertSame(2, DB::table('pg_policies')->where('schemaname', 'public')->where('tablename', $table)->count());
             }
 
+            // Descendants must be rolled back before the ancestor unique index they reference.
+            $this->assertSame(0, DB::table('checkout_handoffs')->count());
+            $this->migrateCheckoutDown();
+            $this->assertFalse(Schema::hasTable('checkout_handoffs'));
             foreach (array_reverse($migrations) as $migration) {
                 $migration->down();
             }
@@ -94,11 +100,23 @@ final class AssessmentBillingMigrationTest extends TestCase
                 DB::table($table)->insert($row);
                 $this->assertEquals($row, (array) DB::table($table)->where('id', $row['id'])->first(array_keys($row)));
             }
+            $this->migrateCheckoutUp();
+            $this->assertEquals($checkoutStructure, $this->checkoutStructure());
+            $source = DB::table('integration_sources')->insertGetId([
+                'integration_client_id' => DB::table('assessment_participants')->where('id', $fixture['attempt'])
+                    ->value('integration_client_id'),
+                'source_system' => DB::table('assessment_participants')->where('id', $fixture['attempt'])
+                    ->value('source_system'), 'contract_version' => 'checkout-v2',
+                'allowed_assessment_packages' => '[]', 'allowed_funding_modes' => '[]', 'status' => 'ACTIVE',
+            ]);
+            DB::table('checkout_handoffs')->insert($this->checkoutRow($fixture, $source));
+            $this->assertSame(1, DB::table('checkout_handoffs')->where('assessment_participant_id', $fixture['attempt'])->count());
             $this->assertSame('locked', DB::table('assessment_entitlements')->where('organization_id', $fixture['organization'])->value('status'));
             foreach ($legacy as $table => $row) {
                 $this->assertEquals($row, DB::table($table)->where('id', $row->id)->first());
             }
         } finally {
+            // PostgreSQL transactional DDL restores descendant/ancestor order on any assertion failure.
             if ($owner->transactionLevel() > 0) {
                 $owner->rollBack();
             }
@@ -108,5 +126,71 @@ final class AssessmentBillingMigrationTest extends TestCase
             config()->set('database.connections.billing_ddl_test', null);
         }
         $this->assertSame('psikotes_runtime', DB::selectOne('SELECT current_user AS name')->name);
+    }
+
+    /** @return array<string, mixed> */
+    private function checkoutStructure(): array
+    {
+        return [
+            'columns' => DB::select("SELECT attname, format_type(atttypid, atttypmod) AS type, attnotnull,
+                pg_get_expr(adbin, adrelid) AS default_value FROM pg_attribute
+                LEFT JOIN pg_attrdef ON adrelid = attrelid AND adnum = attnum
+                WHERE attrelid = 'checkout_handoffs'::regclass AND attnum > 0 AND NOT attisdropped ORDER BY attnum"),
+            'constraints' => DB::select("SELECT conname, pg_get_constraintdef(oid) AS definition
+                FROM pg_constraint WHERE conrelid = 'checkout_handoffs'::regclass ORDER BY conname"),
+            'indexes' => DB::select("SELECT indexname, indexdef FROM pg_indexes
+                WHERE schemaname = 'public' AND tablename = 'checkout_handoffs' ORDER BY indexname"),
+            'policies' => DB::select("SELECT * FROM pg_policies
+                WHERE schemaname = 'public' AND tablename = 'checkout_handoffs' ORDER BY policyname"),
+            'security' => DB::select("SELECT relrowsecurity, relforcerowsecurity, relowner
+                FROM pg_class WHERE oid = 'checkout_handoffs'::regclass"),
+            'parent_scope_constraints' => DB::select("SELECT conrelid::regclass::text AS table_name, conname,
+                pg_get_constraintdef(oid) AS definition FROM pg_constraint
+                WHERE conname IN (
+                    'assessment_attempt_checkout_handoff_scope_unique',
+                    'integration_clients_checkout_handoff_scope_unique',
+                    'integration_sources_checkout_handoff_scope_unique'
+                ) ORDER BY conname"),
+        ];
+    }
+
+    private function migrateCheckoutUp(): void
+    {
+        $migration = require database_path('migrations/2026_09_02_000100_create_checkout_handoffs.php');
+        if (! is_object($migration) || ! method_exists($migration, 'up')) {
+            throw new \RuntimeException('Checkout handoff migration has no up method.');
+        }
+        $migration->up();
+    }
+
+    private function migrateCheckoutDown(): void
+    {
+        $migration = require database_path('migrations/2026_09_02_000100_create_checkout_handoffs.php');
+        if (! is_object($migration) || ! method_exists($migration, 'down')) {
+            throw new \RuntimeException('Checkout handoff migration has no down method.');
+        }
+        $migration->down();
+    }
+
+    /** @param array<string, int|string> $fixture
+     * @return array<string, mixed>
+     */
+    private function checkoutRow(array $fixture, int $source): array
+    {
+        $issued = CarbonImmutable::now('UTC')->startOfSecond();
+        $attempt = DB::table('assessment_participants')->where('id', $fixture['attempt'])->first();
+
+        return [
+            'public_id' => (string) Str::ulid(), 'assessment_participant_id' => $fixture['attempt'],
+            'organization_id' => $fixture['organization'], 'participant_id' => $fixture['participant'],
+            'package_id' => $fixture['package'], 'integration_client_id' => $attempt->integration_client_id,
+            'integration_source_id' => $source, 'source_system' => $attempt->source_system,
+            'contract_version' => 'checkout-v2', 'purpose' => 'checkout-handoff',
+            'destination' => 'integrated-checkout-session', 'token_digest' => hash('sha256', 'migration-token'),
+            'active_marker' => true, 'status' => 'ISSUED', 'issue_number' => 1,
+            'issue_idempotency_key_digest' => hash('sha256', 'migration-idempotency'),
+            'request_hash' => hash('sha256', 'migration-request'), 'issued_at' => $issued,
+            'expires_at' => $issued->addMinutes(10), 'created_at' => $issued, 'updated_at' => $issued,
+        ];
     }
 }
