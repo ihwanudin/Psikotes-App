@@ -22,6 +22,16 @@ return [
         'idle_minutes' => 30,
         'absolute_minutes' => 120,
         'terminal_retention_days' => 30,
+        'http' => [
+            'destination_origin' => 'https://psikotes.oncam.id',
+            'trusted_exchange_origins' => [
+                'https://seleksi.beasiswajepang.id',
+                'https://seleksi.serbaindo.com',
+            ],
+            'exchange_per_minute' => 10,
+            'hydrate_per_minute' => 60,
+            'mutation_per_minute' => 10,
+        ],
     ],
     'invitation_ttl_hours' => (int) env('ASSESSMENT_INVITATION_TTL_HOURS', 168),
 ];
