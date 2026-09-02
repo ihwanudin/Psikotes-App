@@ -93,7 +93,11 @@ if ($mode === 'init') {
         mkdir($directory.'/storage/'.$storagePath, 0700, true);
     }
     mkdir($directory.'/uploads', 0700, true);
-    file_put_contents($directory.'/uploads/proof.jpg', base64_decode('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAX/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAEf/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABBQJ//8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAgBAwEBPwF//8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAgBAgEBPwF//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQAGPwJ//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPyF//9oADAMBAAIAAwAAABD/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAEDAQE/EH//xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAECAQE/EH//xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAE/EH//2Q==', true));
+    $jpeg = imagecreatetruecolor(2, 2);
+    if ($jpeg === false || ! imagejpeg($jpeg, $directory.'/uploads/proof.jpg', 90)) {
+        throw new RuntimeException('Cannot create synthetic JPEG proof.');
+    }
+    imagedestroy($jpeg);
     file_put_contents($directory.'/uploads/proof.png', base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', true));
     file_put_contents($directory.'/uploads/proof.pdf', "%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n");
     file_put_contents($directory.'/uploads/invalid.txt', 'synthetic invalid proof');
@@ -150,9 +154,12 @@ $app->afterBootstrapping(LoadConfiguration::class, function (Application $app) u
     $config->set('database.redis', []);
     $config->set('filesystems.disks', [
         'local' => ['driver' => 'local', 'root' => $app->storagePath('app/private')],
+        'tmp-for-tests' => ['driver' => 'local', 'root' => $directory.'/storage/app/livewire-tmp',
+            'visibility' => 'private', 'throw' => true, 'report' => false],
         'payment-proofs' => ['driver' => 'local', 'root' => $directory.'/storage/app/private/payment-proofs',
             'visibility' => 'private', 'throw' => true, 'report' => false],
     ]);
+    $config->set('livewire.temporary_file_upload.disk', 'tmp-for-tests');
     $config->set('payments.manual_proof_disk', 'payment-proofs');
     $config->set('payments.manual_proof_temporary_url_minutes', 15);
 });
@@ -215,6 +222,14 @@ if ($mode === 'init') {
     $method = DB::table('payment_methods')->insertGetId(['code' => 'manual_transfer', 'display_name' => 'Transfer sintetis', 'is_active' => true]);
     Filament::setCurrentPanel(Filament::getPanel('admin'));
     Filament::auth()->login($admin);
+    DB::table('assessment_participants')->where('id', $ids[13])->update([
+        'funding_mode' => 'INVOICED_TO_ORGANIZATION',
+        'metadata' => json_encode([
+            'checkout_contract_version' => 'checkout-v2',
+            'checkout_initial_funding_mode' => null,
+            'private' => 'PRIVATE-SENTINEL',
+        ], JSON_THROW_ON_ERROR),
+    ]);
     $claimedSelection = [['assessmentParticipantId' => $ids[13], 'consultationRequested' => false]];
     $claimedPreview = app(CreateCollectiveBillAction::class)->preview($claimedSelection);
     $claimedBill = app(CreateCollectiveBillAction::class)->confirm($claimedSelection, $method, $claimedPreview['selectionHash']);
@@ -376,8 +391,8 @@ Route::post('/fixture-control', function () use ($manifest, $control, $directory
             ]);
         }),
         'replace-proof-outside' => tap(['ok' => true], function () use ($manifest, $directory): void {
-            $admin = Admin::findOrFail($manifest['admin']);
-            $bill = AssessmentBill::findOrFail($manifest['baselineBill']);
+            $admin = Admin::query()->whereKey($manifest['admin'])->firstOrFail();
+            $bill = AssessmentBill::query()->whereKey($manifest['baselineBill'])->firstOrFail();
             $fingerprint = app(AssessmentBillProofIdentity::class)->fingerprint($bill, now());
             app(StoreAssessmentBillProof::class)->execute(new AssessmentBillProofUpload(
                 $admin, (string) $bill->public_reference,
@@ -405,5 +420,5 @@ Route::post('/fixture-control', function () use ($manifest, $control, $directory
 });
 header('Cache-Control: no-store');
 header('Referrer-Policy: no-referrer');
-header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; font-src 'self'; frame-src 'none'; form-action 'self'");
+header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; font-src 'self'; frame-src 'none'; form-action 'self'");
 $app->handleRequest(Request::capture());
