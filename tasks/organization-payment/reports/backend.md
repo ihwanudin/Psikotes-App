@@ -3114,3 +3114,22 @@ Rincian trust matrix, dua opsi, crash semantics, typed surface, dan RED matrix a
 di `docs/decisions/0012-private-integrated-checkout-session.md` serta
 `backend-p14a0-private-session-preflight.md`. P14a0 hanya dokumen; belum ada
 config/schema/route/controller/middleware/session/source aktif. **STOP review.**
+
+## P14a1 — durable checkout-session schema (2026-09-02)
+
+Migration additive `checkout_sessions` dan model internal kini menerapkan
+kontrak ADR-012: ULID noncredential, digest selector/CSRF hidden lowercase hex,
+composite scope handoff/attempt/client/tenant/source, lifecycle ACTIVE/REVOKED/
+EXPIRED, one-active-per-attempt, index lookup/latest/expiry, serta FORCE RLS
+service-only. Handoff/attempt cascade menginvalidasi session; client/source tetap
+restrict. Tidak ada durasi UX proposed yang ditanam pada schema.
+
+Down populated menolak sebelum DDL, empty down/up exact, dan parent preflight
+fail closed. Dua test migration historis hanya disesuaikan untuk menurunkan child
+session sebelum parent handoff secara transaksional. RED awal **5 tes** (1
+failure/4 errors); GREEN focused **5/43**, related SQLite **11/86**, dan
+PostgreSQL disposable penuh **330/2.299** dengan cleanup sukses. Pint lulus,
+PHPStan full **0 error**, syntax dan diff-check bersih. Rincian ada di
+`backend-p14a1-checkout-session-schema.md`. Belum ada action/cookie/CSRF runtime/
+HTTP/config/cleanup/source aktif, migration DB aktif, outbound, deploy, atau
+push. **STOP review sebelum recovery/action/wiring P14 berikutnya.**
