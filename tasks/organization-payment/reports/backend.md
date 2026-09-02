@@ -3084,3 +3084,28 @@ tersedia pada halaman SelectionLaunch, tanpa fake manifest/harness relaxation.
 Rincian ada di `backend-p13b-core-consume.md`. Tidak ada route/controller/session,
 config/schema, billing/access/order/outbox, source/gate aktif, outbound, atau P14.
 **STOP untuk review P13b.**
+
+## P14a0 — kontrak sesi checkout privat (2026-09-02)
+
+ADR-012 proposed membandingkan Laravel session existing dengan durable
+`checkout_sessions` record dan merekomendasikan opsi framework existing untuk
+increment awal. Principal disimpan server-side sebagai allowlist identifier
+non-PII, session ID diregenerasi setelah consume, CSRF token dirotasi, dan sukses
+redirect 303 ke path tokenless. Bearer hanya boleh berada pada exact POST form
+body; initial exchange adalah satu exception CSRF bounded, sementara seluruh
+mutation setelah cookie wajib CSRF normal.
+
+Hydration setiap request reload graph persisted/latest handoff dan menolak role
+participant/admin/branch/guest sebagai bypass. Output hanya attempt sendiri;
+anggota/count/total batch, bill/gateway reference, invoice URL/proof, credential,
+external identity, dan data klinis dilarang. Seluruh response pipeline harus
+no-store/private/no-referrer dan credential failures generik.
+
+Preflight menemukan dependency yang belum tertutup: issuer P13 tidak dapat
+reissue setelah latest handoff CONSUMED, padahal kegagalan session write setelah
+consume harus fail closed lalu recovery lewat generation baru. ADR menetapkan
+amendment recovery terpisah sebelum route wiring; token lama tidak dihidupkan.
+Rincian trust matrix, dua opsi, crash semantics, typed surface, dan RED matrix ada
+di `docs/decisions/0012-private-integrated-checkout-session.md` serta
+`backend-p14a0-private-session-preflight.md`. P14a0 hanya dokumen; belum ada
+config/schema/route/controller/middleware/session/source aktif. **STOP review.**
