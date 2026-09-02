@@ -916,3 +916,18 @@ sebagai runtime non-owner/NOBYPASSRLS dan cleanup sukses. Projection tidak memua
 PII, detail batch, total, invoice, atau credential. P14a3 diterima lokal
 default-OFF; HTTP/controller/route/cookie/header/browser dan cleanup worker belum
 diimplementasikan atau diaktifkan.
+
+## P14b0 backend — private HTTP contract accepted
+
+Amendment ADR-012 worker `c62f215` dan laporan `3281c65` diintegrasikan root
+sebagai `4faecc6`/`5adcbbf`. Kontrak menetapkan exchange POST body-only dari dua
+Origin seleksi exact, selector serta CSRF-delivery cookie privat host-only,
+hydration setelah verifikasi digest, CSRF eksplisit untuk semua mutasi, privacy
+headers, generic errors, clear/logout/recovery, rate limit, dan route test-only
+tanpa grup `web` maupun session/auth Laravel global.
+
+Review menerima mekanisme raw CSRF dari cookie HttpOnly yang dicocokkan ke digest
+database lalu diproyeksikan hanya ke hidden field/meta halaman aktif. Cookie
+otomatis dan SameSite tidak pernah menjadi authority. `git diff --check` lulus;
+increment ini dokumentasi saja sehingga tidak ada tes runtime yang diklaim.
+Belum ada route/controller/middleware/config key/browser atau aktivasi endpoint.
