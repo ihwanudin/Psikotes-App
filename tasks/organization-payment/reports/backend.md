@@ -3298,3 +3298,34 @@ disposable full suite passes **343 tests / 2,523 assertions** with cleanup.
 Pint, full-project PHPStan (**0 errors**), and diff-check pass. Fix commit:
 `0422898`. No HTTP, route, cookie, source activation, or operational behavior was
 added. **STOP review.**
+
+## P14b0 — private checkout HTTP boundary preflight (2026-09-02)
+
+ADR-012 now has an implementation-ready HTTP amendment without enabling any
+route or code. It fixes four endpoints/methods, strict form-body bearer transport,
+two exact trusted selection origins, destination host authority from reviewed
+server configuration, generic redirect/error behavior, and a minimal route stack
+that excludes Laravel's global `web` session/cookie/CSRF/auth middleware.
+
+The amendment resolves the post-303 CSRF delivery gap explicitly. A successful
+exchange will eventually set two host-only `/checkout` cookies: the HttpOnly
+selector and an HttpOnly CSRF delivery secret, both Secure and SameSite Lax.
+Database storage remains digest-only. GET hydration may project the raw CSRF value
+from the delivery cookie into a server-rendered hidden field and page-local meta
+only after selector plus CSRF digest verification. Every mutation must supply the
+token explicitly through exactly one `_checkout_csrf` form field or
+`X-Checkout-CSRF` header and pass constant-time cookie + DB digest comparison;
+automatically sent cookies and SameSite alone never authorize mutation.
+
+The contract also specifies login-cookie byte preservation, exact clear semantics,
+privacy headers for every outcome, Origin checks, bounded IP-only limiter keys
+without credential material, default-OFF ordering, recovery/crash behavior,
+minimum own-attempt projection, test-only route registration, and a complete
+cross-site/guest/IDOR/CSRF/replay/error matrix. Existing stack inspection confirms
+`routes/web.php` receives the `web` group, so future checkout routes must use a
+separate minimal registration rather than that file/group.
+
+Documentation commit: `c62f215`. `git diff --check` passes. No PHPUnit/PG run was
+needed because this increment changes documentation only. No controller, route,
+middleware, config, cookie, source activation, environment, database, browser,
+outbound operation, deploy, or push was performed. **STOP before P14b1.**
