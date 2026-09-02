@@ -731,3 +731,21 @@ Tidak ada source workaround atau klaim upload palsu. Port/session dibersihkan.
 Kelanjutan task portal adalah reproduksi minimal modal Filament 5 dengan asset/
 layout sama untuk membedakan bug harness dari konfigurasi header action; browser
 atau driver lain belum dipakai sebelum akar sebab lokal diketahui.
+
+Reproduksi minimal membuktikan akar masalah berada pada assertion harness terhadap
+root dialog berukuran nol sementara window modal fixed tetap terlihat. Koreksi
+browser `c3e8317`/`b8465bd`/`8e9767b` diintegrasikan root sebagai `da235c7`/
+`eb5cd4b`/`5874c0a`; P12c dan regresi P12b lulus pada browser native dengan
+desktop/mobile/keyboard, upload/replace/denial, geometry, dan network/console
+bersih. Review root menemukan postcondition lama meng-hardcode dua audit sehingga
+benar menahan acceptance setelah satu audit akses bukti yang sah.
+
+Perbaikan verifier `c817fa0`/`90bea2a` diintegrasikan root sebagai `47d12e3`/
+`a7f70f5`. Verifier sekarang menerima hanya dua profil exact: baseline dengan dua
+audit reservasi dan tanpa proof, atau P12c dengan dua audit reservasi, tepat satu
+audit akses terikat fixture, dan satu proof kanonik; konteks URL/key/checksum/secret
+serta semua side effect tetap ditolak. Probe URL terselubung dan audit duplikat
+gagal sebagaimana diharapkan. Root mengulang focused **64/64 tes, 490 assertions**,
+PHP lint, Pint, dan PHPStan dengan hasil lulus. P12c diterima lokal default-off;
+route/discovery produksi, database aktif, provider/notifier, deploy, dan P13 belum
+diaktifkan.

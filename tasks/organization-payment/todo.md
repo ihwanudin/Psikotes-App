@@ -537,11 +537,11 @@ provider atau menjadi authority sampai acquisition/validator berikutnya direview
 
 ## P12c: Bukti transfer privat dan riwayat
 
-- [x] Core lokal default-off selesai pada `4b8ff72`/`6a87caa`: upload/replace memakai writer P11c canonical, projection riwayat aman, branch issuer short-lived dengan role/tenant/fingerprint second recheck, config/channel guard ketat, dan audit tanpa URL/key/PII. Root storage+P12c 50/278 serta P12a terisolasi 14/212 lulus; browser belum dijalankan.
+- [x] Core lokal default-off selesai pada `4b8ff72`/`6a87caa`: upload/replace memakai writer P11c canonical, projection riwayat aman, branch issuer short-lived dengan role/tenant/fingerprint second recheck, config/channel guard ketat, dan audit tanpa URL/key/PII. Browser acceptance dan verifier postcondition ketat diintegrasikan sebagai `da235c7`–`5874c0a` serta `47d12e3`/`a7f70f5`; root focused terakhir 64/490, Pint, PHP lint, dan PHPStan lulus.
 
 **Acceptance:**
 
-- [ ] Cabang unggah bukti satu bill; tipe/ukuran/path divalidasi server, download privat berotorisasi. Status unggahan bukan paid; riwayat/verifikasi hanya dibaca sesuai peran.
+- [x] Cabang unggah bukti satu bill; JPEG/PNG/PDF, invalid/oversize, replace/replay, role/tenant/deleted denial, download privat, riwayat, keyboard, dan reflow 320/390/1280 dibuktikan pada browser fixture disposable. Postcondition menerima hanya profil baseline atau P12c yang exact, mengikat satu audit akses ke aktor/tenant/bill tanpa URL/key/checksum/secret, dan membuktikan nol settlement/entitlement/outbox/order. Status unggahan tetap pending, bukan paid; seluruh discovery produksi tetap OFF.
 
 **Dependencies:** P12b. **Scope:** M.
 
