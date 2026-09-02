@@ -10,6 +10,7 @@ use App\Enums\CheckoutHandoffIntent;
 use App\Models\AssessmentParticipant;
 use App\Models\Branch;
 use App\Models\CheckoutHandoff;
+use App\Models\CheckoutSession;
 use App\Models\IntegrationClient;
 use App\Models\IntegrationSource;
 use App\Models\Participant;
@@ -87,8 +88,11 @@ final readonly class IssueCheckoutHandoff
         if ($package === null || ! $package->is_active || $package->amount === null || $package->amount < 0
             || $package->currency !== 'IDR'
             || ($package->consultation_amount !== null && $package->consultation_amount < 0)
-            || ! in_array($package->code, $source->allowed_assessment_packages, true)
-            || $package->items()->lockForUpdate()->first() === null) {
+            || ! in_array($package->code, $source->allowed_assessment_packages, true)) {
+            throw new IntegrationContractViolation('HANDOFF_NOT_ALLOWED');
+        }
+        $packageItemIds = $package->items()->orderBy('id')->lockForUpdate()->pluck('id')->all();
+        if ($packageItemIds === []) {
             throw new IntegrationContractViolation('HANDOFF_NOT_ALLOWED');
         }
         $attempt = AssessmentParticipant::query()
@@ -136,7 +140,7 @@ final readonly class IssueCheckoutHandoff
                 throw new IntegrationContractViolation('HANDOFF_REISSUE_REQUIRED', 409);
             }
             $revokedPrevious = false;
-        } else {
+        } elseif ($input->intent === CheckoutHandoffIntent::Reissue) {
             if ($handoffs->isEmpty() || $active->count() !== 1) {
                 throw new IntegrationContractViolation('HANDOFF_STATE_INVALID', 409);
             }
@@ -154,6 +158,22 @@ final readonly class IssueCheckoutHandoff
                     'revocation_reason' => 'REISSUED', 'updated_at' => $now,
                 ]);
             }
+        } elseif ($input->intent === CheckoutHandoffIntent::Recovery) {
+            $latest = $handoffs->last();
+            if ($latest === null || $latest->status !== 'CONSUMED' || $active->isNotEmpty()) {
+                throw new IntegrationContractViolation('HANDOFF_RECOVERY_NOT_ALLOWED', 409);
+            }
+            $session = $this->recoverySession($handoffs, $attempt, $source, $latest, $now);
+            $session->update([
+                'active_marker' => null,
+                'status' => 'REVOKED',
+                'revoked_at' => $now,
+                'revocation_reason' => 'RECOVERY_REISSUED',
+                'updated_at' => $now,
+            ]);
+            $revokedPrevious = false;
+        } else {
+            throw new LogicException('Unknown checkout handoff intent.');
         }
 
         $lastHandoff = $handoffs->last();
@@ -171,7 +191,7 @@ final readonly class IssueCheckoutHandoff
             'issue_idempotency_key_digest' => $idempotencyDigest, 'request_hash' => $requestHash,
             'issued_at' => $now, 'expires_at' => $expiresAt, 'created_at' => $now, 'updated_at' => $now,
         ]);
-        $this->audit($handoff, $attempt, $client, $now, $revokedPrevious);
+        $this->audit($handoff, $attempt, $client, $now, $input->intent, $revokedPrevious);
 
         return $this->outcome($handoff, $rawToken, false, false);
     }
@@ -302,13 +322,83 @@ final readonly class IssueCheckoutHandoff
             && hash_equals($handoff->request_hash, $requestHash);
     }
 
+    /** @param Collection<int, CheckoutHandoff> $handoffs */
+    private function recoverySession(Collection $handoffs, AssessmentParticipant $attempt,
+        IntegrationSource $source, CheckoutHandoff $latest, CarbonImmutable $now): CheckoutSession
+    {
+        /** @var Collection<int, CheckoutSession> $sessions */
+        $sessions = CheckoutSession::query()->where('assessment_participant_id', $attempt->id)
+            ->orderBy('established_at')->orderBy('id')->lockForUpdate()->get();
+        $handoffsById = $handoffs->keyBy('id');
+        $active = [];
+        foreach ($sessions as $session) {
+            $handoff = $handoffsById->get($session->checkout_handoff_id);
+            $scopeValid = $handoff instanceof CheckoutHandoff
+                && $session->assessment_participant_id === $attempt->id
+                && $session->organization_id === $attempt->organization_id
+                && $session->participant_id === $attempt->participant_id
+                && $session->package_id === $attempt->package_id
+                && $session->integration_client_id === $attempt->integration_client_id
+                && $session->integration_source_id === $source->id
+                && $session->source_system === $attempt->source_system
+                && $session->contract_version === self::CONTRACT_VERSION
+                && preg_match('/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/D', $session->public_id) === 1
+                && preg_match('/^[0-9a-f]{64}$/D', $session->selector_digest) === 1
+                && preg_match('/^[0-9a-f]{64}$/D', $session->csrf_digest) === 1
+                && $session->last_seen_at->greaterThanOrEqualTo($session->established_at)
+                && $session->idle_expires_at->greaterThan($session->last_seen_at)
+                && $session->idle_expires_at->lessThanOrEqualTo($session->absolute_expires_at)
+                && $session->absolute_expires_at->greaterThan($session->established_at)
+                && $session->established_at->lessThanOrEqualTo($now)
+                && $session->last_seen_at->lessThanOrEqualTo($now)
+                && $handoff->status === 'CONSUMED' && $handoff->consumed_at !== null
+                && $session->established_at->greaterThanOrEqualTo($handoff->consumed_at)
+                && $session->established_at->lessThan($handoff->expires_at);
+            $stateValid = match ($session->status) {
+                'ACTIVE' => $session->active_marker === true && $session->revoked_at === null
+                    && $session->expired_at === null && $session->revocation_reason === null
+                    && $now->lessThan($session->idle_expires_at)
+                    && $now->lessThan($session->absolute_expires_at),
+                'REVOKED' => $session->active_marker === null && $session->revoked_at !== null
+                    && $session->expired_at === null
+                    && $session->revoked_at->greaterThanOrEqualTo($session->last_seen_at)
+                    && $session->revoked_at->lessThanOrEqualTo($now)
+                    && in_array($session->revocation_reason,
+                        ['LOGOUT', 'RECOVERY_REISSUED', 'SCOPE_REVOKED', 'REPLACED'], true),
+                'EXPIRED' => $session->active_marker === null && $session->revoked_at === null
+                    && $session->expired_at !== null && $session->revocation_reason === null
+                    && $session->expired_at->greaterThanOrEqualTo(
+                        $session->idle_expires_at->min($session->absolute_expires_at),
+                    ) && $session->expired_at->lessThanOrEqualTo($now),
+                default => false,
+            };
+            if (! $scopeValid || ! $stateValid) {
+                throw new IntegrationContractViolation('HANDOFF_RECOVERY_NOT_ALLOWED', 409);
+            }
+            if ($session->status === 'ACTIVE') {
+                $active[] = $session;
+            }
+        }
+
+        if (count($active) !== 1 || $active[0]->checkout_handoff_id !== $latest->id) {
+            throw new IntegrationContractViolation('HANDOFF_RECOVERY_NOT_ALLOWED', 409);
+        }
+
+        return $active[0];
+    }
+
     private function audit(CheckoutHandoff $handoff, AssessmentParticipant $attempt,
-        IntegrationClient $client, CarbonImmutable $now, bool $revokedPrevious): void
+        IntegrationClient $client, CarbonImmutable $now, CheckoutHandoffIntent $intent,
+        bool $revokedPrevious): void
     {
         DB::table('audit_logs')->insert([
             'branch_id' => $attempt->organization_id, 'actor_type' => 'integration_client',
             'actor_id' => (string) $client->id,
-            'action' => $handoff->issue_number === 1 ? 'checkout_handoff.issued' : 'checkout_handoff.reissued',
+            'action' => match ($intent) {
+                CheckoutHandoffIntent::Issue => 'checkout_handoff.issued',
+                CheckoutHandoffIntent::Reissue => 'checkout_handoff.reissued',
+                CheckoutHandoffIntent::Recovery => 'checkout_handoff.recovery_reissued',
+            },
             'subject_type' => AssessmentParticipant::class, 'subject_id' => (string) $attempt->id,
             'context' => json_encode([
                 'version' => 1, 'publicId' => $handoff->public_id, 'issueNumber' => $handoff->issue_number,

@@ -8,4 +8,6 @@ enum CheckoutHandoffIntent: string
 {
     case Issue = 'ISSUE';
     case Reissue = 'REISSUE';
+
+    case Recovery = 'RECOVERY';
 }
