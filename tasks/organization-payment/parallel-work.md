@@ -882,3 +882,20 @@ dan PostgreSQL disposable **360/360 tes, 3.057 assertions** dengan lock wait
 nyata; cleanup sukses. Audit recovery hanya menambah prior-session-state
 allowlist, tanpa ID session/token/digest/PII. Belum ada P14 establish/hydrate,
 selector/cookie/CSRF runtime, HTTP, config aktif, DB aktif, outbound, atau deploy.
+
+## P14a2 backend — atomic session establishment accepted
+
+Refactor konsumsi kanonik dan action internal worker `5c13097`/`c4ff646` serta
+laporan `13e2d87` diintegrasikan root sebagai `84c8223`/`0e1a559`/`2425f22`.
+Review memastikan bearer P13 dikonsumsi dan record session dibuat dalam satu
+transaksi service, selector dan CSRF 256-bit hanya disimpan sebagai digest, serta
+rollback insert/audit dan race establishment-versus-recovery tetap fail-closed.
+Kontrak publik P13 lama tidak berubah; tidak ada HTTP, cookie runtime, route,
+global Laravel session, billing, entitlement, atau outbound yang ditambahkan.
+
+Config session 30/120 menit dan retention 30 hari ditambahkan default OFF pada
+root setelah membandingkan hunk worker. Root mengulang focused P13/P14 **32/32
+tes, 459 assertions**, Pint, dan PHPStan 0 error. PostgreSQL disposable penuh
+lulus **362/362 tes, 3.096 assertions** sebagai runtime non-owner/NOBYPASSRLS dan
+cleanup sukses. P14a2 diterima lokal; delivery CSRF/browser, hydrate/revoke,
+cleanup, HTTP headers/cookies, IDOR, dan source activation masih terbuka.
