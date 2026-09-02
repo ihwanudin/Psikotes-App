@@ -2969,3 +2969,23 @@ Server Chrome/PHP, port 8023, browser session, marker lokal, dan seluruh direkto
 temp/database sintetis dibersihkan setelah run. Tidak ada endpoint/source/gate
 produksi yang diaktifkan, DB/data aktif, credential, outbound provider/notifier,
 upload nyata, migration, deploy, atau push. **STOP untuk review P11c3c.**
+
+## P13a1 — kontrak schema checkout handoff (2026-09-02)
+
+Schema additive `checkout_handoffs` dan model internal telah dibuat sesuai
+ADR-011 accepted. Kontrak menyimpan digest bearer dan idempotency tanpa raw
+secret, composite attempt scope, lifecycle exact, TTL maksimum 600 detik,
+one-active marker, serta service-only FORCE RLS. Belum ada issuer action, token
+generation, route/controller, consume, session, atau wiring publik.
+
+Bukti final: focused P13a1 **5 tes/32 assertions**; regresi migration SQLite
+**52 tes/294 assertions**; PostgreSQL 17.6 disposable **298 tes/2.032
+assertions** dengan runtime non-superuser/NOBYPASSRLS dan cleanup sukses; Pint
+dan PHPStan scoped lulus tanpa error. Rincian desain, RED→GREEN, temuan runner,
+file delta, dan batas verifikasi dicatat di
+`tasks/organization-payment/reports/backend-p13a1-schema.md`.
+
+Perubahan test-only pada `tests/Postgres/AssessmentBillingMigrationTest.php`
+memastikan dependent handoff diturunkan sebelum ancestor billing dan dipulihkan
+setelah ancestor up; perubahan ini dipisahkan dari commit schema/model. **STOP
+untuk review P13a1 sebelum IssueCheckoutHandoff/P13a2/P13b/P14.**
