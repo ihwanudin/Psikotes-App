@@ -931,3 +931,19 @@ database lalu diproyeksikan hanya ke hidden field/meta halaman aktif. Cookie
 otomatis dan SameSite tidak pernah menjadi authority. `git diff --check` lulus;
 increment ini dokumentasi saja sehingga tidak ada tes runtime yang diklaim.
 Belum ada route/controller/middleware/config key/browser atau aktivasi endpoint.
+
+## P14b1 backend — test-only HTTP adapter accepted
+
+Adapter awal worker `ac17ffa`–`757ea6c` ditahan saat review karena destination
+masih `oncam.id`, raw form duplicate dapat dikolaps framework, dan bukti cookie
+login belum memakai sesi autentikasi nyata. Fix `e3ae84e`/`a49354f` menetapkan
+`https://psikotes.oncam.id`, parser raw body kanonik bounded, named limiter, serta
+probe `web`+`auth` dengan cookie Laravel terenkripsi sebelum/sesudah exchange.
+Rangkaian diterima root sebagai `216ec64`–`52e5c72`.
+
+Config HTTP fixed origins dan batas 10/60/10 ditambahkan di bawah session yang
+tetap default OFF. Root lulus focused checkout **53/53 tes, 1.041 assertions**,
+seluruh Integration **225/225 tes, 2.173 assertions**, Pint, dan PHPStan 0 error.
+PostgreSQL disposable penuh tetap lulus **364/364 tes, 3.124 assertions** dan
+cleanup sukses. Route hanya diregistrasikan oleh tes; produksi, browser nyata,
+source activation, database aktif, outbound, deploy, dan push tetap tidak ada.
