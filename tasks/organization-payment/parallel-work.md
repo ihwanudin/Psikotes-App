@@ -865,3 +865,20 @@ sukses. P14a1 diterima lokal. Migration belum diterapkan ke database aktif dan
 belum ada selector generation, recovery, establish/hydrate/revoke action,
 cookie/CSRF runtime, route, config aktif, cleanup worker, atau deploy. Increment
 berikutnya adalah amendment recovery P13 yang bounded sebelum session action.
+
+## P13 recovery backend — terminal restart accepted
+
+Recovery awal worker `eb3e774`/`e7944c8` ditahan karena hanya menerima session
+ACTIVE-undued dan membuat EXPIRED/LOGOUT menjadi jalan buntu. Fix
+`f16103e`/`8362203` menambah enum internal state: ACTIVE-undued direvoke
+`RECOVERY_REISSUED`, ACTIVE-due diterminalkan EXPIRED dengan wall clock database,
+sedangkan terminal EXPIRED/LOGOUT dapat memulai tepat satu generation baru tanpa
+menulis ulang history. SCOPE_REVOKED, corrupt/foreign/future, serta terminal
+recovery tanpa generation konsisten tetap ditolak.
+
+Rangkaian diintegrasikan root sebagai `bf70824`/`4a65fa0`/`deeb34f`/`81c0475`.
+Root lulus focused **26/26 tes, 348 assertions**, Pint, PHPStan penuh 0 error,
+dan PostgreSQL disposable **360/360 tes, 3.057 assertions** dengan lock wait
+nyata; cleanup sukses. Audit recovery hanya menambah prior-session-state
+allowlist, tanpa ID session/token/digest/PII. Belum ada P14 establish/hydrate,
+selector/cookie/CSRF runtime, HTTP, config aktif, DB aktif, outbound, atau deploy.
