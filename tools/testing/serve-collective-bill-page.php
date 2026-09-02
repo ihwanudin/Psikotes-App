@@ -256,21 +256,94 @@ if ($mode === 'verify') {
         $counts[$table] = DB::table($table)->count();
     }
     $manifest = json_decode((string) file_get_contents($directory.'/manifest.json'), true, flags: JSON_THROW_ON_ERROR);
+    if (! is_array($manifest) || ! is_int($manifest['admin'] ?? null)
+        || ! is_int($manifest['organization'] ?? null) || ! is_int($manifest['baselineBill'] ?? null)
+        || ! is_string($manifest['control'] ?? null)) {
+        throw new RuntimeException('Invalid synthetic manifest for verification.');
+    }
+    $accessAction = 'assessment_bill.branch_proof_temporary_url_issued';
+    $accessAudits = DB::table('audit_logs')->where('action', $accessAction)->get();
+    $reservedAudits = DB::table('audit_logs')->where('action', 'assessment_bill.reserved')->count();
+    $profile = match ($accessAudits->count()) {
+        0 => 'baseline',
+        1 => 'p12c',
+        default => 'invalid',
+    };
+    $expectedAuditCount = $profile === 'p12c' ? 3 : 2;
     $expected = [
         'assessment_charges' => 11,
         'assessment_bills' => 2,
         'assessment_bill_items' => 11,
         'assessment_entitlements' => 0,
-        'audit_logs' => 2,
+        'audit_logs' => $expectedAuditCount,
         'outbox_messages' => 0,
         'orders' => 0,
         'entitlements' => 0,
         'consent_records' => 0,
         'identity_verifications' => 0,
     ];
-    $canonical = DB::table('assessment_bills')->where('id', $manifest['baselineBill'] ?? 0)->exists();
-    echo json_encode(['counts' => $counts, 'expected' => $expected, 'baselineBillStillExists' => $canonical], JSON_THROW_ON_ERROR)."\n";
-    exit($counts === $expected && $canonical ? 0 : 1);
+    $bill = DB::table('assessment_bills')->where('id', $manifest['baselineBill'])->first();
+    $canonical = $bill !== null && $bill->organization_id === $manifest['organization']
+        && $bill->payer_type === 'organization';
+    $accessAuditValid = $profile === 'baseline';
+    $auditContextSafe = $profile === 'baseline';
+    if ($profile === 'p12c') {
+        $audit = $accessAudits->sole();
+        $contextJson = is_string($audit->context ?? null) ? $audit->context : '';
+        $normalizedContextJson = str_replace('\/', '/', $contextJson);
+        $context = json_decode($contextJson, true);
+        $contextKeys = is_array($context) ? array_keys($context) : [];
+        sort($contextKeys);
+        $accessAuditValid = ($audit->branch_id ?? null) === $manifest['organization']
+            && ($audit->actor_type ?? null) === 'admin'
+            && ($audit->actor_id ?? null) === (string) $manifest['admin']
+            && ($audit->subject_type ?? null) === AssessmentBill::class
+            && ($audit->subject_id ?? null) === (string) $manifest['baselineBill']
+            && $contextKeys === ['proof_fingerprint', 'url_expires_at', 'version']
+            && ($context['version'] ?? null) === 1
+            && is_string($context['proof_fingerprint'] ?? null)
+            && preg_match('/^[0-9a-f]{64}$/D', $context['proof_fingerprint']) === 1
+            && is_string($context['url_expires_at'] ?? null)
+            && strtotime($context['url_expires_at']) !== false;
+        $auditContextSafe = preg_match(
+            '#assessment-bills/|fixture-proof|https?://|proof_object_key|proof_checksum|checksum|gateway|invoice|PRIVATE-SENTINEL|XENDIT|'.preg_quote($manifest['control'], '#').'#i',
+            $normalizedContextJson,
+        ) === 0;
+    }
+    $proofFiles = Storage::disk('payment-proofs')->allFiles();
+    $proofStateValid = $profile === 'baseline'
+        ? $bill !== null && $bill->proof_object_key === null && $bill->proof_checksum_sha256 === null
+            && $bill->proof_mime_type === null && $bill->proof_size_bytes === null
+            && $bill->proof_uploaded_at === null && $proofFiles === []
+        : $bill !== null && $bill->status === 'pending'
+            && is_string($bill->proof_object_key)
+            && preg_match('#^assessment-bills/[a-z0-9]{2}/[a-z0-9]{62}\.(?:jpg|png|pdf)$#D', $bill->proof_object_key) === 1
+            && is_string($bill->proof_checksum_sha256)
+            && preg_match('/^[0-9a-f]{64}$/D', $bill->proof_checksum_sha256) === 1
+            && in_array($bill->proof_mime_type, ['image/jpeg', 'image/png', 'application/pdf'], true)
+            && is_int($bill->proof_size_bytes) && $bill->proof_size_bytes >= 1 && $bill->proof_size_bytes <= 5_120_000
+            && $bill->proof_uploaded_at !== null && count($proofFiles) === 1
+            && Storage::disk('payment-proofs')->exists($bill->proof_object_key);
+    $auditProfileValid = $profile !== 'invalid' && $reservedAudits === 2
+        && $counts['audit_logs'] === $expectedAuditCount && $accessAuditValid && $auditContextSafe;
+    $valid = $counts === $expected && $canonical && $proofStateValid && $auditProfileValid;
+    echo json_encode([
+        'profile' => $profile,
+        'counts' => $counts,
+        'expected' => $expected,
+        'checks' => [
+            'baselineBillCanonical' => $canonical,
+            'proofStateValid' => $proofStateValid,
+            'reservedAuditCount' => $reservedAudits,
+            'accessAuditCount' => $accessAudits->count(),
+            'accessAuditBoundToFixture' => $accessAuditValid,
+            'auditContextSafe' => $auditContextSafe,
+            'zeroSideEffects' => $counts['assessment_entitlements'] === 0 && $counts['outbox_messages'] === 0
+                && $counts['orders'] === 0 && $counts['entitlements'] === 0
+                && $counts['consent_records'] === 0 && $counts['identity_verifications'] === 0,
+        ],
+    ], JSON_THROW_ON_ERROR)."\n";
+    exit($valid ? 0 : 1);
 }
 
 $manifestJson = file_get_contents($directory.'/manifest.json');
