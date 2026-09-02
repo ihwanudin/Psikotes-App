@@ -48,7 +48,30 @@ final readonly class CheckoutSessionLifecycle
         $principal = $this->contexts->run(
             new RlsContext('service'),
             function () use ($selectorDigest, $idle): ?CheckoutSessionPrincipal {
-                $result = $this->operate($selectorDigest, null, false, $idle);
+                $result = $this->operate($selectorDigest, null, false, false, $idle);
+
+                return $result instanceof CheckoutSessionPrincipal ? $result : null;
+            },
+        );
+        if ($principal === null) {
+            throw new InvalidCheckoutSession;
+        }
+
+        return $principal;
+    }
+
+    public function hydrateWithCsrfDelivery(
+        #[SensitiveParameter] CheckoutSessionMutationCredentials $input,
+    ): CheckoutSessionPrincipal {
+        $idle = $this->preflight();
+        $selectorDigest = $this->selectorDigest($input->rawSelector());
+        $csrfDigest = $this->csrfDigest($input->rawCsrfToken());
+
+        /** @var CheckoutSessionPrincipal|null $principal */
+        $principal = $this->contexts->run(
+            new RlsContext('service'),
+            function () use ($selectorDigest, $csrfDigest, $idle): ?CheckoutSessionPrincipal {
+                $result = $this->operate($selectorDigest, $csrfDigest, true, false, $idle);
 
                 return $result instanceof CheckoutSessionPrincipal ? $result : null;
             },
@@ -69,7 +92,7 @@ final readonly class CheckoutSessionLifecycle
         /** @var bool $revoked */
         $revoked = $this->contexts->run(
             new RlsContext('service'),
-            fn (): bool => $this->operate($selectorDigest, $csrfDigest, true, $idle) === true,
+            fn (): bool => $this->operate($selectorDigest, $csrfDigest, true, true, $idle) === true,
         );
         if ($revoked !== true) {
             throw new InvalidCheckoutSession;
@@ -77,7 +100,8 @@ final readonly class CheckoutSessionLifecycle
     }
 
     private function operate(#[SensitiveParameter] string $selectorDigest,
-        #[SensitiveParameter] ?string $csrfDigest, bool $logout, int $idleMinutes): CheckoutSessionPrincipal|bool|null
+        #[SensitiveParameter] ?string $csrfDigest, bool $requireCsrf, bool $logout,
+        int $idleMinutes): CheckoutSessionPrincipal|bool|null
     {
         $hints = CheckoutSession::query()->where('selector_digest', $selectorDigest)->limit(2)
             ->get(['id', 'organization_id', 'assessment_participant_id', 'integration_client_id',
@@ -120,7 +144,7 @@ final readonly class CheckoutSessionLifecycle
         if (! $target instanceof CheckoutSession || ! hash_equals($target->selector_digest, $selectorDigest)) {
             throw new InvalidCheckoutSession;
         }
-        if ($logout && ($csrfDigest === null || ! hash_equals($target->csrf_digest, $csrfDigest))) {
+        if ($requireCsrf && ($csrfDigest === null || ! hash_equals($target->csrf_digest, $csrfDigest))) {
             throw new InvalidCheckoutSession;
         }
 

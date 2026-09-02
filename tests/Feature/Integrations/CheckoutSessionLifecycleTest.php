@@ -114,6 +114,24 @@ final class CheckoutSessionLifecycleTest extends OrganizationPaymentTestCase
         $this->assertSame($before, CheckoutSession::query()->findOrFail($first['session'])->getAttributes());
     }
 
+    public function test_csrf_delivery_hydration_is_canonical_and_requires_the_exact_pair(): void
+    {
+        $fixture = $this->established();
+        try {
+            app(CheckoutSessionLifecycle::class)->hydrateWithCsrfDelivery(
+                new CheckoutSessionMutationCredentials($fixture['selector'], 'ocsrf1_'.str_repeat('0', 64)),
+            );
+            $this->fail('Foreign CSRF delivery hydrated.');
+        } catch (InvalidCheckoutSession $exception) {
+            $this->assertSame('CHECKOUT_SESSION_INVALID', $exception->getMessage());
+        }
+
+        $principal = app(CheckoutSessionLifecycle::class)->hydrateWithCsrfDelivery(
+            new CheckoutSessionMutationCredentials($fixture['selector'], $fixture['csrf']),
+        );
+        $this->assertSame($fixture['attemptPublicId'], $principal->assessmentAttemptId);
+    }
+
     public function test_logout_requires_exact_csrf_and_is_terminal_without_replay_audit(): void
     {
         $fixture = $this->established();
