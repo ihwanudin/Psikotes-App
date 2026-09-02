@@ -7,6 +7,7 @@ namespace App\Actions\Integrations;
 use App\Data\Integrations\CheckoutHandoffIssueInput;
 use App\Data\Integrations\CheckoutHandoffIssueResult;
 use App\Enums\CheckoutHandoffIntent;
+use App\Enums\CheckoutSessionRecoveryState;
 use App\Models\AssessmentParticipant;
 use App\Models\Branch;
 use App\Models\CheckoutHandoff;
@@ -135,6 +136,7 @@ final readonly class IssueCheckoutHandoff
 
         $active = $handoffs->filter(fn (CheckoutHandoff $handoff): bool => $handoff->status === 'ISSUED'
             && $handoff->active_marker === true);
+        $recoveryState = null;
         if ($input->intent === CheckoutHandoffIntent::Issue) {
             if ($handoffs->isNotEmpty()) {
                 throw new IntegrationContractViolation('HANDOFF_REISSUE_REQUIRED', 409);
@@ -163,14 +165,29 @@ final readonly class IssueCheckoutHandoff
             if ($latest === null || $latest->status !== 'CONSUMED' || $active->isNotEmpty()) {
                 throw new IntegrationContractViolation('HANDOFF_RECOVERY_NOT_ALLOWED', 409);
             }
-            $session = $this->recoverySession($handoffs, $attempt, $source, $latest, $now);
-            $session->update([
-                'active_marker' => null,
-                'status' => 'REVOKED',
-                'revoked_at' => $now,
-                'revocation_reason' => 'RECOVERY_REISSUED',
-                'updated_at' => $now,
-            ]);
+            $recovery = $this->recoverySession($handoffs, $attempt, $source, $latest);
+            $recoveryState = $recovery['state'];
+            $now = $recovery['now'];
+            if (! $this->effective($client->effective_from, $client->effective_until, $now)
+                || ! $this->effective($source->effective_from, $source->effective_until, $now)) {
+                throw new IntegrationContractViolation('HANDOFF_NOT_ALLOWED');
+            }
+            if ($recoveryState === CheckoutSessionRecoveryState::ActiveRevoked) {
+                $recovery['session']->update([
+                    'active_marker' => null,
+                    'status' => 'REVOKED',
+                    'revoked_at' => $now,
+                    'revocation_reason' => 'RECOVERY_REISSUED',
+                    'updated_at' => $now,
+                ]);
+            } elseif ($recoveryState === CheckoutSessionRecoveryState::ActiveDueExpired) {
+                $recovery['session']->update([
+                    'active_marker' => null,
+                    'status' => 'EXPIRED',
+                    'expired_at' => $now,
+                    'updated_at' => $now,
+                ]);
+            }
             $revokedPrevious = false;
         } else {
             throw new LogicException('Unknown checkout handoff intent.');
@@ -191,7 +208,7 @@ final readonly class IssueCheckoutHandoff
             'issue_idempotency_key_digest' => $idempotencyDigest, 'request_hash' => $requestHash,
             'issued_at' => $now, 'expires_at' => $expiresAt, 'created_at' => $now, 'updated_at' => $now,
         ]);
-        $this->audit($handoff, $attempt, $client, $now, $input->intent, $revokedPrevious);
+        $this->audit($handoff, $attempt, $client, $now, $input->intent, $revokedPrevious, $recoveryState);
 
         return $this->outcome($handoff, $rawToken, false, false);
     }
@@ -322,15 +339,20 @@ final readonly class IssueCheckoutHandoff
             && hash_equals($handoff->request_hash, $requestHash);
     }
 
-    /** @param Collection<int, CheckoutHandoff> $handoffs */
+    /** @param Collection<int, CheckoutHandoff> $handoffs
+     * @return array{session: CheckoutSession, state: CheckoutSessionRecoveryState, now: CarbonImmutable}
+     */
     private function recoverySession(Collection $handoffs, AssessmentParticipant $attempt,
-        IntegrationSource $source, CheckoutHandoff $latest, CarbonImmutable $now): CheckoutSession
+        IntegrationSource $source, CheckoutHandoff $latest): array
     {
         /** @var Collection<int, CheckoutSession> $sessions */
         $sessions = CheckoutSession::query()->where('assessment_participant_id', $attempt->id)
             ->orderBy('established_at')->orderBy('id')->lockForUpdate()->get();
+        $now = $this->databaseWallClock();
         $handoffsById = $handoffs->keyBy('id');
-        $active = [];
+        $handoffsByIssue = $handoffs->keyBy('issue_number');
+        $target = null;
+        $targetState = null;
         foreach ($sessions as $session) {
             $handoff = $handoffsById->get($session->checkout_handoff_id);
             $scopeValid = $handoff instanceof CheckoutHandoff
@@ -354,43 +376,109 @@ final readonly class IssueCheckoutHandoff
                 && $handoff->status === 'CONSUMED' && $handoff->consumed_at !== null
                 && $session->established_at->greaterThanOrEqualTo($handoff->consumed_at)
                 && $session->established_at->lessThan($handoff->expires_at);
-            $stateValid = match ($session->status) {
-                'ACTIVE' => $session->active_marker === true && $session->revoked_at === null
-                    && $session->expired_at === null && $session->revocation_reason === null
-                    && $now->lessThan($session->idle_expires_at)
-                    && $now->lessThan($session->absolute_expires_at),
-                'REVOKED' => $session->active_marker === null && $session->revoked_at !== null
+            if (! $scopeValid) {
+                throw new IntegrationContractViolation('HANDOFF_RECOVERY_NOT_ALLOWED', 409);
+            }
+
+            $isTarget = $handoff->id === $latest->id;
+            if ($isTarget && $target !== null) {
+                throw new IntegrationContractViolation('HANDOFF_RECOVERY_NOT_ALLOWED', 409);
+            }
+            if ($session->status === 'ACTIVE') {
+                $valid = $session->active_marker === true && $session->revoked_at === null
+                    && $session->expired_at === null && $session->revocation_reason === null;
+                if (! $valid || ! $isTarget) {
+                    throw new IntegrationContractViolation('HANDOFF_RECOVERY_NOT_ALLOWED', 409);
+                }
+                $target = $session;
+                $targetState = $now->greaterThanOrEqualTo($session->idle_expires_at)
+                    || $now->greaterThanOrEqualTo($session->absolute_expires_at)
+                    ? CheckoutSessionRecoveryState::ActiveDueExpired
+                    : CheckoutSessionRecoveryState::ActiveRevoked;
+
+                continue;
+            }
+
+            $transitionedAt = null;
+            if ($session->status === 'EXPIRED') {
+                $valid = $session->active_marker === null && $session->revoked_at === null
+                    && $session->expired_at !== null && $session->revocation_reason === null
+                    && $session->expired_at->greaterThanOrEqualTo(
+                        $session->idle_expires_at->min($session->absolute_expires_at),
+                    ) && $session->expired_at->lessThanOrEqualTo($now);
+                $transitionedAt = $session->expired_at;
+                if ($isTarget) {
+                    $target = $session;
+                    $targetState = CheckoutSessionRecoveryState::Expired;
+                }
+            } elseif ($session->status === 'REVOKED') {
+                $valid = $session->active_marker === null && $session->revoked_at !== null
                     && $session->expired_at === null
                     && $session->revoked_at->greaterThanOrEqualTo($session->last_seen_at)
                     && $session->revoked_at->lessThanOrEqualTo($now)
                     && in_array($session->revocation_reason,
-                        ['LOGOUT', 'RECOVERY_REISSUED', 'SCOPE_REVOKED', 'REPLACED'], true),
-                'EXPIRED' => $session->active_marker === null && $session->revoked_at === null
-                    && $session->expired_at !== null && $session->revocation_reason === null
-                    && $session->expired_at->greaterThanOrEqualTo(
-                        $session->idle_expires_at->min($session->absolute_expires_at),
-                    ) && $session->expired_at->lessThanOrEqualTo($now),
-                default => false,
-            };
-            if (! $scopeValid || ! $stateValid) {
+                        ['LOGOUT', 'RECOVERY_REISSUED', 'SCOPE_REVOKED', 'REPLACED'], true);
+                $transitionedAt = $session->revoked_at;
+                if ($session->revocation_reason === 'SCOPE_REVOKED') {
+                    $valid = false;
+                } elseif ($isTarget && $session->revocation_reason === 'LOGOUT') {
+                    $target = $session;
+                    $targetState = CheckoutSessionRecoveryState::LoggedOut;
+                } elseif ($isTarget) {
+                    $valid = false;
+                }
+            } else {
+                $valid = false;
+            }
+            if (! $valid || ($isTarget && $target === null)) {
                 throw new IntegrationContractViolation('HANDOFF_RECOVERY_NOT_ALLOWED', 409);
             }
-            if ($session->status === 'ACTIVE') {
-                $active[] = $session;
+            if (! $isTarget) {
+                $next = $handoffsByIssue->get($handoff->issue_number + 1);
+                if (! $next instanceof CheckoutHandoff || $transitionedAt === null
+                    || $next->issued_at->lessThan($transitionedAt)) {
+                    throw new IntegrationContractViolation('HANDOFF_RECOVERY_NOT_ALLOWED', 409);
+                }
             }
         }
 
-        if (count($active) !== 1 || $active[0]->checkout_handoff_id !== $latest->id) {
+        if (! $target instanceof CheckoutSession || ! $targetState instanceof CheckoutSessionRecoveryState) {
             throw new IntegrationContractViolation('HANDOFF_RECOVERY_NOT_ALLOWED', 409);
         }
 
-        return $active[0];
+        return ['session' => $target, 'state' => $targetState, 'now' => $now];
+    }
+
+    private function databaseWallClock(): CarbonImmutable
+    {
+        // Compare at the timestampTz column precision; PostgreSQL rounds, rather than truncates, precision zero.
+        $clock = DB::getDriverName() === 'pgsql' ? 'clock_timestamp()::timestamptz(0)' : 'CURRENT_TIMESTAMP';
+        $row = DB::selectOne("SELECT {$clock} AS current_time");
+        if ($row === null || (! is_string($row->current_time) && ! $row->current_time instanceof \DateTimeInterface)) {
+            throw new LogicException('Database wall clock is unavailable.');
+        }
+
+        return CarbonImmutable::parse($row->current_time)->utc();
     }
 
     private function audit(CheckoutHandoff $handoff, AssessmentParticipant $attempt,
         IntegrationClient $client, CarbonImmutable $now, CheckoutHandoffIntent $intent,
-        bool $revokedPrevious): void
+        bool $revokedPrevious, ?CheckoutSessionRecoveryState $recoveryState): void
     {
+        $context = [
+            'version' => 1, 'publicId' => $handoff->public_id, 'issueNumber' => $handoff->issue_number,
+            'purpose' => self::PURPOSE, 'destination' => self::DESTINATION,
+            'sourceSystem' => $handoff->source_system,
+            'issuedAt' => $handoff->issued_at->toISOString(),
+            'expiresAt' => $handoff->expires_at->toISOString(),
+            'revokedPrevious' => $revokedPrevious,
+        ];
+        if ($intent === CheckoutHandoffIntent::Recovery) {
+            if ($recoveryState === null) {
+                throw new LogicException('Checkout handoff recovery audit state is unavailable.');
+            }
+            $context['priorSessionState'] = $recoveryState->value;
+        }
         DB::table('audit_logs')->insert([
             'branch_id' => $attempt->organization_id, 'actor_type' => 'integration_client',
             'actor_id' => (string) $client->id,
@@ -400,14 +488,7 @@ final readonly class IssueCheckoutHandoff
                 CheckoutHandoffIntent::Recovery => 'checkout_handoff.recovery_reissued',
             },
             'subject_type' => AssessmentParticipant::class, 'subject_id' => (string) $attempt->id,
-            'context' => json_encode([
-                'version' => 1, 'publicId' => $handoff->public_id, 'issueNumber' => $handoff->issue_number,
-                'purpose' => self::PURPOSE, 'destination' => self::DESTINATION,
-                'sourceSystem' => $handoff->source_system,
-                'issuedAt' => $handoff->issued_at->toISOString(),
-                'expiresAt' => $handoff->expires_at->toISOString(),
-                'revokedPrevious' => $revokedPrevious,
-            ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
+            'context' => json_encode($context, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
             'occurred_at' => $now, 'expires_at' => $now->addYearsNoOverflow(2),
         ]);
     }

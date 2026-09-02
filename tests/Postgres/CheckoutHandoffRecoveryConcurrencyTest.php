@@ -19,6 +19,7 @@ use App\Security\RlsContextRunner;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Throwable;
@@ -83,30 +84,54 @@ final class CheckoutHandoffRecoveryConcurrencyTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_distinct_recoveries_serialize_to_one_new_active_handoff(): void
+    /** @return iterable<string, array{string}> */
+    public static function restartStates(): iterable
     {
+        yield 'active' => ['ACTIVE'];
+        yield 'expired' => ['EXPIRED'];
+        yield 'logout' => ['LOGOUT'];
+    }
+
+    #[DataProvider('restartStates')]
+    public function test_distinct_recoveries_serialize_to_one_new_active_handoff(string $state): void
+    {
+        app(RlsContextRunner::class)->runAsService(fn () => $this->terminalizeSession($state));
         $results = $this->raceTwo(
             'ih1_'.bin2hex(random_bytes(16)),
             'ih1_'.bin2hex(random_bytes(16)),
         );
 
-        $this->assertCount(1, array_filter($results, fn (array $result): bool => $result['rawPresent'] === true));
+        $this->assertCount(1, array_filter(
+            $results, fn (array $result): bool => $result['rawPresent'] === true,
+        ), json_encode($results, JSON_THROW_ON_ERROR));
         $this->assertCount(1, array_filter($results, fn (array $result): bool => ($result['errorCode'] ?? null) === 'HANDOFF_RECOVERY_NOT_ALLOWED'));
-        app(RlsContextRunner::class)->runAsService(function (): void {
+        app(RlsContextRunner::class)->runAsService(function () use ($state): void {
             $rows = DB::table('checkout_handoffs')->where('assessment_participant_id', $this->fixture['attempt'])
                 ->orderBy('issue_number')->get();
             $this->assertSame([1, 2], $rows->pluck('issue_number')->all());
             $this->assertSame(['CONSUMED', 'ISSUED'], $rows->pluck('status')->all());
             $this->assertSame([null, true], $rows->pluck('active_marker')->all());
-            $this->assertSame(1, DB::table('checkout_sessions')->where('id', $this->fixture['session'])
-                ->where('status', 'REVOKED')->whereNull('active_marker')
-                ->where('revocation_reason', 'RECOVERY_REISSUED')->count());
+            $session = DB::table('checkout_sessions')->where('id', $this->fixture['session'])->sole();
+            $this->assertNull($session->active_marker);
+            $this->assertSame($state === 'EXPIRED' ? 'EXPIRED' : 'REVOKED', $session->status);
+            $this->assertSame(match ($state) {
+                'ACTIVE' => 'RECOVERY_REISSUED', 'EXPIRED' => null, 'LOGOUT' => 'LOGOUT',
+            }, $session->revocation_reason);
             $this->assertSame(1, $this->recoveryAuditCount());
+            $context = json_decode(DB::table('audit_logs')
+                ->where('action', 'checkout_handoff.recovery_reissued')
+                ->where('subject_id', (string) $this->fixture['attempt'])->value('context'),
+                true, 512, JSON_THROW_ON_ERROR);
+            $this->assertSame(match ($state) {
+                'ACTIVE' => 'ACTIVE_REVOKED', 'EXPIRED' => 'EXPIRED', 'LOGOUT' => 'LOGOUT',
+            }, $context['priorSessionState']);
         });
     }
 
-    public function test_same_key_recovery_has_one_credential_and_one_credentialless_replay(): void
+    #[DataProvider('restartStates')]
+    public function test_same_key_recovery_has_one_credential_and_one_credentialless_replay(string $state): void
     {
+        app(RlsContextRunner::class)->runAsService(fn () => $this->terminalizeSession($state));
         $key = 'ih1_'.bin2hex(random_bytes(16));
         $results = $this->raceTwo($key, $key);
 
@@ -121,36 +146,47 @@ final class CheckoutHandoffRecoveryConcurrencyTest extends TestCase
         });
     }
 
-    public function test_recovery_waiting_behind_session_revocation_fails_without_new_generation(): void
+    /** @return iterable<string, array{string, bool}> */
+    public static function concurrentTerminalStates(): iterable
+    {
+        yield 'natural expiry' => ['EXPIRED', true];
+        yield 'logout' => ['LOGOUT', true];
+        yield 'scope revocation' => ['SCOPE_REVOKED', false];
+    }
+
+    #[DataProvider('concurrentTerminalStates')]
+    public function test_recovery_is_linearizable_with_session_terminalization(string $state, bool $allowed): void
     {
         $workers = $this->startWorkers(['ih1_'.bin2hex(random_bytes(16))]);
         try {
             $backend = $this->workerBackendIds($workers)[0];
-            app(RlsContextRunner::class)->runAsService(function () use ($workers, $backend): void {
+            app(RlsContextRunner::class)->runAsService(function () use ($workers, $backend, $state): void {
                 $this->lockCanonicalGraph();
                 fwrite($workers[0]['socket'], "go\n");
                 $this->assertWorkerWaitsOnLock($backend);
-                DB::table('checkout_sessions')->where('id', $this->fixture['session'])->update([
-                    'status' => 'REVOKED', 'active_marker' => null, 'revoked_at' => DB::raw('clock_timestamp()'),
-                    'revocation_reason' => 'LOGOUT', 'updated_at' => DB::raw('clock_timestamp()'),
-                ]);
+                $this->terminalizeSession($state);
             });
             $result = $this->workerResults($workers)[0];
         } finally {
             $this->stopWorkers($workers);
         }
 
-        $this->assertSame(IntegrationContractViolation::class, $result['errorClass']);
-        $this->assertSame('HANDOFF_RECOVERY_NOT_ALLOWED', $result['errorCode']);
-        $this->assertFalse($result['rawPresent']);
-        app(RlsContextRunner::class)->runAsService(function (): void {
-            $this->assertSame(1, DB::table('checkout_handoffs')
+        if ($allowed) {
+            $this->assertTrue($result['rawPresent'], json_encode($result, JSON_THROW_ON_ERROR));
+            $this->assertSame(2, $result['issueNumber']);
+        } else {
+            $this->assertSame(IntegrationContractViolation::class, $result['errorClass']);
+            $this->assertSame('HANDOFF_RECOVERY_NOT_ALLOWED', $result['errorCode']);
+            $this->assertFalse($result['rawPresent']);
+        }
+        app(RlsContextRunner::class)->runAsService(function () use ($allowed, $state): void {
+            $this->assertSame($allowed ? 2 : 1, DB::table('checkout_handoffs')
                 ->where('assessment_participant_id', $this->fixture['attempt'])->count());
             $this->assertSame('CONSUMED', DB::table('checkout_handoffs')
                 ->where('id', $this->fixture['handoff'])->value('status'));
-            $this->assertSame('REVOKED', DB::table('checkout_sessions')
+            $this->assertSame($state === 'EXPIRED' ? 'EXPIRED' : 'REVOKED', DB::table('checkout_sessions')
                 ->where('id', $this->fixture['session'])->value('status'));
-            $this->assertSame(0, $this->recoveryAuditCount());
+            $this->assertSame($allowed ? 1 : 0, $this->recoveryAuditCount());
         });
     }
 
@@ -214,6 +250,7 @@ final class CheckoutHandoffRecoveryConcurrencyTest extends TestCase
                         'errorClass' => $exception::class,
                         'errorCode' => $exception instanceof IntegrationContractViolation
                             ? $exception->errorCode : $exception->getMessage(),
+                        'errorLine' => $exception->getLine(),
                         'rawPresent' => false,
                     ];
                 }
@@ -294,6 +331,38 @@ final class CheckoutHandoffRecoveryConcurrencyTest extends TestCase
             ->orderBy('issue_number')->orderBy('id')->lockForUpdate()->get();
         DB::table('checkout_sessions')->where('assessment_participant_id', $this->fixture['attempt'])
             ->orderBy('established_at')->orderBy('id')->lockForUpdate()->get();
+    }
+
+    private function terminalizeSession(string $state): void
+    {
+        if ($state === 'ACTIVE') {
+            return;
+        }
+        if ($state === 'EXPIRED') {
+            DB::table('checkout_handoffs')->where('id', $this->fixture['handoff'])->update([
+                'issued_at' => DB::raw("clock_timestamp() - INTERVAL '9 minutes'"),
+                'consumed_at' => DB::raw("clock_timestamp() - INTERVAL '8 minutes'"),
+                'expires_at' => DB::raw("clock_timestamp() + INTERVAL '1 minute'"),
+            ]);
+            DB::table('checkout_sessions')->where('id', $this->fixture['session'])->update([
+                'status' => 'EXPIRED', 'active_marker' => null,
+                'established_at' => DB::raw("clock_timestamp() - INTERVAL '8 minutes'"),
+                'last_seen_at' => DB::raw("clock_timestamp() - INTERVAL '8 minutes'"),
+                'idle_expires_at' => DB::raw("clock_timestamp() - INTERVAL '7 minutes'"),
+                'absolute_expires_at' => DB::raw("clock_timestamp() + INTERVAL '30 minutes'"),
+                'expired_at' => DB::raw("clock_timestamp() - INTERVAL '7 minutes'"),
+                'updated_at' => DB::raw('clock_timestamp()'),
+            ]);
+
+            return;
+        }
+        if (! in_array($state, ['LOGOUT', 'SCOPE_REVOKED'], true)) {
+            throw new RuntimeException('Unknown synthetic checkout session terminal state.');
+        }
+        DB::table('checkout_sessions')->where('id', $this->fixture['session'])->update([
+            'status' => 'REVOKED', 'active_marker' => null, 'revoked_at' => DB::raw('clock_timestamp()'),
+            'revocation_reason' => $state, 'updated_at' => DB::raw('clock_timestamp()'),
+        ]);
     }
 
     private function recoveryAuditCount(): int

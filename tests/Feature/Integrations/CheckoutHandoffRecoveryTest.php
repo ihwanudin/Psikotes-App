@@ -70,8 +70,11 @@ final class CheckoutHandoffRecoveryTest extends OrganizationPaymentTestCase
         $this->assertStringNotContainsString($key, $encoded);
         $this->assertSame([
             'version', 'publicId', 'issueNumber', 'purpose', 'destination', 'sourceSystem',
-            'issuedAt', 'expiresAt', 'revokedPrevious',
+            'issuedAt', 'expiresAt', 'revokedPrevious', 'priorSessionState',
         ], array_keys(json_decode($audit->context, true, 512, JSON_THROW_ON_ERROR)));
+        $this->assertSame('ACTIVE_REVOKED', json_decode(
+            $audit->context, true, 512, JSON_THROW_ON_ERROR,
+        )['priorSessionState']);
         $this->assertStringNotContainsString((string) $newRaw, json_encode($result, JSON_THROW_ON_ERROR));
         $this->assertArrayNotHasKey('token_digest', CheckoutHandoff::query()
             ->where('public_id', $result->handoffPublicId)->firstOrFail()->toArray());
@@ -122,22 +125,94 @@ final class CheckoutHandoffRecoveryTest extends OrganizationPaymentTestCase
             ->where('action', 'checkout_handoff.recovery_reissued')->count());
     }
 
-    public function test_missing_terminal_foreign_due_or_corrupt_session_fails_closed(): void
+    public function test_due_expired_and_logged_out_sessions_can_restart_once(): void
+    {
+        $cases = [
+            'active due' => [
+                'auditState' => 'ACTIVE_DUE_EXPIRED',
+                'mutate' => function (array $state): void {
+                    $now = CarbonImmutable::now()->startOfSecond();
+                    DB::table('checkout_handoffs')->where('id', $state['handoff']->id)->update([
+                        'issued_at' => $now->subMinutes(9), 'consumed_at' => $now->subMinutes(8),
+                        'expires_at' => $now->addMinute(),
+                    ]);
+                    CheckoutSession::query()->whereKey($state['session']->id)->update([
+                        'established_at' => $now->subMinutes(8), 'last_seen_at' => $now->subMinutes(8),
+                        'idle_expires_at' => $now->subMinutes(7),
+                        'absolute_expires_at' => $now->addMinutes(30),
+                    ]);
+                },
+            ],
+            'expired' => [
+                'auditState' => 'EXPIRED',
+                'mutate' => function (array $state): void {
+                    $now = CarbonImmutable::now()->startOfSecond();
+                    DB::table('checkout_handoffs')->where('id', $state['handoff']->id)->update([
+                        'issued_at' => $now->subMinutes(9), 'consumed_at' => $now->subMinutes(8),
+                        'expires_at' => $now->addMinute(),
+                    ]);
+                    CheckoutSession::query()->whereKey($state['session']->id)->update([
+                        'status' => 'EXPIRED', 'active_marker' => null,
+                        'established_at' => $now->subMinutes(8), 'last_seen_at' => $now->subMinutes(8),
+                        'idle_expires_at' => $now->subMinutes(7),
+                        'absolute_expires_at' => $now->addMinutes(30),
+                        'expired_at' => $now->subMinutes(7), 'revocation_reason' => null,
+                    ]);
+                },
+            ],
+            'logout' => [
+                'auditState' => 'LOGOUT',
+                'mutate' => function (array $state): void {
+                    CheckoutSession::query()->whereKey($state['session']->id)->update([
+                        'status' => 'REVOKED', 'active_marker' => null,
+                        'revoked_at' => now(), 'revocation_reason' => 'LOGOUT',
+                    ]);
+                },
+            ],
+        ];
+
+        foreach ($cases as $label => $case) {
+            $state = $this->recoverable();
+            $case['mutate']($state);
+            $before = CheckoutSession::query()->findOrFail($state['session']->id)->getAttributes();
+            try {
+                $result = $this->issue(
+                    $state, 'ih1_'.bin2hex(random_bytes(16)), CheckoutHandoffIntent::Recovery,
+                );
+            } catch (IntegrationContractViolation $exception) {
+                $this->fail("{$label}: {$exception->errorCode}");
+            }
+
+            $this->assertSame(2, $result->issueNumber, $label);
+            $this->assertIsString($result->rawToken(), $label);
+            $session = CheckoutSession::query()->findOrFail($state['session']->id);
+            if ($label === 'active due') {
+                $this->assertSame('EXPIRED', $session->status);
+                $this->assertNull($session->active_marker);
+                $this->assertNotNull($session->expired_at);
+            } else {
+                $this->assertSame($before, $session->getAttributes(), $label);
+            }
+            $audit = DB::table('audit_logs')->where('action', 'checkout_handoff.recovery_reissued')
+                ->where('subject_id', (string) $state['attempt']->id)->sole();
+            $context = json_decode($audit->context, true, 512, JSON_THROW_ON_ERROR);
+            $this->assertSame($case['auditState'], $context['priorSessionState'], $label);
+            $this->assertSame(1, DB::table('checkout_handoffs')
+                ->where('assessment_participant_id', $state['attempt']->id)
+                ->where('status', 'ISSUED')->where('active_marker', true)->count(), $label);
+        }
+    }
+
+    public function test_missing_scope_revoked_foreign_or_corrupt_session_fails_closed(): void
     {
         $cases = [
             'missing' => function (array $state): void {
                 CheckoutSession::query()->whereKey($state['session']->id)->delete();
             },
-            'revoked' => function (array $state): void {
+            'scope revoked' => function (array $state): void {
                 CheckoutSession::query()->whereKey($state['session']->id)->update([
                     'status' => 'REVOKED', 'active_marker' => null, 'revoked_at' => now(),
-                    'revocation_reason' => 'LOGOUT',
-                ]);
-            },
-            'expired' => function (array $state): void {
-                CheckoutSession::query()->whereKey($state['session']->id)->update([
-                    'status' => 'EXPIRED', 'active_marker' => null,
-                    'expired_at' => $state['session']->idle_expires_at, 'revocation_reason' => null,
+                    'revocation_reason' => 'SCOPE_REVOKED',
                 ]);
             },
             'future terminal timestamp' => function (array $state): void {
@@ -151,12 +226,10 @@ final class CheckoutHandoffRecoveryTest extends OrganizationPaymentTestCase
                     'status' => 'ISSUED', 'active_marker' => true, 'consumed_at' => null,
                 ]);
             },
-            'due active' => function (array $state): void {
-                $past = CarbonImmutable::now()->subHours(3)->startOfSecond();
+            'terminalized as recovery without newer generation' => function (array $state): void {
                 CheckoutSession::query()->whereKey($state['session']->id)->update([
-                    'established_at' => $past, 'last_seen_at' => $past,
-                    'idle_expires_at' => $past->addMinutes(30),
-                    'absolute_expires_at' => $past->addHours(2),
+                    'status' => 'REVOKED', 'active_marker' => null, 'revoked_at' => now(),
+                    'revocation_reason' => 'RECOVERY_REISSUED',
                 ]);
             },
             'foreign scope' => function (array $state): void {
