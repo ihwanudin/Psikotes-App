@@ -378,3 +378,12 @@ populated-down refusal, serta urutan rollback descendant→ancestor diuji pada
 SQLite dan PostgreSQL disposable. Root final lulus 320 tes/2.655 assertions
 PostgreSQL dan cleanup sukses. P13a2 issuer action tetap berikutnya; belum ada
 raw token, config, route, consume/session, DB aktif, atau checkout publik.
+
+P13a2 menambah DTO/intent dan issuer internal yang hanya berjalan dalam service
+RLS context dengan authenticated integration client persisted. Config handoff
+tetap default OFF; purpose/destination server-only, token/idempotency digest-only,
+exact replay tidak mengembalikan raw, dan reissue eksplisit atomik. Clock database
+dibaca ulang setelah seluruh lock agar effective window dan timestamps tidak
+stale; paket tetap aktif, source-allowed, IDR, nominal non-negatif, dan memiliki
+item. Root related suite lulus 139 tes/979 assertions, Pint/PHPStan lulus. Race
+dua proses dan expiry saat menunggu lock tetap P13a3; route/P13b/P14 belum ada.

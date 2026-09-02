@@ -561,6 +561,11 @@ provider atau menjadi authority sampai acquisition/validator berikutnya direview
 - [x] Migration additive dan model internal selesai lokal: bearer/idempotency hanya digest, lifecycle/TTL/one-active exact, attempt-client-organization-source database-authoritative melalui composite FK, source/client restrict, attempt cascade, dan FORCE RLS service-only. Down populated fail-closed dan empty descendant/ancestor roundtrip dibuktikan.
 - [x] Root lulus focused SQLite 6/43, PHP lint, Pint, PHPStan, serta PostgreSQL disposable 320/2.655 sebagai runtime non-owner/NOBYPASSRLS; cleanup sukses. Belum ada issuer action, raw token generation, config, route, consume, atau session.
 
+### P13a2: issuer internal default-off
+
+- [x] Typed issuer internal selesai lokal: service context + authenticated client persisted, purpose/destination konstanta server, raw bearer/idempotency hanya hidup di parameter/result private, exact replay tanpa raw, explicit reissue atomik, post-lock database-clock recheck, package IDR canonical, audit aman, dan rollback old generation terbukti. Config committed default OFF/TTL 600.
+- [x] Root lulus related checkout/schema 139/979, PHP lint, Pint, PHPStan, dan diff-check. Belum ada route/controller, consume/session, atau klaim race PostgreSQL; P13a3 tetap wajib sebelum acceptance P13a ditutup.
+
 **Acceptance:**
 
 - [ ] Hash token short-lived terikat attempt/tujuan; reissue mencabut lama tanpa duplikasi charge/bill; tidak memuat PII/credential di URL/log.

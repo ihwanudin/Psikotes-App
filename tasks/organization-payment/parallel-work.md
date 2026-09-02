@@ -780,3 +780,18 @@ PostgreSQL disposable **320/320 tes, 2.655 assertions** pada runtime non-owner/
 NOBYPASSRLS; network/container disposable dibersihkan. P13a1 diterima lokal.
 P13a2 action masih belum dimulai; config/route/consume/session/DB aktif/deploy
 tetap dilarang.
+
+## P13a2 backend — core issuer accepted
+
+DTO/intent `4da938c`, issuer/test `732d845`, laporan `3e36e54`, serta hardening
+clock/rollback `656f45f`/`7de7eb9` diintegrasikan root sebagai `57bef0c`–
+`3965260`. Config default-off diterapkan root pada `948df01` karena file config
+worker berasal baseline overlay.
+
+Review memastikan clock database final dibaca setelah seluruh lock dan authority
+effective client/source diperiksa kembali. Audit failure reissue mengembalikan
+old generation byte-identik; package wajib active, source-allowed, memiliki item,
+amount non-null/non-negatif, currency IDR, dan consultation amount non-negatif
+bila ada. Root related checkout/schema **139/139 tes, 979 assertions**, PHP lint,
+Pint, dan PHPStan lulus. P13a2 diterima lokal default-off. P13a3 concurrency PG
+masih wajib; route/controller/consume/session/DB aktif/deploy tetap dilarang.
