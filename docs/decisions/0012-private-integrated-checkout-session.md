@@ -2,9 +2,9 @@
 
 ## Status
 
-Proposed untuk review P14a0. Dokumen ini belum mengizinkan implementasi,
-registrasi route, perubahan CSRF/session global, config baru, migration, source
-checkout aktif, atau wiring P14/P15/P16.
+Proposed untuk review P14a0 setelah koreksi alur cookie lintas-site. Dokumen ini
+belum mengizinkan implementation, migration, config, route, middleware, perubahan
+CSRF/session global, source aktif, atau wiring P14/P15/P16.
 
 ## Date
 
@@ -12,243 +12,292 @@ checkout aktif, atau wiring P14/P15/P16.
 
 ## Context
 
-P13a menerbitkan bearer handoff `och1_` berumur maksimum 600 detik. P13b menukar
-bearer itu tepat sekali menjadi `CheckoutSessionScope` internal setelah mengunci
-dan memvalidasi ulang organization, integration client/source, package, attempt,
-participant, serta history handoff. Hasil P13b belum merupakan Laravel session,
-cookie, hak assessment, bukti pembayaran, persetujuan, atau identity verification.
+P13b menukar bearer handoff `och1_` tepat sekali menjadi
+`CheckoutSessionScope` internal setelah memvalidasi graph persisted. Hasil itu
+belum merupakan cookie/session, hak assessment, bukti pembayaran, consent, atau
+identity verification.
 
-Browser berikutnya perlu menampilkan ringkasan privat untuk satu attempt tanpa
-memasukkan bearer ke URL dan tanpa memakai login participant/admin sebagai
-bypass. Session harus tetap gagal tertutup ketika graph persisted berubah.
-Ringkasan tidak boleh membocorkan anggota batch, total/invoice organisasi,
-credential provider, data klinis, atau attempt peserta lain.
+Dua source browser nyata, `seleksi.beasiswajepang.id` dan
+`seleksi.serbaindo.com`, berbeda site dengan `oncam.id`. Mereka harus membawa
+bearer melalui top-level HTTPS POST body karena token dilarang pada URL. Cookie
+global ONCAM memakai `SameSite=Lax`; browser tidak mengirim cookie itu pada
+top-level cross-site POST. Jika exchange memakai global Laravel session, request
+akan memperoleh session ID baru lalu response dapat menulis cookie global dengan
+nama sama. Cookie baru dapat mengganti pointer session participant/admin yang
+sudah ada walau exchange tidak pernah melihat session lama. Karena itu klaim
+bahwa regeneration dapat mempertahankan data session lain pada alur ini salah.
 
-Konfigurasi existing memakai server-side Laravel session (`database` sebagai
-default development, Redis diwajibkan pada production), serialization JSON,
-cookie Secure, HttpOnly, SameSite=Lax, host-only bila `SESSION_DOMAIN` null, dan
-path `/`. Session table existing menyimpan opaque session ID, nullable user ID,
-IP, user agent, payload, dan last activity. P14 tidak memerlukan perubahan tabel
-itu untuk menyimpan principal kecil berisi identifier non-PII.
-
-P16-prep hanya kontrak presentasi React. `IntegratedCheckoutProps` bukan response
-HTTP atau authority. Field seperti branch, package, payer, nominal, payment
-state, access state, identity message, dan consent harus dibentuk server-side
-setelah hydration P14; browser tidak menghitung atau memilih scope.
+P14 juga harus membatasi principal ke satu attempt/participant, memeriksa
+revocation setiap request, dan tidak membocorkan anggota, jumlah, total, invoice,
+proof organisasi, credential, atau data klinis. P16-prep tetap kontrak presentasi,
+bukan response HTTP atau authority.
 
 ## Threat model
 
-Asset utama adalah kemampuan session checkout untuk membaca dan kelak mengubah
-hanya attempt yang ditetapkan handoff. Ancaman yang perlu ditutup:
+Ancaman utama:
 
-- bearer masuk path, query, fragment, redirect `Location`, `Referer`, access log,
-  validation echo, exception, audit, telemetry, atau session payload;
-- session fixation sebelum exchange atau cookie session dicuri oleh script;
-- replay bearer, dua exchange paralel, atau response race menghasilkan dua scope;
-- participant/admin/branch login, referral cookie, Host, Origin, atau ID request
-  dipakai sebagai authority tambahan;
-- session lama tetap hidup setelah organization/client/source/package/attempt/
-  participant dinonaktifkan, dipindah, dicabut, atau dihapus;
-- IDOR mengganti attempt/participant/organization pada URL, body, query, Inertia
-  props, atau callback P16;
-- error/cache/browser history membocorkan identitas, credential, bill reference,
-  invoice URL, total batch, jumlah anggota, atau data klinis;
-- consume database commit tetapi session store/cookie response gagal;
-- CSRF pada operasi setelah cookie menjadi credential otomatis browser.
-
-TLS dan hardening host tetap prasyarat transport. Session tidak mengubah bearer
-menjadi bukti settlement, consent, identity, entitlement, atau readiness.
+- bearer masuk path, query, fragment, `Location`, `Referer`, log, exception,
+  audit, telemetry, cookie, atau durable session payload;
+- cross-site exchange mengganti cookie auth ONCAM existing atau memberi auth
+  participant/admin sebagai bypass;
+- session fixation melalui selector checkout yang disediakan attacker;
+- replay/two-process exchange menghasilkan dua principal aktif;
+- IDOR mengganti tenant, attempt, participant, package, payer, atau amount;
+- principal lama bertahan setelah graph/handoff direvoke atau generation baru;
+- cookie otomatis dipakai untuk CSRF pada mutation checkout;
+- cache/error/history membocorkan PII, billing batch, invoice, atau clinical data;
+- consume/session commit berhasil tetapi browser tidak menerima cookie;
+- mutation config session global pada worker long-lived/Octane bocor ke request
+  concurrent.
 
 ## Actor, action, and resource matrix
 
-| Actor/caller | Exchange bearer | Hydrate checkout | Ubah checkout kelak | Resource authority |
+| Actor/caller | Exchange bearer | Hydrate | Mutation kelak | Authority |
 | --- | --- | --- | --- | --- |
-| Anonymous browser + bearer P13 exact dalam POST body | Allow sekali | Setelah session berhasil tersimpan | Hanya melalui P15 + CSRF | Bearer memilih persisted handoff; seluruh graph direload |
-| Anonymous tanpa bearer, malformed, replay, expired, revoked, foreign | Deny generik | Deny generik | Deny | Tidak ada fallback registrasi/default branch |
-| Checkout-session principal valid | Tidak perlu bearer lagi | Allow hanya exact attempt/participant | Allow hanya action P15 yang explicit | Principal adalah selector; database tetap authority |
-| Participant login/JWT tanpa checkout principal | Deny | Deny | Deny | Login participant bukan scope checkout-v2 |
-| BranchAdmin/Staff/Psychologist/SuperAdmin login | Deny | Deny | Deny | Tidak ada role/admin bypass pada route checkout |
-| Guest dengan referral/invitation/assessment-start token | Deny | Deny | Deny | Purpose lain tidak dapat ditukar |
-| Integration client HMAC tanpa browser bearer | Deny pada P14 | Deny | Deny | Client hanya menerbitkan/recover melalui boundary P13 terpisah |
+| Anonymous browser + bearer exact dalam POST body | Allow sekali | Setelah cookie checkout tersimpan | Hanya P15 + CSRF checkout | Bearer memilih handoff; database tetap authority |
+| Anonymous tanpa bearer, malformed/replay/expired/revoked/foreign | Deny generik | Deny | Deny | Tidak ada fallback registrasi/default branch |
+| Checkout-session principal exact | Tidak perlu bearer | Own attempt/participant saja | Scope sama saja | Selector adalah credential; graph direload |
+| Participant login/JWT tanpa checkout cookie | Deny | Deny | Deny | Login bukan authority checkout-v2 |
+| BranchAdmin/Staff/Psychologist/SuperAdmin | Deny | Deny | Deny | Tidak ada role/admin bypass |
+| Guest/referral/invitation/assessment-start token | Deny | Deny | Deny | Purpose lain tidak dapat ditukar |
+| Integration client HMAC tanpa browser bearer | Deny pada P14 | Deny | Deny | Client hanya issue/recovery lewat P13 |
 
-Authenticated roles boleh kebetulan mempunyai cookie Laravel yang sama, tetapi
-guard tersebut diabaikan oleh middleware checkout. Sebaliknya checkout principal
-tidak memberi akses panel, participant API, assessment start, atau tenant lain.
+Global auth cookie boleh hadir di browser, tetapi tidak dikirim pada cross-site
+POST Lax dan tidak dibaca/ditulis oleh exchange. Pada request same-site berikutnya
+cookie auth mungkin ikut bersama cookie checkout; middleware checkout tetap
+mengabaikan seluruh guard auth sebagai authority.
 
 ## Decision
 
-### 1. Gunakan server-side Laravel session existing
+### 1. Durable checkout-session record dan cookie khusus
 
-P14 direkomendasikan menyimpan principal checkout sebagai array JSON kecil di
-namespace session khusus, misalnya `integrated_checkout.principal`. Nilai yang
-boleh disimpan hanya:
+P14 direkomendasikan memakai record `checkout_sessions` service-only dan selector
+opaque terpisah. Cookie:
 
-- version integer;
-- public handoff ULID;
-- internal assessment-participant ID dan public assessment-attempt ULID;
-- organization, participant, package, integration-client, dan integration-source
-  IDs;
-- source system;
-- consumed-at, established-at, last-seen-at, dan absolute-expiry timestamps.
+```text
+name:     __Secure-oncam_checkout_session
+value:    ocs1_ + 64 lowercase hex dari random_bytes(32)
+Domain:   omitted (host-only)
+Path:     /checkout
+Secure:   true
+HttpOnly: true
+SameSite: Lax
+```
 
-Raw bearer, token digest, idempotency digest, external candidate/registration ID,
-nama, email, telepon, bill/invoice reference, invoice URL, payer credential,
-consent text, identity evidence, clinical data, dan payment proof dilarang dalam
-session. Fixed purpose `checkout-handoff`, destination
-`integrated-checkout-session`, dan contract `checkout-v2` divalidasi dari row
-persisted; nilai itu bukan input browser.
+Nama berbeda mencegah overwrite cookie Laravel auth. Path `/checkout` mencakup
+exchange, page, mutation, dan logout, tetapi tidak dikirim ke admin, participant
+API, dashboard, atau route lain. Domain tidak boleh menerima input/source domain.
+SameSite tidak diubah menjadi `None`; selector tidak dikirim pada initial
+cross-site POST, kemudian ditetapkan oleh response ONCAM dan dikirim pada navigasi
+same-site berikutnya. Browser behavior ini wajib dibuktikan, bukan diasumsikan.
 
-Session principal memakai idle timeout 30 menit dan absolute lifetime maksimum
-120 menit dari database `consumed_at`, serta tidak boleh melebihi global session
-lifetime yang lebih pendek. Angka ini kelak menjadi config integer tervalidasi,
-bersama `enabled=false`; P14a0 tidak menambah config. Hydration memakai database
-wall clock. Request aktif boleh memperbarui `last_seen_at` di session, tetapi
-tidak memperpanjang absolute expiry.
+Database hanya menyimpan SHA-256 digest selector. Raw selector hanya hidup saat
+Set-Cookie/browser request, ditandai sensitive pada input internal, tidak dapat
+diserialisasi, dan tidak masuk model/log/audit/exception/metric. Format memakai
+primitive `random_bytes` dan `hash` yang sama dengan P13; tidak ada crypto DIY,
+APP_KEY coupling, atau dependency baru.
 
-Config future yang diajukan adalah namespace terpisah
-`assessment_integration.checkout_session` dengan `enabled=false`,
-`idle_minutes=30`, dan `absolute_minutes=120`. Gate hanya menerima boolean exact
-serta integer positif dengan `idle <= absolute <= global session lifetime`;
-config malformed gagal tertutup. Nilai tidak dibaca dari request atau Host.
+Record proposed minimum:
 
-Cookie existing tetap opaque, encrypted/signed oleh framework middleware, Secure,
-HttpOnly, SameSite=Lax, host-only ketika domain null, dan path `/`. P14 tidak
-mengubah setting global. Network scope cookie memang seluruh host, tetapi hanya
-middleware route checkout yang membaca namespace principal; route lain tidak
-mendapat authority dari keberadaan key itu. Kebutuhan cookie dengan path khusus
-memerlukan session stack/cookie terpisah dan harus menjadi ADR lain.
+| Field | Invariant |
+| --- | --- |
+| `public_id` | ULID safe correlation, bukan credential |
+| `selector_digest` | unique SHA-256 lowercase hex, hidden |
+| `checkout_handoff_id` | unique, exact CONSUMED handoff |
+| attempt/client/org/participant/package/source IDs | composite persisted scope |
+| `csrf_digest` | SHA-256 secret CSRF, hidden |
+| `status`, `active_marker` | ACTIVE atau terminal REVOKED/EXPIRED; satu active per attempt |
+| `established_at`, `last_seen_at` | database clock |
+| `idle_expires_at`, `absolute_expires_at` | exact bounded expiry |
+| `revoked_at`, `expired_at`, `revocation_reason` | state-paired terminal fields |
 
-### 2. Typed boundary
+Migration additive harus menambah composite FK ke handoff/attempt graph, exact
+lifecycle CHECK, unique active marker, discovery/expiry index, FORCE RLS service-
+only, populated down preflight, dan rollback tanpa menghapus history diam-diam.
+Schema dan migration memerlukan ADR implementation review terpisah; tidak dibuat
+pada P14a0.
 
-Surface implementasi yang diusulkan:
+Proposed defaults, belum merupakan product requirement final:
+
+```text
+enabled=false
+idle_minutes=30
+absolute_minutes=120
+terminal_retention_days=30
+```
+
+Acceptance harus memvalidasi angka berdasarkan UX/security/load sebelum wiring.
+Config harus typed, bounded, default OFF, dan tidak membaca Host/request. Tidak
+boleh ada `config()->set('session.*')` pada request, middleware, Octane worker,
+atau singleton mutable.
+
+### 2. Kenapa bukan global atau named Laravel session kedua
+
+Global Laravel session ditolak untuk exchange ini karena cookie Lax existing
+absen pada cross-site POST dan Set-Cookie bernama sama dapat mengganti pointer
+auth. Regeneration tidak dapat memigrasi session yang tidak dikirim browser.
+
+Named Laravel session kedua hanya layak bila framework menyediakan isolated
+store, cookie, CSRF, dan lifecycle tanpa mengubah config repository global. Stack
+existing tidak mempunyai boundary itu. Membuat middleware yang sementara
+mengganti `session.cookie`, `session.path`, driver, atau store adalah request-
+unsafe pada Octane/concurrent worker dan ditolak. Membuat SessionManager/store
+custom pada akhirnya memiliki lifecycle dan schema sendiri; durable record
+explicit lebih mudah diaudit dan tidak berpura-pura memakai global session.
+
+Flow dua langkah yang terlebih dahulu membuat global ONCAM session juga ditolak:
+ia tetap dapat menimpa cookie auth atau membutuhkan token transport baru.
+SameSite=None global tidak diperlukan dan dilarang.
+
+### 3. Typed boundary
+
+Surface proposed:
 
 ```text
 CheckoutSessionExchangeInput
   private #[SensitiveParameter] rawHandoffToken: string
 
+EstablishedCheckoutSession
+  private #[SensitiveParameter] rawSelector: string
+  public safe descriptor: sessionPublicId, handoffPublicId,
+    assessmentParticipantId, assessmentAttemptId, organizationId,
+    participantId, packageId, integrationClientId, integrationSourceId,
+    sourceSystem, establishedAt, idleExpiresAt, absoluteExpiresAt
+
 CheckoutSessionPrincipal
-  version, handoffPublicId, assessmentParticipantId, assessmentAttemptId,
-  organizationId, participantId, packageId, integrationClientId,
-  integrationSourceId, sourceSystem, consumedAt, establishedAt,
-  lastSeenAt, absoluteExpiresAt
+  safe descriptor di atas + lookup generation; tanpa raw selector/digest/CSRF
 
 HydratedCheckoutSession
-  CheckoutSessionPrincipal + authoritative attempt/participant scope
+  principal + authoritative exact attempt/participant scope
 ```
 
-Input bukan array extensible dan tidak menerima organization, participant,
-attempt, package, payer, amount, return URL, purpose, destination, Host, Origin,
-atau Referer. DTO raw tidak boleh `JsonSerializable`, tidak mempunyai public
-property, dan tidak masuk exception/log. Principal/result boleh diserialisasi
-hanya melalui allowlist descriptor tanpa PII.
+Input bukan array extensible dan tidak menerima tenant/attempt/participant/
+package/payer/amount/return URL/purpose/destination/Host/Origin/Referer. P13b
+tetap satu-satunya canonical bearer validator; adapter tidak menyalin predicate.
 
-P13b tetap satu-satunya consumer bearer. Adapter P14 tidak menyalin validasi
-digest/lifecycle. Hydrator P14 tidak mempercayai DTO sebagai authority; setiap
-request memuat dan memeriksa persisted graph serta latest handoff generation.
+### 4. Atomicity, fixation, dan crash window
 
-### 3. Exchange HTTP dan transport token
-
-Route produksi yang diusulkan, tetapi belum didaftarkan:
+Target implementation membuat transition handoff CONSUMED dan durable session
+ACTIVE dalam satu PostgreSQL service transaction dengan lock order canonical:
 
 ```text
-POST /checkout/session       exchange bearer
-GET  /checkout               hydrate/render ringkasan privat
-POST /checkout/logout        hapus principal checkout
-GET  /checkout/unavailable   halaman error generik tokenless
+organization -> client -> source -> package/items -> attempt -> participant
+-> handoff history -> checkout session rows
 ```
 
-Exchange hanya menerima `application/x-www-form-urlencoded` dengan tepat satu
-field `handoffToken`; nilai wajib string format P13, maksimum 69 byte. Multipart,
-JSON, query, route parameter, cookie, header Authorization, dan unknown field
-ditolak. Token tidak boleh berada pada path/query/fragment. Trusted source
-membuat top-level browser POST HTTPS; Origin/Referer bukan authority.
+Ini memerlukan refactor bounded P13b agar canonical consume dapat dipakai oleh
+establisher dalam transaksi yang sama, tanpa membuka callback arbitrary atau
+menyalin validation. Refactor/schema harus direview sebelum code.
 
-Sukses memanggil P13b, lalu meregenerasi session ID dengan old ID invalidated,
-mengganti namespace principal, merotasi CSRF token, dan hanya setelah itu memberi
-`303 See Other` ke fixed `/checkout`. Tidak ada return URL browser. Redirect
-`Location` tidak memuat token, attempt ID, atau participant ID.
+Incoming `__Secure-oncam_checkout_session` selalu diabaikan pada exchange sebagai
+authority/fixation input. Setelah bearer valid, server menghasilkan selector dan
+CSRF secret baru. Unique digest, unique handoff, dan one-active-attempt menjadi
+backstop. Response hanya menetapkan selector yang dibuat server; attacker tidak
+dapat memilih session ID.
 
-Malformed, unknown, expired, revoked, consumed, wrong-purpose, wrong-destination,
-wrong-tenant, dan config-off memakai satu hasil credential generik. Ketika route
-kelak terdaftar tetapi gate OFF, hasil adalah generic 404. Ketika gate ON,
-credential failure adalah `303` ke fixed `/checkout/unavailable`; halaman itu
-tidak membedakan alasan dan tidak mendaftarkan peserta baru. Rate limit tetap 429
-generik; unexpected failure tetap framework 500 generik. Seluruh jalur mendapat
-privacy headers, termasuk rejection awal, throttle, validation, dan 500.
+Database commit tetap tidak atomik dengan HTTP Set-Cookie/browser delivery. Bila
+commit berhasil tetapi response/session cookie gagal:
 
-### 4. Session fixation, multi-tab, dan one-session semantics
+- handoff tetap CONSUMED dan session record dapat menjadi orphan ACTIVE;
+- bearer replay tetap invalid dan token lama tidak dihidupkan;
+- tidak ada billing/access/order/outbox side effect;
+- trusted source memerlukan recovery generation;
+- recovery wajib revoke old durable session dalam lock order yang sama;
+- implementasi tidak mengklaim exactly-once delivery lintas DB/browser.
 
-Session ID selalu diregenerasi setelah consume sukses dan sebelum principal
-ditulis. Existing participant/admin login di cookie yang sama bukan authority;
-regenerasi mempertahankan data session lain tetapi mengganti ID. Checkout logout
-menghapus hanya namespace checkout, meregenerasi ID, dan merotasi CSRF token agar
-tidak diam-diam logout dari guard lain.
+Gap P13 existing tetap blocker: issuer tidak dapat reissue setelah latest
+handoff CONSUMED. Increment recovery terpisah harus mengizinkan generation baru
+hanya bagi authenticated exact client, revoke session old secara atomik, menulis
+audit aman, dan membuat latest-generation hydration menolak selector lama.
 
-Semantik yang dijanjikan oleh opsi ini:
+### 5. HTTP exchange dan global-session isolation
 
-- satu raw bearer hanya dapat menghasilkan satu eksekusi exchange pemenang karena
-  P13b atomik;
-- tab dengan cookie yang sama berbagi satu checkout principal;
-- exchange handoff baru di browser yang sama mengganti principal lama, bukan
-  menumpuk daftar attempt;
-- request tanpa principal exact tidak dapat memilih attempt dari URL/body;
-- tidak ada klaim database-authoritative "satu session aktif global per attempt"
-  tanpa durable session record.
+Route proposed, belum didaftarkan:
 
-Dua POST paralel dari browser tanpa cookie dapat memakai dua session sementara,
-tetapi hanya satu lolos consume. Urutan response cookie dapat membuat browser
-kehilangan cookie pemenang; ini fail closed dan tidak menciptakan privilege kedua.
-Test harus membuktikan at-most-one principal, bukan menjanjikan delivery tepat
-sekali ke browser.
+```text
+POST /checkout/session       bearer exchange
+GET  /checkout               hydrate/render
+POST /checkout/logout        revoke session checkout
+GET  /checkout/unavailable   error tokenless generik
+```
 
-### 5. CSRF
+Initial exchange berada pada middleware group minimal yang **tidak menjalankan
+global `StartSession` dan tidak menulis global session cookie**. Ia menerima hanya
+`application/x-www-form-urlencoded`, tepat field `handoffToken`, format/panjang
+P13. Query/path/fragment/header/cookie/JSON/multipart/unknown field ditolak.
+Origin/Referer bukan authority.
 
-Initial `POST /checkout/session` adalah satu-satunya exception CSRF yang diusulkan.
-Alasannya: cross-site top-level POST dari trusted source memang diperlukan,
-browser belum memiliki CSRF token ONCAM, cookie/login tidak dipakai sebagai
-authority, dan bearer 256-bit satu kali adalah credential unguessable. Exception
-harus exact route+method, bukan prefix checkout, dan tidak boleh meluas ke API/
-route lain. SameSite tidak menggantikan aturan ini.
+Sukses commit session durable lalu memberi Set-Cookie khusus dan `303` fixed
+`/checkout`. Invalid/malformed/replay/expired/revoked/wrong-scope memberi `303`
+fixed `/checkout/unavailable` tanpa Set-Cookie checkout baru. Gate OFF memberi
+generic 404. Throttle 429 dan framework 500 tetap generik. Tidak ada response
+yang menulis cookie global, return URL, token, attempt ID, atau participant ID.
 
-Setelah session cookie terbentuk, setiap request state-changing termasuk profile,
-consent, payer/payment intent, refresh yang memutasi, dan logout wajib melewati
-Laravel CSRF normal. Tidak ada GET yang memutasi. Origin/Host/Referer boleh dipakai
-untuk telemetry aman atau defense-in-depth, tetapi tidak memberi atau menolak
-authority yang seharusnya berasal dari bearer/session+persisted graph.
+Test HTTP harus menanam cookie auth global sintetis, melakukan cross-site POST
+tanpa cookie itu pada request sesuai behavior Lax, lalu membuktikan response tidak
+memuat Set-Cookie global dan cookie auth browser tetap byte-identik. Login existing
+tidak boleh mengubah outcome exchange atau memberi bypass.
 
-### 6. Hydration, IDOR, tenant, dan revocation
+### 6. CSRF khusus checkout
 
-Setiap request checkout memulai tanpa ambient participant/admin bypass. Middleware
-memuat routing hint dari principal, lalu dalam service boundary mengikuti lock/
-reload canonical yang konsisten dengan P13 untuk memeriksa:
+Initial exchange tidak memakai cookie authority dan merupakan satu exact route/
+method CSRF exception. Ia sengaja menerima cross-site form POST dengan bearer
+unguessable. Exception tidak boleh berupa prefix dan tidak mengubah global CSRF
+untuk route lain.
 
-1. organization active;
-2. integration client active/effective dan masih milik organization;
-3. integration source checkout-v2 active/effective dan masih milik client;
-4. package active, source-allowed, dan snapshot yang diperlukan valid;
-5. exact assessment participant masih terikat organization/client/source/package/
-   participant dan belum revoked;
-6. participant belum soft-deleted;
-7. handoff public ID adalah CONSUMED yang exact, purpose/destination/version benar,
-   scope sama, dan merupakan latest generation untuk attempt.
+Setiap durable session mempunyai CSRF secret acak berbeda. Database menyimpan
+digest; raw secret hanya diproyeksikan ke HTML/form/meta same-origin setelah
+hydration dan tidak masuk log/cookie/URL. Semua POST setelah exchange, termasuk
+profile, consent, payer/payment intent, refresh yang mutating, dan logout,
+membutuhkan pasangan:
 
-Selector attempt/participant dari route, query, body, Inertia props, login user,
-referral cookie, atau callback P16 tidak diterima. Bila session idle/absolute
-expired atau graph berubah, namespace checkout dihapus, session ID/CSRF token
-dirotasi, dan response generik diarahkan ke unavailable. Revocation harus efektif
-pada request berikutnya; tidak ada cache principal sebagai authority.
+1. dedicated selector cookie yang lookup exact active session; dan
+2. CSRF body/header secret yang `hash_equals` digest persisted.
 
-Hydration hanya boleh menghasilkan proyeksi attempt sendiri. Untuk billing
-organization, output maksimum adalah amount/status allocation attempt itu dan
-nama organisasi yang memang boleh dilihat peserta. Dilarang memuat/serialize
-bill parent, merchant/gateway reference, invoice URL, proof, member IDs/names,
-jumlah anggota, total batch, atau charge attempt lain. Clinical result, DASS,
-identity evidence, credential, dan internal audit juga tidak masuk props/error.
+CSRF secret dirotasi ketika recovery/session baru. GET tidak pernah mutasi.
+Missing/mismatch mengembalikan generic 419 dengan privacy headers. Ini terpisah
+dari global Laravel CSRF/session dan tidak memerlukan mutasi config runtime.
 
-### 7. Privacy dan security headers
+### 7. Hydration, expiry, logout, dan multi-tab
 
-Boundary middleware khusus checkout harus membungkus seluruh pipeline, termasuk
-gate OFF, CSRF failure, validation, throttle, redirect, 404, dan unexpected 500:
+Setiap request menggunakan selector digest sebagai bounded routing hint, lalu
+service boundary reload/lock organization, client, source, package, attempt,
+participant, handoff latest, dan session row. Ia memverifikasi exact scope,
+checkout-v2/purpose/destination, CONSUMED latest generation, active/effective
+graph, participant belum deleted, attempt belum revoked, DB clock sebelum idle/
+absolute expiry, dan selector digest dengan `hash_equals`.
+
+Principal adalah selector, bukan authority untuk ID request. Route/body/query/
+Inertia props tidak menerima attempt/participant/org/package selector. Session
+expired/revoked menjadi terminal atomik, cookie dibersihkan memakai exact name/
+path/domain attributes, dan response generik. Tidak ada fallback auth/referral.
+
+Logout adalah same-origin POST ber-CSRF: lock record, ACTIVE menjadi REVOKED,
+clear dedicated cookie, dan tidak membaca/menghapus/regenerate cookie/session
+participant/admin global.
+
+Multi-tab pada host yang sama berbagi dedicated cookie dan satu principal.
+Exchange baru menimpa hanya dedicated cookie; old record direvoke bila lock scope
+memungkinkan, atau menjadi orphan sampai expiry jika cross-site request tidak
+mengirim old Lax cookie. Unique active per attempt mencegah dua active session
+untuk attempt sama. Sistem tidak menjanjikan satu session global untuk semua
+attempt/browser tanpa identifier browser durable yang justru menambah tracking.
+
+Cleanup active expiry dapat terjadi saat hydration. Cleanup terminal background
+kelak harus service-only, bounded, SKIP LOCKED, default-off, dan tidak didaftarkan
+pada P14. Migration down menolak row nonempty; rollback aplikasi membuat cookie/
+record inert dan expiry/cleanup plan harus disetujui sebelum deploy.
+
+### 8. Privacy projection dan headers
+
+Hydration hanya dapat menghasilkan attempt sendiri. P16 props boleh memuat own
+profile fields, branch/package label, payer decision, own amount/allocation state,
+dan consent requirement dari server. Dilarang memuat bill parent, batch member/
+count/total, merchant/gateway reference, invoice URL/proof, charge lain, external
+identity, credential, clinical result, DASS data, atau audit internal.
+
+Middleware privacy paling luar membungkus gate, validation, auth/CSRF rejection,
+throttle, redirects, 404, dan unexpected 500:
 
 ```text
 Cache-Control: no-store, private
@@ -259,144 +308,69 @@ X-Content-Type-Options: nosniff
 Content-Security-Policy: default-src 'self'; base-uri 'none'; frame-ancestors 'none'
 ```
 
-CSP final halaman mengikuti asset Inertia/Vite nyata dan harus diuji; tidak boleh
-melonggarkan `unsafe-inline` hanya untuk harness. Error tidak memuat raw bearer,
-digest, PII, SQL, table/model names, credential, scope ID, atau stack trace ketika
-`APP_DEBUG=false`. Session/cookie/CSRF values tidak dicatat pada audit bisnis.
+CSP final mengikuti asset Inertia/Vite nyata tanpa `unsafe-inline` workaround.
+APP_DEBUG=false errors tidak memuat token/selector/digest/CSRF/PII/SQL/model/scope.
 
-Named limiter yang diusulkan: exchange maksimum 10/menit per IP tanpa token/
-digest pada cache key; hydrated reads maksimum 60/menit per hash session ID+IP;
-state-changing checkout maksimum 10/menit per safe handoff public ID+IP. Nilai
-final perlu acceptance load/abuse test. Limiter adalah kontrol DoS, bukan authority.
-
-### 8. Crash window dan recovery
-
-Transaksi P13b commit sebelum framework menyimpan session dan mengirim cookie.
-Tidak ada transaksi atomik lintas PostgreSQL, Redis/database session store, dan
-browser. Jika consume berhasil tetapi regenerate/write/session middleware atau
-response delivery gagal:
-
-- handoff tetap CONSUMED dan tidak pernah dikembalikan ke ISSUED;
-- retry raw bearer gagal generik;
-- tidak ada fallback login/registration atau rekonstruksi raw token;
-- pengguna meminta trusted source menerbitkan recovery handoff baru;
-- implementasi tidak boleh mengklaim exactly-once delivery ke browser.
-
-Ada gap existing yang harus diselesaikan sebelum P14 route wiring: P13 issuer
-saat ini menolak ISSUE ketika history ada dan menolak REISSUE ketika tidak ada
-handoff ISSUED active. Karena handoff yang crash-window sudah CONSUMED, source
-belum dapat melakukan recovery. Increment terpisah harus memperluas intent
-recovery secara bounded: hanya authenticated exact integration client, latest
-generation CONSUMED, generation baru, audit aman, dan hydration session lama
-ditolak ketika bukan latest generation. Ia tidak boleh membuktikan bahwa session
-write benar-benar gagal, menghidupkan token lama, atau menciptakan billing/access.
-Kontrak dan race recovery ini memerlukan review sebelum implementasi P14.
+Proposed limiter, masih perlu acceptance: exchange 10/menit per IP tanpa token
+cache key; hydrated reads 60/menit per session public ID+IP; mutation 10/menit per
+session public ID+IP. Limiter bukan authority dan tidak menyimpan raw credential.
 
 ## Alternatives considered
 
-### A. Laravel session existing (recommended)
+| Opsi | Cross-site/global cookie | Atomicity | Cleanup/one-session | Risiko |
+| --- | --- | --- | --- | --- |
+| Global Laravel session existing | **Tidak aman:** dapat overwrite cookie auth Lax yang absent | Consume dan session store berbeda | Global TTL; tidak unique attempt | Logout/auth loss; rejected |
+| Dedicated Laravel session via config mutation | Nama/path bisa beda, tetapi global config request-unsafe | Store terpisah dari P13 DB | Perlu custom lifecycle | Octane/concurrency leak; rejected |
+| Durable record + dedicated cookie | Tidak menyentuh cookie auth; host-only/path scoped | Consume+record dapat satu PG transaction; cookie delivery tetap terpisah | Explicit expiry/revoke/unique/RLS | Migration/custom CSRF; **selected** |
+| Two-step/global first-party bootstrap | Tetap menulis cookie global atau perlu token transport baru | Tidak memperbaiki browser delivery | Bergantung global session | Lebih kompleks; rejected |
 
-Keuntungan:
+## Default-off implementation sequence
 
-- memakai lifecycle, storage, cookie encryption, CSRF, regeneration, expiry, dan
-  test primitives framework yang sudah dipelihara;
-- tidak menambah schema/RLS/cleanup worker atau custom credential parser;
-- payload principal server-side dan JSON, sementara cookie hanya opaque ID;
-- multi-tab mengikuti perilaku browser yang sudah dipahami.
+1. ADR/migration contract `checkout_sessions` + PostgreSQL RLS/rollback tests.
+2. P13 recovery amendment dan refactor canonical consume-with-session transaction.
+3. Internal establish/hydrate/revoke actions + typed DTO; no HTTP.
+4. Test-only HTTP controller/request/privacy/CSRF middleware; routes synthetic,
+   global session middleware absent.
+5. Own-attempt summary projection untuk P16 props; no mutation P15.
+6. Browser/PG security review, cleanup/deploy plan, lalu public default-off wiring
+   pada checkpoint terpisah.
 
-Batas:
-
-- consume DB dan session write/cookie delivery tidak atomik;
-- cookie path `/` dikirim ke seluruh host, walau authority checkout tetap route-
-  scoped di server;
-- tidak ada unique active session per attempt lintas browser;
-- session backend Redis tidak ikut PostgreSQL RLS/transaction.
-
-### B. Durable `checkout_sessions` record + cookie selector
-
-Keuntungan:
-
-- record dapat dibuat dalam transaksi PostgreSQL yang sama dengan consume bila
-  P13b direfaktor;
-- unique active attempt/generation, explicit revoke, absolute expiry, dan audit
-  lifecycle dapat database-authoritative;
-- cookie selector dapat dipisahkan dari global auth session.
-
-Kerugian:
-
-- perlu migration, digest/selector baru, FORCE RLS, lifecycle/cleanup/index,
-  rotation, custom middleware/cookie, deploy plan, dan PostgreSQL concurrency;
-- cookie delivery tetap berada di luar transaksi, sehingga record dapat orphan
-  dan crash window browser tidak hilang;
-- memperluas penyimpanan credential dan attack surface tanpa kebutuhan P14 saat
-  ini;
-- integrasi CSRF/Inertia/multi-tab menjadi custom dan lebih sulit direview.
-
-Advisory/cache lock tanpa durable record tidak dipilih: ia tidak memberi lifecycle
-atau recovery lintas crash dan tidak boleh menjadi authority.
-
-## Consequences
-
-- P14 implementation pertama dapat tetap tanpa migration dan memakai framework
-  primitives existing.
-- Config/session/CSRF global tidak berubah. Route production dan config flag tetap
-  OFF/unregistered sampai review implementation dan browser tests selesai.
-- Hydration per request menambah query persisted, tetapi menjaga revocation/IDOR
-  fail closed. Optimisasi cache tidak boleh mengurangi authority checks.
-- Recovery-after-consume adalah dependency eksplisit baru yang harus direview;
-  P14 tidak boleh wired publik sebelum gap itu ditutup.
-- P14 tidak mengubah P16 props menjadi HTTP authority dan tidak memulai P15.
-
-## Default-off implementation increments proposed
-
-1. **P13 recovery amendment:** ADR/action/test terpisah untuk generation baru
-   setelah latest CONSUMED; no route.
-2. **P14a1 internal session adapter:** typed input/principal, session rotation,
-   hydration/revocation middleware, privacy boundary, feature tests; routes hanya
-   synthetic test registration.
-3. **P14a2 HTTP contract:** request/controller dan test-only exact CSRF exception,
-   redirect/error/header/rate-limit tests; production route masih absent.
-4. **P14b summary projection:** own-attempt DTO untuk P16 props, tanpa mutations.
-5. **Public wiring review:** baru menambah default-off config/route setelah browser,
-   PostgreSQL, security, and crash-recovery evidence diterima.
-
-Sampai increment kelima, test feature mendaftarkan route sintetis di runtime test
-dan memakai controller/request/middleware nyata. Harness memakai config in-memory,
-session store disposable, source page loopback sintetis, dan tidak mengedit
-`routes/web.php`, `bootstrap/app.php`, `config/session.php`, atau exception CSRF
-global. Route produksi tetap tidak ditemukan ketika config/source belum disetujui.
+Sebelum langkah keenam, test mendaftarkan route sintetis dengan component nyata,
+config in-memory, PostgreSQL/SQLite disposable, dan source loopback sintetis.
+Tidak mengedit `routes/web.php`, `bootstrap/app.php`, `config/session.php`, atau
+global CSRF/session config.
 
 ## RED test matrix
 
 | Area | RED cases before GREEN |
 | --- | --- |
-| HTTP input | POST body exact succeeds; query/path/fragment/header/cookie/multipart/JSON/unknown field rejected; token absent from Location/Referer/body/log |
-| Generic outcome | malformed/unknown/expired/revoked/consumed/wrong-purpose/destination/scope identical; OFF 404; 429 and APP_DEBUG=false 500 private/generic |
-| Cookie/fixation | preseeded session ID changes; old ID unusable; Secure/HttpOnly/SameSite=Lax/host-only expectations; no bearer/PII in cookie or session payload |
-| Redirect | success 303 fixed `/checkout`; failure fixed unavailable; no attacker return URL/open redirect; refresh GET never consumes |
-| CSRF | exchange exact route works without prior CSRF; every later mutation/logout rejects missing/mismatch token; unrelated CSRF exemptions unchanged |
-| Actor | participant/admin/branch/psychologist/super-admin login alone denied; auth cookie cannot choose scope; checkout principal cannot access their guards |
-| IDOR/tenant | attempt/participant/org/package IDs in URL/body ignored/rejected; cross-tenant and stale principal generic; no fallback default branch |
-| Hydration | client/source/org/package disabled/effective-window, attempt revoked/status changed, participant deleted, handoff not latest/exact all invalidate session |
-| Expiry/logout | idle and absolute boundaries use DB clock; logout removes only checkout namespace and rotates ID/CSRF; expired session cannot mutate |
-| Replay/concurrency | same bearer two HTTP requests at most one principal; multi-tab shares one principal; second handoff replaces not appends; response race fail closed |
-| Crash | injected regenerate/write/response failure leaves handoff CONSUMED, no principal/right, retry bearer invalid; recovery generation invalidates stale session |
-| Privacy | only own profile/amount/allocation state; no batch member/count/total, bill/gateway ref, invoice URL/proof, external identity, credential, clinical/DASS leak |
-| Side effects | exchange/hydration changes no charge/bill/item/entitlement/order/outbox/consent/identity/assessment session/invitation |
-| Headers | success, redirect, validation, auth reject, CSRF 419, throttle, 404, and 500 all no-store/private/no-referrer/frame denied/nosniff/CSP |
+| Cross-site cookie | authenticated global ONCAM cookie exists; POST from both real source-site origins sends no Lax auth cookie; response never Set-Cookie global; browser auth cookie/access remains unchanged |
+| Auth isolation | participant/admin/branch/psychologist/super-admin login does not authorize or alter checkout; checkout cookie does not authorize their routes |
+| Transport | body-only exact form succeeds; URL/query/fragment/header/cookie/JSON/multipart/unknown fields rejected; no token in Location/Referer/log |
+| Selector/fixation | incoming dedicated selector ignored on exchange; server generates fresh entropy; only digest durable; chosen/fixed selector cannot attach session |
+| Generic response | malformed/unknown/expired/revoked/consumed/wrong scope same redirect; OFF 404, throttle 429, debug-false 500 private |
+| Cookie attributes | exact name; host-only; Path=/checkout; Secure/HttpOnly/SameSite=Lax; clear uses identical scope; no global cookie mutation |
+| CSRF | exchange exact exception works cross-site; every later POST/logout rejects missing/mismatch; secret bound to session, rotated on recovery; unrelated CSRF unchanged |
+| IDOR/tenant | request IDs rejected; foreign/stale scope generic; latest handoff/session/tenant graph reloaded every hydration |
+| Expiry/logout | proposed idle/absolute boundaries DB-clock; logout terminalizes record and clears only dedicated cookie; repeated logout generic/no audit spam |
+| Replay/concurrency | same bearer two HTTP/processes one record/cookie outcome; unique handoff/active attempt; revoke/recovery races linearizable |
+| Crash | DB/session rollback atomic; failure after commit before Set-Cookie leaves orphan active + consumed handoff; replay invalid; recovery revokes orphan; no exactly-once claim |
+| Multi-tab | same cookie shares one principal; exchange new attempt overwrites only dedicated cookie; old orphan/revoke behavior explicit |
+| Privacy | own amount/allocation only; no batch member/count/total, bill/gateway ref, invoice URL/proof, external identity, credential, clinical/DASS leak |
+| Side effects | establish/hydrate changes no charge/bill/item/entitlement/order/outbox/consent/identity/assessment session/invitation |
+| Headers | success, redirects, validation, auth, CSRF 419, throttle, 404, 500 all no-store/private/no-referrer/frame deny/nosniff/CSP |
+| Octane safety | parallel synthetic requests prove no global config/session cookie mutation or cross-request state bleed |
 
-SQLite feature tests may verify HTTP/session/cookie/generic output and rollback
-injection. PostgreSQL disposable dua proses wajib membuktikan consume-versus-
-exchange/recovery lock ordering, same bearer single winner, latest-generation
-hydration, revocation wait, dan runtime non-owner/NOBYPASSRLS. Browser harness
-test-only memakai source page sintetis yang POST body, memeriksa history/address
-bar/cookie flags/refresh/back/multi-tab/mobile, serta network/console tanpa token
-atau PII. Harness tidak mendaftarkan route produksi dan tidak memakai data nyata.
+SQLite feature tests hanya membuktikan portable HTTP/cookie/DTO semantics.
+PostgreSQL disposable dua proses wajib untuk composite scope, FORCE RLS, consume+
+record atomicity, unique active attempt, recovery/revoke lock order, rollback, dan
+runtime non-owner/NOBYPASSRLS. Browser harness wajib memakai source page pada dua
+site berbeda atau controlled hostnames, memeriksa cookies via browser protocol,
+URL/history/back/refresh/multi-tab, console, dan network tanpa credential/PII.
 
 ## Rollback
 
-P14a0 hanya dokumen. Implementasi Laravel-session kelak dapat dirollback dengan
-menghapus route/gate dan namespace principal; tidak ada schema/data migration.
-Session lama menjadi inert karena middleware/route tidak lagi membacanya dan
-akan habis menurut lifecycle session existing. Tidak boleh melakukan mass delete
-session admin/participant sebagai rollback.
+P14a0 hanya dokumen. Implementasi durable kelak memerlukan route gate OFF lebih
+dahulu, expiry/revoke active sessions, clear dedicated cookie, bounded cleanup,
+dan populated migration down preflight. Rollback tidak menyentuh global Laravel
+session/admin/participant cookies dan tidak menghapus history diam-diam.

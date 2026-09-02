@@ -3087,13 +3087,18 @@ config/schema, billing/access/order/outbox, source/gate aktif, outbound, atau P1
 
 ## P14a0 — kontrak sesi checkout privat (2026-09-02)
 
-ADR-012 proposed membandingkan Laravel session existing dengan durable
-`checkout_sessions` record dan merekomendasikan opsi framework existing untuk
-increment awal. Principal disimpan server-side sebagai allowlist identifier
-non-PII, session ID diregenerasi setelah consume, CSRF token dirotasi, dan sukses
-redirect 303 ke path tokenless. Bearer hanya boleh berada pada exact POST form
-body; initial exchange adalah satu exception CSRF bounded, sementara seluruh
-mutation setelah cookie wajib CSRF normal.
+ADR-012 revisi menolak global Laravel session untuk initial exchange. Top-level
+cross-site POST dari kedua source nyata tidak mengirim cookie auth SameSite=Lax;
+menulis cookie global bernama sama dapat mengganti pointer session existing yang
+tidak terlihat request. Temporary config mutation juga request-unsafe pada
+Octane. Pilihan proposed kini durable `checkout_sessions` + dedicated cookie
+host-only Path `/checkout`, tanpa membaca/menulis cookie auth/global session.
+
+Bearer tetap hanya exact POST form body dan sukses redirect 303 tokenless.
+Session durable menyimpan selector/CSRF digest dan scope non-PII; seluruh mutation
+setelah exchange memakai selector cookie + CSRF secret bound ke record. Consume+
+record ditargetkan satu transaksi PostgreSQL, sedangkan cookie delivery tetap
+crash window fail-closed tanpa klaim exactly-once.
 
 Hydration setiap request reload graph persisted/latest handoff dan menolak role
 participant/admin/branch/guest sebagai bypass. Output hanya attempt sendiri;
