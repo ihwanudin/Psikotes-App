@@ -65,3 +65,40 @@ tidak diklaim sebagai bukti CHECK, RLS, atau concurrency. Tidak ada `.env`, data
 nyata, migration DB aktif, provider/notifier/outbound, deploy, atau push.
 
 **STOP untuk review P13a1 sebelum IssueCheckoutHandoff/P13a2/P13b/P14.**
+
+## Review hardening — composite durable scope dan RLS-safe down
+
+Review root menemukan client/source binding yang sebelumnya masih dapat silang.
+Migration sekarang menambah dua parent unique scope bernama dan mengikat child
+melalui composite FK: attempt mencakup client/organization/participant/package,
+sedangkan source mencakup client/source-system/contract-version. FK attempt tetap
+cascade; source/client tetap restrict secara langsung atau transitif. Tes SQLite
+dan PostgreSQL menolak client attempt asing, source milik client lain,
+source-system/contract-version mismatch, serta organization/participant/package
+silang; graph valid tetap dapat ditulis.
+
+Preflight `down()` PostgreSQL sekarang membuka transaksi singkat, menyimpan raw
+GUC app context, menetapkan service context lokal hanya untuk pemeriksaan
+visibility, memverifikasi role efektif, lalu selalu memulihkan nilai sebelumnya.
+Populated table dengan app context kosong menolak rollback sebelum child maupun
+parent uniques berubah. RLS SELECT proof kini menulis satu row valid sebagai
+service terlebih dahulu, lalu membuktikan semua non-service role melihat nol dan
+ditolak menulis, sedangkan service membaca tepat row tersebut.
+
+Operational note: dua parent unique indexes dapat memindai serta mengunci tabel
+parent saat deployment. Tidak ada migration aktif yang dijalankan; deployment
+kelak memerlukan maintenance window, duplicate preflight, serta lock/statement
+timeout plan. Down menghapus child lebih dahulu, kemudian parent uniques.
+
+Bukti review fix aktual:
+
+- focused P13a1 SQLite: **6 tes, 41 assertions**;
+- related migration regression SQLite: **53 tes, 303 assertions**;
+- full PostgreSQL 17.6 disposable: **299 tes, 2.050 assertions**, cleanup sukses;
+- PHP syntax, Pint scoped, PHPStan scoped **0 error**, dan `git diff --check`
+  lulus.
+
+`tests/Postgres/AssessmentBillingMigrationTest.php` hanya mendapat patch helper
+enam baris untuk memasukkan dua parent scope constraints ke snapshot roundtrip;
+root harus resolve add/add file baseline itu secara manual. **Tetap STOP sebelum
+IssueCheckoutHandoff/config/route/P13a2/P13b/P14.**

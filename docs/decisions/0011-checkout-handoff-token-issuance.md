@@ -239,9 +239,9 @@ New table `checkout_handoffs`:
 | --- | --- |
 | `id` | bigint primary key |
 | `public_id` | ULID unique; safe correlation ID, never bearer |
-| `assessment_participant_id`, `organization_id`, `participant_id`, `package_id` | bigint; composite FK to existing `assessment_attempt_billing_scope_unique`, cascade when attempt is deleted |
+| `assessment_participant_id`, `integration_client_id`, `organization_id`, `participant_id`, `package_id` | bigint; composite FK to an additive checkout-handoff attempt scope unique, cascade when attempt is deleted |
 | `integration_client_id` | bigint FK integration_clients, restrict delete |
-| `integration_source_id` | bigint FK integration_sources, restrict delete |
+| `integration_source_id`, `integration_client_id`, `source_system`, `contract_version` | composite FK to an additive integration-source binding unique, restrict delete |
 | `source_system` | varchar(100), persisted binding validated against locked source/attempt |
 | `contract_version` | varchar(24), CHECK exact `checkout-v2` |
 | `purpose` | varchar(40), CHECK exact `checkout-handoff` |
@@ -259,7 +259,9 @@ New table `checkout_handoffs`:
 
 Constraints and indexes:
 
-- composite FK attempt scope preserves attempt/organization/participant/package;
+- additive parent uniques bind attempt to client/organization/participant/package
+  dan source to client/source-system/contract-version; child composite FKs make
+  every durable handoff scope database-authoritative;
 - FK source/client are restrict-on-delete; attempt cascade invalidates handoff
   atomically dan mencegah orphan bearer state. Penghapusan/privacy erasure parent
   sengaja mengalahkan retensi terminal handoff;
@@ -275,11 +277,15 @@ Constraints and indexes:
 - index `(integration_source_id, status, expires_at)` for source revocation audit.
 
 The migration is additive and does not edit historical migrations. Up on a
-populated database creates an empty table and policies; it does not backfill
-invitations or attempts. Down performs a preflight count and refuses before any
-DDL if handoff rows exist. It never silently drops token history or partially
-drops indexes/policies. Applying to an active database remains a separate
-authorized operation.
+populated database creates two parent unique indexes, an empty child table, and
+policies; it does not backfill invitations or attempts. Creating those uniques
+can scan and lock the parent tables, so deployment needs a separate maintenance
+window, lock/statement timeout plan, and preflight for duplicate scope rows.
+Down performs a service-visible preflight and refuses before any DDL if handoff
+rows exist, then drops the child before both parent uniques. The temporary RLS
+context is restored on the pooled connection. It never silently drops token
+history or partially drops indexes/policies. Applying to an active database
+remains a separate authorized operation.
 
 ### 7. RLS and transaction boundary
 

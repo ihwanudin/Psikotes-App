@@ -2989,3 +2989,19 @@ Perubahan test-only pada `tests/Postgres/AssessmentBillingMigrationTest.php`
 memastikan dependent handoff diturunkan sebelum ancestor billing dan dipulihkan
 setelah ancestor up; perubahan ini dipisahkan dari commit schema/model. **STOP
 untuk review P13a1 sebelum IssueCheckoutHandoff/P13a2/P13b/P14.**
+
+### P13a1 review fix — durable composite scope
+
+Review hardening menambah composite FK database-authoritative untuk
+attempt+client+organization+participant+package serta
+source+client+source-system+contract-version. Preflight rollback PostgreSQL kini
+memeriksa history menggunakan service context lokal yang dipulihkan, sehingga
+context kosong di bawah FORCE RLS tidak dapat menyamarkan row. RLS SELECT proof
+memakai satu row nyata sebelum denial assertions.
+
+Focused SQLite lulus **6/41**, related migration regression **53/303**, dan full
+PostgreSQL disposable lulus **299/2.050** dengan cleanup sukses. Pint dan PHPStan
+scoped lulus tanpa error. Deployment belum dijalankan; dua parent unique indexes
+memerlukan maintenance window dan lock/statement timeout plan. Detail patch dan
+batas ada di `backend-p13a1-schema.md`. **STOP review; belum ada action/config/
+route/P13a2/P13b/P14.**
