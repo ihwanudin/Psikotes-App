@@ -3005,3 +3005,14 @@ scoped lulus tanpa error. Deployment belum dijalankan; dua parent unique indexes
 memerlukan maintenance window dan lock/statement timeout plan. Detail patch dan
 batas ada di `backend-p13a1-schema.md`. **STOP review; belum ada action/config/
 route/P13a2/P13b/P14.**
+
+### P13a1 review fix kedua — complete durable graph
+
+Attempt composite scope sekarang mencakup `source_system`; client juga terikat
+ke organisasi melalui composite restrict FK `(integration_client_id,
+organization_id)`. Migration menambah tiga parent unique indexes total. Negative
+tests mengisolasi source sistem lain pada client sama dan client milik organisasi
+lain; keduanya ditolak database, sementara graph valid tetap masuk. Focused
+SQLite lulus **6/43**, related regression **53/305**, dan PostgreSQL disposable
+**299/2.054** dengan cleanup sukses. Pint/PHPStan scoped lulus. **Tetap STOP
+sebelum P13a2.**

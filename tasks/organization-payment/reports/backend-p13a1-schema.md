@@ -102,3 +102,24 @@ Bukti review fix aktual:
 enam baris untuk memasukkan dua parent scope constraints ke snapshot roundtrip;
 root harus resolve add/add file baseline itu secara manual. **Tetap STOP sebelum
 IssueCheckoutHandoff/config/route/P13a2/P13b/P14.**
+
+## Review hardening kedua — attempt source dan client organization
+
+Attempt scope sekarang juga mencakup `source_system`, sehingga source valid dari
+client yang sama tetapi berbeda sistem tidak dapat dipasang pada handoff attempt
+lain. Parent unique ketiga mengikat IntegrationClient `(id, organization_id)` dan
+child memakai composite restrict FK. Dengan demikian nilai client pada attempt
+historis yang tidak cocok dengan organisasi tidak dapat menjadi handoff valid.
+
+Tes SQLite dan PostgreSQL mengisolasi kedua gap: source B milik client sama lolos
+source FK tetapi ditolak attempt FK; graph attempt yang menyimpan client dari
+organisasi lain lolos attempt/source tuple tetapi ditolak client scope FK. Graph
+source A dan client/organization yang konsisten tetap masuk. Snapshot migration
+shared sekarang mencakup ketiga parent constraints dan fixture roundtrip memakai
+`source_system` authoritative dari attempt.
+
+Focused final: **6 tes, 43 assertions**; related SQLite: **53 tes, 305
+assertions**; full PostgreSQL disposable: **299 tes, 2.054 assertions** dengan
+cleanup sukses. Pint dan PHPStan scoped lulus tanpa error, serta diff-check
+bersih. Operational note kini mencatat tiga parent unique indexes. **STOP sebelum
+P13a2.**
