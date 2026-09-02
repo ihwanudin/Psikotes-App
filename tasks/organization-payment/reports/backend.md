@@ -3047,3 +3047,19 @@ REISSUE mengembalikan old active byte-for-byte tanpa generation/audit baru.
 Focused lulus **13/156**, related regression **139/979**, Pint/PHPStan scoped
 lulus. Race waiter melewati `effective_until` dicatat wajib untuk P13a3
 two-process. **STOP sebelum P13a3/route/P13b/P14.**
+
+## P13a3 — PostgreSQL concurrency/authority evidence (2026-09-02)
+
+Test dua proses PostgreSQL authoritative membuktikan same-ISSUE single commit,
+distinct-REISSUE contiguous serialization, final active digest, post-lock
+effective-window denial, serta kedua urutan linearizable issue/revocation.
+Sembilan waiter benar-benar terlihat dengan `wait_event_type=Lock`; child hanya
+mengirim credential-presence dan digest, tanpa raw bearer.
+
+P13a3 menemukan bug nyata: PostgreSQL `CURRENT_TIMESTAMP` dibekukan pada awal
+transaksi, sehingga clock kedua tetap stale setelah lock wait. Action kini
+memakai `clock_timestamp()` hanya pada PostgreSQL dan mempertahankan
+`CURRENT_TIMESTAMP` untuk SQLite. Focused PG lulus **8/113**, full disposable
+**307/2.167**, related local **139/979**, Pint/PHPStan scoped lulus, dan seluruh
+resource disposable dibersihkan. Rincian ada di
+`backend-p13a3-postgres-concurrency.md`. **STOP sebelum P13b/P14.**
