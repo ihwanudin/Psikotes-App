@@ -3337,7 +3337,7 @@ a minimal checkout-specific HTTP boundary. Production routes remain unchanged:
 the four routes are registered only by `CheckoutSessionHttpTest`. Stack
 inspection proves they do not inherit `web`, Laravel session, queued/encrypted
 cookies, framework CSRF, or application auth middleware. The boundary is
-default-OFF, accepts only the fixed `https://oncam.id` destination and the two
+default-OFF, accepts only the fixed `https://psikotes.oncam.id` destination and the two
 reviewed exchange origins, rate-limits by IP and endpoint class, and applies
 `no-store, private` plus the full privacy header set to success, validation,
 authorization, throttling, unavailable, and rendered unexpected-error responses.
@@ -3371,7 +3371,7 @@ staged. Its exact approved addition under `checkout_session` is:
 
 ```php
         'http' => [
-            'destination_origin' => 'https://oncam.id',
+            'destination_origin' => 'https://psikotes.oncam.id',
             'trusted_exchange_origins' => [
                 'https://seleksi.beasiswajepang.id',
                 'https://seleksi.serbaindo.com',
@@ -3383,8 +3383,45 @@ staged. Its exact approved addition under `checkout_session` is:
 ```
 
 The complete local config SHA-256 is
-`d2832fa7d2a0289e4dfd95e5bd542f20fbde1f315c84b3ec8105fdcf1a564586`.
+`bc2b1b72f8feb6efaf65193e9d66fba2947f532be4307582d04e46e065bdf3c1`.
 No production route/bootstrap/global middleware, source activation, browser run,
 billing/access/order/outbox behavior, active database operation, outbound call,
 deploy, or push was added. **STOP for P14b1 review before production wiring or
 P15/P16.**
+
+### P14b1 review fix — destination, raw form, login isolation, named limiter
+
+Review identified three acceptance gaps, all corrected without production
+wiring. Destination authority now matches the repository contract exactly:
+`https://psikotes.oncam.id`. The configured constant is strict, a request for the
+shorter `oncam.id` host fails 404 before action, and no source-supplied return URL
+or arbitrary Host becomes checkout scope.
+
+One bounded raw URL-encoded parser is shared by exchange and form mutation. It
+accepts only the canonical ASCII field/value byte sequence (maximum 128 bytes),
+then requires the framework ParameterBag to contain exactly the same single
+string. Duplicate valid-first/valid-last keys, brackets, percent encoding,
+malformed/extra separators, unknown fields and collapsed-key disagreement fail
+generically without echoing the credential. The progressive header channel now
+also requires an empty body. Route-only tests register and inspect the named
+`checkout-session-http` limiter; production provider/route registration remains
+absent and default-OFF.
+
+Login isolation now uses a real encrypted Laravel session cookie. A synthetic
+user accesses a test-only `web`+`auth` probe with that byte, performs the
+cross-site checkout exchange without sending the Lax login cookie, receives no
+replacement login `Set-Cookie`, and accesses the authenticated probe afterward
+with the original exact byte. This proves server-side session authority survives;
+actual browser SameSite delivery remains explicitly reserved for browser
+acceptance and is not claimed here.
+
+Corrected focused P13/P14/HTTP regression passes **27 tests / 693 assertions**.
+Full-project PHPStan passes with **0 errors** and Pint passes. The integration-wide
+run was not repeated because `public/build/manifest.json` remains absent and no
+fake manifest is permitted; the last run remains **223 passing of 224**, with the
+single UI manifest failure already recorded. PostgreSQL was not repeated because
+this review delta changes only the HTTP contract/request/middleware/test and ADR;
+the lifecycle code and last disposable result (**343 / 2,523**) are unchanged.
+No production route, global middleware/session/CSRF config, source activation,
+browser operation, database operation, deploy, or push was added. **STOP for
+review.**

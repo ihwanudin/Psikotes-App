@@ -397,15 +397,21 @@ GET  /checkout/unavailable   halaman generik tanpa state
 ```
 
 Exchange menerima hanya HTTPS `application/x-www-form-urlencoded` dengan tepat
-satu field `handoffToken`. Bearer harus cocok format dan panjang P13. Query string,
+satu field `handoffToken`. Raw body dibatasi 128 byte dan wajib berbentuk ASCII
+kanonik `handoffToken=och1_<64 lowercase hex>`; duplicate key, bracket/array,
+percent encoding, malformed encoding, separator atau field tambahan ditolak
+sebelum action. Hasil raw parser tunggal wajib sama persis dengan ParameterBag
+framework sehingga key pollution yang telah dikolaps tidak menjadi authority.
+Bearer harus cocok format dan panjang P13. Query string,
 path parameter, fragment, JSON, multipart, Authorization/header, cookie, field
 tambahan, return URL, tenant/attempt/participant/package ID, Host, Origin, dan
 Referer tidak pernah menjadi sumber bearer atau scope. Bearer tidak boleh muncul
 di URL, `Location`, response body, validation bag, exception, log, telemetry,
 audit, cache key, atau history browser.
 
-Destination host dibandingkan dengan host HTTPS fixed dari konfigurasi server
-yang telah di-review, bukan nilai Host yang dipilih browser. Reverse proxy hanya
+Destination origin adalah tepat `https://psikotes.oncam.id` dan dibandingkan
+dengan nilai fixed dari konfigurasi server yang telah di-review, bukan nilai Host
+yang dipilih browser. Reverse proxy hanya
 boleh memengaruhi scheme/host setelah trusted-proxy boundary yang dikonfigurasi
 operasional. Exchange juga mewajibkan header `Origin` exact salah satu:
 
@@ -418,8 +424,8 @@ Origin missing, `null`, HTTP, foreign, port tambahan, subdomain lookalike, atau
 multiple values ditolak generik. Referer tidak menjadi fallback authority.
 Hydrate GET biasanya tidak mempunyai Origin dan memakai fixed destination host +
 selector saja. Logout dan seluruh mutasi checkout berikutnya mewajibkan Origin
-exact origin ONCAM fixed selain selector dan CSRF; SameSite bukan pengganti check
-ini.
+exact `https://psikotes.oncam.id` selain selector dan CSRF; SameSite bukan
+pengganti check ini.
 
 Sukses exchange membuat session durable melalui P14a2 lalu merespons `303` dengan
 `Location: /checkout` fixed. Invalid/malformed/replay/expired/revoked/foreign
@@ -464,6 +470,10 @@ HTML tidak menyimpan token di localStorage/sessionStorage, URL, Inertia history,
 JSON bootstrap global, log, atau telemetry. Progressive JS membaca meta pada
 halaman aktif dan mengirim `X-Checkout-CSRF`; form tanpa JavaScript mengirim
 `_checkout_csrf`. Mutasi menerima tepat salah satu kanal eksplisit tersebut.
+Kanal form memakai raw parser kanonik yang sama dengan exchange, dengan tepat
+satu pasangan `_checkout_csrf=ocsrf1_<64 lowercase hex>`; duplicate, bracket,
+percent encoding, separator, malformed atau hasil ParameterBag yang tidak identik
+ditolak. Kanal header mewajibkan body benar-benar kosong.
 Header+form bersamaan, nilai berbeda, array/non-string, missing, atau format salah
 ditolak 419 generik. Cookie CSRF yang otomatis terkirim **tidak pernah cukup**:
 server membandingkan token eksplisit terhadap raw delivery cookie dan digest DB
@@ -566,7 +576,9 @@ Key tidak memuat bearer, selector/CSRF raw atau digest, PII, Host, Origin, atau
 attempt ID. Setelah hydration, observability boleh memakai session public ULID
 safe sebagai label terpisah, tetapi limiter bukan authority. Proxy-derived IP
 hanya dipakai setelah trusted-proxy configuration. P14b0 tidak menambah key config
-atau limiter produksi.
+atau limiter produksi. Pada P14b1, route sintetis wajib mendaftarkan named limiter
+`checkout-session-http` dan memasang `throttle:checkout-session-http`; pendaftaran
+provider dan route produksi tetap ditunda sampai checkpoint wiring publik.
 
 ### Strategi route test-only P14b1
 
@@ -597,7 +609,10 @@ Matriks wajib P14b1:
 | Middleware | tidak ada global session/cookie/CSRF/auth; urutan privacy/flag/throttle/auth/CSRF exact |
 | Side effect | tidak ada billing, settlement, entitlement, assessment engine, outbox/notifier, atau global session mutation |
 
-Browser acceptance tetap terpisah setelah P14b1: dua controlled source host, cookie
+Feature P14b1 wajib membuktikan cookie sesi Laravel terenkripsi yang nyata tetap
+mengotorisasi route `web`+`auth` sebelum dan sesudah exchange, dan response tidak
+menulis ulang cookie itu. Browser acceptance tetap terpisah: ketidakterkirimannya
+pada cross-site POST karena SameSite Lax, dua controlled source host, cookie
 protocol attributes, back/refresh/history, multi-tab, JS-disabled form,
 progressive JS header, console/network, dan cookie login existing harus dibuktikan
 di browser nyata sebelum route produksi dipertimbangkan.
