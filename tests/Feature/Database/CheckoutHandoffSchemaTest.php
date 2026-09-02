@@ -86,11 +86,20 @@ final class CheckoutHandoffSchemaTest extends OrganizationPaymentTestCase
             'contract_version' => 'v1', 'allowed_assessment_packages' => '["HANDOFF"]',
             'allowed_funding_modes' => '[]', 'status' => 'ACTIVE',
         ]);
+        $foreignSystemSource = DB::table('integration_sources')->insertGetId([
+            'integration_client_id' => $graph['client'], 'source_system' => 'FOREIGN_SOURCE',
+            'contract_version' => 'checkout-v2', 'allowed_assessment_packages' => '["HANDOFF"]',
+            'allowed_funding_modes' => '[]', 'status' => 'ACTIVE',
+        ]);
         $invalid = [
             'attempt client' => ['integration_client_id' => $foreign['client'], 'integration_source_id' => $foreign['source']],
             'source client' => ['integration_source_id' => $foreign['source']],
             'source system' => ['source_system' => 'FOREIGN_SOURCE'],
             'source contract' => ['integration_source_id' => $foreignVersionSource],
+            'attempt source system' => [
+                'integration_source_id' => $foreignSystemSource,
+                'source_system' => 'FOREIGN_SOURCE',
+            ],
             'organization' => ['organization_id' => $foreign['organization']],
             'participant' => ['participant_id' => $foreign['participant']],
             'package' => ['package_id' => $foreign['package']],
@@ -103,6 +112,26 @@ final class CheckoutHandoffSchemaTest extends OrganizationPaymentTestCase
             } catch (QueryException) {
                 $this->assertDatabaseCount('checkout_handoffs', 0);
             }
+        }
+
+        $mismatchedClientAttempt = DB::table('assessment_participants')->insertGetId([
+            'organization_id' => $foreign['organization'], 'integration_client_id' => $graph['client'],
+            'participant_id' => $foreign['participant'], 'package_id' => $foreign['package'],
+            'assessment_attempt_id' => (string) Str::ulid(), 'source_system' => 'HANDOFF_SOURCE',
+            'external_candidate_id' => (string) Str::ulid(), 'funding_mode' => 'COMMERCIAL_SELF_PAY',
+            'assessment_status' => 'PROVISIONED', 'idempotency_key' => (string) Str::ulid(),
+            'request_hash' => hash('sha256', 'cross-organization-request'),
+            'logical_assessment_key' => hash('sha256', 'cross-organization-logical'),
+        ]);
+        $mismatchedClientGraph = [
+            ...$foreign, 'attempt' => $mismatchedClientAttempt,
+            'client' => $graph['client'], 'source' => $graph['source'],
+        ];
+        try {
+            CheckoutHandoff::query()->create($this->row($mismatchedClientGraph));
+            $this->fail('Cross-organization client binding was accepted.');
+        } catch (QueryException) {
+            $this->assertDatabaseCount('checkout_handoffs', 0);
         }
 
         CheckoutHandoff::query()->create($this->row($graph));

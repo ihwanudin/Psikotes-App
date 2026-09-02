@@ -13,8 +13,14 @@ return new class extends Migration
     {
         Schema::table('assessment_participants', function (Blueprint $table): void {
             $table->unique(
-                ['id', 'integration_client_id', 'organization_id', 'participant_id', 'package_id'],
+                ['id', 'integration_client_id', 'organization_id', 'participant_id', 'package_id', 'source_system'],
                 'assessment_attempt_checkout_handoff_scope_unique',
+            );
+        });
+        Schema::table('integration_clients', function (Blueprint $table): void {
+            $table->unique(
+                ['id', 'organization_id'],
+                'integration_clients_checkout_handoff_scope_unique',
             );
         });
         Schema::table('integration_sources', function (Blueprint $table): void {
@@ -52,12 +58,14 @@ return new class extends Migration
             $table->timestampsTz();
 
             $table->foreign(
-                ['assessment_participant_id', 'integration_client_id', 'organization_id', 'participant_id', 'package_id'],
+                ['assessment_participant_id', 'integration_client_id', 'organization_id', 'participant_id', 'package_id', 'source_system'],
                 'checkout_handoffs_attempt_scope_fk',
-            )->references(['id', 'integration_client_id', 'organization_id', 'participant_id', 'package_id'])
+            )->references(['id', 'integration_client_id', 'organization_id', 'participant_id', 'package_id', 'source_system'])
                 ->on('assessment_participants')->cascadeOnDelete();
-            $table->foreign('integration_client_id', 'checkout_handoffs_client_fk')
-                ->references('id')->on('integration_clients')->restrictOnDelete();
+            $table->foreign(
+                ['integration_client_id', 'organization_id'],
+                'checkout_handoffs_client_scope_fk',
+            )->references(['id', 'organization_id'])->on('integration_clients')->restrictOnDelete();
             $table->foreign(
                 ['integration_source_id', 'integration_client_id', 'source_system', 'contract_version'],
                 'checkout_handoffs_source_scope_fk',
@@ -99,6 +107,9 @@ return new class extends Migration
         Schema::dropIfExists('checkout_handoffs');
         Schema::table('integration_sources', function (Blueprint $table): void {
             $table->dropUnique('integration_sources_checkout_handoff_scope_unique');
+        });
+        Schema::table('integration_clients', function (Blueprint $table): void {
+            $table->dropUnique('integration_clients_checkout_handoff_scope_unique');
         });
         Schema::table('assessment_participants', function (Blueprint $table): void {
             $table->dropUnique('assessment_attempt_checkout_handoff_scope_unique');

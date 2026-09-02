@@ -142,11 +142,20 @@ final class CheckoutHandoffSchemaTest extends TestCase
                 'contract_version' => 'v1', 'allowed_assessment_packages' => '["HANDOFF"]',
                 'allowed_funding_modes' => '[]', 'status' => 'ACTIVE',
             ]);
+            $foreignSystemSource = DB::table('integration_sources')->insertGetId([
+                'integration_client_id' => $graph['client'], 'source_system' => 'FOREIGN_SOURCE',
+                'contract_version' => 'checkout-v2', 'allowed_assessment_packages' => '["HANDOFF"]',
+                'allowed_funding_modes' => '[]', 'status' => 'ACTIVE',
+            ]);
             $invalid = [
                 'attempt client' => ['integration_client_id' => $foreign['client'], 'integration_source_id' => $foreign['source']],
                 'source client' => ['integration_source_id' => $foreign['source']],
                 'source system' => ['source_system' => 'FOREIGN_SOURCE'],
                 'source contract' => ['integration_source_id' => $foreignVersionSource],
+                'attempt source system' => [
+                    'integration_source_id' => $foreignSystemSource,
+                    'source_system' => 'FOREIGN_SOURCE',
+                ],
                 'organization' => ['organization_id' => $foreign['organization']],
                 'participant' => ['participant_id' => $foreign['participant']],
                 'package' => ['package_id' => $foreign['package']],
@@ -158,6 +167,24 @@ final class CheckoutHandoffSchemaTest extends TestCase
                 });
                 $this->assertSame(0, DB::table('checkout_handoffs')->count(), $label);
             }
+
+            $mismatchedClientAttempt = DB::table('assessment_participants')->insertGetId([
+                'organization_id' => $foreign['organization'], 'integration_client_id' => $graph['client'],
+                'participant_id' => $foreign['participant'], 'package_id' => $foreign['package'],
+                'assessment_attempt_id' => (string) Str::ulid(), 'source_system' => 'HANDOFF_SOURCE',
+                'external_candidate_id' => (string) Str::ulid(), 'funding_mode' => 'COMMERCIAL_SELF_PAY',
+                'assessment_status' => 'PROVISIONED', 'idempotency_key' => (string) Str::ulid(),
+                'request_hash' => hash('sha256', 'cross-organization-request'),
+                'logical_assessment_key' => hash('sha256', 'cross-organization-logical'),
+            ]);
+            $mismatchedClientGraph = [
+                ...$foreign, 'attempt' => $mismatchedClientAttempt,
+                'client' => $graph['client'], 'source' => $graph['source'],
+            ];
+            $this->assertConstraintViolation('23503', function () use ($mismatchedClientGraph): void {
+                DB::table('checkout_handoffs')->insert($this->row($mismatchedClientGraph));
+            });
+            $this->assertSame(0, DB::table('checkout_handoffs')->count());
 
             DB::table('checkout_handoffs')->insert($this->row($graph));
             $this->assertSame(1, DB::table('checkout_handoffs')->count());
@@ -272,7 +299,7 @@ final class CheckoutHandoffSchemaTest extends TestCase
     private static function constraintNames(): array
     {
         return [
-            'checkout_handoffs_attempt_scope_fk', 'checkout_handoffs_client_fk', 'checkout_handoffs_source_scope_fk',
+            'checkout_handoffs_attempt_scope_fk', 'checkout_handoffs_client_scope_fk', 'checkout_handoffs_source_scope_fk',
             'checkout_handoffs_identity_check', 'checkout_handoffs_digest_check', 'checkout_handoffs_fixed_binding_check',
             'checkout_handoffs_ttl_check', 'checkout_handoffs_lifecycle_check',
         ];
@@ -414,6 +441,7 @@ final class CheckoutHandoffSchemaTest extends TestCase
             pg_get_constraintdef(oid) AS definition FROM pg_constraint
             WHERE conname IN (
                 'assessment_attempt_checkout_handoff_scope_unique',
+                'integration_clients_checkout_handoff_scope_unique',
                 'integration_sources_checkout_handoff_scope_unique'
             ) ORDER BY conname");
     }
