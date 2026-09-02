@@ -568,7 +568,7 @@ provider atau menjadi authority sampai acquisition/validator berikutnya direview
 
 **Acceptance:**
 
-- [ ] Hash token short-lived terikat attempt/tujuan; reissue mencabut lama tanpa duplikasi charge/bill; tidak memuat PII/credential di URL/log.
+- [x] Hash token short-lived terikat attempt/tujuan; reissue mencabut lama tanpa duplikasi charge/bill; tidak memuat PII/credential di URL/log. P13a3 root `ce84b1f`–`6f606e2`; local 29/274 dan PostgreSQL disposable 328/2.768 lulus.
 
 **Dependencies:** P12c. **Scope:** M.
 
@@ -578,8 +578,8 @@ provider atau menjadi authority sampai acquisition/validator berikutnya direview
 
 ### Checkpoint setelah P13a
 
-- [ ] Focused tests dan regresi terkait lulus tanpa skip; bukti baru dicatat di docs/ORGANIZATION_CHECKOUT_VALIDATION.md.
-- [ ] Pint/PHPStan dan lint/typecheck/build sesuai dampak; UI diperiksa browser, RLS/race memakai PostgreSQL terisolasi.
+- [x] Focused tests dan regresi terkait lulus tanpa skip; bukti P13a1–P13a3 dicatat pada laporan backend dan koordinasi kanonik.
+- [x] Pint/PHPStan sesuai dampak lulus; P13a tidak mengubah UI, sedangkan RLS/race memakai PostgreSQL disposable terisolasi tanpa port publik.
 - [ ] Tinjau slice dengan pengguna sebelum kelompok berikutnya; tidak ada deploy, transaksi, atau notifikasi nyata.
 
 ## P13b: Konsumsi token satu kali

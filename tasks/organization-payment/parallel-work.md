@@ -795,3 +795,21 @@ amount non-null/non-negatif, currency IDR, dan consultation amount non-negatif
 bila ada. Root related checkout/schema **139/139 tes, 979 assertions**, PHP lint,
 Pint, dan PHPStan lulus. P13a2 diterima lokal default-off. P13a3 concurrency PG
 masih wajib; route/controller/consume/session/DB aktif/deploy tetap dilarang.
+
+## P13a3 backend — concurrency accepted
+
+Bug clock PostgreSQL dan bukti concurrency worker `f5723b1`/`63b5d6f`/`8d15297`
+diintegrasikan root sebagai `ce84b1f`/`59ece6b`/`6f606e2`. Review memastikan
+`clock_timestamp()` hanya dipilih untuk PostgreSQL setelah lock, sedangkan
+SQLite mempertahankan `CURRENT_TIMESTAMP`; tidak ada input yang masuk ke fragmen
+SQL tersebut. Suite dua proses menggunakan koneksi runtime non-owner terpisah,
+barrier dan lock wait nyata, timeout bounded, serta tidak membawa raw bearer
+melalui IPC atau laporan.
+
+Root mengulang checkout/schema focused **29/29 tes, 274 assertions**, Pint, dan
+PHPStan 0 error. PostgreSQL disposable penuh lulus **328/328 tes, 2.768
+assertions** dan seluruh container/network milik run dibersihkan. P13a diterima
+lokal default-off. Tidak ada route/controller, consume/session, database aktif,
+provider/notifier, deploy, push, atau aktivasi publik. Increment berikutnya pada
+task backend existing adalah P13b consume atomik saja; P14 tetap dilarang sampai
+P13b direview.
