@@ -384,20 +384,36 @@ final class CheckoutHandoffSchemaTest extends TestCase
 
     private function migrateUp(): void
     {
-        $migration = require database_path('migrations/2026_09_02_000100_create_checkout_handoffs.php');
-        if (! is_object($migration) || ! method_exists($migration, 'up')) {
-            throw new RuntimeException('Checkout handoff migration has no up method.');
-        }
-        $migration->up();
+        DB::transaction(function (): void {
+            $migration = require database_path('migrations/2026_09_02_000100_create_checkout_handoffs.php');
+            if (! is_object($migration) || ! method_exists($migration, 'up')) {
+                throw new RuntimeException('Checkout handoff migration has no up method.');
+            }
+            $migration->up();
+
+            $sessions = require database_path('migrations/2026_09_02_000200_create_checkout_sessions.php');
+            if (! is_object($sessions) || ! method_exists($sessions, 'up')) {
+                throw new RuntimeException('Checkout session migration has no up method.');
+            }
+            $sessions->up();
+        });
     }
 
     private function migrateDown(): void
     {
-        $migration = require database_path('migrations/2026_09_02_000100_create_checkout_handoffs.php');
-        if (! is_object($migration) || ! method_exists($migration, 'down')) {
-            throw new RuntimeException('Checkout handoff migration has no down method.');
-        }
-        $migration->down();
+        DB::transaction(function (): void {
+            $sessions = require database_path('migrations/2026_09_02_000200_create_checkout_sessions.php');
+            if (! is_object($sessions) || ! method_exists($sessions, 'down')) {
+                throw new RuntimeException('Checkout session migration has no down method.');
+            }
+            $sessions->down();
+
+            $migration = require database_path('migrations/2026_09_02_000100_create_checkout_handoffs.php');
+            if (! is_object($migration) || ! method_exists($migration, 'down')) {
+                throw new RuntimeException('Checkout handoff migration has no down method.');
+            }
+            $migration->down();
+        });
     }
 
     /** @param callable(): void $operation */
