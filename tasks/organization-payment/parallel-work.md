@@ -899,3 +899,20 @@ tes, 459 assertions**, Pint, dan PHPStan 0 error. PostgreSQL disposable penuh
 lulus **362/362 tes, 3.096 assertions** sebagai runtime non-owner/NOBYPASSRLS dan
 cleanup sukses. P14a2 diterima lokal; delivery CSRF/browser, hydrate/revoke,
 cleanup, HTTP headers/cookies, IDOR, dan source activation masih terbuka.
+
+## P14a3 backend — private session lifecycle accepted
+
+Lifecycle/DTO/test worker `2e33e7c`/`9f35ddc`/`5e1cacf` ditahan saat review
+karena predicate riwayat handoff lebih longgar daripada validator P13 kanonik.
+Fix `0422898` dan laporan `3a0ef35` menyatukan invariant ke
+`CheckoutHandoffHistoryValidator`, memperketat invariant session, dan diterima
+root sebagai `414cffb`–`57367a5`. Hydrate selector-only memperbarui idle expiry
+yang dibatasi absolute expiry; logout wajib selector+CSRF; expiry, scope revoke,
+audit, dan replay seluruhnya atomik serta fail-closed.
+
+Root mengulang focused P13/P14 **42/42 tes, 538 assertions**, Pint, dan PHPStan
+0 error. PostgreSQL disposable penuh lulus **364/364 tes, 3.124 assertions**
+sebagai runtime non-owner/NOBYPASSRLS dan cleanup sukses. Projection tidak memuat
+PII, detail batch, total, invoice, atau credential. P14a3 diterima lokal
+default-OFF; HTTP/controller/route/cookie/header/browser dan cleanup worker belum
+diimplementasikan atau diaktifkan.
