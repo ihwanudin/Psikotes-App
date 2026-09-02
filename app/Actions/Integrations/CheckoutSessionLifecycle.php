@@ -17,6 +17,7 @@ use App\Models\Participant;
 use App\Models\TestPackage;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
+use App\Services\Integrations\CheckoutHandoffHistoryValidator;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Collection;
@@ -33,7 +34,10 @@ final readonly class CheckoutSessionLifecycle
 
     private const string DESTINATION = 'integrated-checkout-session';
 
-    public function __construct(private RlsContextRunner $contexts) {}
+    public function __construct(
+        private RlsContextRunner $contexts,
+        private CheckoutHandoffHistoryValidator $historyValidator,
+    ) {}
 
     public function hydrate(#[SensitiveParameter] CheckoutSessionSelector $input): CheckoutSessionPrincipal
     {
@@ -121,7 +125,13 @@ final readonly class CheckoutSessionLifecycle
         }
 
         $now = $this->databaseNow();
-        $latestHandoff = $this->assertHistory($handoffs, $attempt, $source);
+        if (! $this->historyValidator->valid($handoffs, $attempt, $source)) {
+            throw new InvalidCheckoutSession;
+        }
+        $latestHandoff = $handoffs->last();
+        if (! $latestHandoff instanceof CheckoutHandoff) {
+            throw new InvalidCheckoutSession;
+        }
         $this->assertSessions($sessions, $handoffs, $attempt, $target, $now);
         if ($target->status !== 'ACTIVE' || $target->active_marker !== true
             || $target->revoked_at !== null || $target->expired_at !== null
@@ -238,48 +248,6 @@ final readonly class CheckoutSessionLifecycle
         return hash('sha256', $raw);
     }
 
-    /** @param Collection<int, CheckoutHandoff> $history */
-    private function assertHistory(Collection $history, AssessmentParticipant $attempt,
-        IntegrationSource $source): CheckoutHandoff
-    {
-        $active = 0;
-        foreach ($history as $index => $handoff) {
-            $scope = $handoff->assessment_participant_id === $attempt->id
-                && $handoff->organization_id === $attempt->organization_id
-                && $handoff->participant_id === $attempt->participant_id
-                && $handoff->package_id === $attempt->package_id
-                && $handoff->integration_client_id === $attempt->integration_client_id
-                && $handoff->integration_source_id === $source->id
-                && $handoff->source_system === $attempt->source_system
-                && $handoff->contract_version === self::CONTRACT_VERSION
-                && $handoff->purpose === self::PURPOSE && $handoff->destination === self::DESTINATION
-                && $handoff->issue_number === $index + 1;
-            $valid = match ($handoff->status) {
-                'ISSUED' => $handoff->active_marker === true && $handoff->consumed_at === null
-                    && $handoff->revoked_at === null && $handoff->expired_at === null,
-                'CONSUMED' => $handoff->active_marker === null && $handoff->consumed_at !== null
-                    && $handoff->revoked_at === null && $handoff->expired_at === null,
-                'REVOKED' => $handoff->active_marker === null && $handoff->consumed_at === null
-                    && $handoff->revoked_at !== null && $handoff->expired_at === null,
-                'EXPIRED' => $handoff->active_marker === null && $handoff->consumed_at === null
-                    && $handoff->revoked_at === null && $handoff->expired_at !== null,
-                default => false,
-            };
-            if (! $scope || ! $valid || ! $handoff->expires_at->greaterThan($handoff->issued_at)
-                || $handoff->expires_at->greaterThan($handoff->issued_at->addSeconds(600))) {
-                throw new InvalidCheckoutSession;
-            }
-            if ($handoff->status === 'ISSUED') {
-                $active++;
-            }
-        }
-        if ($history->isEmpty() || $active > 1) {
-            throw new InvalidCheckoutSession;
-        }
-
-        return $history->last();
-    }
-
     /** @param Collection<int, CheckoutSession> $sessions
      * @param  Collection<int, CheckoutHandoff>  $handoffs
      */
@@ -310,13 +278,24 @@ final readonly class CheckoutSessionLifecycle
                     && $session->expired_at === null
                     && in_array($session->revocation_reason,
                         ['LOGOUT', 'RECOVERY_REISSUED', 'SCOPE_REVOKED', 'REPLACED'], true)
+                    && $session->revoked_at->greaterThanOrEqualTo($session->last_seen_at)
                     && $session->revoked_at->lessThanOrEqualTo($now),
                 'EXPIRED' => $session->active_marker === null && $session->revoked_at === null
                     && $session->expired_at !== null && $session->revocation_reason === null
+                    && $session->expired_at->greaterThanOrEqualTo(
+                        $session->idle_expires_at->lessThan($session->absolute_expires_at)
+                            ? $session->idle_expires_at : $session->absolute_expires_at,
+                    )
                     && $session->expired_at->lessThanOrEqualTo($now),
                 default => false,
             };
-            if (! $scope || ! $valid || ! $session->idle_expires_at->greaterThan($session->last_seen_at)
+            if (! $scope || ! $valid
+                || ! preg_match('/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/D', $session->public_id)
+                || ! preg_match('/^[0-9a-f]{64}$/D', $session->selector_digest)
+                || ! preg_match('/^[0-9a-f]{64}$/D', $session->csrf_digest)
+                || trim($session->source_system) === ''
+                || $session->last_seen_at->lessThan($session->established_at)
+                || ! $session->idle_expires_at->greaterThan($session->last_seen_at)
                 || $session->idle_expires_at->greaterThan($session->absolute_expires_at)
                 || ! $session->absolute_expires_at->greaterThan($session->established_at)) {
                 throw new InvalidCheckoutSession;

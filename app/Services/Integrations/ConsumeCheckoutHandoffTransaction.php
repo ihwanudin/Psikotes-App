@@ -30,7 +30,10 @@ final readonly class ConsumeCheckoutHandoffTransaction
 
     private const string DESTINATION = 'integrated-checkout-session';
 
-    public function __construct(private RlsContextRunner $contexts) {}
+    public function __construct(
+        private RlsContextRunner $contexts,
+        private CheckoutHandoffHistoryValidator $historyValidator,
+    ) {}
 
     public function execute(#[SensitiveParameter] string $rawToken): ?CheckoutSessionScope
     {
@@ -108,7 +111,9 @@ final readonly class ConsumeCheckoutHandoffTransaction
         if ($target === null || ! hash_equals($target->token_digest, $digest)) {
             throw new InvalidCheckoutHandoff;
         }
-        $this->assertHistory($history, $attempt, $source);
+        if (! $this->historyValidator->valid($history, $attempt, $source)) {
+            throw new InvalidCheckoutHandoff;
+        }
 
         $now = $this->databaseNow();
         if (! $this->effective($client->effective_from, $client->effective_until, $now)
@@ -146,54 +151,6 @@ final readonly class ConsumeCheckoutHandoffTransaction
             $source->source_system,
             $now,
         );
-    }
-
-    /** @param Collection<int, CheckoutHandoff> $history */
-    private function assertHistory(Collection $history, AssessmentParticipant $attempt, IntegrationSource $source): void
-    {
-        $active = 0;
-        foreach ($history as $index => $handoff) {
-            $scopeValid = $handoff->assessment_participant_id === $attempt->id
-                && $handoff->organization_id === $attempt->organization_id
-                && $handoff->participant_id === $attempt->participant_id
-                && $handoff->package_id === $attempt->package_id
-                && $handoff->integration_client_id === $attempt->integration_client_id
-                && $handoff->integration_source_id === $source->id
-                && $handoff->source_system === $attempt->source_system
-                && $handoff->contract_version === self::CONTRACT_VERSION
-                && $handoff->purpose === self::PURPOSE && $handoff->destination === self::DESTINATION
-                && $handoff->issue_number === $index + 1
-                && $handoff->expires_at->greaterThan($handoff->issued_at)
-                && $handoff->expires_at->lessThanOrEqualTo($handoff->issued_at->addSeconds(600));
-            $valid = match ($handoff->status) {
-                'ISSUED' => $handoff->active_marker === true && $handoff->consumed_at === null
-                    && $handoff->revoked_at === null && $handoff->expired_at === null
-                    && $handoff->revocation_reason === null,
-                'CONSUMED' => $handoff->active_marker === null && $handoff->consumed_at !== null
-                    && $handoff->revoked_at === null && $handoff->expired_at === null
-                    && $handoff->revocation_reason === null
-                    && $handoff->consumed_at->greaterThanOrEqualTo($handoff->issued_at)
-                    && $handoff->consumed_at->lessThan($handoff->expires_at),
-                'REVOKED' => $handoff->active_marker === null && $handoff->consumed_at === null
-                    && $handoff->revoked_at !== null && $handoff->expired_at === null
-                    && in_array($handoff->revocation_reason,
-                        ['REISSUED', 'ATTEMPT_REVOKED', 'SOURCE_REVOKED', 'CLIENT_REVOKED'], true),
-                'EXPIRED' => $handoff->active_marker === null && $handoff->consumed_at === null
-                    && $handoff->revoked_at === null && $handoff->expired_at !== null
-                    && $handoff->revocation_reason === null
-                    && $handoff->expired_at->greaterThanOrEqualTo($handoff->expires_at),
-                default => false,
-            };
-            if (! $scopeValid || ! $valid) {
-                throw new InvalidCheckoutHandoff;
-            }
-            if ($handoff->status === 'ISSUED') {
-                $active++;
-            }
-        }
-        if ($active > 1) {
-            throw new InvalidCheckoutHandoff;
-        }
     }
 
     private function databaseNow(): CarbonImmutable

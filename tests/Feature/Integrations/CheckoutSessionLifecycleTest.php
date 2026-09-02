@@ -14,10 +14,16 @@ use App\Data\Integrations\CheckoutSessionMutationCredentials;
 use App\Data\Integrations\CheckoutSessionPrincipal;
 use App\Data\Integrations\CheckoutSessionSelector;
 use App\Enums\CheckoutHandoffIntent;
+use App\Models\AssessmentParticipant;
+use App\Models\CheckoutHandoff;
 use App\Models\CheckoutSession;
 use App\Models\IntegrationClient;
+use App\Models\IntegrationSource;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
+use App\Services\Integrations\CheckoutHandoffHistoryValidator;
+use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -218,6 +224,42 @@ final class CheckoutSessionLifecycleTest extends OrganizationPaymentTestCase
         ])->where('subject_id', (string) $fixture['attempt'])->count());
     }
 
+    public function test_shared_handoff_validator_rejects_reason_and_temporal_corruption(): void
+    {
+        $attempt = (new AssessmentParticipant)->forceFill([
+            'id' => 41, 'organization_id' => 42, 'participant_id' => 43,
+            'package_id' => 44, 'integration_client_id' => 45, 'source_system' => 'VALIDATOR_SOURCE',
+        ]);
+        $source = (new IntegrationSource)->forceFill([
+            'id' => 46, 'integration_client_id' => 45, 'source_system' => 'VALIDATOR_SOURCE',
+        ]);
+        $validator = app(CheckoutHandoffHistoryValidator::class);
+        $this->assertTrue($validator->valid(new Collection([$this->handoffModel()]), $attempt, $source));
+
+        $issued = CarbonImmutable::parse('2026-09-02T01:00:00Z');
+        $expires = $issued->addMinutes(10);
+        $cases = [
+            'issued reason' => ['status' => 'ISSUED', 'active_marker' => true,
+                'consumed_at' => null, 'revocation_reason' => 'REISSUED'],
+            'consumed reason' => ['revocation_reason' => 'REISSUED'],
+            'consumed before issue' => ['consumed_at' => $issued->subSecond()],
+            'consumed at expiry' => ['consumed_at' => $expires],
+            'revoked reason' => ['status' => 'REVOKED', 'consumed_at' => null,
+                'revoked_at' => $issued, 'revocation_reason' => 'UNKNOWN'],
+            'revoked before issue' => ['status' => 'REVOKED', 'consumed_at' => null,
+                'revoked_at' => $issued->subSecond(), 'revocation_reason' => 'REISSUED'],
+            'expired reason' => ['status' => 'EXPIRED', 'consumed_at' => null,
+                'expired_at' => $expires, 'revocation_reason' => 'REISSUED'],
+            'expired before expiry' => ['status' => 'EXPIRED', 'consumed_at' => null,
+                'expired_at' => $expires->subSecond()],
+        ];
+        foreach ($cases as $label => $overrides) {
+            $this->assertFalse($validator->valid(
+                new Collection([$this->handoffModel($overrides)]), $attempt, $source,
+            ), $label);
+        }
+    }
+
     public function test_logout_audit_failure_rolls_back_terminal_transition(): void
     {
         $fixture = $this->established();
@@ -266,6 +308,25 @@ final class CheckoutSessionLifecycleTest extends OrganizationPaymentTestCase
             'enabled' => true, 'idle_minutes' => 30, 'absolute_minutes' => 120,
             'terminal_retention_days' => 30,
         ]);
+    }
+
+    /** @param array<string, mixed> $overrides */
+    private function handoffModel(array $overrides = []): CheckoutHandoff
+    {
+        $issued = CarbonImmutable::parse('2026-09-02T01:00:00Z');
+
+        return (new CheckoutHandoff)->forceFill(array_replace([
+            'id' => 47, 'public_id' => (string) Str::ulid(),
+            'assessment_participant_id' => 41, 'organization_id' => 42,
+            'participant_id' => 43, 'package_id' => 44, 'integration_client_id' => 45,
+            'integration_source_id' => 46, 'source_system' => 'VALIDATOR_SOURCE',
+            'contract_version' => 'checkout-v2', 'purpose' => 'checkout-handoff',
+            'destination' => 'integrated-checkout-session', 'issue_number' => 1,
+            'status' => 'CONSUMED', 'active_marker' => null,
+            'issued_at' => $issued, 'expires_at' => $issued->addMinutes(10),
+            'consumed_at' => $issued->addMinute(), 'revoked_at' => null,
+            'expired_at' => null, 'revocation_reason' => null,
+        ], $overrides));
     }
 
     private function hydrate(string $selector): CheckoutSessionPrincipal
