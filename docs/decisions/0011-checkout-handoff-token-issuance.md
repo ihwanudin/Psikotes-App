@@ -68,24 +68,30 @@ route produksi pada P13a0/P13a internal.
 
 ### 1. Authority dan binding
 
-Issuer menerima typed input internal berisi authenticated integration client,
-assessment attempt public ULID, source system, purpose, destination, dan
-idempotency key. Nilai request hanya selector. Dalam transaksi service, issuer
-reload dan lock:
+Issuer tidak menerima purpose atau destination dari caller. Surface typed
+internal hanya menerima authenticated persisted integration client object,
+assessment attempt public ULID, source system selector, opaque idempotency key,
+dan enum intent `ISSUE` atau `REISSUE`. Ia bukan array extensible dan tidak
+mempunyai parameter untuk organization, participant, package, external identity,
+payer, nominal, purpose, atau destination. Nilai caller hanya selector; dalam
+transaksi service issuer reload dan lock:
 
 1. organization;
 2. integration client;
 3. integration source;
 4. package dan package items bila validasi policy membutuhkannya;
-5. assessment participant;
-6. participant;
-7. handoff aktif/riwayat idempotency dalam urutan ID.
+5. `AssessmentParticipant` sebagai attempt;
+6. `Participant` pemilik attempt;
+7. seluruh `CheckoutHandoff` untuk attempt+purpose+destination dalam urutan
+   `issue_number`, lalu `id`.
 
-Urutan organization → client → source → package → attempt → participant mengikuti
-`ProvisionCheckoutParticipant`, `UpdateFundingPolicy`, dan lock policy parent
-pada `ReserveAssessmentBill`. Semua query memakai persisted IDs dan scope yang
-sama. Input organization, participant, package, external identity, payer, atau
-nominal tidak diterima.
+Urutan organization → client → source → package → `AssessmentParticipant` →
+`Participant` → handoff mengikuti `ProvisionCheckoutParticipant`,
+`UpdateFundingPolicy`, dan lock policy parent pada `ReserveAssessmentBill`.
+Action administratif yang menonaktifkan/menghapus source atau client harus
+memakai prefix owner yang sama: organization → client → source. Dengan begitu
+issuer tidak membalik lock saat berlomba dengan revocation. Semua query memakai
+persisted IDs dan scope yang sama.
 
 Attempt wajib checkout-v2, milik client/source/organization exact, status
 `PROVISIONED`, belum revoked, participant belum soft-deleted, serta client/source/
@@ -94,9 +100,11 @@ deleted, atau berpindah client menolak issue/reissue. Token tidak membuktikan
 payer, settlement, consent, identity, entitlement, atau readiness.
 
 Purpose canonical adalah `checkout-handoff`; destination canonical adalah
-`integrated-checkout-session`. Keduanya merupakan konstanta server, bukan Host,
-Origin, Referer, return URL, atau pilihan browser. Prefix token bukan bukti
-purpose; P13b harus mencocokkan row persisted purpose/destination/source lagi.
+`integrated-checkout-session`. Action memasukkan kedua konstanta server itu ke
+canonical request hash dan row persisted tanpa membaca nilai caller. Keduanya
+bukan Host, Origin, Referer, return URL, atau pilihan browser. Prefix token bukan
+bukti purpose; P13b harus mencocokkan row persisted purpose/destination/source
+lagi.
 
 ### 2. Format token dan digest durable
 
@@ -159,20 +167,39 @@ response generik tetap P13b/P14 dan belum didaftarkan.
 
 ### 4. Idempotency, replay, dan reissue
 
-Setiap issue request membawa idempotency key bounded dan canonical request hash
-atas client ID persisted, attempt ID, source ID, purpose, dan destination. Unique
-`(integration_client_id, issue_idempotency_key)` melindungi retry concurrent.
+Setiap issue request membawa opaque idempotency key dalam format tepat
+`ih1_` + 32 hex lowercase (`/^ih1_[0-9a-f]{32}$/D`, panjang 36). Boundary
+menolak string kosong, oversize, email, nomor telepon, nama, whitespace, separator
+lain, dan nilai non-string sebelum transaksi. Format ini meminta nonce 128-bit
+dan tidak menyediakan tempat bebas untuk PII atau secret.
+
+Raw idempotency key hanya hidup di parameter sensitive selama request. Database
+menyimpan `issue_idempotency_key_digest = hash('sha256', raw_key)`; raw key tidak
+masuk model, audit, log, serialization, exception, request hash, atau response.
+Digest ini hanya kunci replay dan berbeda dari `token_digest`; mengetahui digest
+idempotency tidak memberi bearer authority. Canonical request hash terpisah
+mencakup client ID persisted, attempt ID, source ID, fixed purpose, fixed
+destination, dan intent. Unique `(integration_client_id,
+issue_idempotency_key_digest)` melindungi retry concurrent.
 
 - Key baru dan payload sah: buat satu row ISSUED, return raw token sekali.
 - Key sama dan request hash exact: no-op, tidak mencabut/membuat row, tidak
-  menulis audit kedua, dan mengembalikan descriptor `replayed=true` tanpa raw
-  token. Raw token tidak dapat direkonstruksi dari digest.
+  menulis audit kedua, dan mengembalikan descriptor explicit
+  `{replayed: true, rawToken: null, reissueRequired: true, handoffPublicId,
+  issueNumber}`. Raw token tidak dapat direkonstruksi dari digest dan caller
+  tidak boleh menganggap descriptor replay memuat credential.
 - Key sama dengan payload/binding berbeda: conflict tanpa mutasi.
 - Kehilangan response setelah commit: caller memakai reissue eksplisit dengan
   idempotency key baru. Reissue mengunci attempt dan token aktif, menutup token
   lama, lalu membuat token baru dalam transaksi yang sama.
-- Dua reissue paralel terserialisasi pada organization/attempt. Hanya hasil
-  transaksi terakhir yang active; unique active marker menjadi backstop.
+- Dua reissue berbeda terserialisasi pada organization/attempt. Setiap action
+  hanya membentuk response setelah transaksinya commit dan tidak mengembalikan
+  token yang sudah direvoke oleh transaksi itu sendiri. Jika reissue kedua commit
+  sesudah reissue pertama, token pertama segera tidak valid; hanya token dari
+  commit terakhir yang active. Kontrak tidak menjanjikan kedua caller memperoleh
+  token usable, karena reissue baru memang mencabut generasi sebelumnya. Consume
+  token kalah harus gagal generik dan caller dapat meminta reissue baru. Unique
+  active marker menjadi backstop.
 
 Reissue token aktif mengubah token lama menjadi REVOKED dengan reason
 `REISSUED`. Bila token lama sudah lewat expiry tetapi belum diamati, ia menjadi
@@ -221,7 +248,7 @@ New table `checkout_handoffs`:
 | `active_marker` | nullable boolean; true only for ISSUED |
 | `status` | varchar(16): ISSUED, CONSUMED, REVOKED, EXPIRED |
 | `issue_number` | unsigned integer, >=1 |
-| `issue_idempotency_key` | varchar(200), nonblank |
+| `issue_idempotency_key_digest` | char(64), SHA-256 lowercase hex; raw key tidak disimpan |
 | `request_hash` | char(64), lowercase hex |
 | `revocation_reason` | nullable varchar(32), bounded enum |
 | `issued_at`, `expires_at` | timestampTz non-null, database time, TTL CHECK |
@@ -232,9 +259,10 @@ Constraints and indexes:
 
 - composite FK attempt scope preserves attempt/organization/participant/package;
 - FK source/client are restrict-on-delete; attempt cascade invalidates handoff
-  atomically and prevents orphan bearer state;
+  atomically dan mencegah orphan bearer state. Penghapusan/privacy erasure parent
+  sengaja mengalahkan retensi terminal handoff;
 - unique token digest;
-- unique `(integration_client_id, issue_idempotency_key)`;
+- unique `(integration_client_id, issue_idempotency_key_digest)`;
 - unique `(assessment_participant_id, purpose, destination, issue_number)`;
 - unique `(assessment_participant_id, purpose, destination, active_marker)` so
   nullable terminal rows coexist but only one active row exists on PostgreSQL
@@ -279,9 +307,14 @@ An injected failure after old token update must leave the old token active. Raw
 token generated for a rolled-back transaction is discarded and never returned.
 
 Terminal rows are proposed for retention up to 730 days for security/audit
-correlation, subject to privacy review. No purge command, scheduler, route, or
-retention worker is authorized here. Future cleanup must be bounded, default-off,
-service-only, skip active rows, preserve audit retention, and use the expiry index.
+correlation hanya selama parent `AssessmentParticipant` dan graph scope tetap
+ada. Cascade pada penghapusan attempt adalah revocation hard boundary: semua
+handoff ikut hilang agar bearer tidak orphan, dan privacy deletion dapat
+mengalahkan target retensi 730 hari. Audit aman yang tidak menyimpan bearer tetap
+mengikuti retensi audit terpisah. Tidak ada purge command, scheduler, route, atau
+retention worker yang diizinkan di sini. Future cleanup harus bounded,
+default-off, service-only, skip active rows, preserve audit retention, dan memakai
+expiry index.
 
 ## RED test matrix for P13a implementation
 
@@ -289,14 +322,15 @@ service-only, skip active rows, preserve audit retention, and use the expiry ind
 | --- | --- |
 | Actor | trusted HMAC client allowed internally; participant, BranchAdmin, Staff, Psychologist, SuperAdmin, guest, service-without-client denied |
 | Scope | cross-tenant attempt, foreign client/source, mismatched source system, deleted participant/attempt/source, disabled/effective-window client/source/org/package denied |
-| Binding | wrong/tampered purpose or destination, assessment-start token shape, checkout-v1/metadata missing, Host/Origin manipulation denied |
+| Binding | signature/reflection contract membuktikan action tidak mempunyai parameter purpose/destination; adapter menolak unknown fields; fixed constants masuk hash/row; assessment-start token shape, checkout-v1/metadata missing, Host/Origin manipulation denied |
 | Token | format/entropy contract, digest only persisted, raw returned once, no raw/digest in audit/log/exception/URL/model serialization |
+| Idempotency | hanya `ih1_` + 32 lowercase hex diterima; empty/oversize/email/phone/name/whitespace/unknown format ditolak; raw key tidak durable/audit/log/serialization/error; digest idempotency tidak dapat dipakai sebagai bearer |
 | TTL | config OFF, non-integer/out-of-range, DB clock, boundary 60/600 seconds, expired token lifecycle |
-| Replay | exact key/hash no mutation and no raw token; same key/different input conflict; new explicit reissue revokes old and emits one raw token |
+| Replay | exact key/hash menghasilkan descriptor replayed=true/rawToken=null/reissueRequired=true tanpa mutasi; same key/different input conflict; new explicit reissue revokes old dan emits one raw token |
 | State | revoked/void/terminal attempt, consumed/revoked/expired token, missing/corrupt active row, invalid timestamps/status pairing fail closed |
 | Side effects | participant/attempt unchanged; zero charge/bill/item/entitlement/order/outbox/session/consent/identity changes |
 | Rollback | failure after revocation and before insert/audit restores old active token; failure after insert rolls all back |
-| Concurrency | two exact issues create one row; two reissues leave one active; issue racing source/client/attempt revoke serializes without deadlock |
+| Concurrency | two exact issues create one row; two distinct reissues leave one active dan hanya token commit terakhir dapat consume; loser token generic invalid; issue racing source/client/attempt revoke mengikuti owner lock order tanpa deadlock |
 | RLS | runtime no-context and all non-service roles denied; service can operate only through validated action; cross-tenant direct SQL denied |
 | Migration | populated up preserves existing data; PG negative CHECK/FK/unique/index/policy definitions; down/up empty roundtrip; down with rows refuses before mutation |
 
@@ -357,8 +391,9 @@ The implementation must not start until reviewers explicitly accept:
    digest choice;
 3. fixed purpose/destination strings and POST-body transport for future consume;
 4. TTL range 60..600 seconds, default 600, feature default OFF;
-5. attempt-delete cascade, source/client restrict, 730-day proposed terminal
-   retention, and down-migration refusal when rows exist;
+5. attempt-delete cascade sebagai revocation/privacy boundary, source/client
+   restrict, terminal retention maksimal 730 hari hanya selama parent ada, dan
+   down-migration refusal ketika rows ada;
 6. no admin/participant issuer authority and no fallback when source/client or
    attempt is revoked/deleted.
 
