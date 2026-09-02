@@ -1,5 +1,54 @@
 # P12a-prep — portal cabang baca-saja
 
+## P12c verifier postcondition — dua profil audit ketat
+
+Tanggal 2026-09-02. Commit `c817fa0` memperbaiki blocker postcondition CLI
+setelah acceptance browser diintegrasikan root. Verifier tidak mengganti angka
+audit menjadi 3 secara universal. Ia menerima tepat dua profil lengkap setelah
+alur P12b:
+
+- `baseline`: 11 charge, 2 bill, 11 item, tepat 2 audit
+  `assessment_bill.reserved`, nol audit akses, dan baseline bill belum memiliki
+  metadata/file proof;
+- `p12c`: count billing yang sama, tepat 2 audit reservasi + tepat 1 audit
+  `assessment_bill.branch_proof_temporary_url_issued`, serta satu proof kanonik
+  pada baseline bill.
+
+Profil P12c juga mengikat audit akses ke organization, actor admin, baseline bill,
+`AssessmentBill` subject, dan context tiga-field versi/fingerprint/expiry yang
+valid. Context dinormalisasi untuk escaped JSON slash lalu ditolak bila memuat
+object path, URL, object-key/checksum, gateway/invoice, private sentinel, Xendit,
+atau control secret. Verifier tetap menuntut total audit persis sesuai profil,
+proof private tunggal dengan MIME/size/key/checksum shape valid, dan nol
+assessment entitlement, outbox, order, legacy entitlement, consent, serta
+identity verification. Fixture mentah 1/1/1/1 ditolak sebagai state parsial;
+akses audit nol/lebih dari satu tidak dapat menyamar sebagai profil P12c.
+
+Bukti fresh memakai satu fixture disposable
+`oncam-collective-page-eba0f6aaa78a41818a58e71f7c845189`:
+
+- browser P12b lulus: 20 aksi native, 480 trusted event, 9 geometry check,
+  85 response, dan nol console/blocked/request failure;
+- CLI verify setelah P12b lulus sebagai `baseline` dengan count 11/2/11/2,
+  reserved audit 2, access audit 0, proof state valid, dan zero-side-effect true;
+- browser P12c pada database yang sama lulus JPEG/PNG/PDF, invalid/oversize,
+  stale/double, tiga denial persisted, 6 geometry check, 386/386 trusted event,
+  346 response, dan tepat 6 denial HTTP yang diharapkan. Summary akhir memiliki
+  11 charge, 11 item, 1 proof JPEG, 1 audit akses, serta seluruh side effect nol;
+- CLI verify akhir lulus sebagai `p12c`: audit total 3, reserved 2, access 1,
+  binding fixture true, context safe true, proof state true, zero-side-effect true;
+- probe negatif URL terselubung sebagai `https:\/\/...` dalam context ditolak
+  exit 1 dengan `auditContextSafe=false`; audit akses duplikat ditolak exit 1
+  dengan profil `invalid` dan total audit 4. Setelah masing-masing probe,
+  restore diverifikasi kembali GREEN sebagai `p12c`.
+
+Focused PHPUnit tetap lulus **64 tes / 490 assertions**. Pint, PHP lint, dan
+PHPStan verifier lulus. Percobaan P12c pertama berhenti sebelum mutasi karena
+koneksi aset PHP built-in Windows tertahan; sesi/server ditutup dan rerun pada
+database yang sama lulus penuh. Port 8012 dan server sudah ditutup, marker runtime
+dihapus. Tidak ada source produksi, gate/route/provider/notifier, PostgreSQL/race,
+DB aktif, outbound, deploy, push, atau P13 pada increment ini.
+
 ## P12c browser acceptance — koreksi probe dan lulus
 
 Tanggal 2026-09-02. Commit `c3e8317` menambah reproduksi testing-only dengan
