@@ -764,3 +764,19 @@ migration/model lebih dahulu dengan SQLite + PostgreSQL disposable, kemudian
 action issuer internal. Feature default OFF dan tidak boleh ada route/controller,
 consume/session, provider/notifier, database aktif, deploy, atau P13b/P14 sampai
 checkpoint berikutnya direview.
+
+## P13a1 backend — schema/model accepted
+
+Schema/model worker `67ae1d1` dan laporan `052eefe`, dua gelombang hardening
+`e17f7fe`/`a494126` serta `2b886e9`/`90a3c88`, diintegrasikan root sebagai
+`4bf20ff`–`a15ca8a`. Shared migration regression dari worker dipindahkan manual
+ke baseline root dan dicatat sebagai `b341ab4`; file akhir byte-identik dengan
+blob worker `6a10572`.
+
+Review root menutup cross-scope attempt/client/source, client/organization,
+source-system, RLS SELECT dengan row nyata, dan populated rollback tanpa ambient
+service context. Root lulus focused **6/43**, PHP lint, Pint, PHPStan, dan full
+PostgreSQL disposable **320/320 tes, 2.655 assertions** pada runtime non-owner/
+NOBYPASSRLS; network/container disposable dibersihkan. P13a1 diterima lokal.
+P13a2 action masih belum dimulai; config/route/consume/session/DB aktif/deploy
+tetap dilarang.

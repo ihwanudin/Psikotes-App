@@ -556,6 +556,11 @@ provider atau menjadi authority sampai acquisition/validator berikutnya direview
 - [x] ADR-011 diterima untuk implementasi lokal bertahap: issuer hanya trusted integration client persisted; purpose/destination berasal dari konstanta server; bearer 256-bit dan idempotency key opaque disimpan sebagai dua digest terpisah; replay tanpa raw token membutuhkan reissue eksplisit; TTL 60–600 detik default OFF; RLS service-only, lock order, lifecycle, rollback, dan migration safety ditetapkan.
 - [x] P13a0 hanya dokumentasi/preflight. Belum ada migration/model/action/test atau wiring publik; consume P13b dan session P14 tetap terpisah.
 
+### P13a1: schema dan model handoff
+
+- [x] Migration additive dan model internal selesai lokal: bearer/idempotency hanya digest, lifecycle/TTL/one-active exact, attempt-client-organization-source database-authoritative melalui composite FK, source/client restrict, attempt cascade, dan FORCE RLS service-only. Down populated fail-closed dan empty descendant/ancestor roundtrip dibuktikan.
+- [x] Root lulus focused SQLite 6/43, PHP lint, Pint, PHPStan, serta PostgreSQL disposable 320/2.655 sebagai runtime non-owner/NOBYPASSRLS; cleanup sukses. Belum ada issuer action, raw token generation, config, route, consume, atau session.
+
 **Acceptance:**
 
 - [ ] Hash token short-lived terikat attempt/tujuan; reissue mencabut lama tanpa duplikasi charge/bill; tidak memuat PII/credential di URL/log.

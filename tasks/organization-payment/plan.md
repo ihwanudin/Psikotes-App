@@ -369,3 +369,12 @@ FK/RLS, satu active handoff, rollback, race, populated migration, dan refusal
 down saat berisi data wajib dibuktikan pada SQLite serta PostgreSQL disposable.
 Penerimaan ADR ini belum mengizinkan route/controller, consume/session,
 database aktif, checkout publik, atau P13b/P14.
+
+P13a1 kemudian menambah schema/model `checkout_handoffs` dengan tiga parent
+scope unique dan composite FK yang mengikat attempt, integration client,
+organization, participant, package, source system, dan contract version dalam
+satu graph durable. Digest/lifecycle/TTL/one-active, FORCE RLS service-only,
+populated-down refusal, serta urutan rollback descendant→ancestor diuji pada
+SQLite dan PostgreSQL disposable. Root final lulus 320 tes/2.655 assertions
+PostgreSQL dan cleanup sukses. P13a2 issuer action tetap berikutnya; belum ada
+raw token, config, route, consume/session, DB aktif, atau checkout publik.
