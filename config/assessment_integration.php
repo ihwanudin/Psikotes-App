@@ -12,5 +12,10 @@ return [
         'enabled' => false,
         'allow_legacy_funding_mapping' => false,
     ],
+    // Internal issuer remains fail-closed until separately wired and activated.
+    'checkout_handoff' => [
+        'enabled' => false,
+        'ttl_seconds' => 600,
+    ],
     'invitation_ttl_hours' => (int) env('ASSESSMENT_INVITATION_TTL_HOURS', 168),
 ];
