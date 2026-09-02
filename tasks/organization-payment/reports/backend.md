@@ -3225,3 +3225,51 @@ verification, hydration, cleanup, source activation, global session mutation,
 billing/access/order/outbox change, active migration, external call, deploy, or
 push was added. Browser delivery remains a documented fail-closed crash window
 requiring P13 recovery. **STOP review before P14 HTTP/hydration or P15/P16.**
+
+## P14a3 — internal checkout-session hydrate/touch/logout lifecycle (2026-09-02)
+
+`CheckoutSessionLifecycle` now owns each service RLS context and transaction for
+two internal operations. `hydrate()` accepts only a private sensitive `ocs1_`
+selector and no CSRF credential. `logout()` accepts private sensitive selector
+and `ocsrf1_` CSRF values and compares both durable SHA-256 digests with
+`hash_equals` after the canonical rows are locked. Malformed, unknown, replayed,
+terminal, foreign, and corrupt credentials all produce the same
+`CHECKOUT_SESSION_INVALID` boundary error without identifiers or credential
+material.
+
+The selector digest is only a bounded routing hint. Every operation locks and
+reloads organization, client, source, package and all items, attempt,
+soft-deletable participant, complete handoff history, and complete session
+history in canonical order. It validates exact checkout-v2 scope, latest consumed
+handoff generation, session-to-consume timing, lifecycle history, effective
+client/source windows, package authorization, participant deletion, attempt
+revocation, and server metadata. Natural idle/absolute expiry becomes EXPIRED;
+persisted authority loss becomes REVOKED/SCOPE_REVOKED; valid logout becomes
+REVOKED/LOGOUT. Each terminal transition and one safe audit are atomic. Replay
+is generic and writes no second audit.
+
+Successful hydrate advances `last_seen_at` using the database clock and refreshes
+idle expiry to `min(database_now + configured idle, absolute_expires_at)` without
+an audit, so read activity cannot extend the absolute lifetime. Its safe
+`CheckoutSessionPrincipal` projection contains only own attempt/session scope,
+assessment status/funding mode, and lifecycle timestamps. It excludes raw or
+digested selector/CSRF, profile PII, credential references, batch membership or
+counts, totals, bills, invoice/gateway references, proof data, and clinical
+results.
+
+Initial RED was **8 errors / 8 assertions**: seven missing boundary/DTO errors and
+one test-fixture timestamp that correctly violated the existing schema CHECK; the
+fixture was corrected to preserve canonical handoff/session time ordering before
+GREEN. Focused P13/P14 SQLite regression is **28 tests / 372 assertions**.
+PostgreSQL disposable full suite is **343 tests / 2,523 assertions**, including
+runtime non-owner/NOBYPASSRLS two-process logout replay serialization and a
+hydrate waiting on the organization lock before persisted client revocation;
+cleanup succeeded. Pint, full-project PHPStan (**0 errors**), and `git diff
+--check` pass.
+
+Commits: `2e33e7c` (five-file lifecycle/credential/principal boundary) and
+`9f35ddc` (feature and PostgreSQL race tests). Config remains default OFF and was
+not changed. No controller, route, middleware, cookie/header/browser behavior,
+global Laravel session, cleanup worker, source activation, billing/access side
+effect, active database operation, outbound call, deploy, or push was added.
+**STOP review before P14 HTTP wiring or P15/P16.**
