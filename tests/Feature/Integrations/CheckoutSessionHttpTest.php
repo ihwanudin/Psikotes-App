@@ -13,6 +13,7 @@ use App\Http\Middleware\ProtectCheckoutSessionHttpBoundary;
 use App\Http\Middleware\VerifyCheckoutSessionMutation;
 use App\Models\CheckoutSession;
 use App\Models\IntegrationClient;
+use App\Models\User;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
 use App\Services\Integrations\CheckoutSessionHttpContract;
@@ -21,6 +22,7 @@ use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Http\Request;
 use Illuminate\Session\Middleware\StartSession;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
@@ -44,8 +46,8 @@ final class CheckoutSessionHttpTest extends OrganizationPaymentTestCase
             $this->fail('Migration wrapper unavailable.');
         }
         $command->assertExitCode(0);
-        config()->set('app.url', 'https://oncam.id');
-        URL::forceRootUrl('https://oncam.id');
+        config()->set('app.url', 'https://psikotes.oncam.id');
+        URL::forceRootUrl('https://psikotes.oncam.id');
         URL::forceScheme('https');
         config()->set('assessment_integration.checkout_handoff.enabled', true);
         config()->set('assessment_integration.checkout_handoff.ttl_seconds', 600);
@@ -53,7 +55,7 @@ final class CheckoutSessionHttpTest extends OrganizationPaymentTestCase
             'enabled' => true, 'idle_minutes' => 30, 'absolute_minutes' => 120,
             'terminal_retention_days' => 30,
             'http' => [
-                'destination_origin' => 'https://oncam.id',
+                'destination_origin' => 'https://psikotes.oncam.id',
                 'trusted_exchange_origins' => [
                     'https://seleksi.beasiswajepang.id', 'https://seleksi.serbaindo.com',
                 ],
@@ -64,16 +66,24 @@ final class CheckoutSessionHttpTest extends OrganizationPaymentTestCase
             ->every(fn ($route): bool => ! in_array($route->uri(), [
                 'checkout/session', 'checkout', 'checkout/logout', 'checkout/unavailable',
             ], true));
+        RateLimiter::for(CheckoutSessionHttpContract::LIMITER,
+            fn (Request $request) => app(CheckoutSessionHttpContract::class)->rateLimit($request));
         Route::post('/checkout/session', [CheckoutSessionController::class, 'exchange'])
-            ->middleware([ProtectCheckoutSessionHttpBoundary::class])->name('test.checkout.exchange');
+            ->middleware([ProtectCheckoutSessionHttpBoundary::class,
+                'throttle:'.CheckoutSessionHttpContract::LIMITER])->name('test.checkout.exchange');
         Route::get('/checkout', [CheckoutSessionController::class, 'show'])
-            ->middleware([ProtectCheckoutSessionHttpBoundary::class, AuthenticateCheckoutSession::class])
+            ->middleware([ProtectCheckoutSessionHttpBoundary::class,
+                'throttle:'.CheckoutSessionHttpContract::LIMITER, AuthenticateCheckoutSession::class])
             ->name('test.checkout.show');
         Route::post('/checkout/logout', [CheckoutSessionController::class, 'logout'])
-            ->middleware([ProtectCheckoutSessionHttpBoundary::class, AuthenticateCheckoutSession::class,
+            ->middleware([ProtectCheckoutSessionHttpBoundary::class,
+                'throttle:'.CheckoutSessionHttpContract::LIMITER, AuthenticateCheckoutSession::class,
                 VerifyCheckoutSessionMutation::class])->name('test.checkout.logout');
         Route::get('/checkout/unavailable', [CheckoutSessionController::class, 'unavailable'])
-            ->middleware([ProtectCheckoutSessionHttpBoundary::class])->name('test.checkout.unavailable');
+            ->middleware([ProtectCheckoutSessionHttpBoundary::class,
+                'throttle:'.CheckoutSessionHttpContract::LIMITER])->name('test.checkout.unavailable');
+        Route::get('/test/existing-auth', fn (Request $request) => response((string) $request->user()?->getAuthIdentifier()))
+            ->middleware(['web', 'auth'])->name('test.existing-auth');
         Route::getRoutes()->refreshNameLookups();
         Route::getRoutes()->refreshActionLookups();
     }
@@ -83,7 +93,7 @@ final class CheckoutSessionHttpTest extends OrganizationPaymentTestCase
         $this->assertTrue($this->routesWereAbsent, 'Checkout routes were already discoverable before test registration.');
         $this->assertTrue(app(CheckoutSessionHttpContract::class)->enabled());
         $probe = Request::create('/checkout/session', 'POST', server: $this->server());
-        $this->assertSame('https://oncam.id', $probe->getSchemeAndHttpHost());
+        $this->assertSame('https://psikotes.oncam.id', $probe->getSchemeAndHttpHost());
         $excluded = [
             'web', StartSession::class, EncryptCookies::class, AddQueuedCookiesToResponse::class,
             ValidateCsrfToken::class, 'auth', 'auth:admin', 'participant.jwt',
@@ -96,6 +106,7 @@ final class CheckoutSessionHttpTest extends OrganizationPaymentTestCase
                 $this->assertNotContains($forbidden, $middleware, $name);
             }
             $this->assertSame(ProtectCheckoutSessionHttpBoundary::class, $middleware[0]);
+            $this->assertContains('throttle:'.CheckoutSessionHttpContract::LIMITER, $middleware);
         }
     }
 
@@ -107,11 +118,11 @@ final class CheckoutSessionHttpTest extends OrganizationPaymentTestCase
     }
 
     #[DataProvider('trustedOrigins')]
-    public function test_cross_site_exchange_preserves_login_cookie_and_sets_two_exact_private_cookies(string $origin): void
+    public function test_cross_site_exchange_sets_two_exact_private_cookies(string $origin): void
     {
         $fixture = $this->issued();
         $loginName = (string) config('session.cookie');
-        $response = $this->exchange($fixture['raw'], $origin, [$loginName => 'login-byte-exact'])
+        $response = $this->exchange($fixture['raw'], $origin)
             ->assertStatus(303)->assertRedirect('/checkout');
         $this->assertPrivate($response);
         $cookies = $response->headers->getCookies();
@@ -130,6 +141,31 @@ final class CheckoutSessionHttpTest extends OrganizationPaymentTestCase
         $this->assertStringNotContainsString($fixture['raw'], $this->content($response));
         $this->assertStringNotContainsString($fixture['raw'], (string) $response->headers->get('Location'));
         $this->assertDatabaseCount('checkout_sessions', 1);
+    }
+
+    public function test_real_laravel_login_authority_survives_cross_site_exchange_without_cookie_replacement(): void
+    {
+        $user = User::factory()->create(['password' => 'password']);
+        $login = $this->post('/login', ['email' => $user->email, 'password' => 'password']);
+        $loginName = (string) config('session.cookie');
+        $loginCookie = collect($login->headers->getCookies())
+            ->first(fn ($cookie): bool => $cookie->getName() === $loginName);
+        $this->assertNotNull($loginCookie);
+        $cookieByte = $loginCookie->getValue();
+
+        Auth::forgetGuards();
+        $this->call('GET', '/test/existing-auth', [], [$loginName => $cookieByte], [], $this->server(origin: null))
+            ->assertOk()->assertSee((string) $user->id);
+
+        $fixture = $this->issued();
+        $exchange = $this->exchange($fixture['raw'])->assertStatus(303);
+        $this->assertFalse(collect($exchange->headers->getCookies())
+            ->contains(fn ($cookie): bool => $cookie->getName() === $loginName));
+
+        Auth::forgetGuards();
+        $this->call('GET', '/test/existing-auth', [], [$loginName => $cookieByte], [], $this->server(origin: null))
+            ->assertOk()->assertSee((string) $user->id);
+        $this->assertSame($cookieByte, $loginCookie->getValue());
     }
 
     public function test_exchange_transport_origin_fixation_and_replay_are_fail_closed(): void
@@ -152,6 +188,21 @@ final class CheckoutSessionHttpTest extends OrganizationPaymentTestCase
         $this->call('POST', '/checkout/session', [], [], [], [...$this->server(),
             'CONTENT_TYPE' => 'application/json', 'HTTP_AUTHORIZATION' => 'Bearer '.$fixture['raw']],
             json_encode(['handoffToken' => $fixture['raw']], JSON_THROW_ON_ERROR))->assertStatus(422);
+        foreach ([
+            'handoffToken='.$fixture['raw'].'&handoffToken=och1_'.str_repeat('0', 64),
+            'handoffToken=och1_'.str_repeat('0', 64).'&handoffToken='.$fixture['raw'],
+            'handoffToken%5B%5D='.$fixture['raw'],
+            'handoffToken=%6f'.substr($fixture['raw'], 1),
+        ] as $rawBody) {
+            $polluted = $this->call('POST', '/checkout/session', ['handoffToken' => $fixture['raw']], [], [],
+                $this->server(), $rawBody)->assertStatus(422);
+            $this->assertPrivate($polluted);
+            $this->assertStringNotContainsString($fixture['raw'], $this->content($polluted));
+        }
+        $wrongHost = $this->call('POST', 'https://oncam.id/checkout/session', ['handoffToken' => $fixture['raw']], [], [],
+            [...$this->server(), 'HTTP_HOST' => 'oncam.id', 'SERVER_NAME' => 'oncam.id'],
+            'handoffToken='.$fixture['raw'])->assertNotFound();
+        $this->assertPrivate($wrongHost);
         $this->assertDatabaseCount('checkout_sessions', 0);
 
         $fixedSelector = 'ocs1_'.str_repeat('a', 64);
@@ -199,10 +250,10 @@ final class CheckoutSessionHttpTest extends OrganizationPaymentTestCase
         foreach (['form', 'header'] as $channel) {
             $fixture = $this->issued();
             $credentials = $this->credentials($this->exchange($fixture['raw'])->assertStatus(303));
-            $server = $this->server(origin: 'https://oncam.id');
+            $server = $this->server(origin: 'https://psikotes.oncam.id');
             if ($channel === 'form') {
                 $response = $this->call('POST', '/checkout/logout', ['_checkout_csrf' => $credentials['csrf']],
-                    $this->cookieMap($credentials), [], $server);
+                    $this->cookieMap($credentials), [], $server, '_checkout_csrf='.$credentials['csrf']);
             } else {
                 $response = $this->call('POST', '/checkout/logout', [], $this->cookieMap($credentials), [],
                     [...$server, 'HTTP_X_CHECKOUT_CSRF' => $credentials['csrf'], 'CONTENT_TYPE' => 'application/json'], '');
@@ -217,13 +268,25 @@ final class CheckoutSessionHttpTest extends OrganizationPaymentTestCase
         $fixture = $this->issued();
         $credentials = $this->credentials($this->exchange($fixture['raw'])->assertStatus(303));
         $invalid = [
-            $this->call('POST', '/checkout/logout', [], $this->cookieMap($credentials), [], $this->server(origin: 'https://oncam.id')),
+            $this->call('POST', '/checkout/logout', [], $this->cookieMap($credentials), [], $this->server(origin: 'https://psikotes.oncam.id')),
             $this->call('POST', '/checkout/logout', ['_checkout_csrf' => $credentials['csrf']], $this->cookieMap($credentials), [],
-                [...$this->server(origin: 'https://oncam.id'), 'HTTP_X_CHECKOUT_CSRF' => $credentials['csrf']]),
+                [...$this->server(origin: 'https://psikotes.oncam.id'), 'HTTP_X_CHECKOUT_CSRF' => $credentials['csrf']]),
             $this->call('POST', '/checkout/logout', ['_checkout_csrf' => 'ocsrf1_'.str_repeat('0', 64)],
-                $this->cookieMap($credentials), [], $this->server(origin: 'https://oncam.id')),
+                $this->cookieMap($credentials), [], $this->server(origin: 'https://psikotes.oncam.id')),
             $this->call('POST', '/checkout/logout', ['_checkout_csrf' => $credentials['csrf']],
                 $this->cookieMap($credentials), [], $this->server(origin: 'https://evil.example')),
+            $this->call('POST', '/checkout/logout', ['_checkout_csrf' => $credentials['csrf']],
+                $this->cookieMap($credentials), [], $this->server(origin: 'https://psikotes.oncam.id'),
+                '_checkout_csrf='.$credentials['csrf'].'&_checkout_csrf=ocsrf1_'.str_repeat('0', 64)),
+            $this->call('POST', '/checkout/logout', ['_checkout_csrf' => $credentials['csrf']],
+                $this->cookieMap($credentials), [], $this->server(origin: 'https://psikotes.oncam.id'),
+                '_checkout_csrf=ocsrf1_'.str_repeat('0', 64).'&_checkout_csrf='.$credentials['csrf']),
+            $this->call('POST', '/checkout/logout', ['_checkout_csrf' => $credentials['csrf']],
+                $this->cookieMap($credentials), [], $this->server(origin: 'https://psikotes.oncam.id'),
+                '_checkout_csrf%5B%5D='.$credentials['csrf']),
+            $this->call('POST', '/checkout/logout', ['_checkout_csrf' => $credentials['csrf']],
+                $this->cookieMap($credentials), [], $this->server(origin: 'https://psikotes.oncam.id'),
+                '_checkout_csrf=%6f'.substr($credentials['csrf'], 1)),
         ];
         foreach ($invalid as $response) {
             $response->assertStatus(419);
@@ -368,7 +431,7 @@ final class CheckoutSessionHttpTest extends OrganizationPaymentTestCase
         array $cookies = [], string $ip = '127.0.0.1'): TestResponse
     {
         return $this->call('POST', '/checkout/session', ['handoffToken' => $raw], $cookies, [],
-            $this->server($origin, $ip));
+            $this->server($origin, $ip), 'handoffToken='.$raw);
     }
 
     /**
@@ -409,7 +472,7 @@ final class CheckoutSessionHttpTest extends OrganizationPaymentTestCase
     private function server(?string $origin = 'https://seleksi.beasiswajepang.id', string $ip = '127.0.0.1'): array
     {
         $server = [
-            'HTTPS' => 'on', 'HTTP_HOST' => 'oncam.id', 'SERVER_NAME' => 'oncam.id',
+            'HTTPS' => 'on', 'HTTP_HOST' => 'psikotes.oncam.id', 'SERVER_NAME' => 'psikotes.oncam.id',
             'SERVER_PORT' => '443', 'REMOTE_ADDR' => $ip,
             'CONTENT_TYPE' => 'application/x-www-form-urlencoded',
         ];

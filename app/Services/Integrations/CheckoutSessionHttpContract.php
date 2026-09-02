@@ -5,12 +5,16 @@ declare(strict_types=1);
 namespace App\Services\Integrations;
 
 use Carbon\CarbonInterface;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use LogicException;
 use Symfony\Component\HttpFoundation\Cookie;
 use Symfony\Component\HttpFoundation\Response;
 
 final readonly class CheckoutSessionHttpContract
 {
+    public const string LIMITER = 'checkout-session-http';
+
     public const string SELECTOR_COOKIE = '__Secure-oncam_checkout_session';
 
     public const string CSRF_COOKIE = '__Secure-oncam_checkout_csrf';
@@ -73,6 +77,16 @@ final readonly class CheckoutSessionHttpContract
         return 'checkout-http:'.$kind.':'.($request->ip() ?? 'unknown');
     }
 
+    public function rateLimit(Request $request): Limit
+    {
+        $limit = $this->limit($request);
+        if ($limit === null) {
+            throw new LogicException('Checkout limiter unavailable.');
+        }
+
+        return Limit::perMinute($limit)->by($this->rateKey($request));
+    }
+
     /** @return array{0:Cookie,1:Cookie} */
     public function credentialCookies(string $selector, string $csrf, CarbonInterface $absoluteExpiry): array
     {
@@ -123,11 +137,7 @@ final readonly class CheckoutSessionHttpContract
             return null;
         }
         if ($formPresent) {
-            if ($request->headers->get('Content-Type') !== 'application/x-www-form-urlencoded'
-                || array_keys($request->request->all()) !== ['_checkout_csrf']) {
-                return null;
-            }
-            $value = $request->request->get('_checkout_csrf');
+            $value = $this->exactFormValue($request, '_checkout_csrf', '/^ocsrf1_[0-9a-f]{64}$/D');
         } else {
             if ($request->request->all() !== [] || $request->getContent() !== '') {
                 return null;
@@ -138,6 +148,36 @@ final readonly class CheckoutSessionHttpContract
         return is_string($value) && preg_match('/^ocsrf1_[0-9a-f]{64}$/D', $value) ? $value : null;
     }
 
+    public function exactHandoffForm(Request $request): ?string
+    {
+        return $this->exactFormValue($request, 'handoffToken', '/^och1_[0-9a-f]{64}$/D');
+    }
+
+    private function exactFormValue(Request $request, string $field, string $pattern): ?string
+    {
+        if ($request->headers->get('Content-Type') !== 'application/x-www-form-urlencoded'
+            || $request->query->all() !== []) {
+            return null;
+        }
+        $raw = $request->getContent();
+        if (strlen($raw) < 1 || strlen($raw) > 128
+            || preg_match('/^[\x20-\x7E]+$/D', $raw) !== 1
+            || ! str_starts_with($raw, $field.'=')) {
+            return null;
+        }
+        $value = substr($raw, strlen($field) + 1);
+        $parsed = $request->request->get($field);
+        if (preg_match($pattern, $value) !== 1
+            || $raw !== $field.'='.$value
+            || array_keys($request->request->all()) !== [$field]
+            || ! is_string($parsed)
+            || ! hash_equals($value, $parsed)) {
+            return null;
+        }
+
+        return $value;
+    }
+
     /** @return array{destinationOrigin:string,trustedOrigins:list<string>,exchangeLimit:int,hydrateLimit:int,mutationLimit:int}|null */
     private function settings(): ?array
     {
@@ -146,7 +186,7 @@ final readonly class CheckoutSessionHttpContract
         $exchange = config('assessment_integration.checkout_session.http.exchange_per_minute');
         $hydrate = config('assessment_integration.checkout_session.http.hydrate_per_minute');
         $mutation = config('assessment_integration.checkout_session.http.mutation_per_minute');
-        if (! is_string($origin) || $origin !== 'https://oncam.id'
+        if (! is_string($origin) || $origin !== 'https://psikotes.oncam.id'
             || $trusted !== ['https://seleksi.beasiswajepang.id', 'https://seleksi.serbaindo.com']
             || ! is_int($exchange) || $exchange < 1 || $exchange > 60
             || ! is_int($hydrate) || $hydrate < 1 || $hydrate > 120

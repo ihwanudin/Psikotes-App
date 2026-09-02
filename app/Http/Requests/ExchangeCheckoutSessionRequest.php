@@ -11,6 +11,8 @@ use Illuminate\Http\Exceptions\HttpResponseException;
 
 final class ExchangeCheckoutSessionRequest extends FormRequest
 {
+    private ?string $transportToken = null;
+
     public function authorize(): bool
     {
         return app(CheckoutSessionHttpContract::class)->exchangeOriginMatches($this);
@@ -27,22 +29,23 @@ final class ExchangeCheckoutSessionRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator): void {
-            if ($this->headers->get('Content-Type') !== 'application/x-www-form-urlencoded'
-                || $this->query->all() !== []
-                || array_keys($this->request->all()) !== ['handoffToken']) {
+            $token = app(CheckoutSessionHttpContract::class)->exactHandoffForm($this);
+            if ($token === null) {
                 $validator->errors()->add('_transport', 'Permintaan tidak valid.');
+
+                return;
             }
+            $this->transportToken = $token;
         });
     }
 
     public function rawHandoffToken(): string
     {
-        $value = $this->validated('handoffToken');
-        if (! is_string($value)) {
+        if ($this->transportToken === null) {
             throw new HttpResponseException(response('Unprocessable Content', 422));
         }
 
-        return $value;
+        return $this->transportToken;
     }
 
     protected function failedValidation(Validator $validator): never
