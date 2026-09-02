@@ -3133,3 +3133,22 @@ PHPStan full **0 error**, syntax dan diff-check bersih. Rincian ada di
 `backend-p14a1-checkout-session-schema.md`. Belum ada action/cookie/CSRF runtime/
 HTTP/config/cleanup/source aktif, migration DB aktif, outbound, deploy, atau
 push. **STOP review sebelum recovery/action/wiring P14 berikutnya.**
+
+## P13 recovery — explicit consumed-session reissue (2026-09-02)
+
+Issuer internal kini menerima typed `CheckoutHandoffIntent::Recovery`. Setelah
+seluruh authority dan graph persisted dikunci ulang dalam urutan canonical,
+recovery hanya menerima latest handoff `CONSUMED` dengan tepat satu checkout
+session `ACTIVE` yang exact dan belum due. Satu transaksi merevoke session dengan
+`RECOVERY_REISSUED`, mempertahankan handoff lama CONSUMED, membuat generation
+ISSUED baru, dan menulis satu audit aman. Raw bearer hanya keluar sekali.
+
+Replay key/hash yang sama credentialless dan tidak menggandakan audit/transisi;
+intent/scope conflict ditolak. Distinct recovery berikutnya, session missing/
+terminal/due/foreign/corrupt, authority revoked, atau latest non-CONSUMED gagal
+tertutup. Focused recovery+issuance+consume lulus **25/329**. PostgreSQL
+disposable penuh lulus **333/2.349** dengan tiga race proses, lock wait nyata,
+runtime non-owner/NOBYPASSRLS, dan cleanup sukses. Pint lulus, PHPStan full **0
+error**, syntax/diff-check bersih. Rincian ada di
+`backend-p13-checkout-handoff-recovery.md`. Tidak ada P14 establish/HTTP/cookie/
+CSRF/config/migration/cleanup atau operasi aktif. **STOP review sebelum P14.**
