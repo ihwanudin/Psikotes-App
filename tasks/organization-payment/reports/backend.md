@@ -3273,3 +3273,28 @@ not changed. No controller, route, middleware, cookie/header/browser behavior,
 global Laravel session, cleanup worker, source activation, billing/access side
 effect, active database operation, outbound call, deploy, or push was added.
 **STOP review before P14 HTTP wiring or P15/P16.**
+
+### P14a3 review fix — canonical history invariant parity
+
+Review correctly found that the lifecycle-local handoff history predicate was
+weaker than P13 consume. `CheckoutHandoffHistoryValidator` is now the single
+application-level source of truth used by both boundaries. It mirrors the schema
+contract for every status: null pairing, consumed timestamp range, revoked reason
+allowlist and `revoked_at >= issued_at`, expired timestamp boundary, fixed
+scope/purpose/destination, TTL, issue sequence, and at most one active issuance.
+Each caller retains its existing generic exception contract and lock order.
+
+The P14 session-history validator was also brought to parity with relevant schema
+checks: ULID and digest formats, nonblank source, `last_seen_at >= established_at`,
+strict idle/absolute ordering, revoke at/after last-seen, expiry at/after the
+effective idle/absolute boundary, exact terminal reason/null pairing, and
+session establishment within the consumed handoff window. A model-only test
+constructs states that database CHECK constraints intentionally prevent and
+proves eight temporal/reason corruptions return false; the database-backed
+corrupt issue sequence still fails without touch or audit.
+
+Focused P13/P14 regression passes **42 tests / 538 assertions**. PostgreSQL
+disposable full suite passes **343 tests / 2,523 assertions** with cleanup.
+Pint, full-project PHPStan (**0 errors**), and diff-check pass. Fix commit:
+`0422898`. No HTTP, route, cookie, source activation, or operational behavior was
+added. **STOP review.**
