@@ -848,3 +848,20 @@ dan terminal retention 30 hari tetap default usulan configurable, bukan nilai
 bisnis hardcoded. Increment berikut hanya schema/model, migration additive,
 RLS, rollback, dan tes disposable; belum action establish/hydrate, recovery,
 HTTP, cookie runtime, route, config aktif, atau deploy.
+
+## P14a1 backend — durable session schema accepted
+
+Schema/model worker `227c6a1`, rollback-order fix `b4dbccd`, dan laporan
+`98a5ebf` diintegrasikan root sebagai `7201667`/`b182436`/`dad35fe`. Tabel
+`checkout_sessions` mengikat selector/CSRF digest dan seluruh scope ke handoff
+CONSUMED/attempt/client/source melalui composite FK, membatasi satu session per
+handoff dan satu ACTIVE per attempt, serta memaksa lifecycle/timestamp/terminal
+reason di database. Model menyembunyikan kedua digest. PostgreSQL memakai FORCE
+RLS service-only; SQLite trigger hanya bukti portabilitas, bukan klaim RLS.
+
+Root mengulang schema SQLite **11/11 tes, 86 assertions**, Pint, PHPStan penuh
+0 error, dan PostgreSQL disposable **351/351 tes, 2.900 assertions**; cleanup
+sukses. P14a1 diterima lokal. Migration belum diterapkan ke database aktif dan
+belum ada selector generation, recovery, establish/hydrate/revoke action,
+cookie/CSRF runtime, route, config aktif, cleanup worker, atau deploy. Increment
+berikutnya adalah amendment recovery P13 yang bounded sebelum session action.
