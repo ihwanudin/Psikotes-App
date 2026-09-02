@@ -749,3 +749,18 @@ gagal sebagaimana diharapkan. Root mengulang focused **64/64 tes, 490 assertions
 PHP lint, Pint, dan PHPStan dengan hasil lulus. P12c diterima lokal default-off;
 route/discovery produksi, database aktif, provider/notifier, deploy, dan P13 belum
 diaktifkan.
+
+## P13a0 backend — ADR accepted, implementasi belum dimulai
+
+Backend existing menyerahkan proposal `85dcb27`/`e3345bb` dan koreksi hardening
+`21d7a5b`/`699d099`, diintegrasikan root sebagai `d29e4fb`/`ef53c9c`/
+`19b7077`/`bd464a5`. Root menerima ADR-011 setelah purpose/destination dihapus
+dari caller input, raw idempotency key diganti digest durable terpisah, cascade
+attempt direkonsiliasi dengan privacy/retention, replay dan race reissue dibuat
+eksplisit, serta lock order owner diseragamkan.
+
+Increment implementasi berikutnya tetap lane backend existing dan harus TDD:
+migration/model lebih dahulu dengan SQLite + PostgreSQL disposable, kemudian
+action issuer internal. Feature default OFF dan tidak boleh ada route/controller,
+consume/session, provider/notifier, database aktif, deploy, atau P13b/P14 sampai
+checkpoint berikutnya direview.

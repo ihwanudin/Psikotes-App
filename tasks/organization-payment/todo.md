@@ -551,6 +551,11 @@ provider atau menjadi authority sampai acquisition/validator berikutnya direview
 
 ## P13a: Terbitkan token checkout terbatas
 
+### P13a0: preflight dan ADR issue internal
+
+- [x] ADR-011 diterima untuk implementasi lokal bertahap: issuer hanya trusted integration client persisted; purpose/destination berasal dari konstanta server; bearer 256-bit dan idempotency key opaque disimpan sebagai dua digest terpisah; replay tanpa raw token membutuhkan reissue eksplisit; TTL 60–600 detik default OFF; RLS service-only, lock order, lifecycle, rollback, dan migration safety ditetapkan.
+- [x] P13a0 hanya dokumentasi/preflight. Belum ada migration/model/action/test atau wiring publik; consume P13b dan session P14 tetap terpisah.
+
 **Acceptance:**
 
 - [ ] Hash token short-lived terikat attempt/tujuan; reissue mencabut lama tanpa duplikasi charge/bill; tidak memuat PII/credential di URL/log.

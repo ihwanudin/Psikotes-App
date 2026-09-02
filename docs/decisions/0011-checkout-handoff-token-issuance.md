@@ -2,8 +2,10 @@
 
 ## Status
 
-Proposed untuk review P13a0. Belum diterima untuk implementasi schema/action,
-belum menjadi kontrak endpoint, dan tidak mengaktifkan checkout publik.
+Accepted untuk implementasi lokal bertahap P13a schema/model/action setelah
+review hardening root. Keputusan ini belum menjadi kontrak endpoint dan tidak
+mengizinkan consume/session, route/controller, aktivasi checkout publik,
+migration database aktif, atau P13b/P14.
 
 ## Date
 

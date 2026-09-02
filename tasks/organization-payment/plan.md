@@ -352,3 +352,20 @@ Kontrak: docs/ASSESSMENT_ACCESS_GATE.md. FormRequest/controller/token verifier
 ditunda ke P8b agar tidak memasang start tanpa autentikasi attempt yang benar;
 gate belum melindungi endpoint publik dan tidak memulai sesi/mengaktifkan hak.
 Tidak ada perubahan DB aktif, login legacy, scoring, UI, invoice, WA atau deploy.
+
+## P13a0 — preflight handoff checkout
+
+ADR-011 diterima pada 2026-09-02 untuk implementasi lokal bertahap P13a setelah
+review threat model, actor matrix, schema, lock order, dan test matrix. Issuer
+internal hanya menerima integration client persisted, attempt ULID, source
+selector, idempotency key opaque, dan intent typed. Purpose `checkout-handoff`
+serta destination `integrated-checkout-session` adalah konstanta server, bukan
+input caller. Bearer 256-bit dan idempotency key tidak disimpan mentah; keduanya
+memakai digest SHA-256 terpisah dengan fungsi dan authority berbeda. Exact replay
+tidak dapat mengembalikan raw token dan mengarahkan explicit atomic reissue.
+
+TTL dibatasi 60–600 detik dengan default 600 dan feature default OFF. Lifecycle,
+FK/RLS, satu active handoff, rollback, race, populated migration, dan refusal
+down saat berisi data wajib dibuktikan pada SQLite serta PostgreSQL disposable.
+Penerimaan ADR ini belum mengizinkan route/controller, consume/session,
+database aktif, checkout publik, atau P13b/P14.
