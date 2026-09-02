@@ -3063,3 +3063,24 @@ memakai `clock_timestamp()` hanya pada PostgreSQL dan mempertahankan
 **307/2.167**, related local **139/979**, Pint/PHPStan scoped lulus, dan seluruh
 resource disposable dibersihkan. Rincian ada di
 `backend-p13a3-postgres-concurrency.md`. **STOP sebelum P13b/P14.**
+
+## P13b — atomic checkout handoff consume (2026-09-02)
+
+Boundary internal `ConsumeCheckoutHandoff` kini menukar raw bearer `och1_` satu
+kali menjadi `CheckoutSessionScope` typed. Input/raw dan digest tidak dapat masuk
+descriptor, audit, exception, atau IPC; seluruh invalid/unknown/expired/revoked/
+consumed/wrong-scope menghasilkan `CHECKOUT_HANDOFF_INVALID` yang sama. Action
+memiliki service transaction sendiri, mengunci dan memvalidasi ulang graph
+authoritative dengan urutan P13a, lalu atomik menulis `CONSUMED` serta satu audit.
+Expiry boleh diterminalkan menjadi `EXPIRED` sambil tetap gagal generik.
+
+RED awal **3 errors** karena boundary belum ada. GREEN feature consume akhir
+**7 tes/64 assertions**, bersama issuer **20/220**. PostgreSQL disposable final
+**310/2.210** membuktikan same-token single winner, consume-vs-reissue
+linearizable, dan revoke-first denial dengan lock wait nyata sebagai runtime
+non-owner/NOBYPASSRLS. Pint scoped dan PHPStan full lulus. Regresi Integrations
+**191/192, 1.338 assertions**; satu batas existing ialah manifest Vite yang tidak
+tersedia pada halaman SelectionLaunch, tanpa fake manifest/harness relaxation.
+Rincian ada di `backend-p13b-core-consume.md`. Tidak ada route/controller/session,
+config/schema, billing/access/order/outbox, source/gate aktif, outbound, atau P14.
+**STOP untuk review P13b.**
