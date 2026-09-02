@@ -1,5 +1,66 @@
 # P12a-prep — portal cabang baca-saja
 
+## P12c browser acceptance — koreksi probe dan lulus
+
+Tanggal 2026-09-02. Commit `c3e8317` menambah reproduksi testing-only dengan
+`Action::make()->schema([TextInput, FileUpload])`, modal action resmi Filament 5,
+dan instrumentasi Alpine/Livewire. Reproduksi menemukan bahwa laporan
+`27a9bc9` salah mengartikan `dialog.isVisible()`: elemen luar `role=dialog`
+memiliki tinggi layout nol karena overlay dan window diposisikan fixed, tetapi
+`.fi-modal-window` terlihat, state Alpine `isOpen=true`, nesting action bernilai
+0, serta event `sync-action-modals` dan `open-modal` benar-benar terjadi.
+Space native membuka modal dan Enter native mengirim form minimal; dua response
+Livewire 200, seluruh input keyboard/click/change `isTrusted=true`, tanpa console,
+network failure, atau outbound. Tidak ada perubahan pada resource produksi.
+
+Commit `b8465bd` memperbaiki harness saja: server memakai document root
+`public`, temporary upload Livewire `tmp-for-tests` menunjuk storage disposable,
+CSP mengizinkan worker blob FilePond, JPEG sintetis dapat didekode, dan attempt
+baseline memiliki funding mode serta metadata organisasi yang valid untuk
+snapshot charge P11. Environment/cache/session/SQLite/temp upload/proof tetap di
+direktori temp tanpa `.env`; origin non-loopback dan route di luar allowlist
+tetap ditolak. Tidak ada payment provider, notifier, mail, atau HTTP nyata.
+
+Acceptance fresh Chrome CLI pada fixture
+`oncam-collective-page-baa9a34d47454c5982a56a158eb5c084` **lulus**:
+
+- unggah JPEG, ganti PNG, dan ganti PDF melalui FileUpload UI; status bill tetap
+  `pending`, satu file proof kanonik, dan ringkasan server mencerminkan MIME;
+- URL proof pertama merespons 200 dengan `no-store/private`, `no-referrer`, dan
+  `nosniff`; setelah replacement URL lama 404 dan audit akses hanya satu;
+- replacement eksternal di antara modal dan submit membuat modal stale gagal
+  tertutup, mempertahankan PNG eksternal; invalid MIME dan 5.120.001-byte PDF
+  juga gagal tanpa file parsial;
+- Enter ganda pada submit, Buka bukti, dan reload tidak menggandakan file/action;
+  hasil akhir tetap satu proof JPEG;
+- `rejected`, `expired`, `paid`, dan kanal nonmanual menyembunyikan upload;
+  mutasi persisted role, tenant, dan soft-delete setelah modal terbuka menolak
+  action dengan 403, 403, dan 302. URL bill asing dan ID tidak ada tetap ditolak;
+- detail dan modal masing-masing lulus pada 320/390/1280: enam pemeriksaan,
+  `scrollWidth` sama dengan viewport dan nol elemen terlihat terpotong;
+- Escape dan Cancel menutup modal; total 378 dari 378 event keyboard/click/change
+  yang dicatat adalah trusted. Pemilihan file menggunakan API browser
+  `setInputFiles`; aktivasi action, submit, cancel, dan open memakai Tab,
+  Space/Enter/Escape native;
+- 346 response diamati. Enam response 302/403/404 adalah denial yang memang
+  diharapkan; tidak ada failure/outbound atau console error di luar denial itu.
+  DOM/URL tidak memuat private metadata, object key, checksum, gateway, invoice,
+  atau control secret. Audit context juga tidak memuat URL/key/checksum.
+
+Summary sebelum regresi P12b: 1 charge, 1 bill item, 1 proof file, 1 audit akses;
+entitlement, outbox, order, dan item settled tetap nol. Regresi browser P12b pada
+fixture yang sama lulus: 20 aksi native, 484 trusted events, sembilan geometry
+check 320/390/1280, 85 response, dan nol console/blocked/failure. Focused PHPUnit
+`OrganizationBillAccessTest`, `OrganizationBillProofTest`, dan
+`AssessmentBillProofStorageTest` lulus **64 tes / 490 assertions**. Pint,
+Prettier, Node syntax, PHP lint, dan PHPStan harness/minimal fixture lulus.
+
+PostgreSQL/race tidak diulang dalam increment browser ini; bukti PG sebelumnya
+tidak diklaim ulang. Driver hanya Chrome installed/headless. Tidak ada screen
+reader atau browser engine lain. P12c tetap testing-only/default-off, tidak ada
+writer invoice/settlement/entitlement baru, dan pekerjaan berhenti sebelum P13
+atau aktivasi publik.
+
 ## P12c browser acceptance probe — belum lulus
 
 Tanggal 2026-09-02. Commit `628d6bd` memperluas harness loopback P12b yang
