@@ -58,7 +58,7 @@ final readonly class IssueCheckoutHandoff
     /** @return array{replayed:bool,reissueRequired:bool,publicId:string,issueNumber:int,expiresAt:CarbonInterface,rawToken:?string} */
     private function issue(CheckoutHandoffIssueInput $input, int $ttl): array
     {
-        $now = $this->databaseNow();
+        $observedAt = $this->databaseNow();
         $attemptHint = AssessmentParticipant::query()->where('assessment_attempt_id', $input->assessmentAttemptId)
             ->first(['organization_id', 'package_id']);
         if ($attemptHint === null || $attemptHint->organization_id !== $input->authenticatedClient->organization_id) {
@@ -73,18 +73,20 @@ final readonly class IssueCheckoutHandoff
             ->where('client_id', $input->authenticatedClient->client_id)
             ->lockForUpdate()->find($input->authenticatedClient->id);
         if ($client === null || ! $this->sameAuthenticatedClient($input->authenticatedClient, $client)
-            || ! $client->enabled || ! $this->effective($client->effective_from, $client->effective_until, $now)) {
+            || ! $client->enabled || ! $this->effective($client->effective_from, $client->effective_until, $observedAt)) {
             throw new IntegrationContractViolation('HANDOFF_NOT_ALLOWED');
         }
         $source = IntegrationSource::query()->where('integration_client_id', $client->id)
             ->where('source_system', $input->sourceSystem)->where('contract_version', self::CONTRACT_VERSION)
             ->lockForUpdate()->first();
         if ($source === null || $source->status !== 'ACTIVE'
-            || ! $this->effective($source->effective_from, $source->effective_until, $now)) {
+            || ! $this->effective($source->effective_from, $source->effective_until, $observedAt)) {
             throw new IntegrationContractViolation('HANDOFF_NOT_ALLOWED');
         }
         $package = TestPackage::query()->lockForUpdate()->find($attemptHint->package_id);
-        if ($package === null || ! $package->is_active
+        if ($package === null || ! $package->is_active || $package->amount === null || $package->amount < 0
+            || $package->currency !== 'IDR'
+            || ($package->consultation_amount !== null && $package->consultation_amount < 0)
             || ! in_array($package->code, $source->allowed_assessment_packages, true)
             || $package->items()->lockForUpdate()->first() === null) {
             throw new IntegrationContractViolation('HANDOFF_NOT_ALLOWED');
@@ -109,6 +111,11 @@ final readonly class IssueCheckoutHandoff
             ->where('purpose', self::PURPOSE)->where('destination', self::DESTINATION)
             ->orderBy('issue_number')->orderBy('id')->lockForUpdate()->get();
         $this->assertHistory($handoffs, $attempt, $source);
+        $now = $this->databaseNow();
+        if (! $this->effective($client->effective_from, $client->effective_until, $now)
+            || ! $this->effective($source->effective_from, $source->effective_until, $now)) {
+            throw new IntegrationContractViolation('HANDOFF_NOT_ALLOWED');
+        }
 
         $idempotencyDigest = hash('sha256', $input->idempotencyKey());
         $requestHash = $this->requestHash($client, $source, $attempt, $input->intent);

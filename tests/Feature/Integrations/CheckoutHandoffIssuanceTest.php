@@ -15,6 +15,7 @@ use App\Models\CheckoutHandoff;
 use App\Models\IntegrationClient;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -302,6 +303,14 @@ final class CheckoutHandoffIssuanceTest extends OrganizationPaymentTestCase
                 ->where('integration_client_id', $f['client']->id)->update(['allowed_assessment_packages' => '[]']),
             'package inactive' => fn (array $f) => DB::table('packages')->where('id', $f['attempt']->package_id)
                 ->update(['is_active' => false]),
+            'package amount missing' => fn (array $f) => DB::table('packages')->where('id', $f['attempt']->package_id)
+                ->update(['amount' => null]),
+            'package amount negative' => fn (array $f) => DB::table('packages')->where('id', $f['attempt']->package_id)
+                ->update(['amount' => -1]),
+            'package currency' => fn (array $f) => DB::table('packages')->where('id', $f['attempt']->package_id)
+                ->update(['currency' => 'USD']),
+            'package consultation negative' => fn (array $f) => DB::table('packages')->where('id', $f['attempt']->package_id)
+                ->update(['consultation_amount' => -1]),
             'package empty' => fn (array $f) => DB::table('package_items')->where('package_id', $f['attempt']->package_id)
                 ->delete(),
             'attempt revoked' => fn (array $f) => DB::table('assessment_participants')->where('id', $f['attempt']->id)
@@ -440,6 +449,22 @@ final class CheckoutHandoffIssuanceTest extends OrganizationPaymentTestCase
         $this->assertDatabaseCount('audit_logs', 1);
         DB::unprepared('DROP TRIGGER checkout_handoff_insert_failure');
 
+        $oldActive = CheckoutHandoff::query()->where('public_id', $first->handoffPublicId)
+            ->firstOrFail()->getAttributes();
+        DB::unprepared("CREATE TRIGGER checkout_handoff_reissue_audit_failure BEFORE INSERT ON audit_logs
+            WHEN NEW.action = 'checkout_handoff.reissued' BEGIN SELECT RAISE(ABORT, 'synthetic reissue audit failure'); END");
+        try {
+            $this->issue($fixture, 'ih1_'.str_repeat('a', 32), CheckoutHandoffIntent::Reissue);
+            $this->fail('Injected reissue audit failure returned a result.');
+        } catch (QueryException $exception) {
+            $this->assertStringContainsString('synthetic reissue audit failure', $exception->getMessage());
+        }
+        $this->assertSame($oldActive, CheckoutHandoff::query()->where('public_id', $first->handoffPublicId)
+            ->firstOrFail()->getAttributes());
+        $this->assertDatabaseCount('checkout_handoffs', 1);
+        $this->assertDatabaseCount('audit_logs', 1);
+        DB::unprepared('DROP TRIGGER checkout_handoff_reissue_audit_failure');
+
         $fresh = $this->fixture();
         DB::unprepared("CREATE TRIGGER checkout_handoff_audit_failure BEFORE INSERT ON audit_logs
             WHEN NEW.action = 'checkout_handoff.issued' BEGIN SELECT RAISE(ABORT, 'synthetic audit failure'); END");
@@ -453,6 +478,21 @@ final class CheckoutHandoffIssuanceTest extends OrganizationPaymentTestCase
             ->where('assessment_participant_id', $fresh['attempt']->id)->count());
         $this->assertSame(0, DB::table('audit_logs')
             ->where('subject_id', (string) $fresh['attempt']->id)->count());
+    }
+
+    public function test_application_clock_is_not_issuance_authority(): void
+    {
+        $fixture = $this->fixture();
+        CarbonImmutable::setTestNow('2040-01-01T00:00:00+00:00');
+        try {
+            $result = $this->issue($fixture, 'ih1_'.str_repeat('b', 32), CheckoutHandoffIntent::Issue);
+        } finally {
+            CarbonImmutable::setTestNow();
+        }
+        $row = CheckoutHandoff::query()->where('public_id', $result->handoffPublicId)->firstOrFail();
+        $databaseNow = DB::selectOne('SELECT CURRENT_TIMESTAMP AS current_time');
+        $this->assertLessThanOrEqual(2, abs($row->issued_at->diffInSeconds((string) $databaseNow->current_time, false)));
+        $this->assertNotSame('2040', $row->issued_at->format('Y'));
     }
 
     public function test_issuance_has_no_billing_access_identity_session_or_outbox_side_effects(): void
