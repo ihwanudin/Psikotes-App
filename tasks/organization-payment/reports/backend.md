@@ -3329,3 +3329,62 @@ Documentation commit: `c62f215`. `git diff --check` passes. No PHPUnit/PG run wa
 needed because this increment changes documentation only. No controller, route,
 middleware, config, cookie, source activation, environment, database, browser,
 outbound operation, deploy, or push was performed. **STOP before P14b1.**
+
+## P14b1 — test-only private checkout HTTP adapter (2026-09-02)
+
+The adapter now composes the accepted P14a2 exchange and P14a3 lifecycle through
+a minimal checkout-specific HTTP boundary. Production routes remain unchanged:
+the four routes are registered only by `CheckoutSessionHttpTest`. Stack
+inspection proves they do not inherit `web`, Laravel session, queued/encrypted
+cookies, framework CSRF, or application auth middleware. The boundary is
+default-OFF, accepts only the fixed `https://oncam.id` destination and the two
+reviewed exchange origins, rate-limits by IP and endpoint class, and applies
+`no-store, private` plus the full privacy header set to success, validation,
+authorization, throttling, unavailable, and rendered unexpected-error responses.
+
+Exchange accepts one exact URL-encoded `handoffToken` field, never query, JSON,
+cookie, or Authorization transport. Success issues exactly the host-only Secure,
+HttpOnly, SameSite Lax selector and CSRF-delivery cookies on `/checkout`, replaces
+attacker-supplied checkout cookies, preserves the unrelated login cookie, and
+uses a 303 redirect. Hydration now has one canonical lifecycle primitive that
+verifies both delivery-cookie digests in the same authoritative transaction
+before rendering the CSRF value into the private page. Mutation accepts exactly
+one strict form or empty-body header CSRF channel, requires the fixed destination
+Origin, compares delivery and explicit secrets in constant time, and then calls
+the existing canonical logout action. Missing, mismatched, expired, replayed,
+foreign, and revoked credentials clear both checkout cookies generically; logout
+replay creates no second audit.
+
+Focused P14 HTTP/lifecycle/establishment regression passes **26 tests / 597
+assertions**. The wider integration directory produced **223 passing of 224 tests
+/ 2,069 assertions**; its sole failure is the pre-existing UI-only
+`SelectionLaunchTest` because this worker intentionally has no
+`public/build/manifest.json`. No fake manifest or relaxed harness was introduced.
+PostgreSQL disposable full suite passes **343 tests / 2,523 assertions** and
+cleanup succeeded. Full-project PHPStan passes with **0 errors** under the synthetic
+testing environment; Pint and staged `git diff --check` pass.
+
+Code commits: `ac17ffa` (canonical CSRF-delivery hydration), `b2ccd36` (five-file
+HTTP boundary), and `0a17f34` (controller, private view, route-only feature tests).
+The local untracked `config/assessment_integration.php` was deliberately not
+staged. Its exact approved addition under `checkout_session` is:
+
+```php
+        'http' => [
+            'destination_origin' => 'https://oncam.id',
+            'trusted_exchange_origins' => [
+                'https://seleksi.beasiswajepang.id',
+                'https://seleksi.serbaindo.com',
+            ],
+            'exchange_per_minute' => 10,
+            'hydrate_per_minute' => 60,
+            'mutation_per_minute' => 10,
+        ],
+```
+
+The complete local config SHA-256 is
+`d2832fa7d2a0289e4dfd95e5bd542f20fbde1f315c84b3ec8105fdcf1a564586`.
+No production route/bootstrap/global middleware, source activation, browser run,
+billing/access/order/outbox behavior, active database operation, outbound call,
+deploy, or push was added. **STOP for P14b1 review before production wiring or
+P15/P16.**
