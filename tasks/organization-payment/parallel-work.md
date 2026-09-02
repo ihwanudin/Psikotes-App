@@ -813,3 +813,21 @@ lokal default-off. Tidak ada route/controller, consume/session, database aktif,
 provider/notifier, deploy, push, atau aktivasi publik. Increment berikutnya pada
 task backend existing adalah P13b consume atomik saja; P14 tetap dilarang sampai
 P13b direview.
+
+## P13b backend — atomic consume accepted
+
+Core consume worker `1641743`/`1453031` diintegrasikan root sebagai `605e54c`/
+`30a57f1`. Boundary hanya menerima bearer `och1_` privat, lookup digest bounded,
+mengunci dan memvalidasi ulang graph persisted, memakai wall clock database,
+serta menukar ISSUED menjadi CONSUMED atau mengamati EXPIRED dalam transaksi
+service miliknya. Semua kegagalan bearer menjadi `CHECKOUT_HANDOFF_INVALID` tanpa
+fallback atau oracle; hasil hanya DTO scope internal dan belum membuat session,
+cookie, controller, route, halaman, atau hak assessment.
+
+Kegagalan Vite pada worktree dikonfirmasi sebagai artifact build yang tidak ada,
+bukan regresi: branch root dengan manifest lulus Integrations **192/192 tes,
+1.352 assertions**. Pint dan PHPStan penuh lulus. PostgreSQL disposable root
+lulus **331/331 tes, 2.811 assertions**, termasuk single-winner, consume versus
+reissue, dan revocation waiter pada koneksi runtime non-owner; cleanup sukses.
+P13b diterima. P14 berikutnya harus contract-first untuk session privat,
+CSRF/header/cookie/IDOR dan tetap default-off; tidak mengaktifkan endpoint publik.

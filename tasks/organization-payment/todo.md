@@ -586,7 +586,7 @@ provider atau menjadi authority sampai acquisition/validator berikutnya direview
 
 **Acceptance:**
 
-- [ ] Consume atomik dengan expiry/replay checks, menghasilkan scope sesi checkout saja. Dua request paralel tidak menghasilkan sesi sah ganda; token invalid tidak fallback ke registrasi cabang default.
+- [x] Consume atomik dengan expiry/replay checks menghasilkan scope sesi checkout internal saja; dua request paralel tepat satu pemenang dan invalid tidak fallback. Root `605e54c`/`30a57f1`: Integrations 192/1.352 dan PostgreSQL disposable 331/2.811 lulus; belum ada session/cookie/route P14.
 
 **Dependencies:** P13a. **Scope:** M.
 
