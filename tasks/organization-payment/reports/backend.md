@@ -3152,3 +3152,21 @@ runtime non-owner/NOBYPASSRLS, dan cleanup sukses. Pint lulus, PHPStan full **0
 error**, syntax/diff-check bersih. Rincian ada di
 `backend-p13-checkout-handoff-recovery.md`. Tidak ada P14 establish/HTTP/cookie/
 CSRF/config/migration/cleanup atau operasi aktif. **STOP review sebelum P14.**
+
+### P13 recovery review-fix — terminal restart lifecycle
+
+Recovery tidak lagi membuat natural EXPIRED atau LOGOUT menjadi jalan buntu.
+Enum internal `CheckoutSessionRecoveryState` membatasi ACTIVE-undued,
+ACTIVE-due, EXPIRED, dan LOGOUT. ACTIVE-undued direvoke
+`RECOVERY_REISSUED`; ACTIVE-due diterminalkan EXPIRED dengan DB clock;
+EXPIRED/LOGOUT existing tidak ditulis ulang. Audit merekam prior state allowlist
+tanpa ID session/credential. SCOPE_REVOKED, future/corrupt/foreign history, dan
+RECOVERY_REISSUED/REPLACED tanpa generation berikutnya tetap fail closed.
+
+RED review-fix **6 tes**: 4 passed, 1 failure, 1 error. GREEN focused final
+**26/348**. PostgreSQL disposable final **339/2.456** mencakup sembilan case
+proses ACTIVE/EXPIRED/LOGOUT/SCOPE_REVOKED dengan lock wait nyata dan cleanup
+sukses. Review juga menemukan mismatch rounding `timestampTz` PostgreSQL;
+recovery kini membandingkan `clock_timestamp()::timestamptz(0)` pada presisi
+storage. Pint lulus, PHPStan full **0 error**, syntax/diff-check bersih. Tidak ada
+schema/HTTP/cookie/config/P14 establish atau operasi aktif. **STOP review.**
