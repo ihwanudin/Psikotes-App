@@ -17,5 +17,11 @@ return [
         'enabled' => false,
         'ttl_seconds' => 600,
     ],
+    'checkout_session' => [
+        'enabled' => false,
+        'idle_minutes' => 30,
+        'absolute_minutes' => 120,
+        'terminal_retention_days' => 30,
+    ],
     'invitation_ttl_hours' => (int) env('ASSESSMENT_INVITATION_TTL_HOURS', 168),
 ];
