@@ -1,6 +1,8 @@
 # P14 private summary browser: disposable setup checkpoint
 
-Status: BLOCKED before bootstrap, init, server or browser; report-only review checkpoint, 2026-09-04.
+Original checkpoint: BLOCKED before bootstrap, init, server or browser, 2026-09-04.
+The historical evidence below is preserved; see the guard-fix amendment at the end
+for the refreshed manifest and current review boundary.
 Worker HEAD before this report: ae6af1bfc4a5837ef2bd82a3a201158b99983f3f.
 Root observed HEAD: 46c46c15ffd7fde57d303c0c9c7516d5a8358a06.
 The accepted harness increments 0dc7586/ae6af1b are not browser acceptance.
@@ -158,3 +160,57 @@ Only this report is owned by the checkpoint. Existing dirty source/overlays and
 old scratch/build artifacts remain intact. No .env/active data, provider/notifier,
 public route/source/gate, migration, deployment, push or additional task/agent.
 Commit only this report after diff-check; STOP for setup review.
+
+## Guard-fix amendment — 2026-09-04
+
+Coordinator accepted the setup as root aabd2af and authorized only the literal @
+path fix. Code commit: `1c0d5b0d4cf021be483e75f3f3acf80d672ed554`.
+Ownership is the PHP harness and this existing report. No vendor file was renamed,
+removed or edited; no source from root was overlaid. The coordinator accepted the
+six documented baseline differences for this synthetic summary-only test, not as
+a statement of byte equality. Browser CLI compatibility remains a separate gate.
+
+The predicate adds only literal @ to each ordinary path segment's character class.
+The dot/dot-dot segment checks and rejection of absolute, drive, backslash, empty
+segment, colon, percent and control-character paths remain. The main harness's
+realpath/reparse checks, exact inventory and file/hash verification are unchanged.
+
+TDD evidence, without autoload/bootstrap or database:
+
+- Added the eight actual Carbon locale names as positive pure checks and 22
+  negative paths, including @-adjacent traversal, dot segments, drive and backslash
+  variants, absolute/UNC paths, alternate-stream colon, percent encoding, LF/NUL.
+- RED: running --self-test with the old predicate exited 1, pure checks failed.
+- GREEN: after the single-character allowlist addition, all 46 checks passed
+  (16 existing + 8 positive + 22 negative). Worker and refreshed copy both pass.
+- PHP syntax check and focused Pint --test passed. No application PHPUnit,
+  PHPStan, PG or browser result is claimed for this isolated harness change.
+
+After the code commit, refreshed ONLY
+`source/tools/testing/tests/Browser/serve-checkout-session.php` in the same run.
+Before copying, all 22,126 files matched the previous exact manifest. Afterward,
+rehashing every file confirmed that this is the sole changed source entry; the
+other 22,125 hashes are unchanged. Copy remains independent, with no multiple-link
+files/reparse files and exact inventory. Manifest JSON was regenerated with sorted
+paths and compact UTF-8 encoding.
+
+- Historical manifest SHA-256:
+  `0018ded08751721428a4b1b59a1314a75604d832cafad0fb66b7ebeb23c8a5d7`.
+- Current manifest SHA-256:
+  `9eb114d8f37a0ed028f559b257dd7cad3c08a550ae5818e742a46f57d8121337`.
+- Current worker/copy PHP harness SHA-256:
+  `5457dad2192a28f8ef6e033b2295bbce52ce51a06204096f1bf21cdf22fd4acf`.
+
+The original setup-evidence.json remains a historical checkpoint, including its
+old manifest digest and rejected paths; this amendment supplies the current
+digest. Do not use that old digest to launch the refreshed copy.
+
+Isolated evaluation of the actual PHP path and tree functions validates all 22,126
+manifest paths and the run tree, without including the application or autoloader.
+The original eight vendor-name refusals are resolved. Database, storage, fixtures
+and baseline remain absent. No full init/bootstrap or database verifier ran.
+
+No init, server, TLS, browser/CLI, dependency install/download, certificate,
+operational config, active data or public wiring. Keep this copy for review;
+STOP before tooling review/launch. Diff-check and explicit file staging preserve
+the unrelated dirty baseline. This is guard GREEN, not browser acceptance.
