@@ -4075,3 +4075,141 @@ Code commit cached paths were exactly the three paths above. Existing dirty and
 untracked baseline overlays and scratch files remain untouched and unstaged.
 This report is a separate lane-only commit. STOP for coordinator review before
 any further summary/HTTP/P15 work.
+
+## P14c — own-attempt payment facts, credential lifecycle (2026-09-04)
+
+One authorized internal payment-facts increment from `ad756a0`, split into two
+bounded code commits:
+
+- `53fc8da`: `CheckoutPaymentFacts` immutable DTO,
+  `CheckoutPaymentFactsReader`, `CheckoutPaymentFactsTest` (three new files).
+- `cf0c1eb`: closed `CheckoutSessionOperation` enum, existing
+  `CheckoutSessionLifecycle`, its feature tests, and existing PostgreSQL lifecycle
+  concurrency tests (four files).
+
+This report is separate. There is no full-summary/HTTP/frontend/P15 implementation.
+No shared snapshot baseline file is part of either code commit.
+
+### Authority, projection and historical payment
+
+`CheckoutSessionLifecycle::readPayment(CheckoutSessionMutationCredentials)` is
+credential-only. It reuses the same persisted graph, handoff history, current
+session/recovery, scope and database expiry validation as other lifecycle calls.
+The internal operation enum replaces the accumulated boolean operation flags;
+no public operation selector or generic callback was introduced. Other public
+hydrate/profile/logout methods retain their contracts. Mapper/reader failure
+rolls back the existing idle touch and restores context. Successful reads retain
+idle refresh, and canonical expiry/revocation may still terminalize/audit; this is
+not a claim that the entire lifecycle is write-free.
+
+The service reader takes only the lifecycle's freshly validated attempt graph
+inside its existing service transaction. It does not elevate RLS and explicitly
+rejects other/no contexts. As with the accepted settlement reader, an arbitrary
+model is not authorization proof; it is not an external entrypoint. The lifecycle
+never accepts caller-selected attempt/participant/bill IDs or a stale principal.
+
+Output is exactly `payment` with `payer`, `state`, `amountIdr`, `amountSource`,
+`consultationRequested`, and `actionAvailable=false`. Payer comes from persisted
+funding lifecycle, checked against the mandatory initial snapshot without
+inferring/backfilling a missing key. Initial null may precede a persisted choice;
+a selected initial value cannot change. No current resolver auto-selection is
+presented as a persisted choice.
+
+Only a valid own charge supplies amount and consultation choice. The canonical
+`AssessmentPriceSnapshot::fromCharge` validates snapshot identity/version/scalars,
+package, amount, currency and consultation linkage. DTO transport accepts only
+IDR integer values in 0..9,007,199,254,740,991, with no rounding/clamping. Provenance
+is `charge_snapshot` or `unavailable`; no charge means amount and consultation are
+both null, even when the catalog has a price. Catalog changes cannot replace a
+frozen charge amount. This slice deliberately implements no catalog estimate.
+
+The reader validates own charge/attempt/org/participant/package/payer and own
+allocation amount/currency/payer linkage, then calls the accepted shared
+`AssessmentSettlementReader` for paid/free evidence. Paid does not depend on
+consent, identity, profile completeness, ready entitlements, or today's purchasing
+policy. Zero alone is not free: canonical nonfuture free marker and absence of
+allocation remain required. Scope/session revocation remains an authentication
+barrier; a disabled integration client is not treated as a purchasing-policy
+bypass into the lifecycle. Existing gate/access code is unchanged.
+
+State mapping: null payer without charge is `unselected`; selected self is
+`unpaid`, organization `unbilled`; reserved/issuing is `preparing`; pending remains
+`pending`; unknown is `recovery_required`; terminal `expired`/`rejected` remain
+terminal; valid shared settlement yields `paid`/`free`. Mixed/corrupt/future payment
+evidence is generic `CHECKOUT_PAYMENT_UNAVAILABLE`, never inferred unpaid with an
+action. All states have action false. No reinvoice, lookup, provider call, payment
+writer, activation, consent, entitlement or outbox write occurs in this reader.
+
+Parent bill totals/member counts/URLs/references/proof, other participants,
+clinical fields, model metadata and credential values are absent from the DTO.
+The settlement primitive may read collective amounts/timestamps internally for
+integrity, but returns only the existing boolean evidence to this projection.
+
+### Lock contract and real interleavings
+
+Read-only audit confirmed reservation, finalizer/activation and invoice outcome
+persistence acquire the organization mutex before their billing/attempt graph.
+The lifecycle already holds this mutex throughout projection. The new reader adds
+no lock on bill/item/charge after attempt/session locks; it performs ordinary
+reads in the same transaction. No lock-order contract change was needed. This
+protects against the existing cooperating writers, not arbitrary SQL that ignores
+the mutex. Purchase-policy writers also use the same mutex, but no separate
+concurrent policy-writer test is claimed in this increment.
+
+Three new PostgreSQL tests reuse the existing synchronized process/socket harness:
+
+1. A profile-incomplete attempt's real finalizer commits while payment read waits
+   on the organization lock: the read sees paid and its own allocation only, with
+   no entitlement/activation outbox created for the incomplete profile.
+2. The same finalizer is rolled back while read waits: the read sees pending,
+   never a partially paid bill/allocation.
+3. Read owns the organization lock first, sees pending and completes; the waiting
+   finalizer then commits, and a subsequent read sees paid. A query observer
+   rejects any new billing FOR UPDATE in the projection, preventing a false
+   lock-order claim. All reader exits check restored context/transaction.
+
+These tests use synthetic normalized payment events and an isolated synthetic
+payment-method record. They do not simulate provider network acceptance or claim
+payment-method activation. Current purchasing policy is OFF in the PG fixture;
+historical finalization and payment facts still work. The public gate stays OFF.
+
+### Actual TDD and validation
+
+- Reader RED: **29 tests, 0 passed** (28 errors / 1 expected-message failure),
+  because the reader did not exist. Additional scope/consultation/zero tests were
+  subsequently added. Lifecycle RED: **4 tests, 0 passed**, missing `readPayment`.
+- Reader + canonical settlement/gate/activation regression: **125 tests / 299
+  assertions**, all passed. Includes collective ten with exact recursive output
+  keys, immutable catalog snapshot, missing prerequisites/current policy OFF,
+  no-charge null price, initial history, all status mappings, zero/free/future,
+  same participant other attempt, internal foreign graph mismatch, wrong self
+  payer allocation, JS safe range and no business writes.
+- Combined related checkout/settlement/finalizer/gate/activation: **255 tests /
+  2,525 assertions**, all passed with `phpunit.organization-payment.xml`:
+
+```powershell
+php vendor/bin/phpunit -c phpunit.organization-payment.xml tests/Feature/Integrations/CheckoutPaymentFactsTest.php tests/Feature/Integrations/CheckoutSessionLifecycleTest.php tests/Feature/Integrations/CheckoutProfileProjectionTest.php tests/Feature/Integrations/CheckoutSessionEstablishmentTest.php tests/Feature/Integrations/CheckoutSessionHttpTest.php tests/Feature/Integrations/CheckoutHandoffConsumeTest.php tests/Feature/Integrations/CheckoutHandoffRecoveryTest.php tests/Feature/Integrations/CheckoutHandoffIssuanceTest.php tests/Feature/Payments/AssessmentSettlementReaderTest.php tests/Feature/Payments/AssessmentBillPaymentFinalizationTest.php tests/Feature/Auth/AttemptEntitlementGateTest.php tests/Feature/Auth/SettledAssessmentActivationTest.php --do-not-cache-result
+```
+
+- PHPStan initially reported redundant null checks and nullsafe/coalesce access.
+  These were corrected without suppressions after consulting official
+  [nullsafe.neverNull](https://phpstan.org/error-identifiers/nullsafe.neverNull)
+  and [identical.alwaysFalse](https://phpstan.org/error-identifiers/identical.alwaysFalse)
+  guidance. Full application PHPStan then passed with **0 errors**; final focused
+  reader/lifecycle rerun passed **57 tests / 342 assertions**. The 255-test result
+  preceded these semantics-preserving type cleanups; the 57-test and PG results
+  exercise the corrected code.
+- Disposable `tools/testing/run-org-postgres.ps1`: **350 tests / 2,597 assertions**,
+  zero failures/skips, runtime non-owner/NOBYPASSRLS, observed lock waits and
+  independent connections. Cleanup completed successfully; application containers
+  were not targeted. SQLite is not claimed as locking/RLS evidence.
+- Scoped Pint, PHP syntax checks for all seven PHP files, and `git diff --check`
+  passed. Testing XML uses SQLite memory/fakes/preventStrayRequests; PHPStan uses
+  process-local synthetic testing/SQLite-memory/array settings, no `.env` changes.
+
+No full application/browser/public E2E run is claimed; previous independent
+manifest/sandbox limitations remain. No schema/config/source activation, writer,
+provider, notifier, command/job/scheduler/route, active DB/data, deployment, push,
+new task or agent. Baseline dirty overlays and blocked scratch remain untouched.
+Explicit cached path checks preceded each commit; no snapshot baseline was staged.
+STOP for coordinator review before further P14 summary or P15 work.
