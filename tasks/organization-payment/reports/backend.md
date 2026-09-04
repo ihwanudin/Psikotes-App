@@ -4497,3 +4497,54 @@ the reader delta. Baseline dirty overlays remain unstaged. Only these three lane
 files are committed. No gate/settlement clock seams, summary composition, HTTP,
 frontend, P15, writer changes, active DB/.env/data, outbound, deploy/push or new
 task/agent. STOP for review before the next prerequisite slice.
+
+## P14 prerequisite: single-instant settlement evaluation
+
+Scope: AssessmentSettlementReader, focused AssessmentSettlementSnapshotTest and
+this report only. `isSettledAt(AssessmentCharge, CarbonImmutable)` evaluates the
+existing single canonical predicate with one supplied instant. Free marker,
+own item settled_at, bill paid_at and every collective member settled_at all use
+that same instant. `isSettled` guards service role first, captures the current
+application clock once, and delegates. The explicit entrypoint independently
+uses the same private service-role guard. Denial still precedes charge evaluation,
+database reads and implicit clock capture, with the same LogicException message.
+
+The predicate's scope, charge/item/bill linkage, payer identity, amount/currency,
+paid status, zero/free marker and no-allocation requirement, member count, total,
+positive member amounts and integer-overflow checks are unchanged. No role
+elevation, locks, writes or policy checks were added. No caller was migrated to
+the explicit API. This is current persisted evidence evaluated against a captured
+time, not historical status reconstruction: a current pending bill does not become
+paid because an earlier time is supplied. No entitlement or authorization follows
+from this API alone; existing caller scope/locking responsibilities remain.
+
+### Actual TDD and validation
+
+- RED focused: **30 tests / 6 passed / 2 failures / 22 errors**, 34 assertions.
+  Explicit API cases failed because it did not exist; both legacy mid-query clock
+  cases failed behaviorally: a clock advance admitted a future collective member,
+  while a rewind rejected evidence valid at the initial instant.
+- GREEN focused: **30 tests / 120 assertions**, all passed. Includes before/exact/
+  after boundary at all four levels, explicit asOf despite later global time,
+  legacy per-call freshness, forward/backward clock changes after the real joined
+  query for both entrypoints, current-status semantics, all admin/participant and
+  missing-context denial, zero queries on denial and unchanged context/business
+  rows/audit/outbox/global time after evaluation. Clock movement is test-only;
+  cloned query-event dispatchers and test clock are restored in finally.
+- Related SQLite-memory regression: **188 tests / 733 assertions**, all passed:
+
+```powershell
+php vendor/bin/phpunit -c phpunit.organization-payment.xml tests/Feature/Payments/AssessmentSettlementSnapshotTest.php tests/Feature/Payments/AssessmentSettlementReaderTest.php tests/Feature/Integrations/CheckoutPaymentFactsTest.php tests/Feature/Integrations/CheckoutSessionLifecycleTest.php tests/Feature/Auth/AttemptEntitlementGateTest.php tests/Feature/Auth/SettledAssessmentActivationTest.php tests/Feature/Payments/AssessmentBillPaymentFinalizationTest.php --do-not-cache-result
+```
+
+- Full application PHPStan **0 errors**, with process-local synthetic XML values.
+  Scoped Pint, PHP syntax checks on both changed/new PHP files and diff-check passed.
+
+No new PostgreSQL locking/RLS claim, frontend build or browser run is made; the
+query shape/policy/schema and caller locks did not change. Earlier PG and genuine
+artifact verification remain separate historical evidence. Existing artifact copy
+was preserved and not updated with this slice. Baseline dirty overlays are not
+staged; commit contains only these three lane files. No payment/gate/prerequisites
+caller migration, summary composition, HTTP/frontend/P15, writer change, active
+DB/.env/data, real provider/notifier calls, new task/agent, deploy or push.
+STOP for review before the next prerequisite.
