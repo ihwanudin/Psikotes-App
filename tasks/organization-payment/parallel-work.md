@@ -1,5 +1,33 @@
 # Koordinasi task paralel organization-payment
 
+## Read-only summary contract and synthetic HTTP integrated — 2026-09-04
+
+Reviewed frontend `303f0e6` against PHP DTO/profile/product/payment serialization;
+integrated as `f0f2af1`. Root reran standalone strict/exact-optional type probes,
+existing focused tsconfig, ESLint and Prettier: passed. Additive readonly v1 types
+and synthetic fixtures only; old interactive DRAFT remains unchanged. Structural
+types are not runtime JSON validation or permission to expose payment/start actions.
+Frontend completed cursor `48839421-96c5-4ac3-972e-751f2702a64a:7`.
+
+Reviewed backend `9087047` controller delta, view, all 25 HTTP cases and report;
+integrated as `b06935f`. Root independently reran HTTP summary/session plus summary
+composer/lifecycle in env-free worker guarded SQLite: 78 tests / 2,099 assertions
+passed. Worker 253/3,195 broader regression and PHPStan/Pint are reported evidence,
+not root reruns. No new PostgreSQL or browser run. Controller baseline matched.
+Backend completed cursor `4155cd61-0c2b-4909-bd55-db926b1dc9fe:38`.
+
+Access review: only current validated checkout cookie pair can read own scope;
+anonymous, stale scope and header/principal substitutes cannot render summary.
+Single lifecycle read, strict inert JSON, escaped labels, private failure responses,
+separate login cookie and narrow native logout behavior retained. Component errors
+roll back idle; rendering/encoding errors after commit cannot roll back that touch.
+
+P14 browser acceptance and P15 remain open; no public route/gate/source activation.
+Next checkpoint is synthetic browser delivery verification/preflight, including CSP,
+refresh/back/multi-tab and native logout. No next worker increment dispatched in
+this review turn; do not treat either completed task as still running or resend the
+completed contract/HTTP implementation. Existing worktrees and portal baseline kept.
+
 ## HTTP summary preflight accepted for synthetic implementation — 2026-09-04
 
 Reviewed `1c62d51` against boundary/auth/controller sources. Approve new summary
