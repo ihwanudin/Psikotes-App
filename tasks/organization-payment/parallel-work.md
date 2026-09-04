@@ -1,5 +1,20 @@
 # Koordinasi task paralel organization-payment
 
+## Browser harness candidate requires assertion corrections — 2026-09-04
+
+Reviewed 0dc7586 delta/report; NOT integrated or launched. Root reran pure16,
+PHP lint and Node syntax successfully. Backend completed cursor `:41`.
+Accepted the fixed prepare-price fixture status cell as test setup only, never
+activation evidence. Manifest/source guard still requires reviewed copy before run.
+
+Sent ONE bounded correction: test-local v1 checks must enforce typed state/payer,
+nonempty supported test list, profile required metadata, consent applicability/
+version and monetary provenance/nullability (current checks mainly enforce keys).
+Add negative probes. Also exercise old recovery CSRF with freshly exchanged pair:
+419 without revocation, followed by successful current read; the cross-attempt
+stale-CSRF case does not replace this. Same two harness files plus report only;
+no source copy/init/server/browser or application changes before next review.
+
 ## Browser preflight reviewed; harness implementation dispatched — 2026-09-04
 
 Backend completed cursor `:39`; reviewed a4ea371 report in full and checked three
