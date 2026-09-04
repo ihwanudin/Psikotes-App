@@ -23,7 +23,7 @@ use RuntimeException;
 use Tests\Support\AssessmentAccessFixture;
 use Throwable;
 
-/** Diagnostic only: the mutex expectation may remain RED; do not weaken it or edit the writer here. */
+/** Retains the original mutex regression and verifies coherent serialized identity reads. */
 final class IdentityEvidenceReadConsistencyTest extends TestCase
 {
     private array $fixture;
@@ -61,28 +61,40 @@ final class IdentityEvidenceReadConsistencyTest extends TestCase
 
     protected function tearDown(): void
     {
-        app(RlsContextRunner::class)->runAsService(function (): void {
-            $method = DB::table('assessment_bills')->where('id', $this->fixture['bill'])->value('payment_method_id');
-            foreach (['assessment_entitlements', 'assessment_bill_items', 'assessment_bills', 'assessment_charges',
-                'assessment_participants', 'integration_clients'] as $table) {
-                DB::table($table)->where('organization_id', $this->fixture['organization'])->delete();
+        try {
+            if (isset($this->fixture)) {
+                app(RlsContextRunner::class)->runAsService(function (): void {
+                    $method = DB::table('assessment_bills')->where('id', $this->fixture['bill'])->value('payment_method_id');
+                    foreach (['assessment_entitlements', 'assessment_bill_items', 'assessment_bills', 'assessment_charges',
+                        'assessment_participants', 'integration_clients'] as $table) {
+                        DB::table($table)->where('organization_id', $this->fixture['organization'])->delete();
+                    }
+                    foreach (['consent_records', 'identity_verifications', 'identity_evidence'] as $table) {
+                        DB::table($table)->where('participant_id', $this->fixture['participant'])->delete();
+                    }
+                    DB::table('participants')->where('id', $this->fixture['participant'])->delete();
+                    DB::table('package_items')->where('package_id', $this->fixture['package'])->delete();
+                    DB::table('packages')->where('id', $this->fixture['package'])->delete();
+                    DB::table('payment_methods')->where('id', $method)->delete();
+                    DB::table('branches')->where('id', $this->fixture['organization'])->delete();
+                });
             }
-            foreach (['consent_records', 'identity_verifications', 'identity_evidence'] as $table) {
-                DB::table($table)->where('participant_id', $this->fixture['participant'])->delete();
+        } finally {
+            try {
+                // Unique fake disk lives only on the runner's tmpfs, never the configured identity disk.
+                if (isset($this->disk)) {
+                    Storage::disk($this->disk)->deleteDirectory('/');
+                    Storage::forgetDisk($this->disk);
+                }
+            } finally {
+                if (isset($this->previousMatcher)) {
+                    config()->set('identity.disk', $this->previousDisk);
+                    app()->instance(IdentityMatcher::class, $this->previousMatcher);
+                }
+                Date::setTestNow();
+                parent::tearDown();
             }
-            DB::table('participants')->where('id', $this->fixture['participant'])->delete();
-            DB::table('package_items')->where('package_id', $this->fixture['package'])->delete();
-            DB::table('packages')->where('id', $this->fixture['package'])->delete();
-            DB::table('payment_methods')->where('id', $method)->delete();
-            DB::table('branches')->where('id', $this->fixture['organization'])->delete();
-        });
-        // Unique fake disk lives only on the runner's tmpfs, never the configured identity disk.
-        Storage::disk($this->disk)->deleteDirectory('/');
-        Storage::forgetDisk($this->disk);
-        config()->set('identity.disk', $this->previousDisk);
-        app()->instance(IdentityMatcher::class, $this->previousMatcher);
-        Date::setTestNow();
-        parent::tearDown();
+        }
     }
 
     public function test_existing_replacement_must_wait_for_the_canonical_participant_mutex(): void
@@ -106,7 +118,7 @@ final class IdentityEvidenceReadConsistencyTest extends TestCase
             foreach ($after as $key) {
                 Storage::disk($this->disk)->assertExists($key);
             }
-            // Intended regression assertion. A commit while the mutex is held is diagnostic RED.
+            // Original RED regression retained: a commit while the mutex is held must fail.
             $this->assertSame('blocked_by_parent', $observation,
                 'Existing-row StoreIdentityEvidence completed while canonical participant FOR UPDATE was held.');
         } finally {
@@ -136,24 +148,23 @@ final class IdentityEvidenceReadConsistencyTest extends TestCase
         }
     }
 
-    public function test_later_evidence_replacement_does_not_make_stale_verification_ready(): void
+    public function test_reader_first_keeps_old_revision_coherent_until_later_replacement(): void
     {
         $race = $this->raceGate();
-        $this->assertSame('completed', $race['observation']);
-        $this->assertFalse($race['racedReady']);
+        $this->assertSame('blocked_by_parent', $race['observation']);
+        $this->assertTrue($race['racedReady']);
         $this->assertFalse(app(RlsContextRunner::class)->runAsService(fn (): bool => $this->gateReady()));
     }
 
-    public function test_same_second_mixed_read_is_not_by_itself_proof_of_wrong_ready(): void
+    public function test_reader_first_keeps_same_second_revisions_separate(): void
     {
         $this->setInitialVerificationTime($this->anchor);
         $this->assertTrue(app(RlsContextRunner::class)->runAsService(fn (): bool => $this->gateReady()));
         $race = $this->raceGate();
-        $this->assertSame('completed', $race['observation']);
-        $this->assertTrue($race['racedReady'], 'Old valid verification and same-second replacement satisfy the existing timestamp predicate.');
+        $this->assertSame('blocked_by_parent', $race['observation']);
+        $this->assertTrue($race['racedReady']);
         $this->assertFalse(app(RlsContextRunner::class)->runAsService(fn (): bool => $this->gateReady()));
-        // Initial state was ready, final state locked: the raced ready can linearize before replacement.
-        // Do not label this as a never-valid / fabricated readiness decision.
+        // The original diagnostic mixed read is now prevented even at second precision.
     }
 
     public function test_actual_action_rollback_restores_rows_and_cleans_only_new_objects(): void
@@ -179,6 +190,84 @@ final class IdentityEvidenceReadConsistencyTest extends TestCase
         }
     }
 
+    public function test_writer_first_makes_reader_wait_and_observe_only_committed_pending_identity(): void
+    {
+        $writer = $this->startWriter(pauseAfterParticipant: true);
+        $reader = null;
+        try {
+            $this->signal($writer);
+            $this->awaitParticipantRead($writer);
+            $reader = $this->startWriter(reader: true);
+            $this->signal($reader);
+            $this->assertSame('blocked_by_parent', $this->observe($reader, $writer['backend']));
+            $this->resume($writer);
+            $this->finish($writer);
+            $this->finish($reader);
+            $this->assertSame(['completed' => true, 'rolledBack' => false, 'outcome' => 'pending'], $writer['result']);
+            $this->assertSame(['completed' => true, 'rolledBack' => false, 'outcome' => 'locked'], $reader['result']);
+            $this->assertOnlyCurrentObjectsRemain();
+        } finally {
+            // Closing a paused writer's socket aborts its transaction on a failed assertion.
+            $this->stopWriter($writer);
+            if ($reader !== null) {
+                $this->stopWriter($reader);
+            }
+        }
+    }
+
+    public function test_two_actual_writers_serialize_replacement_without_orphaned_objects(): void
+    {
+        $before = app(RlsContextRunner::class)->runAsService(fn (): array => $this->evidenceKeys());
+        $first = $this->startWriter(pauseAfterParticipant: true);
+        $second = null;
+        try {
+            $this->signal($first);
+            $this->awaitParticipantRead($first);
+            $second = $this->startWriter();
+            $this->signal($second);
+            $this->assertSame('blocked_by_parent', $this->observe($second, $first['backend']));
+            $this->assertSame($before, app(RlsContextRunner::class)->runAsService(fn (): array => $this->evidenceKeys()));
+            $this->resume($first);
+            $this->finish($first);
+            $this->finish($second);
+            foreach ([$first, $second] as $worker) {
+                $this->assertSame(['completed' => true, 'rolledBack' => false, 'outcome' => 'pending'], $worker['result']);
+            }
+            $this->assertNotSame($before, app(RlsContextRunner::class)->runAsService(fn (): array => $this->evidenceKeys()));
+            $this->assertOnlyCurrentObjectsRemain();
+            $this->assertFalse(app(RlsContextRunner::class)->runAsService(fn (): bool => $this->gateReady()));
+        } finally {
+            $this->stopWriter($first);
+            if ($second !== null) {
+                $this->stopWriter($second);
+            }
+        }
+    }
+
+    private function assertOnlyCurrentObjectsRemain(): void
+    {
+        $keys = app(RlsContextRunner::class)->runAsService(fn (): array => $this->evidenceKeys());
+        $files = Storage::disk($this->disk)->allFiles();
+        sort($keys);
+        sort($files);
+        $this->assertCount(2, $keys);
+        $this->assertSame($keys, $files);
+    }
+
+    public function test_aborting_a_paused_writer_cleans_files_and_cannot_resume_the_test_suite(): void
+    {
+        $before = app(RlsContextRunner::class)->runAsService(fn (): array => $this->identityRows());
+        $worker = $this->startWriter(pauseAfterParticipant: true);
+        try {
+            $this->signal($worker);
+            $this->awaitParticipantRead($worker);
+        } finally {
+            $this->stopWriter($worker);
+        }
+        $this->assertSame($before, app(RlsContextRunner::class)->runAsService(fn (): array => $this->identityRows()));
+        $this->assertOnlyCurrentObjectsRemain();
+    }
+
     /** @return array{observation:string,racedReady:bool} */
     private function raceGate(): array
     {
@@ -186,14 +275,19 @@ final class IdentityEvidenceReadConsistencyTest extends TestCase
         $worker = $this->startWriter();
         $armed = true;
         $observation = 'not_observed';
+        $connection = DB::connection();
+        $previousEvents = $connection->getEventDispatcher();
+        $events = clone $previousEvents;
+        $connection->setEventDispatcher($events);
         try {
-            DB::listen(function (QueryExecuted $query) use (&$armed, &$worker, &$observation): void {
-                // QueryExecuted fires after SELECT has obtained the old verification row, before
-                // AssessmentAccessPrerequisites can query evidence. The action then commits independently.
+            $events->listen(QueryExecuted::class, function (QueryExecuted $query) use (&$armed, &$worker, &$observation, $beforeKeys): void {
+                // Pause after the old verification SELECT, before evidence. The writer must
+                // remain blocked until the reader finishes and releases its parent mutex.
                 if ($armed && str_starts_with($query->sql, 'select') && str_contains($query->sql, 'from "identity_verifications"')) {
                     $armed = false;
                     $this->signal($worker);
                     $observation = $this->observe($worker);
+                    $this->assertSame($beforeKeys, $this->evidenceKeys(), 'Reader must retain the old evidence revision while its parent mutex is held.');
                 }
             });
             $racedReady = app(RlsContextRunner::class)->runAsService(function (): bool {
@@ -209,6 +303,7 @@ final class IdentityEvidenceReadConsistencyTest extends TestCase
             return compact('observation', 'racedReady');
         } finally {
             $armed = false;
+            $connection->setEventDispatcher($previousEvents);
             $this->stopWriter($worker);
         }
     }
@@ -278,7 +373,7 @@ final class IdentityEvidenceReadConsistencyTest extends TestCase
             DB::table('identity_verifications')->where('participant_id', $this->fixture['participant'])->get()->toJson()];
     }
 
-    private function startWriter(bool $rollback = false): array
+    private function startWriter(bool $rollback = false, bool $pauseAfterParticipant = false, bool $reader = false): array
     {
         $this->assertTrue(function_exists('pcntl_fork'), 'Disposable Linux runtime with pcntl is required; no skip.');
         DB::purge('pgsql');
@@ -297,14 +392,32 @@ final class IdentityEvidenceReadConsistencyTest extends TestCase
                 if (fgets($pair[1]) !== "go\n") {
                     throw new RuntimeException('Identity diagnostic barrier failed.');
                 }
+                $events = clone DB::connection()->getEventDispatcher();
+                DB::connection()->setEventDispatcher($events);
                 if ($rollback) {
-                    DB::listen(function (QueryExecuted $query): void {
+                    $events->listen(QueryExecuted::class, function (QueryExecuted $query): void {
                         if (str_starts_with($query->sql, 'update "identity_verifications"')) {
                             throw new RuntimeException('Synthetic identity rollback.');
                         }
                     });
                 }
-                $outcome = $this->replace();
+                if ($pauseAfterParticipant) {
+                    $armed = true;
+                    $events->listen(QueryExecuted::class, function (QueryExecuted $query) use (&$armed, $pair): void {
+                        if ($armed && str_starts_with($query->sql, 'select') && str_contains($query->sql, 'from "participants"')) {
+                            $armed = false;
+                            fwrite($pair[1], "participant-read\n");
+                            if (fgets($pair[1]) !== "resume\n") {
+                                throw new RuntimeException('Identity writer release barrier failed.');
+                            }
+                        }
+                    });
+                }
+                $outcome = $reader ? app(RlsContextRunner::class)->runAsService(function (): string {
+                    $this->lockParent();
+
+                    return $this->gateReady() ? 'ready' : 'locked';
+                }) : $this->replace();
                 $result = ['completed' => true, 'rolledBack' => false, 'outcome' => $outcome];
             } catch (Throwable $exception) {
                 $result = $rollback && $exception instanceof RuntimeException && $exception->getMessage() === 'Synthetic identity rollback.'
@@ -314,10 +427,17 @@ final class IdentityEvidenceReadConsistencyTest extends TestCase
             if (app(RlsContextRunner::class)->current() !== null || DB::transactionLevel() !== 0) {
                 $result = ['unexpected' => 'context-leak'];
             }
-            fwrite($pair[1], json_encode($result, JSON_THROW_ON_ERROR)."\n");
-            fclose($pair[1]);
-            DB::disconnect('pgsql');
-            exit(0);
+            // A broken IPC channel must never unwind into the child's inherited PHPUnit loop.
+            $exitCode = 0;
+            try {
+                fwrite($pair[1], json_encode($result, JSON_THROW_ON_ERROR)."\n");
+            } catch (Throwable) {
+                $exitCode = 2;
+            } finally {
+                fclose($pair[1]);
+                DB::disconnect('pgsql');
+                exit($exitCode);
+            }
         }
         fclose($pair[1]);
         stream_set_timeout($pair[0], 20);
@@ -327,7 +447,7 @@ final class IdentityEvidenceReadConsistencyTest extends TestCase
         }
         $ready = json_decode($line, true, flags: JSON_THROW_ON_ERROR);
 
-        return ['pid' => $pid, 'socket' => $pair[0], 'backend' => $ready['backend'], 'result' => null];
+        return ['pid' => $pid, 'socket' => $pair[0], 'backend' => $ready['backend'], 'result' => null, 'paused' => false];
     }
 
     private function signal(array $worker): void
@@ -335,8 +455,21 @@ final class IdentityEvidenceReadConsistencyTest extends TestCase
         fwrite($worker['socket'], "go\n");
     }
 
-    private function observe(array &$worker): string
+    private function awaitParticipantRead(array &$worker): void
     {
+        $this->assertSame("participant-read\n", fgets($worker['socket']));
+        $worker['paused'] = true;
+    }
+
+    private function resume(array &$worker): void
+    {
+        fwrite($worker['socket'], "resume\n");
+        $worker['paused'] = false;
+    }
+
+    private function observe(array &$worker, ?int $blocker = null): string
+    {
+        $blocker ??= DB::selectOne('SELECT pg_backend_pid() AS id')->id;
         $deadline = microtime(true) + 6;
         do {
             $read = [$worker['socket']];
@@ -346,7 +479,7 @@ final class IdentityEvidenceReadConsistencyTest extends TestCase
 
                 return ($worker['result']['completed'] ?? false) ? 'completed' : 'rolled_back_or_failed';
             }
-            $waiting = DB::selectOne('SELECT wait_event_type, pg_backend_pid() = ANY(pg_blocking_pids(pid)) AS blocked_by_parent FROM pg_stat_activity WHERE pid = ?', [$worker['backend']]);
+            $waiting = DB::selectOne('SELECT wait_event_type, ? = ANY(pg_blocking_pids(pid)) AS blocked_by_parent FROM pg_stat_activity WHERE pid = ?', [$blocker, $worker['backend']]);
             if ($waiting?->wait_event_type === 'Lock' && $waiting->blocked_by_parent) {
                 return 'blocked_by_parent';
             }
@@ -368,6 +501,13 @@ final class IdentityEvidenceReadConsistencyTest extends TestCase
 
     private function stopWriter(array $worker): void
     {
+        if ($worker['paused'] && $worker['result'] === null) {
+            // Drain the aborted child's response before closing, including on assertion failure.
+            fwrite($worker['socket'], "abort\n");
+            $this->finish($worker);
+        }
+        // Shutdown also releases a child barrier when another fork inherited this socket.
+        stream_socket_shutdown($worker['socket'], STREAM_SHUT_RDWR);
         fclose($worker['socket']);
         pcntl_waitpid($worker['pid'], $status);
         $this->assertTrue(pcntl_wifexited($status));

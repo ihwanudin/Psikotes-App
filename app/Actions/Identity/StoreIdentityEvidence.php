@@ -39,7 +39,7 @@ final readonly class StoreIdentityEvidence
             [$verification, $replacedKeys] = $this->runner->run(
                 new RlsContext('service'),
                 function () use ($participantId, $stored): array {
-                    Participant::query()->findOrFail($participantId);
+                    Participant::query()->lockForUpdate()->findOrFail($participantId);
 
                     $evidence = [];
                     $replacedKeys = [];
