@@ -2,6 +2,12 @@
 
 declare(strict_types=1);
 
+if (($argv[1] ?? '') === '--inspector-tests') {
+    checkoutInspectorTests();
+
+    return;
+}
+
 // Only new synthetic text fixtures; no autoloader/application/database.
 final class CheckoutIntegrityFixture
 {
@@ -375,3 +381,87 @@ $case('owner dies during full precheck', static function ($f) use ($denied): voi
         }, fn ($id) => $f->live[$id] ?? null));
 });
 echo json_encode(['syntheticCases' => $cases, 'assertions' => $checks, 'passed' => true, 'processProbe' => 'simulated', 'browserOrDatabaseStarted' => false, 'fixturesPreserved' => true], JSON_THROW_ON_ERROR)."\n";
+
+function checkoutInspectorTests(): void
+{
+    $checks = 0;
+    $measurements = [];
+    $assert = static function (bool $value) use (&$checks): void {
+        $checks++;
+        if (! $value) {
+            fwrite(STDERR, 'Inspector assertion '.$checks." failed\n");
+            throw new RuntimeException('Synthetic inspector assertion failed');
+        }
+    };
+    foreach (['success', 'empty', 'stall', 'error', 'stderr', 'malformed', 'oversize-out', 'oversize-err', 'callback-error'] as $case) {
+        $body = match ($case) {
+            'success' => 'echo "123456789\\r\\n";',
+            'empty' => '',
+            'stall' => 'usleep(5000000);',
+            'error' => 'exit(3);',
+            'stderr' => 'fwrite(STDERR, "SYNTHETIC_PRIVATE");',
+            'malformed' => 'echo "SYNTHETIC_PRIVATE";',
+            'oversize-out' => 'echo str_repeat("x", 4096); usleep(5000000);',
+            'oversize-err' => 'fwrite(STDERR, str_repeat("x", 4096)); usleep(5000000);',
+            default => 'usleep(5000000);',
+        };
+        $spawn = null;
+        $started = hrtime(true);
+        $error = null;
+        $result = null;
+        try {
+            $result = checkoutBrowserInspectCommand([PHP_BINARY, '-n', '-r', $body], 300,
+                static function (array $info) use (&$spawn, $case): void {
+                    $spawn = $info;
+                    if ($case === 'callback-error') {
+                        throw new RuntimeException('SYNTHETIC_PRIVATE');
+                    }
+                });
+        } catch (Throwable $failure) {
+            $error = $failure->getMessage();
+        }
+        $elapsed = (hrtime(true) - $started) / 1e9;
+        $measurements[$case] = round($elapsed, 3);
+        $assert($elapsed < 2.0);
+        if ($case === 'stall') {
+            $assert($elapsed >= 0.29);
+        }
+        $assert($spawn !== null);
+        $assert($error === (in_array($case, ['success', 'empty'], true) ? null : 'Owner inspection failed'));
+        $assert($result === ($case === 'success' ? '123456789' : null));
+        $assert(! file_exists($spawn['stdout']) && ! file_exists($spawn['stderr']));
+        $assert(checkoutBrowserIntegrityProcess($spawn['pid']) === null);
+    }
+    // Actual tick lookup is restricted to this helper-owned synthetic PHP child.
+    $control = null;
+    $tickStart = hrtime(true);
+    $result = checkoutBrowserInspectCommand([PHP_BINARY, '-n', '-r', 'usleep(1500000); echo "7";'], 3000,
+        static function (array $info) use (&$control, $assert): void {
+            $control = $info;
+            $first = checkoutBrowserIntegrityProcess($info['pid']);
+            $second = checkoutBrowserIntegrityProcess($info['pid']);
+            $assert(is_string($first) && preg_match('/^[0-9]{1,20}$/D', $first) === 1);
+            $assert($first === $second); // Inspector did not terminate the inspected child.
+        });
+    $measurements['own-live-ticks'] = round((hrtime(true) - $tickStart) / 1e9, 3);
+    $assert($result === '7');
+    $assert(checkoutBrowserIntegrityProcess($control['pid']) === null);
+    $assert(! file_exists($control['stdout']) && ! file_exists($control['stderr']));
+
+    // A real timed-out child while the evidence lock is held must reach invalidation/finally.
+    $fixture = new CheckoutIntegrityFixture;
+    $caught = false;
+    try {
+        checkoutBrowserIntegrityOperation($fixture->directory, $fixture->digest, $fixture->owner, 'pre',
+            static fn () => checkoutBrowserInspectCommand([PHP_BINARY, '-n', '-r', 'usleep(5000000);'], 100),
+            fn ($id) => $fixture->live[$id] ?? null);
+    } catch (RuntimeException $error) {
+        $caught = $error->getMessage() === 'Owner inspection failed';
+    }
+    $assert($caught && is_file($fixture->directory.'/integrity-invalid'));
+    $lock = fopen($fixture->directory.'/integrity-evidence.json', 'r+');
+    $assert(flock($lock, LOCK_EX | LOCK_NB));
+    flock($lock, LOCK_UN);
+    fclose($lock);
+    echo json_encode(['inspectorChecks' => $checks, 'seconds' => $measurements, 'passed' => true], JSON_THROW_ON_ERROR)."\n";
+}

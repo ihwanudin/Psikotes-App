@@ -124,7 +124,7 @@ if (PHP_SAPI === 'cli' && ($argv[1] ?? '') === '--self-test') {
     exit;
 }
 
-if (PHP_SAPI === 'cli' && ($argv[1] ?? '') === '--integrity-tests') {
+if (PHP_SAPI === 'cli' && in_array($argv[1] ?? '', ['--integrity-tests', '--inspector-tests'], true)) {
     require __DIR__.'/checkout-integrity-tests.php';
     exit;
 }
@@ -715,24 +715,106 @@ function checkoutBrowserIntegrityProcess(int $pid): ?string
         throw new RuntimeException('Unsupported owner process');
     }
     $shell = getenv('SystemRoot').'/System32/WindowsPowerShell/v1.0/powershell.exe';
-    $command = '$p=Get-Process -Id '.$pid.' -ErrorAction SilentlyContinue; if($p){$p.StartTime.ToUniversalTime().Ticks.ToString()}';
-    $process = proc_open([$shell, '-NoProfile', '-NonInteractive', '-Command', $command],
-        [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes,
-        options: ['bypass_shell' => true, 'create_new_console' => false]);
-    if (! is_resource($process)) {
-        throw new RuntimeException('Owner inspection unavailable');
-    }
-    fclose($pipes[0]);
-    $value = trim((string) stream_get_contents($pipes[1]));
-    $errors = (string) stream_get_contents($pipes[2]);
-    fclose($pipes[1]);
-    fclose($pipes[2]);
-    $exit = proc_close($process);
-    if ($exit !== 0 || $errors !== '' || ($value !== '' && preg_match('/^[0-9]{1,20}$/D', $value) !== 1)) {
-        throw new RuntimeException('Owner inspection failed');
-    }
+    $command = '$ErrorActionPreference="Stop"; $p=$null; try { try { $p=[System.Diagnostics.Process]::GetProcessById('.$pid.') } '
+        .'catch { if ($_.Exception.InnerException -is [System.ArgumentException]) { exit 0 }; throw }; '
+        .'[Console]::Out.WriteLine($p.StartTime.ToUniversalTime().Ticks.ToString()) } catch { exit 1 } '
+        .'finally { if ($null -ne $p) { $p.Dispose() } }; exit 0';
 
-    return $value === '' ? null : $value;
+    return checkoutBrowserInspectCommand([$shell, '-NoProfile', '-NonInteractive', '-Command', $command]);
+}
+
+/** Trusted internal command only; no pipe reads or waiting proc_close on a live child. */
+function checkoutBrowserInspectCommand(array $command, int $deadlineMs = 3000, ?callable $onSpawn = null): ?string
+{
+    $process = null;
+    $stdout = null;
+    $stderr = null;
+    $cleanupFailed = false;
+    $started = hrtime(true);
+    try {
+        if (PHP_OS_FAMILY !== 'Windows' || $deadlineMs < 100 || $deadlineMs > 5000) {
+            throw new RuntimeException;
+        }
+        // Real files avoid the Windows anonymous-pipe blocking semantics altogether.
+        $stdout = tmpfile();
+        $stderr = tmpfile();
+        if (! is_resource($stdout) || ! is_resource($stderr)) {
+            throw new RuntimeException;
+        }
+        $process = proc_open($command, [0 => ['file', 'NUL', 'r'], 1 => $stdout, 2 => $stderr], $pipes,
+            options: ['bypass_shell' => true, 'create_new_console' => false, 'suppress_errors' => true]);
+        if (! is_resource($process)) {
+            throw new RuntimeException;
+        }
+        $status = proc_get_status($process);
+        if ($onSpawn !== null) {
+            $onSpawn(['pid' => $status['pid'], 'stdout' => stream_get_meta_data($stdout)['uri'],
+                'stderr' => stream_get_meta_data($stderr)['uri']]);
+        }
+        do {
+            $outSize = fstat($stdout)['size'] ?? -1;
+            $errSize = fstat($stderr)['size'] ?? -1;
+            if ($outSize < 0 || $outSize > 256 || $errSize < 0 || $errSize > 256
+                || hrtime(true) - $started >= $deadlineMs * 1000000) {
+                throw new RuntimeException;
+            }
+            $status = proc_get_status($process);
+            if (! $status['running']) {
+                break;
+            }
+            usleep(10000);
+        } while (true);
+        rewind($stdout);
+        rewind($stderr);
+        // Capture is strictly bounded even if a writer exceeded the cap between polls.
+        $value = stream_get_contents($stdout, 257);
+        $errors = stream_get_contents($stderr, 257);
+        if ($status['exitcode'] !== 0 || ! is_string($value) || strlen($value) > 256 || $errors !== '') {
+            throw new RuntimeException;
+        }
+        $value = trim($value);
+        if ($value !== '' && preg_match('/^[0-9]{1,20}$/D', $value) !== 1) {
+            throw new RuntimeException;
+        }
+
+        return $value === '' ? null : $value;
+    } catch (Throwable) {
+        // No stderr, command, path, previous exception or owner identity escapes.
+        throw new RuntimeException('Owner inspection failed');
+    } finally {
+        try {
+            if (is_resource($process)) {
+                if (proc_get_status($process)['running']) {
+                    // Handle belongs only to the inspector created above, never the inspected PID.
+                    proc_terminate($process);
+                    $cleanupDeadline = hrtime(true) + 1000000000;
+                    while (proc_get_status($process)['running'] && hrtime(true) < $cleanupDeadline) {
+                        usleep(10000);
+                    }
+                }
+                if (proc_get_status($process)['running']) {
+                    $cleanupFailed = true;
+                    // PHP 8.3 Windows GC closes the handle without waiting; explicit close would hang.
+                    unset($process);
+                } else {
+                    proc_close($process);
+                }
+            }
+        } catch (Throwable) {
+            $cleanupFailed = true;
+            unset($process);
+        } finally {
+            if (is_resource($stdout)) {
+                fclose($stdout);
+            }
+            if (is_resource($stderr)) {
+                fclose($stderr);
+            }
+        }
+        if ($cleanupFailed) {
+            throw new RuntimeException('Owner inspection failed');
+        }
+    }
 }
 
 function checkoutBrowserIntegrityIdentity(array $identity): bool

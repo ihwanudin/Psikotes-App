@@ -132,3 +132,85 @@ remains a root decision. Dirty baseline is preserved, not staged as lane work.
 No .env/real data/provider/notifier/DB, dependency installation, public wiring,
 timeout/TTL change, deploy/push, or new task/agent. STOP for root review before any
 source refresh, runtime benchmark or browser pass.
+
+## Review fix P2 — bounded inspector (2026-09-04)
+
+Supersedes the earlier untested-inspector statement above only for the narrow
+self-owned subprocess probes below. Root has not accepted the original browser
+increment or authorized checkout runtime. Delta stays in the same three lane files.
+
+The original Windows inspector read pipes and called proc_close without a deadline.
+The replacement uses real tmpfile descriptors (no anonymous pipes at all), polls
+process status plus output sizes every 10 ms, and reads at most 257 bytes per stream.
+Production inspector deadline is 3,000 ms, with a separate 1,000 ms termination
+confirmation bound. A trusted internal helper allows 100–5,000 ms for synthetic
+tests; there is no browser/environment-selected deadline. No business timeout,
+TTL, session limit or limiter changes.
+
+The acceptance limit is 256 bytes each for stdout/stderr; any stderr or nonzero
+exit is refused, and stdout must be empty or at most 20 decimal tick digits after
+trim. Oversize output is refused while polling and again on bounded capture.
+Temporary spool size can overshoot 256 bytes between polls (tests emit 4,096 bytes);
+this is not a hard disk quota or protection against a hostile flood producer.
+Only the fixed, trusted local inspector command is used by the harness.
+
+Finally cleanup terminates only the inspector resource created by that call,
+confirms it stopped before proc_close, and closes both temporary file handles on
+success, error, timeout, malformed output, oversize output and callback failure.
+If termination cannot be confirmed, it releases the process handle through GC,
+returns the same failure and never waits with proc_close. Such an OS termination
+failure is not reported as successful cleanup and remains untested. Inspection
+never terminates its target PID. All failures expose only "Owner inspection failed"
+without stderr, command, path, identity or chained exception. Cooperative evidence
+catches this failure, latches invalid, and releases its file lock.
+
+The process query now uses local .NET Process.GetProcessById and disposes that
+handle. Only its documented missing-PID ArgumentException becomes an empty result;
+other failures remain errors. This also avoids PowerShell Get-Process's nonzero
+status for a missing PID, found during the actual synthetic cleanup test.
+
+Source basis: [PHP 8.3.26 proc_open.c](https://github.com/php/php-src/blob/php-8.3.26/ext/standard/proc_open.c)
+shows Windows TerminateProcess is called on the proc resource's own handle;
+proc_close waits indefinitely, whereas resource GC closes without waiting.
+[PHP proc_open documentation](https://www.php.net/manual/en/function.proc-open.php)
+supports direct argument arrays and real-file resource descriptors. No assumption
+about stream_set_blocking(false) on Windows is made.
+[Microsoft GetProcessById](https://learn.microsoft.com/en-us/dotnet/api/system.diagnostics.process.getprocessbyid?view=netframework-4.8.1)
+documents local lookup and the missing-process exception. No remote overload used.
+
+Measured on installed Windows PHP 8.3.26, php -n --inspector-tests:
+
+| Synthetic probe | Helper wall seconds |
+| --- | ---: |
+| Success | 0.061 |
+| Empty result | 0.050 |
+| Stall, 300 ms deadline | 0.308 |
+| Nonzero exit | 0.064 |
+| Stderr | 0.060 |
+| Malformed stdout | 0.070 |
+| Oversize stdout | 0.063 |
+| Oversize stderr | 0.068 |
+| Unexpected callback error | 0.004 |
+| Self-owned live child: two real tick inspections then normal exit | 1.577 |
+
+62 new inspector assertions PASS. Each ordinary probe asserts bounded return,
+expected fixed error/result, removed temporary streams and an actual OS lookup
+confirming that its own child is gone. Stall also asserts it reached the deadline.
+The live control produces matching creation ticks twice, then its own expected
+output, proving the inspector did not kill the inspected child. A real stalled
+child under the evidence lock verifies invalid latch plus nonblocking lock
+reacquisition after failure. No simulated child-termination claim is used here.
+Timing is a small set of local probes, not a checkout benchmark or hard scheduler
+real-time guarantee. Process creation/filesystem/OS failure cannot be bounded by a
+PHP polling loop if the OS itself stops responding; no such guarantee is claimed.
+
+RED: the new inspector suite exited 1 before the bounded helper existed; first
+implementation then exposed the missing-PID PowerShell exit problem, also exit 1.
+GREEN after both fixes: 62 inspector assertions, original 64 pure checks, original
+52 fixture cases / 161 assertions, two PHP syntax checks, Pint --test, diff-check.
+The 52-case lifecycle tests still simulate their process identities; the separate
+62-check inspector suite uses real short self-owned children. These are distinct
+claims. No app/server/browser/DB, exact-run read/refresh, visible windows, privilege
+change, provider/notifier, or unrelated process termination. Fixed 69-file scope,
+accepted=false, cooperative edit/restore and external descendant-cleanup limits
+remain. STOP for coordinator review; no checkout runtime authorization inferred.
