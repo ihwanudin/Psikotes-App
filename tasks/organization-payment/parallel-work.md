@@ -1,5 +1,18 @@
 # Koordinasi task paralel organization-payment
 
+## New88ec smoke authorized after artifact review
+
+Preparation03311d4 reviewed. Root independently confirmed manifest4dd4496954a6ddfd0e9ab7c9883716cdabdbd587cce920c60e8a321dc081c8bd,
+config3f3b42e34815f537facb52973ada31b9247d005a98dc53abd1d75a93ac793ddd
+and10tool/config hashes, read explicit INI/browser config. Certificate valid until
+2026-09-05T17:44:02Z; recheck at launch. ONE guarded init (fresh only,180s cap)
+then supervisor smoke <=3fixed synthetic GET permits,180s+shared15s cleanup, on
+oncam-checkout-88ecdb30b351401db6c6111d8d4ffb27 only. All-family8126/443 must be free.
+No source/config/manifest/timeout edits, retry, full matrix, real outbound or public
+activation. Report all42table baseline/zero checkout state and owned-tree/listener
+cleanup. Smoke always incomplete/invalid-latched; never rearm, even on success.
+Worker receives one execution increment, stops after report. Old7b2a untouched.
+
 ## Exact synthetic asset delivery accepted; fresh smoke preparation
 
 Root reviewed709540a exact two GET mappings/hash of returned bytes/canonical paths,
