@@ -1,5 +1,22 @@
 # Koordinasi task paralel organization-payment
 
+## Shared settlement reader integrated — 2026-09-04
+
+Reviewed `90f3aa5`/`c15bdbf` and integrated as `2fb2268`/`dcf00ab` plus the
+report's exact gate delta (before SHA256 d9feedeeea8567e023fe813cd2ad53b3009696910839216920decb27caead34f,
+after 1c9f033150e0962ed03d50dc15874272a7e8da53a327429b0a145888298517c9).
+Root independently reran reader/gate/activation/finalizer in separate processes:
+101 tests / 271 assertions, all passed; integrated files match tested worker.
+Worker's wider relevant isolated tests report 230/1070 and its disposable PG
+suite 343/2523. These are worker evidence, not a root full-suite rerun.
+The refactor preserves predicates, context/lock/clock and historical paid rights.
+
+Broad combined Payments/auth run remains failed: missing Vite manifest, missing
+branches tables and a skip. Next backend slice is diagnosis only of combined-run
+database isolation: minimal ordered reproduction, baseline comparison and exact
+root cause. No projector/consent/HTTP implementation or test-harness mutation
+until that evidence is reviewed. Do not dismiss all failures as manifest errors.
+
 ## P14c preflight review — 2026-09-04
 
 Reviewed and retained proposal `3b20892` as documentation, not a final HTTP/React
