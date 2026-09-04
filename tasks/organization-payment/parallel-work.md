@@ -1,5 +1,25 @@
 # Koordinasi task paralel organization-payment
 
+## Product/payment projection accepted; internal composition next — 2026-09-04
+
+Reviewed worker `be50730`, integrated `3bd030c`. Root independently reran product,
+payment, lifecycle and settlement: 140 tests / 601 assertions passed in env-free
+guarded SQLite. Frozen snapshot label/types win, absent charge needs preloaded own
+catalog graph but does not imply final price. Explicit asOf used for payment facts;
+old payment-only contract retained. Backend completed cursor ends in `:31`.
+
+Next scope approves the proposal's minimum read-only summary for internal use,
+not a drop-in frontend/HTTP contract: compose through one credential lifecycle
+transaction using its locked graph, DB instant, captured documents and server
+calendar. Use accepted readers and explicit gate per own test; paid is independent
+of access, all actions remain false. Permit summary-only nonblank applicable
+documents and strict legalReviewPending boolean; do not alter legal/consent gate.
+Keep form revision internal/presentation-only and never credential/authorization.
+If frontend formKey adds unneeded complexity, omit until P15/P16 contract review.
+Implement typed DTO/composer/lifecycle with targeted tests in small commits; PG
+composition races remain a required later checkpoint before acceptance. No public
+route, P15 mutation, frontend edits, source/gate activation or production operation.
+
 ## Frame-bound gate accepted — 2026-09-04
 
 Reviewed worker `ca6a646` and exact gate overlay, integrated `e752f1d`/`724da42`.
