@@ -1,5 +1,23 @@
 # Koordinasi task paralel organization-payment
 
+## P14c preflight review — 2026-09-04
+
+Reviewed and retained proposal `3b20892` as documentation, not a final HTTP/React
+contract. Root compared both existing private settlement predicates in gate and
+activation: duplication is real and can be extracted without changing policy.
+Next bounded backend slice is the shared internal settlement reader first,
+before DTO/projector construction. Preserve every predicate, caller validation,
+lock order, timestamps and RLS context. A boolean settlement result must never
+be interpreted as access entitlement or authority for a client-supplied charge.
+Characterization tests and gate/activation regression are required; PostgreSQL
+disposable verifies the affected existing paths. No new locking/business writes.
+
+Proposed price provenance, partial-access and generic source labels remain
+internal design candidates; do not mutate frontend DRAFT or activate routes.
+Do not make current purchasing-policy OFF a new reason to hide historical paid
+evidence or revoke acquired access without a separate reviewed requirement.
+DTO/consent/lifecycle projection follow only after this shared-reader review.
+
 ## Checkpoint 2026-09-04 — P14b2 native logout correction
 
 Worker `04f92fe`, `a940b8d`, `6e0faea`, `be47d4d` reviewed and integrated as
