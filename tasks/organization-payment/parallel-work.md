@@ -1,5 +1,19 @@
 # Koordinasi task paralel organization-payment
 
+## First browser navigation failed; bounded timing diagnosis — 2026-09-04
+
+Reviewed cbaff3e runtime report; backend completed cursor `:46`. Guarded init
+succeeded, but first login navigation returned ERR_EMPTY_RESPONSE around bridge
+timeout10s while PHP connection closed later. No checkout exchange occurred.
+Worker verified42 baseline tables unchanged and all handoff/session/audit/outbox
+counts zero, owned listeners stopped. This is failure evidence, not browser GREEN.
+
+ONE diagnostic continuation: measure extracted pure tree/manifest stages and at
+most two direct loopback login GETs to an owned PHP listener with bounded120s
+client observation; no TLS/browser/issue/login submission/source change. Compare
+unchanged baseline and stop owned listener. Determine measured latency rather
+than guess or bypass integrity checks; proposal only for later timeout adjustment.
+
 ## Browser smoke accepted; disposable INI correction — 2026-09-04
 
 Backend completed cursor `:45`; reviewed a46ae5d runtime report and exact INI.
