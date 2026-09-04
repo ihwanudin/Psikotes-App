@@ -5058,3 +5058,51 @@ recounted as a new HTTP run. No arbitrary-timezone support claim. Existing view
 and source overlays, dirty baseline, ignored genuine-build copy remain intact.
 No .env/active DB, provider/notifier, new task/agent, P15, route/source/gate ON,
 deploy or push. STOP for coordinator review before frontend/public integration.
+
+## P15 bounded JSON mutation transport — 2026-09-05
+
+The approved security increment resolves the prior transport blocker without
+changing `VerifyCheckoutSessionMutation`; its SHA-256 remains
+`830fe3010872aa46137c06f0a30057b7baf53040d6e5dc6cca96c6c07228653c`.
+`VerifyCheckoutSessionJsonMutation` is a separate P15 boundary and is not registered
+by production routes. The synthetic route orders the existing private boundary,
+canonical `AuthenticateCheckoutSession`, the new JSON boundary, and the existing
+named mutation limiter. Authentication therefore owns selector/session scope,
+expiry and revocation before the body is admitted.
+
+The boundary is default-off unless `confirmation.enabled` is exactly true and
+`confirmation.max_body_bytes` is an integer from 256 through 8,192. The test-only
+configuration uses 4,096 bytes. It accepts only POST, the fixed canonical destination
+Origin, exact same-origin/cors/empty Fetch Metadata, one syntactically bounded
+`X-Checkout-CSRF` header, and the canonical selector/CSRF cookies. The header and
+delivery cookie are compared with `hash_equals`; the attached principal proves the
+cookie pair has already been checked against the current persisted session.
+
+Only exact `application/json` with a non-empty, bounded JSON object proceeds.
+`StrictCheckoutJson` uses PHP's maintained JSON decoder with a depth limit and then
+rejects duplicate object keys recursively, including equivalent Unicode-escaped
+keys. Empty, whitespace, form, multipart, charset variants, arrays, malformed JSON,
+oversize bodies and duplicate keys return the same 422 text. Method/origin/fetch/
+CSRF/config failures return the same 419 text. Query, missing/foreign credentials
+and stale sessions are rejected earlier by canonical authentication with its
+existing generic unavailable redirect; no body parser or downstream action runs.
+
+TDD and actual evidence using `phpunit.organization-payment.xml`:
+- Initial RED: 2 tests / 6 assertions, one failure; authenticated non-empty JSON
+  received 419 before the downstream closure while the empty legacy channel passed.
+- Final focused transport suite: 8 tests / 92 assertions, all passed. It covers
+  default-off and config bounds, exact success, limiter 429, hostile/missing origin,
+  missing/empty/foreign/combined CSRF, Fetch Metadata mismatch, non-POST, query,
+  malformed/content-type/size/duplicate-key cases, foreign and revoked sessions,
+  and byte identity of the legacy logout middleware.
+- P14 HTTP plus summary regression: 40 tests / 1,868 assertions, all passed.
+- Pint initially identified only PHPDoc alignment in the new test and fixed it;
+  final Pint, PHP syntax, full PHPStan and diff-check results are recorded at commit.
+
+Owned files are the new middleware and strict JSON helper, the additive two-method
+path/body-limit changes in `CheckoutSessionHttpContract`, the focused P15 transport
+test, and this report. Existing cookie construction, global CORS/session/auth,
+logout middleware, frontend, portal, canonical docs, schema and production routes
+are unchanged. No P15 FormRequest/action/profile/consent writer exists yet; no
+source/gate activation, browser, active DB, `.env`, outbound service, deploy or push
+occurred. STOP for review before the P15 writer.

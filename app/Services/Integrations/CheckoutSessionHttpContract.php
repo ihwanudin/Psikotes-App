@@ -61,7 +61,7 @@ final readonly class CheckoutSessionHttpContract
         return match ([$request->method(), '/'.$request->path()]) {
             ['POST', '/checkout/session'] => $settings['exchangeLimit'],
             ['GET', '/checkout'], ['GET', '/checkout/unavailable'] => $settings['hydrateLimit'],
-            ['POST', '/checkout/logout'] => $settings['mutationLimit'],
+            ['POST', '/checkout/logout'], ['POST', '/checkout/confirm'] => $settings['mutationLimit'],
             default => null,
         };
     }
@@ -70,7 +70,7 @@ final readonly class CheckoutSessionHttpContract
     {
         $kind = match ([$request->method(), '/'.$request->path()]) {
             ['POST', '/checkout/session'] => 'exchange',
-            ['POST', '/checkout/logout'] => 'mutation',
+            ['POST', '/checkout/logout'], ['POST', '/checkout/confirm'] => 'mutation',
             default => 'hydrate',
         };
 
@@ -85,6 +85,14 @@ final readonly class CheckoutSessionHttpContract
         }
 
         return Limit::perMinute($limit)->by($this->rateKey($request));
+    }
+
+    public function confirmationJsonBodyLimit(): ?int
+    {
+        $enabled = config('assessment_integration.checkout_session.http.confirmation.enabled');
+        $bytes = config('assessment_integration.checkout_session.http.confirmation.max_body_bytes');
+
+        return $enabled === true && is_int($bytes) && $bytes >= 256 && $bytes <= 8192 ? $bytes : null;
     }
 
     /** @return array{0:Cookie,1:Cookie} */
