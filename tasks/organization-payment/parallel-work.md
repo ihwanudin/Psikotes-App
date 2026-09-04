@@ -1,5 +1,16 @@
 # Koordinasi task paralel organization-payment
 
+## Cooperative harness65ee301 pending independent review
+
+Backend reports64pure +52cases/161assertions, simulated process identities and
+native fixture junctions only; no actual OS probe/startup/runtime benchmark.
+Original full verifier remains default/pre/post, fixed69 runtime subset; registered
+processes only, descendant/listener cleanup remains external runner obligation.
+No exactrun refresh or acceptance authorized. Root read report; frontend receives
+ONE independent read-only review of exact65ee301 delta, report-only in own lane.
+Focus transition/startup/OS probe/latch and assertions; no backend edits or runtime.
+Root final review/integration retained. Latest frontend HTTP already integrated.
+
 ## Read-only frontend integrated after actual HTTP verification
 
 Frontend report226125b reviewed: baseline25/615; overlay78/2143 including session,
