@@ -1,5 +1,19 @@
 # Koordinasi task paralel organization-payment
 
+## Corrected harness accepted for source-copy preparation — 2026-09-04
+
+Reviewed ae6af1b assertion/recovery correction; root reran 14 positive and37 negative
+pure JS probes passed. Prior pure16 PHP/lint/syntax also passed. Integrated pending
+0dc7586 plus ae6af1b as test harness preparation only, not browser acceptance.
+Backend completed cursor `:42`. No browser/server/DB initialization has run.
+
+Next backend increment is independent env-free source-copy/manifest preparation
+and read-only runtime/port inspection under a new canonical OS-temp run directory.
+Report exact path, reviewed manifest digest, critical source/overlay hashes and
+tool/port readiness. No init, PHP/TLS listener or browser launch before review;
+no dependency install/old scratch cleanup or application/harness edits. Legal-path
+or baseline mismatch stops setup rather than weakening guards. One report only.
+
 ## Browser harness candidate requires assertion corrections — 2026-09-04
 
 Reviewed 0dc7586 delta/report; NOT integrated or launched. Root reran pure16,
