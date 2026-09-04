@@ -1,5 +1,13 @@
 # Koordinasi task paralel organization-payment
 
+## Listener-fixed49c23 smoke authorized
+
+Preparation97cf4c0 reviewed. Root independently matched manifest6f6d1af196480364f1c5165bf728c8f73af6fbc07ce36fda7eafa2fd78f2bafd,
+config935385c6d07b1fbb50412a5ff2fdfe09ee37c2469e34a4b70df5a5cc89858912
+and10tool/config hashes; no DB or env file. ONE exact49c23 guarded init then
+smoke3/180s+cleanup15 authorized. No retry/reuse/config fix; incomplete/invalid
+even if successful. Full42table/counter/process/listener/asset evidence required.
+
 ## Typed listener correction98de469 accepted; fresh preparation next
 
 Root independently reran32/32 supervisor tests PASS, including temporary owned
