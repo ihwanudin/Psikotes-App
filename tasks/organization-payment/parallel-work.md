@@ -2,6 +2,21 @@
 
 ## Parallel follow-ups dispatched — 2026-09-04
 
+Heartbeat snapshot: backend idle cursor`:52`, frontend idle`:12`, portal active`:10`.
+Backend proposal2e03dfd reviewed: B weaker per-request source guarantees NOT accepted.
+Sent ONE bounded pure-CLI option-A feasibility prototype/benchmark (new standalone
+verifier + report only): combine traversal while retaining every file SHA and exact
+inventory, negative tests only in new synthetic fixture, existing run read-only.
+Cap2 baseline +2candidate samples /10min, no app/bootstrap/server/browser/DB or
+production harness replacement. Frontend waits for isolated HTTP integration;
+portal running, no new instruction sent. No acceptance or runtime activation.
+
+Frontend correction4eb2385 received; root inspected exact HTTP-test delta against
+d359c12: one allowed local image, zero injected image/on* attributes, exact hostile
+text retained escaped. No unrelated HTTP expectations changed. Still pending
+isolated canonical HTTP run with eb3d7bc view/CSS; do not claim accepted/integrated.
+Frontend waits without new increment until that integration evidence is available.
+
 Frontend cursor `:11` eb3d7bc implements four-file presentation slice. Root reran
 real Blade standalone14/14 in env-free d4ea; not HTTP/browser. Integration pending:
 existing HTTP XSS assertion disallows all images, including intentional logo.
