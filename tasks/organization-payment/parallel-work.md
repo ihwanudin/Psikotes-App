@@ -1,5 +1,16 @@
 # Koordinasi task paralel organization-payment
 
+## Browser preflight reviewed; harness implementation dispatched — 2026-09-04
+
+Backend completed cursor `:39`; reviewed a4ea371 report in full and checked three
+harness hashes plus reported descriptor/fake-binding gaps. Integrated 074a9fc.
+Sent ONE next increment: only serve-checkout-session.php, checkout-session.browser.mjs
+and a new implementation report. Implement exact guarded synthetic summary harness,
+fixed fixtures/business-row postconditions and privacy/history/multi-tab checks.
+No application/view/shared middleware/config/proxy edits. Syntax/lint and non-server
+checks only; server/browser launch and disposable DB initialization wait for guard
+review. No browser GREEN claimed. Frontend/portal unchanged; avoid duplicate dispatch.
+
 ## Summary browser preflight dispatched — 2026-09-04
 
 Heartbeat confirmed backend idle at `:38`, frontend idle unchanged at `:7`,
