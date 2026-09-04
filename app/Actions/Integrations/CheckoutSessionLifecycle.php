@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Actions\Integrations;
 
+use App\Data\Integrations\CheckoutProfile;
 use App\Data\Integrations\CheckoutSessionMutationCredentials;
 use App\Data\Integrations\CheckoutSessionPrincipal;
 use App\Data\Integrations\CheckoutSessionSelector;
@@ -18,6 +19,7 @@ use App\Models\TestPackage;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
 use App\Services\Integrations\CheckoutHandoffHistoryValidator;
+use App\Services\Integrations\CheckoutProfileMapper;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Collection;
@@ -37,6 +39,7 @@ final readonly class CheckoutSessionLifecycle
     public function __construct(
         private RlsContextRunner $contexts,
         private CheckoutHandoffHistoryValidator $historyValidator,
+        private CheckoutProfileMapper $profiles,
     ) {}
 
     public function hydrate(#[SensitiveParameter] CheckoutSessionSelector $input): CheckoutSessionPrincipal
@@ -83,6 +86,29 @@ final readonly class CheckoutSessionLifecycle
         return $principal;
     }
 
+    /** Profile projection stays inside canonical graph locks; successful reads refresh session idle time. */
+    public function readProfile(#[SensitiveParameter] CheckoutSessionMutationCredentials $input): CheckoutProfile
+    {
+        $idle = $this->preflight();
+        $selectorDigest = $this->selectorDigest($input->rawSelector());
+        $csrfDigest = $this->csrfDigest($input->rawCsrfToken());
+
+        $profile = $this->contexts->run(
+            new RlsContext('service'),
+            function () use ($selectorDigest, $csrfDigest, $idle): ?CheckoutProfile {
+                $result = $this->operate($selectorDigest, $csrfDigest, true, false, $idle, readProfile: true);
+
+                return $result instanceof CheckoutProfile ? $result : null;
+            },
+        );
+        // Preserve committed expiry/revocation before returning the same generic lifecycle denial.
+        if ($profile === null) {
+            throw new InvalidCheckoutSession;
+        }
+
+        return $profile;
+    }
+
     public function logout(#[SensitiveParameter] CheckoutSessionMutationCredentials $input): void
     {
         $idle = $this->preflight();
@@ -101,7 +127,7 @@ final readonly class CheckoutSessionLifecycle
 
     private function operate(#[SensitiveParameter] string $selectorDigest,
         #[SensitiveParameter] ?string $csrfDigest, bool $requireCsrf, bool $logout,
-        int $idleMinutes): CheckoutSessionPrincipal|bool|null
+        int $idleMinutes, bool $readProfile = false): CheckoutProfile|CheckoutSessionPrincipal|bool|null
     {
         $hints = CheckoutSession::query()->where('selector_digest', $selectorDigest)->limit(2)
             ->get(['id', 'organization_id', 'assessment_participant_id', 'integration_client_id',
@@ -215,6 +241,11 @@ final readonly class CheckoutSessionLifecycle
             'idle_expires_at' => $idleExpiresAt,
             'updated_at' => $now,
         ]);
+
+        if ($readProfile) {
+            return $this->profiles->map($participant,
+                $now->setTimezone(date_default_timezone_get())->toDateTimeImmutable());
+        }
 
         return new CheckoutSessionPrincipal(
             $target->public_id,

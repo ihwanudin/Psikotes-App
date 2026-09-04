@@ -18,6 +18,7 @@ use App\Models\CheckoutSession;
 use App\Models\IntegrationClient;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\TestCase;
@@ -119,6 +120,137 @@ final class CheckoutSessionLifecycleConcurrencyTest extends TestCase
             $this->assertSame('SCOPE_REVOKED', $session->revocation_reason);
             $this->assertSame(1, $this->auditCount('checkout_session.revoked'));
         });
+    }
+
+    public function test_profile_waiting_behind_recovery_commit_cannot_project_old_generation(): void
+    {
+        $workers = $this->startWorkers([fn (): array => $this->profileDescriptor()]);
+        try {
+            $backendId = $this->workerBackendIds($workers)[0];
+            app(RlsContextRunner::class)->runAsService(function () use ($workers, $backendId): void {
+                DB::table('branches')->where('id', $this->fixture['organization'])->lockForUpdate()->first();
+                fwrite($workers[0]['socket'], "go\n");
+                $this->assertWorkerWaitsOnLock($backendId);
+                $this->recover();
+            });
+            $this->assertSame([['projected' => false, 'invalid' => true]], $this->workerResults($workers));
+        } finally {
+            $this->stopWorkers($workers);
+        }
+        app(RlsContextRunner::class)->runAsService(function (): void {
+            $session = CheckoutSession::query()->findOrFail($this->fixture['session']);
+            $this->assertSame('RECOVERY_REISSUED', $session->revocation_reason);
+            $this->assertSame(2, DB::table('checkout_handoffs')->where('assessment_participant_id', $this->fixture['attempt'])->count());
+        });
+    }
+
+    public function test_profile_waiting_behind_scope_revoke_cannot_project_and_terminalizes_once(): void
+    {
+        $workers = $this->startWorkers([fn (): array => $this->profileDescriptor()]);
+        try {
+            $backendId = $this->workerBackendIds($workers)[0];
+            app(RlsContextRunner::class)->runAsService(function () use ($workers, $backendId): void {
+                DB::table('branches')->where('id', $this->fixture['organization'])->lockForUpdate()->first();
+                fwrite($workers[0]['socket'], "go\n");
+                $this->assertWorkerWaitsOnLock($backendId);
+                DB::table('integration_clients')->where('id', $this->fixture['client'])->lockForUpdate()->update(['enabled' => false]);
+            });
+            $this->assertSame([['projected' => false, 'invalid' => true]], $this->workerResults($workers));
+        } finally {
+            $this->stopWorkers($workers);
+        }
+        $this->assertSame(['projected' => false, 'invalid' => true], $this->profileDescriptor());
+        app(RlsContextRunner::class)->runAsService(function (): void {
+            $session = CheckoutSession::query()->findOrFail($this->fixture['session']);
+            $this->assertSame('SCOPE_REVOKED', $session->revocation_reason);
+            $this->assertSame(1, $this->auditCount('checkout_session.revoked'));
+        });
+    }
+
+    public function test_profile_waiting_behind_rolled_back_recovery_reads_original_generation(): void
+    {
+        $workers = $this->startWorkers([fn (): array => $this->profileDescriptor()]);
+        try {
+            $backendId = $this->workerBackendIds($workers)[0];
+            try {
+                app(RlsContextRunner::class)->runAsService(function () use ($workers, $backendId): void {
+                    DB::table('branches')->where('id', $this->fixture['organization'])->lockForUpdate()->first();
+                    fwrite($workers[0]['socket'], "go\n");
+                    $this->assertWorkerWaitsOnLock($backendId);
+                    $this->recover();
+                    throw new RuntimeException('Synthetic recovery rollback.');
+                });
+                $this->fail('Synthetic rollback did not propagate.');
+            } catch (RuntimeException $exception) {
+                $this->assertSame('Synthetic recovery rollback.', $exception->getMessage());
+            }
+            $this->assertSame([['projected' => true, 'invalid' => false]], $this->workerResults($workers));
+        } finally {
+            $this->stopWorkers($workers);
+        }
+        app(RlsContextRunner::class)->runAsService(function (): void {
+            $this->assertSame('ACTIVE', CheckoutSession::query()->findOrFail($this->fixture['session'])->status);
+            $this->assertSame(1, DB::table('checkout_handoffs')->where('assessment_participant_id', $this->fixture['attempt'])->count());
+            $this->assertSame(0, $this->auditCount('checkout_session.revoked'));
+        });
+    }
+
+    public function test_profile_projection_holds_canonical_lock_until_mapping_before_recovery(): void
+    {
+        $workers = $this->startWorkers([function (): array {
+            $this->configure();
+            app(RlsContextRunner::class)->runAsService(fn () => $this->recover());
+
+            return ['recovered' => true];
+        }]);
+        $armed = true;
+        try {
+            $backendId = $this->workerBackendIds($workers)[0];
+            DB::listen(function (QueryExecuted $query) use (&$armed, $workers, $backendId): void {
+                if ($armed && str_contains($query->sql, 'from "branches"') && str_contains($query->sql, 'for update')) {
+                    $armed = false;
+                    fwrite($workers[0]['socket'], "go\n");
+                    $this->assertWorkerWaitsOnLock($backendId);
+                }
+            });
+            $this->assertSame(['projected' => true, 'invalid' => false], $this->profileDescriptor());
+            $this->assertFalse($armed, 'Profile must hold canonical organization lock.');
+            $this->assertSame([['recovered' => true]], $this->workerResults($workers));
+        } finally {
+            $armed = false;
+            $this->stopWorkers($workers);
+        }
+        $this->assertSame(['projected' => false, 'invalid' => true], $this->profileDescriptor());
+    }
+
+    /** @return array{projected:bool,invalid:bool} */
+    private function profileDescriptor(): array
+    {
+        $this->configure();
+        try {
+            $profile = app(CheckoutSessionLifecycle::class)->readProfile(new CheckoutSessionMutationCredentials(
+                $this->fixture['selector'], $this->fixture['csrf'],
+            ));
+            if ($profile->fullName !== 'P14a3 Synthetic' || array_keys($profile->toArray()) !== ['profile']) {
+                throw new RuntimeException('Projection was not the exact synthetic profile.');
+            }
+
+            return ['projected' => true, 'invalid' => false];
+        } catch (InvalidCheckoutSession) {
+            return ['projected' => false, 'invalid' => true];
+        } finally {
+            if (app(RlsContextRunner::class)->current() !== null || DB::transactionLevel() !== 0) {
+                throw new RuntimeException('Profile lifecycle leaked its context or transaction.');
+            }
+        }
+    }
+
+    private function recover(): void
+    {
+        app(IssueCheckoutHandoff::class)->execute(new CheckoutHandoffIssueInput(
+            IntegrationClient::query()->findOrFail($this->fixture['client']), $this->fixture['attemptPublicId'],
+            $this->fixture['sourceSystem'], 'ih1_'.bin2hex(random_bytes(16)), CheckoutHandoffIntent::Recovery,
+        ));
     }
 
     /** @return array{loggedOut:bool,invalid:bool} */

@@ -9,6 +9,7 @@ use App\Actions\Integrations\EstablishCheckoutSession;
 use App\Actions\Integrations\InvalidCheckoutSession;
 use App\Actions\Integrations\IssueCheckoutHandoff;
 use App\Data\Integrations\CheckoutHandoffIssueInput;
+use App\Data\Integrations\CheckoutProfile;
 use App\Data\Integrations\CheckoutSessionExchangeInput;
 use App\Data\Integrations\CheckoutSessionMutationCredentials;
 use App\Data\Integrations\CheckoutSessionPrincipal;
@@ -23,8 +24,10 @@ use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
 use App\Services\Integrations\CheckoutHandoffHistoryValidator;
 use Carbon\CarbonImmutable;
+use DomainException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use LogicException;
@@ -316,6 +319,227 @@ final class CheckoutSessionLifecycleTest extends OrganizationPaymentTestCase
                 $this->assertSame($before, CheckoutSession::query()->findOrFail($fixture['session'])->getAttributes());
             }
         }
+    }
+
+    public function test_profile_read_accepts_only_credentials_and_returns_current_own_allowlisted_facts(): void
+    {
+        $fixture = $this->established();
+        $foreign = $this->established();
+        $stale = $this->hydrate($fixture['selector']);
+        DB::table('participants')->where('id', $foreign['participant'])->update(['full_name' => 'FOREIGN_SENTINEL']);
+        DB::table('participants')->where('id', $fixture['participant'])->update(['full_name' => 'Current Synthetic']);
+        $before = $this->profileBusinessSnapshot();
+
+        $method = new ReflectionMethod(CheckoutSessionLifecycle::class, 'readProfile');
+        $this->assertCount(1, $method->getParameters());
+        $this->assertSame(CheckoutSessionMutationCredentials::class, (string) $method->getParameters()[0]->getType());
+        $this->assertSame(CheckoutProfile::class, (string) $method->getReturnType());
+        $this->assertCount(1, $method->getParameters()[0]->getAttributes(SensitiveParameter::class));
+        $profile = $this->readProfile($fixture['selector'], $fixture['csrf']);
+        $this->assertSame('Current Synthetic', $profile->fullName);
+        $this->assertNull($profile->birthDate);
+        $this->assertNull($profile->intendedField);
+        $this->assertSame(['profile'], array_keys($profile->toArray()));
+        $this->assertSame(['fullName', 'birthDate', 'gender', 'educationLevel', 'intendedField', 'email', 'phone'],
+            array_column($profile->toArray()['profile'], 'key'));
+        foreach ($profile->toArray()['profile'] as $row) {
+            $this->assertSame($row['state'] === 'locked'
+                ? ['key', 'label', 'state', 'required', 'displayValue']
+                : ['key', 'label', 'state', 'required'], array_keys($row));
+        }
+        $json = json_encode($profile, JSON_THROW_ON_ERROR);
+        foreach (['FOREIGN_SENTINEL', $fixture['selector'], $fixture['csrf'], $stale->assessmentAttemptId,
+            'synthetic-only', 'checkout_initial_funding_mode'] as $forbidden) {
+            $this->assertStringNotContainsString($forbidden, $json);
+        }
+        $this->assertSame($before, $this->profileBusinessSnapshot());
+        $this->assertNull(app(RlsContextRunner::class)->current());
+        $this->assertSame(0, DB::transactionLevel());
+    }
+
+    public function test_profile_read_rejects_malformed_missing_and_foreign_credential_pairs_without_touch(): void
+    {
+        $fixture = $this->established();
+        $foreign = $this->established();
+        $before = DB::table('checkout_sessions')->orderBy('id')->get()->toJson();
+        foreach ([['', $fixture['csrf']], ['ocs1_'.str_repeat('g', 64), $fixture['csrf']],
+            ['ocs1_'.str_repeat('0', 64), $fixture['csrf']], [$fixture['selector'], ''],
+            [$fixture['selector'], 'ocsrf1_'.str_repeat('0', 64)],
+            [$fixture['selector'], $foreign['csrf']], [$foreign['selector'], $fixture['csrf']]] as [$selector, $csrf]) {
+            $this->assertProfileRejected($selector, $csrf);
+        }
+        $this->assertSame($before, DB::table('checkout_sessions')->orderBy('id')->get()->toJson());
+    }
+
+    public function test_profile_read_revalidates_recovery_generation_and_logout_despite_old_principal(): void
+    {
+        $fixture = $this->established();
+        $this->hydrate($fixture['selector']);
+        $issued = app(RlsContextRunner::class)->runAsService(fn () => app(IssueCheckoutHandoff::class)
+            ->execute(new CheckoutHandoffIssueInput(IntegrationClient::query()->findOrFail($fixture['client']),
+                $fixture['attemptPublicId'], IntegrationSource::query()->findOrFail($fixture['source'])->source_system,
+                'ih1_'.bin2hex(random_bytes(16)), CheckoutHandoffIntent::Recovery)));
+        $this->assertProfileRejected($fixture['selector'], $fixture['csrf']);
+        $raw = $issued->rawToken();
+        $this->assertIsString($raw);
+        $fresh = app(EstablishCheckoutSession::class)->execute(new CheckoutSessionExchangeInput($raw));
+        $this->assertSame('Synthetic Person', $this->readProfile($fresh->rawSelector(), $fresh->rawCsrfToken())->fullName);
+        $this->assertProfileRejected($fixture['selector'], $fixture['csrf']);
+        $this->logout($fresh->rawSelector(), $fresh->rawCsrfToken());
+        $this->assertProfileRejected($fresh->rawSelector(), $fresh->rawCsrfToken());
+    }
+
+    public function test_profile_read_reloads_revocations_and_rejects_corrupt_history(): void
+    {
+        foreach (['client', 'source', 'attempt', 'participant', 'history'] as $case) {
+            $fixture = $this->established();
+            $this->hydrate($fixture['selector']);
+            match ($case) {
+                'client' => DB::table('integration_clients')->where('id', $fixture['client'])->update(['enabled' => false]),
+                'source' => DB::table('integration_sources')->where('id', $fixture['source'])->update(['allowed_assessment_packages' => '[]']),
+                'attempt' => DB::table('assessment_participants')->where('id', $fixture['attempt'])->update([
+                    'assessment_status' => 'REVOKED', 'revoked_at' => DB::raw('CURRENT_TIMESTAMP')]),
+                'participant' => DB::table('participants')->where('id', $fixture['participant'])->update(['deleted_at' => DB::raw('CURRENT_TIMESTAMP')]),
+                'history' => DB::table('checkout_handoffs')->where('assessment_participant_id', $fixture['attempt'])->update(['issue_number' => 2]),
+            };
+            $before = $this->profileBusinessSnapshot();
+            $this->assertProfileRejected($fixture['selector'], $fixture['csrf']);
+            $this->assertSame($before, $this->profileBusinessSnapshot());
+            $this->assertDatabaseHas('checkout_sessions', ['id' => $fixture['session'],
+                'status' => $case === 'history' ? 'ACTIVE' : 'REVOKED']);
+        }
+    }
+
+    public function test_profile_read_commits_expiry_without_projecting_or_duplicate_audit(): void
+    {
+        $fixture = $this->established();
+        $this->ageProfileSession($fixture['session']);
+        DB::table('checkout_sessions')->where('id', $fixture['session'])->update(['idle_expires_at' => DB::raw('CURRENT_TIMESTAMP')]);
+        $before = $this->profileBusinessSnapshot();
+        $this->assertProfileRejected($fixture['selector'], $fixture['csrf']);
+        $this->assertProfileRejected($fixture['selector'], $fixture['csrf']);
+        $this->assertDatabaseHas('checkout_sessions', ['id' => $fixture['session'], 'status' => 'EXPIRED']);
+        $this->assertSame(1, DB::table('audit_logs')->where('action', 'checkout_session.expired')->count());
+        $this->assertSame($before, $this->profileBusinessSnapshot());
+    }
+
+    public function test_profile_read_rejects_ambient_roles_transactions_and_disabled_config(): void
+    {
+        $fixture = $this->established();
+        $before = DB::table('checkout_sessions')->get()->toJson();
+        foreach ([null, new RlsContext('service'), new RlsContext('branch_admin', $fixture['organization']),
+            new RlsContext('super_admin'), new RlsContext('staff', $fixture['organization']), new RlsContext('psychologist'),
+            new RlsContext('participant', $fixture['organization'], $fixture['participant'])] as $context) {
+            try {
+                $call = fn () => $this->readProfile($fixture['selector'], $fixture['csrf']);
+                $context === null ? DB::transaction($call) : app(RlsContextRunner::class)->run($context, $call);
+                $this->fail('Ambient profile read succeeded.');
+            } catch (LogicException $exception) {
+                $this->assertSame('Checkout session lifecycle owns its service transaction.', $exception->getMessage());
+            }
+            $this->assertNull(app(RlsContextRunner::class)->current());
+            $this->assertSame(0, DB::transactionLevel());
+        }
+        config()->set('assessment_integration.checkout_session.enabled', false);
+        try {
+            $this->readProfile($fixture['selector'], $fixture['csrf']);
+            $this->fail('Disabled profile read succeeded.');
+        } catch (LogicException $exception) {
+            $this->assertSame('Checkout session lifecycle is unavailable.', $exception->getMessage());
+        }
+        $this->assertSame($before, DB::table('checkout_sessions')->get()->toJson());
+    }
+
+    public function test_profile_mapper_exception_rolls_back_idle_touch_and_restores_context(): void
+    {
+        $fixture = $this->established();
+        $this->ageProfileSession($fixture['session']);
+        DB::table('participants')->where('id', $fixture['participant'])->update(['full_name' => '']);
+        $before = DB::table('checkout_sessions')->get()->toJson();
+        $business = $this->profileBusinessSnapshot();
+        $audits = DB::table('audit_logs')->get()->toJson();
+        try {
+            $this->readProfile($fixture['selector'], $fixture['csrf']);
+            $this->fail('Invalid persisted profile projected.');
+        } catch (DomainException $exception) {
+            $this->assertSame('CHECKOUT_PROFILE_UNAVAILABLE', $exception->getMessage());
+            $this->assertNull($exception->getPrevious());
+        }
+        $this->assertSame($before, DB::table('checkout_sessions')->get()->toJson());
+        $this->assertSame($business, $this->profileBusinessSnapshot());
+        $this->assertSame($audits, DB::table('audit_logs')->get()->toJson());
+        $this->assertNull(app(RlsContextRunner::class)->current());
+        $this->assertSame(0, DB::transactionLevel());
+    }
+
+    public function test_profile_read_uses_database_calendar_and_preserves_idle_lifecycle(): void
+    {
+        $fixture = $this->established();
+        $this->ageProfileSession($fixture['session']);
+        DB::table('participants')->where('id', $fixture['participant'])->update(['birth_date' => DB::raw("date(CURRENT_TIMESTAMP, '-1 day')")]);
+        $before = CheckoutSession::query()->findOrFail($fixture['session']);
+        Date::setTestNow('1970-01-01');
+        try {
+            $this->assertNotNull($this->readProfile($fixture['selector'], $fixture['csrf'])->birthDate);
+            $after = CheckoutSession::query()->findOrFail($fixture['session']);
+            $this->assertTrue($after->last_seen_at->greaterThan($before->last_seen_at));
+            $this->assertTrue($after->idle_expires_at->equalTo($after->absolute_expires_at));
+            DB::table('participants')->where('id', $fixture['participant'])->update(['birth_date' => DB::raw('CURRENT_DATE')]);
+            Date::setTestNow('2099-01-01');
+            try {
+                $this->readProfile($fixture['selector'], $fixture['csrf']);
+                $this->fail('Future application clock authorized today as a birth date.');
+            } catch (DomainException $exception) {
+                $this->assertSame('CHECKOUT_PROFILE_UNAVAILABLE', $exception->getMessage());
+            }
+        } finally {
+            Date::setTestNow();
+        }
+    }
+
+    private function readProfile(string $selector, string $csrf): CheckoutProfile
+    {
+        return app(CheckoutSessionLifecycle::class)->readProfile(new CheckoutSessionMutationCredentials($selector, $csrf));
+    }
+
+    private function assertProfileRejected(string $selector, string $csrf): void
+    {
+        try {
+            $this->readProfile($selector, $csrf);
+            $this->fail('Invalid credentials/graph projected a profile.');
+        } catch (InvalidCheckoutSession $exception) {
+            $this->assertSame('CHECKOUT_SESSION_INVALID', $exception->getMessage());
+        }
+        $this->assertNull(app(RlsContextRunner::class)->current());
+        $this->assertSame(0, DB::transactionLevel());
+    }
+
+    /** @return array<string, string> */
+    private function profileBusinessSnapshot(): array
+    {
+        $snapshot = [];
+        foreach (['participants', 'assessment_participants', 'assessment_bills', 'assessment_bill_items',
+            'assessment_charges', 'assessment_entitlements', 'outbox_messages', 'consent_records'] as $table) {
+            $snapshot[$table] = DB::table($table)->orderBy('id')->get()->toJson();
+        }
+
+        return $snapshot;
+    }
+
+    private function ageProfileSession(int $session): void
+    {
+        $handoff = DB::table('checkout_sessions')->where('id', $session)->value('checkout_handoff_id');
+        DB::table('checkout_handoffs')->where('id', $handoff)->update([
+            'issued_at' => DB::raw("datetime(CURRENT_TIMESTAMP, '-2 minutes')"),
+            'consumed_at' => DB::raw("datetime(CURRENT_TIMESTAMP, '-1 minute')"),
+            'expires_at' => DB::raw("datetime(CURRENT_TIMESTAMP, '+8 minutes')"),
+        ]);
+        DB::table('checkout_sessions')->where('id', $session)->update([
+            'established_at' => DB::raw("datetime(CURRENT_TIMESTAMP, '-1 minute')"),
+            'last_seen_at' => DB::raw("datetime(CURRENT_TIMESTAMP, '-1 minute')"),
+            'idle_expires_at' => DB::raw("datetime(CURRENT_TIMESTAMP, '+5 minutes')"),
+            'absolute_expires_at' => DB::raw("datetime(CURRENT_TIMESTAMP, '+10 minutes')"),
+        ]);
     }
 
     private function configure(): void
