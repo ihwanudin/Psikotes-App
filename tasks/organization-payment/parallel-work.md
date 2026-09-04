@@ -2,6 +2,15 @@
 
 ## Parallel follow-ups dispatched — 2026-09-04
 
+Portal f0705c reviewed: canonical reserve/issue/finalize composition, exact replay
+rows, ten allocations, paid-without-consent denial and owner/foreign HTTP detail.
+Root independently reran new test in approved isolated composition copy:
+2tests/425assertions GREEN, guarded SQLite memory, sanitized process environment.
+Worker combined34/763 and style results reviewed but not independently repeated.
+Integrated only new test content; lane report remains in source commit, avoiding
+overwriting root historical report. This accepts narrow backend composition evidence,
+not P17 browser/PG/free-selection or public activation. Source app unchanged.
+
 Heartbeat snapshot: backend idle cursor`:52`, frontend idle`:12`, portal active`:10`.
 Backend proposal2e03dfd reviewed: B weaker per-request source guarantees NOT accepted.
 Sent ONE bounded pure-CLI option-A feasibility prototype/benchmark (new standalone
