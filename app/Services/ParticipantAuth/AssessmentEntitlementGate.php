@@ -22,6 +22,17 @@ final readonly class AssessmentEntitlementGate
 
     public function assertReady(AssessmentPrincipal $principal, string $testType): AssessmentEntitlement
     {
+        return $this->evaluate($principal, $testType, null);
+    }
+
+    /** Uses captured evaluation inputs, not a historical database snapshot or authorization grant. */
+    public function assertReadyAt(AssessmentPrincipal $principal, string $testType, AssessmentPrerequisiteFrame $frame): AssessmentEntitlement
+    {
+        return $this->evaluate($principal, $testType, $frame);
+    }
+
+    private function evaluate(AssessmentPrincipal $principal, string $testType, ?AssessmentPrerequisiteFrame $frame): AssessmentEntitlement
+    {
         if (app(RlsContextRunner::class)->current()?->role !== 'service') {
             throw new LogicException('Assessment gate requires service RLS context.');
         }
@@ -51,11 +62,17 @@ final readonly class AssessmentEntitlementGate
         $entitlement = AssessmentEntitlement::query()->where('assessment_participant_id', $attempt->id)
             ->where('organization_id', $principal->organizationId)->where('participant_id', $principal->participantId)
             ->where('charge_id', $charge->id)->where('test_type', $testType)->where('status', 'ready')
-            ->whereNotNull('ready_at')->where('ready_at', '<=', now())->whereNull('started_at')->whereNull('completed_at')->first();
-        if ($entitlement === null || ! $this->settlement->isSettled($charge)) {
+            ->whereNotNull('ready_at')->where('ready_at', '<=', $frame === null ? now() : $frame->asOf)->whereNull('started_at')->whereNull('completed_at')->first();
+        if ($entitlement === null || ! ($frame === null
+            ? $this->settlement->isSettled($charge)
+            : $this->settlement->isSettledAt($charge, $frame->asOf))) {
             throw new EntitlementLocked;
         }
-        $this->prerequisites->assertSatisfied($participant, $testType);
+        if ($frame === null) {
+            $this->prerequisites->assertSatisfied($participant, $testType);
+        } else {
+            $this->prerequisites->assertSatisfiedAt($participant, $testType, $frame);
+        }
 
         return $entitlement;
     }
