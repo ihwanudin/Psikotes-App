@@ -193,3 +193,85 @@ harnesses, active data, shared config and production wiring remain unchanged.
 No provider/payment/notifier call, task/agent, deploy/push or migration on an active
 database. Diff-check and single-file staging apply. STOP for timeout diagnosis
 review; P14 browser acceptance remains incomplete.
+
+## Bounded timing diagnosis — 2026-09-04
+
+Authorized diagnosis only: unchanged source/vendor/manifest9eb114d8...1337,
+unchanged corrected INI, no reinit, TLS or browser. Before starting, all 42 tables
+matched the preserved init baseline; handoffs/sessions/audit/outbox were each0.
+No .env* present; required PHP extensions and empty prepend/append rechecked.
+All-family8126/443 listener query was empty.
+
+Created only run-local diagnose-guards.php. It verifies the reviewed PHP harness
+SHA-256, extracts the actual safe-relative/tree functions and actual manifest
+header/file-hash/inventory/required-file blocks by fixed boundaries, then evaluates
+only these pre-autoload checks. No app include, autoloader, DB write, replacement
+bootstrap, guard edits or substitute hashing implementation. PHP syntax passed.
+hrtime measurements emit only fixed sample/stage names, elapsed time and counts.
+
+| Guard stage | First sample seconds | Subsequent warm sample seconds |
+| --- | ---: | ---: |
+| Entire run tree / canonical paths | 6.4917 | 8.4454 |
+| Manifest read/digest/shape | 0.0465 | 0.0632 |
+| All file predicates and SHA-256 comparisons | 22.3312 | 20.8575 |
+| Exact source inventory enumeration/comparison | 18.9800 | 12.4225 |
+| Required-file membership | 0.0001 | 0.0001 |
+| Total measured guards | 47.8498 | 41.7888 |
+
+Both samples passed with 22,126 source files. First means the first sample in this
+new diagnostic process; OS caches had already been used by earlier runs, so it
+is NOT a guaranteed cold-disk benchmark. Second sample ran in the same process
+without explicit cache flushing or bypass. No application bootstrap/startup time
+is included. This directly proves file hashing alone exceeds bridge10s on this
+host; whole measured guards also exceed the driver's30s navigation budget.
+
+### One direct GET, then mandatory stop
+
+Rechecked ports, started only owned PHP PID60644 with the exact prior executable,
+-n -c runtime.ini, router/document root and minimal runtime environment. Verified
+127.0.0.1:8126/PID/executable/command; no443/IPv6/wildcard listener. Popen returned
+in0.0101s and the PHP startup log has the same whole-second timestamp21:36:47.
+The later verified-listener observation was33.1185s after spawn; that includes
+tool/operator scheduling and is only an upper bound, not server startup cost.
+
+Python http.client sent GET /__browser/login directly to127.0.0.1:8126 with exact
+Host psikotes.oncam.id, Connection:close and timeout120s. No Cookie header, cookie
+jar, redirects, login submission, control route, handoff or exchange; response
+headers/cookies/body were not dumped or reused. Only status/byte count and fixed
+expected-body boolean were retained.
+
+First direct response: HTTP500, headers after30.0234s, complete after30.0244s,
+body0 bytes. It did NOT complete200 even with the client waiting120s. PHP log shows
+Accepted21:37:20 and Closing21:37:50. No violations.txt or exception detail.
+The second warm GET was NOT issued because the first response was a new failure.
+This is not a client timeout: the server returned500 before the client deadline.
+
+The approximately30s server response, guard timings above30s, and absence of the
+post-bootstrap violation marker support a server-side execution-limit hypothesis.
+However, these logs cannot prove which fatal/error or PHP stage produced500;
+the harness deliberately suppresses error detail. CLI -n reports execution limit0,
+which does not establish the cli-server request limit. No diagnostic route,
+logging/ini change or request retry was made to infer a falsely certain cause.
+
+### Narrow proposal for a later reviewed increment — not implemented
+
+Do NOT just raise the TLS timeout and retry the full browser matrix. First review
+a bounded confirmation of the server-side failure, preserving every integrity
+check and avoiding sensitive exception output. If a process-local PHP execution
+budget adjustment is then approved, a candidate hierarchy for subsequent testing
+is PHP90s, bridge100s, browser navigation and request110s, outer client120s.
+These are finite ceilings with margin over the measured47.85s guards, not a
+performance guarantee: successful bootstrap/login latency remains unmeasured.
+Driver action/request budgets also need explicit review; its existing30s guards
+must not be silently overridden. Full-suite command wall-clock budget should be
+derived separately from measured request counts after a direct200 exists.
+No part of this proposed hierarchy was applied in this diagnosis. No caching,
+removing files, skipping hashes or loosening path/inventory checks is proposed.
+
+Stopped only verified-owned PID60644 after the failed GET. At
+2026-09-04T21:38:13.5308368+07:00 that PID was absent and8126/443 all-family
+listeners were empty. Read-only SQLite comparison after stopping again matched
+all42 tables; handoffs0, sessions0, audits0, outbox0. Synthetic baseline and old
+scratch remain untouched. No successful-browser verifier claim; no browser ran.
+Only this report is committed, with diff-check/single-file staging. STOP for
+server-failure review rather than applying the proposed timeout changes.
