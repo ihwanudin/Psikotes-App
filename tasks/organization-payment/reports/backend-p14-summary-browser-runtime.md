@@ -450,3 +450,78 @@ Pint initially requested formatting; formatting applied only to the owned harnes
 then focused Pint, PHP syntax and64 pure checks passed. Commit preparation before
 source refresh and preserve the old diagnostic file by validated native rename.
 Only one opted-in direct GET at existing90s is authorized, no TLS/browser/reinit.
+
+### Warning-location outcome and budget proposal
+
+Preparation commit `5340ef7db9b6826fc554f5a4dd934fbe1091ebe3`. Validated the exact
+run/source diagnostic path, parent temp directory and absence of reparse flags;
+native Move-Item renamed the old diagnostic-stages.jsonl to
+diagnostic-stages-before-warning.jsonl without overwrite/deletion. Then verified
+all old manifest hashes, refreshed only the committed harness, rehashed the full
+inventory and rebuilt the manifest; other22,125 files stayed identical.
+
+- Current manifest SHA-256:
+  `3b333a3f25d5255e5a17da94dbed8054651cf0e163458274a0c1eb4a9f827dea`.
+- Current worker/copy harness SHA-256:
+  `2c38a360ffffc99818509bae881eef188e70c16ec73bb34d7fb95aea5ef4fb86`.
+
+Prior6de2f7 digest remains historical, not current launch authority. Copied harness
+64 pure checks passed. Before request, all42 baseline tables matched. Exact owned
+PHP PID53952/router/executable/127.0.0.1:8126 verified after clean all-family ports;
+90s INI unchanged, diagnostics opt-in, new exact digest. One direct GET, no cookie
+jar/submission/redirect/control, client120s: HTTP200 in88.8792s,38 bytes, fixed
+expected-body boolean true. No raw body/header/cookie output or additional GET.
+
+Actual stages: tree ended26.1711s; manifest26.3806s; hashing71.4167s; inventory and
+required files85.4730s; autoload85.6063s; application creation85.6905s; bootstrap
+85.7018->88.4283s; request handler88.5291->88.8016s; postconditions ended88.8515s.
+All22,126 files were hashed/inventoried. Shutdown exhaustion=false. This confirms
+substantial pre-autoload variability rather than a stable40-50s request ceiling.
+
+First non-null error record occurs at bootstrap_end with preceding stage
+bootstrap_start: type2, sourceFile vendor/vlucas/phpdotenv/src/Store/File/Reader.php,
+line73. The same location persists through shutdown; no error state was cleared.
+Read-only installed source inspection shows line73 calls suppressed
+@file_get_contents, converts false to an undefined Option, and FileStore.php
+lines62-69 throws InvalidPathException when no file was readable. Dotenv.php
+safeLoad lines234-241 catches that exception and returns an empty array. Laravel's
+LoadEnvironmentVariables calls safeLoad using the application's environment path;
+the reviewed harness sets that path to this env-free disposable run before boot.
+
+Classification: the observed warning location and stage match phpdotenv's
+suppressed, handled missing-environment-file read in this deliberately env-free
+setup. Raw message/path was never captured, so the underlying OS warning text was
+not independently verified; do not generalize this classification to other warning
+locations. It is not evidence of an unhandled application exception or real .env
+access. No dependency/app edit, .env creation, error reset or warning suppression
+was added to obtain200. No violations.txt; it is still not browser acceptance.
+
+Finite budget proposal for review only (no limits changed): static driver audit
+counts26 control requests,12 exchange POSTs (11 canonical origin plus wrong-host),
+up to15 logout POSTs,6 explicit login/auth GETs,21 explicit checkout GET/reloads
+including the six hostile-form recoveries. That is80 scheduled PHP operations
+before automatic redirects/history. Allow up to24 redirect GETs and6 history GETs:
+planning bound110 PHP requests for a single pass with no automatic retry loops.
+Opaque forms blocked by the browser and history restoration may lower actual
+counts; synthetic source documents are fulfilled in memory and excluded. These
+are static planning counts, not observed full-run evidence.
+
+At40-50s per request,110 requests cost73.3-91.7 minutes; allow15 minutes for local
+setup/verifier/teardown, giving a finite110-minute nominal run budget. Today's
+88.88s sample invalidates treating that nominal estimate as sufficient: at90s per
+request,110 requests take165 minutes, or180 minutes including that overhead.
+These are finite sensitivity estimates, not permission to run180 minutes, raise
+per-request limits, or alter session/credential lifetimes. A response with only
+about1.1s headroom under the90s server limit is not robust. Per-request budgets,
+driver command wall-clock limit and interactions with existing session/TTL rules
+need coordinator review together; do not extend business lifetimes to make the
+test pass. Keep all hashes/guards; no cache/bypass is proposed or implemented.
+
+Verified-owned53952 stopped. At2026-09-04T22:02:51.2570023+07:00 PID absent and
+8126/443 all-family listeners empty. After stopping, all42 tables still matched
+baseline; handoffs/sessions/audits/outbox each0. Three new log/diagnostic files
+scanned:0 bounded prohibited-marker hits. Old diagnostic evidence, source manifest
+history and synthetic run retained; older scratch untouched. No TLS/browser,
+reinit, application/dependency changes, installs, active data or real provider.
+Final report-only diff-check/commit, then STOP for warning classification/budget
+review. Full summary browser matrix and its final lifecycle verifier remain unrun.
