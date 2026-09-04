@@ -3669,3 +3669,80 @@ index 537a704..ab239c5 100644
 -    }
  }
 ```
+
+## P14c — bounded SQLite lifecycle fix (2026-09-04)
+
+Following accepted diagnosis `ac25a87`, code/regression commit
+`60fa63b71aed711fdc7954b91003a2dd88ddb1dc` changes only three test files:
+
+- `tests/OrganizationPaymentTestCase.php`: 14-line additive delta. Parent teardown
+  remains inside try/finally; only recursive `DatabaseTruncation` users invalidate
+  `RefreshDatabaseState::$migrated` in finally. This base already rejects anything
+  except guarded testing SQLite memory. No connection/PDO cache, migration command,
+  FK, configuration guard, application callback or exception is replaced.
+- `tests/Support/OrganizationDatabaseLifecycleFixture.php`: exercises the actual
+  guarded framework setup/teardown with RefreshDatabase or DatabaseTruncation.
+  Truncation preserves the existing setup reset and zero outer transactions.
+- `tests/Feature/Database/OrganizationDatabaseTraitIsolationTest.php`: ordered
+  truncation→refresh, refresh→truncation→refresh, repeated truncation→refresh,
+  normal refresh caching, and teardown-failure recovery. Each regression case has
+  a fresh PHPUnit child process; multiple real application lifecycles run
+  sequentially within that process. There is no mocked PDO or state-reset shim.
+
+The shared base was already tracked and clean, so its small delta is committed
+normally; no whole untracked snapshot or gate overlay was added. Production
+settlement code remains unchanged in this increment.
+
+### RED → GREEN and combined verification
+
+After correcting the test fixture's access to the framework's protected callback
+registration through a public fixture wrapper, the RED run had **5 tests,
+1 passed / 4 failed, 48 assertions**. Three sequence cases and failure cleanup
+reported the stale migrated flag; the normal RefreshDatabase cache control
+already passed. After the base fix: **5 passed / 81 assertions**. The tests prove
+schema and row isolation across lifecycles, transaction level 0 for truncation
+versus 1 for refresh, cached PDO reuse for consecutive refresh lifecycles, app
+destruction, and unchanged first-exception identity even when two teardown
+callbacks throw and a later callback still runs. A refresh after the failed
+teardown has a working empty schema. No callback exception is swallowed.
+
+Both minimal commands in `backend-p14c-combined-test-diagnosis.md` now pass:
+finalizer→claim **2/40**, reverse **2/40**. The same-process combined invocation
+below passes **176 tests / 818 assertions**, zero failures/errors/skips:
+
+```powershell
+php vendor/bin/phpunit -c phpunit.organization-payment.xml tests/Feature/Payments/AssessmentBillPaymentFinalizationTest.php tests/Feature/Payments/AssessmentInvoiceClaimTest.php tests/Feature/Payments/AssessmentSettlementReaderTest.php tests/Feature/Auth/AttemptEntitlementGateTest.php tests/Feature/Auth/SettledAssessmentActivationTest.php tests/Feature/Database/OrganizationPaymentTestEnvironmentTest.php tests/Feature/Database/OrganizationDatabaseTraitIsolationTest.php --do-not-cache-result
+```
+
+The finalizer, claim, reader, gate, activation and environment-guard cases share
+the main PHPUnit process in that order, proving the original cascade is fixed.
+Only the five lifecycle regression cases use the explicit isolated child-process
+attribute to start their static-state experiments cleanly; each ordered sequence
+itself is within one child. This is not a claim to have run the whole application
+suite or the previously failed 582-case Payments-directory invocation again.
+
+Pint passes for all three changed PHP files, and `php -l` passes for all three.
+Scoped PHPStan passes with **0 errors on the two new regression/fixture files**.
+Including the shared base reports one pre-existing `assign.propertyType` mismatch
+on its unchanged assignment of `class_uses_recursive(static::class)` to vendor
+`$traitsUsedByTest`: inferred `array<string,string>` versus the installed vendor
+PHPDoc `array<class-string,int>`. A temporary source copy from
+`git show ac25a87:tests/OrganizationPaymentTestCase.php` reproduced the
+same error at original line 24 (current line 38). The actual pre-fix revision was
+`ac25a87`; no checkout/reset or active configuration was used. No cast, annotation
+override, suppression, vendor patch or unrelated assignment change was made to
+silence it. Thus **all-three-file PHPStan is not claimed clean**; syntax/Pint and
+new-file static checks are clean, with this known baseline issue disclosed.
+
+PHPStan used process-local testing, synthetic APP_KEY, SQLite memory and array
+cache/session settings; no .env was created or read for configuration changes.
+PostgreSQL was not rerun because this is exclusively test-side SQLite lifecycle
+state, with no DB/RLS/schema/application change. Sandbox remains intact,
+`failOnSkipped=true` remains unchanged, and neither a credential/exclusion nor
+fake Vite manifest was introduced. The separate skip/manifest findings remain
+open under their own ownership.
+
+`git diff --check` and staged diff-check pass. Code and this evidence report are
+separate lane-only commits; baseline dirty state and blocked scratch cleanup are
+preserved. **STOP for review before any further harness fix, projector/HTTP,
+consent/P15, active data, outbound, deploy or push.**
