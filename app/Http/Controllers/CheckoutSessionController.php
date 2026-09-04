@@ -51,6 +51,32 @@ final class CheckoutSessionController extends Controller
         ]);
     }
 
+    public function summary(Request $request, CheckoutSessionLifecycle $lifecycle,
+        CheckoutSessionHttpContract $contract): Response
+    {
+        if ($request->query->all() !== []) {
+            return $contract->clear(redirect('/checkout/unavailable', 303));
+        }
+        $cookies = $request->cookies->all();
+        $selector = $cookies[CheckoutSessionHttpContract::SELECTOR_COOKIE] ?? null;
+        $csrf = $cookies[CheckoutSessionHttpContract::CSRF_COOKIE] ?? null;
+        if (! is_string($selector) || ! is_string($csrf)) {
+            return $contract->clear(redirect('/checkout/unavailable', 303));
+        }
+        try {
+            $summary = $lifecycle->readSummary(new CheckoutSessionMutationCredentials($selector, $csrf))->toArray();
+        } catch (InvalidCheckoutSession) {
+            return $contract->clear(redirect('/checkout/unavailable', 303));
+        }
+
+        // Strict inert JSON: encoding/render errors occur after the lifecycle commit.
+        $summaryJson = json_encode($summary, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
+
+        return response()->view('checkout.summary', [
+            'summary' => $summary, 'summaryJson' => $summaryJson, 'checkoutCsrf' => $csrf,
+        ]);
+    }
+
     public function logout(Request $request, CheckoutSessionLifecycle $lifecycle,
         CheckoutSessionHttpContract $contract): Response
     {

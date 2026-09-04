@@ -4983,3 +4983,78 @@ of arbitrary process-wide timezone changes is made. No application defect was fo
 in the final test matrix. Baseline overlays and ignored genuine-build copy preserved.
 No .env/active data, real provider/notifier, new agent/task, frontend, deploy or push.
 STOP for coordinator review of the pending summary code and this evidence commit.
+
+## P14 summary HTTP adapter — approved four-file synthetic increment (2026-09-04)
+
+Implemented the accepted 1c62d51 proposal within exactly four owned files:
+- app/Http/Controllers/CheckoutSessionController.php: additive summary method only.
+  Existing exchange/show/logout/unavailable methods are unchanged. Rejects query,
+  captures the exact cookie pair once, calls readSummary once, catches only
+  InvalidCheckoutSession for exact two-cookie clear + fixed 303 unavailable.
+- resources/views/checkout/summary.blade.php: new semantic read-only HTML, escaped
+  own labels/profile/legal text; exact inert checkout-summary-v1 object encoded
+  with native JSON_HEX_TAG/AMP/APOS/QUOT and JSON_THROW_ON_ERROR. No executable JS,
+  Vite assets, global principal or summary content negotiation. Verified local
+  CSRF appears only in meta and hidden logout field. Only form is fixed logout.
+- tests/Feature/Integrations/CheckoutSummaryHttpTest.php: real exchange, summary,
+  logout, boundary and named limiter registered only by tests. Summary GET omits
+  AuthenticateCheckoutSession to avoid a second credential read/idle transaction.
+- This report. No shared middleware/HttpContract/config/route/bootstrap changes.
+
+TDD and actual results:
+- First test attempt failed in setup with HANDOFF_CONFIG_INVALID: the synthetic
+  handoff TTL was not set. Set TTL 600 in test config, matching existing tests.
+- Meaningful RED: 1 test / 5 assertions failed because summary() did not exist
+  (expected 200, actual 500). Implemented the additive adapter and view.
+- Initial GREEN: 18 tests / 417 assertions.
+- Added null profile/payment test: RED 1 test / 12 assertions, HTML incorrectly
+  displayed consultationRequested=null as Tidak. Changed only view presentation
+  to Belum tersedia for null; false remains Tidak and true remains Ya.
+- Expanded GREEN: 24 tests / 599 assertions. Added frozen own-price/partial-access
+  collective privacy and no-business-write case, then Pint formatting.
+- Final focused: 25 tests / 615 assertions, 8.635s.
+- Related regression: 253 tests / 3,195 assertions, 51.654s. Explicit files:
+  CheckoutSummaryHttpTest, CheckoutSessionHttpTest, CheckoutSummaryComposerTest,
+  CheckoutSummaryLifecycleTest, CheckoutSessionLifecycleTest,
+  CheckoutSessionEstablishmentTest, CheckoutProductPaymentFactsTest,
+  CheckoutPaymentFactsTest, CheckoutProfileProjectionTest,
+  CheckoutHandoffRecoveryTest, CheckoutHandoffIssuanceTest, CheckoutHandoffConsumeTest.
+  All use phpunit.organization-payment.xml and --do-not-cache-result.
+- Full application PHPStan: 0 errors with XML synthetic environment loaded in
+  process. Pint --test passed for controller and new PHP test; diff-check passed.
+
+Evidence covers one DB clock and idle update per summary; cookie captured before
+the read despite a synthetic request-cookie mutation during it; stale principal
+and bearer/header cannot replace cookies; missing/malformed pair/query and current
+logout/expiry/client/source/deleted-participant denial clear only checkout cookies.
+Native Origin:null logout succeeds with verified form CSRF, while hostile origin,
+dual/header channels and contradictory Fetch Metadata fail. A genuine encrypted
+Laravel login cookie still authorizes the separate web+auth probe before and after
+summary/logout; summary emits no Set-Cookie and logout never clears that cookie.
+
+Private headers are checked on 200/303/404/429 and component/UTF-8/render 500.
+APP_DEBUG=false is forced by the existing XML. Actual exception handler reportable
+callback is observed, without replacing framework render/report handling; the
+callback suppresses test logging only. Error bodies contain no partial summary,
+synthetic PII/SQL marker or raw credentials. Component failure rolls back idle;
+strict encoding and view-composer failure happen after lifecycle commit and leave
+its idle touch committed. No compensating write or false rollback claim is made.
+
+Inert JSON preserves hostile closing-script, markup, quotes, ampersand and Unicode
+data without executable DOM nodes. DOM assertions cover a main heading, named
+sections, one inert script, one logout form, and no other inputs/actions. No-charge
+amount and consultation stay null; missing fields stay missing. Changed catalogue
+cannot replace charge snapshot; a TWO-participant collective bill exposes only
+own amount 100, not total 200, foreign profile, gateway or invoice. DASS required
+and IST ready remain partial even when payment is paid. Business tables/outbox
+remain unchanged by the read (session idle refresh is intentionally separate).
+
+Bounds: HTTP is test-only, not a publicly registered route. No browser/CSP runtime,
+refresh/back/multi-tab/history test or frontend mounting/build is claimed. Static
+DOM assertions are not browser accessibility acceptance. No new PostgreSQL run:
+this increment does not change lifecycle, lock/schema or transaction ownership;
+the accepted 368/3109 PostgreSQL composition result above is prior evidence, not
+recounted as a new HTTP run. No arbitrary-timezone support claim. Existing view
+and source overlays, dirty baseline, ignored genuine-build copy remain intact.
+No .env/active DB, provider/notifier, new task/agent, P15, route/source/gate ON,
+deploy or push. STOP for coordinator review before frontend/public integration.
