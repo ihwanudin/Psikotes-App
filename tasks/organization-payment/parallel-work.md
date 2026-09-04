@@ -1,5 +1,13 @@
 # Koordinasi task paralel organization-payment
 
+## Supervisor finalization cleanup P2 correction
+
+Peer reporteb7d9ed/root source confirm full stop/verify/post occurs after primary
+finally without unconditional cleanup; BaseException interruption also escapes
+invalidation. Backend idle cursor`:5` received ONE correction with regression
+tests for every final phase/interrupt and post-success new descendant/uncertainty.
+No runtime/exactrun access. f533eed integration remains pending corrected lifecycle.
+
 ## Supervisor f533eed received, runtime still withheld
 
 Root read supervisor report and independently ran21pure/mock tests PASS. These do
