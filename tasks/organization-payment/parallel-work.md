@@ -1,5 +1,15 @@
 # Koordinasi task paralel organization-payment
 
+## Postmortem a1f6617: start failure masked by cleanup
+
+Read-only artifacts show evidence remained preverified with owned=[], no runtime
+logs/violations and0requests. Earliest supported failure is integrity-start after
+ownership census; cleanup failure overwrote primary reason. Owned16 was in-memory
+transitive census; artifacts cannot distinguish parent disappearance/PID reuse/
+identity branch because one uncertainty bool. ONE code correction assigned:
+immutable fixed primary_reason, separate cleanup_status, bounded uncertainty enum
+categories at every assignment; pure/mock tests only. No new run/copy/runtime.
+
 ## Listener-fixed smoke invalid before first request
 
 Worker69a0f6c: init42.207s,42tables exact/checkoutcounts0. Supervisor ran128.502s,
