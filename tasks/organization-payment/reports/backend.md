@@ -3491,3 +3491,181 @@ No new PostgreSQL or unrelated UI result is claimed for this HTTP-only delta.
 Canonical ADR/integration remain for root review. No active route/config/source,
 DB/.env, provider/notifier, deployment or push; no retry of blocked recursive
 scratch cleanup. **STOP before P15.**
+
+## P14c prerequisite — shared settlement reader (2026-09-04)
+
+Code/test commit `90f3aa5923c07451e07bd65aaf6878bf024ad800` adds
+`app/Services/Payments/AssessmentSettlementReader.php`, injects it into
+`ActivateSettledAssessment`, and adds
+`tests/Feature/Payments/AssessmentSettlementReaderTest.php`. The gate is also
+updated locally, but remains untracked from the original snapshot: its exact
+patch and before/after hashes follow, rather than committing the whole baseline.
+
+This is a behavior-preserving extraction, not a summary projector or access API.
+`isSettled(AssessmentCharge): bool` requires an existing service RLS context and
+does not elevate a caller. Its documented precondition is a validated persisted
+charge in the caller's authorized transaction, with existing scope/snapshot
+checks and locks. It accepts neither request-selected IDs nor a browser paid
+flag. It returns only settlement evidence, not entitlement or authorization.
+
+The old gate predicate body compares text-identical after removal of the added
+service-context guard and method rename. Activation had the same conditions,
+with a local payer variable, different query predicate ordering, and collection
+`count()` instead of `count(collection)`. Zero/free marker, absence of bill item,
+own positive allocation, both payer-participant bindings, paid/item timestamps,
+all-member positive/overflow-safe sum/count and timestamps are preserved.
+Existing `now()`/Carbon handling is retained; no new captured/database clock,
+query lock, transaction, policy check, business write or exception conversion.
+Scope/snapshot and prerequisite checks remain in the callers at the same points.
+
+Current policy OFF is **not** a new denial of historical paid evidence or
+acquired ready rights: the characterization test explicitly disables client/
+allowed payer policy and still reads settlement and the existing ready gate.
+Policy wording in the P14c projection proposal remains unapproved for this case;
+it was not implemented. Consent, identity and profile are tested independently:
+paid remains settled while gate rejects and activation is a no-op, with no
+activation audit/outbox or rebilling. No DTO/profile/consent/projector/HTTP work
+is included in this slice.
+
+### Actual verification
+
+The new reader API first ran RED because the service did not exist (15 tests,
+zero passing). Initial fixture setup also exposed composite FK enforcement and
+an incorrect assumed client column; fixtures were corrected without disabling
+constraints or changing production predicates. Final characterization has
+**17 tests / 44 assertions**, including collective partial/future allocation,
+self payer mismatch, count/total mismatch, pending/missing/future timestamps,
+zero absent/future marker and unexpected item, no-context/admin/participant
+denial, no business row changes, and paid prerequisites independent of access.
+SQLite-only synthetic inconsistent rows are not claimed possible under PG CHECKs.
+
+All following processes used `php vendor/bin/phpunit -c
+phpunit.organization-payment.xml <file> --do-not-cache-result` (SQLite memory,
+synthetic fixture, fake outbound). Final per-file results:
+
+| File under tests/Feature | Tests | Assertions |
+| --- | ---: | ---: |
+| Payments/AssessmentSettlementReaderTest.php | 17 | 44 |
+| Auth/AttemptEntitlementGateTest.php | 44 | 55 |
+| Auth/SettledAssessmentActivationTest.php | 30 | 107 |
+| Auth/AssessmentSessionAuthorizationTest.php | 27 | 141 |
+| Payments/AssessmentBillPaymentFinalizationTest.php | 10 | 65 |
+| Payments/AssessmentBillWebhookDispatchTest.php | 12 | 80 |
+| Payments/AssessmentBillStatusReconciliationTest.php | 8 | 32 |
+| Payments/AssessmentBillManualReviewTest.php | 22 | 102 |
+| Payments/AssessmentInvoiceClaimTest.php | 60 | 444 |
+| **Separate-process total, zero skips/failures** | **230** | **1,070** |
+
+`tools/testing/run-org-postgres.ps1` passed the full existing worker PostgreSQL
+suite: **343 tests / 2,523 assertions**, runtime non-owner/NOBYPASSRLS. This includes
+the existing gate free/collective/scope cases, activation two-process concurrency
+and savepoint rollback, and finalizer two-process settlement/rollback tests.
+No PG test/harness/schema was changed. Network run label
+`3b63745ae3b64bc9af1db43011e8b038` had no published ports; runner reported cleanup
+complete, and exact-label container/network inventories were empty afterward.
+The worker suite is its preserved snapshot, not a claim to contain every newer
+root test. Two initial SQLite Docker runs completed independently; later SQLite
+checks used installed local PHP 8.3.26 and the same guarded XML.
+
+Pint passed on the four changed PHP paths. Full-project PHPStan passed with
+**0 errors** using process-local testing/SQLite-memory/array settings. Its initial
+invocation without testing environment was refused by the existing production
+configuration guard, before a successful configured rerun; no .env was created
+or changed. `git diff --check` and staged diff-check passed.
+
+Broader combined-directory attempt is **not GREEN**: Payments plus three auth
+files reported 582 tests, 469 passed, 2,817 assertions, one skip, a missing Vite
+manifest failure in the legacy manual-payment received page, and missing
+`branches` table errors in multiple classes in that combined run. Do not count
+it as passed or attribute every error to the manifest. Claim and the affected
+shared-payment paths pass when run as separate processes above; the combined-run
+database-state interaction has not been fixed or fully diagnosed in this slice.
+No fake Vite manifest, weakened harness, skipped test filter, or shared test-base
+edit was used. Root full-suite validation remains a handoff limitation.
+
+### Gate overlay for coordinator integration
+
+Target: `app/Services/ParticipantAuth/AssessmentEntitlementGate.php` (untracked
+worker baseline; root's before file was independently hash-matched).
+
+- Before SHA256: `d9feedeeea8567e023fe813cd2ad53b3009696910839216920decb27caead34f`
+- After SHA256: `1c9f033150e0962ed03d50dc15874272a7e8da53a327429b0a145888298517c9`
+
+Apply only the following delta with the code commit; do not add the worker's
+baseline gate file wholesale. This report is the second lane-only commit.
+No root canonical document, frontend DRAFT, HTTP/route/config/source activation,
+credential/.env, active data, provider/notifier, deploy or push was changed.
+Blocked browser scratch cleanup remains untouched. **STOP for review before
+any further reader/projector/consent/HTTP/P15 increment.**
+
+```diff
+diff --git a/app/Services/ParticipantAuth/AssessmentEntitlementGate.php b/app/Services/ParticipantAuth/AssessmentEntitlementGate.php
+index 537a704..ab239c5 100644
+--- a/app/Services/ParticipantAuth/AssessmentEntitlementGate.php
++++ b/app/Services/ParticipantAuth/AssessmentEntitlementGate.php
+@@ -11,15 +11,14 @@
+ use App\Security\RlsContextRunner;
+ use App\Services\ParticipantAuth\Exceptions\EntitlementLocked;
+ use App\Services\Payments\AssessmentPriceSnapshot;
+-use Carbon\CarbonImmutable;
++use App\Services\Payments\AssessmentSettlementReader;
+ use DomainException;
+-use Illuminate\Support\Facades\DB;
+ use LogicException;
+
+ /** Internal read-only gate. Session creation must recheck this inside its own locking transaction. */
+ final readonly class AssessmentEntitlementGate
+ {
+-    public function __construct(private AssessmentPriceSnapshot $prices, private AssessmentAccessPrerequisites $prerequisites) {}
++    public function __construct(private AssessmentPriceSnapshot $prices, private AssessmentAccessPrerequisites $prerequisites, private AssessmentSettlementReader $settlement) {}
+
+     public function assertReady(AssessmentPrincipal $principal, string $testType): AssessmentEntitlement
+     {
+@@ -53,45 +52,11 @@ public function assertReady(AssessmentPrincipal $principal, string $testType): A
+             ->where('organization_id', $principal->organizationId)->where('participant_id', $principal->participantId)
+             ->where('charge_id', $charge->id)->where('test_type', $testType)->where('status', 'ready')
+             ->whereNotNull('ready_at')->where('ready_at', '<=', now())->whereNull('started_at')->whereNull('completed_at')->first();
+-        if ($entitlement === null || ! $this->settled($charge)) {
++        if ($entitlement === null || ! $this->settlement->isSettled($charge)) {
+             throw new EntitlementLocked;
+         }
+         $this->prerequisites->assertSatisfied($participant, $testType);
+
+         return $entitlement;
+     }
+-
+-    private function settled(AssessmentCharge $charge): bool
+-    {
+-        if ($charge->amount === 0) {
+-            return $charge->free_settled_at !== null && $charge->free_settled_at->lte(now())
+-                && ! DB::table('assessment_bill_items')->where('charge_id', $charge->id)->exists();
+-        }
+-        $item = DB::table('assessment_bill_items as item')->join('assessment_bills as bill', 'bill.id', '=', 'item.bill_id')
+-            ->where('item.charge_id', $charge->id)->where('item.organization_id', $charge->organization_id)
+-            ->where('item.participant_id', $charge->participant_id)->where('item.payer_type', $charge->payer_type)
+-            ->where('item.amount', $charge->amount)->where('item.currency', $charge->currency)
+-            ->whereNotNull('item.settled_at')->where('item.settled_at', '<=', now())
+-            ->where('bill.organization_id', $charge->organization_id)->where('bill.payer_type', $charge->payer_type)
+-            ->where('bill.currency', $charge->currency)->where('bill.status', 'paid')
+-            ->whereNotNull('bill.paid_at')->where('bill.paid_at', '<=', now())
+-            ->where('bill.payer_participant_id', $charge->payer_type === 'self' ? $charge->participant_id : null)
+-            ->where('item.payer_participant_id', $charge->payer_type === 'self' ? $charge->participant_id : null)
+-            ->first(['bill.id', 'bill.amount', 'bill.item_count']);
+-        if ($item === null) {
+-            return false;
+-        }
+-        $members = DB::table('assessment_bill_items')->where('bill_id', $item->id)->get(['amount', 'settled_at']);
+-        $total = 0;
+-        foreach ($members as $member) {
+-            $amount = (int) $member->amount;
+-            if ($amount <= 0 || $total > PHP_INT_MAX - $amount || $member->settled_at === null
+-                || CarbonImmutable::parse($member->settled_at)->gt(now())) {
+-                return false;
+-            }
+-            $total += $amount;
+-        }
+-
+-        return count($members) === (int) $item->item_count && $total === (int) $item->amount;
+-    }
+ }
+```
