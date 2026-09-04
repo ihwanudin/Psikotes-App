@@ -150,7 +150,15 @@ final class CheckoutSummaryHttpTest extends OrganizationPaymentTestCase
         $this->assertSame($hostile, $data['branchName']);
         $this->assertSame($hostile, $data['profile'][0]['displayValue']);
         $this->assertSame($hostile, $data['consents']['psychotest']['document']['text']);
-        $this->assertSame(0, $this->dom($response)->query('//img | //*[@onerror]')->length);
+        $xpath = $this->dom($response);
+        $this->assertSame(1, $xpath->query('//img')->length);
+        $this->assertSame(1, $xpath->query('//img[@src="/brand/oncam-logo-full-color.png" and @alt="ONCAM"]')->length);
+        $this->assertSame(0, $xpath->query('//img[@src="x"]')->length);
+        foreach ($xpath->query('//@*') as $attribute) {
+            $this->assertFalse(str_starts_with(strtolower($attribute->nodeName), 'on'), 'Event handler attribute must never be rendered.');
+        }
+        $this->assertSame($hostile, $xpath->query('//dt[text()="Cabang"]/following-sibling::dd[1]')->item(0)->textContent);
+        $this->assertStringContainsString(e($hostile), $response->getContent());
         $this->assertSame(1, $this->dom($response)->query('//script')->length);
         $this->assertStringNotContainsString($hostile, $response->getContent());
     }

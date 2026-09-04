@@ -1,5 +1,19 @@
 # Koordinasi task paralel organization-payment
 
+## Read-only frontend integrated after actual HTTP verification
+
+Frontend report226125b reviewed: baseline25/615; overlay78/2143 including session,
+composer/lifecycle. Root independently reran summary+session HTTP in approved
+isolated copy:40tests/1912assertions GREEN. Root earlier real-Blade14/14 GREEN.
+Integrated exact eb3d7bc view/CSS/standalone test and4eb2385 HTTP-test delta,
+not worker baseline/history or canonical report overwrite. View blob25b50a0 matches.
+No route/controller/contract changes; runtime IDR/null semantics and private CSRF/
+JSON retained. Static asset retrieval, browser/no-JS/keyboard/geometry/CSP/history
+remain pending; this is not P14 browser/P16 completion or public activation.
+Frontend report retains576source/175vendor pre/post evidence and limitations.
+Composition temp copy now contains the three approved frontend overlays, not a
+pristine df92ecd checkout; future runs must account for them explicitly.
+
 ## Recovery after Codex close
 
 User requested status recheck and continuation. Root234da10 clean; previous

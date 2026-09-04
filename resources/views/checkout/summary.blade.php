@@ -1,3 +1,17 @@
+@php
+    $paymentLabels = [
+        'unselected' => 'Pembayar belum dipilih', 'unpaid' => 'Belum dibayar',
+        'unbilled' => 'Menunggu penagihan oleh lembaga', 'preparing' => 'Pembayaran sedang disiapkan',
+        'pending' => 'Menunggu pembayaran', 'recovery_required' => 'Status pembayaran perlu diperiksa',
+        'expired' => 'Pembayaran kedaluwarsa', 'rejected' => 'Pembayaran ditolak',
+        'paid' => 'Pembayaran lunas', 'free' => 'Gratis — tercatat oleh server',
+    ];
+    $payerLabels = ['unselected' => 'Pembayar belum dipilih', 'self' => 'Bayar sendiri', 'organization' => 'Dibayar lembaga'];
+    $accessLabels = ['locked' => 'Prasyarat tes belum terpenuhi', 'partial' => 'Sebagian prasyarat tes belum terpenuhi', 'ready' => 'Prasyarat tes terpenuhi'];
+    $testLabels = ['ist' => 'IST', 'papi' => 'PAPI', 'rmib' => 'RMIB', 'kraepelin' => 'Kraepelin', 'dass21' => 'DASS-21'];
+    $requiredMissing = count(array_filter($summary['profile'], fn ($field) => $field['state'] === 'missing' && $field['required'])) > 0;
+    $optionalMissing = count(array_filter($summary['profile'], fn ($field) => $field['state'] === 'missing' && ! $field['required'])) > 0;
+@endphp
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -5,67 +19,80 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="checkout-csrf-token" content="{{ $checkoutCsrf }}">
     <title>Ringkasan assessment</title>
+    <link rel="stylesheet" href="/css/checkout-summary-v1.css">
 </head>
 <body>
+<header class="brand-header">
+    <img src="/brand/oncam-logo-full-color.png" alt="ONCAM" width="96" height="80">
+    <p>Ringkasan pribadi peserta</p>
+</header>
 <main>
     <h1>Ringkasan assessment</h1>
-    <p>Halaman ini hanya menampilkan ringkasan. Perubahan profil, persetujuan, pembayaran, dan mulai tes belum tersedia di sini.</p>
-    <section aria-labelledby="assessment-heading">
+    <p class="intro">Halaman ini hanya menampilkan ringkasan. Perubahan profil, persetujuan, pembayaran, dan mulai tes belum tersedia di sini.</p>
+    <section class="assessment" aria-labelledby="assessment-heading">
         <h2 id="assessment-heading">{{ $summary['attemptLabel'] }}</h2>
         <dl>
             <dt>Sumber</dt><dd>{{ $summary['sourceName'] }}</dd>
             <dt>Cabang</dt><dd>{{ $summary['branchName'] }}</dd>
             <dt>Paket</dt><dd>{{ $summary['packageName'] }}</dd>
-            <dt>Sumber informasi paket</dt><dd>{{ $summary['packageSource'] }}</dd>
+            <dt>Sumber informasi paket</dt><dd>{{ $summary['packageSource'] === 'catalog' ? 'Informasi paket dari katalog' : 'Informasi paket saat biaya ditetapkan' }}</dd>
         </dl>
     </section>
     <section aria-labelledby="profile-heading">
         <h2 id="profile-heading">Profil Anda</h2>
+        @if ($requiredMissing)
+            <p>Sebagian data wajib belum lengkap; pengisian belum tersedia di halaman ini.</p>
+        @elseif ($optionalMissing)
+            <p>Data wajib sudah lengkap; email belum tersedia.</p>
+        @else
+            <p>Data profil sudah tersedia.</p>
+        @endif
         <dl>
             @foreach ($summary['profile'] as $field)
                 <dt>{{ $field['label'] }}{{ $field['required'] ? ' (wajib)' : ' (opsional)' }}</dt>
-                <dd>{{ $field['displayValue'] ?? 'Belum tersedia' }}</dd>
+                <dd>{{ $field['state'] === 'missing' ? ($field['required'] ? 'Belum dilengkapi' : 'Belum tersedia (opsional)') : (trim($field['displayValue']) === '' ? 'Belum tersedia' : $field['displayValue']) }}</dd>
             @endforeach
         </dl>
-        <p>{{ $summary['identityMessage'] }}</p>
+        <p class="notice">{{ $summary['identityMessage'] }}</p>
     </section>
     <section aria-labelledby="payment-heading">
         <h2 id="payment-heading">Pembayaran</h2>
         <dl>
-            <dt>Pembayar</dt><dd>{{ $summary['payment']['payer'] }}</dd>
+            <dt>Pembayar</dt><dd>{{ $payerLabels[$summary['payment']['payer']] }}</dd>
             @if (isset($summary['payment']['organizationName']))
                 <dt>Organisasi</dt><dd>{{ $summary['payment']['organizationName'] }}</dd>
             @endif
-            <dt>Status</dt><dd>{{ $summary['payment']['state'] }}</dd>
-            <dt>Nominal Anda</dt><dd>{{ $summary['payment']['amountIdr'] === null ? 'Belum tersedia' : 'Rp '.number_format($summary['payment']['amountIdr'], 0, ',', '.') }}</dd>
-            <dt>Sumber nominal</dt><dd>{{ $summary['payment']['amountSource'] }}</dd>
+            <dt>Status</dt><dd class="payment-status">{{ $paymentLabels[$summary['payment']['state']] }}</dd>
+            <dt>Nominal Anda</dt><dd class="amount">{{ $summary['payment']['amountIdr'] === null ? 'Belum tersedia' : 'Rp '.number_format($summary['payment']['amountIdr'], 0, ',', '.') }}</dd>
+            <dt>Sumber nominal</dt><dd>{{ $summary['payment']['amountSource'] === 'unavailable' ? 'Nominal belum tersedia' : 'Nominal biaya yang tercatat' }}</dd>
             <dt>Konsultasi diminta</dt><dd>{{ $summary['payment']['consultationRequested'] === null ? 'Belum tersedia' : ($summary['payment']['consultationRequested'] ? 'Ya' : 'Tidak') }}</dd>
         </dl>
     </section>
-    <section aria-labelledby="access-heading">
+    <section class="access" aria-labelledby="access-heading">
         <h2 id="access-heading">Akses tes</h2>
         <p>{{ $summary['access']['message'] }}</p>
-        <p>Status: {{ $summary['access']['state'] }}</p>
+        <p>Status: {{ $accessLabels[$summary['access']['state']] }}</p>
+        <p>Mulai tes belum tersedia di halaman ini.</p>
         <ul>
             @foreach ($summary['access']['tests'] as $test)
-                <li>{{ $test['testType'] }}: {{ $test['state'] }}</li>
+                <li>{{ $testLabels[$test['testType']] }}: {{ $test['state'] === 'ready' ? 'Prasyarat terpenuhi' : 'Prasyarat belum terpenuhi' }}</li>
             @endforeach
         </ul>
     </section>
-    <section aria-labelledby="consent-heading">
+    <section class="consents" aria-labelledby="consent-heading">
         <h2 id="consent-heading">Persetujuan</h2>
         @if ($summary['consents']['legalReviewPending'])
-            <p>Dokumen persetujuan masih menunggu tinjauan legal.</p>
+            <p class="notice">Dokumen persetujuan masih menunggu tinjauan legal.</p>
         @endif
         @foreach (['psychotest' => 'Psikotes', 'dass' => 'DASS (opsional)'] as $key => $label)
             <h3>{{ $label }}</h3>
             @if ($summary['consents'][$key]['state'] === 'accepted')
-                <p>Disetujui. Versi: {{ $summary['consents'][$key]['version'] }}</p>
+                <p>Persetujuan tercatat. Versi: {{ $summary['consents'][$key]['version'] }}</p>
             @elseif ($summary['consents'][$key]['state'] === 'required')
-                <p>Persetujuan belum tersedia untuk dokumen berikut.</p>
+                <p>Persetujuan untuk dokumen ini belum tercatat.</p>
                 <h4>{{ $summary['consents'][$key]['document']['title'] }}</h4>
                 <p>Versi: {{ $summary['consents'][$key]['document']['version'] }}</p>
-                <p>{{ $summary['consents'][$key]['document']['text'] }}</p>
+                <p class="document-text">{{ $summary['consents'][$key]['document']['text'] }}</p>
             @else
                 <p>Tidak berlaku untuk paket ini.</p>
             @endif
