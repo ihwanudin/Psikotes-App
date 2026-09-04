@@ -2,6 +2,13 @@
 
 ## Parallel follow-ups dispatched — 2026-09-04
 
+Frontend cursor `:11` eb3d7bc implements four-file presentation slice. Root reran
+real Blade standalone14/14 in env-free d4ea; not HTTP/browser. Integration pending:
+existing HTTP XSS assertion disallows all images, including intentional logo.
+Sent ONE test-only compatibility correction against root d359c12 HTTP test baseline:
+exact one local logo, no injected image or event attributes, preserve JSON/privacy.
+No dependency shims/HTTP run on incomplete worker; root isolated integration later.
+
 Portal cursor `:9`, reportf75eede: worker lacks canonical invoice/finalizer dependency
 closure; no tests ran. Authorized one independent OS-temp test copy of immutable
 root df92ecd466244ef864bfa62fcf139fc3b322c3d7, source allowlist only, verified
