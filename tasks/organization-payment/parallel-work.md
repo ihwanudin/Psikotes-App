@@ -1,5 +1,16 @@
 # Koordinasi task paralel organization-payment
 
+## Listener-fixed smoke invalid before first request
+
+Worker69a0f6c: init42.207s,42tables exact/checkoutcounts0. Supervisor ran128.502s,
+started PHP/TLS/browser but returned invalid reasoncleanup,0request permits. At return
+16owned identities,0 live handles, ownershipUncertain=true; post observation found
+0listeners/processes, invalid latch, no violations. Cleanup completeness not proven;
+run49c23 consumed and never reusable. No HTTP/asset/browser acceptance.
+ONE read-only artifact/source postmortem assigned; no rerun/process/DB/config edits.
+Find earliest supported stage and uncertainty trigger; reason cleanup currently may
+overwrite primary failure, propose separate fixed primary/cleanup result + tests.
+
 ## Listener-fixed49c23 smoke authorized
 
 Preparation97cf4c0 reviewed. Root independently matched manifest6f6d1af196480364f1c5165bf728c8f73af6fbc07ce36fda7eafa2fd78f2bafd,
