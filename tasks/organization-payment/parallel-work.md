@@ -1,5 +1,19 @@
 # Koordinasi task paralel organization-payment
 
+## Execution exhaustion confirmed; stage localization next — 2026-09-04
+
+Backend completed cursor `:48`; bb443e4 confirms cli-server30 exhaustion via
+sanitized shutdown boolean. Authorized disposable90s recovery also returned500
+at90.02s; exact second stage remains unknown. No checkout changes, baseline42
+tables unchanged, owned PIDs/listeners stopped. No further timeout increase.
+
+ONE bounded test-harness diagnostic dispatched: opt-in fixed stage/elapsed/count
+markers around integrity checks/autoload/bootstrap/request, no sensitive payloads
+or app changes. Commit harness/report, refresh only exact copied harness and
+manifest, then one direct login GET at existing90s with owned listener and all
+postconditions. No TLS/browser/full retry or check bypass; stop with stage evidence
+before deciding fix. Diagnostic output must remain inside validated run.
+
 ## Guard timing measured; conditional direct runtime recovery — 2026-09-04
 
 Reviewed be5223c: pure integrity stages41.8-47.8s, hashing alone20.9-22.3s;
