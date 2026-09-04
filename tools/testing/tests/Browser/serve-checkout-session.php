@@ -40,7 +40,11 @@ use Tests\Support\AssessmentAccessFixture;
 
 ini_set('display_errors', '0');
 ini_set('log_errors', '0');
-set_exception_handler(static function (Throwable $error): void {
+$integrityFailure = null;
+set_exception_handler(static function (Throwable $error) use (&$integrityFailure): void {
+    if ($integrityFailure !== null) {
+        $integrityFailure();
+    }
     // Control/bootstrap exceptions may contain SQL/credentials; never print their details.
     http_response_code(500);
     echo "Checkout browser harness refused.\n";
@@ -120,9 +124,25 @@ if (PHP_SAPI === 'cli' && ($argv[1] ?? '') === '--self-test') {
     exit;
 }
 
+if (PHP_SAPI === 'cli' && ($argv[1] ?? '') === '--integrity-tests') {
+    require __DIR__.'/checkout-integrity-tests.php';
+    exit;
+}
+
 // Disposable browser-only fixture. It refuses a workspace .env and all non-loopback clients.
 $directory = getenv('ONCAM_CHECKOUT_BROWSER_DIRECTORY');
 $port = getenv('ONCAM_CHECKOUT_BROWSER_PORT');
+$cooperativeIntegrity = is_string($directory)
+    ? checkoutBrowserIntegrityMode($directory, getenv('ONCAM_CHECKOUT_BROWSER_INTEGRITY_MODE')) : false;
+if ($cooperativeIntegrity) {
+    $integrityFailure = static fn () => checkoutBrowserIntegrityInvalidate($directory);
+    register_shutdown_function(static function () use ($integrityFailure): void {
+        $error = error_get_last();
+        if ($error !== null && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR, E_RECOVERABLE_ERROR], true)) {
+            $integrityFailure();
+        }
+    });
+}
 $temporaryRoot = realpath(sys_get_temp_dir());
 if (! is_string($directory) || realpath(dirname($directory)) !== $temporaryRoot
     || ! preg_match('/^oncam-checkout-[a-f0-9]{32}$/D', basename($directory))
@@ -132,7 +152,7 @@ if (! is_string($directory) || realpath(dirname($directory)) !== $temporaryRoot
 }
 
 $mode = PHP_SAPI === 'cli' ? ($argv[1] ?? '') : 'serve';
-if (! in_array($mode, ['init', 'verify', 'serve'], true)
+if (! in_array($mode, ['init', 'verify', 'serve', 'integrity-pre', 'integrity-start', 'integrity-stop', 'integrity-post'], true)
     || (PHP_SAPI === 'cli' && $mode === 'serve') || PHP_VERSION_ID < 80300 || PHP_VERSION_ID >= 80400) {
     throw new RuntimeException('Unsupported harness mode/runtime.');
 }
@@ -192,58 +212,36 @@ if (getenv('ONCAM_CHECKOUT_BROWSER_STAGE_DIAGNOSTICS') === '1') {
         fclose($diagnosticHandle);
     });
 }
-$diagnostic('tree_start');
-checkoutBrowserAssertTree($directory);
-$diagnostic('tree_end');
-$diagnostic('manifest_start');
-$manifest = json_decode((string) file_get_contents($directory.'/source-manifest.json'), true, 512, JSON_THROW_ON_ERROR);
 $manifestDigest = getenv('ONCAM_CHECKOUT_BROWSER_MANIFEST_SHA256');
-if (! is_string($manifestDigest) || preg_match('/^[a-f0-9]{64}$/D', $manifestDigest) !== 1
-    || ! hash_equals($manifestDigest, hash_file('sha256', $directory.'/source-manifest.json'))) {
-    throw new RuntimeException('Reviewed manifest digest required.');
+if (! is_string($manifestDigest)) {
+    throw new RuntimeException('Manifest digest required.');
 }
-if (! is_array($manifest) || count($manifest) < 10 || count($manifest) > 50000) {
-    throw new RuntimeException('Source manifest required.');
-}
-$diagnostic('manifest_end', count($manifest));
-$diagnostic('file_hash_start');
-$diagnosticHashed = 0;
-foreach ($manifest as $relative => $digest) {
-    if (! is_string($relative) || ! checkoutBrowserSafeRelative($relative)
-        || ! is_string($digest) || ! preg_match('/^[a-f0-9]{64}$/D', $digest)
-        || ! is_file($root.'/'.$relative) || ! hash_equals($digest, hash_file('sha256', $root.'/'.$relative))) {
-        throw new RuntimeException('Source manifest mismatch.');
+$fullIntegrity = static fn () => checkoutBrowserIntegrityFull($directory, $manifestDigest, $diagnostic);
+if ($cooperativeIntegrity && $mode !== 'init') {
+    $integrityOwner = json_decode((string) getenv('ONCAM_CHECKOUT_BROWSER_OWNER'), true, 8, JSON_THROW_ON_ERROR);
+    if (! is_array($integrityOwner)) {
+        throw new RuntimeException('Owner identity required.');
     }
-    if (++$diagnosticHashed % 5000 === 0) {
-        $diagnostic('file_hash_progress', $diagnosticHashed);
+    $integrityOwned = $mode === 'integrity-start'
+        ? json_decode((string) getenv('ONCAM_CHECKOUT_BROWSER_OWNED_PROCESSES'), true, 8, JSON_THROW_ON_ERROR) : [];
+    if (! is_array($integrityOwned)) {
+        throw new RuntimeException('Runtime identities required.');
     }
-}
-$diagnostic('file_hash_end', $diagnosticHashed);
-$diagnostic('inventory_start');
-$inventory = [];
-foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS)) as $file) {
-    if ($file->isFile()) {
-        $inventory[] = str_replace('\\', '/', substr($file->getPathname(), strlen($root) + 1));
+    $integrityResult = checkoutBrowserIntegrityOperation($directory, $manifestDigest, $integrityOwner,
+        str_starts_with($mode, 'integrity-') ? substr($mode, 10) : $mode,
+        $fullIntegrity, checkoutBrowserIntegrityProcess(...), $integrityOwned,
+        getenv('ONCAM_CHECKOUT_BROWSER_ASSERTIONS_PASSED') === '1', in_array($mode, ['serve', 'verify'], true) ? getmypid() : null);
+    $manifest = $integrityResult['manifest'];
+    if (str_starts_with($mode, 'integrity-')) {
+        echo json_encode(['state' => $integrityResult['state'], 'accepted' => false], JSON_THROW_ON_ERROR)."\n";
+        exit;
     }
-}
-sort($inventory, SORT_STRING);
-$manifestFiles = array_keys($manifest);
-sort($manifestFiles, SORT_STRING);
-if ($inventory !== $manifestFiles) {
-    throw new RuntimeException('Unmanifested source file.');
-}
-$diagnostic('inventory_end', count($inventory));
-$diagnostic('required_start');
-foreach (['composer.lock', 'vendor/autoload.php', 'app/Http/Controllers/CheckoutSessionController.php',
-    'resources/views/checkout/summary.blade.php', 'app/Actions/Integrations/CheckoutSessionLifecycle.php',
-    'app/Services/Integrations/CheckoutSummaryComposer.php', 'app/Data/Integrations/CheckoutSummary.php',
-    'tools/testing/tests/Browser/serve-checkout-session.php', 'tools/testing/tests/Browser/checkout-session.browser.mjs',
-    'tests/Support/AssessmentAccessFixture.php', 'tests/Support/AssessmentBillingFixture.php'] as $required) {
-    if (! array_key_exists($required, $manifest)) {
-        throw new RuntimeException('Incomplete source manifest.');
+} else {
+    if (str_starts_with($mode, 'integrity-')) {
+        throw new RuntimeException('Cooperative mode required.');
     }
+    $manifest = $fullIntegrity();
 }
-$diagnostic('required_end');
 $database = $directory.'/browser.sqlite';
 $initialize = $mode === 'init';
 if ($initialize) {
@@ -340,13 +338,19 @@ $diagnostic('bootstrap_start');
 $app->make(Kernel::class)->bootstrap();
 $diagnostic('bootstrap_end');
 // Laravel installs its own global handler during bootstrap; control/CLI errors must stay opaque too.
-set_exception_handler(static function (Throwable $error) use ($directory): void {
+set_exception_handler(static function (Throwable $error) use ($directory, $integrityFailure): void {
+    if ($integrityFailure !== null) {
+        $integrityFailure();
+    }
     file_put_contents($directory.'/violations.txt', "HARNESS_EXCEPTION\n", FILE_APPEND | LOCK_EX);
     http_response_code(500);
     echo "Checkout browser harness refused.\n";
     exit(1);
 });
-app(ExceptionHandler::class)->reportable(static function (Throwable $error) use ($directory): bool {
+app(ExceptionHandler::class)->reportable(static function (Throwable $error) use ($directory, $integrityFailure): bool {
+    if ($integrityFailure !== null) {
+        $integrityFailure();
+    }
     file_put_contents($directory.'/violations.txt', "FRAMEWORK_EXCEPTION\n", FILE_APPEND | LOCK_EX);
 
     return false;
@@ -391,6 +395,10 @@ if ($mode === 'verify') {
         throw new RuntimeException('Recorded harness violation.');
     }
     checkoutBrowserVerify($baseline, $fixtures);
+    if ($cooperativeIntegrity) {
+        checkoutBrowserIntegrityOperation($directory, $manifestDigest, $integrityOwner, 'business',
+            $fullIntegrity, checkoutBrowserIntegrityProcess(...), serverPid: getmypid());
+    }
     echo "{\"businessMatchesFixedPlan\":true,\"lifecycleAuditsChecked\":true}\n";
     exit;
 }
@@ -587,6 +595,314 @@ function checkoutBrowserSafeRelative(string $path): bool
 {
     return preg_match('#^[a-zA-Z0-9_@.-]+(?:/[a-zA-Z0-9_@.-]+)*$#D', $path) === 1
         && ! in_array('..', explode('/', $path), true) && ! in_array('.', explode('/', $path), true);
+}
+
+/** Fixed reviewed surface, not a caller-selected or automatically expanding set. */
+function checkoutBrowserIntegrityCriticalFiles(): array
+{
+    return [
+        'composer.json', 'composer.lock', 'vendor/autoload.php',
+        'vendor/composer/autoload_real.php', 'vendor/composer/autoload_static.php',
+        'vendor/composer/autoload_classmap.php', 'vendor/composer/autoload_files.php',
+        'vendor/composer/autoload_namespaces.php', 'vendor/composer/autoload_psr4.php',
+        'vendor/composer/ClassLoader.php', 'vendor/composer/platform_check.php',
+        'vendor/composer/installed.php', 'vendor/composer/installed.json',
+        'bootstrap/app.php', 'bootstrap/providers.php',
+        'config/app.php', 'config/assessment_billing.php', 'config/assessment_integration.php',
+        'config/auth.php', 'config/cache.php', 'config/consent.php', 'config/database.php',
+        'config/filesystems.php', 'config/fortify.php', 'config/identity.php', 'config/inertia.php',
+        'config/logging.php', 'config/mail.php', 'config/participant_auth.php',
+        'config/participant_notifications.php', 'config/payments.php', 'config/queue.php',
+        'config/referral.php', 'config/selection_integration.php', 'config/services.php', 'config/session.php',
+        'app/Providers/AppServiceProvider.php',
+        'app/Http/Controllers/CheckoutSessionController.php', 'resources/views/checkout/summary.blade.php',
+        'resources/views/checkout/private.blade.php',
+        'app/Http/Middleware/AuthenticateCheckoutSession.php',
+        'app/Http/Middleware/VerifyCheckoutSessionMutation.php',
+        'app/Http/Middleware/ProtectCheckoutSessionHttpBoundary.php',
+        'app/Actions/Integrations/CheckoutSessionLifecycle.php',
+        'app/Actions/Integrations/EstablishCheckoutSession.php',
+        'app/Actions/Integrations/ConsumeCheckoutHandoff.php',
+        'app/Actions/Integrations/IssueCheckoutHandoff.php',
+        'app/Services/Integrations/ConsumeCheckoutHandoffTransaction.php',
+        'app/Services/Integrations/CheckoutHandoffHistoryValidator.php',
+        'app/Services/Integrations/CheckoutSessionHttpContract.php',
+        'app/Services/Integrations/CheckoutSummaryComposer.php',
+        'app/Services/Integrations/CheckoutProfileMapper.php',
+        'app/Services/Integrations/CheckoutPaymentFactsReader.php',
+        'app/Data/Integrations/CheckoutSummary.php', 'app/Data/Integrations/CheckoutProfile.php',
+        'app/Data/Integrations/CheckoutPaymentFacts.php', 'app/Data/Integrations/CheckoutProductPaymentFacts.php',
+        'app/Data/Integrations/CheckoutSessionPrincipal.php', 'app/Data/Integrations/CheckoutSessionSelector.php',
+        'app/Data/Integrations/CheckoutSessionMutationCredentials.php',
+        'app/Data/Integrations/CheckoutSessionExchangeInput.php', 'app/Data/Integrations/EstablishedCheckoutSession.php',
+        'app/Services/ParticipantAuth/AssessmentEntitlementGate.php',
+        'app/Services/ParticipantAuth/AssessmentAccessPrerequisites.php',
+        'app/Services/ParticipantAuth/AcceptedConsentReader.php',
+        'app/Services/Payments/AssessmentSettlementReader.php',
+        'tools/testing/tests/Browser/serve-checkout-session.php',
+        'tools/testing/tests/Browser/checkout-session.browser.mjs',
+        'tools/testing/tests/Browser/https-loopback-proxy.py',
+    ];
+}
+
+/** A marked run cannot downgrade to the old full-per-request mode. */
+function checkoutBrowserIntegrityMode(string $directory, string|false $setting): bool
+{
+    $marked = file_exists($directory.'/integrity-evidence.json') || is_link($directory.'/integrity-evidence.json')
+        || file_exists($directory.'/integrity-invalid') || is_link($directory.'/integrity-invalid');
+    if (! in_array($setting, [false, '', 'cooperative-v1'], true) || ($marked && $setting !== 'cooperative-v1')) {
+        checkoutBrowserIntegrityInvalidate($directory);
+        throw new RuntimeException('Integrity mode cannot change');
+    }
+
+    return $setting === 'cooperative-v1';
+}
+
+function checkoutBrowserIntegrityPaths(string $directory): void
+{
+    if (realpath(dirname($directory)) !== realpath(sys_get_temp_dir())
+        || preg_match('/^oncam-checkout-[a-f0-9]{32}$/D', basename($directory)) !== 1) {
+        throw new RuntimeException('Invalid integrity run');
+    }
+    foreach ([$directory, $directory.'/source'] as $path) {
+        checkoutBrowserIntegrityCanonical($path);
+    }
+    if (glob($directory.'/.env*') !== [] || glob($directory.'/source/.env*') !== []
+        || file_exists($directory.'/config.php') || file_exists($directory.'/routes.php')
+        || array_diff(glob($directory.'/source/bootstrap/cache/*') ?: [], [$directory.'/source/bootstrap/cache/.gitignore']) !== []) {
+        throw new RuntimeException('Unsafe integrity environment');
+    }
+    foreach (['browser.sqlite', 'storage', 'storage/framework', 'storage/framework/sessions',
+        'storage/framework/views', 'storage/public', 'source-manifest.json'] as $relative) {
+        if (file_exists($directory.'/'.$relative) || is_link($directory.'/'.$relative)) {
+            checkoutBrowserIntegrityCanonical($directory.'/'.$relative);
+        }
+    }
+}
+
+function checkoutBrowserIntegrityCanonical(string $path): void
+{
+    $real = realpath($path);
+    if ($real === false || is_link($path)
+        || strcasecmp(str_replace('\\', '/', $real), str_replace('\\', '/', $path)) !== 0) {
+        throw new RuntimeException('Noncanonical integrity path');
+    }
+}
+
+function checkoutBrowserIntegrityInvalidate(string $directory): void
+{
+    // Safe even on an early failure: never follow an unvalidated run or existing link.
+    if (realpath(dirname($directory)) !== realpath(sys_get_temp_dir())
+        || preg_match('/^oncam-checkout-[a-f0-9]{32}$/D', basename($directory)) !== 1) {
+        return;
+    }
+    try {
+        checkoutBrowserIntegrityCanonical($directory);
+        $handle = @fopen($directory.'/integrity-invalid', 'x');
+        if ($handle !== false) {
+            fwrite($handle, "INVALID\n");
+            fclose($handle);
+        }
+    } catch (Throwable) {
+        // No repair, alternate location, or diagnostic payload on an invalid path.
+    }
+}
+
+/** Return Windows process creation ticks, never process command lines or environment. */
+function checkoutBrowserIntegrityProcess(int $pid): ?string
+{
+    if ($pid < 1 || PHP_OS_FAMILY !== 'Windows') {
+        throw new RuntimeException('Unsupported owner process');
+    }
+    $shell = getenv('SystemRoot').'/System32/WindowsPowerShell/v1.0/powershell.exe';
+    $command = '$p=Get-Process -Id '.$pid.' -ErrorAction SilentlyContinue; if($p){$p.StartTime.ToUniversalTime().Ticks.ToString()}';
+    $process = proc_open([$shell, '-NoProfile', '-NonInteractive', '-Command', $command],
+        [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes,
+        options: ['bypass_shell' => true, 'create_new_console' => false]);
+    if (! is_resource($process)) {
+        throw new RuntimeException('Owner inspection unavailable');
+    }
+    fclose($pipes[0]);
+    $value = trim((string) stream_get_contents($pipes[1]));
+    $errors = (string) stream_get_contents($pipes[2]);
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    $exit = proc_close($process);
+    if ($exit !== 0 || $errors !== '' || ($value !== '' && preg_match('/^[0-9]{1,20}$/D', $value) !== 1)) {
+        throw new RuntimeException('Owner inspection failed');
+    }
+
+    return $value === '' ? null : $value;
+}
+
+function checkoutBrowserIntegrityIdentity(array $identity): bool
+{
+    return array_keys($identity) === ['pid', 'started'] && is_int($identity['pid']) && $identity['pid'] > 0
+        && is_string($identity['started']) && preg_match('/^[0-9]{1,20}$/D', $identity['started']) === 1;
+}
+
+/** Advisory cooperative owner; PID reuse is distinguished by creation ticks. */
+function checkoutBrowserIntegrityOperation(string $directory, string $digest, array $owner, string $operation,
+    callable $full, callable $probe, array $owned = [], bool $assertionsPassed = false, ?int $serverPid = null): array
+{
+    $handle = null;
+    try {
+        checkoutBrowserIntegrityPaths($directory);
+        if (file_exists($directory.'/integrity-invalid') || is_link($directory.'/integrity-invalid')
+            || preg_match('/^[a-f0-9]{64}$/D', $digest) !== 1
+            || array_keys($owner) !== ['pid', 'started', 'nonce']
+            || ! checkoutBrowserIntegrityIdentity(['pid' => $owner['pid'], 'started' => $owner['started']])
+            || ! is_string($owner['nonce']) || preg_match('/^[a-f0-9]{64}$/D', $owner['nonce']) !== 1
+            || $probe($owner['pid']) !== $owner['started']) {
+            throw new RuntimeException('Invalid or stale evidence owner');
+        }
+        $path = $directory.'/integrity-evidence.json';
+        if ($operation !== 'pre') {
+            checkoutBrowserIntegrityCanonical($path);
+        }
+        $handle = @fopen($path, $operation === 'pre' ? 'x+' : 'r+');
+        if ($handle === false || ! flock($handle, LOCK_EX | LOCK_NB)) {
+            throw new RuntimeException('Evidence ownership conflict');
+        }
+        if ($operation === 'pre') {
+            $manifest = $full();
+            checkoutBrowserIntegrityLight($directory, $digest);
+            $record = ['version' => 1, 'run' => basename($directory), 'digest' => $digest, 'owner' => $owner,
+                'state' => 'preverified', 'owned' => [], 'browserPassed' => false, 'businessVerified' => false, 'verifier' => null];
+        } else {
+            $record = json_decode((string) stream_get_contents($handle), true, 32, JSON_THROW_ON_ERROR);
+            if (! is_array($record) || array_keys($record) !== ['version', 'run', 'digest', 'owner', 'state', 'owned', 'browserPassed', 'businessVerified', 'verifier']
+                || $record['version'] !== 1 || $record['run'] !== basename($directory) || $record['digest'] !== $digest
+                || $record['owner'] !== $owner || ! in_array($record['state'], ['preverified', 'serving', 'stopped', 'postverified'], true)
+                || ! is_array($record['owned']) || ! is_bool($record['browserPassed']) || ! is_bool($record['businessVerified'])) {
+                throw new RuntimeException('Invalid evidence record');
+            }
+            $manifest = checkoutBrowserIntegrityLight($directory, $digest);
+            if ($operation === 'start' && $record['state'] === 'preverified') {
+                if (array_keys($owned) !== ['php', 'tls', 'browser']) {
+                    throw new RuntimeException('Runtime identities required');
+                }
+                $pids = [$owner['pid']];
+                foreach ($owned as $identity) {
+                    if (! is_array($identity) || ! checkoutBrowserIntegrityIdentity($identity)
+                        || in_array($identity['pid'], $pids, true) || $probe($identity['pid']) !== $identity['started']) {
+                        throw new RuntimeException('Invalid runtime identity');
+                    }
+                    $pids[] = $identity['pid'];
+                }
+                $record['owned'] = $owned;
+                $record['state'] = 'serving';
+            } elseif ($operation === 'serve' && $record['state'] === 'serving') {
+                checkoutBrowserIntegrityOwned($record['owned'], $probe, true);
+                if ($serverPid !== $record['owned']['php']['pid']) {
+                    throw new RuntimeException('Wrong serving process');
+                }
+            } elseif (in_array($operation, ['stop', 'verify', 'business', 'post'], true)) {
+                checkoutBrowserIntegrityOwned($record['owned'], $probe, false);
+                if ($operation === 'stop' && $record['state'] === 'serving' && $assertionsPassed) {
+                    $record['state'] = 'stopped';
+                    $record['browserPassed'] = true; // Explicit cooperative runner attestation, not browser auth.
+                } elseif ($record['state'] === 'stopped' && $record['browserPassed']) {
+                    if ($operation === 'verify' && $record['verifier'] === null && $serverPid !== null) {
+                        $started = $probe($serverPid);
+                        $identity = ['pid' => $serverPid, 'started' => $started];
+                        if (! checkoutBrowserIntegrityIdentity($identity) || $serverPid === $owner['pid']
+                            || in_array($serverPid, array_column($record['owned'], 'pid'), true)) {
+                            throw new RuntimeException('Invalid verifier identity');
+                        }
+                        $record['verifier'] = $identity;
+                    } elseif ($operation === 'business' && is_array($record['verifier'])
+                        && checkoutBrowserIntegrityIdentity($record['verifier'])
+                        && $serverPid === $record['verifier']['pid']
+                        && $probe($serverPid) === $record['verifier']['started'] && ! $record['businessVerified']) {
+                        $record['businessVerified'] = true;
+                    } elseif ($operation === 'post' && $record['businessVerified']) {
+                        if (! is_array($record['verifier']) || ! checkoutBrowserIntegrityIdentity($record['verifier'])
+                            || $probe($record['verifier']['pid']) === $record['verifier']['started']) {
+                            throw new RuntimeException('Verifier cleanup required');
+                        }
+                        $manifest = $full();
+                        if (file_exists($directory.'/violations.txt')) {
+                            throw new RuntimeException('Recorded test violation');
+                        }
+                        $record['state'] = 'postverified';
+                    } else {
+                        throw new RuntimeException('Evidence transition refused');
+                    }
+                } else {
+                    throw new RuntimeException('Evidence transition refused');
+                }
+            } else {
+                throw new RuntimeException('Evidence transition refused');
+            }
+        }
+        // Full scans can outlive an owner; check again before publishing either boundary.
+        if (in_array($operation, ['pre', 'post'], true)) {
+            if ($probe($owner['pid']) !== $owner['started'] || file_exists($directory.'/integrity-invalid')) {
+                throw new RuntimeException('Owner lost during verification');
+            }
+            if ($operation === 'post') {
+                checkoutBrowserIntegrityOwned($record['owned'], $probe, false);
+                if ($probe($record['verifier']['pid']) === $record['verifier']['started']) {
+                    throw new RuntimeException('Verifier cleanup changed');
+                }
+            }
+        }
+        rewind($handle);
+        $encoded = json_encode($record, JSON_THROW_ON_ERROR);
+        if (! ftruncate($handle, 0) || fwrite($handle, $encoded) !== strlen($encoded) || ! fflush($handle)) {
+            throw new RuntimeException('Evidence persistence failed');
+        }
+
+        return ['manifest' => $manifest, 'state' => $record['state']];
+    } catch (Throwable $error) {
+        checkoutBrowserIntegrityInvalidate($directory);
+        throw $error;
+    } finally {
+        if (is_resource($handle)) {
+            flock($handle, LOCK_UN);
+            fclose($handle);
+        }
+    }
+}
+
+function checkoutBrowserIntegrityOwned(array $owned, callable $probe, bool $alive): void
+{
+    if (array_keys($owned) !== ['php', 'tls', 'browser']) {
+        throw new RuntimeException('Missing cleanup identities');
+    }
+    foreach ($owned as $identity) {
+        if (! is_array($identity) || ! checkoutBrowserIntegrityIdentity($identity)
+            || (($probe($identity['pid']) === $identity['started']) !== $alive)) {
+            throw new RuntimeException('Runtime process state mismatch');
+        }
+    }
+}
+
+function checkoutBrowserIntegrityLight(string $directory, string $digest): array
+{
+    checkoutBrowserIntegrityPaths($directory);
+    $bytes = (string) file_get_contents($directory.'/source-manifest.json');
+    if (! hash_equals($digest, hash('sha256', $bytes))) {
+        throw new RuntimeException('Manifest mismatch');
+    }
+    $manifest = json_decode($bytes, true, 512, JSON_THROW_ON_ERROR);
+    if (! is_array($manifest) || count($manifest) < 10 || count($manifest) > 50000) {
+        throw new RuntimeException('Invalid source manifest');
+    }
+    foreach (checkoutBrowserIntegrityCriticalFiles() as $relative) {
+        $path = $directory.'/source/'.$relative;
+        for ($parent = dirname($path); $parent !== $directory; $parent = dirname($parent)) {
+            checkoutBrowserIntegrityCanonical($parent);
+        }
+        checkoutBrowserIntegrityCanonical($path);
+        if (! isset($manifest[$relative]) || ! is_string($manifest[$relative])
+            || ! hash_equals($manifest[$relative], hash_file('sha256', $path))) {
+            throw new RuntimeException('Critical source mismatch');
+        }
+    }
+
+    return $manifest;
 }
 
 function checkoutBrowserControlAllowed(array $server): bool
@@ -798,4 +1114,63 @@ function checkoutBrowserVerify(array $baseline, array $fixtures): void
     if (app(RlsContextRunner::class)->current() !== null || DB::transactionLevel() !== 0) {
         throw new RuntimeException('Verifier context mismatch.');
     }
+}
+
+function checkoutBrowserIntegrityFull(string $directory, string $manifestDigest, callable $diagnostic): array
+{
+    checkoutBrowserIntegrityPaths($directory);
+    $root = $directory.'/source';
+    $diagnostic('tree_start');
+    checkoutBrowserAssertTree($directory);
+    $diagnostic('tree_end');
+    $diagnostic('manifest_start');
+    $manifest = json_decode((string) file_get_contents($directory.'/source-manifest.json'), true, 512, JSON_THROW_ON_ERROR);
+    if (! is_string($manifestDigest) || preg_match('/^[a-f0-9]{64}$/D', $manifestDigest) !== 1
+        || ! hash_equals($manifestDigest, hash_file('sha256', $directory.'/source-manifest.json'))) {
+        throw new RuntimeException('Reviewed manifest digest required.');
+    }
+    if (! is_array($manifest) || count($manifest) < 10 || count($manifest) > 50000) {
+        throw new RuntimeException('Source manifest required.');
+    }
+    $diagnostic('manifest_end', count($manifest));
+    $diagnostic('file_hash_start');
+    $diagnosticHashed = 0;
+    foreach ($manifest as $relative => $digest) {
+        if (! is_string($relative) || ! checkoutBrowserSafeRelative($relative)
+            || ! is_string($digest) || ! preg_match('/^[a-f0-9]{64}$/D', $digest)
+            || ! is_file($root.'/'.$relative) || ! hash_equals($digest, hash_file('sha256', $root.'/'.$relative))) {
+            throw new RuntimeException('Source manifest mismatch.');
+        }
+        if (++$diagnosticHashed % 5000 === 0) {
+            $diagnostic('file_hash_progress', $diagnosticHashed);
+        }
+    }
+    $diagnostic('file_hash_end', $diagnosticHashed);
+    $diagnostic('inventory_start');
+    $inventory = [];
+    foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS)) as $file) {
+        if ($file->isFile()) {
+            $inventory[] = str_replace('\\', '/', substr($file->getPathname(), strlen($root) + 1));
+        }
+    }
+    sort($inventory, SORT_STRING);
+    $manifestFiles = array_keys($manifest);
+    sort($manifestFiles, SORT_STRING);
+    if ($inventory !== $manifestFiles) {
+        throw new RuntimeException('Unmanifested source file.');
+    }
+    $diagnostic('inventory_end', count($inventory));
+    $diagnostic('required_start');
+    foreach (['composer.lock', 'vendor/autoload.php', 'app/Http/Controllers/CheckoutSessionController.php',
+        'resources/views/checkout/summary.blade.php', 'app/Actions/Integrations/CheckoutSessionLifecycle.php',
+        'app/Services/Integrations/CheckoutSummaryComposer.php', 'app/Data/Integrations/CheckoutSummary.php',
+        'tools/testing/tests/Browser/serve-checkout-session.php', 'tools/testing/tests/Browser/checkout-session.browser.mjs',
+        'tests/Support/AssessmentAccessFixture.php', 'tests/Support/AssessmentBillingFixture.php'] as $required) {
+        if (! array_key_exists($required, $manifest)) {
+            throw new RuntimeException('Incomplete source manifest.');
+        }
+    }
+    $diagnostic('required_end');
+
+    return $manifest;
 }
