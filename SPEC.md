@@ -51,7 +51,7 @@ Keputusan arsitektur (FINAL — menggantikan draf Cloudflare/Next.js/Supabase se
 ```
 1 PRA-SESI   buka link referral cabang (?ref=KODE) → atribusi cabang first-touch
              → registrasi → verifikasi identitas (foto vs KTP/paspor)
-             → consent A (psikotes, wajib) → consent B (DASS-21, wajib-terpisah-boleh-ditolak)
+             → consent A (psikotes, wajib) → consent B (DASS-21, wajib-terpisah)
              → PENETAPAN BIDANG KERJA TUJUAN (menentukan tabel standar Grey Area)
              → BAYAR (Xendit Invoice; transfer manual sbg cadangan)
              → webhook 'paid' → entitlement locked→ready (GATING: tes tak bisa
@@ -180,7 +180,7 @@ G1 aspek kritis BELUM→Tidak Disarankan · G2 IQ<70 tak bisa Disarankan, wajib 
 
 ## 7. DASS-21 — Jalur Terpisah Mutlak
 
-Dihitung & dinarasikan tapi terpisah penuh dari zona/label. **Skor subskala TIDAK dicetak di HPP** (hanya kategori umum + narasinya); skor rinci di Lembar Internal. Skoring: skor mentah subskala ×2 → ambang DASS-42 → 5 taraf. Item mapping baku: D=[3,5,10,13,16,17,21] · A=[2,4,7,9,15,19,20] · S=[1,6,8,11,12,14,18]. Kategori umum = taraf terberat dari 3 subskala. Tindak lanjut: kat≥4→rujukan, =3→pemantauan. Penanda validitas: respons seragam / waktu <90 dtk. Kategori Parah/Sangat Parah → **tawaran dukungan, bukan penghentian proses**; narasi tak menghakimi. Consent B boleh ditolak tanpa menghentikan psikotes (Bagian III diberi keterangan "tidak dilaksanakan atas pilihan peserta").
+Dihitung & dinarasikan tapi terpisah penuh dari zona/label. **Skor subskala TIDAK dicetak di HPP** (hanya kategori umum + narasinya); skor rinci di Lembar Internal. Skoring: skor mentah subskala ×2 → ambang DASS-42 → 5 taraf. Item mapping baku: D=[3,5,10,13,16,17,21] · A=[2,4,7,9,15,19,20] · S=[1,6,8,11,12,14,18]. Kategori umum = taraf terberat dari 3 subskala. Tindak lanjut: kat≥4→rujukan, =3→pemantauan. Penanda validitas: respons seragam / waktu <90 dtk. Kategori Parah/Sangat Parah → **tawaran dukungan, bukan penghentian proses**; narasi tak menghakimi. DASS-21 merupakan komponen wajib setiap paket psikotes dan membutuhkan Consent B terpisah sebelum pendaftaran dapat dilanjutkan.
 
 Larangan mutlak (uji T-07): nilai DASS tak boleh muncul di ekspresi apa pun yang menghasilkan zona/label; tak boleh jadi penyaring/urutan/penanda peringkat; tak dicetak/dikirim ke LPK/kumiai.
 
@@ -268,7 +268,7 @@ Dua penekanan HPP: DassRespons & kolom DASS di skema/ruang terpisah (hukum, buka
 
 Matriks akses: Peserta (HPP penuh, internal ringkasan bila diminta, DASS penuh atas dirinya) · Psikolog (semua penuh) · Admin pusat/cabang/LPK/staf berkas/kumiai (**HPP saja**; tak ada Lembar Internal, skor subskala DASS, respons DASS, data mentah) · Tim pengembang produksi (tak ada; data sintetis untuk dev/test; akses data nyata hanya sementara atas izin psikolog, tercatat).
 
-Consent A (psikotes, wajib) + Consent B (DASS, wajib-terpisah-**boleh ditolak**; memuat penegasan hasil tak menentukan kelulusan). Retensi: HPP & Lembar Internal & data mentah psikotes 5 th · **respons item DASS 2 th** · skor/kategori DASS 2 th (bagian kesehatan mental di arsip laporan ikut disunting) · rekaman video 90 hari (hanya ringkasan peristiwa bertahan) · jejak audit 5 th tanpa PII. Hak peserta di antarmuka: penjelasan lisan gratis, koreksi identitas, tarik consent DASS + hapus datanya tanpa memengaruhi psikotes, salinan laporan, tahu siapa mengakses.
+Consent A (psikotes, wajib) + Consent B (DASS, wajib-terpisah; memuat penegasan hasil tak menentukan kelulusan). Retensi: HPP & Lembar Internal & data mentah psikotes 5 th · **respons item DASS 2 th** · skor/kategori DASS 2 th (bagian kesehatan mental di arsip laporan ikut disunting) · rekaman video 90 hari (hanya ringkasan peristiwa bertahan) · jejak audit 5 th tanpa PII. Hak peserta di antarmuka: penjelasan lisan gratis, koreksi identitas, tarik consent DASS + hapus datanya tanpa memengaruhi hasil psikotes utama, salinan laporan, tahu siapa mengakses.
 
 ## 13. Uji Penerimaan (24 uji; T-07 mutlak)
 

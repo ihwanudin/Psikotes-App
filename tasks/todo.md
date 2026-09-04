@@ -200,7 +200,7 @@
 - [x] Validasi panjang/format dan rate limit registrasi aktif.
 - [x] `package_id` terhubung ke katalog per jenis tes dengan harga IDR dan sakelar aktivasi default OFF; backend memvalidasi ulang paket saat transaksi.
 - [x] Panel `super_admin` dapat mengisi harga dan mengatur paket ON/OFF; role lain serta URL langsung ditolak, dan paket tidak dapat diaktifkan tanpa harga terkonfigurasi (Rp0 sah untuk layanan gratis).
-- [x] Harga IDR disimpan di katalog database: IST/PAPI/RMIB/Kraepelin Rp99.000, DASS-21 gratis, paket semua tes Rp200.000, dan konsultasi psikolog opsional Rp50.000.
+- [x] Harga IDR disimpan di katalog database: IST/PAPI/RMIB/Kraepelin + DASS-21 Rp99.000, paket semua tes Rp200.000, dan konsultasi psikolog opsional Rp50.000; tidak ada paket DASS mandiri.
 
 **Verification:**
 

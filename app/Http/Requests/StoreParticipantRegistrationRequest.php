@@ -58,7 +58,7 @@ final class StoreParticipantRegistrationRequest extends FormRequest
             'phone' => ['bail', 'required', 'string', 'max:32', 'regex:/^\+?[0-9][0-9 ()-]{6,30}[0-9]$/'],
             'email' => ['nullable', 'email:rfc', 'max:255'],
             'consent_psychotest' => ['bail', 'required', 'accepted'],
-            'consent_dass' => ['bail', 'required', 'boolean'],
+            'consent_dass' => ['bail', 'required', 'accepted'],
             'include_consultation' => ['bail', 'required', 'boolean'],
         ];
     }

@@ -18,16 +18,16 @@ final class TestPackageSeederTest extends TestCase
         $this->seed(TestPackageSeeder::class);
 
         $expected = [
-            'IST' => ['amount' => 99000, 'items' => ['ist']],
-            'PAPI' => ['amount' => 99000, 'items' => ['papi']],
-            'RMIB' => ['amount' => 99000, 'items' => ['rmib']],
-            'KRAEPELIN' => ['amount' => 99000, 'items' => ['kraepelin']],
-            'DASS21' => ['amount' => 0, 'items' => ['dass21']],
+            'IST' => ['amount' => 99000, 'items' => ['ist', 'dass21']],
+            'PAPI' => ['amount' => 99000, 'items' => ['papi', 'dass21']],
+            'RMIB' => ['amount' => 99000, 'items' => ['rmib', 'dass21']],
+            'KRAEPELIN' => ['amount' => 99000, 'items' => ['kraepelin', 'dass21']],
             'ALL' => ['amount' => 200000, 'items' => ['ist', 'papi', 'rmib', 'kraepelin', 'dass21']],
         ];
 
         $this->assertDatabaseCount('packages', count($expected));
-        $this->assertDatabaseCount('package_items', 10);
+        $this->assertDatabaseCount('package_items', 13);
+        $this->assertDatabaseMissing('packages', ['code' => 'DASS21']);
 
         foreach ($expected as $code => $definition) {
             $package = DB::table('packages')->where('code', $code)->sole();
@@ -52,7 +52,7 @@ final class TestPackageSeederTest extends TestCase
         $this->seed(TestPackageSeeder::class);
         $this->seed(TestPackageSeeder::class);
 
-        $this->assertDatabaseCount('packages', 6);
-        $this->assertDatabaseCount('package_items', 10);
+        $this->assertDatabaseCount('packages', 5);
+        $this->assertDatabaseCount('package_items', 13);
     }
 }

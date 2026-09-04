@@ -31,7 +31,7 @@ Bootstrap dependency dilakukan dari branch utama starter kit React resmi Laravel
 
 Semua metode pembayaran dikendalikan dengan status aktif/nonaktif. Kanal yang nonaktif tidak ditampilkan dan tidak menerima order baru; order historis tetap dipertahankan.
 
-Harga awal layanan dibaca dari `database/seeders/data/service-catalog.json` lalu disimpan ke database agar dapat dikelola melalui panel admin. Katalog awal: IST, PAPI Kostick, RMIB, dan Kraepelin masing-masing Rp99.000; DASS-21 gratis; paket semua tes Rp200.000; konsultasi psikolog opsional Rp50.000. Seeder tidak menimpa harga yang sudah diubah admin.
+Harga awal layanan dibaca dari `database/seeders/data/service-catalog.json` lalu disimpan ke database agar dapat dikelola melalui panel admin. Katalog awal: IST, PAPI Kostick, RMIB, dan Kraepelin masing-masing Rp99.000 serta selalu mencakup DASS-21; paket semua tes Rp200.000; konsultasi psikolog opsional Rp50.000. DASS-21 tidak dijual sebagai paket mandiri. Seeder tidak menimpa harga yang sudah diubah admin.
 
 Secret JWT peserta harus berupa random key dan tidak boleh disalin dari contoh:
 

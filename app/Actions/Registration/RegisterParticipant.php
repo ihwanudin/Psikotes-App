@@ -173,7 +173,6 @@ final readonly class RegisterParticipant
         ]);
         $participant->entitlements()->createMany(
             $package->items
-                ->reject(fn ($item): bool => $item->test_type === 'dass21' && ! (bool) $input['consent_dass'])
                 ->map(fn ($item): array => [
                     'order_id' => $order->id,
                     'test_type' => $item->test_type,
@@ -185,7 +184,7 @@ final readonly class RegisterParticipant
         );
 
         $this->recordConsent($participant, ConsentDocument::for('psychotest'), true);
-        $this->recordConsent($participant, ConsentDocument::for('dass'), (bool) $input['consent_dass']);
+        $this->recordConsent($participant, ConsentDocument::for('dass'), true);
 
         if ($isFree) {
             $this->enqueueActivation->handle($order);

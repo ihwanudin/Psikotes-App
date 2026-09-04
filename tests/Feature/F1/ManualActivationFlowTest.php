@@ -59,7 +59,7 @@ final class ManualActivationFlowTest extends TestCase
             'phone' => '+6281234567890',
             'email' => 'f1-participant@example.test',
             'consent_psychotest' => true,
-            'consent_dass' => false,
+            'consent_dass' => true,
             'include_consultation' => false,
         ])->assertRedirect('/registration/received');
 
@@ -67,7 +67,7 @@ final class ManualActivationFlowTest extends TestCase
         $order = $participant->orders->sole();
         $this->assertSame(99_000, $order->amount);
         $this->assertSame('pending', $order->status->value);
-        $this->assertSame(['locked'], $participant->entitlements->pluck('status')->all());
+        $this->assertSame(['locked', 'locked'], $participant->entitlements->pluck('status')->all());
 
         $this->post('/registration/manual-payment-proof', [
             'payment_proof' => UploadedFile::fake()->createWithContent(
@@ -93,7 +93,7 @@ final class ManualActivationFlowTest extends TestCase
         $verification->approve($admin, $order->id, $proofKey);
 
         $this->assertSame('paid', $order->fresh()->status->value);
-        $this->assertSame(['ready'], $participant->entitlements()->pluck('status')->all());
+        $this->assertSame(['ready', 'ready'], $participant->entitlements()->pluck('status')->all());
         $this->assertDatabaseCount('outbox_messages', 1);
         $this->assertDatabaseCount('audit_logs', 2);
 

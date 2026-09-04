@@ -1,6 +1,7 @@
 # CHANGELOG
 
 ## [Unreleased] — F1 fondasi
+- Jadikan DASS-21 komponen wajib setiap paket psikotes, hapus paket DASS mandiri, dan ganti pilihan ikut/tolak dengan persetujuan wajib; isolasi hasil DASS dari kelayakan tetap berlaku.
 - Bootstrap Laravel 13 + Inertia 3/React 19 dengan lockfile PHP/frontend dan quality gate otomatis.
 - Tambah topologi Compose untuk app, queue, scheduler, PostgreSQL, dan Redis; data service berada di jaringan internal.
 - Tambah seeder immutable untuk enam artefak JSON F0 dengan versi dan checksum SHA-256.
@@ -9,7 +10,7 @@
 - Tambah runner konteks RLS transaction-local, middleware fail-closed untuk HTTP dan queue, serta architecture test yang mewajibkan middleware pada controller tenant.
 - Pasang Filament 5 dan panel `/admin` dengan guard tersendiri, kemampuan empat role yang diverifikasi server-side, policy IDOR peserta lintas cabang, konteks RLS otomatis, serta default cookie session aman.
 - Tambah resolver `/r/{refCode}` dengan atribusi first-touch 30 hari, fallback cabang pusat, cookie terenkripsi, audit PII terbatas-retensi, dan penulisan melalui konteks RLS service.
-- Tambah registrasi peserta mobile-first dengan atribusi cabang server-side, validasi dan throttle, idempotensi pengiriman, consent A/B berversi, serta penolakan DASS yang tidak memblokir psikotes; naskah legal final masih menjadi gerbang terpisah.
+- Tambah registrasi peserta mobile-first dengan atribusi cabang server-side, validasi dan throttle, idempotensi pengiriman, serta consent A/B berversi; perilaku penolakan DASS pada fondasi awal disupersesi ADR-0013.
 - Tambah katalog paket berdasarkan jenis tes IST, PAPI Kostick, RMIB, Kraepelin, dan DASS-21. Harga disimpan sebagai integer Rupiah (IDR), seluruh template awal berstatus nonaktif tanpa harga, dan registrasi fail-closed sampai paket berharga diaktifkan.
 - Tambah panel konfigurasi paket khusus `super_admin` untuk mengisi harga Rupiah dan mengatur status ON/OFF. Jenis paket kanonis tidak dapat dibuat atau dihapus dari panel, dan aktivasi tanpa harga positif ditolak.
 
@@ -50,7 +51,7 @@
 - **Dua dokumen keluaran**: HPP (LPK/kumiai, tanpa skor mentah/subskala DASS) + Lembar Kerja Internal Psikolog (semua angka).
 - **9 aturan penjaga G1–G9**; wajib tinjau+ttd psikolog (G5), state machine DRAFT→…→SIGNED→PUBLISHED, tak ada jalur pintas.
 - PAPI: metode **jarak dari zona Putih** (optimal), bukan warna tetap 8/7/3/5; 16 skala dipakai, 4 (G,I,X,Z) kualitatif; 5 (K,O,P,R,X) tampil ke psikolog.
-- **DASS-21 jalur terpisah mutlak (G4)**: ×2, cutoff DASS-42, item baku, hanya kategori umum di HPP, subskala di internal, consent B boleh ditolak, Parah→tawaran dukungan bukan penghentian. Uji T-07 mutlak.
+- **DASS-21 jalur terpisah mutlak (G4)**: ×2, cutoff DASS-42, item baku, hanya kategori umum di HPP, subskala di internal, Parah→tawaran dukungan bukan penghentian. Aturan consent opsional pada versi ini disupersesi ADR-0013. Uji T-07 mutlak.
 - Validitas sesi V1/V2/V3; 24 uji penerimaan; retensi DASS 2 th terpisah, video 90 hari.
 - Perakit narasi deterministik (Uraian + 7 slot integrasi internal), teks dari Bank Narasi.
 ### KONFLIK TERCATAT (perlu konfirmasi psikolog)

@@ -106,28 +106,13 @@ final class TestPackageManagementTest extends TestCase
         ]);
     }
 
-    public function test_super_admin_can_activate_a_free_package(): void
+    public function test_dass_is_not_available_as_a_standalone_admin_package(): void
     {
-        $admin = $this->admin(AdminRole::SuperAdmin);
-        $package = $this->package('DASS21');
-        $this->actingAs($admin, 'admin');
+        $this->assertDatabaseMissing('packages', ['code' => 'DASS21']);
 
-        Livewire::test(EditTestPackage::class, ['record' => $package->id])
-            ->fillForm([
-                'amount' => 0,
-                'consultation_amount' => 50000,
-                'is_active' => true,
-            ])
-            ->call('save')
-            ->assertHasNoFormErrors()
-            ->assertNotified();
-
-        $this->assertDatabaseHas('packages', [
-            'id' => $package->id,
-            'amount' => 0,
-            'consultation_amount' => 50000,
-            'is_active' => true,
-        ]);
+        foreach (TestPackage::query()->with('items')->get() as $package) {
+            $this->assertContains('dass21', $package->items->pluck('test_type')->all());
+        }
     }
 
     public function test_canonical_package_templates_cannot_be_created_or_deleted_from_admin(): void

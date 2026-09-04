@@ -14,10 +14,10 @@ Saya menyetujui pengumpulan dan pemrosesan data identitas, foto dokumen identita
 TEXT,
         ],
         'dass' => [
-            'version' => 'draft-2026-08-25',
-            'title' => 'Pilihan mengikuti skrining DASS-21',
+            'version' => 'draft-2026-09-05',
+            'title' => 'Persetujuan skrining DASS-21 sebagai bagian psikotes',
             'text' => <<<'TEXT'
-Saya memahami bahwa DASS-21 adalah skrining kesehatan mental yang terpisah dari penilaian kelayakan psikotes, bukan diagnosis klinis, dan hasilnya tidak pernah menentukan zona atau label kelayakan. Saya dapat menolak bagian ini tanpa menghentikan psikotes utama. Bila saya memilih ikut, data dan hasil rinci DASS-21 hanya dapat diakses oleh peserta dan psikolog sesuai kebijakan privasi.
+Saya memahami bahwa DASS-21 merupakan bagian wajib dari rangkaian psikotes, tetapi hasilnya tetap diproses terpisah dari penilaian kelayakan dan bukan diagnosis klinis. Hasil DASS-21 tidak pernah menentukan zona atau label kelayakan. Data dan hasil rinci DASS-21 hanya dapat diakses oleh peserta dan psikolog sesuai kebijakan privasi.
 TEXT,
         ],
     ],

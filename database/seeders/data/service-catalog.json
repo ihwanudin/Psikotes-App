@@ -1,13 +1,12 @@
 {
-  "version": "2026-08-28",
+  "version": "2026-09-05",
   "currency": "IDR",
   "consultation_amount": 50000,
   "packages": [
-    { "code": "IST", "name": "Tes Inteligensi (IST)", "amount": 99000, "test_types": ["ist"] },
-    { "code": "PAPI", "name": "Tes Kepribadian (PAPI Kostick)", "amount": 99000, "test_types": ["papi"] },
-    { "code": "RMIB", "name": "Tes Minat (RMIB)", "amount": 99000, "test_types": ["rmib"] },
-    { "code": "KRAEPELIN", "name": "Tes Ketahanan Kerja (Kraepelin)", "amount": 99000, "test_types": ["kraepelin"] },
-    { "code": "DASS21", "name": "Skrining DASS-21", "amount": 0, "test_types": ["dass21"] },
+    { "code": "IST", "name": "Tes Inteligensi (IST) + DASS-21", "amount": 99000, "test_types": ["ist", "dass21"] },
+    { "code": "PAPI", "name": "Tes Kepribadian (PAPI Kostick) + DASS-21", "amount": 99000, "test_types": ["papi", "dass21"] },
+    { "code": "RMIB", "name": "Tes Minat (RMIB) + DASS-21", "amount": 99000, "test_types": ["rmib", "dass21"] },
+    { "code": "KRAEPELIN", "name": "Tes Ketahanan Kerja (Kraepelin) + DASS-21", "amount": 99000, "test_types": ["kraepelin", "dass21"] },
     { "code": "ALL", "name": "Paket Semua Tes", "amount": 200000, "test_types": ["ist", "papi", "rmib", "kraepelin", "dass21"] }
   ]
 }

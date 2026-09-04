@@ -36,7 +36,7 @@ final class ParticipantRegistrationTest extends TestCase
                 ->component('registration/create')
                 ->where('assignedBranch.name', $branch->name)
                 ->where('consents.psychotest.version', 'draft-2026-08-25.2')
-                ->where('consents.dass.version', 'draft-2026-08-25')
+                ->where('consents.dass.version', 'draft-2026-09-05')
                 ->where('consents.legalReviewPending', true)
                 ->has('registrationToken')
             );
@@ -80,7 +80,7 @@ final class ParticipantRegistrationTest extends TestCase
             'participant_id' => $participant->id,
             'consent_type' => 'dass',
             'status' => 'accepted',
-            'document_version' => 'draft-2026-08-25',
+            'document_version' => 'draft-2026-09-05',
             'consented_at' => '2026-08-25 10:00:00',
         ]);
     }
@@ -114,40 +114,17 @@ final class ParticipantRegistrationTest extends TestCase
         $this->assertDatabaseCount('consent_records', 0);
     }
 
-    public function test_dass_consent_may_be_declined_without_blocking_registration(): void
+    public function test_dass_consent_is_required_as_part_of_psychotest(): void
     {
         $this->branch('CENTRAL', 'CENTRAL-REF', isDefault: true);
         $token = (string) Str::uuid();
         $payload = $this->validPayload($token);
         $payload['consent_dass'] = false;
-        DB::table('package_items')->insert([
-            'package_id' => $payload['package_id'],
-            'test_type' => 'dass21',
-            'sort_order' => 1,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
         $this->withSession(['registration.token' => $token])
             ->post('/registrations', $payload)
-            ->assertRedirect('/registration/received');
+            ->assertSessionHasErrors('consent_dass');
 
-        $participant = Participant::query()->sole();
-        $this->assertDatabaseHas('consent_records', [
-            'participant_id' => $participant->id,
-            'consent_type' => 'dass',
-            'status' => 'declined',
-            'consented_at' => null,
-        ]);
-        $this->assertDatabaseHas('entitlements', [
-            'participant_id' => $participant->id,
-            'test_type' => 'ist',
-            'status' => 'locked',
-        ]);
-        $this->assertDatabaseMissing('entitlements', [
-            'participant_id' => $participant->id,
-            'test_type' => 'dass21',
-        ]);
+        $this->assertDatabaseCount('participants', 0);
     }
 
     public function test_referral_and_protected_fields_are_derived_server_side(): void
@@ -266,6 +243,14 @@ final class ParticipantRegistrationTest extends TestCase
             'package_id' => $packageId,
             'test_type' => 'ist',
             'sort_order' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('package_items')->insert([
+            'package_id' => $packageId,
+            'test_type' => 'dass21',
+            'sort_order' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);

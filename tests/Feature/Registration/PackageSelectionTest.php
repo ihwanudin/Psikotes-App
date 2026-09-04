@@ -64,7 +64,7 @@ final class PackageSelectionTest extends TestCase
     public function test_registration_screen_only_exposes_active_priced_packages(): void
     {
         $this->branch();
-        $active = $this->package('BATTERY', 350000, true, ['ist', 'papi', 'rmib', 'kraepelin']);
+        $active = $this->package('BATTERY', 350000, true, ['ist', 'papi', 'rmib', 'kraepelin', 'dass21']);
         $this->package('INACTIVE', 200000, false, ['ist']);
         $this->package('UNPRICED', null, false, ['papi']);
 
@@ -78,7 +78,7 @@ final class PackageSelectionTest extends TestCase
                 ->where('packages.0.amount', 350000)
                 ->where('packages.0.consultationAmount', 50000)
                 ->where('packages.0.currency', 'IDR')
-                ->where('packages.0.testTypes', ['ist', 'papi', 'rmib', 'kraepelin'])
+                ->where('packages.0.testTypes', ['ist', 'papi', 'rmib', 'kraepelin', 'dass21'])
                 ->where('packageConfigurationPending', false)
             );
     }
@@ -99,7 +99,7 @@ final class PackageSelectionTest extends TestCase
     public function test_registration_stores_the_selected_active_package(): void
     {
         $this->branch();
-        $packageId = $this->package('IST-ONLY', 150000, true, ['ist']);
+        $packageId = $this->package('IST-ONLY', 150000, true, ['ist', 'dass21']);
         $token = (string) Str::uuid();
 
         $this->withSession(['registration.token' => $token])
@@ -112,7 +112,7 @@ final class PackageSelectionTest extends TestCase
     public function test_consultation_is_priced_from_the_selected_package_and_snapshotted_on_order(): void
     {
         $this->branch();
-        $packageId = $this->package('IST-ONLY', 99000, true, ['ist']);
+        $packageId = $this->package('IST-ONLY', 99000, true, ['ist', 'dass21']);
         $token = (string) Str::uuid();
         $payload = $this->validPayload($token, $packageId);
         $payload['include_consultation'] = true;
@@ -131,29 +131,23 @@ final class PackageSelectionTest extends TestCase
         ], $order->metadata['pricing']);
     }
 
-    public function test_free_dass_registration_needs_no_payment_and_is_activated_immediately(): void
+    public function test_package_without_dass_is_not_available_for_registration(): void
     {
         $this->branch();
-        $packageId = $this->package('DASS21', 0, true, ['dass21']);
+        $packageId = $this->package('LEGACY-IST', 99000, true, ['ist']);
         $token = (string) Str::uuid();
-        $payload = $this->validPayload($token, $packageId);
-        unset($payload['payment_method_code']);
-        $payload['consent_dass'] = true;
 
+        $this->get('/register')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('packages', 0)
+                ->where('packageConfigurationPending', true)
+            );
         $this->withSession(['registration.token' => $token])
-            ->post('/registrations', $payload)
-            ->assertRedirect('/registration/received');
+            ->post('/registrations', $this->validPayload($token, $packageId))
+            ->assertSessionHasErrors('package_id');
 
-        $order = Order::query()->sole();
-        $this->assertSame(0, $order->amount);
-        $this->assertNull($order->payment_method_id);
-        $this->assertSame('paid', $order->status->value);
-        $this->assertDatabaseHas('entitlements', [
-            'order_id' => $order->id,
-            'test_type' => 'dass21',
-            'status' => 'ready',
-        ]);
-        $this->assertDatabaseCount('outbox_messages', 1);
+        $this->assertDatabaseCount('participants', 0);
     }
 
     public function test_registration_rejects_inactive_unpriced_and_unknown_packages(): void
@@ -176,8 +170,8 @@ final class PackageSelectionTest extends TestCase
     public function test_idempotency_token_cannot_be_reused_for_a_different_package(): void
     {
         $this->branch();
-        $firstPackage = $this->package('IST-ONLY', 150000, true, ['ist']);
-        $secondPackage = $this->package('PAPI-ONLY', 175000, true, ['papi']);
+        $firstPackage = $this->package('IST-ONLY', 150000, true, ['ist', 'dass21']);
+        $secondPackage = $this->package('PAPI-ONLY', 175000, true, ['papi', 'dass21']);
         $token = (string) Str::uuid();
 
         $this->withSession(['registration.token' => $token])
@@ -234,7 +228,7 @@ final class PackageSelectionTest extends TestCase
             'phone' => '+6281234567890',
             'email' => 'ayu@example.test',
             'consent_psychotest' => true,
-            'consent_dass' => false,
+            'consent_dass' => true,
         ];
     }
 

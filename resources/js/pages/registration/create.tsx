@@ -110,8 +110,8 @@ export default function CreateRegistration({
                                 <div className="flex gap-3">
                                     <ShieldCheck className="mt-0.5 size-5 shrink-0 text-brand-gold" />
                                     <p>
-                                        DASS-21 terpisah dan boleh ditolak tanpa
-                                        membatalkan psikotes utama.
+                                        DASS-21 termasuk dalam setiap paket dan
+                                        hasilnya tidak memengaruhi kelayakan.
                                     </p>
                                 </div>
                                 <div className="flex gap-3">
@@ -555,39 +555,32 @@ export default function CreateRegistration({
                                             </div>
 
                                             <div className="rounded-xl border border-slate-200 bg-white p-5">
-                                                <p className="font-medium">
-                                                    Consent B — DASS-21 *
-                                                </p>
-                                                <p
-                                                    id="dass-copy"
-                                                    className="mt-2 text-sm leading-6 text-slate-600"
-                                                >
-                                                    {consents.dass.text}
-                                                </p>
-                                                <div
-                                                    className="mt-4 grid gap-3 sm:grid-cols-2"
-                                                    aria-describedby="dass-copy consent_dass-error"
-                                                >
-                                                    <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg border border-slate-200 px-4 py-3 text-sm transition-colors hover:border-brand-gold has-[:checked]:border-brand-green has-[:checked]:bg-brand-gold-soft">
-                                                        <input
-                                                            type="radio"
-                                                            name="consent_dass"
-                                                            value="1"
-                                                            required
-                                                            className="size-4 accent-brand-green"
-                                                        />
-                                                        Ya, saya memilih ikut
-                                                    </label>
-                                                    <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg border border-slate-200 px-4 py-3 text-sm transition-colors hover:border-brand-gold has-[:checked]:border-brand-green has-[:checked]:bg-brand-gold-soft">
-                                                        <input
-                                                            type="radio"
-                                                            name="consent_dass"
-                                                            value="0"
-                                                            required
-                                                            className="size-4 accent-brand-green"
-                                                        />
-                                                        Tidak, saya menolak
-                                                    </label>
+                                                <div className="flex items-start gap-3">
+                                                    <input
+                                                        id="consent_dass"
+                                                        type="checkbox"
+                                                        name="consent_dass"
+                                                        value="1"
+                                                        required
+                                                        aria-describedby="dass-copy consent_dass-error"
+                                                        className="mt-1 size-4 shrink-0 accent-brand-green"
+                                                    />
+                                                    <div>
+                                                        <Label
+                                                            htmlFor="consent_dass"
+                                                            className="text-sm leading-6"
+                                                        >
+                                                            Saya menyetujui
+                                                            DASS-21 sebagai
+                                                            bagian psikotes *
+                                                        </Label>
+                                                        <p
+                                                            id="dass-copy"
+                                                            className="mt-2 text-sm leading-6 text-slate-600"
+                                                        >
+                                                            {consents.dass.text}
+                                                        </p>
+                                                    </div>
                                                 </div>
                                                 <InputError
                                                     id="consent_dass-error"

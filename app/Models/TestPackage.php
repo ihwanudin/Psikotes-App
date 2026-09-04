@@ -37,7 +37,8 @@ final class TestPackage extends Model
             ->whereNotNull('amount')
             ->where('amount', '>=', 0)
             ->where('currency', 'IDR')
-            ->whereHas('items');
+            ->whereHas('items', fn (Builder $items): Builder => $items->where('test_type', 'dass21'))
+            ->whereHas('items', fn (Builder $items): Builder => $items->where('test_type', '!=', 'dass21'));
     }
 
     /** @return array<string, string> */

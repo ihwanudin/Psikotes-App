@@ -221,7 +221,7 @@ final class PaymentMethodSelectionTest extends TestCase
             'phone' => '+6281234567890',
             'email' => 'ayu@example.test',
             'consent_psychotest' => true,
-            'consent_dass' => false,
+            'consent_dass' => true,
         ];
     }
 
@@ -240,6 +240,13 @@ final class PaymentMethodSelectionTest extends TestCase
             'package_id' => $packageId,
             'test_type' => 'ist',
             'sort_order' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('package_items')->insert([
+            'package_id' => $packageId,
+            'test_type' => 'dass21',
+            'sort_order' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
