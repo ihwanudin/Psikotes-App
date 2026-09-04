@@ -48,6 +48,8 @@ final class CollectiveBillLifecycleCompositionTest extends OrganizationPaymentTe
 
     private const int TOTAL_IDR = 2020;
 
+    private const string PRIVATE_DASS_MARKER = 'DASS_DETAIL_SENTINEL';
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -86,6 +88,9 @@ final class CollectiveBillLifecycleCompositionTest extends OrganizationPaymentTe
             $participants[$fixture['attempt']] = $fixture['participant'];
             DB::table('participants')->where('id', $fixture['participant'])->update(['full_name' => 'Composition participant '.($index + 1)]);
             DB::table('packages')->where('id', $fixture['package'])->update(['name' => 'Composition package '.($index + 1)]);
+            DB::table('package_items')->insert([
+                'package_id' => $fixture['package'], 'test_type' => 'dass21', 'sort_order' => 2,
+            ]);
             DB::table('assessment_participants')->where('id', $fixture['attempt'])->update([
                 'funding_mode' => 'INVOICED_TO_ORGANIZATION',
                 'metadata' => '{"checkout_contract_version":"checkout-v2","checkout_initial_funding_mode":null}',
@@ -93,12 +98,13 @@ final class CollectiveBillLifecycleCompositionTest extends OrganizationPaymentTe
             $package = TestPackage::query()->whereKey($fixture['package'])->sole();
             $expectedSnapshots[$fixture['attempt']] = [
                 'version' => 1, 'packageId' => $package->id, 'packageCode' => $package->code,
-                'packageName' => $package->name, 'testTypes' => ['ist'], 'baseAmount' => $base,
+                'packageName' => $package->name, 'testTypes' => ['dass21', 'ist'], 'baseAmount' => $base,
                 'consultationRequested' => $consultation, 'consultationAmount' => $consultation ? 30 : 0,
                 'amount' => $base + ($consultation ? 30 : 0), 'currency' => 'IDR',
             ];
             $this->prerequisites($fixture['participant'], ! ($lastConsentPending && $index === 9));
         }
+        $privateDass = $this->priorPrivateDassResult((int) array_values($participants)[0]);
         $this->assertDatabaseCount('assessment_bills', 0);
         $this->assertDatabaseCount('assessment_charges', 0);
         $this->assertDatabaseCount('assessment_bill_items', 0);
@@ -133,12 +139,18 @@ final class CollectiveBillLifecycleCompositionTest extends OrganizationPaymentTe
         $intent = OutboxMessage::query()->where('aggregate_id', (string) $bill->id)->sole();
         $invoice = new PaymentInvoice('composition-invoice', 'https://invoice.xendit.co/composition-invoice', self::TOTAL_IDR, 'IDR', now()->addDay());
         $provider = $this->createMock(PaymentProvider::class);
-        $provider->expects($this->once())->method('createInvoice')->with($this->callback(function (CreateInvoiceRequest $request) use ($bill): bool {
+        $invoiceProjection = null;
+        $provider->expects($this->once())->method('createInvoice')->with($this->callback(function (CreateInvoiceRequest $request) use ($bill, &$invoiceProjection): bool {
             $this->assertSame(0, DB::transactionLevel());
             $this->assertNull(app(RlsContextRunner::class)->current());
             $this->assertSame($bill->public_reference, $request->orderReference);
             $this->assertSame(self::TOTAL_IDR, $request->amount);
             $this->assertSame('IDR', $request->currency);
+            $invoiceProjection = json_encode([
+                'reference' => $request->orderReference, 'amount' => $request->amount,
+                'currency' => $request->currency, 'description' => $request->description,
+                'expiresAt' => $request->expiresAt->toIso8601String(),
+            ], JSON_THROW_ON_ERROR);
 
             return true;
         }))->willReturn($invoice);
@@ -180,22 +192,26 @@ final class CollectiveBillLifecycleCompositionTest extends OrganizationPaymentTe
         }
         $this->assertSnapshots($expectedSnapshots);
         $readyCount = $lastConsentPending ? 9 : 10;
-        $this->assertDatabaseCount('assessment_entitlements', $readyCount);
-        $this->assertSame($readyCount, DB::table('assessment_entitlements')->where('status', 'ready')->count());
+        $this->assertDatabaseCount('assessment_entitlements', $readyCount * 2);
+        $this->assertSame($readyCount * 2, DB::table('assessment_entitlements')->where('status', 'ready')->count());
         $lastAttempt = array_key_last($participants);
         foreach ($participants as $attempt => $participant) {
             $pending = $lastConsentPending && $attempt === $lastAttempt;
             if (! $pending) {
-                $this->assertDatabaseHas('assessment_entitlements', ['assessment_participant_id' => $attempt, 'participant_id' => $participant, 'test_type' => 'ist', 'status' => 'ready']);
-                $entitlement = app(RlsContextRunner::class)->runAsService(
-                    fn () => app(AssessmentEntitlementGate::class)->assertReady(new AssessmentPrincipal($participant, $organization, $attempt), 'ist'),
-                );
-                $this->assertSame($attempt, $entitlement->assessment_participant_id);
+                foreach (['dass21', 'ist'] as $testType) {
+                    $this->assertDatabaseHas('assessment_entitlements', ['assessment_participant_id' => $attempt, 'participant_id' => $participant, 'test_type' => $testType, 'status' => 'ready']);
+                    $entitlement = app(RlsContextRunner::class)->runAsService(
+                        fn () => app(AssessmentEntitlementGate::class)->assertReady(new AssessmentPrincipal($participant, $organization, $attempt), $testType),
+                    );
+                    $this->assertSame($attempt, $entitlement->assessment_participant_id);
+                }
             }
             $this->assertDatabaseHas('assessment_participants', ['id' => $attempt, 'assessment_status' => $pending ? 'PROVISIONED' : 'READY']);
         }
         if ($lastConsentPending) {
-            $this->assertDatabaseMissing('consent_records', ['participant_id' => $participants[$lastAttempt]]);
+            foreach (['psychotest', 'dass'] as $consentType) {
+                $this->assertDatabaseMissing('consent_records', ['participant_id' => $participants[$lastAttempt], 'consent_type' => $consentType]);
+            }
             // Absent consent creates no new entitlement; locked means the real access gate denies.
             $this->assertDatabaseMissing('assessment_entitlements', ['assessment_participant_id' => $lastAttempt]);
             try {
@@ -245,6 +261,29 @@ final class CollectiveBillLifecycleCompositionTest extends OrganizationPaymentTe
             $response->assertSee($attemptReference);
         }
         $response->assertDontSee('Changed catalog, never the bill snapshot')->assertDontSee($invoice->providerReference)->assertDontSee($invoice->paymentUrl);
+        $privateValues = [...$privateDass['resultMarkers'], $privateDass['consentVersion'],
+            $privateDass['consentHash'], $privateDass['consentTitle'], $privateDass['consentText']];
+        foreach ($privateValues as $privateValue) {
+            $response->assertDontSee($privateValue);
+            $this->assertStringNotContainsString($privateValue, (string) $invoiceProjection);
+            $this->assertStringNotContainsString($privateValue, json_encode(
+                DB::table('assessment_bills')->where('id', $bill->id)->get()->all(), JSON_THROW_ON_ERROR,
+            ));
+            $this->assertStringNotContainsString($privateValue, json_encode(
+                DB::table('audit_logs')->get(['action', 'context'])->all(), JSON_THROW_ON_ERROR,
+            ));
+            $this->assertStringNotContainsString($privateValue, json_encode(
+                DB::table('outbox_messages')->get(['topic', 'payload'])->all(), JSON_THROW_ON_ERROR,
+            ));
+            $this->assertStringNotContainsString($privateValue, json_encode(
+                DB::table('participants')->whereIn('id', array_values($participants))
+                    ->where('id', '!=', $privateDass['participant'])->get()->all(), JSON_THROW_ON_ERROR,
+            ));
+        }
+        $this->assertSame(1, DB::table('dass_assessments')->where('participant_id', $privateDass['participant'])->count());
+        $this->assertSame(0, DB::table('dass_assessments')->whereIn('participant_id', array_values($participants))
+            ->where('participant_id', '!=', $privateDass['participant'])->count());
+        $this->assertSame(1, DB::table('dass_results')->count());
         $foreignOrganization = DB::table('branches')->insertGetId([
             'code' => 'COMPOSITION_FOREIGN', 'ref_code' => 'COMPOSITION_FOREIGN', 'name' => 'Synthetic foreign',
             'organization_code' => 'COMPOSITION_FOREIGN', 'display_name' => 'Synthetic foreign',
@@ -315,9 +354,11 @@ final class CollectiveBillLifecycleCompositionTest extends OrganizationPaymentTe
     private function prerequisites(int $participant, bool $consentAccepted): void
     {
         if ($consentAccepted) {
-            $document = ConsentDocument::for('psychotest');
-            DB::table('consent_records')->insert(['participant_id' => $participant, 'consent_type' => 'psychotest',
-                'status' => 'accepted', 'document_version' => $document->version, 'document_hash' => $document->hash, 'consented_at' => now()]);
+            foreach (['psychotest', 'dass'] as $consentType) {
+                $document = ConsentDocument::for($consentType);
+                DB::table('consent_records')->insert(['participant_id' => $participant, 'consent_type' => $consentType,
+                    'status' => 'accepted', 'document_version' => $document->version, 'document_hash' => $document->hash, 'consented_at' => now()]);
+            }
         }
         foreach (['identity_document', 'initial_selfie'] as $type) {
             $id = (string) Str::ulid();
@@ -327,6 +368,37 @@ final class CollectiveBillLifecycleCompositionTest extends OrganizationPaymentTe
         }
         DB::table('identity_verifications')->insert(['participant_id' => $participant, 'matcher' => 'synthetic',
             'outcome' => 'match', 'manual_status' => 'pending', 'checked_at' => now()]);
+    }
+
+    /** @return array{participant: int, resultMarkers: list<string>, consentVersion: string, consentHash: string, consentTitle: string, consentText: string} */
+    private function priorPrivateDassResult(int $participant): array
+    {
+        $consent = DB::table('consent_records')->where('participant_id', $participant)->where('consent_type', 'dass')->sole();
+        $assessment = DB::table('dass_assessments')->insertGetId([
+            'public_id' => (string) Str::ulid(), 'participant_id' => $participant,
+            'consent_record_id' => $consent->id, 'status' => 'completed',
+            'started_at' => now()->subMinute(), 'completed_at' => now(), 'expires_at' => now()->addYear(),
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('dass_results')->insert([
+            'assessment_id' => $assessment,
+            'depression_raw' => 1, 'anxiety_raw' => 2, 'stress_raw' => 3,
+            'depression_score' => 2, 'anxiety_score' => 4, 'stress_score' => 6,
+            'depression_category' => 'DASS_DEP_SENTINEL',
+            'anxiety_category' => 'DASS_ANX_SENTINEL',
+            'stress_category' => 'DASS_STRESS_SENTINEL',
+            'overall_category' => 'DASS_OVERALL_SENTINEL',
+            'follow_up' => 'DASS_FOLLOWUP_SENTINEL',
+            'validity_flags' => json_encode(['private' => self::PRIVATE_DASS_MARKER], JSON_THROW_ON_ERROR),
+            'expires_at' => now()->addYear(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $document = ConsentDocument::for('dass');
+
+        return ['participant' => $participant,
+            'resultMarkers' => [self::PRIVATE_DASS_MARKER, 'DASS_DEP_SENTINEL', 'DASS_ANX_SENTINEL',
+                'DASS_STRESS_SENTINEL', 'DASS_OVERALL_SENTINEL', 'DASS_FOLLOWUP_SENTINEL'],
+            'consentVersion' => $document->version, 'consentHash' => $document->hash,
+            'consentTitle' => $document->title, 'consentText' => $document->text];
     }
 
     /** @param array<int, array<string, mixed>> $expected */
@@ -343,7 +415,8 @@ final class CollectiveBillLifecycleCompositionTest extends OrganizationPaymentTe
     {
         $state = [];
         foreach (['assessment_bills', 'assessment_bill_items', 'assessment_charges', 'assessment_entitlements',
-            'assessment_participants', 'audit_logs', 'outbox_messages', 'consent_records', 'identity_verifications', 'identity_evidence'] as $table) {
+            'assessment_participants', 'audit_logs', 'outbox_messages', 'consent_records', 'identity_verifications', 'identity_evidence',
+            'dass_assessments', 'dass_responses', 'dass_results'] as $table) {
             $state[$table] = array_values(DB::table($table)->orderBy('id')->get()->map(fn (object $row): array => (array) $row)->all());
         }
 

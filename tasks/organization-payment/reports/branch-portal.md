@@ -1,5 +1,79 @@
 # P12a-prep — portal cabang baca-saja
 
+## P17a-prep — DASS wajib, settlement independen, proyeksi privat
+
+Tanggal 2026-09-05. Increment test-only di atas `3ea0960`, tanpa perubahan app,
+shared fixture, catalog, registration, backend atau frontend. Root commit
+`80590cf` dan ADR-0013 dibaca: paket tersedia harus memuat DASS-21 dan instrumen
+utama; tidak ada produk DASS mandiri; consent DASS wajib; penyimpanan, hasil,
+retensi dan akses DASS tetap terpisah. Root `TestPackage::availableForRegistration`
+memeriksa adanya `dass21` dan setidaknya satu item bukan DASS. Source ini tidak
+disalin ke isolated baseline immutable; fakta kontrak diterapkan hanya pada
+fixture lokal composition test yang sudah dimiliki portal.
+
+Test-copy tetap
+`C:/Users/ThinkPad/AppData/Local/Temp/oncam-collective-composition-fbdb40c7b9ad42419225b7e83a62ece1`,
+guarded testing/SQLite `:memory:`, provider/notifier/mail fake dan HTTP stray
+denied seperti increment sebelumnya. FinalizeAssessmentBill dan PaymentEvent
+copy/root memiliki SHA256 sama saat preflight. Tidak membaca `.env`, menjalankan
+server/browser/PG/DB aktif, mengubah route/flag, atau membuat outbound.
+
+### Fixture dan assertion baru
+
+Kesepuluh package fixture kini berisi tepat komponen `['dass21', 'ist']`; urutan
+ini juga dibandingkan pada setiap price snapshot charge. Harga mixed dan pola
+konsultasi tetap menghasilkan satu bill, sepuluh item, satu provider create,
+satu settlement idempoten dan total IDR 2020. Sembilan peserta menerima kedua
+consent current dari `ConsentDocument` (`psychotest` dan `dass`). Peserta ke-10
+pada dataset incomplete tidak memiliki keduanya.
+
+Satu peserta memiliki asesmen DASS lama sintetis yang completed dengan satu
+hasil privat. Angka/kategori seluruhnya sintetis; marker terpisah berada pada
+empat kategori, follow-up dan validity_flags agar kebocoran subset hasil tetap
+terdeteksi. Ini sengaja ada sebelum
+claim/issuance agar tes dapat menemukan join/proyeksi yang salah, bukan ditanam
+setelah audit selesai. Tepat satu DASS assessment/result terikat peserta itu dan
+nol DASS assessment terikat sembilan peserta lain.
+
+Setelah finalizer canonical:
+
+- semua 10 bill item settled; replay tidak menggandakan baris atau efek;
+- dataset complete menghasilkan 20 entitlement ready (IST+DASS untuk 10
+  attempt) dan 10 attempt READY;
+- dataset incomplete menghasilkan 18 entitlement ready dan 9 attempt READY;
+  attempt ke-10 tetap PROVISIONED tanpa entitlement baru. Gate canonical tetap
+  menolak attempt itu, sementara gate IST dan DASS untuk sembilan lainnya lulus;
+  satu participant yang belum memenuhi consent tidak menahan settlement atau
+  aktivasi attempt lain;
+- test amount/currency negative dari increment sebelumnya tetap berjalan lalu
+  diikuti event valid yang settle sepuluh item.
+
+Privasi diperiksa terhadap enam marker field hasil serta versi, hash, judul dan
+teks consent DASS. Semua harus absen dari HTML detail cabang, request
+invoice mock, row bill yang diserialisasi, seluruh audit context, seluruh outbox
+payload dan row sembilan participant lain. Detail tetap menampilkan nama paket
+snapshot dan attempt ID, tetapi tidak hasil/consent DASS. Keberadaan `dass21`
+dalam testTypes price snapshot adalah komposisi layanan yang diwajibkan, bukan
+hasil klinis. Tes tidak membuka proyeksi peserta atau psikolog.
+
+### Bukti aktual dan batas
+
+TDD RED dengan expected testTypes DASS tetapi tanpa package item DASS gagal
+**1 tes / 22 assertions** pada perbandingan snapshot (`['dass21','ist']` versus
+`['ist']`). Percobaan command pertama tidak mencapai PHPUnit karena helper env
+antar-turn tidak tersedia; itu kegagalan shell dan tidak dihitung sebagai RED.
+Sesudah fixture/assertion lengkap, run final **4 tes / 1.192 assertions**, nol
+error/failure/skip. Pint Laravel preset, PHP lint dan PHPStan level 7 terfokus
+lulus. SHA256 test identik antara worker dan copy setelah run final:
+`A656FAEFA8F4E4C6DB8273AB073B0C40B64B086CAAF065E034D38571E631CA50`.
+Evidence `mandatory-dass-red.xml` dan `mandatory-dass-final.xml` tetap
+di direktori temp.
+
+Ini regresi komposisi SQLite, bukan bukti seluruh catalog lama sudah dimigrasi,
+P15 participant presentation, akses psikolog, PG RLS/race, native browser atau
+retensi/penghapusan DASS. Tidak menutup P17a/P17c. Tidak ada data klinis/nyata,
+deploy, push atau aktivasi production. Berhenti untuk review.
+
 ## P12c verifier postcondition — dua profil audit ketat
 
 Tanggal 2026-09-02. Commit `c817fa0` memperbaiki blocker postcondition CLI
