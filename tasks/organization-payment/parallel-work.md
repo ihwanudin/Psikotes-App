@@ -1,5 +1,25 @@
 # Koordinasi task paralel organization-payment
 
+## Authorized profile read accepted locally — 2026-09-04
+
+Reviewed worker `e27d3ae`/`ad756a0`: profile mapping executes after canonical
+credential/scope/history validation under existing locks; DB clock determines
+calendar and mapper exceptions roll back idle touch. Root reran related SQLite
+suite in env-free worker: 116 tests / 2,128 assertions passed. Worker PostgreSQL
+347/2567 and four real recovery/revoke/rollback interleavings were reviewed as
+worker evidence, not independently rerun. P14 public summary remains incomplete.
+Snapshot backend cursor `4155cd61-0c2b-4909-bd55-db926b1dc9fe:17` was completed.
+
+Next bounded backend slice: internal own-attempt payment facts/DTO using existing
+validated graph and shared settlement reader. Define amount provenance explicitly,
+null before authoritative charge/consultation choice, no new catalog-price promise;
+IDR integer must fit JS safe range. Paid and access remain independent. Preserve
+unknown/expired/rejected states without reinvoicing. No full summary/HTTP, frontend,
+new policy denial for historical settlement, or transaction/lock-order expansion.
+Integrate into credential lifecycle only with canonical revalidation and reviewable
+typed operation (avoid piling new boolean modes onto operate). If lock correctness
+needs a different contract, report that before implementing the change.
+
 ## Accepted consent reader integrated — 2026-09-04
 
 Reviewed `ff55a5e`/`aa2390f`; integrated `809c410`/`9e5c152` and exact prerequisite
