@@ -1,5 +1,16 @@
 # Koordinasi task paralel organization-payment
 
+## Actionable smoke failed spawn_browser; ownership safety audit
+
+Worker7623b60: init19.918s; supervisor49.640s,0requests. Fixed result primary
+spawn_browser, cleanup uncertain with parent_identity_mismatch,parent_missing,
+pid_reuse. PHP/TLS roles published, browser absent;7recorded identities,4 exact
+alive immediately after return, no listeners/direct handles; DB42 exact/counters0.
+Run consumed/invalid, no retry. Because exact identities may remain, sent immediate
+bounded ownership audit, not a new test: read persisted sanitized identities/ticks/
+lineage, cleanup once only if exact candidate ownership and existing API supports;
+never kill by PID/name/path/port or ambiguous ancestry. Report counts only.
+
 ## Actionable4e231 smoke authorized
 
 Preparation617a5d5 reviewed. Root independently matched manifestbc9d7c581e2c4f50053ef25469e0daba160417e85400ba7766119905a383eba2,
