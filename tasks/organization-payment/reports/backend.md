@@ -4657,3 +4657,84 @@ genuine-build artifact copy remain untouched. No summary DTO/composition, HTTP,
 frontend/P15/writer, active DB/.env/data, real provider/notifier, new task/agent,
 deploy or push. STOP for review; the prerequisite overlay patch is required before
 integrating/running the committed frame tests on root.
+
+## F14 explicit entitlement gate frame — 2026-09-04
+
+Completed only the approved read-only gate prerequisite. `assertReadyAt` accepts
+an AssessmentPrerequisiteFrame and shares one private evaluator with assertReady.
+The same canonical service/scope/status/charge/snapshot/entitlement checks run for
+both entrypoints. Explicit ready_at, settlement and prerequisites use that frame;
+the legacy path preserves lazy config loading and denial ordering, without
+promising a single cross-component frame. A frame is neither authorization nor a
+historical database snapshot: persisted revoked/terminal/foreign state still denies.
+No lifecycle/payment/summary/HTTP caller was changed.
+
+TDD evidence: before implementation, the new 53-test suite had only its legacy
+compatibility test passing; explicit calls failed because assertReadyAt was absent.
+Focused GREEN: 53 tests / 100 assertions. Final related regression: 245 tests /
+570 assertions across AssessmentEntitlementFrameTest, AssessmentPrerequisiteFrameTest,
+AcceptedConsentSnapshotTest, AcceptedConsentReaderTest, AssessmentSettlementSnapshotTest,
+AssessmentSettlementReaderTest, AttemptEntitlementGateTest and SettledAssessmentActivationTest.
+All ran with phpunit.organization-payment.xml, SQLite memory, --do-not-cache-result.
+Tests cover denial matrix, foreign scope, terminal/started/completed states, exact
+and future ready time, clock/config drift after entitlement SELECT, future payment/
+consent/identity evidence, same-version different hash, DASS and generic errors.
+Query/row/context assertions prove no gate writes, row locks or context mutation.
+The future-evidence tests also assert that the deliberate drift barrier was reached.
+
+Pint (both PHP files), PHP syntax checks and full application PHPStan passed.
+PHPStan initially rejected a redundant nullsafe expression; the final implementation
+uses an explicit null branch, without ignores/baselines. Final regression rerun passed.
+No PostgreSQL run is claimed: this increment changes evaluation inputs only, without
+schema, query locking, RLS or transactional behavior changes. No UI suite/build rerun;
+the preserved genuine-build artifact copy remains untouched.
+
+### Exact gate overlay handoff
+
+AssessmentEntitlementGate.php remains an untracked baseline overlay and is NOT
+staged wholesale. Before SHA-256 (matched read-only root):
+1c9f033150e0962ed03d50dc15874272a7e8da53a327429b0a145888298517c9
+After SHA-256:
+572b8741e0702783897aa65433e9fca3eb53827aab734fe3d21eba73c65200ed
+Apply the following minimal patch with --unidiff-zero alongside the committed test.
+The ignored .scaffold/gate-frame.patch contains the same patch; reverse dry-run
+against the final local file passed. The source delta is intentionally carried here
+rather than committing the pre-existing gate snapshot.
+
+```diff
+diff --git a/app/Services/ParticipantAuth/AssessmentEntitlementGate.php b/app/Services/ParticipantAuth/AssessmentEntitlementGate.php
+index ab239c5..8e9c17c 100644
+--- a/app/Services/ParticipantAuth/AssessmentEntitlementGate.php
++++ b/app/Services/ParticipantAuth/AssessmentEntitlementGate.php
+@@ -23,0 +24,11 @@ public function assertReady(AssessmentPrincipal $principal, string $testType): A
++    {
++        return $this->evaluate($principal, $testType, null);
++    }
++
++    /** Uses captured evaluation inputs, not a historical database snapshot or authorization grant. */
++    public function assertReadyAt(AssessmentPrincipal $principal, string $testType, AssessmentPrerequisiteFrame $frame): AssessmentEntitlement
++    {
++        return $this->evaluate($principal, $testType, $frame);
++    }
++
++    private function evaluate(AssessmentPrincipal $principal, string $testType, ?AssessmentPrerequisiteFrame $frame): AssessmentEntitlement
+@@ -54,2 +65,4 @@ public function assertReady(AssessmentPrincipal $principal, string $testType): A
+-            ->whereNotNull('ready_at')->where('ready_at', '<=', now())->whereNull('started_at')->whereNull('completed_at')->first();
+-        if ($entitlement === null || ! $this->settlement->isSettled($charge)) {
++            ->whereNotNull('ready_at')->where('ready_at', '<=', $frame === null ? now() : $frame->asOf)->whereNull('started_at')->whereNull('completed_at')->first();
++        if ($entitlement === null || ! ($frame === null
++            ? $this->settlement->isSettled($charge)
++            : $this->settlement->isSettledAt($charge, $frame->asOf))) {
+@@ -58 +71,5 @@ public function assertReady(AssessmentPrincipal $principal, string $testType): A
+-        $this->prerequisites->assertSatisfied($participant, $testType);
++        if ($frame === null) {
++            $this->prerequisites->assertSatisfied($participant, $testType);
++        } else {
++            $this->prerequisites->assertSatisfiedAt($participant, $testType, $frame);
++        }
+```
+
+Only the new focused test and this report are committed. Other baseline overlays,
+config, runtime artifacts and canonical documents are unchanged. No active DB/.env,
+real external service, source/gate activation, new agent/task, deploy or push.
+STOP for coordinator review; no next increment or production wiring authorized here.
