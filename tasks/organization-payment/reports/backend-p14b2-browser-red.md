@@ -1,6 +1,11 @@
 # P14b2 browser evidence and proposed ADR-012 amendment
 
-## Status — RED, pending coordinator review
+## Historical RED evidence; bounded fix GREEN locally, pending coordinator review
+
+The original RED evidence below is retained. The coordinator subsequently
+authorized option B for a bounded local implementation; see the final section
+for the new decision, tests and browser results. Canonical ADR/integration and
+public activation remain owned by root and are not implied by local GREEN.
 
 Date: 2026-09-04. Worker baseline remains `a49354f`; harness commit `04f92fe`.
 The coordinator explicitly requested this RED handoff after reviewing the native
@@ -249,3 +254,92 @@ mutations through this logout-specific proposal.
   is involved. No unrelated process or older temporary directory was removed.
 
 **STOP for root review of the RED evidence and proposed amendment.**
+
+## Approved bounded fix — local GREEN (2026-09-04)
+
+The coordinator approved option B technically after reviewing the RED harness,
+real HTTP components and Fetch algorithm. Middleware/test commit **`6e0faea`**
+implements only the POST `/checkout/logout` exception at the exact HTTPS
+destination. `mutationOriginMatches` itself remains unchanged and still returns
+false for null. Future mutation paths, other methods, wrong HTTPS hosts and HTTP
+cannot use the exception.
+
+The literal Origin value must occur once. An active typed principal must already
+have been set by `AuthenticateCheckoutSession`, which reloads canonical scope
+and verifies both selector/delivery digests. Exactly one bounded canonical raw
+form `_checkout_csrf` must match its parsed value and delivery secret. Header-only
+and double-channel null requests fail. Every present Fetch Metadata field must
+individually be one exact value: same-origin/navigate/document; missing fields
+do not replace or relax the credential proof. Empty, contradictory, unknown,
+list and duplicate metadata fail. Missing/empty/uppercase/list/duplicate/foreign
+Origin fails; the exact-origin progressive path retains its original behavior.
+Source exchange still rejects null. No session transaction logic changed.
+
+After correcting a test's audit column to the existing JSON `context`, RED was
+**4 tests, 2 passed, 2 failed, 175 assertions**: native logout received 419 instead
+of 303, and duplicate Origin beginning with the exact host wrongly received 303
+instead of 419. After implementation and additional lifecycle coverage, the new
+matrix passed **5 tests / 753 assertions**. It covers optional metadata individually
+and together, malformed/multi-value headers, CSRF channels, other-session secrets,
+missing/wrong cookie digests, persisted scope revoke, expiry, recovery, replay,
+missing verified principal, and strict method/path/HTTPS limits.
+
+Focused P13/P14 regression is **58 passed / 1,794 assertions**, zero skips.
+Full-project PHPStan is **0 errors**; targeted Pint, Node syntax and diff-check
+pass. PostgreSQL was not repeated because lifecycle transactions/RLS/races were
+not changed. Unrelated UI regression still has no new worker result or fake
+manifest.
+
+### Browser GREEN and precise limitations
+
+The rerun returned:
+
+```json
+{
+  "exchangePosts": 9,
+  "hostileForms": 6,
+  "opaqueNetworkBlocks": 2,
+  "expectedSandboxInstrumentationErrors": 2,
+  "controlledNetworkEntries": 14,
+  "credentialMaterialRecorded": false,
+  "screenshotsContainingCredentials": 0
+}
+```
+
+All original independent checks remain asserted. Native no-JS logout now
+observably sends literal null, receives 303, clears only the pair, creates
+**exactly one LOGOUT audit for its attempt**, preserves the encrypted Laravel
+login byte and still authorizes the real `web` + `auth` probe as `AUTH:1`.
+Replaying the old cookie pair and exact raw form creates no additional LOGOUT.
+The harness state query now filters `context.reason = LOGOUT` and that attempt;
+it no longer counts all revocation reasons as logout.
+
+Six native hostile forms use missing or wrong CSRF across foreign no-referrer,
+sandboxed opaque, and same-site sibling pages. Four reach HTTP and receive generic
+denial; two opaque requests are blocked before HTTP by Chromium's
+`net::ERR_BLOCKED_BY_LOCAL_NETWORK_ACCESS_CHECKS` against loopback. Every case
+asserts zero LOGOUT audit and subsequent hydration of the original session.
+The opaque cases prove browser denial and unchanged server state, **not server
+HTTP rejection of opaque navigation**. PHP tests separately prove the server's
+literal-null negative matrix. No local-network protection was disabled.
+
+The installed Playwright `serviceWorkers:block` initializer directly reads
+`navigator.serviceWorker` (`playwright-core/lib/coreBundle.js` near line 51568).
+That getter throws in opaque sandbox frames. Its two exact SecurityError messages
+are counted only while the opaque scenario is active; unknown page errors remain
+failures. This is a disclosed instrumentation limitation, not a claim of zero
+browser errors. Expected HTTP resource-error statuses are correlated with observed
+negative responses. No production console exception is suppressed.
+
+Async request/response observers are registered as tracked promises, their
+failures become violations, and all are drained before final assertions. The
+former 100ms sleep is removed. The no-JS context drains and closes in `finally`,
+including on failure. Hostile redirects accept only the relative or absolute
+form of the same fixed `/checkout/unavailable` destination.
+
+Runtime remains disposable HTTPS/SQLite, cached Chromium 151.0.7922.34 and PHP
+8.3.30. No browser Fetch Metadata, production TLS, cross-browser, or new PostgreSQL
+concurrency support is claimed. The earlier recursive scratch cleanup rejection
+was not retried by another mechanism. No production route/config activation,
+canonical ADR edit, source change, active DB/.env, outbound payment/notification,
+deployment, push or new task occurred. **STOP for root review; no P15.**

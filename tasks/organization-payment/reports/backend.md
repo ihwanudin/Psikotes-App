@@ -3462,3 +3462,32 @@ The named browser and lane PHP/proxy processes are stopped; test ports are free.
 Automatic execution policy blocked recursive removal of the lane's synthetic
 temporary directories, so those scratch files were retained outside Git rather
 than retrying through another mechanism. Cleanup details are in the report.
+
+### P14b2 bounded native-logout fix — GREEN locally, review pending
+
+Coordinator-approved option B is implemented in `6e0faea`: a single literal-null
+Origin can qualify only for exact HTTPS POST `/checkout/logout`, with the existing
+verified principal/cookie digests and canonical raw-form CSRF proof. Every present
+Fetch Metadata field must individually match same-origin/navigate/document;
+duplicates, lists, missing Origin, foreign values and header-only/double-channel
+null requests are rejected. `mutationOriginMatches`, source exchange and future
+mutation rules were not generalized. Lifecycle/transaction logic is unchanged.
+
+RED reproduced native 419 and multi-value Origin acceptance; the new matrix is
+**5 passed / 753 assertions**, full relevant P13/P14 **58 passed / 1,794 assertions**,
+zero skips. Pint and full-project PHPStan (**0 errors**) pass.
+
+Browser rerun passes nine exchanges and six hostile native forms, real Laravel
+login/byte preservation, exactly one attempt-scoped LOGOUT audit, replay, and all
+prior isolation/CSRF/history/recovery/expiry/viewports checks. Two opaque forms
+are blocked by Chromium Local Network Access before HTTP; two known Playwright
+sandbox instrumentation errors are counted explicitly. They are not represented
+as server rejection or zero console errors. Four foreign/sibling forms reach HTTP
+and are denied. Async observations are drained; no-JS cleanup uses `finally`.
+Detailed decision, results and limitations are appended to
+[the P14b2 evidence report](backend-p14b2-browser-red.md).
+
+No new PostgreSQL or unrelated UI result is claimed for this HTTP-only delta.
+Canonical ADR/integration remain for root review. No active route/config/source,
+DB/.env, provider/notifier, deployment or push; no retry of blocked recursive
+scratch cleanup. **STOP before P15.**

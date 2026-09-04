@@ -304,7 +304,8 @@ if (is_string($path) && str_starts_with($path, '/__browser/control/')) {
             'sessions' => DB::table('checkout_sessions')->count(),
             'active' => DB::table('checkout_sessions')->where('status', 'ACTIVE')->count(),
             'terminal' => DB::table('checkout_sessions')->whereIn('status', ['REVOKED', 'EXPIRED'])->count(),
-            'logoutAudits' => DB::table('audit_logs')->where('action', 'checkout_session.revoked')->count(),
+            'logoutAudits' => DB::table('audit_logs')->where('action', 'checkout_session.revoked')
+                ->where('subject_id', (string) $fixture['attempt'])->where('context->reason', 'LOGOUT')->count(),
         ], 200, ['Cache-Control' => 'no-store, private'])->send();
         exit;
     }

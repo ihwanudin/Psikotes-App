@@ -5,18 +5,31 @@ async (page) => {
     const sources = ['https://seleksi.beasiswajepang.id', 'https://seleksi.serbaindo.com']
     const foreignOrigin = 'https://foreign.invalid'
     const wrongHost = 'https://oncam.id'
+    const siblingOrigin = 'https://sibling.oncam.id'
     const loopback = 'http://127.0.0.1:8126'
     const loginCookieName = 'oncam_checkout_browser_login'
     const selectorName = '__Secure-oncam_checkout_session'
     const csrfName = '__Secure-oncam_checkout_csrf'
     const sourceTokens = new Map()
     const sourceActions = new Map()
+    const syntheticDocuments = new Map()
     const violations = []
     const consoleMessages = []
     const expectedHttpConsole = []
+    let opaqueAttackInFlight = false
+    let expectedSandboxInstrumentationErrors = 0
     const rejectedHttpStatuses = new Set()
     const safeNetwork = new Set()
     let exchangePosts = 0
+    const listenerTasks = new Set()
+    const observe = (work) => {
+        const task = work().catch(() => violations.push('browser observation failed'))
+        listenerTasks.add(task)
+        void task.finally(() => listenerTasks.delete(task))
+    }
+    const drainObservations = async () => {
+        while (listenerTasks.size > 0) await Promise.all([...listenerTasks])
+    }
 
     const assert = (condition, message) => {
         if (!condition) {
@@ -56,7 +69,7 @@ async (page) => {
             <button type="submit">Lanjutkan</button></form></main></body></html>`
     }
     const installInterception = async (context) => {
-        context.on('request', async (request) => {
+        context.on('request', (request) => observe(async () => {
             const url = parseUrl(request.url())
             safeNetwork.add(`${url.origin}${url.pathname}`)
             const requestHeaders = await request.allHeaders()
@@ -81,8 +94,8 @@ async (page) => {
                     violations.push('exchange URL contained a query')
                 }
             }
-        })
-        context.on('response', async (response) => {
+        }))
+        context.on('response', (response) => observe(async () => {
             const url = parseUrl(response.url())
             if (url.origin === appOrigin && url.pathname.startsWith('/checkout')) {
                 if (!(await privateHeaders(response))) {
@@ -97,10 +110,15 @@ async (page) => {
             if ([appOrigin, wrongHost].includes(url.origin) && [403, 404, 419].includes(response.status())) {
                 rejectedHttpStatuses.add(response.status())
             }
-        })
+        }))
         await context.route('**/*', async (route) => {
             const request = route.request()
             const url = parseUrl(request.url())
+            const document = syntheticDocuments.get(request.url())
+            if (document && request.method() === 'GET') {
+                return route.fulfill({ status: 200, contentType: 'text/html; charset=UTF-8',
+                    headers: { 'Cache-Control': 'no-store, private', 'Referrer-Policy': 'no-referrer' }, body: document })
+            }
             if ([...sources, foreignOrigin].includes(url.origin)) {
                 if (request.method() !== 'GET' || url.pathname !== '/handoff') {
                     violations.push(`unexpected synthetic source request ${request.method()} ${url.pathname}`)
@@ -191,17 +209,27 @@ async (page) => {
 
     page.setDefaultTimeout(30000)
     page.setDefaultNavigationTimeout(30000)
-    page.on('console', (message) => {
-        if (['error', 'warning'].includes(message.type())) {
-            const rejected = /^Failed to load resource: the server responded with a status of (403|404|419) \(.*\)$/.exec(message.text())
-            if (message.type() === 'error' && rejected) {
-                expectedHttpConsole.push(Number(rejected[1]))
+    const observeConsole = (targetPage) => {
+        targetPage.on('console', (message) => {
+            if (['error', 'warning'].includes(message.type())) {
+                const rejected = /^Failed to load resource: the server responded with a status of (403|404|419) \(.*\)$/.exec(message.text())
+                if (message.type() === 'error' && rejected) {
+                    expectedHttpConsole.push(Number(rejected[1]))
+                    return
+                }
+                consoleMessages.push(message.text().replace(/och1_[0-9a-f]+|ocs(?:rf)?1_[0-9a-f]+/g, '[credential]'))
+            }
+        })
+        targetPage.on('pageerror', (error) => {
+            // Installed Playwright's serviceWorkers:block init script reads this forbidden getter in opaque frames.
+            if (opaqueAttackInFlight && error.message === "Failed to read the 'serviceWorker' property from 'Navigator': Service worker is disabled because the context is sandboxed and lacks the 'allow-same-origin' flag.") {
+                expectedSandboxInstrumentationErrors++
                 return
             }
-            consoleMessages.push(message.text().replace(/och1_[0-9a-f]+|ocs(?:rf)?1_[0-9a-f]+/g, '[credential]'))
-        }
-    })
-    page.on('pageerror', (error) => consoleMessages.push(error.message))
+            consoleMessages.push('Uncaught browser page error')
+        })
+    }
+    observeConsole(page)
     await installInterception(page.context())
 
     // A real encrypted Laravel session remains authoritative around both cross-site exchanges.
@@ -337,33 +365,112 @@ async (page) => {
     assert(page.url() === `${wrongHost}/checkout/session`, 'Wrong host was not exercised by the browser')
     assert((await page.locator('body').innerText()) === 'Not Found', 'Wrong host did not fail closed')
 
-    await page.waitForTimeout(100)
+    await drainObservations()
     assert(exchangePosts === 8, 'Browser did not exercise the eight preceding cross-site POSTs')
+
+    // Native logout must preserve real Laravel login, reject hostile forms, and audit exactly once.
+    const noJs = await page.context().browser().newContext({ javaScriptEnabled: false, ignoreHTTPSErrors: true, serviceWorkers: 'block' })
+    let hostileForms = 0
+    let opaqueNetworkBlocks = 0
+    try {
+        await installInterception(noJs)
+        const noJsPage = await noJs.newPage()
+        observeConsole(noJsPage)
+        await noJsPage.goto(`${appOrigin}/__browser/login`)
+        await noJsPage.goto(`${appOrigin}/__browser/auth`)
+        assert(await noJsPage.locator('body').innerText() === 'AUTH:1', 'Native context login probe failed')
+        const nativeLogin = (await noJs.cookies(appOrigin)).find((cookie) => cookie.name === loginCookieName)
+        assert(nativeLogin, 'Native context has no real Laravel login cookie')
+        await submit(noJsPage, sources[0], await issue('no-js'))
+        await assertCheckoutPage(noJsPage)
+        const nativeCookies = await checkoutCookies(noJs)
+        assertCookieContract(nativeCookies)
+        assert((await control('state', 'no-js')).logoutAudits === 0, 'Native fixture already has a LOGOUT audit')
+
+        const formDocument = (field) => `<!doctype html><html><meta charset="utf-8"><title>Form sintetis</title>
+            <form method="post" action="${appOrigin}/checkout/logout">${field}<button type="submit">Uji form</button></form></html>`
+        for (const kind of ['foreign', 'opaque', 'sibling']) {
+            for (const field of ['', `<input type="hidden" name="_checkout_csrf" value="ocsrf1_${'0'.repeat(64)}">`]) {
+                const origin = kind === 'foreign' ? foreignOrigin : kind === 'sibling' ? siblingOrigin : appOrigin
+                const url = `${origin}/__browser/attack-${kind}`
+                const form = formDocument(field)
+                syntheticDocuments.set(url, kind === 'opaque'
+                    ? `<!doctype html><html><title>Sandbox sintetis</title><iframe sandbox="allow-forms" srcdoc="${form.replace(/&/g, '&amp;').replace(/"/g, '&quot;')}"></iframe></html>`
+                    : form)
+                await noJs.addCookies(nativeCookies)
+                opaqueAttackInFlight = kind === 'opaque'
+                await noJsPage.goto(url)
+                const attackRequest = noJsPage.waitForRequest((request) => request.method() === 'POST')
+                const attackResponse = Promise.race([
+                    noJsPage.waitForResponse((item) => item.request().method() === 'POST').then((response) => ({ response })),
+                    noJsPage.waitForEvent('requestfailed', { predicate: (request) => request.method() === 'POST' })
+                        .then((request) => ({ failure: request.failure()?.errorText })),
+                ])
+                const button = kind === 'opaque' ? noJsPage.frameLocator('iframe').getByRole('button', { name: 'Uji form' })
+                    : noJsPage.getByRole('button', { name: 'Uji form' })
+                await button.click()
+                const attackHeaders = await (await attackRequest).allHeaders()
+                const outcome = await attackResponse
+                assert(attackHeaders.origin === 'null', `Hostile ${kind} form did not exercise literal null Origin`)
+                if (outcome.failure) {
+                    assert(kind === 'opaque' && outcome.failure === 'net::ERR_BLOCKED_BY_LOCAL_NETWORK_ACCESS_CHECKS',
+                        `Unexpected hostile ${kind} network failure`)
+                    opaqueNetworkBlocks++
+                } else {
+                    const rejected = outcome.response
+                    await rejected.finished()
+                    assert(rejected.status() === 419 || (rejected.status() === 303
+                        && ['/checkout/unavailable', `${appOrigin}/checkout/unavailable`].includes((await rejected.allHeaders()).location)),
+                    `Hostile ${kind} form was not rejected`)
+                }
+                assert((await control('state', 'no-js')).logoutAudits === 0, `Hostile ${kind} form revoked the session`)
+                await noJs.addCookies(nativeCookies)
+                await noJsPage.goto(`${appOrigin}/checkout`)
+                await assertCheckoutPage(noJsPage)
+                opaqueAttackInFlight = false
+                hostileForms++
+            }
+        }
+
+        const nativeRequest = noJsPage.waitForRequest((request) => request.method() === 'POST')
+        const nativeResponse = noJsPage.waitForResponse((item) => item.request().method() === 'POST')
+        await noJsPage.getByRole('button', { name: 'Keluar' }).click()
+        const nativeHeaders = await (await nativeRequest).allHeaders()
+        const nativeResult = await nativeResponse
+        await nativeResult.finished()
+        assert(nativeHeaders.origin === 'null', 'Native logout did not exercise literal null Origin')
+        assert(nativeResult.status() === 303, `Native no-JS logout must be 303; got ${nativeResult.status()}`)
+        await noJsPage.waitForURL(`${appOrigin}/checkout/unavailable`)
+        assert((await checkoutCookies(noJs)).length === 0, 'Native no-JS logout did not clear cookies')
+        assert((await control('state', 'no-js')).logoutAudits === 1, 'Native logout did not produce exactly one LOGOUT audit')
+
+        // A stale client replays the old pair and exact old form; it cannot create another logout.
+        const oldCsrf = nativeCookies.find((cookie) => cookie.name === csrfName).value
+        const replayUrl = `${appOrigin}/__browser/replay-logout`
+        syntheticDocuments.set(replayUrl, formDocument(`<input type="hidden" name="_checkout_csrf" value="${oldCsrf}">`))
+        await noJs.addCookies(nativeCookies)
+        await noJsPage.goto(replayUrl)
+        await noJsPage.getByRole('button', { name: 'Uji form' }).click()
+        await noJsPage.waitForURL(`${appOrigin}/checkout/unavailable`)
+        assert((await control('state', 'no-js')).logoutAudits === 1, 'Native replay duplicated the LOGOUT audit')
+        assert((await checkoutCookies(noJs)).length === 0, 'Native replay did not clear stale cookies')
+        assert((await noJs.cookies(appOrigin)).find((cookie) => cookie.name === loginCookieName)?.value === nativeLogin.value,
+            'Native exchange/logout/replay changed the Laravel login cookie byte')
+        await noJsPage.goto(`${appOrigin}/__browser/auth`)
+        assert(await noJsPage.locator('body').innerText() === 'AUTH:1', 'Native logout lost actual Laravel login authority')
+        await drainObservations()
+    } finally {
+        await drainObservations()
+        await noJs.close()
+    }
+    await drainObservations()
+    assert(exchangePosts === 9, 'Browser did not exercise all canonical exchanges')
+    assert(hostileForms === 6, 'Browser did not complete the hostile native forms')
     assert(violations.length === 0, `Browser boundary violations: ${JSON.stringify(violations)}`)
     assert(consoleMessages.length === 0, `Browser console was not clean: ${JSON.stringify(consoleMessages)}`)
     assert(expectedHttpConsole.every((status) => rejectedHttpStatuses.has(status)), 'Unexplained HTTP console error')
-    assert([...safeNetwork].every((value) => [appOrigin, wrongHost, ...sources, foreignOrigin]
+    assert([...safeNetwork].every((value) => [appOrigin, wrongHost, ...sources, foreignOrigin, siblingOrigin]
         .some((origin) => value.startsWith(origin))), 'Network escaped controlled origins')
-
-    // Keep native form acceptance strict and last so independent cases run even if it regresses.
-    const noJs = await page.context().browser().newContext({ javaScriptEnabled: false, ignoreHTTPSErrors: true, serviceWorkers: 'block' })
-    await installInterception(noJs)
-    const noJsPage = await noJs.newPage()
-    const noJsToken = await issue('no-js')
-    await submit(noJsPage, sources[0], noJsToken)
-    await assertCheckoutPage(noJsPage)
-    assert(exchangePosts === 9, 'Browser did not exercise the native form exchange')
-    const nativeRequest = noJsPage.waitForRequest((request) => request.method() === 'POST')
-    const nativeResponse = noJsPage.waitForResponse((response) => response.request().method() === 'POST')
-    await noJsPage.getByRole('button', { name: 'Keluar' }).click()
-    const nativeHeaders = await (await nativeRequest).allHeaders()
-    const nativeStatus = (await nativeResponse).status()
-    assert(nativeStatus === 303,
-        `Native no-JS logout must be 303; got ${nativeStatus}, Origin=${nativeHeaders.origin || 'absent'}; preceding browser cases passed`)
-    await noJsPage.waitForURL(`${appOrigin}/checkout/unavailable`)
-    assert((await checkoutCookies(noJs)).length === 0, 'Native no-JS logout did not clear cookies')
-    await noJs.close()
-    assert(violations.length === 0, `Browser boundary violations: ${JSON.stringify(violations)}`)
 
     return {
         checks: [
@@ -372,11 +479,15 @@ async (page) => {
             'exact host-only Secure HttpOnly Lax checkout cookies and private headers',
             'fixation/replay/history/refresh/multi-tab/recovery fenced',
             'CSRF projection, invalid channels, progressive and no-JS logout',
+            'six foreign/opaque/sibling native forms denied; one LOGOUT audit and real login preserved',
             'expiry and scope revocation clear credentials',
             'wrong origin and host fail closed',
-            'desktop 1280, mobile 390/320, keyboard, console and network clean',
+            'desktop 1280, mobile 390/320, keyboard, no unexpected console/network errors; opaque limits counted',
         ],
         exchangePosts,
+        hostileForms,
+        opaqueNetworkBlocks,
+        expectedSandboxInstrumentationErrors,
         controlledNetworkEntries: safeNetwork.size,
         credentialMaterialRecorded: false,
         screenshotsContainingCredentials: 0,
