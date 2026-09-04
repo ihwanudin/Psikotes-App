@@ -1,5 +1,17 @@
 # Koordinasi task paralel organization-payment
 
+## Bounded inspector and cooperative harness verified locally
+
+Reviewed617ac91 P2 correction and operation lifecycle, peer review retained.
+Root independently ran worker pure64 PASS, real inspector62 PASS (stall0.308s;
+owned target remains live), synthetic lifecycle52cases/161assertions PASS.
+Simulated lifecycle identities are not OS/browser acceptance. Integrated provenance
+5340ef7/50e2800 and harness65ee301/617ac91; benchmark prototype847b6da not integrated.
+Original full default/pre/post remains, lighter runtime cooperative only, no hostile
+writer guarantee; registered-process cleanup still needs external descendant and
+listener verification. No exactrun refresh or checkout runtime performed by root.
+Next requires bounded handshake/performance preflight before full browser matrix.
+
 ## Inspector deadline correction requested
 
 Peer reviewb4b23a8 found P2 unbounded stream_get_contents/proc_close in Windows
