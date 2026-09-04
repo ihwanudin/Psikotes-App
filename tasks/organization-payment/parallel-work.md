@@ -1,5 +1,21 @@
 # Koordinasi task paralel organization-payment
 
+## Checkpoint 2026-09-04 — P14b2 native logout correction
+
+Worker `04f92fe`, `a940b8d`, `6e0faea`, `be47d4d` reviewed and integrated as
+`d88422f`, `d3af006`, `5e11bbb`, `c1963aa`. Root reran 58 P13/P14 tests with
+1,794 assertions in the env-free worker, plus Pint and Node syntax. Integrated
+adapter/test/harness bytes match worker. Browser evidence reviewed with explicit
+opaque-frame LNA/instrumentation limits; see ADR-012 amendment and lane report.
+P14 summary projection and page remain open; no active endpoints or DB changes.
+
+Next backend increment: P14c projection-contract preflight only. Map persisted
+attempt-owned profile/payment/access/consent sources to frontend DRAFT props,
+identify mismatches and fail-closed states, propose typed internal summary and
+negative test matrix before coding the multi-domain projection. Keep frontend
+waiting for that reviewed contract; no P15, page/public route, source activation
+or changes to shared canonical docs from workers.
+
 ## Keputusan dan status
 
 Pengguna menyetujui tiga chat kerja dan koordinator pada 2026-08-31 melalui

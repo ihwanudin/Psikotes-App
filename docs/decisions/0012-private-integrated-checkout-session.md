@@ -1,5 +1,37 @@
 # ADR-012: Sesi privat checkout terintegrasi
 
+## Amendment 2026-09-04 — native logout Origin suppression
+
+Accepted locally after review of worker `6e0faea`/`be47d4d`, integrated as
+`5e11bbb`/`c1963aa`. This section supersedes the exact-Origin-only rule below
+**only for POST /checkout/logout**; exchange and other mutations remain unchanged.
+WHATWG Fetch specifies literal `Origin: null` for native non-CORS POST under
+`no-referrer`: https://fetch.spec.whatwg.org/#append-a-request-origin-header.
+
+On the exact HTTPS destination, a single literal-null Origin may enter native
+logout only with a verified active checkout principal, both persisted cookie
+digests, and exactly one canonical bounded URL-encoded explicit CSRF form field
+matching the delivery secret. Header-only or dual-channel CSRF, missing/empty/
+duplicate/list/foreign Origin, wrong credentials and other paths/methods fail
+closed. Null never becomes trusted origin or a CORS allowlist entry. For this
+exception each Fetch Metadata field, if present, must be a single exact value:
+Site=same-origin, Mode=navigate, Dest=document. Absence relies on the full
+session-bound secret proof; contradictory or malformed values are rejected.
+Existing lifecycle revalidation, replay, audit and cookie clear rules remain.
+
+Root independently reran P13/P14 tests in the worker's env-free disposable test
+setup: 58 tests / 1,794 assertions, Pint and Node syntax passed. Integrated
+middleware/tests/harness are byte-identical to that tested worker revision.
+Browser evidence was reviewed, not independently rerun by root: native 303,
+login preservation and one LOGOUT audit passed. Four hostile forms reached HTTP
+denial; two opaque forms were blocked by Chromium local-network protection
+before HTTP, so they do not prove server denial. Two known Playwright opaque
+frame instrumentation errors are explicitly counted. PostgreSQL transaction/RLS
+code did not change and its tests were not rerun. Detailed evidence and remaining
+scratch cleanup limitation: tasks/organization-payment/reports/backend-p14b2-browser-red.md.
+This accepts the bounded adapter fix, not all P14 summary/page acceptance or
+production/source activation.
+
 ## Status
 
 Accepted untuk implementasi lokal bertahap setelah koreksi alur cookie
