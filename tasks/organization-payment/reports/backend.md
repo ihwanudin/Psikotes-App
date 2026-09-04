@@ -4887,3 +4887,99 @@ Explicit limits and remaining checkpoints:
   is closed on SQLite evidence alone. No P15/frontend/full-page wiring, source/gate
   activation, .env/active DB, real provider/notifier, new agent/task, deploy or push.
 STOP for review before any next increment.
+
+## P14 summary composition PostgreSQL evidence — 2026-09-04
+
+Tests/report-only increment after coordinator review of pending summary commits
+c78b60263f7e883b72905a4eb07d7b4a82b8f2d6 and
+9a820d3dd4a291d2e4b54db6b2ac36fb0d0119de. No production code, shared runner,
+bootstrap, schema/RLS policy, configuration or source flag was changed.
+
+Extended existing CheckoutSessionLifecycleConcurrencyTest with ten summary tests,
+reusing its fixture and pcntl/socket worker helpers. New synchronization asserts
+both pg_stat_activity.wait_event_type=Lock and exact pg_blocking_pids linkage to
+the known competing backend. Each process verifies psikotes_runtime without
+superuser/BYPASSRLS. Real readSummary is entered using persisted selector+CSRF
+credentials outside any ambient transaction/context; complete serialized DTOs are
+returned from workers and checked in the parent, rather than substituting a
+profile/payment-only projection. Summary observations reject any billing FOR UPDATE
+query after lifecycle locks and check context/transaction restoration on return.
+
+Evidence added:
+- Recovery-first and client-revoke-first commit while summary waits on the exact
+  organization owner; old credentials cannot project. Revoke replay remains generic
+  and writes only one terminal audit.
+- Actual FinalizeAssessmentBill commit makes the waiting summary paid while a
+  partial profile still leaves access locked. Real finalizer rollback leaves pending
+  allocations and no paid/activation/outbox/audit leakage. Reader-first summary
+  completes pending/locked while finalizer waits, then a later summary is paid/locked.
+- Separate identity tests first create real synthetic objects through
+  StoreIdentityEvidence and the installed local ManualReviewIdentityMatcher, then
+  seed a clearly synthetic old matching revision and use the real finalizer to
+  activate it. Reader-first readSummary pauses after verification SELECT: the actual
+  replacement worker is blocked on the participant mutex, old summary stays
+  paid/ready, then subsequent summary is paid/locked. Writer-first pauses the real
+  action at participant FOR UPDATE: the credential reader waits on that writer and
+  sees only committed pending identity, paid/locked. No alternate identity writer,
+  HTTP upload path, remote matcher or reader predicate is substituted.
+- Fake identity storage uses a unique smry-* disk on runner tmpfs, with its exact
+  /workspace/storage/framework/testing/disks/smry-* location asserted. Matcher/disk
+  bindings are restored and temporary objects cleaned in finally; database fixture
+  cleanup now includes added identity/consent/entitlement/activation rows.
+- Real organization finalization of a two-participant bill (200 total) serializes
+  against readSummary and exposes only own amount 100, not the other participant's
+  marked private profile or invoice. Exact payment/top-level keys and static labels
+  are asserted. No total/count/foreign profile or credential is projected.
+- Unexpected final entitlement-query exception observes the idle update at service
+  transaction level 1, propagates, then the entire session row equals its prior
+  committed version. This fixture is genuinely paid/ready before injection.
+- app.timezone and PHP runtime timezone are UTC; PostgreSQL session timezone is
+  UTC-equivalent. Payment timestamps representing the same instant with +07:00 and
+  -04:00 offsets remain paid/ready with current verified identity. This tests actual
+  PostgreSQL timestamp behavior under the existing UTC policy, not global timezone
+  mutation support.
+
+Actual runs (unmodified tools/testing/run-org-postgres.ps1):
+1. Run e22c0ed4f4634119ae0e55783fb77be9: 367 tests / 3,053 assertions,
+   one failure. Late-error test initially had a PROVISIONED attempt, so the gate
+   correctly denied before its entitlement-query injection point. The expected
+   barrier was not reached. This was a test fixture error, not an application defect.
+   Replaced it with the already available real-finalizer paid/ready fixture; no
+   production predicate or harness policy was changed. Added the collective test.
+2. Final run c716a8a9550a47c9a63a9aea1fd122e5: all 368 tests / 3,109 assertions
+   passed, 1m30.531s PHPUnit time, 75MB. Full disposable suite includes ten new
+   summary tests and existing finalizer/identity/lifecycle/RLS regressions.
+
+Both runs completed runner cleanup. Independent Docker label queries afterwards
+reported 0 containers and 0 networks for EACH exact run ID. Network was internal,
+no ports published; database/storage/cache used disposable tmpfs, workspace bind
+read-only. No active application container or database was targeted.
+
+SQLite summary composer+lifecycle regression also passed 38 tests / 231 assertions
+using phpunit.organization-payment.xml and --do-not-cache-result. Full application
+PHPStan passed (0 errors); Pint --test and php -l on the changed PG test passed;
+git diff --check passed. A subsequent PowerShell multi-file hash invocation had an
+argument-binding error after the successful SQLite run; corrected hash-only command
+succeeded. No test result was inferred from that shell exit code.
+
+Final SHA-256 evidence:
+- tests/Postgres/CheckoutSessionLifecycleConcurrencyTest.php:
+  6611ac75b1a7e3474747f2ab75f388c485e52b6ff92b7cc8ca421ea4c9509d50
+- Unchanged app/Actions/Integrations/CheckoutSessionLifecycle.php:
+  128c1a8c96cf51bb2fb638e524c7bc32e69e2f9b8cfa3d1b59ba7ee5677a7418
+- Unchanged app/Services/Integrations/CheckoutSummaryComposer.php:
+  fe71be003fda9eed11b426bfb462422d6a8ad1a669cadc8f956b3151157093b3
+- Unchanged app/Data/Integrations/CheckoutSummary.php:
+  eb41ed26fb85d320d34102072d1d6dccd50864a6fca13896fdc7e60f0d6d81f0
+
+Scope/bounds: this supplies PostgreSQL composition evidence for review; it does not
+close public P14/HTTP/browser/P15 acceptance. Collective PG test has TWO participants,
+not ten; SQLite ten-item privacy evidence remains separate. Finalizer rollback race
+uses a partial-profile fixture; complete-eligibility finalization is exercised in the
+identity race setup, while the existing finalizer suite covers its atomic core.
+The previously failed mid-call Pacific/Honolulu probe remains documented above;
+coordinator explicitly accepted stable configured UTC for this increment. No claim
+of arbitrary process-wide timezone changes is made. No application defect was found
+in the final test matrix. Baseline overlays and ignored genuine-build copy preserved.
+No .env/active data, real provider/notifier, new agent/task, frontend, deploy or push.
+STOP for coordinator review of the pending summary code and this evidence commit.

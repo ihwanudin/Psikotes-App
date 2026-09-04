@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace Tests\Postgres;
 
+use App\Actions\Identity\StoreIdentityEvidence;
 use App\Actions\Integrations\CheckoutSessionLifecycle;
 use App\Actions\Integrations\EstablishCheckoutSession;
 use App\Actions\Integrations\InvalidCheckoutSession;
 use App\Actions\Integrations\IssueCheckoutHandoff;
 use App\Actions\Payments\FinalizeAssessmentBill;
+use App\Contracts\IdentityMatcher;
 use App\Data\Integrations\CheckoutHandoffIssueInput;
 use App\Data\Integrations\CheckoutSessionExchangeInput;
 use App\Data\Integrations\CheckoutSessionMutationCredentials;
@@ -22,11 +24,16 @@ use App\Models\AssessmentParticipant;
 use App\Models\CheckoutSession;
 use App\Models\IntegrationClient;
 use App\Models\TestPackage;
+use App\Registration\ConsentDocument;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
+use App\Services\Identity\ManualReviewIdentityMatcher;
 use App\Services\Payments\AssessmentPriceSnapshot;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
@@ -72,6 +79,12 @@ final class CheckoutSessionLifecycleConcurrencyTest extends TestCase
     protected function tearDown(): void
     {
         app(RlsContextRunner::class)->runAsService(function (): void {
+            DB::table('outbox_messages')->where('topic', 'assessment.activation')
+                ->where('aggregate_id', (string) $this->fixture['attempt'])->delete();
+            DB::table('assessment_entitlements')->where('assessment_participant_id', $this->fixture['attempt'])->delete();
+            foreach (['consent_records', 'identity_verifications', 'identity_evidence'] as $table) {
+                DB::table($table)->where('participant_id', $this->fixture['participant'])->delete();
+            }
             if ($this->payment !== null) {
                 DB::table('audit_logs')->where('subject_type', AssessmentBill::class)
                     ->where('subject_id', (string) $this->payment['bill'])->delete();
@@ -313,6 +326,363 @@ final class CheckoutSessionLifecycleConcurrencyTest extends TestCase
             $this->stopWorkers($workers);
         }
         $this->assertSame(['state' => 'paid', 'amount' => 100], $this->paymentDescriptor());
+    }
+
+    public function test_summary_waits_for_recovery_and_scope_revoke_before_any_projection(): void
+    {
+        $workers = $this->startWorkers([fn (): array => $this->summaryDescriptor()]);
+        try {
+            $pid = $this->workerBackendIds($workers)[0];
+            app(RlsContextRunner::class)->runAsService(function () use ($workers, $pid): void {
+                DB::table('branches')->where('id', $this->fixture['organization'])->lockForUpdate()->first();
+                fwrite($workers[0]['socket'], "go\n");
+                $this->assertSummaryBlockedBy($pid, DB::selectOne('SELECT pg_backend_pid() AS pid')->pid);
+                $this->recover();
+            });
+            $this->assertSame([['invalid' => true]], $this->workerResults($workers));
+        } finally {
+            $this->stopWorkers($workers);
+        }
+    }
+
+    public function test_summary_scope_revocation_wait_is_observed_and_terminalized_once(): void
+    {
+        $workers = $this->startWorkers([fn (): array => $this->summaryDescriptor()]);
+        try {
+            $pid = $this->workerBackendIds($workers)[0];
+            app(RlsContextRunner::class)->runAsService(function () use ($workers, $pid): void {
+                DB::table('branches')->where('id', $this->fixture['organization'])->lockForUpdate()->first();
+                fwrite($workers[0]['socket'], "go\n");
+                $this->assertSummaryBlockedBy($pid, DB::selectOne('SELECT pg_backend_pid() AS pid')->pid);
+                DB::table('integration_clients')->where('id', $this->fixture['client'])->update(['enabled' => false]);
+            });
+            $this->assertSame([['invalid' => true]], $this->workerResults($workers));
+            $this->assertSame(['invalid' => true], $this->summaryDescriptor());
+            app(RlsContextRunner::class)->runAsService(fn () => $this->assertSame(1, $this->auditCount('checkout_session.revoked')));
+        } finally {
+            $this->stopWorkers($workers);
+        }
+    }
+
+    public function test_summary_finalizer_commit_is_paid_but_partial_profile_still_locked(): void
+    {
+        $this->preparePayment();
+        $workers = $this->startWorkers([fn (): array => $this->summaryDescriptor()]);
+        try {
+            $pid = $this->workerBackendIds($workers)[0];
+            app(RlsContextRunner::class)->runAsService(function () use ($workers, $pid): void {
+                DB::table('branches')->where('id', $this->fixture['organization'])->lockForUpdate()->first();
+                fwrite($workers[0]['socket'], "go\n");
+                $this->assertSummaryBlockedBy($pid, DB::selectOne('SELECT pg_backend_pid() AS pid')->pid);
+                $this->finalizePayment();
+            });
+            $this->assertSummary($this->workerResults($workers)[0], 'paid', 'locked');
+        } finally {
+            $this->stopWorkers($workers);
+        }
+    }
+
+    public function test_summary_finalizer_rollback_cannot_leak_paid_allocation_or_activation(): void
+    {
+        $this->preparePayment();
+        $workers = $this->startWorkers([fn (): array => $this->summaryDescriptor()]);
+        try {
+            $pid = $this->workerBackendIds($workers)[0];
+            try {
+                app(RlsContextRunner::class)->runAsService(function () use ($workers, $pid): void {
+                    DB::table('branches')->where('id', $this->fixture['organization'])->lockForUpdate()->first();
+                    fwrite($workers[0]['socket'], "go\n");
+                    $this->assertSummaryBlockedBy($pid, DB::selectOne('SELECT pg_backend_pid() AS pid')->pid);
+                    $this->finalizePayment();
+                    throw new RuntimeException('Synthetic summary finalizer rollback');
+                });
+            } catch (RuntimeException $error) {
+                $this->assertSame('Synthetic summary finalizer rollback', $error->getMessage());
+            }
+            $this->assertSummary($this->workerResults($workers)[0], 'pending', 'locked');
+            app(RlsContextRunner::class)->runAsService(function (): void {
+                $this->assertNull(DB::table('assessment_bill_items')->where('bill_id', $this->payment['bill'])->value('settled_at'));
+                $this->assertSame(0, DB::table('outbox_messages')->where('aggregate_id', (string) $this->fixture['attempt'])->count());
+                $this->assertSame(0, DB::table('audit_logs')->where('subject_type', AssessmentBill::class)->where('subject_id', (string) $this->payment['bill'])->count());
+            });
+        } finally {
+            $this->stopWorkers($workers);
+        }
+    }
+
+    public function test_summary_reader_first_finishes_before_finalizer_without_bill_lock_inversion(): void
+    {
+        $this->preparePayment();
+        $workers = $this->startWorkers([function (): array {
+            $this->finalizePayment();
+
+            return ['settled' => true];
+        }]);
+        try {
+            $pid = $this->workerBackendIds($workers)[0];
+            $this->duringSummaryQuery('from "participants"', function () use ($workers, $pid): void {
+                fwrite($workers[0]['socket'], "go\n");
+                $this->assertSummaryBlockedBy($pid, DB::selectOne('SELECT pg_backend_pid() AS pid')->pid);
+            }, fn () => $this->assertSummary($this->summaryDescriptor(), 'pending', 'locked'));
+            $this->assertSame([['settled' => true]], $this->workerResults($workers));
+            $this->assertSummary($this->summaryDescriptor(), 'paid', 'locked');
+        } finally {
+            $this->stopWorkers($workers);
+        }
+    }
+
+    public function test_summary_actual_identity_reader_first_keeps_complete_old_revision(): void
+    {
+        $this->withSummaryIdentity(function (): void {
+            $workers = $this->startWorkers([fn (): array => ['outcome' => $this->replaceSummaryIdentity()]]);
+            try {
+                $pid = $this->workerBackendIds($workers)[0];
+                $this->duringSummaryQuery('from "identity_verifications"', function () use ($workers, $pid): void {
+                    fwrite($workers[0]['socket'], "go\n");
+                    $this->assertSummaryBlockedBy($pid, DB::selectOne('SELECT pg_backend_pid() AS pid')->pid);
+                }, fn () => $this->assertSummary($this->summaryDescriptor(), 'paid', 'ready'));
+                $this->assertSame([['outcome' => 'pending']], $this->workerResults($workers));
+                $this->assertSummary($this->summaryDescriptor(), 'paid', 'locked');
+            } finally {
+                $this->stopWorkers($workers);
+            }
+        });
+    }
+
+    public function test_summary_actual_identity_writer_first_observes_only_committed_pending_revision(): void
+    {
+        $this->withSummaryIdentity(function (): void {
+            $workers = $this->startWorkers([fn (): array => $this->summaryDescriptor()]);
+            try {
+                $pid = $this->workerBackendIds($workers)[0];
+                $this->duringSummaryQuery('from "participants"', function () use ($workers, $pid): void {
+                    fwrite($workers[0]['socket'], "go\n");
+                    $this->assertSummaryBlockedBy($pid, DB::selectOne('SELECT pg_backend_pid() AS pid')->pid);
+                }, fn () => $this->assertSame('pending', $this->replaceSummaryIdentity()));
+                $this->assertSummary($this->workerResults($workers)[0], 'paid', 'locked');
+            } finally {
+                $this->stopWorkers($workers);
+            }
+        });
+    }
+
+    public function test_summary_late_failure_rolls_back_observed_idle_update_with_clean_context(): void
+    {
+        $this->withSummaryIdentity(function (): void {
+            $before = app(RlsContextRunner::class)->runAsService(function (): string {
+                DB::table('checkout_sessions')->where('id', $this->fixture['session'])->update([
+                    'idle_expires_at' => DB::raw("clock_timestamp() + interval '5 minutes'")]);
+
+                return DB::table('checkout_sessions')->where('id', $this->fixture['session'])->get()->toJson();
+            });
+            try {
+                $this->duringSummaryQuery('from "assessment_entitlements"', function () use ($before): void {
+                    $this->assertSame('service', app(RlsContextRunner::class)->current()?->role);
+                    $this->assertSame(1, DB::transactionLevel());
+                    $this->assertNotSame($before, DB::table('checkout_sessions')->where('id', $this->fixture['session'])->get()->toJson());
+                    throw new RuntimeException('Synthetic summary late failure');
+                }, fn () => $this->summaryDescriptor());
+                $this->fail('Late failure was swallowed.');
+            } catch (RuntimeException $error) {
+                $this->assertSame('Synthetic summary late failure', $error->getMessage());
+            }
+            $this->assertSame($before, app(RlsContextRunner::class)->runAsService(fn (): string => DB::table('checkout_sessions')->where('id', $this->fixture['session'])->get()->toJson()));
+        });
+    }
+
+    public function test_summary_configured_utc_preserves_offset_payment_and_identity_instants(): void
+    {
+        $this->assertSame('UTC', config('app.timezone'));
+        $this->assertSame('UTC', date_default_timezone_get());
+        $this->assertContains(DB::selectOne('SHOW TIMEZONE')->TimeZone, ['UTC', 'Etc/UTC', '+00:00']);
+        $this->withSummaryIdentity(function (): void {
+            app(RlsContextRunner::class)->runAsService(function (): void {
+                $at = CarbonImmutable::parse(DB::selectOne('SELECT clock_timestamp() AS at')->at)->subMinute();
+                DB::table('assessment_bills')->where('id', $this->payment['bill'])->update(['paid_at' => $at->setTimezone('+07:00')->format('Y-m-d H:i:sP')]);
+                DB::table('assessment_bill_items')->where('bill_id', $this->payment['bill'])->update(['settled_at' => $at->setTimezone('-04:00')->format('Y-m-d H:i:sP')]);
+            });
+            $this->assertSummary($this->summaryDescriptor(), 'paid', 'ready');
+        });
+    }
+
+    public function test_summary_collective_finalizer_wait_exposes_only_own_amount_and_no_foreign_profile(): void
+    {
+        $this->preparePayment();
+        [$otherParticipant, $otherAttempt, $otherCharge] = app(RlsContextRunner::class)->runAsService(function (): array {
+            $item = (array) DB::table('assessment_bill_items')->where('bill_id', $this->payment['bill'])->sole();
+            DB::table('assessment_bill_items')->where('bill_id', $this->payment['bill'])->delete();
+            DB::table('assessment_participants')->where('id', $this->fixture['attempt'])->update([
+                'funding_mode' => 'INVOICED_TO_ORGANIZATION',
+                'metadata' => '{"checkout_contract_version":"checkout-v2","checkout_initial_funding_mode":null}']);
+            DB::table('assessment_charges')->where('assessment_participant_id', $this->fixture['attempt'])->update(['payer_type' => 'organization']);
+            DB::table('assessment_bills')->where('id', $this->payment['bill'])->update(['payer_type' => 'organization',
+                'payer_participant_id' => null, 'amount' => 200, 'item_count' => 2, 'invoice_url' => 'https://synthetic.invalid/PRIVATE_INVOICE']);
+            DB::table('assessment_bill_items')->insert(array_replace($item, ['payer_type' => 'organization', 'payer_participant_id' => null]));
+            $otherParticipant = DB::table('participants')->insertGetId(['branch_id' => $this->fixture['organization'],
+                'referral_branch_id' => $this->fixture['organization'], 'referral_source' => 'manual', 'full_name' => 'PRIVATE_OTHER_MEMBER']);
+            $other = AssessmentParticipant::findOrFail($this->fixture['attempt'])->replicate();
+            $key = (string) Str::ulid();
+            $other->fill(['participant_id' => $otherParticipant, 'assessment_attempt_id' => $key,
+                'external_candidate_id' => $key, 'idempotency_key' => $key,
+                'request_hash' => hash('sha256', $key), 'logical_assessment_key' => hash('sha256', 'logical'.$key)])->save();
+            $charge = AssessmentCharge::where('assessment_participant_id', $this->fixture['attempt'])->sole()->replicate();
+            $charge->fill(['assessment_participant_id' => $other->id, 'participant_id' => $otherParticipant])->save();
+            unset($item['id']);
+            DB::table('assessment_bill_items')->insert(array_replace($item, ['charge_id' => $charge->id, 'participant_id' => $otherParticipant,
+                'payer_type' => 'organization', 'payer_participant_id' => null]));
+
+            return [$otherParticipant, $other->id, $charge->id];
+        });
+        $workers = $this->startWorkers([fn (): array => $this->summaryDescriptor()]);
+        try {
+            $pid = $this->workerBackendIds($workers)[0];
+            app(RlsContextRunner::class)->runAsService(function () use ($workers, $pid): void {
+                DB::table('branches')->where('id', $this->fixture['organization'])->lockForUpdate()->first();
+                fwrite($workers[0]['socket'], "go\n");
+                $this->assertSummaryBlockedBy($pid, DB::selectOne('SELECT pg_backend_pid() AS pid')->pid);
+                $result = app(FinalizeAssessmentBill::class)->execute(new PaymentEvent('summary-collective', $this->payment['gateway'],
+                    $this->payment['reference'], PaymentStatus::Paid, now()->startOfSecond(), 200, 'IDR'));
+                $this->assertSame(['decision' => 'settled', 'allocationCount' => 2, 'activatedAttemptCount' => 0], $result);
+            });
+            $summary = $this->workerResults($workers)[0];
+            $this->assertSummary($summary, 'paid', 'locked');
+            $this->assertSame('organization', $summary['payment']['payer']);
+            $this->assertSame('P14a3 Synthetic', $summary['payment']['organizationName']);
+            $this->assertSame(['payer', 'state', 'amountIdr', 'amountSource', 'consultationRequested', 'actionAvailable', 'organizationName'], array_keys($summary['payment']));
+        } finally {
+            $this->stopWorkers($workers);
+            app(RlsContextRunner::class)->runAsService(function () use ($otherParticipant, $otherAttempt, $otherCharge): void {
+                DB::table('assessment_bill_items')->where('charge_id', $otherCharge)->delete();
+                DB::table('assessment_charges')->where('id', $otherCharge)->delete();
+                DB::table('assessment_participants')->where('id', $otherAttempt)->delete();
+                DB::table('participants')->where('id', $otherParticipant)->delete();
+            });
+        }
+    }
+
+    private function summaryDescriptor(): array
+    {
+        $this->configure();
+        $connection = DB::connection();
+        $previous = $connection->getEventDispatcher();
+        $events = clone $previous;
+        $connection->setEventDispatcher($events);
+        $events->listen(QueryExecuted::class, function (QueryExecuted $query): void {
+            if (str_contains($query->sql, 'for update') && preg_match('/assessment_(bills|bill_items|charges)/', $query->sql)) {
+                throw new RuntimeException('Summary introduced a billing lock after lifecycle locks.');
+            }
+        });
+        try {
+            return app(CheckoutSessionLifecycle::class)->readSummary(new CheckoutSessionMutationCredentials(
+                $this->fixture['selector'], $this->fixture['csrf']))->toArray();
+        } catch (InvalidCheckoutSession) {
+            return ['invalid' => true];
+        } finally {
+            $connection->setEventDispatcher($previous);
+            if (app(RlsContextRunner::class)->current() !== null || DB::transactionLevel() !== 0) {
+                throw new RuntimeException('Summary leaked context or transaction.');
+            }
+        }
+    }
+
+    private function assertSummary(array $data, string $payment, string $access): void
+    {
+        $this->assertSame(['contractVersion', 'sourceName', 'branchName', 'packageName', 'packageSource', 'attemptLabel',
+            'profile', 'identityMessage', 'payment', 'access', 'consents'], array_keys($data));
+        $this->assertCount(7, $data['profile']);
+        $this->assertSame('P14a3 Synthetic', $data['branchName']);
+        $this->assertSame('P14a3 Synthetic', $data['packageName']);
+        $this->assertSame('charge_snapshot', $data['packageSource']);
+        $this->assertSame(100, $data['payment']['amountIdr']);
+        $this->assertSame($payment, $data['payment']['state']);
+        $this->assertSame($access, $data['access']['state']);
+        $this->assertSame([['testType' => 'ist', 'state' => $access]], $data['access']['tests']);
+        $this->assertFalse($data['payment']['actionAvailable']);
+        $this->assertFalse($data['access']['startAvailable']);
+        $this->assertSame(['state' => 'not_applicable'], $data['consents']['dass']);
+        $json = json_encode($data, JSON_THROW_ON_ERROR);
+        foreach ([$this->fixture['selector'], $this->fixture['csrf'], $this->fixture['attemptPublicId'],
+            $this->fixture['sourceSystem'], 'synthetic-only', 'PRIVATE_OTHER_MEMBER', 'PRIVATE_INVOICE'] as $forbidden) {
+            $this->assertStringNotContainsString($forbidden, $json);
+        }
+    }
+
+    private function assertSummaryBlockedBy(int $pid, int $blocker): void
+    {
+        $this->assertWorkerWaitsOnLock($pid);
+        $row = DB::selectOne('SELECT ? = ANY(pg_blocking_pids(?)) AS exact_blocker', [$blocker, $pid]);
+        $this->assertTrue($row->exact_blocker);
+    }
+
+    private function duringSummaryQuery(string $needle, callable $barrier, callable $operation): void
+    {
+        $connection = DB::connection();
+        $previous = $connection->getEventDispatcher();
+        $events = clone $previous;
+        $connection->setEventDispatcher($events);
+        $armed = true;
+        $events->listen(QueryExecuted::class, function (QueryExecuted $query) use (&$armed, $needle, $barrier): void {
+            if ($armed && str_starts_with($query->sql, 'select') && str_contains($query->sql, $needle)) {
+                $armed = false;
+                $barrier();
+            }
+        });
+        try {
+            $operation();
+            $this->assertFalse($armed, 'Expected query barrier was not reached.');
+        } finally {
+            $connection->setEventDispatcher($previous);
+        }
+    }
+
+    private function withSummaryIdentity(callable $test): void
+    {
+        $disk = 'smry-'.strtolower((string) Str::ulid());
+        $previousDisk = config('identity.disk');
+        $previousMatcher = app(IdentityMatcher::class);
+        $fake = Storage::fake($disk);
+        $this->assertStringStartsWith('/workspace/storage/framework/testing/disks/smry-', $fake->path(''));
+        config()->set('identity.disk', $disk);
+        app()->instance(IdentityMatcher::class, new ManualReviewIdentityMatcher);
+        try {
+            $this->preparePayment();
+            $this->replaceSummaryIdentity();
+            app(RlsContextRunner::class)->runAsService(function (): void {
+                $at = CarbonImmutable::parse(DB::selectOne('SELECT clock_timestamp() AS at')->at)->subSeconds(5);
+                DB::table('participants')->where('id', $this->fixture['participant'])->update([
+                    'gender' => 'male', 'birth_date' => '2000-01-01', 'education_level' => 'SMA_SMK', 'intended_field' => 'UMUM']);
+                $document = ConsentDocument::for('psychotest');
+                DB::table('consent_records')->insert(['participant_id' => $this->fixture['participant'], 'consent_type' => 'psychotest',
+                    'status' => 'accepted', 'document_version' => $document->version, 'document_hash' => $document->hash, 'consented_at' => $at]);
+                DB::table('identity_verifications')->where('participant_id', $this->fixture['participant'])->update([
+                    'matcher' => 'synthetic-old-match', 'outcome' => 'match', 'checked_at' => $at]);
+                DB::table('identity_evidence')->where('participant_id', $this->fixture['participant'])->update(['updated_at' => $at]);
+            });
+            $result = app(FinalizeAssessmentBill::class)->execute(new PaymentEvent('summary-paid', $this->payment['gateway'],
+                $this->payment['reference'], PaymentStatus::Paid, now()->startOfSecond(), 100, 'IDR'));
+            $this->assertSame(1, $result['activatedAttemptCount']);
+            $this->assertSummary($this->summaryDescriptor(), 'paid', 'ready');
+            $test();
+        } finally {
+            Storage::disk($disk)->deleteDirectory('/');
+            Storage::forgetDisk($disk);
+            config()->set('identity.disk', $previousDisk);
+            app()->instance(IdentityMatcher::class, $previousMatcher);
+        }
+    }
+
+    private function replaceSummaryIdentity(): string
+    {
+        $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1cAAAAASUVORK5CYII=', true);
+        $this->assertIsString($png);
+        $result = app(StoreIdentityEvidence::class)->handle($this->fixture['participant'],
+            UploadedFile::fake()->createWithContent('summary-document.png', $png),
+            UploadedFile::fake()->createWithContent('summary-selfie.png', $png));
+        if (app(RlsContextRunner::class)->current() !== null || DB::transactionLevel() !== 0) {
+            throw new RuntimeException('Identity replacement leaked context.');
+        }
+
+        return $result->outcome;
     }
 
     /** @return array{state:string,amount:int|null} */
