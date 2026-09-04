@@ -9,6 +9,7 @@ use App\Actions\Integrations\EstablishCheckoutSession;
 use App\Actions\Integrations\InvalidCheckoutSession;
 use App\Actions\Integrations\IssueCheckoutHandoff;
 use App\Data\Integrations\CheckoutHandoffIssueInput;
+use App\Data\Integrations\CheckoutPaymentFacts;
 use App\Data\Integrations\CheckoutProfile;
 use App\Data\Integrations\CheckoutSessionExchangeInput;
 use App\Data\Integrations\CheckoutSessionMutationCredentials;
@@ -494,6 +495,82 @@ final class CheckoutSessionLifecycleTest extends OrganizationPaymentTestCase
             }
         } finally {
             Date::setTestNow();
+        }
+    }
+
+    public function test_payment_read_is_credential_only_and_has_no_catalog_price_or_business_mutation(): void
+    {
+        $fixture = $this->established();
+        $method = new ReflectionMethod(CheckoutSessionLifecycle::class, 'readPayment');
+        $this->assertCount(1, $method->getParameters());
+        $this->assertSame(CheckoutSessionMutationCredentials::class, (string) $method->getParameters()[0]->getType());
+        $this->assertSame(CheckoutPaymentFacts::class, (string) $method->getReturnType());
+        DB::table('branches')->where('id', $fixture['organization'])->update(['allowed_payer_types' => '[]']);
+        $before = $this->profileBusinessSnapshot();
+        $facts = app(CheckoutSessionLifecycle::class)->readPayment(new CheckoutSessionMutationCredentials($fixture['selector'], $fixture['csrf']));
+        $this->assertSame('unpaid', $facts->state);
+        $this->assertNull($facts->amountIdr);
+        $this->assertNull($facts->consultationRequested);
+        $this->assertFalse($facts->actionAvailable);
+        $this->assertSame($before, $this->profileBusinessSnapshot());
+        $this->assertNull(app(RlsContextRunner::class)->current());
+        $this->assertSame(0, DB::transactionLevel());
+    }
+
+    public function test_payment_read_revalidates_credentials_scope_and_recovery(): void
+    {
+        $fixture = $this->established();
+        $other = $this->established();
+        foreach (['', $other['csrf']] as $csrf) {
+            try {
+                app(CheckoutSessionLifecycle::class)->readPayment(new CheckoutSessionMutationCredentials($fixture['selector'], $csrf));
+                $this->fail('Wrong payment credential pair accepted.');
+            } catch (InvalidCheckoutSession $exception) {
+                $this->assertSame('CHECKOUT_SESSION_INVALID', $exception->getMessage());
+            }
+        }
+        $this->hydrate($fixture['selector']);
+        app(RlsContextRunner::class)->runAsService(fn () => app(IssueCheckoutHandoff::class)
+            ->execute(new CheckoutHandoffIssueInput(IntegrationClient::findOrFail($fixture['client']),
+                $fixture['attemptPublicId'], IntegrationSource::findOrFail($fixture['source'])->source_system,
+                'ih1_'.bin2hex(random_bytes(16)), CheckoutHandoffIntent::Recovery)));
+        $this->expectException(InvalidCheckoutSession::class);
+        app(CheckoutSessionLifecycle::class)->readPayment(new CheckoutSessionMutationCredentials($fixture['selector'], $fixture['csrf']));
+    }
+
+    public function test_payment_reader_failure_rolls_back_idle_and_restores_context(): void
+    {
+        $fixture = $this->established();
+        $this->ageProfileSession($fixture['session']);
+        DB::table('assessment_participants')->where('id', $fixture['attempt'])->update([
+            'metadata' => '{"checkout_contract_version":"checkout-v2"}',
+        ]);
+        $before = DB::table('checkout_sessions')->get()->toJson();
+        try {
+            app(CheckoutSessionLifecycle::class)->readPayment(new CheckoutSessionMutationCredentials($fixture['selector'], $fixture['csrf']));
+            $this->fail('Missing initial snapshot projected.');
+        } catch (DomainException $exception) {
+            $this->assertSame('CHECKOUT_PAYMENT_UNAVAILABLE', $exception->getMessage());
+        }
+        $this->assertSame($before, DB::table('checkout_sessions')->get()->toJson());
+        $this->assertNull(app(RlsContextRunner::class)->current());
+        $this->assertSame(0, DB::transactionLevel());
+    }
+
+    public function test_payment_read_rejects_ambient_context_and_transaction_without_elevation(): void
+    {
+        $fixture = $this->established();
+        foreach ([null, new RlsContext('service'), new RlsContext('super_admin'),
+            new RlsContext('participant', $fixture['organization'], $fixture['participant'])] as $context) {
+            try {
+                $call = fn () => app(CheckoutSessionLifecycle::class)->readPayment(new CheckoutSessionMutationCredentials($fixture['selector'], $fixture['csrf']));
+                $context === null ? DB::transaction($call) : app(RlsContextRunner::class)->run($context, $call);
+                $this->fail('Ambient payment read accepted.');
+            } catch (LogicException $exception) {
+                $this->assertSame('Checkout session lifecycle owns its service transaction.', $exception->getMessage());
+            }
+            $this->assertNull(app(RlsContextRunner::class)->current());
+            $this->assertSame(0, DB::transactionLevel());
         }
     }
 

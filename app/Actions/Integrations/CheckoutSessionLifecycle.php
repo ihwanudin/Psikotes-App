@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace App\Actions\Integrations;
 
+use App\Data\Integrations\CheckoutPaymentFacts;
 use App\Data\Integrations\CheckoutProfile;
 use App\Data\Integrations\CheckoutSessionMutationCredentials;
 use App\Data\Integrations\CheckoutSessionPrincipal;
 use App\Data\Integrations\CheckoutSessionSelector;
+use App\Enums\CheckoutSessionOperation;
 use App\Models\AssessmentParticipant;
 use App\Models\Branch;
 use App\Models\CheckoutHandoff;
@@ -19,6 +21,7 @@ use App\Models\TestPackage;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
 use App\Services\Integrations\CheckoutHandoffHistoryValidator;
+use App\Services\Integrations\CheckoutPaymentFactsReader;
 use App\Services\Integrations\CheckoutProfileMapper;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -40,6 +43,7 @@ final readonly class CheckoutSessionLifecycle
         private RlsContextRunner $contexts,
         private CheckoutHandoffHistoryValidator $historyValidator,
         private CheckoutProfileMapper $profiles,
+        private CheckoutPaymentFactsReader $payments,
     ) {}
 
     public function hydrate(#[SensitiveParameter] CheckoutSessionSelector $input): CheckoutSessionPrincipal
@@ -51,7 +55,7 @@ final readonly class CheckoutSessionLifecycle
         $principal = $this->contexts->run(
             new RlsContext('service'),
             function () use ($selectorDigest, $idle): ?CheckoutSessionPrincipal {
-                $result = $this->operate($selectorDigest, null, false, false, $idle);
+                $result = $this->operate($selectorDigest, null, CheckoutSessionOperation::Hydrate, $idle);
 
                 return $result instanceof CheckoutSessionPrincipal ? $result : null;
             },
@@ -74,7 +78,7 @@ final readonly class CheckoutSessionLifecycle
         $principal = $this->contexts->run(
             new RlsContext('service'),
             function () use ($selectorDigest, $csrfDigest, $idle): ?CheckoutSessionPrincipal {
-                $result = $this->operate($selectorDigest, $csrfDigest, true, false, $idle);
+                $result = $this->operate($selectorDigest, $csrfDigest, CheckoutSessionOperation::HydrateWithCsrfDelivery, $idle);
 
                 return $result instanceof CheckoutSessionPrincipal ? $result : null;
             },
@@ -96,7 +100,7 @@ final readonly class CheckoutSessionLifecycle
         $profile = $this->contexts->run(
             new RlsContext('service'),
             function () use ($selectorDigest, $csrfDigest, $idle): ?CheckoutProfile {
-                $result = $this->operate($selectorDigest, $csrfDigest, true, false, $idle, readProfile: true);
+                $result = $this->operate($selectorDigest, $csrfDigest, CheckoutSessionOperation::Profile, $idle);
 
                 return $result instanceof CheckoutProfile ? $result : null;
             },
@@ -109,6 +113,25 @@ final readonly class CheckoutSessionLifecycle
         return $profile;
     }
 
+    /** Historical own payment facts, not purchasing policy, consent, or access entitlement. */
+    public function readPayment(#[SensitiveParameter] CheckoutSessionMutationCredentials $input): CheckoutPaymentFacts
+    {
+        $idle = $this->preflight();
+        $selectorDigest = $this->selectorDigest($input->rawSelector());
+        $csrfDigest = $this->csrfDigest($input->rawCsrfToken());
+        $payment = $this->contexts->run(new RlsContext('service'),
+            function () use ($selectorDigest, $csrfDigest, $idle): ?CheckoutPaymentFacts {
+                $result = $this->operate($selectorDigest, $csrfDigest, CheckoutSessionOperation::Payment, $idle);
+
+                return $result instanceof CheckoutPaymentFacts ? $result : null;
+            });
+        if ($payment === null) {
+            throw new InvalidCheckoutSession;
+        }
+
+        return $payment;
+    }
+
     public function logout(#[SensitiveParameter] CheckoutSessionMutationCredentials $input): void
     {
         $idle = $this->preflight();
@@ -118,7 +141,7 @@ final readonly class CheckoutSessionLifecycle
         /** @var bool $revoked */
         $revoked = $this->contexts->run(
             new RlsContext('service'),
-            fn (): bool => $this->operate($selectorDigest, $csrfDigest, true, true, $idle) === true,
+            fn (): bool => $this->operate($selectorDigest, $csrfDigest, CheckoutSessionOperation::Logout, $idle) === true,
         );
         if ($revoked !== true) {
             throw new InvalidCheckoutSession;
@@ -126,8 +149,8 @@ final readonly class CheckoutSessionLifecycle
     }
 
     private function operate(#[SensitiveParameter] string $selectorDigest,
-        #[SensitiveParameter] ?string $csrfDigest, bool $requireCsrf, bool $logout,
-        int $idleMinutes, bool $readProfile = false): CheckoutProfile|CheckoutSessionPrincipal|bool|null
+        #[SensitiveParameter] ?string $csrfDigest, CheckoutSessionOperation $operation,
+        int $idleMinutes): CheckoutPaymentFacts|CheckoutProfile|CheckoutSessionPrincipal|bool|null
     {
         $hints = CheckoutSession::query()->where('selector_digest', $selectorDigest)->limit(2)
             ->get(['id', 'organization_id', 'assessment_participant_id', 'integration_client_id',
@@ -170,7 +193,7 @@ final readonly class CheckoutSessionLifecycle
         if (! $target instanceof CheckoutSession || ! hash_equals($target->selector_digest, $selectorDigest)) {
             throw new InvalidCheckoutSession;
         }
-        if ($requireCsrf && ($csrfDigest === null || ! hash_equals($target->csrf_digest, $csrfDigest))) {
+        if ($operation !== CheckoutSessionOperation::Hydrate && ($csrfDigest === null || ! hash_equals($target->csrf_digest, $csrfDigest))) {
             throw new InvalidCheckoutSession;
         }
 
@@ -227,7 +250,7 @@ final readonly class CheckoutSessionLifecycle
 
             return null;
         }
-        if ($logout) {
+        if ($operation === CheckoutSessionOperation::Logout) {
             $this->terminalize($target, $attempt, $now, 'REVOKED', 'LOGOUT');
 
             return true;
@@ -242,9 +265,13 @@ final readonly class CheckoutSessionLifecycle
             'updated_at' => $now,
         ]);
 
-        if ($readProfile) {
+        if ($operation === CheckoutSessionOperation::Profile) {
             return $this->profiles->map($participant,
                 $now->setTimezone(date_default_timezone_get())->toDateTimeImmutable());
+        }
+
+        if ($operation === CheckoutSessionOperation::Payment) {
+            return $this->payments->project($attempt);
         }
 
         return new CheckoutSessionPrincipal(

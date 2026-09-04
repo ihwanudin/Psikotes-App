@@ -8,16 +8,23 @@ use App\Actions\Integrations\CheckoutSessionLifecycle;
 use App\Actions\Integrations\EstablishCheckoutSession;
 use App\Actions\Integrations\InvalidCheckoutSession;
 use App\Actions\Integrations\IssueCheckoutHandoff;
+use App\Actions\Payments\FinalizeAssessmentBill;
 use App\Data\Integrations\CheckoutHandoffIssueInput;
 use App\Data\Integrations\CheckoutSessionExchangeInput;
 use App\Data\Integrations\CheckoutSessionMutationCredentials;
 use App\Data\Integrations\CheckoutSessionSelector;
+use App\Data\Payments\PaymentEvent;
 use App\Enums\CheckoutHandoffIntent;
+use App\Enums\PaymentStatus;
+use App\Models\AssessmentBill;
+use App\Models\AssessmentCharge;
 use App\Models\AssessmentParticipant;
 use App\Models\CheckoutSession;
 use App\Models\IntegrationClient;
+use App\Models\TestPackage;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
+use App\Services\Payments\AssessmentPriceSnapshot;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -30,6 +37,9 @@ final class CheckoutSessionLifecycleConcurrencyTest extends TestCase
 {
     /** @var array{organization:int,participant:int,client:int,source:int,package:int,attempt:int,attemptPublicId:string,sourceSystem:string,session:int,selector:string,csrf:string} */
     private array $fixture;
+
+    /** @var array{bill:int,method:int,reference:string,gateway:string}|null */
+    private ?array $payment = null;
 
     protected function setUp(): void
     {
@@ -62,6 +72,14 @@ final class CheckoutSessionLifecycleConcurrencyTest extends TestCase
     protected function tearDown(): void
     {
         app(RlsContextRunner::class)->runAsService(function (): void {
+            if ($this->payment !== null) {
+                DB::table('audit_logs')->where('subject_type', AssessmentBill::class)
+                    ->where('subject_id', (string) $this->payment['bill'])->delete();
+                DB::table('assessment_bill_items')->where('bill_id', $this->payment['bill'])->delete();
+                DB::table('assessment_bills')->where('id', $this->payment['bill'])->delete();
+                DB::table('assessment_charges')->where('assessment_participant_id', $this->fixture['attempt'])->delete();
+                DB::table('payment_methods')->where('id', $this->payment['method'])->delete();
+            }
             DB::table('audit_logs')->where('subject_type', AssessmentParticipant::class)
                 ->where('subject_id', (string) $this->fixture['attempt'])->delete();
             DB::table('checkout_sessions')->where('organization_id', $this->fixture['organization'])->delete();
@@ -221,6 +239,151 @@ final class CheckoutSessionLifecycleConcurrencyTest extends TestCase
             $this->stopWorkers($workers);
         }
         $this->assertSame(['projected' => false, 'invalid' => true], $this->profileDescriptor());
+    }
+
+    public function test_payment_projection_waiting_behind_finalizer_reads_only_committed_paid_allocation(): void
+    {
+        $this->preparePayment();
+        $workers = $this->startWorkers([fn (): array => $this->paymentDescriptor()]);
+        try {
+            $backendId = $this->workerBackendIds($workers)[0];
+            app(RlsContextRunner::class)->runAsService(function () use ($workers, $backendId): void {
+                DB::table('branches')->where('id', $this->fixture['organization'])->lockForUpdate()->first();
+                fwrite($workers[0]['socket'], "go\n");
+                $this->assertWorkerWaitsOnLock($backendId);
+                $this->finalizePayment();
+            });
+            $this->assertSame([['state' => 'paid', 'amount' => 100]], $this->workerResults($workers));
+        } finally {
+            $this->stopWorkers($workers);
+        }
+        app(RlsContextRunner::class)->runAsService(function (): void {
+            $this->assertSame(0, DB::table('assessment_entitlements')->where('assessment_participant_id', $this->fixture['attempt'])->count());
+            $this->assertSame(0, DB::table('outbox_messages')->where('aggregate_id', (string) $this->fixture['attempt'])->count());
+        });
+    }
+
+    public function test_payment_projection_waiting_behind_finalizer_rollback_does_not_read_partial_paid(): void
+    {
+        $this->preparePayment();
+        $workers = $this->startWorkers([fn (): array => $this->paymentDescriptor()]);
+        try {
+            $backendId = $this->workerBackendIds($workers)[0];
+            try {
+                app(RlsContextRunner::class)->runAsService(function () use ($workers, $backendId): void {
+                    DB::table('branches')->where('id', $this->fixture['organization'])->lockForUpdate()->first();
+                    fwrite($workers[0]['socket'], "go\n");
+                    $this->assertWorkerWaitsOnLock($backendId);
+                    $this->finalizePayment();
+                    throw new RuntimeException('Synthetic finalizer rollback.');
+                });
+                $this->fail('Finalizer rollback did not propagate.');
+            } catch (RuntimeException $exception) {
+                $this->assertSame('Synthetic finalizer rollback.', $exception->getMessage());
+            }
+            $this->assertSame([['state' => 'pending', 'amount' => 100]], $this->workerResults($workers));
+        } finally {
+            $this->stopWorkers($workers);
+        }
+    }
+
+    public function test_payment_projection_finishes_before_waiting_finalizer_without_bill_lock_inversion(): void
+    {
+        $this->preparePayment();
+        $workers = $this->startWorkers([function (): array {
+            $this->finalizePayment();
+
+            return ['settled' => true];
+        }]);
+        $armed = true;
+        try {
+            $backendId = $this->workerBackendIds($workers)[0];
+            DB::listen(function (QueryExecuted $query) use (&$armed, $workers, $backendId): void {
+                if ($armed && str_contains($query->sql, 'from "branches"') && str_contains($query->sql, 'for update')) {
+                    $armed = false;
+                    fwrite($workers[0]['socket'], "go\n");
+                    $this->assertWorkerWaitsOnLock($backendId);
+                }
+            });
+            $this->assertSame(['state' => 'pending', 'amount' => 100], $this->paymentDescriptor());
+            $this->assertFalse($armed);
+            $this->assertSame([['settled' => true]], $this->workerResults($workers));
+        } finally {
+            $armed = false;
+            $this->stopWorkers($workers);
+        }
+        $this->assertSame(['state' => 'paid', 'amount' => 100], $this->paymentDescriptor());
+    }
+
+    /** @return array{state:string,amount:int|null} */
+    private function paymentDescriptor(): array
+    {
+        $this->configure();
+        $reading = true;
+        DB::listen(function (QueryExecuted $query) use (&$reading): void {
+            if ($reading && str_contains($query->sql, 'for update')
+                && preg_match('/assessment_(bills|bill_items|charges)/', $query->sql)) {
+                throw new RuntimeException('Projection added a billing lock after lifecycle locks.');
+            }
+        });
+        try {
+            $facts = app(CheckoutSessionLifecycle::class)->readPayment(new CheckoutSessionMutationCredentials(
+                $this->fixture['selector'], $this->fixture['csrf'],
+            ));
+
+            return ['state' => $facts->state, 'amount' => $facts->amountIdr];
+        } finally {
+            $reading = false;
+            if (app(RlsContextRunner::class)->current() !== null || DB::transactionLevel() !== 0) {
+                throw new RuntimeException('Payment projection leaked context.');
+            }
+        }
+    }
+
+    private function finalizePayment(): void
+    {
+        if ($this->payment === null) {
+            throw new RuntimeException('Missing synthetic bill.');
+        }
+        $result = app(FinalizeAssessmentBill::class)->execute(new PaymentEvent(
+            'synthetic-paid-event', $this->payment['gateway'], $this->payment['reference'],
+            PaymentStatus::Paid, now()->startOfSecond(), 100, 'IDR',
+        ));
+        if ($result['decision'] !== 'settled' || $result['activatedAttemptCount'] !== 0) {
+            throw new RuntimeException('Synthetic partial profile finalization was inconsistent.');
+        }
+    }
+
+    private function preparePayment(): void
+    {
+        $this->payment = app(RlsContextRunner::class)->runAsService(function (): array {
+            $key = (string) Str::ulid();
+            $snapshot = app(AssessmentPriceSnapshot::class)->capture(TestPackage::with('items')->findOrFail($this->fixture['package']), false);
+            $charge = AssessmentCharge::create([
+                'assessment_participant_id' => $this->fixture['attempt'], 'organization_id' => $this->fixture['organization'],
+                'participant_id' => $this->fixture['participant'], 'package_id' => $this->fixture['package'],
+                'payer_type' => 'self', 'base_amount' => 100, 'consultation_amount' => 0, 'consultation_requested' => false,
+                'amount' => 100, 'currency' => 'IDR', 'price_snapshot' => $snapshot, 'policy_snapshot' => ['version' => 1],
+            ]);
+            $method = DB::table('payment_methods')->insertGetId(['code' => 'P14C_'.$key, 'display_name' => 'Synthetic', 'is_active' => false]);
+            $reference = 'AB_'.$key;
+            $gateway = 'synthetic-'.$key;
+            $bill = DB::table('assessment_bills')->insertGetId([
+                'organization_id' => $this->fixture['organization'], 'payer_type' => 'self',
+                'payer_participant_id' => $this->fixture['participant'], 'public_reference' => $reference,
+                'amount' => 100, 'currency' => 'IDR', 'item_count' => 1, 'selection_hash' => hash('sha256', $key),
+                'idempotency_key' => $key, 'request_hash' => hash('sha256', $key), 'status' => 'pending',
+                'payment_method_id' => $method, 'gateway_ref' => $gateway,
+            ]);
+            DB::table('assessment_bill_items')->insert([
+                'bill_id' => $bill, 'charge_id' => $charge->id, 'organization_id' => $this->fixture['organization'],
+                'participant_id' => $this->fixture['participant'], 'payer_type' => 'self',
+                'payer_participant_id' => $this->fixture['participant'], 'amount' => 100, 'currency' => 'IDR',
+            ]);
+            DB::table('branches')->where('id', $this->fixture['organization'])->update(['allowed_payer_types' => '[]']);
+
+            return compact('bill', 'method', 'reference', 'gateway');
+        });
     }
 
     /** @return array{projected:bool,invalid:bool} */
