@@ -1,5 +1,101 @@
 # Frontend — P16-prep
 
+## Additive internal checkout-summary-v1 contract (2026-09-04)
+
+Baseline worker **3fe0780**, preserved without reset/merge/cherry-pick. Read-only
+references: root plan/todo/parallel-work, ADR-012 including amendments, PHP
+CheckoutSummary, CheckoutProfile, CheckoutPaymentFacts, CheckoutProductPaymentFacts,
+ConsentDocument, CheckoutSummaryComposer and its tests, and CheckoutPaymentFactsReader.
+Accepted root summary commits **c03f2aa/3032b1e/d849b18** and PG **368/3109** are
+coordinator evidence, not tests rerun here. API/interface design skill used;
+existing review/git workflow retained. Internal summary acceptance does not close
+HTTP/page/P15 acceptance or authorize activation.
+
+Exactly four owned files: new `resources/js/types/checkout-summary-v1.ts`, new
+`tests/Frontend/IntegratedCheckout/summary-v1.fixtures.ts`, new
+`tests/Frontend/IntegratedCheckout/summary-v1.type-test.ts`, and this report.
+Old `integrated-checkout.ts` DRAFT, all components/pages, PHP, configs and existing
+helpers remain unchanged. No network adapter, executable mapper, callback or action.
+
+Contract mirrors serialized facts, recursively readonly: version discriminator;
+branch/source/package/attempt labels; ordered seven-field profile (six required,
+email optional, including required on locked fields); locked string vs missing
+without displayValue; all ten payment states; organizationName only for organization;
+catalog/unavailable/null amount/null consultation versus charge_snapshot/number/
+boolean consultation; access locked/partial/ready with nonempty per-test list of
+five supported types; accepted version or required public document; DASS additionally
+not_applicable. Every actionAvailable/startAvailable is literal **false**. No formKey,
+IDs, credentials, invoice/batch/proof/clinical facts, input/options or editing authority.
+Labels/document contents stay server-provided strings, not client-owned legal copy.
+
+Fixture coverage: **10 payment state examples**, **9 summary examples**, three
+profile layouts (all missing, all locked, mixed), both consent variants plus
+not_applicable DASS, both provenance branches, three payers, all three access states
+and all five test types. Null catalog, zero unpaid, free locked, paid missing/locked,
+and paid partial/ready are separate examples; nominal never derives access. Partial
+uses complete profile with DASS required/locked and IST ready, matching the composer
+test. Synthetic amounts and document text are test facts only, not runtime pricing
+or legal content. No new field input definitions/options are supplied.
+
+**Validation actually run:** standalone strict typecheck with
+exactOptionalPropertyTypes **exit 0**; existing IntegratedCheckout focused tsconfig
+**exit 0**. Compile-only assertions cover exact key inventories, DRAFT incompatibility
+both directions and access fixture coverage; **29 negative directives** reject null
+locked displays, missing placeholders, wrong required metadata, lost email, invented
+input/options, action true, mismatched amount/consultation/provenance, organization
+label leakage, DRAFT review/declined, empty/unknown tests, clinical/invoice/ID/formKey,
+invalid consent documents/applicability, and nested mutation. An ignored copy with
+directives removed produced **29 diagnostics, expected tsc exit 2**. Initial probe
+shell expected exit 1 incorrectly; its exit expectation was corrected to compiler
+exit 2, not by weakening any type. Initial formatting moved some directives away
+from diagnostic lines; they were moved to the exact failing properties before GREEN.
+
+Focused ESLint and Prettier checks on all three new TypeScript files **exit 0**.
+One missing blank line in the compile-only probe was corrected after initial lint;
+no rule was changed or suppressed. Final strict compile was rerun successfully.
+No browser/build/SSR/PHP/PG suite or DB/network was needed or run in this increment.
+The earlier 27 SSR and browser checkpoint remain historical evidence, not reruns.
+
+Reproduce (existing isolated dependencies; no install):
+
+```powershell
+node node_modules/typescript/bin/tsc --noEmit --strict --exactOptionalPropertyTypes --skipLibCheck --target ES2022 --module ESNext --moduleResolution bundler tests/Frontend/IntegratedCheckout/summary-v1.type-test.ts
+node node_modules/typescript/bin/tsc --project tests/Frontend/IntegratedCheckout/tsconfig.json --noEmit
+node node_modules/eslint/bin/eslint.js resources/js/types/checkout-summary-v1.ts tests/Frontend/IntegratedCheckout/summary-v1.fixtures.ts tests/Frontend/IntegratedCheckout/summary-v1.type-test.ts
+node node_modules/prettier/bin/prettier.cjs --check resources/js/types/checkout-summary-v1.ts tests/Frontend/IntegratedCheckout/summary-v1.fixtures.ts tests/Frontend/IntegratedCheckout/summary-v1.type-test.ts
+```
+
+Negative unsuppressed probe/log live only in ignored
+`output/playwright/summary-v1-contract/`. Type tests are compile-only, never imported
+by application pages or executed as mutations. TypeScript structural typing is not
+an exact runtime JSON validator: fresh-literal excess-key probes do not prove that
+unknown JSON or a variable with extra properties is sanitized. Number integer/range,
+nonblank/valid profile text, canonical sorted/unique tests, access/test/consent
+consistency and payer/state reachability remain PHP reader/composer responsibilities.
+The payment state union follows DTO's ten-value allowlist, not a new client policy
+limiting payer/state pairs. Runtime ingress validation is deferred with HTTP delivery.
+
+**Incompatibilities and minimal later rendering plan (not implemented):**
+
+| Current DRAFT expectation | Internal v1 fact / later review needed |
+| --- | --- |
+| formKey and form callbacks | Absent; do not fabricate a key, credential or submission contract. Wait for reviewed P14 lifecycle delivery and P15 mutation/reset semantics. |
+| Missing fields have input/autocomplete/options | V1 has only display facts and required metadata. A later separately approved read-only view may list missing fields; editable controls must wait for server-owned P15 input/validation contract. |
+| Locked fields omit required; arbitrary profile array | V1 keeps required on every field and all seven ordered keys; retain complete values without registration again. |
+| DRAFT payment review; some actions boolean | V1 preparing/recovery_required distinct, provenance and consultation explicit, actions always false; render status only, null as unavailable, zero without inferring free. |
+| Access only locked/ready | Preserve partial and per-test facts; ready prerequisites still have startAvailable false. Never derive access from payment or profile completeness. |
+| DASS declined history | V1 only accepted/required/not_applicable; required does not mean never declined. Do not invent prior choice or conflate DASS with main-test access. |
+| No package provenance/version | Preserve contractVersion and packageSource; catalog is label-only, never a source of price. |
+
+Recommend a separately reviewed read-only renderer consuming v1 directly once P14
+private summary delivery is approved, not casting into the interactive DRAFT or
+adding a browser policy mapper. It should render trusted server text as text,
+preserve partial access/status and unavailable amounts, omit actions and preserve
+privacy on lifecycle failure. P15 must independently define authority, allowed
+missing-field updates, consent/CSRF/version/error semantics before editable wiring.
+No gate, route, .env, active DB, real data, deployment/push or new task/agent used.
+**Stop for review of this additive contract; P16 remains incomplete end-to-end.**
+
 ## Checkpoint konsolidasi seluruh helper checkout (2026-09-01)
 
 Delta dari lane **dac8c67795f568c78848a11f498f4eebe6f6c4ba**; integrasi root
