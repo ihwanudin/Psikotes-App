@@ -4355,3 +4355,92 @@ unintegrated diagnostic test/report commit `f1c5d63`; review the final GREEN tes
 content together with the one-line writer delta, not the RED intermediate alone.
 Cached-path checks listed only the writer and its PG test for that commit; this
 report is committed separately. Baseline dirty/untracked overlays remain unstaged.
+
+## Genuine frontend artifact verification for identity mutex review
+
+Report-only follow-up to `c7b5a94` / `7fe6a5b`, as requested by coordinator.
+The missing-manifest boundary is now verified in an isolated build copy with
+the same application/test inputs, not bypassed. **All 81 identity/gate/activation
+tests pass with 233 assertions.** The earlier 81/218 result had stopped before
+the received-page assertions; the additional assertions now execute successfully.
+No runtime source, test expectation, route, config or package/lockfile was edited.
+
+### Dependency and input audit
+
+Worker node_modules and Vite executable were absent. Node v24.11.0, npm 11.6.1,
+PHP 8.3.26 were used. The existing lockfile installs Vite 8.2.2. Package scripts
+contain no project install hook; build is `vite build`. Lockfile install hooks are
+fsevents 2.3.3 (macOS-only optional package, not used on Windows) and unrs-resolver
+1.12.2. First ran `npm ci --ignore-scripts --no-audit --no-fund` in the disposable
+copy: **533 packages installed**, without upgrading/resolving a new lockfile.
+
+Inspected unrs-resolver/postinstall.js and napi-postinstall's installed implementation
+before running `npm rebuild unrs-resolver --foreground-scripts --no-audit --no-fund`.
+The exact Windows optional native binding was already installed and loadable;
+the audited hook completed successfully. Its fallback download/install branch
+was not needed. No lifecycle scripts from another application ran. npm's warning
+about the locked eslint version was not treated as permission to upgrade it.
+
+SHA-256 of inputs remained identical in worker and copy:
+
+| Input | SHA-256 |
+| --- | --- |
+| package.json | b76e80c0031b4c509651e9f11c6979d4ecd4b734b5567419d29cf1c51bbfb355 |
+| package-lock.json | e8a50f8a14992153085d621e8c2dfca8dc8708f59d0fc40f8fdffa7f9d3a1253 |
+| composer.lock | 44aa7ea181ecf0accdd18a05ae5da39bc8d9016c88431bfe9aebfcb536720e16 |
+| .gitignore | ba6ba7147e5d09ac190e29294f87eba2074b144ee029689edc1532a24e3131a8 |
+
+### Isolation and actual build
+
+Build and tests ran inside this ignored workspace copy:
+`.scaffold/identity-artifact-0e8bbd93d2ea4730ad6e6633e99d1967`.
+Application sources, tests and vendor were independently copied, not junctioned.
+No .env, database file, active storage, public hot/build artifact or bootstrap cache
+was copied. Fresh cache/storage directories were created in the copy. The 633
+recorded source/build input hashes remained unchanged both in worker and in the
+copy after build/tests; .gitignore was separately checked equal. Worker git status
+was unchanged before editing this report. Wayfinder generated **169 files only
+inside the disposable copy**, so ignored generated baseline files were not overwritten.
+
+Each build used process-local synthetic values loaded from the unchanged
+phpunit.organization-payment.xml: testing, SQLite memory, array services, empty
+provider secrets. WAYFINDER_COMMAND was explicitly set to the config's actual
+default, `php artisan wayfinder:generate`. No generator bypass was used.
+
+Two setup attempts are not counted as successful builds: first, setting that
+environment variable to null via the Windows process API left an empty string,
+causing the plugin to invoke only `--with-form`; corrected to the exact default
+command. Second, .gitignore had been omitted from the initial copy, making the
+Tailwind input environment incomplete. Only that copy's positively identified
+Vite process was stopped; .gitignore was copied unchanged and the real build
+restarted. This does not establish a production toolchain defect.
+
+Final `npm run build` **passed**, transforming **2,317 modules in 3m 13s**.
+Wayfinder genuinely ran. The configured public font assets were obtained by the
+normal build plugin and included in the output, not fabricated or borrowed from
+another project. Nonblocking warnings remain: optional fontaine fallback optimizer
+not installed, app chunk above 500 kB, and Tailwind transform taking 175 seconds.
+No config change, new optional package or chunk-limit relaxation was made.
+
+Manifest has **51 entries**; `resources/js/pages/registration/received.tsx` points
+to the existing generated `assets/received-zeeMHSWE.js`. Manifest SHA-256:
+`36a50a48bd7af6d9851cfd96d475fd52399eb90e95ac4a80ef9c95fe0bb6c313`.
+
+### Exact regression and handoff
+
+Ran the same command as the prior worker/root attempt, from the genuine-build copy:
+
+```powershell
+php vendor/bin/phpunit -c phpunit.organization-payment.xml tests/Feature/Identity/IdentityEvidenceUploadTest.php tests/Feature/Identity/IdentityEvidenceAccessTest.php tests/Feature/Auth/AttemptEntitlementGateTest.php tests/Feature/Auth/SettledAssessmentActivationTest.php --do-not-cache-result
+```
+
+Result: **81 tests / 81 passed / 233 assertions**, exit 0. No fake/copied manifest,
+withoutVite, skipped assertion, test patch or real matcher/payment/notifier request.
+The generated artifact was not copied back into the worker. Dependencies, generated
+files and artifacts remain ignored in the copy for review; only this report is
+committed. No full browser/E2E or deployment claim is made.
+
+PostgreSQL **358/2,753**, Pint and PHPStan from the prior increment remain earlier
+evidence; none was rerun or represented as a new result here. git diff --check
+passed and cached-path review contains only backend.md. No .env, active DB/data,
+new task/agent, public wiring, runtime changes, deploy or push. STOP for review.
