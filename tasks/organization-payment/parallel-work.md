@@ -1,5 +1,16 @@
 # Koordinasi task paralel organization-payment
 
+## First new smoke stopped at listener inspection before claim
+
+Worker541a592: guarded init88ec passed45.983s;42baseline tables unchanged, checkout
+counts0. Actual supervisor returned invalid/occupied_port stage at3.348s with0roles,
+0requests; independent port scans empty. This is NOT proven occupied-port cause.
+Authorization spent; no rerun/rearm even though claim/latch absent. Report only.
+Sent ONE readonly diagnostic of exact sanitized listener inspector, atmost2calls
+(existing3s then diagnostic10s ifneeded), separate new scratch; no supervisor/app/
+browser/DB. Safe numeric/category output and owned-inspector cleanup only. No
+operational timeout/code/config change until root-cause evidence reviewed.
+
 ## New88ec smoke authorized after artifact review
 
 Preparation03311d4 reviewed. Root independently confirmed manifest4dd4496954a6ddfd0e9ab7c9883716cdabdbd587cce920c60e8a321dc081c8bd,
