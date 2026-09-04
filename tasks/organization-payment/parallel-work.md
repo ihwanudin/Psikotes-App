@@ -2,6 +2,13 @@
 
 ## Bounded inspector and cooperative harness verified locally
 
+ONE backend supervisor implementation increment dispatched: new test-only runner,
+mock/pure orchestration tests, report (<=3files). Sequence pre/start/no-navigation
+handshake, owned descendant/listener cleanup, separate incomplete smoke vs full
+evidence, no automatic rearm. No runner/server/browser launch or exactrun refresh
+yet. New styled root view/CSS/logo are explicit source/asset preflight gap; no
+arbitrary public serving or unreviewed manifest update. Others idle pending runner.
+
 Reviewed617ac91 P2 correction and operation lifecycle, peer review retained.
 Root independently ran worker pure64 PASS, real inspector62 PASS (stall0.308s;
 owned target remains live), synthetic lifecycle52cases/161assertions PASS.
