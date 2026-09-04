@@ -4240,3 +4240,118 @@ claimed for this test-only diagnostic. No harness/schema/source activation,
 active DB/.env/data, provider/notifier, deployment/push or new task/agent.
 Commit only the new PostgreSQL test and these two lane reports. STOP for review;
 do not proceed to production mutex changes or full summary composition.
+
+## Bounded identity participant-mutex fix after diagnostic review
+
+Coordinator explicitly approved this follow-up after reviewing `f1c5d63`.
+The [historical diagnostic report](backend-identity-read-diagnostic.md) remains
+unchanged: its RED result describes the pre-fix writer, not the current one.
+No never-valid readiness or activation-deadlock claim is added.
+
+### Production delta and callers
+
+One production line changes in tracked `app/Actions/Identity/StoreIdentityEvidence.php`:
+
+```diff
+- Participant::query()->findOrFail($participantId);
++ Participant::query()->lockForUpdate()->findOrFail($participantId);
+```
+
+Before SHA-256 (also matched read-only root):
+`d6498f98ef3b07db5997bcbdb7afc63ce2507bf56d000ff06c1e120f7027ef05`.
+After SHA-256:
+`1ecdb7e2ed2f040faac93eb8c903440dd20e139bec353869ad6ca04d016135a5`.
+No snapshot overlay is included. Installed Laravel Query Builder's lockForUpdate
+uses the write connection and the existing service transaction holds the participant
+lock before either child-table read/write. No organization lock after participant,
+new child lock, isolation-level change, auth change, matcher or storage rewrite.
+
+The application-wide caller search found only IdentityEvidenceUploadController,
+reached through `/registration/identity-evidence` with web middleware, throttle
+and StoreIdentityEvidenceRequest. The request retains its registration-session
+authorization and image validation; the controller does not open an outer DB/RLS
+transaction. Bootstrap's web middleware does not install an RLS transaction for
+that route. No job/other action calls the writer; identity model sources/providers
+show no observer/touch path taking an organization lock after participant. The
+matcher remains the local ManualReviewIdentityMatcher.
+
+Activation already takes organization/bill/items/attempt/participant before
+verification/evidence. A writer holding participant now never requests organization
+or attempt; a canonical reader waits before accessing the child rows. This removes
+the demonstrated gap for participants sharing that mutex without reversing the
+organization-first order. This is not a claim that raw gate calls without the
+canonical mutex gain a single snapshot, or that every possible writer is covered.
+
+Storage remains pre-stored before the transaction; caught failures delete new
+objects; successful action completion deletes replaced old objects afterwards.
+`RlsContextRunner::run` still rejects ambient RLS, and StoreIdentityEvidence catches
+that failure and removes pre-stored objects. A hypothetical caller that opens a
+bare outer DB transaction without RLS could still reach old-file cleanup after a
+savepoint but before outer commit. That is an existing composition limitation,
+not an approved reuse contract; no such production caller was found. Future nested
+reuse or a remote matcher/storage change needs separate approval. Process crashes
+between filesystem and DB work and remote cleanup failures remain unverified.
+
+### PostgreSQL regression and test isolation
+
+The original mutex assertion is retained. Reader-first tests at different and
+same-second timestamps now require the writer to block, evidence keys to remain
+the old revision during the gate read, old ready before release and pending/locked
+after the replacement commits. Writer-first holds the actual action after its
+participant SELECT and verifies the canonical reader waits and sees committed
+pending identity. Two actual writers must serialize and leave exactly the two
+current referenced objects. Initial INSERT/FK control and post-verification UPDATE
+rollback remain covered; the latter preserves all rows and prior file inventory.
+
+Test-only listeners use cloned connection dispatchers. The parent gate listener
+is restored in finally; child listeners remain in their process. Fixture DB cleanup
+uses finally-protected storage/matcher/clock restoration. A paused writer is aborted
+and its response drained before the socket closes; a dedicated test checks that
+abort rolls back and removes its pre-stored files. Child result writes are caught
+and followed by explicit process exit, preventing inherited PHPUnit continuation.
+
+The first expanded RED run exposed an IPC cleanup defect (broken pipe allowed a
+child to unwind into inherited PHPUnit and contaminated later suite output).
+That run is not used as a clean regression count. The test-only abort/drain and
+child-exit correction was applied before repeating RED; no assertion was disabled.
+Clean RED on the unchanged writer: **358 tests / 2,730 assertions / 5 failures /
+0 errors / 0 skips**. Failures were the retained mutex assertion, both reader-first
+coherence cases, writer-first blocking and two-writer blocking. Initial INSERT,
+rollback and abort cleanup controls passed. Disposable resources were cleaned.
+
+GREEN established `tools/testing/run-org-postgres.ps1`: **358 tests / 2,753
+assertions / 0 failures / 0 errors / 0 skips**, exit 0. This includes all eight
+identity concurrency/cleanup tests and the existing 350-test PG suite. Actual
+action/local matcher, independent processes, observed parent blockers, runtime
+non-owner/NOBYPASSRLS and isolated synthetic storage were used. The original
+participant-mutex RED is now GREEN. Cleanup completed; application containers
+were not targeted. SQLite is not offered as row-lock/concurrency evidence.
+
+### Other actual validation and remaining boundary
+
+SQLite-memory XML regression command:
+
+```powershell
+php vendor/bin/phpunit -c phpunit.organization-payment.xml tests/Feature/Identity/IdentityEvidenceUploadTest.php tests/Feature/Identity/IdentityEvidenceAccessTest.php tests/Feature/Auth/AttemptEntitlementGateTest.php tests/Feature/Auth/SettledAssessmentActivationTest.php --do-not-cache-result
+```
+
+Result: **81 tests / 218 assertions, 80 passed, 1 failed**. The authorized upload
+test reaches the subsequent received-page render and fails because this worker
+has no `public/build/manifest.json` (ViteManifestNotFoundException). This known
+artifact limitation was not bypassed with fake Vite, skipped assertions, test edits
+or copied build artifacts. No all-green HTTP/browser regression is claimed; root
+must verify that page using its genuine build. Other identity auth/validation,
+access, gate and activation tests passed in the same command.
+
+Full application PHPStan: **0 errors**, using process-local values loaded from
+the synthetic organization-payment XML (SQLite memory, array services and empty
+provider secrets). Scoped Pint, both PHP syntax checks and git diff --check passed.
+No schema/config/route/gate activation, live DB/.env/data, provider or notifier,
+deployment/push or new task/agent. STOP for bounded fix review; no summary clock
+seams, form-key changes or composition implementation.
+
+Code/test commit: `c7b5a948057c3f153644d560951acc50e6f1fa9e`. This builds on the
+unintegrated diagnostic test/report commit `f1c5d63`; review the final GREEN test
+content together with the one-line writer delta, not the RED intermediate alone.
+Cached-path checks listed only the writer and its PG test for that commit; this
+report is committed separately. Baseline dirty/untracked overlays remain unstaged.
