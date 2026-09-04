@@ -1,5 +1,22 @@
 # Koordinasi task paralel organization-payment
 
+## Accepted consent reader integrated — 2026-09-04
+
+Reviewed `ff55a5e`/`aa2390f`; integrated `809c410`/`9e5c152` and exact prerequisite
+overlay. Root before hash matched 850fe2dd…; after hash matches
+396d52139d61ee9c55d2a4de66b9f40328dbe1aee7f6f5a7427225c6f2330e4c.
+Root reran reader/gate/activation: 94 tests / 203 assertions passed. Query and
+exception ordering preserved; no new context guard/policy or business writes.
+This remains participant-bound evidence, not attempt consent or legal approval.
+
+Next bounded backend implementation connects the accepted pure profile mapper
+to a typed session lifecycle read. Credentials, not a stale principal or chosen
+participant ID, are the entry input. Reuse canonical validation/lock order and
+map only the validated participant within the existing transaction; authoritative
+date comes from its server clock. No generic public callback/projection seam,
+HTTP route, payment/access/consent summary promises or P15. SQLite and disposable
+PostgreSQL recovery/revoke interleaving and context restoration must be tested.
+
 ## P14c profile facts accepted locally — 2026-09-04
 
 Reviewed `0846e86`/`ff14129`, including validator compatibility and allowlisted

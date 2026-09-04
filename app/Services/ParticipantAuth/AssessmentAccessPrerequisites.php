@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Services\ParticipantAuth;
 
 use App\Models\Participant;
-use App\Registration\ConsentDocument;
 use App\Services\ParticipantAuth\Exceptions\EntitlementLocked;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -13,6 +12,8 @@ use Illuminate\Support\Facades\DB;
 /** Read-only prerequisites shared with the future settlement activation action. */
 final class AssessmentAccessPrerequisites
 {
+    public function __construct(private readonly AcceptedConsentReader $consents) {}
+
     public function assertSatisfied(Participant $participant, string $testType): void
     {
         foreach (['full_name', 'education_level', 'intended_field', 'phone'] as $field) {
@@ -27,12 +28,7 @@ final class AssessmentAccessPrerequisites
         }
         $types = $testType === 'dass21' ? ['psychotest', 'dass'] : ['psychotest'];
         foreach ($types as $type) {
-            $document = ConsentDocument::for($type);
-            $accepted = DB::table('consent_records')->where('participant_id', $participant->id)
-                ->where('consent_type', $type)->where('document_version', $document->version)
-                ->where('document_hash', $document->hash)->where('status', 'accepted')
-                ->whereNotNull('consented_at')->where('consented_at', '<=', now())->whereNull('withdrawn_at')->exists();
-            if (! $accepted) {
+            if (! $this->consents->isAccepted($participant, $type)) {
                 throw new EntitlementLocked;
             }
         }
