@@ -1,5 +1,24 @@
 # Koordinasi task paralel organization-payment
 
+## Internal summary reviewed; PostgreSQL acceptance pending — 2026-09-04
+
+Reviewed `c78b602`/`9a820d3` DTO/composer/lifecycle and both focused test files.
+Root independently reran summary composer/lifecycle plus existing lifecycle and
+product tests: 97 tests / 575 assertions passed. Commits NOT integrated yet:
+composition PostgreSQL races remain required. Backend completed cursor `:33`.
+Known mid-call global timezone mutation probe yielded locked rather than ready;
+no such production setter found and config/app.php is UTC. Stable process UTC
+is the current runtime assumption, not arbitrary timezone mutation resilience.
+
+Next bounded backend verification: actual credential readSummary against real
+recovery/revoke, finalizer commit/rollback and identity replacement using disposable
+PostgreSQL synchronized processes/observed locks. Check whole DTO before/after,
+no mixed payment/access/consent revision, context/idle rollback, no bill lock
+inversion and strict own-tenant privacy. Add tests/report only; if evidence exposes
+an application defect, stop with precise repro rather than expand production code.
+Keep UTC assumption explicit and distinguish clock drift from global timezone
+mutation. No public wiring, frontend/P15, active DB or source/gate activation.
+
 ## Product/payment projection accepted; internal composition next — 2026-09-04
 
 Reviewed worker `be50730`, integrated `3bd030c`. Root independently reran product,
