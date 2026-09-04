@@ -1,5 +1,22 @@
 # Koordinasi task paralel organization-payment
 
+## Summary browser preflight dispatched — 2026-09-04
+
+Heartbeat confirmed backend idle at `:38`, frontend idle unchanged at `:7`,
+portal notLoaded unchanged at `:5`. Previous integrated commits f0f2af1/b06935f
+and root verification remain accepted; no new results claimed.
+
+Sent backend ONE report-only increment on its existing 9087047 baseline:
+`reports/backend-p14-summary-browser-preflight.md`. Inspect existing guarded
+browser harness and propose minimum summary delivery verification with controlled
+HTTPS loopback, synthetic data/fake providers, exact middleware and auth-cookie
+isolation. Include CSP/inert JSON, two source origins, refresh/back/history,
+logout/recovery and shared-cookie multi-tab behavior, own-price privacy and
+postconditions. Distinguish already-delivered DOM/BFCache from server authority.
+No harness/application edits or server/browser run authorized by this increment;
+report and commit, then stop. Frontend waits for reviewed browser delivery scope;
+portal unchanged. Do not resend this preflight while active or already delivered.
+
 ## Read-only summary contract and synthetic HTTP integrated — 2026-09-04
 
 Reviewed frontend `303f0e6` against PHP DTO/profile/product/payment serialization;
