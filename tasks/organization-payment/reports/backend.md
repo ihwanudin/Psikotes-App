@@ -4444,3 +4444,56 @@ PostgreSQL **358/2,753**, Pint and PHPStan from the prior increment remain earli
 evidence; none was rerun or represented as a new result here. git diff --check
 passed and cached-path review contains only backend.md. No .env, active DB/data,
 new task/agent, public wiring, runtime changes, deploy or push. STOP for review.
+
+## P14 prerequisite: captured document and as-of consent evaluation
+
+Scope is exactly AcceptedConsentReader, new AcceptedConsentSnapshotTest, and this
+report. Existing immutable `App\Registration\ConsentDocument` is reused alongside
+`CarbonImmutable`; no DTO, document policy, configuration or context guard added.
+
+New internal method `isAcceptedForDocumentAt(Participant, ConsentDocument,
+CarbonImmutable)` derives consent_type from document.type. There is no independent
+type argument that could conflict with the document. It performs the sole
+canonical exists query using the supplied document version/hash and consented_at
+at or before the supplied timestamp, retaining accepted status and null withdrawal.
+The participant remains sensitive and must already be authorized by the caller
+in its existing scope/transaction. This is evidence evaluation, not authorization,
+attempt-scoped consent or legal approval of configured text.
+
+Existing `isAccepted(participant, type)` still resolves configured document first,
+then captures the application's current clock into an immutable timestamp and
+delegates. Invalid configuration still throws in that ordering; blank version,
+title and text retain their existing compatibility. No global clock/config changes,
+cache, state mutation, lock, audit or outbox write occur in either reader path.
+An explicit asOf does not reconstruct historical withdrawal: any nonnull
+withdrawn_at still fails, including a timestamp after asOf. No new legal policy
+is inferred from this API.
+
+### Actual TDD and regression
+
+- RED: **16 tests / 0 passed / 16 errors**, because isAcceptedForDocumentAt did not
+  exist. GREEN focused: **16 tests / 35 assertions**, all passed.
+- New tests prove captured document/time survives later invalid config and clock
+  changes; later clock cannot admit consent after captured time; exact/before/after
+  boundary, old version/hash, declined, withdrawn, missing time, and future
+  withdrawal semantics; document-derived type, participant isolation, blank-string
+  compatibility, and unchanged legacy fresh-config/time and exception behavior.
+  Explicit evaluation remains one read-only query and preserves caller context,
+  global clock/config and evidence/audit/outbox state.
+- Related SQLite-memory regression: **112 tests / 244 assertions**, all passed:
+
+```powershell
+php vendor/bin/phpunit -c phpunit.organization-payment.xml tests/Feature/Auth/AcceptedConsentSnapshotTest.php tests/Feature/Auth/AcceptedConsentReaderTest.php tests/Unit/Registration/ConsentDocumentTest.php tests/Feature/Auth/AttemptEntitlementGateTest.php tests/Feature/Auth/SettledAssessmentActivationTest.php --do-not-cache-result
+```
+
+- Full application PHPStan **0 errors**, with process-local XML synthetic settings.
+  Scoped Pint, both PHP syntax checks and git diff --check passed.
+
+This slice changes parameter sourcing of the existing read predicate, not locks,
+RLS policy or schema. No new PG or frontend build run is claimed or required for
+these non-rendering tests. Earlier PG 358/2753 and genuine-build 81/233 evidence
+remain historical; the artifact copy was preserved, not silently refreshed with
+the reader delta. Baseline dirty overlays remain unstaged. Only these three lane
+files are committed. No gate/settlement clock seams, summary composition, HTTP,
+frontend, P15, writer changes, active DB/.env/data, outbound, deploy/push or new
+task/agent. STOP for review before the next prerequisite slice.
