@@ -3746,3 +3746,108 @@ open under their own ownership.
 separate lane-only commits; baseline dirty state and blocked scratch cleanup are
 preserved. **STOP for review before any further harness fix, projector/HTTP,
 consent/P15, active data, outbound, deploy or push.**
+
+## P14c — internal profile facts only (2026-09-04)
+
+Code/test commit `0846e863d46147f8f981b438f8a2805aba6b6129` contains three new files:
+`app/Data/Integrations/CheckoutProfile.php`,
+`app/Services/Integrations/CheckoutProfileMapper.php`, and
+`tests/Feature/Integrations/CheckoutProfileProjectionTest.php`. No existing
+production class, validator, frontend DRAFT, schema, route or config is changed.
+
+The readonly DTO stores seven nullable string facts and serializes exactly one
+`profile` list in fixed order: fullName, birthDate, gender, educationLevel,
+intendedField, email, phone. Each row contains key/label/state/required, and only
+locked rows have displayValue. A null never becomes an empty placeholder or
+default UMUM; email is optional. Arrays returned by serialization do not mutate
+the DTO. There are no nested model/collection references in the DTO.
+
+This deliberately remains an **internal profile-facts contract**, not a full
+summary or drop-in frontend form contract. Input/options/autocomplete, callbacks,
+payment/access/consent sections and action decisions are absent, not fabricated.
+Human-readable gender/field labels are presentational mappings of existing enum
+values. No P15 input contract or completion writer is established by these facts.
+
+The mapper accepts a Participant graph and an explicit DateTimeImmutable as-of
+calendar date. It performs no queries, writes, clock lookup, RLS context change,
+authentication, or lazy relation load. The Participant argument is marked
+SensitiveParameter. Before eventual use, the lifecycle boundary must revalidate
+session/handoff/current authoritative scope and supply the fully loaded persisted
+participant and date. Accepting a synthetic/in-memory model here proves no
+authorization; there is no principal-based public entrypoint or controller.
+
+Every profile column must be loaded: absent raw attribute fails closed, while
+an explicit SQL NULL becomes missing. Valid nonnull values remain locked. Arrays,
+booleans, numeric phone, blank strings, unknown enums, invalid dates/contact
+formats or excessive lengths throw only `CHECKOUT_PROFILE_UNAVAILABLE`, without
+echoing the value or attaching a validation exception/payload. Other model
+attributes and relations are ignored by an explicit allowlist, not serialized.
+
+### Existing-validator comparison and choices
+
+Before implementation, the following differences were reported to coordinator:
+
+| Criterion | Existing sources | Profile-only behavior |
+| --- | --- | --- |
+| Full name | Checkout and registration min2/max200; gate nonblank | Use checkout limits plus nonblank reviewed-table rule; do not normalize or overwrite stored text. |
+| Education | Checkout/v1 string max64, no min2; registration min2 | Keep checkout behavior: a nonblank one-character value is valid. No invented education enum. |
+| Phone | Checkout regex permits trailing punctuation/space; public registration requires digit ending | Keep checkout regex/max32, including an accepted `1234567)` edge value. Do not import the stricter public rule. |
+| Birth date | Checkout/v1 and gate before today; public registration allows today | Follow reviewed checkout/gate table: before the explicit as-of day. Public registration is not changed or redefined. |
+| Gender | Checkout input FEMALE/MALE; provisioning persists female/male | Validate persisted lowercase values, map to Perempuan/Laki-laki. Raw uppercase in a stored model is not silently repaired. |
+| Intended field | Six existing enum values | Map each explicitly; invalid value fails, null stays missing, never fallback UMUM. |
+| Email | nullable email:rfc/max255 | Optional, same RFC primitive without DNS verification; nonnull blank/corrupt values are not interpreted as SQL NULL. |
+
+Rules use installed Laravel validation primitives, not a new handwritten email,
+phone or calendar validator. The small profile rule subset mirrors checkout-v2;
+no shared-request extraction was attempted in this ownership slice. Tests compare
+accepted checkout edge values through the actual FormRequest rules. If ingress
+rules later change, this mapper/compatibility matrix must be reviewed with them.
+The more permissive gate is not treated as a complete ingress validator.
+
+Persisted date representations differ from the request: a database DATE can be
+`Y-m-d`, while Eloquent writes `Y-m-d H:i:s` for this model. The mapper validates
+either exact format and the before-as-of condition, then returns the first ten
+calendar characters. It never converts UTC or uses Carbon's permissive rollover
+to rescue malformed data. Tests cover valid leap day, invalid leap-day rollover,
+today/future, model-generated timestamp from a +14:00 date and three application
+timezone settings. No minimum age or new business date restriction was added.
+
+Own profile text is intentionally PII and stays private to the future authorized
+consumer. Valid markup-looking names remain ordinary strings, never HtmlString,
+HTML flags or rendered markup. This slice contains no HTML sink; future UI must
+use escaped text rendering and the existing private response boundary. It does
+not claim browser/XSS/page acceptance. Never log the DTO or treat its flags as
+permission to edit, start tests, or grant rights.
+
+### Actual evidence and limits
+
+- RED before service/DTO existed: **49 tests, 0 passed**, missing mapper class.
+- Final focused projection: **50 tests / 200 assertions**, zero failures/skips.
+  Covers full/all-null/each-partial-null profiles, unloaded-column rejection,
+  invalid types and values, each enum, existing-rule edge acceptance, date
+  formatting, DTO immutability and recursive serialization key allowlists.
+- Sentinel fields cover external IDs/source, model IDs/package/branch,
+  registration credential/hash/test number, clinical and evidence metadata,
+  invoice metadata and other-participant relation data. None enter output.
+  A malformed unrelated date attribute is not cast merely to build a profile.
+  Query log stays empty, RLS context stays null, and raw model attributes are
+  unchanged during projection. These are pure in-memory synthetic fixtures,
+  not proof of graph authorization or SQL isolation.
+- Related combined run passes **172 tests / 833 assertions**, zero failures/skips:
+
+```powershell
+php vendor/bin/phpunit -c phpunit.organization-payment.xml tests/Feature/Integrations/CheckoutProfileProjectionTest.php tests/Feature/Integrations/CheckoutIntendedFieldContractTest.php tests/Feature/Integrations/CheckoutContractCompatibilityTest.php tests/Feature/Integrations/CheckoutProvisioningTest.php --do-not-cache-result
+```
+
+Pint and PHP syntax checks pass on all three new files. Full-project PHPStan
+passes with **0 errors** using process-local synthetic testing/SQLite-memory/array
+settings; no config file or .env changes. This is the existing application-path
+PHPStan scope, not a claim that the separately documented vendor/test-base type
+mismatch has been fixed. No PG or browser run was needed for this pure mapper;
+no whole application regression, public summary, payment/access/consent projection
+or P15 acceptance is claimed. Existing sandbox/manifest limitations remain.
+
+`git diff --check` and staged diff-check pass; code/tests and this lane evidence
+are separate scoped commits, leaving the dirty baseline and blocked scratch
+cleanup untouched. **STOP for review before lifecycle wiring, more summary
+sections, HTTP/frontend/P15, active data, outbound, deploy or push.**
