@@ -1,5 +1,13 @@
 # Koordinasi task paralel organization-payment
 
+## Actionable4e231 smoke authorized
+
+Preparation617a5d5 reviewed. Root independently matched manifestbc9d7c581e2c4f50053ef25469e0daba160417e85400ba7766119905a383eba2,
+config0e247e0377b57c664eb4c134005419e28381315a2f7623ed882548724b21d694
+and10 hashes; no DB/env. ONE guarded init then smoke3 exact candidate authorized.
+No retry/config fix/full matrix; run consumed invalid even on failure. Report new
+primary_reason/cleanup_status/categories and baseline/process evidence.
+
 ## Actionable supervisor state22fbf2b accepted; fresh candidate preparation
 
 Root reviewed and reran34tests PASS. Integrated immutable primary_reason,
