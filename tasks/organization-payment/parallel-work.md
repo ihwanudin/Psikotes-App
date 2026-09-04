@@ -1,5 +1,22 @@
 # Koordinasi task paralel organization-payment
 
+## Settlement single-instant evaluation accepted — 2026-09-04
+
+Reviewed worker `1785da0`, integrated `78ace99`. Root independently reran
+new/legacy settlement, payment facts, lifecycle, gate, activation and finalizer:
+188 tests / 733 assertions passed in env-free guarded SQLite. Explicit and default
+paths now use one immutable instant for all settlement timestamps, service guard
+unchanged. No new PG/browser run or public summary acceptance. Backend cursor `:27`.
+
+Next bounded backend slice: explicit captured document/time prerequisite evaluation
+in AssessmentAccessPrerequisites, reusing AcceptedConsentReader explicit API and
+one canonical profile/identity predicate. Typed immutable evaluation frame may be
+introduced with exact psychotest/DASS document-type validation and server-calendar
+handling. Preserve default path short-circuit/error ordering and blank-document
+compatibility; no legal rule or mandatory DASS for other tests. If preserving that
+ordering requires broader design, report before expanding. Gate/payment/lifecycle
+callers remain unchanged until this prerequisite seam is reviewed.
+
 ## Captured consent evaluation accepted — 2026-09-04
 
 Reviewed and integrated worker `68c4646`: isAcceptedForDocumentAt uses immutable
