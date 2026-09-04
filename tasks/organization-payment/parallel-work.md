@@ -1,5 +1,25 @@
 # Koordinasi task paralel organization-payment
 
+## SQLite lifecycle correction accepted locally — 2026-09-04
+
+Reviewed `60fa63b`/`5a7a1ff`: finally preserves parent teardown, exceptions and
+callbacks while invalidating migrated only for guarded truncation users.
+Root reran original failing order: 2/40 passed; regression sequences: 5/81 passed
+with PHP 8.3.26 full configuration. An initial 8.3.30 command-line-extension run
+failed before assertions because child processes lacked fileinfo; no application
+regression was inferred. Worker combined 176/818 remains worker evidence.
+Known baseline PHPStan traitsUsedByTest annotation mismatch, external sandbox skip
+and absent real frontend manifest remain separate limitations; no broad green claim.
+
+Next backend slice: internal profile projection DTO plus pure mapping and tests
+from reviewed P14c field table, without HTTP/session authority entrypoint yet.
+Only own already-authorized participant input; caller must later revalidate in
+canonical lifecycle transaction. Strict allowlist, locked valid / missing NULL,
+optional email, invalid nonnull fails closed, deterministic date/enum formatting.
+Do not implement incomplete payment/access/consent placeholders as a final DTO,
+modify frontend DRAFT, or expose projector as a controller. Summary integration
+and remaining readers stay subsequent increments.
+
 ## Combined-run diagnosis reviewed — 2026-09-04
 
 Reviewed report `ac25a87` against installed DatabaseTruncation/RefreshDatabase
