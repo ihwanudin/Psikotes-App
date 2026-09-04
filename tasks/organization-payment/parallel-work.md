@@ -1,5 +1,19 @@
 # Koordinasi task paralel organization-payment
 
+## Guard timing measured; conditional direct runtime recovery — 2026-09-04
+
+Reviewed be5223c: pure integrity stages41.8-47.8s, hashing alone20.9-22.3s;
+direct login GET returned500 at30.024s, not client timeout. Source/baseline remained
+unchanged, no checkout state and owned PHP stopped. Execution-limit cause not yet
+proven. Browser acceptance remains open.
+
+Sent ONE conditional diagnostic: run-local wrapper records only SAPI/numeric limit
+and fatal exhaustion boolean around same reviewed router, one direct GET. Only if
+30s execution-limit exhaustion confirmed, set disposable INI max_execution_time90
+and restart original router for one bounded direct200 probe. No TLS/browser/proxy
+change, no response data dumps, no guard bypass; preserve full42table baseline and
+stop owned listener. Different error stops review; report-only tracked change.
+
 ## First browser navigation failed; bounded timing diagnosis — 2026-09-04
 
 Reviewed cbaff3e runtime report; backend completed cursor `:46`. Guarded init
