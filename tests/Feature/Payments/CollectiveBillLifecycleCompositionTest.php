@@ -36,6 +36,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\OrganizationPaymentTestCase;
 use Tests\Support\AssessmentPreviewFixture;
@@ -73,7 +74,7 @@ final class CollectiveBillLifecycleCompositionTest extends OrganizationPaymentTe
     }
 
     #[DataProvider('consentCases')]
-    public function test_ten_attempts_share_one_invoice_and_exact_settlement_without_bypassing_consent(bool $lastConsentPending): void
+    public function test_ten_attempts_share_one_invoice_and_exact_settlement_without_bypassing_consent(bool $lastConsentPending, ?string $mismatch): void
     {
         $organization = null;
         $selection = $expectedSnapshots = $participants = [];
@@ -160,6 +161,9 @@ final class CollectiveBillLifecycleCompositionTest extends OrganizationPaymentTe
             merchantReference: $bill->public_reference, status: PaymentStatus::Paid,
             occurredAt: now(), amount: self::TOTAL_IDR, currency: 'IDR',
         );
+        if ($mismatch !== null) {
+            $this->assertRejectedEventPreservesPendingBill($bill, $event, $mismatch);
+        }
         $this->assertSame([
             'decision' => 'settled', 'allocationCount' => 10, 'activatedAttemptCount' => $lastConsentPending ? 9 : 10,
         ], app(FinalizeAssessmentBill::class)->execute($event));
@@ -256,10 +260,50 @@ final class CollectiveBillLifecycleCompositionTest extends OrganizationPaymentTe
         $this->assertSame($settledState, $this->durableState(), 'Reading owner/foreign projections must not write payment state.');
     }
 
-    /** @return array<string, array{bool}> */
+    /** @return array<string, array{bool, string|null}> */
     public static function consentCases(): array
     {
-        return ['all consent accepted' => [false], 'last consent still absent' => [true]];
+        return [
+            'all consent accepted' => [false, null],
+            'last consent still absent' => [true, null],
+            'amount mismatch then valid payment' => [true, 'amount'],
+            'invalid currency DTO then valid payment' => [true, 'currency'],
+        ];
+    }
+
+    private function assertRejectedEventPreservesPendingBill(AssessmentBill $bill, PaymentEvent $valid, string $mismatch): void
+    {
+        $original = $this->durableState();
+        if ($mismatch === 'currency') {
+            // The public DTO rejects non-IDR before finalization; do not bypass its constructor.
+            try {
+                new PaymentEvent($valid->eventId, $valid->providerReference, $valid->merchantReference,
+                    $valid->status, $valid->occurredAt, $valid->amount, 'USD');
+                $this->fail('Non-IDR event must not pass the canonical DTO boundary.');
+            } catch (InvalidArgumentException $exception) {
+                $this->assertSame('Payment event money values are invalid.', $exception->getMessage());
+            }
+            $this->assertSame($original, $this->durableState(), 'Rejected DTO must not alter durable rows.');
+            $this->assertNull(app(RlsContextRunner::class)->current());
+            $this->assertSame(0, DB::transactionLevel());
+
+            return;
+        }
+        $rejected = new PaymentEvent($valid->eventId, $valid->providerReference, $valid->merchantReference,
+            $valid->status, $valid->occurredAt, self::TOTAL_IDR - 1, 'IDR');
+        try {
+            app(FinalizeAssessmentBill::class)->execute($rejected);
+            $this->fail('Mismatched payment must be rejected before any allocation is settled.');
+        } catch (DomainException $exception) {
+            $this->assertSame('ASSESSMENT_PAYMENT_MONEY_MISMATCH', $exception->getMessage());
+        }
+        $this->assertSame($original, $this->durableState(), 'Finalizer denial must preserve every durable row.');
+        $this->assertDatabaseHas('assessment_bills', ['id' => $bill->id, 'status' => 'pending', 'paid_at' => null]);
+        $this->assertSame(0, DB::table('assessment_bill_items')->whereNotNull('settled_at')->count());
+        $this->assertDatabaseCount('assessment_entitlements', 0);
+        $this->assertSame(0, DB::table('audit_logs')->where('action', 'assessment_bill.paid')->count());
+        $this->assertNull(app(RlsContextRunner::class)->current());
+        $this->assertSame(0, DB::transactionLevel());
     }
 
     private function admin(int $organization, string $suffix): Admin

@@ -2,6 +2,24 @@
 
 ## Parallel follow-ups dispatched — 2026-09-04
 
+Portal negative3ea0960 reviewed and root independently reran4tests/863assertions
+GREEN in approved isolated SQLite-memory copy. Currency rejected at DTO, amount at
+canonical finalizer, exact durable rows unchanged then valid event settles normally.
+Integrated test delta only; style/PG/browser not rerun by root. No production edit.
+Backend benchmark847b6da reports candidate33–37s/request: insufficient for current
+browser limits. User asked explicitly whether to accept test-only pre/post full
+integrity with lighter runtime checks; awaiting reply. B remains NOT authorized.
+Frontend eb3d7bc/4eb2385 still pending actual canonical HTTP integration testing.
+
+After independent acceptance659eb31, portal received ONE negative composition
+increment: amount/currency mismatch on issued ten-item bill must preserve exact
+rows, then valid event still settles once; test/report only, same guarded copy.
+No shared app or frontend files owned by portal; no public/browser/PG changes.
+Worker preflight found non-IDR rejected by PaymentEvent constructor. Clarified
+same increment: currency denial tested at DTO boundary, amount at finalizer;
+no PRAGMA/constraint bypass or corrupt stored currency to force unreachable input.
+After denial, valid IDR event must still settle normally. Report boundaries exactly.
+
 Portal f0705c reviewed: canonical reserve/issue/finalize composition, exact replay
 rows, ten allocations, paid-without-consent denial and owner/foreign HTTP detail.
 Root independently reran new test in approved isolated composition copy:
