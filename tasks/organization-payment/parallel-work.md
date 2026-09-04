@@ -1,5 +1,15 @@
 # Koordinasi task paralel organization-payment
 
+## Inspector deadline correction requested
+
+Peer reviewb4b23a8 found P2 unbounded stream_get_contents/proc_close in Windows
+identity inspector. Root confirmed code path725–730; no actual hang claimed.
+Backend idle cursoraf430373-a868-4009-9d26-21ebbc336071:3 received ONE correction:
+bounded inspector deadline/output and explicit owned-inspector cleanup with tests.
+Only short isolated synthetic subprocess probes authorized, no checkout runtime,
+exactrun changes, browser/DB or killing inspected/unrelated process. Full65ee301
+integration remains pending fix and independent verification. Peer report-only.
+
 ## Cooperative harness65ee301 pending independent review
 
 Backend reports64pure +52cases/161assertions, simulated process identities and
