@@ -1,5 +1,21 @@
 # Koordinasi task paralel organization-payment
 
+## P14c profile facts accepted locally — 2026-09-04
+
+Reviewed `0846e86`/`ff14129`, including validator compatibility and allowlisted
+serialization. Root reran CheckoutProfileProjectionTest: 50/200 passed in the
+env-free worker. SQL NULL is missing, valid existing data locked, date calendar
+preserved, unloaded/invalid data unavailable. Checkout-v2 ingress rules remain
+distinct from stricter public registration. DTO is only internal profile facts,
+not authorization, an editable form descriptor or complete frontend summary.
+
+Next backend slice: extract canonical accepted-consent reader from
+AssessmentAccessPrerequisites for future summary reuse; preserve its exact
+participant/type/version/hash/status/time/withdrawal predicate and caller access
+semantics. Do not invent attempt-bound consent, grant consent, accept legal draft
+or extend DASS requirements to other tests. Characterize negative cases and run
+prerequisite/gate/activation regression. No consent writer, summary HTTP or P15.
+
 ## SQLite lifecycle correction accepted locally — 2026-09-04
 
 Reviewed `60fa63b`/`5a7a1ff`: finally preserves parent teardown, exceptions and
