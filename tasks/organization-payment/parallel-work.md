@@ -2,6 +2,15 @@
 
 ## Parallel follow-ups dispatched — 2026-09-04
 
+Portal cursor `:9`, reportf75eede: worker lacks canonical invoice/finalizer dependency
+closure; no tests ran. Authorized one independent OS-temp test copy of immutable
+root df92ecd466244ef864bfa62fcf139fc3b322c3d7, source allowlist only, verified
+independent lock-matched vendor, no env/data/cache or live services. Inspect guarded
+XML/bootstrap closure before runtime. Run existing issuance/finalization baseline
+then the already assigned composition test in SQLite memory only; no worker overlay,
+new writer, shared backend run or public changes. Preserve temp evidence; stop if
+safe dependency closure cannot be established. This resumes same increment.
+
 Portal report8e2014b reviewed as evidence/gap mapping, not P17 acceptance. ONE
 test-only composition increment dispatched: new CollectiveBillLifecycleCompositionTest,
 optional new isolated fixture, lane report (3files). Ten paid-item attempts compose
