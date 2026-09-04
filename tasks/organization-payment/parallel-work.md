@@ -1,5 +1,20 @@
 # Koordinasi task paralel organization-payment
 
+## Combined-run diagnosis reviewed — 2026-09-04
+
+Reviewed report `ac25a87` against installed DatabaseTruncation/RefreshDatabase
+and guarded test base. Shared migrated flag outlives truncation PDO and can make
+the following RefreshDatabase class skip schema creation. Worker reproduced the
+same ordered pair before extraction; reverse pair passes. This is a pre-existing
+test isolation defect, separate from the explicit sandbox skip and absent build.
+Next backend ownership temporarily includes tests/OrganizationPaymentTestCase.php
+and a bounded database lifecycle regression fixture/test. Implement guaranteed
+teardown invalidation only for DatabaseTruncation users in the guarded SQLite
+base, preserve parent teardown and transaction semantics, test both orders and
+failure cleanup. No vendor/application/schema changes or relaxed safety guards.
+Sandbox suite separation and actual frontend build remain separate follow-ups;
+do not silently exclude sandbox tests and claim the entire suite passed.
+
 ## Shared settlement reader integrated — 2026-09-04
 
 Reviewed `90f3aa5`/`c15bdbf` and integrated as `2fb2268`/`dcf00ab` plus the
