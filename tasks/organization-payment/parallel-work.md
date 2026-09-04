@@ -1,5 +1,16 @@
 # Koordinasi task paralel organization-payment
 
+## Resource audit1576efb requires direct host action
+
+Persisted historical7-entry identity map was wrapper-memory only. Current census:
+one process references candidate path, uses approved executable and creation time,
+but parent/recorded tick lineage is unavailable; listeners0. Automated cleanup
+was correctly not invoked (`not_invoked_missing_recorded_map_and_lineage`). Run
+remains invalid/no reuse. No DB/source/runtime retry. User/host must inspect and
+close that exact candidate-referencing process directly before another browser
+attempt. Future supervisor needs crash-safe protected PID/tick/parent/role map.
+Do not repeat this blocker or prepare/run a new candidate until user confirms.
+
 ## Actionable smoke failed spawn_browser; ownership safety audit
 
 Worker7623b60: init19.918s; supervisor49.640s,0requests. Fixed result primary
