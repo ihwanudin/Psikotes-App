@@ -1,5 +1,19 @@
 # Koordinasi task paralel organization-payment
 
+## Browser smoke accepted; disposable INI correction — 2026-09-04
+
+Backend completed cursor `:45`; reviewed a46ae5d runtime report and exact INI.
+Offline named cached-CLI smoke passed installed Chromium151 basic APIs and closed;
+not summary browser acceptance. Initialization never ran. Root independently
+confirmed bcmath is compiled into PHP8.3.26 under -n; dynamic declaration caused
+the reported warning, not a missing dependency or application defect.
+
+Sent ONE continuation: remove only extension=bcmath from run-local runtime.ini,
+recheck startup/extensions/manifest/ports, then resume already approved guarded
+runtime/browser/verifier sequence. No shared PHP config/dependency/source change.
+Further fixture/guard/application/browser failures stop with sanitized evidence;
+owned-process cleanup mandatory. Report only; no live data or public activation.
+
 ## Guard accepted; conditional isolated runtime verification — 2026-09-04
 
 Reviewed 1c0d5b0/ed7e86d, integrated 6064eeb/63f4231. Root pure46 passed and
