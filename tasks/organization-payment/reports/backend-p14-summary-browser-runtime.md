@@ -362,3 +362,74 @@ TDD: new pure record-shape/bounds checks failed before implementation (exit1), t
 Pint --test passed. Commit this preparation before refreshing only the reviewed
 harness in the exact existing source copy. The authorized single direct90s request
 and actual stage evidence follow separately; no browser/TLS/reinit is permitted.
+
+### Stage-localization result
+
+Preparation commit: `bf44b9d5d07a58c5e3f93ad7ba9b6abdf0d55738`.
+After commit, rehashed the entire old manifest, refreshed ONLY the reviewed PHP
+harness, and rehashed all22,126 entries again. Other22,125 files unchanged. Current:
+
+- Manifest SHA-256:
+  `6de2f7bcec8e77cd4c5b7af1e564215fdcae33b3b4ac263dbffd3130291d6c17`.
+- Harness worker/copy SHA-256:
+  `1e4187e90b91ecab5d0567e2eba7ce3233a17cf818072e37cabafa031c2af6f6`.
+
+Prior9eb114 digest remains historical, not the launch digest for this new copy.
+The copied harness52 pure checks and PHP syntax passed. All42 tables matched the
+preserved baseline before the request; four counters zero. No .env, reinit, vendor
+edit or shared ini change. Existing disposable execution limit remains90.
+
+Launched only owned PHP PID42716, verified executable/exact router/arguments and
+127.0.0.1:8126 against all-family inventory. No443/TLS/browser. Environment used
+the new exact manifest digest and explicit stage diagnostic flag1. Sent exactly
+ONE direct GET /__browser/login with exact Host, Connection:close, no cookies,
+submission, redirects, control routes or response reuse; finite client120s.
+Actual response: HTTP200,44.6767s,38 bytes, fixed expected-login-body boolean true.
+No response headers/body/cookies were printed or retained in diagnostic results.
+
+Recorded cumulative elapsed seconds from the validated diagnostic start:
+
+| Stage | Start | End | Elapsed |
+| --- | ---: | ---: | ---: |
+| Tree | 0.0000 | 15.1190 | 15.1190 |
+| Manifest header | 15.1191 | 15.2178 | 0.0987 |
+| File hashes | 15.2179 | 32.4318 | 17.2139 |
+| Exact inventory | 32.4318 | 42.5438 | 10.1120 |
+| Required membership | 42.5439 | 42.5439 | <0.0001 |
+| Autoload | 42.5445 | 42.6373 | 0.0928 |
+| Application creation | 42.6374 | 42.7179 | 0.0805 |
+| Laravel bootstrap | 42.7294 | 44.2715 | 1.5421 |
+| Request baseline | 44.2935 | 44.3551 | 0.0616 |
+| Request handle | 44.3552 | 44.6243 | 0.2691 |
+| Postconditions | 44.6244 | 44.6552 | 0.0308 |
+
+Hash progress5000/10000/15000/20000 appeared at18.7840/22.7454/26.5570/30.3535s;
+hash and inventory completion both report22,126 files. All stage records report
+executionLimit90. Shutdown: errorType2, maximumExecutionTimeExhausted=false.
+Type2 is a nonfatal warning left in error_get_last; the record deliberately has
+no message/file/line. Its cause is UNKNOWN and it may predate the last stage.
+Do not call this warning-free execution or silently ignore it as harmless.
+
+This sample localizes most latency to pre-autoload filesystem integrity work
+(42.54s), rather than application bootstrap/handler. It does not reproduce the
+previous90s failure. Host/cache variability or instrumentation effects are possible
+but unproven; no claim that diagnostics fixed the underlying variability. The
+bridge10s/browser30s budgets still cannot accommodate this observed response.
+Propose separate review of the numeric warning and timeout budget/variance before
+any further browser run. No timeout increase, caching/bypass, guard removal or
+automatic warning fix was made; no additional request was sent.
+
+Stopped only verified-owned42716. At2026-09-04T21:52:44.9548498+07:00 its PID was
+absent and8126/443 all-family listeners empty. After stopping, all42 SQLite tables
+again matched baseline, handoff/session/audit/outbox counts each0. No violations.txt.
+Three new log/diagnostic files scanned:0 bounded prohibited-marker hits. Local
+synthetic login may write file-session state; no cookie was replayed/exported.
+Diagnostics file remains for review and exclusive-create prevents silently
+reusing it for another opted-in request. Default diagnostics remain OFF.
+
+Only harness and this runtime report changed across the two commits; source copy
+refresh was restricted to the committed harness. No full summary/browser matrix
+or successful-browser lifecycle verifier was run. No application/active data,
+real provider, install, TLS/browser, public wiring, deploy/push or new task/agent.
+Diff-check passed; final report-only staging. STOP: direct login200 observed,
+warning/variance unresolved, P14 acceptance still incomplete.
