@@ -1,5 +1,23 @@
 # Koordinasi task paralel organization-payment
 
+## Mutex code reviewed; genuine-build regression pending — 2026-09-04
+
+Reviewed `c7b5a94` one-line participant lock and expanded PG test delta, plus
+`7fe6a5b` report. Root baseline writer SHA matches d6498f98…; worker after
+1ecdb7e2… . Worker PG 358/2753 GREEN reviewed, not root-rerun. Root independently
+reproduced SQLite 81 tests / 218 assertions: 80 pass, one received-page failure
+from missing Vite manifest. Root attempted genuine `npm run build` in env-free
+worker with process-local synthetic XML values: Vite executable missing.
+No code commits integrated yet; diagnostic RED must land together with final fix.
+Backend completed cursor ends in `:23`.
+
+Next backend bounded task is verification setup: install exact lockfile frontend
+dependencies in its own worktree (normal local dependency setup), genuine build
+under synthetic process settings, rerun the same 81-test command without skipped
+tests/fake manifests/Vite bypass. Do not change lockfile, application or baseline
+generated sources; inspect lifecycle scripts before installation. Report exact
+artifacts/results and any remaining blocker. No summary implementation yet.
+
 ## Identity diagnostic reviewed; bounded mutex fix assigned — 2026-09-04
 
 Reviewed worker `f1c5d637c773b630e2cf5fc8526a2925d565f5ef` report and all new
