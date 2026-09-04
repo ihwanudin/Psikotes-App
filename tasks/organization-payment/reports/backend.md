@@ -4548,3 +4548,112 @@ staged; commit contains only these three lane files. No payment/gate/prerequisit
 caller migration, summary composition, HTTP/frontend/P15, writer change, active
 DB/.env/data, real provider/notifier calls, new task/agent, deploy or push.
 STOP for review before the next prerequisite.
+
+## P14 prerequisite: captured profile/consent/identity evaluation frame
+
+Local slice includes new immutable AssessmentPrerequisiteFrame, the prerequisite
+reader overlay delta, focused AssessmentPrerequisiteFrameTest, and this report.
+No gate, lifecycle or payment caller was migrated to an explicit API.
+
+The frame carries immutable database evaluation time and applicable immutable
+ConsentDocument slots. It derives serverDate from that instant and the caller's
+server timezone; no separate date label can contradict the instant. Document slots
+reject mismatched psychotest/dass types. Missing documents raise explicit errors
+when required, preserving profile-first and psychotest-before-DASS short circuits.
+DASS is required only for dass21. The frame/caller does not grant authorization.
+
+`assertSatisfiedAt(participant, testType, frame)` and the existing assertSatisfied
+share one private profile/identity evaluator. A private document resolver keeps
+legacy config loading lazy: bad profile precedes invalid psychotest config, and
+rejected psychotest evidence precedes invalid DASS config. Explicit resolution
+reads only the frame. Both invoke isAcceptedForDocumentAt, using the same captured
+instant as checked_at and reviewed_at comparisons. Existing manual/automatic
+acceptance and evidence-count predicates remain. Offsetless identity times use
+the captured database time's timezone; offset-bearing values retain their instant.
+
+Birth dates are date-only values: compare their YYYY-MM-DD calendar label against
+the derived server date, not a UTC-midnight instant. Legacy uses the actual PHP
+server timezone (the one underlying today), not a later re-read of config. Tests
+cover west/east UTC date boundaries, same-day rejection, preceding-day acceptance,
+legacy midnight freshness, and explicit-frame stability after clock/config/process
+timezone changes. The reader/frame never globally mutates time or configuration.
+Blank-string configured documents and existing configuration exceptions remain.
+
+### Actual verification
+
+- Initial RED: **30 tests, 1 passed, 5 failures, 24 errors, 16 assertions**.
+  Two failures reproduced legacy forward/backward clock drift during a consent
+  read; the remaining failures/errors reflected the missing frame/explicit API.
+- First GREEN: **30/59**. Added focused edge cases for missing manual review time,
+  unchanged automatic match, explicit DASS short circuit, legacy midnight and
+  captured identity parsing timezone. Final focused **35 tests / 68 assertions**.
+- Relevant consent/document/prerequisite/gate/activation regression:
+  **147 tests / 312 assertions**, all passed, with no skips:
+
+```powershell
+php vendor/bin/phpunit -c phpunit.organization-payment.xml tests/Feature/Auth/AssessmentPrerequisiteFrameTest.php tests/Feature/Auth/AcceptedConsentSnapshotTest.php tests/Feature/Auth/AcceptedConsentReaderTest.php tests/Unit/Registration/ConsentDocumentTest.php tests/Feature/Auth/AttemptEntitlementGateTest.php tests/Feature/Auth/SettledAssessmentActivationTest.php --do-not-cache-result
+```
+
+- Full application PHPStan **0 errors** using process-local synthetic XML values;
+  scoped Pint, all three PHP syntax checks, diff-check passed. Query-event test
+  dispatchers and test clock/timezone changes are restored in finally.
+- No new PG/build/browser run is claimed. This is no new lock/RLS/schema policy;
+  parent-mutex concurrency and genuine artifact results remain prior evidence.
+  Frame coherence does not turn unlocked database reads into one MVCC snapshot.
+
+### Required overlay application, not a baseline commit
+
+AssessmentAccessPrerequisites.php is still untracked in this worker. It is NOT
+staged wholesale. Before SHA-256 (also matched current read-only root):
+`396d52139d61ee9c55d2a4de66b9f40328dbe1aee7f6f5a7427225c6f2330e4c`.
+After SHA-256:
+`54419e9e6ca387dac04462c967f8ed5f78ad50f4f6bb528e9accff82bfb76caf`.
+Apply this exact zero-context patch together with the new frame/test; use
+`--unidiff-zero` when applying through git. Reverse dry-run against the local
+after-file passed. The ignored `.scaffold/prerequisite-frame.patch` also holds
+this patch; it is not a source/config/artifact change.
+
+```diff
+diff --git a/app/Services/ParticipantAuth/AssessmentAccessPrerequisites.php b/app/Services/ParticipantAuth/AssessmentAccessPrerequisites.php
+--- a/app/Services/ParticipantAuth/AssessmentAccessPrerequisites.php
++++ b/app/Services/ParticipantAuth/AssessmentAccessPrerequisites.php
+@@ -7,0 +8 @@
++use App\Registration\ConsentDocument;
+@@ -9,0 +11 @@
++use Closure;
+@@ -17,0 +20,14 @@
++    {
++        $asOf = CarbonImmutable::instance(now());
++        $this->assertUsing($participant, $testType, $asOf,
++            $asOf->setTimezone(date_default_timezone_get())->toDateString(),
++            fn (string $type): ConsentDocument => ConsentDocument::for($type));
++    }
++
++    public function assertSatisfiedAt(Participant $participant, string $testType, AssessmentPrerequisiteFrame $frame): void
++    {
++        $this->assertUsing($participant, $testType, $frame->asOf, $frame->serverDate, $frame->documentFor(...));
++    }
++
++    /** @param Closure(string): ConsentDocument $documentFor */
++    private function assertUsing(Participant $participant, string $testType, CarbonImmutable $asOf, string $serverDate, Closure $documentFor): void
+@@ -26 +42 @@
+-            || $participant->getAttribute('birth_date') === null || ! $participant->birth_date->lt(today())) {
++            || $participant->getAttribute('birth_date') === null || $participant->birth_date->toDateString() >= $serverDate) {
+@@ -31 +47 @@
+-            if (! $this->consents->isAccepted($participant, $type)) {
++            if (! $this->consents->isAcceptedForDocumentAt($participant, $documentFor($type), $asOf)) {
+@@ -36 +52 @@
+-            ->where('checked_at', '<=', now())->first();
++            ->where('checked_at', '<=', $asOf)->first();
+@@ -42,2 +58,2 @@
+-            && CarbonImmutable::parse($verification->reviewed_at)->gte(CarbonImmutable::parse($verification->checked_at))
+-            && CarbonImmutable::parse($verification->reviewed_at)->lte(now());
++            && CarbonImmutable::parse($verification->reviewed_at, $asOf->getTimezone())->gte(CarbonImmutable::parse($verification->checked_at, $asOf->getTimezone()))
++            && CarbonImmutable::parse($verification->reviewed_at, $asOf->getTimezone())->lte($asOf);
+```
+
+Commit only frame, focused test and this report. Other baseline overlays and the
+genuine-build artifact copy remain untouched. No summary DTO/composition, HTTP,
+frontend/P15/writer, active DB/.env/data, real provider/notifier, new task/agent,
+deploy or push. STOP for review; the prerequisite overlay patch is required before
+integrating/running the committed frame tests on root.
