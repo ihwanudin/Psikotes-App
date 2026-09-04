@@ -1,6 +1,9 @@
-"""Pure/mock supervisor tests: no subprocess, network, browser or fixture DB."""
+"""Supervisor unit tests plus one owned local listener inspection; no browser or DB."""
 import importlib.util
+import json
+import os
 from pathlib import Path
+import socket
 import unittest
 from unittest.mock import patch
 
@@ -51,6 +54,76 @@ class Fake:
 
 
 class SupervisorTests(unittest.TestCase):
+    def test_listener_outcomes_distinguish_free_occupied_and_inspection_failure(self):
+        run = m.WindowsRun({"directory": "synthetic-unused"})
+        run._ps = lambda command, timeout=3: "[]"
+        self.assertEqual(run._listeners(), [])
+        run.assert_ports_free(10)
+
+        row = {"pid": 123, "port": 8126, "address": "127.0.0.1"}
+        run._ps = lambda command, timeout=3: json.dumps([row])
+        self.assertEqual(run._listeners(), [row])
+        with self.assertRaisesRegex(m.Refused, "^occupied_port$"):
+            run.assert_ports_free(10)
+
+        for value in ("null", "{}", '"PRIVATE"', '[{"pid":true,"port":8126,"address":"x"}]'):
+            with self.subTest(value=value):
+                run._ps = lambda command, timeout=3, value=value: value
+                with self.assertRaisesRegex(m.Refused, "^listener_inspection_failed$"):
+                    run._listeners()
+        for failure in (RuntimeError("PRIVATE"), m.Refused("command")):
+            with self.subTest(failure=type(failure).__name__):
+                run._ps = lambda command, timeout=3, failure=failure: (_ for _ in ()).throw(failure)
+                with self.assertRaisesRegex(m.Refused, "^listener_inspection_failed$"):
+                    run._listeners()
+
+    def test_listener_inspection_failure_is_not_reported_as_occupation(self):
+        for failure in (m.Refused("listener_inspection_failed"), RuntimeError("PRIVATE")):
+            with self.subTest(failure=type(failure).__name__):
+                f = Fake()
+                f.assert_ports_free = lambda left, failure=failure: (_ for _ in ()).throw(failure)
+                result = m.supervise(f)
+                self.assertEqual(result["reason"], "listener_inspection_failed")
+                self.assertEqual(f.launched, [])
+        f = Fake()
+        f.assert_ports_free = lambda left: (_ for _ in ()).throw(m.Refused("occupied_port"))
+        self.assertEqual(m.supervise(f)["reason"], "occupied_port")
+
+    @unittest.skipUnless(socket.has_ipv6, "IPv6 is unavailable")
+    def test_real_listener_inspector_covers_ipv4_and_ipv6_wildcards_without_killing(self):
+        run = m.WindowsRun({"directory": str(Path.cwd()), "powershell": "C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"})
+        run.env = {key: os.environ[key] for key in ("SystemRoot", "TEMP", "TMP")}
+        run.io_deadline = float("inf")
+        if run._listeners():
+            self.skipTest("controlled ports are occupied")
+        sockets = []
+        try:
+            ipv4 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            ipv4.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+            ipv4.bind(("0.0.0.0", 8126))
+            ipv4.listen()
+            sockets.append(ipv4)
+            ipv6 = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+            ipv6.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+            ipv6.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+            ipv6.bind(("::", 443))
+            ipv6.listen()
+            sockets.append(ipv6)
+        except OSError:
+            for owned in sockets:
+                owned.close()
+            self.skipTest("controlled IPv4/IPv6 wildcard listeners could not both bind")
+        try:
+            rows = run._listeners()
+            self.assertEqual({row["port"] for row in rows}, {443, 8126})
+            self.assertEqual({row["pid"] for row in rows}, {os.getpid()})
+            self.assertTrue(any(":" in row["address"] for row in rows))
+            self.assertTrue(any("." in row["address"] or row["address"] == "0.0.0.0" for row in rows))
+        finally:
+            for owned in sockets:
+                owned.close()
+        self.assertEqual(run._listeners(), [])
+
     def test_smoke_exact_three_only_after_start_and_never_accepts(self):
         f = Fake()
         result = m.supervise(f)

@@ -85,3 +85,46 @@ process metadata or listener identity should enter the supervisor result.
 No code fix, retry, new smoke preparation or runtime operation follows this
 report. `git diff --cached --check` passed with only this report staged. Stop for
 coordinator review.
+
+## Reviewed correction follow-up
+
+After review, a narrow supervisor correction was implemented locally in the two
+existing supervisor files. The PowerShell `Get-NetTCPConnection` query remains:
+the faster .NET `IPGlobalProperties.GetActiveTcpListeners()` benchmark returned
+IPv4 and IPv6 endpoints but no owning PID, while the existing ownership and
+cleanup invariants require the PID for exact role/listener matching. Substituting
+it would weaken that proof.
+
+Only this cold, module-backed listener query now receives a **six-second**
+inspection allowance. The value is below the reviewed maximum of ten seconds,
+adds margin above the measured 2.9041-second result, and remains debited from the
+single global supervisor deadline through `_command`'s `min` bound. Identity,
+process snapshot, browser, server, TLS, request and cleanup limits are unchanged.
+
+The inspector validates a JSON array whose rows have exactly `pid`, `port` and
+`address`, with positive integer PID, port 443/8126, and bounded nonempty address.
+Timeout, command/nonzero/stderr failures, decode/JSON/shape failures and unexpected
+exceptions are converted without payload to `listener_inspection_failed`.
+Only a successfully parsed nonempty array produces `occupied_port`; a parsed
+empty array is free. Both outcomes stop before claim and remain fail-closed.
+
+TDD evidence:
+
+- RED: the new focused suite reported **5 failures and 2 errors across 32 tests**
+  for malformed/failure classification and the real inspector against the old
+  implementation.
+- Final GREEN: **32/32 tests passed in 4.601 seconds**, including all 29 prior
+  tests.
+- The real bounded test first established both controlled ports were free, then
+  bound owned wildcard IPv4 `0.0.0.0:8126` and IPv6 `[::]:443` listeners. One
+  inspection returned both ports and the current process PID. `finally` closed
+  only those socket handles; a final inspection returned empty. It was not
+  skipped, stole no port and killed no process.
+- Mock cases cover free, occupied, generic failure, timeout-equivalent command
+  refusal, null/object/string/invalid-row shapes, sanitization, and supervisor
+  reason classification. Python AST parsing passed for both changed files.
+- `git diff --check` passed. No browser, PHP server, database, supervisor lifecycle,
+  source copy, fresh-run preparation, or smoke retry occurred.
+
+This correction does not authorize another runtime. A new isolated preparation
+and smoke still require separate root review and authorization.

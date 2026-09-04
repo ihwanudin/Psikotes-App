@@ -93,8 +93,10 @@ def supervise(io, *, mode="smoke", requests=3, budget=180):
             step("postcheck", lambda remaining: io.harness("integrity-post", remaining))
             io.postcheck_complete = True
         completed = True
-    except Exception:
-        result["reason"] = stage
+    except Exception as error:
+        code = str(error) if isinstance(error, Refused) else ""
+        result["reason"] = ("occupied_port" if code == "occupied_port" else "listener_inspection_failed") \
+            if stage == "occupied_port" else stage
     finally:
         # Encloses ALL lifecycle operations, including stop/business/post and BaseException.
         # Interrupts are not caught or converted into successful/ordinary result objects.
@@ -249,8 +251,8 @@ class WindowsRun:
                     process.kill()  # Popen handle only, not a searched PID.
                     process.wait(timeout=2)
 
-    def _ps(self, script):
-        return self._command([self.c["powershell"], "-NoProfile", "-NonInteractive", "-Command", script], 3, track=False)
+    def _ps(self, script, timeout=3):
+        return self._command([self.c["powershell"], "-NoProfile", "-NonInteractive", "-Command", script], timeout, track=False)
 
     def _identity(self, pid):
         if type(pid) is not int or pid <= 0:
@@ -289,7 +291,21 @@ class WindowsRun:
         return current
 
     def _listeners(self):
-        return json.loads(self._ps("$ErrorActionPreference='Stop'; $r=@(Get-NetTCPConnection -ErrorAction Stop | Where-Object {$_.State -eq 'Listen' -and $_.LocalPort -in 8126,443} | ForEach-Object {@{pid=[int]$_.OwningProcess; port=[int]$_.LocalPort; address=$_.LocalAddress}}); ConvertTo-Json -InputObject $r -Compress"))
+        try:
+            # Six seconds is scoped to this cold module-backed inspection only. The
+            # global lifecycle deadline remains authoritative and debits the time.
+            rows = json.loads(self._ps("$ErrorActionPreference='Stop'; $r=@(Get-NetTCPConnection -ErrorAction Stop | Where-Object {$_.State -eq 'Listen' -and $_.LocalPort -in 8126,443} | ForEach-Object {@{pid=[int]$_.OwningProcess; port=[int]$_.LocalPort; address=$_.LocalAddress}}); ConvertTo-Json -InputObject $r -Compress", timeout=6))
+            if not isinstance(rows, list) or any(
+                not isinstance(row, dict) or set(row) != {"pid", "port", "address"}
+                or type(row["pid"]) is not int or row["pid"] <= 0
+                or type(row["port"]) is not int or row["port"] not in PORTS
+                or not isinstance(row["address"], str) or not 1 <= len(row["address"]) <= 64
+                for row in rows
+            ):
+                raise Refused("listener_inspection_failed")
+            return rows
+        except Exception:
+            raise Refused("listener_inspection_failed") from None
 
     def assert_ports_free(self, remaining):
         if self._listeners():
