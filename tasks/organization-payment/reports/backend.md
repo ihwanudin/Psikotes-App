@@ -3851,3 +3851,139 @@ or P15 acceptance is claimed. Existing sandbox/manifest limitations remain.
 are separate scoped commits, leaving the dirty baseline and blocked scratch
 cleanup untouched. **STOP for review before lifecycle wiring, more summary
 sections, HTTP/frontend/P15, active data, outbound, deploy or push.**
+
+## P14c — shared accepted-consent evidence (2026-09-04)
+
+Commit `ff55a5ef8ca9f3ae85358bafc7b837d07113e66a` adds only
+`app/Services/ParticipantAuth/AcceptedConsentReader.php` and
+`tests/Feature/Auth/AcceptedConsentReaderTest.php`. A minimal local delta injects
+the reader into `AssessmentAccessPrerequisites`; that file is still an untracked
+initial snapshot and is **not** committed wholesale. Its patch/hashes follow.
+
+The internal `isAccepted(Participant, string type): bool` loads the current
+`ConsentDocument::for(type)` on every call and executes the extracted query.
+Participant ID, consent type, document version, text hash and accepted status
+must match; consented_at must be nonnull and <= the existing `now()`, and
+withdrawn_at must be null. Query text compares identical to the original after
+whitespace normalization. There are no new predicates, locks, writes, clock
+capture, cache, attempt FK, policy/identity checks, or legal-approval conditions.
+
+Call-site audit found exactly two application users of AssessmentAccessPrerequisites:
+`AssessmentEntitlementGate` and `ActivateSettledAssessment`. Both retain their
+existing service-context check, persisted scope loading, and profile/snapshot/
+settlement validation. No direct manual prerequisite constructor call was found
+in app/tests. The legacy `ParticipantEntitlementGate` does not use this prerequisite
+and remains untouched. **No new reader context guard or role elevation is added**:
+the original primitive had none, and the caller must still supply the authorized
+persisted participant within its authorized RLS context/transaction. The reader
+is not a safe public endpoint for request-selected participant IDs and does not
+independently authorize a foreign model supplied by a caller. Its model argument
+is marked SensitiveParameter; only a boolean escapes, not records or payloads.
+
+Evidence stays participant-bound. It does not prove a new consent was captured
+for a particular attempt or approve configured legal text. False covers missing,
+declined, withdrawn, stale/mismatched or future-dated evidence; it is **not** a
+declined UI state. No declined projection, consent writer, complete summary/DTO,
+HTTP, frontend, schema or P15 behavior was introduced.
+
+### Preserved configuration and prerequisite semantics
+
+Document lookup stays after the existing profile checks and before identity
+checks, once per required consent type. Invalid configured documents continue
+throwing the existing InvalidArgumentException rather than being translated to
+false or EntitlementLocked. For invalid profile plus invalid config, the earlier
+profile EntitlementLocked still wins. The new dependency does not eagerly load
+configuration in its constructor.
+
+Changing text while keeping the version invalidates the old accepted hash;
+changing the version also invalidates it. Changing title alone does not change
+the predicate. The configured document is reloaded even when the same reader
+instance is reused. Existing ConsentDocument allows empty string version/title/
+text; a characterization test preserves that behavior with matching synthetic
+evidence, rather than silently adding document/legal hardening in this extraction.
+This is not approval to publish empty/draft documents. Any such policy change
+requires its own decision. DASS acceptance remains additional only for dass21;
+declined DASS does not block the main test's prerequisites.
+
+### Actual validation
+
+- RED: **20 tests, 2 passed**, remaining tests failed/errored because the new reader
+  did not exist; the two existing prerequisite/config controls already passed.
+- GREEN new reader suite: **20 tests / 41 assertions**, zero failures/skips.
+  Covers accepted/current/exact-now, missing/type mismatch, same-organization and
+  foreign-organization other-participant records, old version/hash, declined,
+  withdrawn status/non-null withdrawal, missing/future consent timestamp, changed
+  text with same version, title-only change, config errors, and DASS independence.
+  SQLite can express some inconsistent timestamp rows that PostgreSQL CHECKs may
+  already reject; this is not a claim those rows can be written through PG.
+- One reader call issues exactly one SELECT EXISTS, no lock statement or other
+  query; context identity and consent rows stay unchanged, with no audit/outbox.
+- Combined new/gate/activation/start-auth/finalizer/legacy API regression:
+  **135 tests / 427 assertions**, zero failures/errors/skips:
+
+```powershell
+php vendor/bin/phpunit -c phpunit.organization-payment.xml tests/Feature/Auth/AcceptedConsentReaderTest.php tests/Feature/Auth/AttemptEntitlementGateTest.php tests/Feature/Auth/SettledAssessmentActivationTest.php tests/Feature/Auth/AssessmentSessionAuthorizationTest.php tests/Feature/Payments/AssessmentBillPaymentFinalizationTest.php tests/Feature/Auth/ParticipantApiAuthorizationTest.php --do-not-cache-result
+```
+
+`tests/Unit/Registration/ConsentDocumentTest.php` additionally passes **2/6** under
+the same XML. Pint and PHP syntax pass for the three changed/new PHP paths;
+full-project application PHPStan passes with **0 errors** using process-local
+synthetic testing/SQLite-memory/array settings, without .env/config changes.
+The separate test-base/vendor PHPDoc mismatch was not changed or claimed fixed.
+
+No new PostgreSQL run: this is an equivalent extraction of the same query in the
+same caller contexts/order; no SQL/RLS/transaction/clock semantics changed. The
+last disposable PostgreSQL result belongs to its previously reported slice,
+not this one. No browser or broad/full suite result is claimed. Existing sandbox
+and manifest limitations remain independent and untouched.
+
+### Prerequisite overlay — apply only this delta
+
+Target `app/Services/ParticipantAuth/AssessmentAccessPrerequisites.php`:
+
+- Before SHA256: `850fe2dda6b3976208929b04005bddbdacf7d35e05ed959f56da56e4b0e93b6e`
+- After SHA256: `396d52139d61ee9c55d2a4de66b9f40328dbe1aee7f6f5a7427225c6f2330e4c`
+
+The before hash matched the root file read-only. Pair the following patch with
+the code commit; do not add the worker baseline file wholesale. This report is
+the separate lane evidence commit. Diff/staged checks pass, cached paths are
+explicit, and baseline/scratch are preserved. **STOP for review; no further
+summary, consent/P15, public wiring, active data, outbound, deploy or push.**
+
+```diff
+diff --git a/app/Services/ParticipantAuth/AssessmentAccessPrerequisites.php b/app/Services/ParticipantAuth/AssessmentAccessPrerequisites.php
+index 515464a..6797737 100644
+--- a/app/Services/ParticipantAuth/AssessmentAccessPrerequisites.php
++++ b/app/Services/ParticipantAuth/AssessmentAccessPrerequisites.php
+@@ -5,7 +5,6 @@
+ namespace App\Services\ParticipantAuth;
+
+ use App\Models\Participant;
+-use App\Registration\ConsentDocument;
+ use App\Services\ParticipantAuth\Exceptions\EntitlementLocked;
+ use Carbon\CarbonImmutable;
+ use Illuminate\Support\Facades\DB;
+@@ -13,6 +12,8 @@
+ /** Read-only prerequisites shared with the future settlement activation action. */
+ final class AssessmentAccessPrerequisites
+ {
++    public function __construct(private readonly AcceptedConsentReader $consents) {}
++
+     public function assertSatisfied(Participant $participant, string $testType): void
+     {
+         foreach (['full_name', 'education_level', 'intended_field', 'phone'] as $field) {
+@@ -27,12 +28,7 @@ public function assertSatisfied(Participant $participant, string $testType): voi
+         }
+         $types = $testType === 'dass21' ? ['psychotest', 'dass'] : ['psychotest'];
+         foreach ($types as $type) {
+-            $document = ConsentDocument::for($type);
+-            $accepted = DB::table('consent_records')->where('participant_id', $participant->id)
+-                ->where('consent_type', $type)->where('document_version', $document->version)
+-                ->where('document_hash', $document->hash)->where('status', 'accepted')
+-                ->whereNotNull('consented_at')->where('consented_at', '<=', now())->whereNull('withdrawn_at')->exists();
+-            if (! $accepted) {
++            if (! $this->consents->isAccepted($participant, $type)) {
+                 throw new EntitlementLocked;
+             }
+         }
+```
