@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Integrations;
 
+use App\Actions\Integrations\CheckoutSessionLifecycle;
 use App\Actions\Integrations\IssueCheckoutHandoff;
 use App\Data\Integrations\CheckoutHandoffIssueInput;
+use App\Data\Integrations\CheckoutSessionMutationCredentials;
 use App\Enums\CheckoutHandoffIntent;
 use App\Http\Controllers\CheckoutSessionController;
 use App\Http\Middleware\AuthenticateCheckoutSession;
@@ -325,6 +327,165 @@ final class CheckoutSessionHttpTest extends OrganizationPaymentTestCase
             'assessment_participant_id' => $second['attempt'], 'status' => 'REVOKED',
             'revocation_reason' => 'SCOPE_REVOKED',
         ]);
+    }
+
+    public function test_native_null_origin_logout_requires_verified_secrets_and_is_idempotent(): void
+    {
+        foreach ([[], ['HTTP_SEC_FETCH_SITE' => 'same-origin'], ['HTTP_SEC_FETCH_MODE' => 'navigate'],
+            ['HTTP_SEC_FETCH_DEST' => 'document'], ['HTTP_SEC_FETCH_SITE' => 'same-origin', 'HTTP_SEC_FETCH_MODE' => 'navigate',
+                'HTTP_SEC_FETCH_DEST' => 'document']] as $metadata) {
+            $fixture = $this->issued();
+            $credentials = $this->credentials($this->exchange($fixture['raw'])->assertStatus(303));
+            $server = [...$this->server('null'), ...$metadata];
+            $before = DB::table('audit_logs')->where('action', 'checkout_session.revoked')
+                ->where('context->reason', 'LOGOUT')->count();
+            for ($retry = 0; $retry < 2; $retry++) {
+                $response = $this->call('POST', '/checkout/logout', ['_checkout_csrf' => $credentials['csrf']],
+                    $this->cookieMap($credentials), [], $server, '_checkout_csrf='.$credentials['csrf']);
+                $response->assertStatus(303)->assertRedirect('/checkout/unavailable');
+                $this->assertPrivate($response);
+                $this->assertClearsCredentials($response);
+            }
+            $this->assertSame($before + 1, DB::table('audit_logs')->where('action', 'checkout_session.revoked')
+                ->where('context->reason', 'LOGOUT')->count());
+            $this->assertDatabaseHas('checkout_sessions', ['assessment_participant_id' => $fixture['attempt'],
+                'status' => 'REVOKED', 'revocation_reason' => 'LOGOUT']);
+        }
+    }
+
+    public function test_native_null_origin_rejects_ambiguous_origin_metadata_and_csrf_channels(): void
+    {
+        config()->set('assessment_integration.checkout_session.http.mutation_per_minute', 60);
+        $fixture = $this->issued();
+        $credentials = $this->credentials($this->exchange($fixture['raw'])->assertStatus(303));
+        $other = $this->credentials($this->exchange($this->issued()['raw'])->assertStatus(303));
+        $body = '_checkout_csrf='.$credentials['csrf'];
+        $form = ['_checkout_csrf' => $credentials['csrf']];
+        $servers = [];
+        foreach ([null, '', 'NULL', 'null,null', 'null null', ['null', 'null'],
+            ['null', 'https://psikotes.oncam.id'], 'https://evil.example',
+            ['https://psikotes.oncam.id', 'null']] as $origin) {
+            $server = $this->server(origin: null);
+            if ($origin !== null) {
+                $server['HTTP_ORIGIN'] = $origin;
+            }
+            $servers[] = $server;
+        }
+        foreach (['HTTP_SEC_FETCH_SITE' => 'same-origin', 'HTTP_SEC_FETCH_MODE' => 'navigate',
+            'HTTP_SEC_FETCH_DEST' => 'document'] as $header => $expected) {
+            foreach (['', 'unknown', 'cross-site', 'same-site', 'none', [$expected, $expected],
+                $expected.','.$expected] as $value) {
+                $servers[] = [...$this->server('null'), $header => $value];
+            }
+        }
+        foreach ($servers as $server) {
+            $response = $this->call('POST', '/checkout/logout', $form, $this->cookieMap($credentials), [], $server, $body);
+            $response->assertStatus(419);
+            $this->assertPrivate($response);
+            $this->assertCount(0, $response->headers->getCookies());
+        }
+        foreach ([
+            [[], '', []],
+            [[], '', ['HTTP_X_CHECKOUT_CSRF' => $credentials['csrf']]],
+            [$form, $body, ['HTTP_X_CHECKOUT_CSRF' => $credentials['csrf']]],
+            [['_checkout_csrf' => $other['csrf']], '_checkout_csrf='.$other['csrf'], []],
+            [$form, $body.'&'.$body, []],
+            [$form, '_checkout_csrf%5B%5D='.$credentials['csrf'], []],
+            [$form, '_checkout_csrf=%6f'.substr($credentials['csrf'], 1), []],
+            [$form, $body.'&extra=1', []],
+        ] as [$parameters, $raw, $headers]) {
+            $response = $this->call('POST', '/checkout/logout', $parameters, $this->cookieMap($credentials), [],
+                [...$this->server('null'), ...$headers], $raw)->assertStatus(419);
+            $this->assertPrivate($response);
+        }
+        $this->assertSame(0, DB::table('audit_logs')->where('context->reason', 'LOGOUT')->count());
+        $this->assertSame(2, DB::table('checkout_sessions')->where('status', 'ACTIVE')->count());
+    }
+
+    public function test_native_null_origin_cannot_bypass_credentials_scope_or_destination(): void
+    {
+        $fixture = $this->issued();
+        $credentials = $this->credentials($this->exchange($fixture['raw'])->assertStatus(303));
+        $other = $this->credentials($this->exchange($this->issued()['raw'])->assertStatus(303));
+        foreach ([[], [CheckoutSessionHttpContract::SELECTOR_COOKIE => $credentials['selector']],
+            $this->cookieMap(['selector' => 'ocs1_'.str_repeat('0', 64), 'csrf' => $credentials['csrf']]),
+            $this->cookieMap(['selector' => $credentials['selector'], 'csrf' => $other['csrf']])] as $cookies) {
+            $response = $this->call('POST', '/checkout/logout', ['_checkout_csrf' => $credentials['csrf']],
+                $cookies, [], $this->server('null'), '_checkout_csrf='.$credentials['csrf']);
+            $response->assertStatus(303)->assertRedirect('/checkout/unavailable');
+            $this->assertClearsCredentials($response);
+        }
+        $this->call('POST', 'https://oncam.id/checkout/logout', ['_checkout_csrf' => $credentials['csrf']],
+            $this->cookieMap($credentials), [], [...$this->server('null'), 'HTTP_HOST' => 'oncam.id'],
+            '_checkout_csrf='.$credentials['csrf'])->assertNotFound();
+        $this->call('POST', '/checkout/logout?attempt=foreign', ['_checkout_csrf' => $credentials['csrf']],
+            $this->cookieMap($credentials), [], $this->server('null'), '_checkout_csrf='.$credentials['csrf'])
+            ->assertRedirect('/checkout/unavailable');
+        DB::table('integration_clients')->where('id', $fixture['client'])->update(['enabled' => false]);
+        $this->call('POST', '/checkout/logout', ['_checkout_csrf' => $credentials['csrf']],
+            $this->cookieMap($credentials), [], $this->server('null'), '_checkout_csrf='.$credentials['csrf'])
+            ->assertRedirect('/checkout/unavailable');
+        $this->assertSame(0, DB::table('audit_logs')->where('context->reason', 'LOGOUT')->count());
+        $this->assertDatabaseHas('checkout_sessions', ['assessment_participant_id' => $fixture['attempt'],
+            'status' => 'REVOKED', 'revocation_reason' => 'SCOPE_REVOKED']);
+    }
+
+    public function test_native_null_origin_requires_authenticated_principal_and_is_not_a_generic_mutation_exception(): void
+    {
+        $fixture = $this->issued();
+        $credentials = $this->credentials($this->exchange($fixture['raw'])->assertStatus(303));
+        $principal = app(CheckoutSessionLifecycle::class)->hydrateWithCsrfDelivery(
+            new CheckoutSessionMutationCredentials($credentials['selector'], $credentials['csrf']),
+        );
+        foreach ([['POST', '/checkout/logout', false], ['POST', '/checkout/profile', true],
+            ['PUT', '/checkout/logout', true], ['POST', 'http://psikotes.oncam.id/checkout/logout', true]] as [$method, $uri, $authenticated]) {
+            $request = Request::create($uri, $method, ['_checkout_csrf' => $credentials['csrf']],
+                $this->cookieMap($credentials), [], $this->server('null'), '_checkout_csrf='.$credentials['csrf']);
+            if (str_starts_with($uri, 'http:')) {
+                $request->server->set('HTTPS', 'off');
+            }
+            if ($authenticated) {
+                $request->attributes->set(CheckoutSessionHttpContract::PRINCIPAL_ATTRIBUTE, $principal);
+            }
+            $response = app(VerifyCheckoutSessionMutation::class)->handle($request, fn () => response('unexpected', 200));
+            $this->assertSame(419, $response->getStatusCode());
+            $this->assertFalse(app(CheckoutSessionHttpContract::class)->mutationOriginMatches($request));
+        }
+    }
+
+    public function test_native_null_origin_expired_or_recovered_session_cannot_logout(): void
+    {
+        foreach (['expired', 'recovered'] as $state) {
+            $fixture = $this->issued();
+            $credentials = $this->credentials($this->exchange($fixture['raw'])->assertStatus(303));
+            $session = CheckoutSession::query()->where('assessment_participant_id', $fixture['attempt'])->sole();
+            if ($state === 'expired') {
+                DB::table('checkout_handoffs')->where('id', $session->checkout_handoff_id)->update([
+                    'issued_at' => DB::raw("datetime(CURRENT_TIMESTAMP, '-21 minutes')"),
+                    'consumed_at' => DB::raw("datetime(CURRENT_TIMESTAMP, '-20 minutes')"),
+                    'expires_at' => DB::raw("datetime(CURRENT_TIMESTAMP, '-11 minutes')"),
+                ]);
+                DB::table('checkout_sessions')->where('id', $session->id)->update([
+                    'established_at' => DB::raw("datetime(CURRENT_TIMESTAMP, '-20 minutes')"),
+                    'last_seen_at' => DB::raw("datetime(CURRENT_TIMESTAMP, '-10 minutes')"),
+                    'idle_expires_at' => DB::raw('CURRENT_TIMESTAMP'),
+                    'absolute_expires_at' => DB::raw("datetime(CURRENT_TIMESTAMP, '+20 minutes')"),
+                ]);
+            } else {
+                $attemptPublicId = DB::table('assessment_participants')->where('id', $fixture['attempt'])
+                    ->value('assessment_attempt_id');
+                $this->assertIsString($attemptPublicId);
+                app(RlsContextRunner::class)->run(new RlsContext('service'), fn () => app(IssueCheckoutHandoff::class)
+                    ->execute(new CheckoutHandoffIssueInput(IntegrationClient::query()->findOrFail($fixture['client']),
+                        $attemptPublicId, $session->source_system,
+                        'ih1_'.bin2hex(random_bytes(16)), CheckoutHandoffIntent::Recovery)));
+            }
+            $response = $this->call('POST', '/checkout/logout', ['_checkout_csrf' => $credentials['csrf']],
+                $this->cookieMap($credentials), [], $this->server('null'), '_checkout_csrf='.$credentials['csrf'])
+                ->assertRedirect('/checkout/unavailable');
+            $this->assertClearsCredentials($response);
+            $this->assertSame(0, DB::table('audit_logs')->where('context->reason', 'LOGOUT')->count());
+        }
     }
 
     public function test_off_validation_throttle_and_unexpected_error_are_private_and_generic(): void
