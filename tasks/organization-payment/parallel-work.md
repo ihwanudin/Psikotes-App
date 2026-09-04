@@ -2,6 +2,21 @@
 
 ## Parallel follow-ups dispatched — 2026-09-04
 
+Portal report8e2014b reviewed as evidence/gap mapping, not P17 acceptance. ONE
+test-only composition increment dispatched: new CollectiveBillLifecycleCompositionTest,
+optional new isolated fixture, lane report (3files). Ten paid-item attempts compose
+canonical reservation/issuance/finalization with fake provider, exact allocation,
+replay and pending-consent isolation assertions in guarded SQLite memory only.
+No app/shared helper edits; missing contracts stop with findings. Browser/PG and
+free-selection/self-pay UI gaps remain open. Backend harness work is disjoint.
+
+Frontend cursor `:10` completed report6fe605d, reviewed against root actual Blade
+and accepted for read-only presentation planning. Dispatched ONE implementation
+slice: Blade, dedicated static CSS, focused presentation test, lane report (4files).
+No browser helper/runtime yet; backend owns harness. Exact JSON/CSRF/logout and
+contract stay unchanged; no mutable CTA. Renderer tests must be env-free, clearly
+distinguished from actual HTTP/browser acceptance; no backend dependency shims.
+
 User renewed parallel coordination and permits further independent task splits.
 Three existing lanes received ONE report-only increment each; no extra task is
 needed until another dependency-independent slice is identified. Root owns review,
