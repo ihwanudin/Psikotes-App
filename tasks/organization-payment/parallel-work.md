@@ -1,5 +1,22 @@
 # Koordinasi task paralel organization-payment
 
+## Parallel P15/P16/P17a dispatched after mandatory DASS-21 — 2026-09-05
+
+Root commit `80590cf` makes DASS-21 a mandatory component of every active
+psychotest package, removes the standalone offer, and requires explicit
+versioned consent without a yes/no choice. Three non-overlapping increments were
+sent once to the existing tasks: backend owns P15 request/action/DTO and focused
+tests; frontend owns checkout summary Blade/CSS/presentation tests; portal owns
+P17a test-only collective privacy/composition evidence. Backend must not repeat
+the blocked browser/supervisor candidate. No lane may activate production routes,
+use active data or `.env`, run outbound services, deploy, or push.
+
+Post-dispatch snapshot: backend active cursor
+`af430373-a868-4009-9d26-21ebbc336071:20`; frontend active cursor
+`1558a8ff-f3ca-4784-9299-fa18869f8482:5`; portal active cursor
+`234ad76d-5ad1-481d-a6a2-c6fa98830847:2`. Do not send another instruction while
+these turns are active. Review commits and focused evidence before integration.
+
 ## Resource audit1576efb requires direct host action
 
 Persisted historical7-entry identity map was wrapper-memory only. Current census:
