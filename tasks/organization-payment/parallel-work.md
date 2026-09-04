@@ -1,5 +1,20 @@
 # Koordinasi task paralel organization-payment
 
+## Isolated setup reviewed; legal vendor filename guard fix — 2026-09-04
+
+Backend completed cursor `:43`; report ee5b77 integrated as aabd2af. Root confirmed
+manifest SHA0018ded08751721428a4b1b59a1314a75604d832cafad0fb66b7ebeb23c8a5d7
+for run oncam-checkout-7b2a098a09934fa38a946b9d796b6480 and reviewed handoff config
+defaults difference. Six documented donor/root differences accepted only for this
+synthetic summary scope; not byte-equality of entire application or full UI proof.
+
+Sent ONE narrow fix: permit literal @ in otherwise safe relative segments for eight
+Carbon locale files, retaining traversal/absolute/backslash/reparse/inventory/hash
+guards; add positive and hostile negative pure probes. PHP harness/reports only.
+After commit refresh only that guard in existing copy and record new manifest;
+no vendor removal/rename, init/server/browser/dependency installation. Cached CLI
+versus installed Chromium revision remains a separate review before launch.
+
 ## Corrected harness accepted for source-copy preparation — 2026-09-04
 
 Reviewed ae6af1b assertion/recovery correction; root reran 14 positive and37 negative
