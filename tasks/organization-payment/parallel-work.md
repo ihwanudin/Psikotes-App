@@ -1,5 +1,20 @@
 # Koordinasi task paralel organization-payment
 
+## Summary proposal reviewed; identity race reproduction next — 2026-09-04
+
+Worker `adce9c3` is preserved as a proposal, not approval of its entire DTO or
+all suggested refactors. Source confirms StoreIdentityEvidence currently reads
+Participant without an explicit lock before replacing evidence and verification.
+The READ COMMITTED consistency concern is plausible but not yet reproduced.
+Backend completed cursor `4155cd61-0c2b-4909-bd55-db926b1dc9fe:20`.
+
+Next increment is diagnostic tests/report only: reproduce existing-row identity
+replacement through the real action against a held canonical participant lock
+using disposable PostgreSQL, synthetic storage/matcher and observed interleaving.
+Distinguish writer bypass of parent mutex from an actually mixed gate result.
+Audit other identity/manual-review writers and lock order. No shared writer code
+change or broad summary contract approval yet; report evidence before a fix.
+
 ## Own payment facts accepted locally — 2026-09-04
 
 Reviewed worker `53fc8da`/`cf0c1eb`/`216634e`; integrated as `6e84aef`,
