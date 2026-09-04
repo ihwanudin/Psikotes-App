@@ -3987,3 +3987,91 @@ index 515464a..6797737 100644
              }
          }
 ```
+
+## P14c — authorized profile read through canonical lifecycle (2026-09-04)
+
+Code/test commit: `e27d3ae`. This is one internal profile-read increment from
+worker HEAD `aa2390f`; it is not the complete P14 summary or P15. Only these
+three tracked lane files changed in the code commit:
+
+- `app/Actions/Integrations/CheckoutSessionLifecycle.php`
+- `tests/Feature/Integrations/CheckoutSessionLifecycleTest.php`
+- `tests/Postgres/CheckoutSessionLifecycleConcurrencyTest.php`
+
+### Contract and transaction behavior
+
+`readProfile(CheckoutSessionMutationCredentials): CheckoutProfile` accepts the
+existing sensitive selector/CSRF pair only. There is no caller-selected tenant,
+participant, attempt, principal, or generic projection callback. It reuses the
+private `operate` path and the existing handoff history validator, with unchanged
+organization -> client -> source -> package/items -> attempt -> participant ->
+handoff history -> session lock order. All authority, current generation,
+revocation, effective scope, and expiry checks precede projection.
+
+The existing pure mapper receives the freshly loaded, validated participant while
+those locks are held, plus the database clock converted to the server calendar
+(current application timezone UTC). A stale principal cannot authorize a later
+read. Only the existing seven allowlisted profile facts are returned; there are
+no summary/payment/access/consent placeholders, billing parent fields, credentials,
+metadata, or cross-tenant profile fields. NULL remains missing, with no fabricated
+profile/default intended field. Actor contexts including service and every admin
+role are rejected at entry, as are outer transactions; possession of ordinary
+login or an old DTO is not a bypass.
+
+This is a profile read, **not a transaction without writes**: successful reads
+retain the existing last-seen/idle refresh capped by absolute expiry. Observed
+expiry/scope revocation retains its canonical terminalization and audit before
+generic rejection; replay does not add audits. Mapper failure propagates the
+existing generic profile error and rolls back the idle update. No billing,
+allocation, entitlement, consent, participant, attempt, or outbox writes were
+added. RLS context and transaction ownership are restored on success and failure.
+
+### Actual verification
+
+- RED: eight new profile tests failed because `readProfile` did not exist. An
+  initial test fixture used nonexistent RLS role `admin`; it was corrected to
+  existing roles before the final RED run (8 errors, all missing method).
+- GREEN focused new cases: **8 tests / 134 assertions**, no failures/skips.
+  Covers strict signature/output, fresh own profile vs foreign sentinel, malformed
+  and mixed-tenant credential pairs, real recovery generation and logout, current
+  client/source/attempt/participant revocation, corrupt history, terminal expiry
+  replay, ambient contexts/transaction/config OFF, mapper rollback, and database
+  calendar despite deliberately stale/future application test clocks.
+- Related SQLite-memory regression: **116 tests / 2,128 assertions**, all passed:
+
+```powershell
+php vendor/bin/phpunit -c phpunit.organization-payment.xml tests/Feature/Integrations/CheckoutSessionLifecycleTest.php tests/Feature/Integrations/CheckoutProfileProjectionTest.php tests/Feature/Integrations/CheckoutSessionEstablishmentTest.php tests/Feature/Integrations/CheckoutSessionHttpTest.php tests/Feature/Integrations/CheckoutHandoffConsumeTest.php tests/Feature/Integrations/CheckoutHandoffRecoveryTest.php tests/Feature/Integrations/CheckoutHandoffIssuanceTest.php --do-not-cache-result
+```
+
+An earlier combined invocation referenced a nonexistent `CheckoutProfileMapperTest`
+filename and ran no tests; the corrected command above is the actual result.
+The guarded XML/base kept SQLite `:memory:`, fake payment/notifier and
+`Http::preventStrayRequests`; no runtime guard was loosened.
+
+- Existing PostgreSQL disposable runner `tools/testing/run-org-postgres.ps1`:
+  **347 tests / 2,567 assertions**, no failures/skips, exit 0. The four new tests
+  reuse the established two-process socket barrier and observed PostgreSQL lock
+  wait, with separate runtime non-owner/NOBYPASSRLS connections. They prove:
+  recovery commit before projection rejects the old generation; committed scope
+  revoke rejects and terminalizes once; rolled-back recovery permits the original
+  generation; projection holding the canonical organization lock completes before
+  the waiting recovery, and subsequent use of old credentials is denied. No PII
+  or raw credentials are sent over the test IPC. Runner-owned containers/network
+  were cleaned up; application containers were not targeted.
+- Scoped Pint, syntax lint on all three changed PHP files, full application
+  PHPStan (**0 errors**) and `git diff --check` passed. PHPStan used process-local
+  synthetic testing/SQLite-memory/array configuration; no `.env` was read/created.
+
+### Boundaries and handoff
+
+No mapper/DTO/validator/shared config/schema/middleware/controller/route/harness
+rewrite, frontend, operational wiring, source activation, active data, outbound,
+provider calls, notification delivery, deploy or push. No new browser run or full
+application suite claim: existing independent Vite-manifest/sandbox limitations
+remain as previously reported. SQLite tests do not prove locks/RLS; the separate
+PostgreSQL run does. No new canonical document was edited in this worker.
+
+Code commit cached paths were exactly the three paths above. Existing dirty and
+untracked baseline overlays and scratch files remain untouched and unstaged.
+This report is a separate lane-only commit. STOP for coordinator review before
+any further summary/HTTP/P15 work.
