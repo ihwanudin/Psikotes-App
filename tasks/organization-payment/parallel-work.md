@@ -1,5 +1,15 @@
 # Koordinasi task paralel organization-payment
 
+## Typed listener correction98de469 accepted; fresh preparation next
+
+Root independently reran32/32 supervisor tests PASS, including temporary owned
+IPv4 wildcard8126 and IPv6 wildcard443 then clean empty inspection. Integrated
+typed free/occupied/inspection_failed and6s listener-only allowance; other bounds
+unchanged. ONE preparation-only fresh run from current pinned root, no reuse/rearm
+88ec/7b2a, no DB/init/server/browser. Independent bytes and full manifest/config/
+cert review required; may copy verified bytes only with complete pre/post identity,
+root overlay and no hardlink/reparse. Report-only before any runtime authorization.
+
 ## Listener diagnostic7089077: empty, near deadline; classification fix
 
 Exact sanitized listener command succeeded empty in2.9041s of3s, stderr0 and all-
