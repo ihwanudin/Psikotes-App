@@ -4738,3 +4738,59 @@ Only the new focused test and this report are committed. Other baseline overlays
 config, runtime artifacts and canonical documents are unchanged. No active DB/.env,
 real external service, source/gate activation, new agent/task, deploy or push.
 STOP for coordinator review; no next increment or production wiring authorized here.
+
+## P14 internal product/payment facts — 2026-09-04
+
+Completed one bounded internal slice, pending coordinator review. New
+CheckoutPaymentFactsReader::projectAt(attempt, CarbonImmutable asOf) returns an
+immutable CheckoutProductPaymentFacts containing product label, provenance,
+canonical sorted unique nonempty instrument types, and the existing payment DTO.
+Both entrypoints use one private read: exactly one own-charge lookup and one
+AssessmentPriceSnapshot::fromCharge call when a charge exists. No duplicate
+snapshot parser, capture(package, false), catalog price guess or consultation choice.
+The new DTO validates only its product output contract, including known types.
+
+With a charge, validated snapshot name/types win; catalog relationships are not
+consulted, required or queried. Without a charge, the new projection consumes only
+the caller's already validated and preloaded package.items relation. It checks
+persisted positive attempt graph keys, package identity, item ownership/key/type,
+loaded relations, label, and duplicate/unknown/empty types. Unsaved scope/label/type
+edits fail closed. Types are sorted but duplicates are rejected, not silently fixed.
+Catalog amount/consultation are not read and remain null in payment, even if catalog
+prices exist or are missing. No extra active-package or funding policy is introduced.
+This is a read projection of the caller's freshly validated graph under its existing
+organization mutex, not a standalone authorization or fresh catalog reload boundary.
+
+Legacy project(attempt) still returns precisely CheckoutPaymentFacts with its old
+serialization, context/error ordering and no additional catalog requirement.
+CheckoutPaymentFacts and lifecycle callers are untouched. Explicit projectAt uses
+asOf for the free-marker cutoff and both settlement calls through isSettledAt.
+The legacy path retains existing independent current-time checks. Neither API is
+a historical database snapshot, quote, payment action, settlement or entitlement.
+
+Verification:
+- RED: after removing an invalid test-only attempt to mock the final snapshot parser,
+  the first new test failed on missing projectAt. The actual parser remained in use;
+  no production class/finality or test harness was weakened.
+- Focused GREEN: 36 tests / 95 assertions (new CheckoutProductPaymentFactsTest).
+- Final related regression: 140 tests / 601 assertions across that new test,
+  CheckoutPaymentFactsTest, CheckoutSessionLifecycleTest,
+  AssessmentSettlementSnapshotTest and AssessmentSettlementReaderTest.
+- PHPUnit used phpunit.organization-payment.xml SQLite memory and --do-not-cache-result.
+  Tests prove snapshot provenance after catalog change, no catalog lookup with charge,
+  one charge query and no extra catalog queries without charge after preload,
+  null/unselected prices, all five known types, wrong/unloaded/unsaved graph,
+  malformed snapshot arrays, exact privacy key allowlist, exact/future free/bill/item
+  timestamps and clock/config drift between the free-marker and settlement checks.
+  Query assertions reject writes/locks and context identity is preserved.
+- Full application PHPStan zero errors; Pint and php -l all three PHP files pass.
+  One redundant DTO list check was removed because strict sorted-list equality already
+  rejects non-list keys; no PHPStan ignores, config or baseline change.
+- git diff --check passes. No new PostgreSQL or UI/build result is claimed: this adds
+  no locking, schema, RLS, writer or render behavior. Existing artifact copy is preserved.
+
+Owned files: app/Services/Integrations/CheckoutPaymentFactsReader.php (tracked delta),
+app/Data/Integrations/CheckoutProductPaymentFacts.php (new),
+tests/Feature/Integrations/CheckoutProductPaymentFactsTest.php (new), and this report.
+No baseline overlay is staged. No full summary, caller migration, HTTP/frontend/P15,
+new policy, .env/active DB, provider/notifier, agent/task, deploy or push. STOP for review.
