@@ -3425,3 +3425,40 @@ the lifecycle code and last disposable result (**343 / 2,523**) are unchanged.
 No production route, global middleware/session/CSRF config, source activation,
 browser operation, database operation, deploy, or push was added. **STOP for
 review.**
+
+## P14b2 — browser acceptance RED and ADR proposal (2026-09-04)
+
+Harness commit `04f92fe` preserves baseline `a49354f` and the existing snapshot.
+The three lane-owned browser files run real Laravel HTTP components through
+isolated HTTPS loopback and a fresh synthetic SQLite database. The login probe
+uses actual `web` + `auth` and exact user identity before/after both cross-site
+exchanges. Cookie transport is untouched by interception; Laravel's installed
+TrustProxies API supplies the correct loopback proxy boundary.
+
+Both source exchanges, login byte/authority isolation, fixation/replay,
+history/refresh, multi-tab, 1280/390/320px and keyboard, CSRF negatives,
+progressive logout, expiry/revoke/recovery, privacy and controlled-network
+assertions pass. The ninth canonical exchange succeeds without JavaScript, but
+its native logout remains **RED: expected 303, got 419, Origin=null**. No-referrer
+causes Chromium's native form to suppress Origin even though both cookies and
+the canonical explicit CSRF are present. No production contract was weakened.
+
+At coordinator request, the detailed [browser evidence and proposed ADR-012
+amendment](backend-p14b2-browser-red.md) compares JS-required mutation against a
+strict credential/CSRF-authenticated literal-null native branch. It distinguishes
+missing Origin, opaque/foreign origins and optional Fetch Metadata rejection
+signals, recommends a bounded logout-only amendment, and lists required negative
+tests. It is a proposal, not an accepted rule or implementation.
+
+Focused checkout regression passes **53 tests / 1,041 assertions**, with no skips.
+Pint, Node/Python syntax, full-project PHPStan (**0 errors**) and staged diff-check
+pass. PostgreSQL and unrelated UI regression were not repeated for this harness
+delta; no Vite manifest was fabricated. The synthetic database has zero order,
+bill/item/charge/entitlement/outbox rows, and disposable logs have zero raw
+credential matches. Browser acceptance and P14 remain open. **STOP for review;
+no production wiring, source activation, P15, deploy or push.**
+
+The named browser and lane PHP/proxy processes are stopped; test ports are free.
+Automatic execution policy blocked recursive removal of the lane's synthetic
+temporary directories, so those scratch files were retained outside Git rather
+than retrying through another mechanism. Cleanup details are in the report.
