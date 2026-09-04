@@ -17,6 +17,9 @@ HARNESS = "tools/testing/tests/Browser/serve-checkout-session.php"
 DRIVER = "tools/testing/tests/Browser/checkout-session.browser.mjs"
 CLI_SUFFIX = "31e32ef8478fbf80/node_modules/@playwright/cli/playwright-cli.js"
 BROWSER_SUFFIX = "ms-playwright/chromium-1234/chrome-win64/chrome.exe"
+UNCERTAINTY_CATEGORIES = frozenset({"pid_reuse", "parent_missing", "parent_identity_mismatch",
+                                   "child_tick_invalid", "identity_probe_failed",
+                                   "postcheck_live_process", "cleanup_exception"})
 
 
 class Refused(Exception):
@@ -31,11 +34,12 @@ def supervise(io, *, mode="smoke", requests=3, budget=180):
         raise Refused("invalid_budget")
     deadline = io.clock() + budget
     io.io_deadline = deadline
-    stage, claimed, completed, final_clean = "preflight", False, False, False
-    cleanup_remaining, cleanup_failed = 15.0, False
+    stage, claimed, completed, final_clean, primary_failed = "preflight", False, False, False, False
+    cleanup_remaining, cleanup_failed, cleanup_status = 15.0, False, "not_required"
     io.postcheck_complete = False
     count = 0
-    result = {"state": "invalid", "accepted": False, "requests": 0, "reason": "preflight"}
+    primary_reason = "preflight"
+    result = {"state": "invalid", "accepted": False, "requests": 0, "reason": primary_reason}
 
     def step(name, operation):
         nonlocal stage
@@ -50,7 +54,7 @@ def supervise(io, *, mode="smoke", requests=3, budget=180):
 
     def cleanup():
         # One shared allowance, debited even on interruption; no recursion or fresh reserves.
-        nonlocal cleanup_remaining, cleanup_failed
+        nonlocal cleanup_remaining, cleanup_failed, cleanup_status
         started, succeeded = io.clock(), False
         allowance = cleanup_remaining
         try:
@@ -60,6 +64,10 @@ def supervise(io, *, mode="smoke", requests=3, budget=180):
                          and io.clock() - started <= allowance)
             return succeeded
         finally:
+            status = "uncertain" if getattr(io, "uncertain", False) else ("clean" if succeeded else "failed")
+            priority = {"not_required": 0, "clean": 1, "failed": 2, "uncertain": 3}
+            if priority[status] > priority[cleanup_status]:
+                cleanup_status = status
             cleanup_remaining = max(0, cleanup_remaining - max(0, io.clock() - started))
             cleanup_failed = cleanup_failed or not succeeded
 
@@ -94,8 +102,9 @@ def supervise(io, *, mode="smoke", requests=3, budget=180):
             io.postcheck_complete = True
         completed = True
     except Exception as error:
+        primary_failed = True
         code = str(error) if isinstance(error, Refused) else ""
-        result["reason"] = ("occupied_port" if code == "occupied_port" else "listener_inspection_failed") \
+        primary_reason = ("occupied_port" if code == "occupied_port" else "listener_inspection_failed") \
             if stage == "occupied_port" else stage
     finally:
         # Encloses ALL lifecycle operations, including stop/business/post and BaseException.
@@ -107,8 +116,8 @@ def supervise(io, *, mode="smoke", requests=3, budget=180):
                     final_clean = cleanup()
                 except Exception:
                     final_clean = False
-                if not final_clean and result["reason"] != "final_cleanup":
-                    result["reason"] = "cleanup"
+                if not final_clean and not primary_failed:
+                    primary_reason = "cleanup"
             finally:
                 # Also runs if final cleanup itself raises KeyboardInterrupt/SystemExit.
                 if not completed or not final_clean or cleanup_failed or mode == "smoke":
@@ -116,9 +125,14 @@ def supervise(io, *, mode="smoke", requests=3, budget=180):
     result["requests"] = count
     if completed and final_clean and not cleanup_failed:
         if mode == "smoke":
-            result.update(state="incomplete", reason="fresh_run_required")
+            result["state"], primary_reason = "incomplete", "fresh_run_required"
         else:
-            result.update(state="postverified", reason="root_review_required")
+            result["state"], primary_reason = "postverified", "root_review_required"
+    categories = getattr(io, "uncertainty_categories", set())
+    if not isinstance(categories, (set, frozenset)) or not categories <= UNCERTAINTY_CATEGORIES:
+        categories = {"cleanup_exception"} if getattr(io, "uncertain", False) else set()
+    result.update(reason=primary_reason, primary_reason=primary_reason, cleanup_status=cleanup_status,
+                  uncertainty_categories=sorted(categories))
     return result
 
 
@@ -134,11 +148,20 @@ class WindowsRun:
         self.roles = {}
         self.handles = []
         self.claimed = False
-        self.uncertain = False
+        self.uncertainty_categories = set()
         self.postcheck_complete = False
         self.session = "checkout-" + secrets.token_hex(16)
         self.owner = None
         self.io_deadline = float("inf")
+
+    @property
+    def uncertain(self):
+        return bool(self.uncertainty_categories)
+
+    def _mark_uncertain(self, category):
+        if category not in UNCERTAINTY_CATEGORIES:
+            raise Refused("internal")
+        self.uncertainty_categories.add(category)
 
     clock = staticmethod(time.monotonic)
 
@@ -230,7 +253,7 @@ class WindowsRun:
                     try:
                         self.owned[process.pid] = self._identity(process.pid)["started"]
                     except Exception:
-                        self.uncertain = True
+                        self._mark_uncertain("identity_probe_failed")
                         raise
                 while process.poll() is None:
                     if self.clock() >= end or os.fstat(output.fileno()).st_size > 262144 or os.fstat(errors.fileno()).st_size > 4096:
@@ -271,7 +294,7 @@ class WindowsRun:
         current = {r["pid"]: r for r in rows}
         for pid, tick in list(self.owned.items()):
             if pid in current and current[pid]["started"] != tick:
-                self.uncertain = True  # PID reuse: never adopt/kill the new owner's children.
+                self._mark_uncertain("pid_reuse")  # Never adopt/kill the new owner's children.
         changed = True
         while changed:
             changed = False
@@ -279,12 +302,15 @@ class WindowsRun:
                 parent = row["parent"]
                 if row["pid"] in self.owned or parent not in self.owned:
                     continue
-                if parent not in current or current[parent]["started"] != self.owned[parent]:
+                if parent not in current:
                     # An orphan's numeric PPID alone cannot prove ancestry after PID reuse.
-                    self.uncertain = True
+                    self._mark_uncertain("parent_missing")
+                    continue
+                if current[parent]["started"] != self.owned[parent]:
+                    self._mark_uncertain("parent_identity_mismatch")
                     continue
                 if not row["started"] or int(row["started"]) < int(self.owned[parent]):
-                    self.uncertain = True
+                    self._mark_uncertain("child_tick_invalid")
                     continue
                 self.owned[row["pid"]] = row["started"]
                 changed = True
@@ -355,7 +381,7 @@ class WindowsRun:
             try:
                 identity = self._identity(process.pid)
             except Exception:
-                self.uncertain = True
+                self._mark_uncertain("identity_probe_failed")
                 raise
             self.owned[identity["pid"]] = identity["started"]
         self.roles[role] = identity
@@ -408,7 +434,7 @@ class WindowsRun:
             current = self._discover()
             if self.postcheck_complete and any(current.get(pid, {}).get("started") == tick for pid, tick in self.owned.items()):
                 # A writer alive after the full scan invalidates its premise, even if cleanup succeeds.
-                self.uncertain = True
+                self._mark_uncertain("postcheck_live_process")
             browser = self.roles.get("browser")
             if browser and current.get(browser["pid"], {}).get("started") == browser["started"]:
                 try:
@@ -421,7 +447,7 @@ class WindowsRun:
                 if not live:
                     break
                 if self.postcheck_complete:
-                    self.uncertain = True
+                    self._mark_uncertain("postcheck_live_process")
                 for pid, tick in reversed(live):
                     # Re-check creation time inside the same PS command before stopping it.
                     script = f"$ErrorActionPreference='Stop'; try {{$p=[Diagnostics.Process]::GetProcessById({pid})}} catch {{exit 0}}; try {{if($p.StartTime.ToUniversalTime().Ticks.ToString() -eq '{tick}') {{$p.Kill()}}}} finally {{$p.Dispose()}}"
@@ -430,6 +456,7 @@ class WindowsRun:
             current = self._discover()
             clean = not self._listeners() and not any(current.get(pid, {}).get("started") == tick for pid, tick in self.owned.items())
         except Exception:
+            self._mark_uncertain("cleanup_exception")
             clean = False
         finally:
             # Also covers a launch failure before identity registration. Never search by name.
@@ -439,7 +466,7 @@ class WindowsRun:
                         handle.kill()
                         handle.wait(timeout=max(.01, min(2, end - self.clock())))
                 except Exception:
-                    self.uncertain = True
+                    self._mark_uncertain("cleanup_exception")
         return clean and not self.uncertain
 
     def invalidate(self):

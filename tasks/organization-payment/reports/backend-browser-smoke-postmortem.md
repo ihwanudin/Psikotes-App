@@ -124,3 +124,63 @@ No next smoke is justified from environment changes: the earliest stage and
 uncertainty trigger need the code result/evidence correction and focused tests
 first. Any new preparation or runtime still requires separate review and
 authorization. `git diff --cached --check` passed with only this report staged.
+
+## Reviewed code correction
+
+The approved correction now keeps four exact result dimensions:
+`state`, `accepted`, immutable `primary_reason`, and `cleanup_status`. The legacy
+`reason` key remains as a compatibility alias of `primary_reason`; cleanup cannot
+replace it. `cleanup_status` is exactly one of `not_required`, `clean`, `failed`,
+or `uncertain`. Request counting and accepted/state semantics are unchanged.
+
+The cleanup result is merged by severity across the shared cleanup allowance:
+`uncertain` outranks `failed`, which outranks `clean`; a later clean pass cannot
+erase an earlier problem. A primary lifecycle exception is captured once. When
+the lifecycle itself completed but its required cleanup is the first failure,
+the immutable primary reason becomes `cleanup`. Smoke success still returns
+`primary_reason=fresh_run_required`, `cleanup_status=clean`, state incomplete and
+accepted false; full success retains `root_review_required` and postverified.
+
+`WindowsRun.uncertain` is now a read-only compatibility property derived from a
+bounded internal set. The only allowed categories and assignment-site counts are:
+
+| Fixed category | Assignment sites |
+| --- | ---: |
+| `pid_reuse` | 1 |
+| `parent_missing` | 1 |
+| `parent_identity_mismatch` | 1 |
+| `child_tick_invalid` | 1 |
+| `identity_probe_failed` | 2 |
+| `postcheck_live_process` | 2 |
+| `cleanup_exception` | 2 |
+
+Each former boolean assignment now records one of these constants. Unknown or
+caller-supplied category data is never echoed: result projection substitutes the
+fixed `cleanup_exception` fallback when uncertainty exists, and `_mark_uncertain`
+rejects non-enum categories with fixed `internal`. No PID, path, command, raw
+exception or environment enters the result. Cleanup remains exact-owner-only and
+any uncertainty still prevents success.
+
+TDD evidence:
+
+- RED before implementation: **33 tests**, five `KeyError` errors from the new
+  result/cleanup matrix because the dimensions did not exist.
+- Intermediate checks exposed and corrected old expectations for overwritten
+  cleanup reason, the read-only property, and simultaneous PID/parent mismatch.
+- Final regression: **34/34 tests PASS in 4.635 seconds**, retaining all 32 prior
+  listener/lifecycle tests plus two new grouped tests.
+- New pure/mock matrix covers preclaim/no cleanup, start failure with clean or
+  uncertain cleanup, spawn failure plus failed cleanup, cleanup as first failure,
+  smoke/full success, and untrusted category sanitization.
+- Assignment-site test enumerates all seven categories and all ten call sites,
+  triggers PID reuse, parent missing/mismatch and invalid child tick, and proves
+  arbitrary category refusal. Existing tests exercise identity, postcheck and
+  cleanup failure sites.
+- The two new pure/mock tests pass independently: **2/2 in 0.001 seconds**.
+  Python AST parsing passes for both changed files; diff check passes.
+
+The full 34-test regression includes the already accepted controlled local
+IPv4/IPv6 listener test; it launched no browser, PHP server or database and closed
+only its owned sockets. No exact run, source copy, new preparation, supervisor
+lifecycle, application process or outbound operation was performed. A future
+diagnostic requires a fresh candidate and separate authorization after review.

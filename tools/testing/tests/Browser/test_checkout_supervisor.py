@@ -54,6 +54,37 @@ class Fake:
 
 
 class SupervisorTests(unittest.TestCase):
+    def test_primary_reason_and_cleanup_status_matrix_are_independent(self):
+        cases = [
+            ("preflight", True, False, "preflight", "not_required"),
+            ("integrity-start", True, False, "start", "clean"),
+            ("launch-browser", False, False, "spawn_browser", "failed"),
+            ("integrity-start", True, True, "start", "uncertain"),
+            (None, False, False, "cleanup", "failed"),
+        ]
+        for failure, clean, uncertain, primary, cleanup in cases:
+            with self.subTest(failure=failure, cleanup=cleanup):
+                f = Fake(fail=failure, cleanup=clean)
+                if uncertain:
+                    f.uncertain = True
+                    f.uncertainty_categories = {"parent_missing"}
+                result = m.supervise(f)
+                self.assertEqual(result["primary_reason"], primary)
+                self.assertEqual(result["reason"], primary)
+                self.assertEqual(result["cleanup_status"], cleanup)
+                self.assertEqual(result["uncertainty_categories"], ["parent_missing"] if uncertain else [])
+                self.assertFalse(result["accepted"])
+
+        smoke = m.supervise(Fake())
+        self.assertEqual((smoke["primary_reason"], smoke["cleanup_status"]), ("fresh_run_required", "clean"))
+        full = m.supervise(Fake(), mode="full")
+        self.assertEqual((full["primary_reason"], full["cleanup_status"]), ("root_review_required", "clean"))
+        untrusted = Fake(fail="integrity-start")
+        untrusted.uncertain, untrusted.uncertainty_categories = True, {"PRIVATE_PAYLOAD"}
+        result = m.supervise(untrusted)
+        self.assertEqual(result["uncertainty_categories"], ["cleanup_exception"])
+        self.assertNotIn("PRIVATE", str(result))
+
     def test_listener_outcomes_distinguish_free_occupied_and_inspection_failure(self):
         run = m.WindowsRun({"directory": "synthetic-unused"})
         run._ps = lambda command, timeout=3: "[]"
@@ -127,7 +158,9 @@ class SupervisorTests(unittest.TestCase):
     def test_smoke_exact_three_only_after_start_and_never_accepts(self):
         f = Fake()
         result = m.supervise(f)
-        self.assertEqual(result, dict(state="incomplete", accepted=False, requests=3, reason="fresh_run_required"))
+        self.assertEqual(result, dict(state="incomplete", accepted=False, requests=3,
+            reason="fresh_run_required", primary_reason="fresh_run_required",
+            cleanup_status="clean", uncertainty_categories=[]))
         self.assertLess(f.calls.index("integrity-start"), f.calls.index("request"))
         self.assertEqual(f.launched, ["php", "tls", "browser"])
         self.assertEqual(f.calls.count("request"), 3)
@@ -164,7 +197,8 @@ class SupervisorTests(unittest.TestCase):
     def test_partial_spawn_cleanup_failure_never_becomes_smoke_success(self):
         f = Fake(fail="launch-browser", cleanup=False)
         result = m.supervise(f)
-        self.assertEqual(result["reason"], "cleanup")
+        self.assertEqual(result["reason"], "spawn_browser")
+        self.assertEqual(result["cleanup_status"], "failed")
         self.assertIn("invalid", f.calls)
         self.assertNotIn("request", f.calls)
 
@@ -212,7 +246,39 @@ class SupervisorTests(unittest.TestCase):
         run._snapshot = lambda: [{"pid": 10, "parent": 1, "started": "900"}, {"pid": 13, "parent": 10, "started": "901"}]
         run._discover()
         self.assertTrue(run.uncertain)
+        self.assertEqual(run.uncertainty_categories, {"pid_reuse", "parent_identity_mismatch"})
         self.assertNotIn(13, run.owned)
+
+    def test_every_uncertainty_category_is_fixed_and_triggerable_without_payload(self):
+        run = m.WindowsRun({"directory": "synthetic-unused"})
+        run.owned = {10: "100", 12: "100"}
+        run._snapshot = lambda: [
+            {"pid": 10, "parent": 1, "started": "999"},
+            {"pid": 11, "parent": 12, "started": "101"},
+            {"pid": 12, "parent": 1, "started": "900"},
+        ]
+        run._discover()
+        self.assertEqual(run.uncertainty_categories, {"pid_reuse", "parent_identity_mismatch"})
+
+        invalid = m.WindowsRun({"directory": "synthetic-unused"})
+        invalid.owned = {10: "100"}
+        invalid._snapshot = lambda: [
+            {"pid": 10, "parent": 1, "started": "100"},
+            {"pid": 11, "parent": 10, "started": None},
+        ]
+        invalid._discover()
+        self.assertEqual(invalid.uncertainty_categories, {"child_tick_invalid"})
+
+        source = Path(m.__file__).read_text(encoding="utf-8")
+        sites = {"pid_reuse": 1, "parent_missing": 1, "parent_identity_mismatch": 1,
+                 "child_tick_invalid": 1, "identity_probe_failed": 2,
+                 "postcheck_live_process": 2, "cleanup_exception": 2}
+        self.assertEqual(set(sites), m.UNCERTAINTY_CATEGORIES)
+        for category, count in sites.items():
+            self.assertEqual(source.count(f'_mark_uncertain("{category}")'), count)
+        self.assertNotIn("self.uncertain =", source)
+        with self.assertRaisesRegex(m.Refused, "^internal$"):
+            run._mark_uncertain("PRIVATE_PAYLOAD")
 
     def test_unknown_child_tick_is_not_adopted(self):
         run = m.WindowsRun({"directory": "synthetic-unused"})
@@ -220,6 +286,7 @@ class SupervisorTests(unittest.TestCase):
         run._snapshot = lambda: [{"pid": 11, "parent": 10, "started": None}]
         run._discover()
         self.assertTrue(run.uncertain)
+        self.assertEqual(run.uncertainty_categories, {"parent_missing"})
         self.assertNotIn(11, run.owned)
 
     def test_full_mode_explicitly_releases_offline_after_abort_guard(self):
@@ -269,7 +336,7 @@ class SupervisorTests(unittest.TestCase):
     def test_cleanup_stolen_pid_never_killed(self):
         run = m.WindowsRun({"directory": "synthetic-unused"})
         run.owned = {10: "100"}
-        run.uncertain = True
+        run._mark_uncertain("pid_reuse")
         run._discover = lambda: {10: {"started": "999"}}
         run._ps = lambda command: self.fail("must not kill reused PID")
         run._listeners = lambda: []
@@ -287,6 +354,7 @@ class SupervisorTests(unittest.TestCase):
         run._discover = lambda: (_ for _ in ()).throw(m.Refused("inspection"))
         self.assertFalse(run.cleanup(1))
         self.assertTrue(handle.killed)
+        self.assertIn("cleanup_exception", run.uncertainty_categories)
 
     def test_no_postcheck_after_second_cleanup_failure(self):
         f = Fake()
@@ -414,6 +482,7 @@ class SupervisorTests(unittest.TestCase):
             self.assertFalse(run.cleanup(1))
         self.assertEqual(current, {})
         self.assertTrue(run.uncertain)
+        self.assertIn("postcheck_live_process", run.uncertainty_categories)
 
     def test_exhausted_cleanup_reserve_never_gets_another_fifteen_seconds(self):
         f = Fake()
