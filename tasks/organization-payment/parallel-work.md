@@ -1,5 +1,23 @@
 # Koordinasi task paralel organization-payment
 
+## Frame-bound gate accepted — 2026-09-04
+
+Reviewed worker `ca6a646` and exact gate overlay, integrated `e752f1d`/`724da42`.
+Before SHA1c9f0331… matched; after SHA572b8741… matches worker. Root independently
+reran the eight-file consent/prerequisite/settlement/gate/activation regression:
+245 tests / 570 assertions passed in env-free worker. No new PG/build/browser
+claim. Default gate retains lazy behavior; only explicit path promises shared
+frame input. Backend completed cursor ends in `:30`.
+
+Next bounded backend slice: internal own-product facts alongside accepted payment
+projection, with one validated charge/snapshot lookup and explicit asOf support.
+Frozen package label/testTypes from valid charge win over catalog; absent charge
+may expose validated own catalog label/types but amount/consultation stay null.
+Reuse price snapshot parser and settlementAt, reject invalid/unloaded/foreign
+inputs, no capture(package,false) guess. Keep existing payment DTO unchanged.
+No full summary/HTTP/lifecycle caller changes; typed internal result only, tests
+for provenance, strict privacy, malformed snapshot and time drift. Stop for review.
+
 ## Captured prerequisites accepted locally — 2026-09-04
 
 Reviewed worker `a4436f1` and exact prerequisite overlay; integrated `4aab457`
