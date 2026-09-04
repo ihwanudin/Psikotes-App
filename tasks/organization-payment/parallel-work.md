@@ -1,5 +1,14 @@
 # Koordinasi task paralel organization-payment
 
+## Exact synthetic asset delivery accepted; fresh smoke preparation
+
+Root reviewed709540a exact two GET mappings/hash of returned bytes/canonical paths,
+reran98asset assertions PASS; integrated harness/tests/report. No actual HTTP asset
+fetch claimed. ONE backend preparation-only increment: new independent oncam-checkout
+temp copy from pinned current root, full manifest, fixed runtime config and reviewed
+asset-delivery hashes. Old7b2a run untouched. No init/server/browser/DB/supervisor
+execution until root reviews prepared artifacts. No .env or active data, no installs.
+
 ## Supervisor correction3016bbc accepted for test tooling only
 
 Root reviewed outer-finally and shared15s cleanup allowance, reran29pure/mock tests
