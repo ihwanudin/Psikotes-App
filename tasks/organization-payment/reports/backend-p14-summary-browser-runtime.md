@@ -341,3 +341,24 @@ Only this runtime report is committed. Source/vendor/manifest remain unchanged;
 no installs, .env/active DB, real provider, public wiring, deployment/push, new
 task/agent or reset. Diff-check and single-file staging passed. STOP: execution
 limit confirmed, direct recovery FAILED, P14 browser acceptance still incomplete.
+
+## Stage-localization preparation — 2026-09-04
+
+Authorized test-harness-only instrumentation adds fixed markers around tree,
+manifest read/digest, hashing (progress every5000), exact inventory, required files,
+autoload, application creation/bootstrap, request baseline/handle/postconditions.
+All original checks and their order remain. Default diagnostic flag is OFF;
+only exact process-local ONCAM_CHECKOUT_BROWSER_STAGE_DIAGNOSTICS=1 enables it.
+It requires serve mode, existing disposable SQLite and canonical validated direct
+temp child, then exclusively creates diagnostic-stages.jsonl. Existing output or
+linked destination is refused; no prevalidation error writes a diagnostic file.
+At most64 stage records, only fixed enum/monotonic elapsed/integer count/numeric
+execution limit. Shutdown records only fixed shutdown stage, numeric error type
+and exhaustion boolean, never message/file/line/request/credentials. No application
+files, authorization predicates, exception handler, proxy or timeout changed.
+
+TDD: new pure record-shape/bounds checks failed before implementation (exit1), then
+52 pure checks passed, including all46 previous checks. PHP syntax and focused
+Pint --test passed. Commit this preparation before refreshing only the reviewed
+harness in the exact existing source copy. The authorized single direct90s request
+and actual stage evidence follow separately; no browser/TLS/reinit is permitted.

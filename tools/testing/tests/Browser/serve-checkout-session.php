@@ -84,6 +84,18 @@ if (PHP_SAPI === 'cli' && ($argv[1] ?? '') === '--self-test') {
     ] as $unsafePath) {
         $checks[] = ! checkoutBrowserSafeRelative($unsafePath);
     }
+    $checks[] = checkoutBrowserDiagnosticRecord('file_hash_progress', 5000, 1000000000, 90) === [
+        'stage' => 'file_hash_progress', 'elapsedSeconds' => 1.0, 'processedCount' => 5000, 'executionLimit' => 90,
+    ];
+    foreach ([['arbitrary/path', 0, 0, 90], ['tree_start', -1, 0, 90],
+        ['tree_start', 50001, 0, 90], ['tree_start', 0, -1, 90], ['tree_start', 0, 0, -1]] as $invalidRecord) {
+        try {
+            checkoutBrowserDiagnosticRecord(...$invalidRecord);
+            $checks[] = false;
+        } catch (InvalidArgumentException) {
+            $checks[] = true;
+        }
+    }
     if (in_array(false, $checks, true)) {
         fwrite(STDERR, "Harness pure checks failed.\n");
         exit(1);
@@ -128,7 +140,42 @@ if (realpath($root) !== realpath($directory.'/source') || ! is_dir($directory.'/
     || array_diff(glob($root.'/bootstrap/cache/*') ?: [], [$root.'/bootstrap/cache/.gitignore']) !== []) {
     throw new RuntimeException('Fresh env-free source copy required.');
 }
+$diagnostic = static function (string $stage, int $count = 0): void {};
+if (getenv('ONCAM_CHECKOUT_BROWSER_STAGE_DIAGNOSTICS') === '1') {
+    // Existing, canonical direct temp child only; exclusive creation refuses linked/existing output.
+    if ($mode !== 'serve' || ! is_file($directory.'/browser.sqlite') || is_link($directory)
+        || strcasecmp(str_replace('\\', '/', (string) realpath($directory)), str_replace('\\', '/', $directory)) !== 0) {
+        throw new RuntimeException('Unsafe diagnostic directory.');
+    }
+    $diagnosticHandle = fopen($directory.'/diagnostic-stages.jsonl', 'x');
+    if ($diagnosticHandle === false) {
+        throw new RuntimeException('Diagnostic output must be new.');
+    }
+    $diagnosticStart = hrtime(true);
+    $diagnosticRecords = 0;
+    $diagnostic = static function (string $stage, int $count = 0) use ($diagnosticHandle, $diagnosticStart, &$diagnosticRecords): void {
+        if (++$diagnosticRecords > 64) {
+            throw new RuntimeException('Diagnostic record bound exceeded.');
+        }
+        $record = checkoutBrowserDiagnosticRecord($stage, $count, hrtime(true) - $diagnosticStart, (int) ini_get('max_execution_time'));
+        fwrite($diagnosticHandle, json_encode($record, JSON_THROW_ON_ERROR)."\n");
+        fflush($diagnosticHandle);
+    };
+    register_shutdown_function(static function () use ($diagnosticHandle): void {
+        $error = error_get_last();
+        fwrite($diagnosticHandle, json_encode([
+            'stage' => 'shutdown',
+            'errorType' => $error['type'] ?? null,
+            'maximumExecutionTimeExhausted' => $error !== null
+                && preg_match('/^Maximum execution time of \d+ seconds exceeded/', $error['message']) === 1,
+        ], JSON_THROW_ON_ERROR)."\n");
+        fclose($diagnosticHandle);
+    });
+}
+$diagnostic('tree_start');
 checkoutBrowserAssertTree($directory);
+$diagnostic('tree_end');
+$diagnostic('manifest_start');
 $manifest = json_decode((string) file_get_contents($directory.'/source-manifest.json'), true, 512, JSON_THROW_ON_ERROR);
 $manifestDigest = getenv('ONCAM_CHECKOUT_BROWSER_MANIFEST_SHA256');
 if (! is_string($manifestDigest) || preg_match('/^[a-f0-9]{64}$/D', $manifestDigest) !== 1
@@ -138,13 +185,21 @@ if (! is_string($manifestDigest) || preg_match('/^[a-f0-9]{64}$/D', $manifestDig
 if (! is_array($manifest) || count($manifest) < 10 || count($manifest) > 50000) {
     throw new RuntimeException('Source manifest required.');
 }
+$diagnostic('manifest_end', count($manifest));
+$diagnostic('file_hash_start');
+$diagnosticHashed = 0;
 foreach ($manifest as $relative => $digest) {
     if (! is_string($relative) || ! checkoutBrowserSafeRelative($relative)
         || ! is_string($digest) || ! preg_match('/^[a-f0-9]{64}$/D', $digest)
         || ! is_file($root.'/'.$relative) || ! hash_equals($digest, hash_file('sha256', $root.'/'.$relative))) {
         throw new RuntimeException('Source manifest mismatch.');
     }
+    if (++$diagnosticHashed % 5000 === 0) {
+        $diagnostic('file_hash_progress', $diagnosticHashed);
+    }
 }
+$diagnostic('file_hash_end', $diagnosticHashed);
+$diagnostic('inventory_start');
 $inventory = [];
 foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS)) as $file) {
     if ($file->isFile()) {
@@ -157,6 +212,8 @@ sort($manifestFiles, SORT_STRING);
 if ($inventory !== $manifestFiles) {
     throw new RuntimeException('Unmanifested source file.');
 }
+$diagnostic('inventory_end', count($inventory));
+$diagnostic('required_start');
 foreach (['composer.lock', 'vendor/autoload.php', 'app/Http/Controllers/CheckoutSessionController.php',
     'resources/views/checkout/summary.blade.php', 'app/Actions/Integrations/CheckoutSessionLifecycle.php',
     'app/Services/Integrations/CheckoutSummaryComposer.php', 'app/Data/Integrations/CheckoutSummary.php',
@@ -166,6 +223,7 @@ foreach (['composer.lock', 'vendor/autoload.php', 'app/Http/Controllers/Checkout
         throw new RuntimeException('Incomplete source manifest.');
     }
 }
+$diagnostic('required_end');
 $database = $directory.'/browser.sqlite';
 $initialize = $mode === 'init';
 if ($initialize) {
@@ -211,9 +269,13 @@ foreach ([
     $_ENV[$key] = $_SERVER[$key] = $value;
 }
 
+$diagnostic('autoload_start');
 require $root.'/vendor/autoload.php';
+$diagnostic('autoload_end');
 
+$diagnostic('application_create_start');
 $app = require $root.'/bootstrap/app.php';
+$diagnostic('application_create_end');
 $app->addAbsoluteCachePathPrefix($directory);
 $app->useEnvironmentPath($directory);
 $app->useStoragePath($directory.'/storage');
@@ -254,7 +316,9 @@ $app->booting(function () use ($app): void {
     Http::preventStrayRequests();
     Mail::fake();
 });
+$diagnostic('bootstrap_start');
 $app->make(Kernel::class)->bootstrap();
+$diagnostic('bootstrap_end');
 // Laravel installs its own global handler during bootstrap; control/CLI errors must stay opaque too.
 set_exception_handler(static function (Throwable $error) use ($directory): void {
     file_put_contents($directory.'/violations.txt', "HARNESS_EXCEPTION\n", FILE_APPEND | LOCK_EX);
@@ -437,14 +501,19 @@ if (is_string($path) && str_starts_with($path, '/__browser/control/')) {
     exit;
 }
 
+$diagnostic('request_baseline_start');
 $requestBaseline = checkoutBrowserRows();
+$diagnostic('request_baseline_end');
 $clockReads = 0;
 $idleWrites = 0;
 DB::listen(static function (QueryExecuted $query) use (&$clockReads, &$idleWrites): void {
     $clockReads += str_contains($query->sql, 'AS current_time') ? 1 : 0;
     $idleWrites += str_starts_with($query->sql, 'update "checkout_sessions"') ? 1 : 0;
 });
+$diagnostic('request_handle_start');
 $app->handleRequest(Request::capture());
+$diagnostic('request_handle_end');
+$diagnostic('postconditions_start');
 $requestAfter = checkoutBrowserRows();
 foreach (['checkout_sessions', 'checkout_handoffs', 'audit_logs'] as $lifecycle) {
     unset($requestBaseline[$lifecycle], $requestAfter[$lifecycle]);
@@ -462,6 +531,23 @@ if (app(RlsContextRunner::class)->current() !== null || DB::transactionLevel() !
 }
 Http::assertNothingSent();
 Mail::assertNothingSent();
+$diagnostic('postconditions_end');
+
+function checkoutBrowserDiagnosticRecord(string $stage, int $count, int $elapsedNanoseconds, int $limit): array
+{
+    if (! in_array($stage, ['tree_start', 'tree_end', 'manifest_start', 'manifest_end',
+        'file_hash_start', 'file_hash_progress', 'file_hash_end', 'inventory_start', 'inventory_end',
+        'required_start', 'required_end', 'autoload_start', 'autoload_end',
+        'application_create_start', 'application_create_end', 'bootstrap_start', 'bootstrap_end',
+        'request_baseline_start', 'request_baseline_end', 'request_handle_start', 'request_handle_end',
+        'postconditions_start', 'postconditions_end'], true)
+        || $count < 0 || $count > 50000 || $elapsedNanoseconds < 0 || $limit < 0) {
+        throw new InvalidArgumentException('Invalid diagnostic record.');
+    }
+
+    return ['stage' => $stage, 'elapsedSeconds' => round($elapsedNanoseconds / 1e9, 4),
+        'processedCount' => $count, 'executionLimit' => $limit];
+}
 
 function checkoutBrowserSafeRelative(string $path): bool
 {
