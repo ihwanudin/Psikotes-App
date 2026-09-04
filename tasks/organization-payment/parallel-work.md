@@ -1,5 +1,29 @@
 # Koordinasi task paralel organization-payment
 
+## User continuation: synthetic integrity change approved — 2026-09-04
+
+User answered "lanjutkan" to explicit question disclosing full pre/post checks and
+lighter runtime checks, including undetected temporary-source-change limitation.
+Accept option B only for cooperative isolated synthetic tests, not production or
+hostile local-writer protection. This supersedes earlier B-not-authorized entries.
+Backend received ONE harness implementation/pure-negative-tests slice; no exactrun
+refresh, server/browser/DB or timeout/TTL change until root reviews implementation.
+Full pre/post verification, explicit fixed runtime subset and fail-closed evidence
+lifecycle required; edit/restore and transient nested-link limitations remain.
+
+Frontend received ONE actual HTTP integration verification slice, report-only in
+its worktree: exclusively owns temporary composition copy fbdb40c7b9ad42419225b7e83a62ece1
+for baseline HTTP run then exact eb3d7bc view/CSS +4eb2385 test overlay. Guarded
+SQLite memory/sanitized environment only; no app changes, browser or public routes.
+Portal idle, no further assignment or access to that copy during frontend run.
+Frontend must verify nonoverlay baseline unchanged and report failures, not patch
+backend. Production/root source remains untouched pending independent review.
+
+Pre-dispatch cursors after task reload: backend909f5d9a-584f-40ef-9d0b-703f28439644:1,
+frontendcbd3c763-8fec-4bfe-a6a1-f0b53584857b:1,
+portalecb2f2e0-6e1a-4971-b751-aa0be7c58a5b:1; all completed/notLoaded.
+Both continuation messages succeeded; do not duplicate while active.
+
 ## Parallel follow-ups dispatched — 2026-09-04
 
 Portal negative3ea0960 reviewed and root independently reran4tests/863assertions
