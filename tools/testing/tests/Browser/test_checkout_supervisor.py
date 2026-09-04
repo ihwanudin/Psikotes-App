@@ -67,7 +67,7 @@ class SupervisorTests(unittest.TestCase):
         result = m.supervise(f, mode="full")
         self.assertEqual(result["state"], "postverified")
         self.assertFalse(result["accepted"])
-        self.assertEqual(f.calls.count("cleanup"), 2)
+        self.assertEqual(f.calls.count("cleanup"), 3)
         self.assertLess(f.calls.index("cleanup"), f.calls.index("integrity-stop"))
         self.assertLess(f.calls.index("verify"), f.calls.index("integrity-post"))
         self.assertIn(("assertions", True), f.calls)
@@ -251,6 +251,130 @@ class SupervisorTests(unittest.TestCase):
         run._discover()
         self.assertTrue(run.uncertain)
         self.assertNotIn(11, run.owned)
+
+    def test_late_stage_errors_always_cleanup_after_the_failure(self):
+        for stage in ("integrity-stop", "verify", "integrity-post"):
+            for error_type in (RuntimeError, KeyboardInterrupt, SystemExit):
+                with self.subTest(stage=stage, error=error_type.__name__):
+                    f = Fake()
+                    original = f.harness
+                    failure = error_type("SYNTHETIC")
+                    def harness(mode, left, assertions=False):
+                        original(mode, left, assertions)
+                        if mode == stage:
+                            raise failure
+                    f.harness = harness
+                    if error_type is RuntimeError:
+                        result = m.supervise(f, mode="full")
+                        self.assertEqual(result["state"], "invalid")
+                        self.assertFalse(result["accepted"])
+                    else:
+                        with self.assertRaises(error_type) as caught:
+                            m.supervise(f, mode="full")
+                        self.assertIs(caught.exception, failure)
+                    self.assertIn("cleanup", f.calls[f.calls.index(stage)+1:])
+                    self.assertIn("invalid", f.calls)
+
+    def test_successful_post_requires_fresh_final_cleanup(self):
+        f = Fake()
+        result = m.supervise(f, mode="full")
+        self.assertIn("cleanup", f.calls[f.calls.index("integrity-post")+1:])
+        self.assertEqual(result["state"], "postverified")
+
+    def test_uncertainty_discovered_after_post_invalidates_even_true_cleanup(self):
+        f = Fake()
+        def cleanup(budget):
+            f.call("cleanup")
+            if "integrity-post" in f.calls:
+                f.uncertain = True
+            return True
+        f.cleanup = cleanup
+        result = m.supervise(f, mode="full")
+        self.assertEqual(result["state"], "invalid")
+        self.assertIn("invalid", f.calls)
+
+    def test_final_cleanup_failure_or_interrupt_invalidates(self):
+        for kind in ("false", "error", "interrupt", "exit"):
+            with self.subTest(kind=kind):
+                f = Fake()
+                failure = KeyboardInterrupt() if kind == "interrupt" else SystemExit(3)
+                def cleanup(budget):
+                    f.call("cleanup")
+                    if "integrity-post" in f.calls:
+                        if kind == "false": return False
+                        if kind == "error": raise RuntimeError("SYNTHETIC")
+                        raise failure
+                    return True
+                f.cleanup = cleanup
+                if kind in ("interrupt", "exit"):
+                    with self.assertRaises(type(failure)) as caught:
+                        m.supervise(f, mode="full")
+                    self.assertIs(caught.exception, failure)
+                else:
+                    self.assertEqual(m.supervise(f, mode="full")["state"], "invalid")
+                self.assertIn("invalid", f.calls)
+
+    def test_cleanup_reserve_is_shared_without_reset_or_recursion(self):
+        f = Fake()
+        allowances = []
+        def cleanup(budget):
+            f.call("cleanup")
+            allowances.append(budget)
+            f.time += 4
+            return True
+        f.cleanup = cleanup
+        m.supervise(f, mode="full")
+        self.assertEqual(len(allowances), 3)
+        self.assertLess(allowances[1], allowances[0] - 3.9)
+        self.assertLess(allowances[2], allowances[1] - 3.9)
+        self.assertLessEqual(allowances[0], 15)
+
+    def test_known_child_alive_after_post_is_cleaned_but_evidence_invalid(self):
+        run = m.WindowsRun({"directory": "synthetic-unused"})
+        run.owned = {10: "100"}
+        run.postcheck_complete = True
+        current = {10: {"started": "100"}}
+        run._discover = lambda: current
+        run._ps = lambda command: current.pop(10, None)
+        run._listeners = lambda: []
+        with patch.object(m.time, "sleep"):
+            self.assertFalse(run.cleanup(1))
+        self.assertEqual(current, {})
+        self.assertTrue(run.uncertain)
+
+    def test_exhausted_cleanup_reserve_never_gets_another_fifteen_seconds(self):
+        f = Fake()
+        allowances = []
+        def cleanup(budget):
+            f.call("cleanup")
+            allowances.append(budget)
+            f.time += 15
+            return True  # A lying/slow adapter cannot bypass the supervisor's elapsed check.
+        f.cleanup = cleanup
+        result = m.supervise(f, mode="full")
+        self.assertEqual(allowances, [15.0])
+        self.assertEqual(result["state"], "invalid")
+        self.assertIn("invalid", f.calls)
+        self.assertNotIn("integrity-stop", f.calls)
+
+    def test_error_after_post_with_new_recorded_child_gets_final_cleanup(self):
+        f = Fake()
+        owned = []
+        original = f.harness
+        def harness(mode, left, assertions=False):
+            original(mode, left, assertions)
+            if mode == "integrity-post":
+                owned.append("known-child")
+                raise RuntimeError("SYNTHETIC")
+        def cleanup(budget):
+            f.call("cleanup")
+            owned.clear()
+            return True
+        f.harness, f.cleanup = harness, cleanup
+        result = m.supervise(f, mode="full")
+        self.assertEqual(owned, [])
+        self.assertEqual(result["state"], "invalid")
+        self.assertIn("invalid", f.calls)
 
 
 if __name__ == "__main__":

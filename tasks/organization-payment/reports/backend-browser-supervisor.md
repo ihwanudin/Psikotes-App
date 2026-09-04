@@ -141,3 +141,54 @@ acceptance claim. No exact-run access/refresh, app/harness edits, real .env/data
 active DB, provider/notifier, dependency/network installation, deploy/push, or new
 task/agent. Preserve all unrelated dirty baseline. Commit only these three files
 and STOP for coordinator review.
+
+## P2 lifecycle cleanup correction — 2026-09-05
+
+Review eb7d9ed identified that stop/business/post ran outside the original finally.
+This correction changes only the same supervisor, its pure tests and this report.
+It does not execute the Windows adapter or change the PHP harness, assets or copy.
+
+A single outer try/finally now encloses preflight through the final full postcheck.
+The full successful order is matrix -> cleanup -> stop -> business -> cleanup ->
+postcheck -> unconditional final cleanup/census -> result. Smoke retains its one
+final cleanup and irreversible incomplete/invalid-latch behavior. Exceptions in
+stop, verify or post therefore cannot bypass the last bounded cleanup. A partial
+claim still receives cleanup/invalid even when claim did not return successfully.
+
+KeyboardInterrupt and SystemExit are deliberately NOT caught as Exception or
+converted into a result. The outer finally runs and propagates the same interrupt;
+the inner finally invalidates even if final cleanup itself raises an interrupt.
+There is no catch-all BaseException suppression. Standard Python exception
+precedence applies if both lifecycle and cleanup are interrupted: a new interrupt
+from cleanup propagates with the original as its context, never as success.
+
+All cleanup calls now debit ONE shared15-second allowance by elapsed monotonic time,
+including raised exceptions/interrupts. No per-phase15-second reset or cleanup
+recursion remains. A call that reports success after consuming more than its
+remaining allowance is still a failure; zero allowance does not launch another
+cleanup inspection. Earlier cleanup failure remains sticky even if the outer final
+cleanup subsequently succeeds. This supersedes the earlier per-call reserve text.
+
+The final result is assigned postverified only after the last cleanup succeeds,
+there was no earlier error, and ownership remains certain. The Windows adapter
+marks evidence uncertain if an owned child is found alive after postcheck, cleans
+only that owned identity, but still returns failure: terminating a late writer
+cannot retroactively validate the completed source scan. The invalid latch then
+overrides any previously persisted postverified marker. accepted remains false in
+all returned results. Unknown/reused identities are still never adopted or killed.
+
+Actual TDD: initial27-test run produced17 failures, including stop/verify/post
+RuntimeError + KeyboardInterrupt + SystemExit, missing post-success cleanup,
+late uncertainty/child, final cleanup failure/interrupt, and reset cleanup reserves.
+After correction the pre-existing success assertion intentionally expects three
+cleanup phases rather than two; all other21 baseline test semantics remain.
+Final29 tests PASS in0.005s, two Python AST syntax checks PASS, git diff --check PASS.
+Additional checks cover exhausted cleanup allowance and a recorded child created
+before a postcheck error being cleared by the outer finally. Tests assert exact
+interrupt object propagation, no postverified on cleanup failure/uncertainty, and
+no unknown-process kill. These are pure/mock outcomes, not OS process evidence.
+
+No supervisor/OS inspection/server/browser/DB or exact-run/asset access occurred.
+No new dependency, real environment/data, timeout/TTL change, deploy/push or task.
+No PHP/Pint/PHPStan/real-inspector regression is recounted as new evidence for this
+Python-only correction. Commit the same three lane files and STOP for root review.

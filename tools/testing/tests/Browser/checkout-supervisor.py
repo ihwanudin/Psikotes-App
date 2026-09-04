@@ -31,7 +31,9 @@ def supervise(io, *, mode="smoke", requests=3, budget=180):
         raise Refused("invalid_budget")
     deadline = io.clock() + budget
     io.io_deadline = deadline
-    stage, claimed, completed, clean = "preflight", False, False, False
+    stage, claimed, completed, final_clean = "preflight", False, False, False
+    cleanup_remaining, cleanup_failed = 15.0, False
+    io.postcheck_complete = False
     count = 0
     result = {"state": "invalid", "accepted": False, "requests": 0, "reason": "preflight"}
 
@@ -45,6 +47,21 @@ def supervise(io, *, mode="smoke", requests=3, budget=180):
         if io.clock() >= deadline:
             raise Refused("budget")
         return value
+
+    def cleanup():
+        # One shared allowance, debited even on interruption; no recursion or fresh reserves.
+        nonlocal cleanup_remaining, cleanup_failed
+        started, succeeded = io.clock(), False
+        allowance = cleanup_remaining
+        try:
+            if allowance <= 0:
+                return False
+            succeeded = (io.cleanup(allowance) is True and not getattr(io, "uncertain", False)
+                         and io.clock() - started <= allowance)
+            return succeeded
+        finally:
+            cleanup_remaining = max(0, cleanup_remaining - max(0, io.clock() - started))
+            cleanup_failed = cleanup_failed or not succeeded
 
     try:
         step("preflight", io.preflight)
@@ -65,36 +82,41 @@ def supervise(io, *, mode="smoke", requests=3, budget=180):
                     raise Refused("request_target")
         else:
             step("matrix", io.full_matrix)
+            stage = "cleanup"
+            if not cleanup():
+                raise Refused("cleanup")
+            step("stop", lambda remaining: io.harness("integrity-stop", remaining, assertions=True))
+            step("business", lambda remaining: io.harness("verify", remaining))
+            stage = "final_cleanup"
+            if not cleanup():
+                raise Refused("cleanup")
+            step("postcheck", lambda remaining: io.harness("integrity-post", remaining))
+            io.postcheck_complete = True
         completed = True
     except Exception:
         result["reason"] = stage
     finally:
+        # Encloses ALL lifecycle operations, including stop/business/post and BaseException.
+        # Interrupts are not caught or converted into successful/ordinary result objects.
         claimed = claimed or io.claimed
         if claimed:
-            # Cleanup has its own finite 15s reserve, even when the work budget expired.
             try:
-                clean = io.cleanup(15) is True
-            except Exception:
-                clean = False
-            if not clean:
-                result["reason"] = "cleanup"
-            if not completed or not clean or mode == "smoke":
-                io.invalidate()
+                try:
+                    final_clean = cleanup()
+                except Exception:
+                    final_clean = False
+                if not final_clean and result["reason"] != "final_cleanup":
+                    result["reason"] = "cleanup"
+            finally:
+                # Also runs if final cleanup itself raises KeyboardInterrupt/SystemExit.
+                if not completed or not final_clean or cleanup_failed or mode == "smoke":
+                    io.invalidate()
     result["requests"] = count
-    if mode == "smoke" and completed and clean:
-        result.update(state="incomplete", reason="fresh_run_required")
-    elif mode == "full" and completed and clean:
-        try:
-            step("stop", lambda remaining: io.harness("integrity-stop", remaining, assertions=True))
-            step("business", lambda remaining: io.harness("verify", remaining))
-            stage = "final_cleanup"
-            if io.cleanup(15) is not True:
-                raise Refused("cleanup")
-            step("postcheck", lambda remaining: io.harness("integrity-post", remaining))
+    if completed and final_clean and not cleanup_failed:
+        if mode == "smoke":
+            result.update(state="incomplete", reason="fresh_run_required")
+        else:
             result.update(state="postverified", reason="root_review_required")
-        except Exception:
-            io.invalidate()
-            result["reason"] = stage
     return result
 
 
@@ -111,6 +133,7 @@ class WindowsRun:
         self.handles = []
         self.claimed = False
         self.uncertain = False
+        self.postcheck_complete = False
         self.session = "checkout-" + secrets.token_hex(16)
         self.owner = None
         self.io_deadline = float("inf")
@@ -367,6 +390,9 @@ class WindowsRun:
         clean = False
         try:
             current = self._discover()
+            if self.postcheck_complete and any(current.get(pid, {}).get("started") == tick for pid, tick in self.owned.items()):
+                # A writer alive after the full scan invalidates its premise, even if cleanup succeeds.
+                self.uncertain = True
             browser = self.roles.get("browser")
             if browser and current.get(browser["pid"], {}).get("started") == browser["started"]:
                 try:
@@ -378,6 +404,8 @@ class WindowsRun:
                 live = [(pid, tick) for pid, tick in self.owned.items() if current.get(pid, {}).get("started") == tick]
                 if not live:
                     break
+                if self.postcheck_complete:
+                    self.uncertain = True
                 for pid, tick in reversed(live):
                     # Re-check creation time inside the same PS command before stopping it.
                     script = f"$ErrorActionPreference='Stop'; try {{$p=[Diagnostics.Process]::GetProcessById({pid})}} catch {{exit 0}}; try {{if($p.StartTime.ToUniversalTime().Ticks.ToString() -eq '{tick}') {{$p.Kill()}}}} finally {{$p.Dispose()}}"
