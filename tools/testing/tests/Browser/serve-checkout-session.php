@@ -124,7 +124,7 @@ if (PHP_SAPI === 'cli' && ($argv[1] ?? '') === '--self-test') {
     exit;
 }
 
-if (PHP_SAPI === 'cli' && in_array($argv[1] ?? '', ['--integrity-tests', '--inspector-tests'], true)) {
+if (PHP_SAPI === 'cli' && in_array($argv[1] ?? '', ['--integrity-tests', '--inspector-tests', '--asset-tests'], true)) {
     require __DIR__.'/checkout-integrity-tests.php';
     exit;
 }
@@ -242,6 +242,27 @@ if ($cooperativeIntegrity && $mode !== 'init') {
     }
     $manifest = $fullIntegrity();
 }
+// Exact synthetic assets only; environment and full/cooperative integrity have already passed.
+// No framework bootstrap, DB, authentication, session or generic document-root fallback.
+if ($mode === 'serve') {
+    try {
+        $assetResponse = checkoutBrowserAssetResponse($directory, $manifestDigest, $_SERVER);
+    } catch (Throwable) {
+        if ($integrityFailure !== null) {
+            $integrityFailure();
+        }
+        $assetResponse = checkoutBrowserAssetFailure(500);
+    }
+    if ($assetResponse !== null) {
+        http_response_code($assetResponse['status']);
+        foreach ($assetResponse['headers'] as $name => $value) {
+            header($name.': '.$value);
+        }
+        echo $assetResponse['body'];
+        exit;
+    }
+}
+
 $database = $directory.'/browser.sqlite';
 $initialize = $mode === 'init';
 if ($initialize) {
@@ -617,6 +638,7 @@ function checkoutBrowserIntegrityCriticalFiles(): array
         'app/Providers/AppServiceProvider.php',
         'app/Http/Controllers/CheckoutSessionController.php', 'resources/views/checkout/summary.blade.php',
         'resources/views/checkout/private.blade.php',
+        'public/css/checkout-summary-v1.css', 'public/brand/oncam-logo-full-color.png',
         'app/Http/Middleware/AuthenticateCheckoutSession.php',
         'app/Http/Middleware/VerifyCheckoutSessionMutation.php',
         'app/Http/Middleware/ProtectCheckoutSessionHttpBoundary.php',
@@ -643,6 +665,76 @@ function checkoutBrowserIntegrityCriticalFiles(): array
         'tools/testing/tests/Browser/checkout-session.browser.mjs',
         'tools/testing/tests/Browser/https-loopback-proxy.py',
     ];
+}
+
+function checkoutBrowserAssetFailure(int $status): array
+{
+    return ['status' => $status, 'headers' => [
+        'Content-Type' => 'text/plain; charset=UTF-8', 'Cache-Control' => 'no-store, private',
+        'X-Content-Type-Options' => 'nosniff', 'Referrer-Policy' => 'no-referrer',
+    ], 'body' => "Synthetic asset unavailable.\n"];
+}
+
+/** Request-derived strings are never used as filesystem paths. */
+function checkoutBrowserAssetResponse(string $directory, string $digest, array $server): ?array
+{
+    $map = [
+        '/css/checkout-summary-v1.css' => ['public/css/checkout-summary-v1.css', 'text/css; charset=UTF-8'],
+        '/brand/oncam-logo-full-color.png' => ['public/brand/oncam-logo-full-color.png', 'image/png'],
+    ];
+    $uri = $server['REQUEST_URI'] ?? '';
+    if (! is_string($uri)) {
+        return checkoutBrowserAssetFailure(404);
+    }
+    // Decoding is for refusal classification ONLY. It never authorizes or selects an asset.
+    $candidate = explode('?', explode('#', $uri, 2)[0], 2)[0];
+    for ($i = 0; $i < 3; $i++) {
+        $candidate = rawurldecode($candidate);
+    }
+    $candidate = str_replace('\\', '/', $candidate);
+    if (! isset($map[$uri]) && preg_match('~(?:^|/)(?:css|brand)(?:/|$)~i', $candidate) !== 1) {
+        return null; // Existing application routing remains responsible for other URLs.
+    }
+    if (! isset($map[$uri]) || ($server['REQUEST_METHOD'] ?? '') !== 'GET') {
+        return checkoutBrowserAssetFailure(404);
+    }
+    [$relative, $mime] = $map[$uri];
+    checkoutBrowserIntegrityPaths($directory);
+    $manifestBytes = file_get_contents($directory.'/source-manifest.json');
+    if (! is_string($manifestBytes) || preg_match('/^[a-f0-9]{64}$/D', $digest) !== 1
+        || ! hash_equals($digest, hash('sha256', $manifestBytes))) {
+        throw new RuntimeException('Synthetic asset refused');
+    }
+    $manifest = json_decode($manifestBytes, true, 512, JSON_THROW_ON_ERROR);
+    if (! is_array($manifest) || ! isset($manifest[$relative]) || ! is_string($manifest[$relative])
+        || preg_match('/^[a-f0-9]{64}$/D', $manifest[$relative]) !== 1) {
+        throw new RuntimeException('Synthetic asset refused');
+    }
+    $path = $directory.'/source/'.$relative;
+    for ($parent = dirname($path); $parent !== $directory; $parent = dirname($parent)) {
+        checkoutBrowserIntegrityCanonical($parent);
+    }
+    checkoutBrowserIntegrityCanonical($path);
+    // Hash the exact bytes returned, not a file subsequently reopened by readfile().
+    $bytes = file_get_contents($path, false, null, 0, 262145);
+    if (! is_string($bytes) || $bytes === '' || strlen($bytes) > 262144
+        || ! hash_equals($manifest[$relative], hash('sha256', $bytes))) {
+        throw new RuntimeException('Synthetic asset refused');
+    }
+    if ($mime === 'image/png') {
+        $size = @getimagesizefromstring($bytes);
+        if ($size === false || $size[2] !== IMAGETYPE_PNG || $size['mime'] !== $mime) {
+            throw new RuntimeException('Synthetic asset refused');
+        }
+    } elseif (preg_match('//u', $bytes) !== 1 || str_contains($bytes, "\0") || str_starts_with(ltrim($bytes), '<')) {
+        throw new RuntimeException('Synthetic asset refused');
+    }
+
+    return ['status' => 200, 'headers' => [
+        'Content-Type' => $mime, 'Content-Length' => (string) strlen($bytes),
+        'Cache-Control' => 'no-store, private', 'X-Content-Type-Options' => 'nosniff',
+        'Referrer-Policy' => 'no-referrer',
+    ], 'body' => $bytes];
 }
 
 /** A marked run cannot downgrade to the old full-per-request mode. */
