@@ -433,3 +433,20 @@ or successful-browser lifecycle verifier was run. No application/active data,
 real provider, install, TLS/browser, public wiring, deploy/push or new task/agent.
 Diff-check passed; final report-only staging. STOP: direct login200 observed,
 warning/variance unresolved, P14 acceptance still incomplete.
+
+## Warning-location preparation — 2026-09-04
+
+Approved narrow extension of opt-in diagnostics: observe error_get_last at stage
+boundaries and shutdown without resetting it or replacing framework handlers.
+Record only numeric type, fixed preceding-stage name, numeric line and a relative
+source filename allowed by the current manifest. Outside/unmanifested/traversal
+locations become literal outside-source. No message, absolute path, stack, request,
+credential or SQL is emitted. Before manifest availability, filenames are masked.
+Existing validation/exclusive file creation/record bounds/default-OFF remain.
+
+Pure test RED before implementation, then64 checks passed (52 prior plus12 shape/
+location checks). Exact returned keys exclude the synthetic forbidden message.
+Pint initially requested formatting; formatting applied only to the owned harness,
+then focused Pint, PHP syntax and64 pure checks passed. Commit preparation before
+source refresh and preserve the old diagnostic file by validated native rename.
+Only one opted-in direct GET at existing90s is authorized, no TLS/browser/reinit.

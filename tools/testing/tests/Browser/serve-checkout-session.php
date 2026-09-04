@@ -96,6 +96,22 @@ if (PHP_SAPI === 'cli' && ($argv[1] ?? '') === '--self-test') {
             $checks[] = true;
         }
     }
+    $diagnosticTestManifest = ['vendor/example/Library.php' => str_repeat('a', 64)];
+    $checks[] = checkoutBrowserDiagnosticError(['type' => 2, 'file' => 'C:\\synthetic\\source\\vendor\\example\\Library.php',
+        'line' => 42, 'message' => 'NEVER_EXPORT'], 'bootstrap_end', 'C:/synthetic/source', $diagnosticTestManifest) === [
+            'errorType' => 2, 'lastStage' => 'bootstrap_end', 'sourceFile' => 'vendor/example/Library.php', 'line' => 42,
+        ];
+    foreach (['C:/outside/private.php', 'C:/synthetic/source-other/vendor/example/Library.php',
+        'C:/synthetic/source/../private.php', 'C:/synthetic/source/vendor/../example/Library.php',
+        'C:/synthetic/source/vendor/./example/Library.php', 'C:/synthetic/source/vendor/unmanifested.php',
+        'C:/synthetic/source/C:/private.php', 'C:/synthetic/source/vendor/%2e%2e/private.php',
+        'vendor/example/Library.php', 'C:/synthetic/source//vendor/example/Library.php'] as $unsafeErrorFile) {
+        $checks[] = checkoutBrowserDiagnosticError(['type' => 2, 'file' => $unsafeErrorFile, 'line' => 3],
+            'tree_start', 'C:/synthetic/source', $diagnosticTestManifest)['sourceFile'] === 'outside-source';
+    }
+    $checks[] = checkoutBrowserDiagnosticError(null, 'tree_start', 'C:/synthetic/source', []) === [
+        'errorType' => null, 'lastStage' => 'tree_start', 'sourceFile' => 'outside-source', 'line' => 0,
+    ];
     if (in_array(false, $checks, true)) {
         fwrite(STDERR, "Harness pure checks failed.\n");
         exit(1);
@@ -153,19 +169,23 @@ if (getenv('ONCAM_CHECKOUT_BROWSER_STAGE_DIAGNOSTICS') === '1') {
     }
     $diagnosticStart = hrtime(true);
     $diagnosticRecords = 0;
-    $diagnostic = static function (string $stage, int $count = 0) use ($diagnosticHandle, $diagnosticStart, &$diagnosticRecords): void {
+    $diagnosticLastStage = 'tree_start';
+    $diagnostic = static function (string $stage, int $count = 0) use ($diagnosticHandle, $diagnosticStart, &$diagnosticRecords, &$diagnosticLastStage, $root, &$manifest): void {
+        $lastError = error_get_last();
         if (++$diagnosticRecords > 64) {
             throw new RuntimeException('Diagnostic record bound exceeded.');
         }
         $record = checkoutBrowserDiagnosticRecord($stage, $count, hrtime(true) - $diagnosticStart, (int) ini_get('max_execution_time'));
+        $record['lastError'] = checkoutBrowserDiagnosticError($lastError, $diagnosticLastStage, $root, is_array($manifest) ? $manifest : []);
+        $diagnosticLastStage = $stage;
         fwrite($diagnosticHandle, json_encode($record, JSON_THROW_ON_ERROR)."\n");
         fflush($diagnosticHandle);
     };
-    register_shutdown_function(static function () use ($diagnosticHandle): void {
+    register_shutdown_function(static function () use ($diagnosticHandle, &$diagnosticLastStage, $root, &$manifest): void {
         $error = error_get_last();
         fwrite($diagnosticHandle, json_encode([
             'stage' => 'shutdown',
-            'errorType' => $error['type'] ?? null,
+            'lastError' => checkoutBrowserDiagnosticError($error, $diagnosticLastStage, $root, is_array($manifest) ? $manifest : []),
             'maximumExecutionTimeExhausted' => $error !== null
                 && preg_match('/^Maximum execution time of \d+ seconds exceeded/', $error['message']) === 1,
         ], JSON_THROW_ON_ERROR)."\n");
@@ -547,6 +567,20 @@ function checkoutBrowserDiagnosticRecord(string $stage, int $count, int $elapsed
 
     return ['stage' => $stage, 'elapsedSeconds' => round($elapsedNanoseconds / 1e9, 4),
         'processedCount' => $count, 'executionLimit' => $limit];
+}
+
+function checkoutBrowserDiagnosticError(?array $error, string $lastStage, string $root, array $manifest): array
+{
+    checkoutBrowserDiagnosticRecord($lastStage, 0, 0, 0);
+    $prefix = rtrim(str_replace('\\', '/', $root), '/').'/';
+    $file = is_string($error['file'] ?? null) ? str_replace('\\', '/', $error['file']) : '';
+    $relative = strncasecmp($file, $prefix, strlen($prefix)) === 0 ? substr($file, strlen($prefix)) : '';
+    $safeFile = checkoutBrowserSafeRelative($relative) && array_key_exists($relative, $manifest)
+        ? $relative : 'outside-source';
+
+    return ['errorType' => is_int($error['type'] ?? null) ? $error['type'] : null,
+        'lastStage' => $lastStage, 'sourceFile' => $safeFile,
+        'line' => is_int($error['line'] ?? null) ? max(0, $error['line']) : 0];
 }
 
 function checkoutBrowserSafeRelative(string $path): bool
