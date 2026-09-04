@@ -1,5 +1,22 @@
 # Koordinasi task paralel organization-payment
 
+## Captured prerequisites accepted locally — 2026-09-04
+
+Reviewed worker `a4436f1` and exact prerequisite overlay; integrated `4aab457`
+plus `9a943d4`. Before SHA396d5213… matched; after SHA54419e9e… matches worker.
+Root independently reran consent/document/prerequisite/gate/activation in env-free
+worker: 147 tests / 312 assertions passed. Server calendar is derived from captured
+instant/timezone; lazy document lookup preserves rejection/error ordering. No new
+PG/browser evidence or summary completion. Backend cursor ends in `:29`.
+
+Next bounded backend slice: explicit frame-bound AssessmentEntitlementGate entry,
+reusing shared gate predicate, settlement isSettledAt and prerequisites
+assertSatisfiedAt; ready_at shares frame.asOf. Existing caller path and its lazy
+config/denial order remain compatible. No summary/lifecycle/HTTP wiring yet,
+no new policy, lock or auth bypass. Exercise invalid scope/context, per-test
+readiness, timestamp/config drift and denial ordering. Gate is an untracked worker
+overlay: transfer only reviewed delta/hash, never whole baseline staging.
+
 ## Settlement single-instant evaluation accepted — 2026-09-04
 
 Reviewed worker `1785da0`, integrated `78ace99`. Root independently reran
