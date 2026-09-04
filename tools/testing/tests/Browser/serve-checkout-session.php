@@ -67,6 +67,23 @@ if (PHP_SAPI === 'cli' && ($argv[1] ?? '') === '--self-test') {
         ! checkoutBrowserControlAllowed(['HTTP_X_BROWSER_HARNESS' => 'synthetic-only', 'REQUEST_METHOD' => 'POST', 'HTTP_SEC_FETCH_MODE' => 'navigate']),
         ! checkoutBrowserControlAllowed(['HTTP_X_BROWSER_HARNESS' => 'synthetic-only', 'REQUEST_METHOD' => 'POST', 'HTTP_COOKIE' => 'synthetic']),
     ];
+    foreach ([
+        'aa_ER@saaho.php', 'be_BY@latin.php', 'ks_IN@devanagari.php', 'nan_TW@latin.php',
+        'sd_IN@devanagari.php', 'sr_RS@latin.php', 'tt_RU@iqtelif.php', 'uz_UZ@cyrillic.php',
+    ] as $locale) {
+        $checks[] = checkoutBrowserSafeRelative('vendor/nesbot/carbon/src/Carbon/Lang/'.$locale);
+    }
+    foreach ([
+        '', '.', '..', '/vendor/locale@latin.php', '//host/locale@latin.php',
+        '../locale@latin.php', 'vendor@local/../secret.php', 'vendor@local/./locale.php',
+        'vendor/../@locale.php', 'vendor/./@locale.php', 'vendor@local//locale.php',
+        'vendor@local/', 'C:/locale@latin.php', 'C:@locale.php', '@C:/locale.php',
+        'vendor@local/C:/locale.php', 'vendor@local\\..\\secret.php',
+        '\\host\\locale@latin.php', 'vendor/locale@latin.php:stream',
+        'vendor/%2e%2e/@locale.php', "vendor/locale@latin.php\n", "vendor/locale@latin.php\0",
+    ] as $unsafePath) {
+        $checks[] = ! checkoutBrowserSafeRelative($unsafePath);
+    }
     if (in_array(false, $checks, true)) {
         fwrite(STDERR, "Harness pure checks failed.\n");
         exit(1);
@@ -448,7 +465,7 @@ Mail::assertNothingSent();
 
 function checkoutBrowserSafeRelative(string $path): bool
 {
-    return preg_match('#^[a-zA-Z0-9_.-]+(?:/[a-zA-Z0-9_.-]+)*$#D', $path) === 1
+    return preg_match('#^[a-zA-Z0-9_@.-]+(?:/[a-zA-Z0-9_@.-]+)*$#D', $path) === 1
         && ! in_array('..', explode('/', $path), true) && ! in_array('.', explode('/', $path), true);
 }
 
