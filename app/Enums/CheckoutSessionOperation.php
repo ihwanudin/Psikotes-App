@@ -12,4 +12,5 @@ enum CheckoutSessionOperation
     case Logout;
     case Profile;
     case Payment;
+    case Summary;
 }

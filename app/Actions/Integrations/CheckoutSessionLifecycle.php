@@ -9,6 +9,7 @@ use App\Data\Integrations\CheckoutProfile;
 use App\Data\Integrations\CheckoutSessionMutationCredentials;
 use App\Data\Integrations\CheckoutSessionPrincipal;
 use App\Data\Integrations\CheckoutSessionSelector;
+use App\Data\Integrations\CheckoutSummary;
 use App\Enums\CheckoutSessionOperation;
 use App\Models\AssessmentParticipant;
 use App\Models\Branch;
@@ -23,6 +24,7 @@ use App\Security\RlsContextRunner;
 use App\Services\Integrations\CheckoutHandoffHistoryValidator;
 use App\Services\Integrations\CheckoutPaymentFactsReader;
 use App\Services\Integrations\CheckoutProfileMapper;
+use App\Services\Integrations\CheckoutSummaryComposer;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Collection;
@@ -44,6 +46,7 @@ final readonly class CheckoutSessionLifecycle
         private CheckoutHandoffHistoryValidator $historyValidator,
         private CheckoutProfileMapper $profiles,
         private CheckoutPaymentFactsReader $payments,
+        private CheckoutSummaryComposer $summaries,
     ) {}
 
     public function hydrate(#[SensitiveParameter] CheckoutSessionSelector $input): CheckoutSessionPrincipal
@@ -132,6 +135,25 @@ final readonly class CheckoutSessionLifecycle
         return $payment;
     }
 
+    /** One credential revalidation, locked graph, database instant and atomic summary/idle touch. */
+    public function readSummary(#[SensitiveParameter] CheckoutSessionMutationCredentials $input): CheckoutSummary
+    {
+        $idle = $this->preflight();
+        $selectorDigest = $this->selectorDigest($input->rawSelector());
+        $csrfDigest = $this->csrfDigest($input->rawCsrfToken());
+        $summary = $this->contexts->run(new RlsContext('service'),
+            function () use ($selectorDigest, $csrfDigest, $idle): ?CheckoutSummary {
+                $result = $this->operate($selectorDigest, $csrfDigest, CheckoutSessionOperation::Summary, $idle);
+
+                return $result instanceof CheckoutSummary ? $result : null;
+            });
+        if ($summary === null) {
+            throw new InvalidCheckoutSession;
+        }
+
+        return $summary;
+    }
+
     public function logout(#[SensitiveParameter] CheckoutSessionMutationCredentials $input): void
     {
         $idle = $this->preflight();
@@ -150,7 +172,7 @@ final readonly class CheckoutSessionLifecycle
 
     private function operate(#[SensitiveParameter] string $selectorDigest,
         #[SensitiveParameter] ?string $csrfDigest, CheckoutSessionOperation $operation,
-        int $idleMinutes): CheckoutPaymentFacts|CheckoutProfile|CheckoutSessionPrincipal|bool|null
+        int $idleMinutes): CheckoutPaymentFacts|CheckoutProfile|CheckoutSessionPrincipal|CheckoutSummary|bool|null
     {
         $hints = CheckoutSession::query()->where('selector_digest', $selectorDigest)->limit(2)
             ->get(['id', 'organization_id', 'assessment_participant_id', 'integration_client_id',
@@ -169,7 +191,9 @@ final readonly class CheckoutSessionLifecycle
         if ($organization === null || $client === null || $source === null || $package === null) {
             throw new InvalidCheckoutSession;
         }
-        $packageItems = $package->items()->orderBy('id')->lockForUpdate()->pluck('id')->all();
+        $itemQuery = $package->items()->orderBy('id')->lockForUpdate();
+        $summaryItems = $operation === CheckoutSessionOperation::Summary ? $itemQuery->get() : null;
+        $packageItems = $summaryItems === null ? $itemQuery->pluck('id')->all() : $summaryItems->modelKeys();
         $attempt = AssessmentParticipant::query()->where('organization_id', $organization->id)
             ->where('integration_client_id', $client->id)->where('package_id', $package->id)
             ->where('source_system', $source->source_system)->lockForUpdate()->find($hint->assessment_participant_id);
@@ -272,6 +296,13 @@ final readonly class CheckoutSessionLifecycle
 
         if ($operation === CheckoutSessionOperation::Payment) {
             return $this->payments->project($attempt);
+        }
+
+        if ($operation === CheckoutSessionOperation::Summary) {
+            $package->setRelation('items', $summaryItems);
+            $attempt->setRelation('package', $package);
+
+            return $this->summaries->compose($attempt, $participant, $organization, $now);
         }
 
         return new CheckoutSessionPrincipal(

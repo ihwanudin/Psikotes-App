@@ -4794,3 +4794,96 @@ app/Data/Integrations/CheckoutProductPaymentFacts.php (new),
 tests/Feature/Integrations/CheckoutProductPaymentFactsTest.php (new), and this report.
 No baseline overlay is staged. No full summary, caller migration, HTTP/frontend/P15,
 new policy, .env/active DB, provider/notifier, agent/task, deploy or push. STOP for review.
+
+## P14 internal summary composition — 2026-09-04
+
+One approved composition increment, internal and pending review. First atomic
+commit c78b602 adds CheckoutSummary, CheckoutSummaryComposer and composer tests
+(3 files). The follow-up commit adds the Summary lifecycle operation, credential-only
+readSummary entrypoint, lifecycle tests and this report (4 files). No HTTP/DRAFT
+compatibility, mutation descriptor or formKey is claimed.
+
+readSummary accepts only sensitive CheckoutSessionMutationCredentials, reuses
+canonical lifecycle preflight/credential/history/scope validation, and owns exactly
+one service transaction. Existing organization -> client -> source -> package/items
+-> attempt -> participant -> history/session lock order remains. Only Summary fetches
+full package-item models at the existing package lock point; the same locked models
+are attached to package.items and attempt.package. Existing operations retain their
+pluck-only item lookup. There is no unlocked lazy package reload, bill lock after
+attempt/session, public callback, stale-principal input or separate readProfile /
+readPayment transaction. Expiry/revoke still commit terminal transitions and then
+throw the generic lifecycle error; composition errors roll back the idle touch.
+
+Composer receives that locked graph and the lifecycle's single database instant.
+It captures one server timezone/calendar, product/payment facts via projectAt,
+applicable ConsentDocument objects and strict boolean legal_review_pending, then
+maps the profile and calls AcceptedConsentReader::isAcceptedForDocumentAt plus
+AssessmentEntitlementGate::assertReadyAt for each own canonical type with the same
+AssessmentPrerequisiteFrame. There are no copied settlement/identity/consent/gate
+predicates. Only EntitlementLocked becomes locked; unexpected failures propagate.
+Known invalid component/config facts become CHECKOUT_SUMMARY_UNAVAILABLE with no
+partial DTO. Applicable nonblank document checks are summary-only and do not change
+legacy document readers, legal text or gate rules.
+
+Output is immutable and constructed from typed facts with explicit keys. Source and
+attempt labels are approved static copy; own branch display_name falls back only to
+own name. Frozen package label/types win over changed catalog. Own payment remains
+paid/free even if profile/identity/consent/entitlement prevent access. Access is
+locked/partial/ready from per-type canonical gate results, startAvailable=false;
+payment actionAvailable=false. False consent evidence means required with the
+captured current document, never an invented declined state. DASS is not_applicable
+when absent from own product types and its config is then unnecessary. legal true
+and false remain visible without becoming an extra gate. No IDs, credential, batch
+count/total, invoice/proof, clinical/evidence data or mutation authority is exposed.
+
+TDD and verification:
+- Composer RED: first focused test failed because CheckoutSummaryComposer did not
+  exist. Composer GREEN: 22 tests / 105 assertions.
+- Lifecycle fixture initially ran before Laravel PendingCommand migration destruction;
+  explicitly completing that existing testing command before inserting synthetic rows
+  fixed the fixture, without relaxing guards or touching active databases. Actual RED
+  then failed on missing readSummary. Initial lifecycle GREEN: 14 tests / 98 assertions.
+- Final focused summary pair: 38 tests / 231 assertions, including collective ten-item
+  privacy, strict legal false and logout replay additions.
+- Final related regression: 432 tests / 1,549 assertions, all passed. Files:
+  CheckoutSummaryComposerTest, CheckoutSummaryLifecycleTest,
+  CheckoutSessionLifecycleTest, CheckoutProfileProjectionTest,
+  CheckoutSessionEstablishmentTest, CheckoutPaymentFactsTest,
+  CheckoutProductPaymentFactsTest, AssessmentEntitlementFrameTest,
+  AssessmentPrerequisiteFrameTest, AcceptedConsentSnapshotTest,
+  AcceptedConsentReaderTest, AssessmentSettlementSnapshotTest,
+  AssessmentSettlementReaderTest, AttemptEntitlementGateTest,
+  SettledAssessmentActivationTest.
+- All PHPUnit runs used phpunit.organization-payment.xml SQLite memory and
+  --do-not-cache-result. Tests exercise complete/missing profile, no charge,
+  historical changed catalog, organization/self/free/unknown, participant-bound
+  consent/hash/title changes, DASS partial readiness, strict document/flag config,
+  exact recursive keys, own ten-item bill nominal, credential/context/recovery/logout,
+  expiry/deletion/revoke, one DB clock and one idle touch, and no business mutation.
+  An injected unexpected final gate query failure observes the updated idle value
+  inside transaction level 1/service, then proves full rollback/context restoration.
+  Database time and calendar win over application clock 2001/2099. Mid-consent query
+  application-clock/document/legal-flag drift preserves the captured frame.
+- Pint and php -l all six PHP files pass; full application PHPStan 0 errors;
+  git diff --check passes. No PHPStan ignores or harness suppression.
+
+Explicit limits and remaining checkpoints:
+- PostgreSQL composition concurrency is NOT tested or accepted here. SQLite proves
+  projection/rollback/query shape, not real row locks, RLS or multi-process coherence.
+  Next reviewed checkpoint needs runtime non-owner/NOBYPASSRLS two-process summary
+  versus recovery/revoke/finalizer/policy and participant identity replacement,
+  commit/rollback observations, single organization-first order and cleanup evidence.
+- A temporary stronger stress probe also changed process-wide PHP timezone to
+  Pacific/Honolulu during the first consent query. It produced locked rather than
+  ready, unlike the approved clock/document-drift test. Existing database timestamp
+  parsing/casts still depend on runtime timezone. That global timezone mutation was
+  removed from the focused test (not silently declared passing); no shared reader was
+  changed. Current composition assumes stable process/server timezone during a call.
+  Its calendar/timezone is captured for mapper/frame, but immunity of all existing
+  database casts to concurrent process-global timezone mutation is NOT claimed.
+  Coordinator should review this limitation before expanding runtime timezone policy.
+- No HTTP/browser, UI build or PostgreSQL run is newly claimed. The genuine-build
+  artifact copy and all baseline overlays remain untouched. No P14 acceptance box
+  is closed on SQLite evidence alone. No P15/frontend/full-page wiring, source/gate
+  activation, .env/active DB, real provider/notifier, new agent/task, deploy or push.
+STOP for review before any next increment.
