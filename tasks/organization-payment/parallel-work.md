@@ -1,5 +1,23 @@
 # Koordinasi task paralel organization-payment
 
+## Identity diagnostic reviewed; bounded mutex fix assigned — 2026-09-04
+
+Reviewed worker `f1c5d637c773b630e2cf5fc8526a2925d565f5ef` report and all new
+test code. Worker PG 355/2687 has one intentional mutex failure, not a green
+result; root has not rerun it or integrated the RED commit. Existing replacement
+bypasses held parent locks; mixed reads are demonstrated but never-valid ready
+and activation deadlock are NOT established. Backend cursor ends in `:22`.
+
+Next backend scope explicitly includes StoreIdentityEvidence: acquire participant
+FOR UPDATE before any child read/write in its existing service transaction.
+Do not add organization-after-participant or child locks, change matching/storage
+semantics or expand auth privileges. Retain diagnostic history, convert affected
+race expectations to actual serialized outcomes and prove old RED -> GREEN.
+Add writer-first, rollback and two-writer coverage; audit callers for inversion.
+Use synthetic storage/local matcher and established disposable PG only. Report
+the exact overlay diff/hash if writer is untracked; never stage baseline wholesale.
+Integrate only after fix and verification review. Summary contract remains pending.
+
 ## Summary proposal reviewed; identity race reproduction next — 2026-09-04
 
 Worker `adce9c3` is preserved as a proposal, not approval of its entire DTO or
