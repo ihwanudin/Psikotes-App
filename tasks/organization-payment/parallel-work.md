@@ -1,5 +1,23 @@
 # Koordinasi task paralel organization-payment
 
+## Captured consent evaluation accepted — 2026-09-04
+
+Reviewed and integrated worker `68c4646`: isAcceptedForDocumentAt uses immutable
+ConsentDocument.type and CarbonImmutable in the single existing query. Existing
+method still resolves configuration first, then current application time and
+delegates. No blank-document policy/context change or historical withdrawal claim.
+Root reran new/legacy reader, gate and activation in env-free worker: 110 tests /
+238 assertions passed. Worker 112/244 additionally includes document tests;
+no new PG/build/browser evidence. Backend completed cursor ends in `:26`.
+
+Next bounded prerequisite: settlement reader explicit immutable asOf evaluation,
+with one canonical predicate and unchanged service-role guard. Bound every free,
+item, parent bill and collective member time comparison to the supplied instant.
+Existing method captures current application time; no caller migration yet.
+Document single-instant semantics explicitly, preserve status/amount/scope checks,
+no new locks/writes/config changes. Tests cover exact/future times and clock advance
+without global clock mutation in production. Gate/prerequisites/composer remain later.
+
 ## Identity mutex accepted after genuine-build verification — 2026-09-04
 
 Integrated reviewed diagnostic/fix/reports `f1c5d63`, `c7b5a94`, `7fe6a5b`,
