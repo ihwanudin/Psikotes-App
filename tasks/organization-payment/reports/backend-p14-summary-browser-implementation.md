@@ -165,3 +165,52 @@ scratch rather than retry a forbidden deletion through another shell.
 STOP for coordinator review of this candidate and the explicit prepare-price
 fixture delta. No P15/public route/source/gate activation, real payments/messages,
 active DB/.env, new agent/task, deploy/push, baseline reset/merge or proxy edits.
+
+## Review correction — complete test-local shape and stale recovery form
+
+Coordinator held 0dc7586 for two corrections. This delta changes only the existing
+browser harness and this report; the PHP harness/guards, fixture plan and counts
+are unchanged. Read the accepted root checkout-summary-v1.ts plus PHP Summary,
+Profile, ProductPaymentFacts, PaymentFacts and PaymentFactsReader as the contract.
+
+Extracted a test-local validateSummary assertion used by both the real DOM helper
+and a no-browser pure probe entry (`run(null)`). It is not exported to application
+code or used as an authorization/payment/gate parser. Added nonempty enum-bounded,
+sorted unique instrument list; access aggregate/message from emitted test states;
+known payer/payment enums; finite safe nonnegative integer snapshot amount and
+boolean consultation versus catalog/unavailable/null correlation; organization
+label; nonblank label/document/accepted-version types; DASS applicability;
+psychotest accepted/required only; and exact six-required/email-optional profile.
+Exact object keys and inert JSON/credential exclusions remain. Zero is not treated
+as free, and paid/free is never used to derive access readiness. The positive type
+probes exercise serialized shape, not a claim every combination is reachable from
+the live state machine or is payment/consent authorization.
+
+TDD evidence:
+- Kept the old checks while extracting them, then added 28 malformed probes.
+  RED: old validator accepted 25 of those malformed cases; output contained only
+  fixed probe names, no data or credentials. This reproduced the review findings.
+- Strengthened checks: all 28 negatives were rejected, one positive passed.
+- Expanded snapshot-specific malformed values, organization/document/display
+  cases and positive enum/provenance/test-list variants: **14 positive + 37 negative
+  probes passed**, using Node VM evaluation of the same harness function with null.
+  No page/context/network API is invoked in that branch. These are pure assertions,
+  not 51 browser cases or PHPUnit tests. PHP's unchanged 16 pure checks still pass.
+- PHP lint and Node syntax passed; diff-check passed. No DB initialization,
+  successful database verifier, source copy, server or browser was run.
+
+Recovery correction uses a separate tab containing the actual old delivered
+summary/form before recovery. After real recovery plus new exchange, it asserts
+the new cookie pair and rotated CSRF, clicks the OLD tab's native logout form,
+asserts its raw body contains exactly the captured old CSRF and literal-null
+Origin, and expects419. Session/active/terminal/LOGOUT counts must stay identical;
+the fresh pair must remain byte-preserved and read its own Package orphan summary
+on reload. The stale tab is closed in finally. This differs from same-person
+stale-CSRF and from reinstalling old cookies (which still tests303).
+
+No new exchange, handoff or session is added: expected eleven exchange POSTs,
+eleven handoffs, nine sessions and thirty-four lifecycle audits remain unchanged.
+The additional failed logout and authorized GETs can refresh idle state but must
+not change those counts, business rows or the new cookie pair. All recovery/browser
+expectations remain **unexecuted assertions** until guard/setup review permits a
+run. STOP again for review, with no broader application or operational changes.

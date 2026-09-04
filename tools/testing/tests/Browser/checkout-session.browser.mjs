@@ -191,6 +191,73 @@ async (page) => {
         const value = targetPage.url()
         assert(!value.includes('och1_') && !value.includes('ocs1_') && !value.includes('ocsrf1_'), 'Credential entered URL/history')
     }
+    // Test-local contract assertion only; never shipped as a client parser or authorization policy.
+    const validateSummary = (summary) => {
+        const exact = (value, keys, label) => assert(value !== null && typeof value === 'object' && !Array.isArray(value)
+            && JSON.stringify(Object.keys(value)) === JSON.stringify(keys), `${label} keys differ`)
+        const text = (value) => typeof value === 'string' && value.trim() !== ''
+        exact(summary, ['contractVersion', 'sourceName', 'branchName', 'packageName', 'packageSource', 'attemptLabel',
+            'profile', 'identityMessage', 'payment', 'access', 'consents'], 'summary')
+        exact(summary.access, ['state', 'tests', 'startAvailable', 'message'], 'access')
+        exact(summary.consents, ['psychotest', 'dass', 'legalReviewPending'], 'consents')
+        exact(summary.payment, ['payer', 'state', 'amountIdr', 'amountSource', 'consultationRequested', 'actionAvailable',
+            ...(summary.payment.payer === 'organization' ? ['organizationName'] : [])], 'payment')
+        for (const key of ['sourceName', 'branchName', 'packageName', 'attemptLabel', 'identityMessage']) {
+            assert(text(summary[key]), 'Summary label type differs')
+        }
+        assert(['catalog', 'charge_snapshot'].includes(summary.packageSource), 'Package provenance differs')
+        assert(['unselected', 'self', 'organization'].includes(summary.payment.payer), 'Payer differs')
+        assert(['unselected', 'unpaid', 'unbilled', 'preparing', 'pending', 'recovery_required', 'expired', 'rejected', 'paid', 'free']
+            .includes(summary.payment.state), 'Payment state differs')
+        if (summary.payment.payer === 'organization') {
+            assert(summary.payment.organizationName === summary.branchName, 'Organization label differs')
+        }
+        if (summary.packageSource === 'catalog') {
+            assert(summary.payment.amountSource === 'unavailable' && summary.payment.amountIdr === null
+                && summary.payment.consultationRequested === null, 'Unavailable amount correlation differs')
+        } else {
+            assert(summary.payment.amountSource === 'charge_snapshot' && Number.isSafeInteger(summary.payment.amountIdr)
+                && summary.payment.amountIdr >= 0 && typeof summary.payment.consultationRequested === 'boolean', 'Snapshot amount correlation differs')
+        }
+        assert(Array.isArray(summary.profile) && summary.profile.length === 7, 'Profile collection differs')
+        const profileKeys = ['fullName', 'birthDate', 'gender', 'educationLevel', 'intendedField', 'email', 'phone']
+        assert(JSON.stringify(summary.profile.map((field) => field.key)) === JSON.stringify(profileKeys), 'Profile field order differs')
+        for (const field of summary.profile) {
+            exact(field, ['key', 'label', 'state', 'required', ...(field.state === 'locked' ? ['displayValue'] : [])], 'profile field')
+            assert(['locked', 'missing'].includes(field.state) && text(field.label)
+                && field.required === (field.key !== 'email') && (field.state !== 'locked' || text(field.displayValue)), 'Profile types differ')
+        }
+        assert(Array.isArray(summary.access.tests) && summary.access.tests.length >= 1 && summary.access.tests.length <= 5, 'Test collection differs')
+        const types = summary.access.tests.map((test) => test.testType)
+        assert(new Set(types).size === types.length && JSON.stringify([...types].sort()) === JSON.stringify(types), 'Test canonical order differs')
+        for (const test of summary.access.tests) {
+            exact(test, ['testType', 'state'], 'test')
+            assert(['dass21', 'ist', 'kraepelin', 'papi', 'rmib'].includes(test.testType)
+                && ['locked', 'ready'].includes(test.state), 'Test state differs')
+        }
+        const ready = summary.access.tests.filter((test) => test.state === 'ready').length
+        const expectedAccess = ready === types.length ? 'ready' : ready === 0 ? 'locked' : 'partial'
+        const accessMessages = { ready: 'Prasyarat akses tes terpenuhi; mesin sesi belum tersedia.', partial: 'Sebagian akses tes belum siap.', locked: 'Akses tes belum siap.' }
+        assert(summary.access.state === expectedAccess && summary.access.message === accessMessages[expectedAccess], 'Access aggregate differs')
+        for (const key of ['psychotest', 'dass']) {
+            const consent = summary.consents[key]
+            exact(consent, consent.state === 'accepted' ? ['state', 'version']
+                : consent.state === 'required' ? ['state', 'document'] : ['state'], 'consent')
+            assert((key === 'psychotest' ? ['accepted', 'required'] : ['accepted', 'required', 'not_applicable']).includes(consent.state), 'Consent state differs')
+            if (key === 'dass') assert((consent.state !== 'not_applicable') === types.includes('dass21'), 'DASS applicability differs')
+            if (consent.state === 'accepted') assert(text(consent.version), 'Accepted version differs')
+            if (consent.state === 'required') {
+                exact(consent.document, ['version', 'title', 'text'], 'consent document')
+                assert(Object.values(consent.document).every(text), 'Document types differ')
+            }
+        }
+        assert(typeof summary.consents.legalReviewPending === 'boolean', 'Legal state type differs')
+        const encoded = JSON.stringify(summary)
+        assert(!/och1_|ocs1_|ocsrf1_|PRIVATE_OTHER_PROFILE|PRIVATE_GATEWAY|PRIVATE_INVOICE/.test(encoded), 'Summary JSON leaks forbidden data')
+        assert(summary.contractVersion === 'checkout-summary-v1' && summary.sourceName === 'Integrasi seleksi', 'Summary version/source mismatch')
+        assert(summary.payment.actionAvailable === false && summary.access.startAvailable === false, 'Summary invented an action')
+        assert(Array.isArray(summary.profile) && summary.profile.length === 7 && Array.isArray(summary.access.tests), 'Summary collections mismatch')
+    }
     const assertCheckoutPage = async (targetPage) => {
         await targetPage.waitForURL(`${appOrigin}/checkout`)
         assertSafeLocation(targetPage)
@@ -206,40 +273,7 @@ async (page) => {
             && await script.getAttribute('id') === 'checkout-summary-v1'
             && await script.getAttribute('src') === null, 'Summary JSON is not inert')
         const summary = JSON.parse(await script.textContent())
-        const exact = (value, keys, label) => assert(JSON.stringify(Object.keys(value)) === JSON.stringify(keys), `${label} keys differ`)
-        exact(summary, ['contractVersion', 'sourceName', 'branchName', 'packageName', 'packageSource', 'attemptLabel',
-            'profile', 'identityMessage', 'payment', 'access', 'consents'], 'summary')
-        exact(summary.access, ['state', 'tests', 'startAvailable', 'message'], 'access')
-        exact(summary.consents, ['psychotest', 'dass', 'legalReviewPending'], 'consents')
-        exact(summary.payment, ['payer', 'state', 'amountIdr', 'amountSource', 'consultationRequested', 'actionAvailable',
-            ...(summary.payment.payer === 'organization' ? ['organizationName'] : [])], 'payment')
-        const profileKeys = ['fullName', 'birthDate', 'gender', 'educationLevel', 'intendedField', 'email', 'phone']
-        assert(JSON.stringify(summary.profile.map((field) => field.key)) === JSON.stringify(profileKeys), 'Profile field order differs')
-        for (const field of summary.profile) {
-            exact(field, ['key', 'label', 'state', 'required', ...(field.state === 'locked' ? ['displayValue'] : [])], 'profile field')
-            assert(['locked', 'missing'].includes(field.state) && typeof field.label === 'string'
-                && typeof field.required === 'boolean' && (field.state !== 'locked' || typeof field.displayValue === 'string'), 'Profile types differ')
-        }
-        for (const test of summary.access.tests) {
-            exact(test, ['testType', 'state'], 'test')
-            assert(typeof test.testType === 'string' && ['locked', 'ready'].includes(test.state), 'Test state differs')
-        }
-        for (const key of ['psychotest', 'dass']) {
-            const consent = summary.consents[key]
-            exact(consent, consent.state === 'accepted' ? ['state', 'version']
-                : consent.state === 'required' ? ['state', 'document'] : ['state'], 'consent')
-            assert(['accepted', 'required', 'not_applicable'].includes(consent.state), 'Consent state differs')
-            if (consent.state === 'required') {
-                exact(consent.document, ['version', 'title', 'text'], 'consent document')
-                assert(Object.values(consent.document).every((value) => typeof value === 'string'), 'Document types differ')
-            }
-        }
-        assert(typeof summary.consents.legalReviewPending === 'boolean', 'Legal state type differs')
-        const encoded = JSON.stringify(summary)
-        assert(!/och1_|ocs1_|ocsrf1_|PRIVATE_OTHER_PROFILE|PRIVATE_GATEWAY|PRIVATE_INVOICE/.test(encoded), 'Summary JSON leaks forbidden data')
-        assert(summary.contractVersion === 'checkout-summary-v1' && summary.sourceName === 'Integrasi seleksi', 'Summary version/source mismatch')
-        assert(summary.payment.actionAvailable === false && summary.access.startAvailable === false, 'Summary invented an action')
-        assert(Array.isArray(summary.profile) && summary.profile.length === 7 && Array.isArray(summary.access.tests), 'Summary collections mismatch')
+        validateSummary(summary)
         assert(await targetPage.locator('script:not([type="application/json"]), script[src], [onerror], img').count() === 0,
             'Summary created executable content')
         const body = await targetPage.locator('body').innerText()
@@ -261,6 +295,99 @@ async (page) => {
         }, { headers, body })
 
         return responsePromise
+    }
+
+    // Called with null by the no-browser Node probe; no page/context/request API is touched.
+    if (page === null) {
+        const sample = () => ({
+            contractVersion: 'checkout-summary-v1', sourceName: 'Integrasi seleksi', branchName: 'Synthetic',
+            packageName: 'Synthetic', packageSource: 'catalog', attemptLabel: 'Assessment Anda',
+            profile: ['fullName', 'birthDate', 'gender', 'educationLevel', 'intendedField', 'email', 'phone']
+                .map((key) => ({ key, label: key, state: 'missing', required: key !== 'email' })),
+            identityMessage: 'Kelengkapan profil tidak menggantikan verifikasi identitas.',
+            payment: { payer: 'unselected', state: 'unselected', amountIdr: null, amountSource: 'unavailable', consultationRequested: null, actionAvailable: false },
+            access: { state: 'locked', tests: [{ testType: 'ist', state: 'locked' }], startAvailable: false, message: 'Akses tes belum siap.' },
+            consents: { psychotest: { state: 'accepted', version: 'synthetic-v1' }, dass: { state: 'not_applicable' }, legalReviewPending: true },
+        })
+        const snapshot = (s, amount = 100) => {
+            s.packageSource = 'charge_snapshot'
+            s.payment.payer = 'self'
+            s.payment.state = 'unpaid'
+            s.payment.amountIdr = amount
+            s.payment.amountSource = 'charge_snapshot'
+            s.payment.consultationRequested = false
+        }
+        const malformed = [
+            ['unknown-test', (s) => { s.access.tests[0].testType = 'unknown' }],
+            ['empty-tests', (s) => { s.access.tests = [] }],
+            ['duplicate-tests', (s) => { s.access.tests.push({ ...s.access.tests[0] }) }],
+            ['unsorted-tests', (s) => { s.access.tests.push({ testType: 'dass21', state: 'locked' }); s.consents.dass = { state: 'accepted', version: 'v1' } }],
+            ['unknown-access', (s) => { s.access.state = 'unknown' }],
+            ['access-count', (s) => { s.access.state = 'ready' }],
+            ['unknown-payer', (s) => { s.payment.payer = 'other' }],
+            ['unknown-payment-state', (s) => { s.payment.state = 'other' }],
+            ['amount-negative', (s) => { s.payment.amountIdr = -1 }],
+            ['amount-fraction', (s) => { s.payment.amountIdr = 0.5 }],
+            ['amount-unsafe', (s) => { s.payment.amountIdr = 9007199254740992 }],
+            ['amount-string', (s) => { s.payment.amountIdr = '100' }],
+            ['amount-provenance', (s) => { s.payment.amountSource = 'charge_snapshot' }],
+            ['amount-unknown-source', (s) => { s.payment.amountSource = 'other' }],
+            ['consultation-null-correlation', (s) => { s.payment.consultationRequested = false }],
+            ['consultation-type', (s) => { s.payment.consultationRequested = 'false' }],
+            ['package-provenance', (s) => { s.packageSource = 'charge_snapshot' }],
+            ['package-unknown-source', (s) => { s.packageSource = 'other' }],
+            ['psychotest-not-applicable', (s) => { s.consents.psychotest = { state: 'not_applicable' } }],
+            ['accepted-version-type', (s) => { s.consents.psychotest.version = 1 }],
+            ['accepted-version-empty', (s) => { s.consents.psychotest.version = '' }],
+            ['dass-applicability', (s) => { s.consents.dass = { state: 'accepted', version: 'v1' } }],
+            ['required-profile', (s) => { s.profile[0].required = false }],
+            ['optional-email', (s) => { s.profile[5].required = true }],
+            ['label-type', (s) => { s.branchName = 7 }],
+            ['extra-top-key', (s) => { s.billId = 1 }],
+            ['array-object', (s) => { s.payment = [] }],
+            ['null-object', (s) => { s.access = null }],
+            ['snapshot-negative', (s) => { snapshot(s, -1) }],
+            ['snapshot-fraction', (s) => { snapshot(s, 0.5) }],
+            ['snapshot-unsafe', (s) => { snapshot(s, 9007199254740992) }],
+            ['snapshot-string', (s) => { snapshot(s, '100') }],
+            ['snapshot-null', (s) => { snapshot(s, null) }],
+            ['snapshot-consultation', (s) => { snapshot(s); s.payment.consultationRequested = null }],
+            ['organization-label', (s) => { s.payment.payer = 'organization'; s.payment.organizationName = 7 }],
+            ['required-document-type', (s) => { s.consents.psychotest = { state: 'required', document: { version: 'v1', title: 'Synthetic', text: 1 } } }],
+            ['missing-display-value', (s) => { s.profile[0].state = 'locked' }],
+        ]
+        validateSummary(sample())
+        let positiveProbes = 1
+        for (const state of ['unselected', 'unpaid', 'unbilled', 'preparing', 'pending', 'recovery_required', 'expired', 'rejected', 'paid', 'free']) {
+            const value = sample()
+            snapshot(value, state === 'free' ? 0 : 100)
+            value.payment.state = state
+            validateSummary(value)
+            positiveProbes++
+        }
+        for (const readyCount of [0, 1, 5]) {
+            const value = sample()
+            snapshot(value, 0) // Zero alone must NOT be inferred as free or ready.
+            value.payment.payer = 'organization'
+            value.payment.organizationName = value.branchName
+            value.access.tests = ['dass21', 'ist', 'kraepelin', 'papi', 'rmib']
+                .map((testType, index) => ({ testType, state: index < readyCount ? 'ready' : 'locked' }))
+            value.access.state = readyCount === 0 ? 'locked' : readyCount === 5 ? 'ready' : 'partial'
+            value.access.message = { locked: 'Akses tes belum siap.', partial: 'Sebagian akses tes belum siap.', ready: 'Prasyarat akses tes terpenuhi; mesin sesi belum tersedia.' }[value.access.state]
+            value.consents.dass = { state: 'required', document: { version: 'v1', title: 'Synthetic', text: 'Synthetic text' } }
+            validateSummary(value)
+            positiveProbes++
+        }
+        const accepted = []
+        for (const [name, mutate] of malformed) {
+            const candidate = sample()
+            mutate(candidate)
+            let rejected = false
+            try { validateSummary(candidate) } catch { rejected = true }
+            if (!rejected) accepted.push(name)
+        }
+        assert(accepted.length === 0, `Malformed summary probes accepted: ${accepted.join(', ')}`)
+        return { positiveProbes, negativeProbes: malformed.length, passed: true, browserStarted: false }
     }
 
     page.setDefaultTimeout(30000)
@@ -432,6 +559,11 @@ async (page) => {
     const orphanToken = await issue('orphan')
     await submit(page, sources[0], orphanToken)
     await assertCheckoutPage(page)
+    const recoveryStaleTab = await page.context().newPage()
+    observeConsole(recoveryStaleTab)
+    await recoveryStaleTab.goto(`${appOrigin}/checkout`)
+    await assertCheckoutPage(recoveryStaleTab)
+    const oldRecoveryCsrf = await recoveryStaleTab.locator('input[name="_checkout_csrf"]').getAttribute('value')
     const orphanCookies = await checkoutCookies(page.context())
     await page.context().clearCookies()
     await page.context().addCookies([loginBefore])
@@ -442,6 +574,33 @@ async (page) => {
     assert((await checkoutCookies(page.context())).length === 0, 'Recovery did not fence old checkout credentials')
     await submit(page, sources[1], recoveryToken)
     await assertCheckoutPage(page)
+    // Submit the actual old delivered form, while the shared jar contains the newly exchanged pair.
+    const recoveredCookies = await checkoutCookies(page.context())
+    assertCookieContract(recoveredCookies)
+    assert(recoveredCookies.find((cookie) => cookie.name === csrfName)?.value !== oldRecoveryCsrf,
+        'Recovery did not rotate the delivered CSRF')
+    const recoveryBefore = await control('state', 'orphan')
+    try {
+        const staleRequest = recoveryStaleTab.waitForRequest((request) => request.method() === 'POST'
+            && parseUrl(request.url()).pathname === '/checkout/logout')
+        const staleResult = recoveryStaleTab.waitForResponse((response) => response.request().method() === 'POST'
+            && parseUrl(response.url()).pathname === '/checkout/logout')
+        await recoveryStaleTab.getByRole('button', { name: 'Keluar' }).click()
+        const request = await staleRequest
+        assert(request.postData() === `_checkout_csrf=${oldRecoveryCsrf}`, 'Recovery stale form did not use its delivered CSRF')
+        assert((await request.allHeaders()).origin === 'null', 'Recovery stale native form Origin differs')
+        const rejected = await staleResult
+        await rejected.finished()
+        assert(rejected.status() === 419, 'Old recovery CSRF did not fail419 against the new pair')
+        assert(JSON.stringify(await control('state', 'orphan')) === JSON.stringify(recoveryBefore), 'Old recovery form changed session/audit counts')
+        const preserved = await checkoutCookies(page.context())
+        assert(recoveredCookies.every((cookie) => preserved.some((after) => after.name === cookie.name && after.value === cookie.value))
+            && preserved.length === 2, 'Old recovery form cleared or replaced the new pair')
+        await page.reload()
+        assert((await assertCheckoutPage(page)).packageName === 'Package orphan', 'Fresh recovered pair could not read its own summary')
+    } finally {
+        await recoveryStaleTab.close()
+    }
     await drainObservations()
     documentsBefore = checkoutDocumentResponses
     await page.goBack()
