@@ -1,5 +1,15 @@
 # Koordinasi task paralel organization-payment
 
+## Listener diagnostic7089077: empty, near deadline; classification fix
+
+Exact sanitized listener command succeeded empty in2.9041s of3s, stderr0 and all-
+family comparison empty. Conditional10s call was not needed. Persistent occupation,
+syntax/module/JSON failure contradicted; original transient not reproduced. Source
+confirms stage label masks every inspector error as occupied_port. ONE correction
+sent: fixed free/occupied/inspection_failed outcomes, preserve failclosed/no raw
+errors; narrowly measured inspector allowance or faster API only with actual bounded
+IPv4/IPv6 evidence. Mock/real own-listener cleanup tests; no smoke/run/DB retry.
+
 ## First new smoke stopped at listener inspection before claim
 
 Worker541a592: guarded init88ec passed45.983s;42baseline tables unchanged, checkout
