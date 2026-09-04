@@ -1,5 +1,13 @@
 # Koordinasi task paralel organization-payment
 
+## Supervisor f533eed received, runtime still withheld
+
+Root read supervisor report and independently ran21pure/mock tests PASS. These do
+not exercise Windows adapter/subprocess/browser. Frontend assigned ONE read-only
+peer review of actual adapter commands/config/offline ownership/cleanup paths;
+report-only, no runtime/exactrun access. Backend waits. Static asset delivery and
+fresh copy remain explicit prerequisites; no smoke initialization/launch authorized.
+
 ## Bounded inspector and cooperative harness verified locally
 
 ONE backend supervisor implementation increment dispatched: new test-only runner,
