@@ -1,5 +1,25 @@
 # Koordinasi task paralel organization-payment
 
+## Identity mutex accepted after genuine-build verification — 2026-09-04
+
+Integrated reviewed diagnostic/fix/reports `f1c5d63`, `c7b5a94`, `7fe6a5b`,
+`754696b` as `571889b`, `568341a`, `8d7304e`, `cc51900` together.
+Root independently reran exact 81-test identity/gate/activation suite in worker's
+isolated genuine-build copy: 81 passed / 233 assertions. Manifest SHA
+36a50a48… and writer after SHA 1ecdb7e2… match reported artifacts; root integrated
+writer also matches. Worker PG 358/2753 remains reviewed earlier worker evidence,
+not independently rerun. No browser/full-project/deploy acceptance inferred.
+Backend completed cursor `4155cd61-0c2b-4909-bd55-db926b1dc9fe:25`.
+
+Next bounded backend slice: AcceptedConsentReader explicit immutable document and
+as-of evaluation method for later atomic summary composition. Existing isAccepted
+must load current ConsentDocument and clock in its existing order and delegate
+to the same single predicate; preserve blank document semantics and exceptions.
+Derive type from ConsentDocument, never separate contradictory caller type.
+No gate/settlement clock changes yet, no summary DTO/HTTP, legal rules, writer or
+frontend modifications. Test frozen document/as-of despite later clock/config
+changes and all existing accepted/missing/withdrawn/future boundaries.
+
 ## Mutex code reviewed; genuine-build regression pending — 2026-09-04
 
 Reviewed `c7b5a94` one-line participant lock and expanded PG test delta, plus
