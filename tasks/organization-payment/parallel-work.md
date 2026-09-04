@@ -1,5 +1,14 @@
 # Koordinasi task paralel organization-payment
 
+## Actionable supervisor state22fbf2b accepted; fresh candidate preparation
+
+Root reviewed and reran34tests PASS. Integrated immutable primary_reason,
+cleanup_status and fixed uncertainty categories; own-only cleanup unchanged.
+ONE fresh preparation-only candidate from current root; no reuse of consumed runs,
+no DB/init/browser/runtime. Full independent manifest/config/cert/hash report must
+precede another smoke. Next purpose is actionable start/cleanup evidence, not retry
+until green and not browser acceptance.
+
 ## Postmortem a1f6617: start failure masked by cleanup
 
 Read-only artifacts show evidence remained preverified with owned=[], no runtime
