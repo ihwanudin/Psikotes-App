@@ -1,5 +1,14 @@
 # Koordinasi task paralel organization-payment
 
+## Supervisor correction3016bbc accepted for test tooling only
+
+Root reviewed outer-finally and shared15s cleanup allowance, reran29pure/mock tests
+PASS, integrated f533eed/3016bbc. No Windows-adapter/browser acceptance claimed.
+ONE backend next prerequisite: exact two synthetic asset routes (CSS/logo), fixed
+manifest hash/canonical-path checks and pure negative tests; <=3ownedfiles. No
+generic public serving, sourcecopy/manifest refresh, server/browser/DB run. User
+production routes unchanged. New runtime still waits asset implementation review.
+
 ## Supervisor finalization cleanup P2 correction
 
 Peer reporteb7d9ed/root source confirm full stop/verify/post occurs after primary
