@@ -14,7 +14,7 @@ use App\Services\ParticipantAuth\AssessmentAccessPrerequisites;
 use App\Services\ParticipantAuth\AssessmentPrincipal;
 use App\Services\ParticipantAuth\Exceptions\EntitlementLocked;
 use App\Services\Payments\AssessmentPriceSnapshot;
-use Carbon\CarbonImmutable;
+use App\Services\Payments\AssessmentSettlementReader;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 use LogicException;
@@ -26,6 +26,7 @@ final readonly class ActivateSettledAssessment
         private AssessmentPriceSnapshot $prices,
         private AssessmentAccessPrerequisites $prerequisites,
         private EnqueueAssessmentActivation $outbox,
+        private AssessmentSettlementReader $settlement,
     ) {}
 
     /** @return list<string> Newly activated types; unmet prerequisites are a no-op, not a batch failure. */
@@ -67,7 +68,7 @@ final readonly class ActivateSettledAssessment
             } catch (DomainException) {
                 return [];
             }
-            if (! $this->settled($charge)) {
+            if (! $this->settlement->isSettled($charge)) {
                 return [];
             }
             $entitlements = AssessmentEntitlement::query()->where('assessment_participant_id', $attempt->id)
@@ -115,39 +116,5 @@ final readonly class ActivateSettledAssessment
 
             return $activated;
         });
-    }
-
-    /** Same settlement evidence as P8a, evaluated here before any rights are written. */
-    private function settled(AssessmentCharge $charge): bool
-    {
-        if ($charge->amount === 0) {
-            return $charge->free_settled_at !== null && $charge->free_settled_at->lte(now())
-                && ! DB::table('assessment_bill_items')->where('charge_id', $charge->id)->exists();
-        }
-        $payer = $charge->payer_type === 'self' ? $charge->participant_id : null;
-        $bill = DB::table('assessment_bill_items as item')->join('assessment_bills as bill', 'bill.id', '=', 'item.bill_id')
-            ->where('item.charge_id', $charge->id)->where('item.organization_id', $charge->organization_id)
-            ->where('item.participant_id', $charge->participant_id)->where('item.payer_type', $charge->payer_type)
-            ->where('item.amount', $charge->amount)->where('item.currency', $charge->currency)
-            ->where('item.payer_participant_id', $payer)->whereNotNull('item.settled_at')->where('item.settled_at', '<=', now())
-            ->where('bill.organization_id', $charge->organization_id)->where('bill.payer_type', $charge->payer_type)
-            ->where('bill.currency', $charge->currency)->where('bill.payer_participant_id', $payer)
-            ->where('bill.status', 'paid')->whereNotNull('bill.paid_at')->where('bill.paid_at', '<=', now())
-            ->first(['bill.id', 'bill.amount', 'bill.item_count']);
-        if ($bill === null) {
-            return false;
-        }
-        $members = DB::table('assessment_bill_items')->where('bill_id', $bill->id)->get(['amount', 'settled_at']);
-        $total = 0;
-        foreach ($members as $member) {
-            $amount = (int) $member->amount;
-            if ($amount <= 0 || $total > PHP_INT_MAX - $amount || $member->settled_at === null
-                || CarbonImmutable::parse($member->settled_at)->gt(now())) {
-                return false;
-            }
-            $total += $amount;
-        }
-
-        return $members->count() === (int) $bill->item_count && $total === (int) $bill->amount;
     }
 }
