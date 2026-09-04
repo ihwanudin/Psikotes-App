@@ -11,6 +11,8 @@ use App\Services\Payments\FakePaymentProvider;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Bootstrap\LoadConfiguration;
+use Illuminate\Foundation\Testing\DatabaseTruncation;
+use Illuminate\Foundation\Testing\RefreshDatabaseState;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
@@ -18,6 +20,18 @@ use RuntimeException;
 
 abstract class OrganizationPaymentTestCase extends TestCase
 {
+    protected function tearDown(): void
+    {
+        try {
+            parent::tearDown();
+        } finally {
+            if (isset(class_uses_recursive(static::class)[DatabaseTruncation::class])) {
+                // This guarded base uses SQLite memory: truncation migrated a PDO it does not cache.
+                RefreshDatabaseState::$migrated = false;
+            }
+        }
+    }
+
     public function createApplication(): Application
     {
         $app = require dirname(__DIR__).'/bootstrap/app.php';
