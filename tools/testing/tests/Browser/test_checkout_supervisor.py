@@ -1,0 +1,257 @@
+"""Pure/mock supervisor tests: no subprocess, network, browser or fixture DB."""
+import importlib.util
+from pathlib import Path
+import unittest
+from unittest.mock import patch
+
+spec = importlib.util.spec_from_file_location("supervisor", Path(__file__).with_name("checkout-supervisor.py"))
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+
+
+class Fake:
+    def __init__(self, fail=None, cleanup=True, duration=.01):
+        self.calls = []
+        self.time = 0
+        self.fail = fail
+        self.clean = cleanup
+        self.duration = duration
+        self.claimed = False
+        self.launched = []
+
+    def clock(self):
+        return self.time
+
+    def call(self, name):
+        self.calls.append(name)
+        self.time += self.duration
+        if name == self.fail:
+            raise RuntimeError("PRIVATE_PAYLOAD")
+
+    def preflight(self, left): self.call("preflight")
+    def assert_ports_free(self, left): self.call("ports")
+    def claim(self, left):
+        self.claimed = True
+        self.call("claim")
+    def harness(self, mode, left, assertions=False):
+        self.calls.append(("assertions", assertions))
+        self.call(mode)
+    def launch(self, role, left):
+        self.launched.append(role)
+        self.call("launch-" + role)
+    def assert_owned(self, left): self.call("ownership")
+    def smoke_request(self, left):
+        self.call("request")
+        return .5
+    def full_matrix(self, left): self.call("matrix")
+    def cleanup(self, budget):
+        self.call("cleanup")
+        return self.clean
+    def invalidate(self): self.call("invalid")
+
+
+class SupervisorTests(unittest.TestCase):
+    def test_smoke_exact_three_only_after_start_and_never_accepts(self):
+        f = Fake()
+        result = m.supervise(f)
+        self.assertEqual(result, dict(state="incomplete", accepted=False, requests=3, reason="fresh_run_required"))
+        self.assertLess(f.calls.index("integrity-start"), f.calls.index("request"))
+        self.assertEqual(f.launched, ["php", "tls", "browser"])
+        self.assertEqual(f.calls.count("request"), 3)
+        self.assertIn("invalid", f.calls)
+        for forbidden in ("matrix", "verify", "integrity-stop", "integrity-post", ("assertions", True)):
+            self.assertNotIn(forbidden, f.calls)
+
+    def test_full_cleanup_then_stop_verify_cleanup_post(self):
+        f = Fake()
+        result = m.supervise(f, mode="full")
+        self.assertEqual(result["state"], "postverified")
+        self.assertFalse(result["accepted"])
+        self.assertEqual(f.calls.count("cleanup"), 2)
+        self.assertLess(f.calls.index("cleanup"), f.calls.index("integrity-stop"))
+        self.assertLess(f.calls.index("verify"), f.calls.index("integrity-post"))
+        self.assertIn(("assertions", True), f.calls)
+
+    def test_each_stage_failure_sanitizes_and_cleans_without_rearm(self):
+        stages = ("preflight", "ports", "claim", "integrity-pre", "launch-php", "launch-tls", "launch-browser", "ownership", "integrity-start", "request", "cleanup")
+        for stage in stages:
+            with self.subTest(stage=stage):
+                f = Fake(fail=stage)
+                result = m.supervise(f)
+                self.assertEqual(result["state"], "invalid")
+                self.assertFalse(result["accepted"])
+                self.assertNotIn("PRIVATE", str(result))
+                self.assertNotIn("integrity-post", f.calls)
+                if f.claimed:
+                    self.assertIn("invalid", f.calls)
+                    self.assertIn("cleanup", f.calls)
+                else:
+                    self.assertEqual(f.launched, [])
+
+    def test_partial_spawn_cleanup_failure_never_becomes_smoke_success(self):
+        f = Fake(fail="launch-browser", cleanup=False)
+        result = m.supervise(f)
+        self.assertEqual(result["reason"], "cleanup")
+        self.assertIn("invalid", f.calls)
+        self.assertNotIn("request", f.calls)
+
+    def test_budget_exhaustion_runs_cleanup(self):
+        f = Fake(duration=.3)
+        result = m.supervise(f, budget=1)
+        self.assertEqual(result["state"], "invalid")
+        self.assertIn("cleanup", f.calls)
+        self.assertNotIn("request", f.calls)
+
+    def test_request_target_failure_does_not_continue(self):
+        f = Fake()
+        def slow(left):
+            f.call("request")
+            return 5.01
+        f.smoke_request = slow
+        result = m.supervise(f)
+        self.assertEqual(result["state"], "invalid")
+        self.assertEqual(f.calls.count("request"), 1)
+
+    def test_bounds_rejected_before_preflight(self):
+        for options in ({"requests": 0}, {"requests": 4}, {"requests": True}, {"budget": 0}, {"budget": 1201}, {"mode": "other"}):
+            f = Fake()
+            with self.assertRaises(m.Refused):
+                m.supervise(f, **options)
+            self.assertEqual(f.calls, [])
+
+    def test_smoke_one_two_three(self):
+        for count in (1, 2, 3):
+            f = Fake()
+            self.assertEqual(m.supervise(f, requests=count)["requests"], count)
+
+    def test_failed_full_verifier_or_post_never_accepts(self):
+        for stage in ("matrix", "integrity-stop", "verify", "integrity-post"):
+            f = Fake(fail=stage)
+            self.assertEqual(m.supervise(f, mode="full")["state"], "invalid")
+            self.assertIn("invalid", f.calls)
+
+    def test_descendants_and_pid_reuse(self):
+        run = m.WindowsRun({"directory": "synthetic-unused"})
+        run.owned = {10: "100"}
+        run._snapshot = lambda: [{"pid": 10, "parent": 1, "started": "100"}, {"pid": 11, "parent": 10, "started": "101"}, {"pid": 12, "parent": 11, "started": "102"}]
+        run._discover()
+        self.assertEqual(run.owned, {10: "100", 11: "101", 12: "102"})
+        run._snapshot = lambda: [{"pid": 10, "parent": 1, "started": "900"}, {"pid": 13, "parent": 10, "started": "901"}]
+        run._discover()
+        self.assertTrue(run.uncertain)
+        self.assertNotIn(13, run.owned)
+
+    def test_unknown_child_tick_is_not_adopted(self):
+        run = m.WindowsRun({"directory": "synthetic-unused"})
+        run.owned = {10: "100"}
+        run._snapshot = lambda: [{"pid": 11, "parent": 10, "started": None}]
+        run._discover()
+        self.assertTrue(run.uncertain)
+        self.assertNotIn(11, run.owned)
+
+    def test_full_mode_explicitly_releases_offline_after_abort_guard(self):
+        run = m.WindowsRun({"directory": "synthetic-unused"})
+        seen = []
+        run._run_code = lambda code, left: seen.append(code) or dict(fullBusinessPostcondition=True, credentialMaterialRecorded=False, checks=[1]*11)
+        with patch.object(Path, "read_text", return_value="async(page)=>({})"):
+            run.full_matrix(30)
+        self.assertIn("setOffline(false)", seen[0])
+        self.assertLess(seen[0].index("route('**/*'"), seen[0].index("setOffline(false)"))
+
+    def test_missing_asset_delivery_review_blocks_before_process_or_source_read(self):
+        run = m.WindowsRun({"directory": "synthetic-unused"})
+        with patch.object(Path, "read_bytes", side_effect=AssertionError("must not read")), patch.object(m.subprocess, "Popen", side_effect=AssertionError("must not spawn")):
+            with self.assertRaisesRegex(m.Refused, "asset_delivery_review_required"):
+                run.preflight(1)
+
+    def test_keyboard_interrupt_still_cleans_owned_work(self):
+        f = Fake()
+        def interrupt(left):
+            raise KeyboardInterrupt
+        f.smoke_request = interrupt
+        with self.assertRaises(KeyboardInterrupt):
+            m.supervise(f)
+        self.assertIn("cleanup", f.calls)
+        self.assertIn("invalid", f.calls)
+
+    def test_cleanup_kills_only_exact_owned_identity_not_unknown_listener(self):
+        run = m.WindowsRun({"directory": "synthetic-unused"})
+        run.owned = {10: "100"}
+        current = {10: {"started": "100"}, 999: {"started": "900"}}
+        commands = []
+        run._discover = lambda: current
+        def ps(command):
+            commands.append(command)
+            current.pop(10, None)
+            return ""
+        run._ps = ps
+        run._listeners = lambda: [{"pid": 999, "port": 443, "address": "127.0.0.1"}]
+        with patch.object(m.time, "sleep"):
+            self.assertFalse(run.cleanup(1))
+        self.assertEqual(len(commands), 1)
+        self.assertIn("GetProcessById(10)", commands[0])
+        self.assertIn("-eq '100'", commands[0])
+        self.assertNotIn("999", commands[0])
+
+    def test_cleanup_stolen_pid_never_killed(self):
+        run = m.WindowsRun({"directory": "synthetic-unused"})
+        run.owned = {10: "100"}
+        run.uncertain = True
+        run._discover = lambda: {10: {"started": "999"}}
+        run._ps = lambda command: self.fail("must not kill reused PID")
+        run._listeners = lambda: []
+        self.assertFalse(run.cleanup(1))
+
+    def test_partial_spawn_handle_cleanup_even_when_inspection_fails(self):
+        run = m.WindowsRun({"directory": "synthetic-unused"})
+        class Handle:
+            killed = False
+            def poll(self): return None
+            def kill(self): self.killed = True
+            def wait(self, timeout): return 0
+        handle = Handle()
+        run.handles = [handle]
+        run._discover = lambda: (_ for _ in ()).throw(m.Refused("inspection"))
+        self.assertFalse(run.cleanup(1))
+        self.assertTrue(handle.killed)
+
+    def test_no_postcheck_after_second_cleanup_failure(self):
+        f = Fake()
+        calls = []
+        def cleanup(budget):
+            f.call("cleanup")
+            calls.append(True)
+            return len(calls) == 1
+        f.cleanup = cleanup
+        result = m.supervise(f, mode="full")
+        self.assertEqual(result["reason"], "final_cleanup")
+        self.assertNotIn("integrity-post", f.calls)
+        self.assertIn("invalid", f.calls)
+
+    def test_deadline_prevents_adapter_spawn(self):
+        run = m.WindowsRun({"directory": "synthetic-unused"})
+        run.io_deadline = 0
+        with patch.object(m.subprocess, "Popen", side_effect=AssertionError("must not spawn")):
+            with self.assertRaisesRegex(m.Refused, "budget"):
+                run._command(["unused"], 1)
+
+    def test_smoke_offline_only_released_after_exact_one_request_route(self):
+        run = m.WindowsRun({"directory": "synthetic-unused"})
+        seen = []
+        run._run_code = lambda code, left: seen.append(code) or {"seconds": .2, "requests": 1}
+        self.assertEqual(run.smoke_request(3), .2)
+        self.assertIn("++n===1", seen[0])
+        self.assertIn("timeout:30000", seen[0])
+        self.assertLess(seen[0].index("route('**/*'"), seen[0].index("setOffline(false)"))
+
+    def test_numeric_orphan_parent_is_not_ownership_proof(self):
+        run = m.WindowsRun({"directory": "synthetic-unused"})
+        run.owned = {10: "100"}
+        run._snapshot = lambda: [{"pid": 11, "parent": 10, "started": "101"}]
+        run._discover()
+        self.assertTrue(run.uncertain)
+        self.assertNotIn(11, run.owned)
+
+
+if __name__ == "__main__":
+    unittest.main()
