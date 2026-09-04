@@ -4213,3 +4213,30 @@ provider, notifier, command/job/scheduler/route, active DB/data, deployment, pus
 new task or agent. Baseline dirty overlays and blocked scratch remain untouched.
 Explicit cached path checks preceded each commit; no snapshot baseline was staged.
 STOP for coordinator review before further P14 summary or P15 work.
+
+## Identity writer/read diagnostic after composition proposal adce9c3
+
+Diagnostic-only handoff; no production writer or summary implementation changed.
+See [identity read diagnostic](backend-identity-read-diagnostic.md) for the source
+audit, controlled interleavings, fixture corrections and verification limits.
+
+The actual StoreIdentityEvidence replacement committed while canonical
+organization/attempt/participant locks were held: the safety regression remains
+**RED**. Initial INSERT did block on the parent. A later evidence timestamp made
+the gate fail closed; same-second mixed old verification/new evidence produced
+ready before final pending became locked, but that does not prove never-valid
+readiness because the initial state was ready. Caught-exception rollback restored
+identity rows and synthetic file inventory. Activation's verification-before-
+evidence order differs from the writer's evidence-before-verification order;
+adding child locks is not an approved fix.
+
+Final established disposable PostgreSQL run: **355 tests / 2,687 assertions /
+1 failure / 0 errors / 0 skips**, exit 1; cleanup completed. The failure is the
+new mutex expectation, while four new characterization/control tests and 350
+existing tests pass. Two preceding runs failed new-test setup (missing GD, then
+fake disk name length), documented without treating them as race evidence. Pint,
+PHP syntax and diff checks passed. No new PHPStan/full SQLite/browser result is
+claimed for this test-only diagnostic. No harness/schema/source activation,
+active DB/.env/data, provider/notifier, deployment/push or new task/agent.
+Commit only the new PostgreSQL test and these two lane reports. STOP for review;
+do not proceed to production mutex changes or full summary composition.
