@@ -73,6 +73,25 @@ section > :last-child {
 .assessment {
     border-left: 4px solid #d4af37;
 }
+.requirements {
+    border-left: 4px solid #b7791f;
+    background: #fffcf2;
+}
+.requirements-list {
+    display: grid;
+    gap: 0.75rem;
+    margin-bottom: 0;
+}
+.requirements-list li {
+    padding-left: 0.25rem;
+}
+.requirements-list strong,
+.requirements-list span {
+    display: block;
+}
+.requirements-list span {
+    color: #506358;
+}
 dl {
     margin: 0;
 }
@@ -144,6 +163,7 @@ button:focus-visible {
     main > h1,
     .intro,
     .assessment,
+    .requirements,
     .access,
     .consents,
     main > form {

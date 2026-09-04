@@ -9,8 +9,11 @@
     $payerLabels = ['unselected' => 'Pembayar belum dipilih', 'self' => 'Bayar sendiri', 'organization' => 'Dibayar lembaga'];
     $accessLabels = ['locked' => 'Prasyarat tes belum terpenuhi', 'partial' => 'Sebagian prasyarat tes belum terpenuhi', 'ready' => 'Prasyarat tes terpenuhi'];
     $testLabels = ['ist' => 'IST', 'papi' => 'PAPI', 'rmib' => 'RMIB', 'kraepelin' => 'Kraepelin', 'dass21' => 'DASS-21'];
-    $requiredMissing = count(array_filter($summary['profile'], fn ($field) => $field['state'] === 'missing' && $field['required'])) > 0;
+    $missingRequiredProfile = array_values(array_filter($summary['profile'], fn ($field) => $field['state'] === 'missing' && $field['required']));
+    $requiredMissing = $missingRequiredProfile !== [];
     $optionalMissing = count(array_filter($summary['profile'], fn ($field) => $field['state'] === 'missing' && ! $field['required'])) > 0;
+    $psychotestConsentRequired = $summary['consents']['psychotest']['state'] === 'required';
+    $dassConsentRequired = $summary['consents']['dass']['state'] === 'required';
 @endphp
 <!DOCTYPE html>
 <html lang="id">
@@ -38,6 +41,29 @@
             <dt>Sumber informasi paket</dt><dd>{{ $summary['packageSource'] === 'catalog' ? 'Informasi paket dari katalog' : 'Informasi paket saat biaya ditetapkan' }}</dd>
         </dl>
     </section>
+    @if ($requiredMissing || $psychotestConsentRequired || $dassConsentRequired)
+        <section class="requirements" aria-labelledby="requirements-heading">
+            <h2 id="requirements-heading">Yang perlu dilengkapi</h2>
+            <p>Status ini berasal dari data checkout Anda. Pengisian dan persetujuan belum tersedia di halaman ringkasan ini.</p>
+            <ul class="requirements-list">
+                @if ($requiredMissing)
+                    <li>
+                        <strong>{{ count($missingRequiredProfile) }} data profil wajib belum lengkap.</strong>
+                        <span>{{ implode(', ', array_column($missingRequiredProfile, 'label')) }}.</span>
+                    </li>
+                @endif
+                @if ($psychotestConsentRequired)
+                    <li><strong>Persetujuan psikotes wajib belum tercatat.</strong></li>
+                @endif
+                @if ($dassConsentRequired)
+                    <li>
+                        <strong>Persetujuan DASS-21 wajib belum tercatat.</strong>
+                        <span>DASS-21 merupakan bagian wajib paket, tetapi hasilnya tidak memengaruhi kelayakan.</span>
+                    </li>
+                @endif
+            </ul>
+        </section>
+    @endif
     <section aria-labelledby="profile-heading">
         <h2 id="profile-heading">Profil Anda</h2>
         @if ($requiredMissing)
@@ -84,12 +110,20 @@
         @if ($summary['consents']['legalReviewPending'])
             <p class="notice">Dokumen persetujuan masih menunggu tinjauan legal.</p>
         @endif
-        @foreach (['psychotest' => 'Psikotes', 'dass' => 'DASS (opsional)'] as $key => $label)
+        @foreach (['psychotest', 'dass'] as $key)
+            @php
+                $label = $key === 'psychotest'
+                    ? 'Psikotes'
+                    : ($summary['consents']['dass']['state'] === 'not_applicable' ? 'DASS-21' : 'DASS-21 (wajib untuk paket ini)');
+            @endphp
             <h3>{{ $label }}</h3>
             @if ($summary['consents'][$key]['state'] === 'accepted')
                 <p>Persetujuan tercatat. Versi: {{ $summary['consents'][$key]['version'] }}</p>
             @elseif ($summary['consents'][$key]['state'] === 'required')
-                <p>Persetujuan untuk dokumen ini belum tercatat.</p>
+                <p>Persetujuan wajib untuk dokumen ini belum tercatat. Pilihan persetujuan tidak tersedia di halaman ringkasan ini.</p>
+                @if ($key === 'dass')
+                    <p>Hasil DASS-21 tidak memengaruhi kelayakan dan tetap diproses terpisah dari penilaian psikotes.</p>
+                @endif
                 <h4>{{ $summary['consents'][$key]['document']['title'] }}</h4>
                 <p>Versi: {{ $summary['consents'][$key]['document']['version'] }}</p>
                 <p class="document-text">{{ $summary['consents'][$key]['document']['text'] }}</p>
