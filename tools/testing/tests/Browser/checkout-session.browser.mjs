@@ -20,6 +20,8 @@ async (page) => {
     let expectedSandboxInstrumentationErrors = 0
     const rejectedHttpStatuses = new Set()
     const safeNetwork = new Set()
+    const historyObservations = []
+    let checkoutDocumentResponses = 0
     let exchangePosts = 0
     const listenerTasks = new Set()
     const observe = (work) => {
@@ -98,6 +100,7 @@ async (page) => {
         context.on('response', (response) => observe(async () => {
             const url = parseUrl(response.url())
             if (url.origin === appOrigin && url.pathname.startsWith('/checkout')) {
+                if (url.pathname === '/checkout' && response.request().isNavigationRequest()) checkoutDocumentResponses++
                 if (!(await privateHeaders(response))) {
                     violations.push(`privacy headers missing on ${url.pathname}:${response.status()}`)
                 }
@@ -114,6 +117,10 @@ async (page) => {
         await context.route('**/*', async (route) => {
             const request = route.request()
             const url = parseUrl(request.url())
+            if (url.pathname.startsWith('/__browser/control/')) {
+                violations.push('browser navigation attempted driver control')
+                return route.abort()
+            }
             const document = syntheticDocuments.get(request.url())
             if (document && request.method() === 'GET') {
                 return route.fulfill({ status: 200, contentType: 'text/html; charset=UTF-8',
@@ -192,6 +199,55 @@ async (page) => {
         const meta = await targetPage.locator('meta[name="checkout-csrf-token"]').getAttribute('content')
         const hidden = await targetPage.locator('input[name="_checkout_csrf"]').getAttribute('value')
         assert(typeof meta === 'string' && meta === hidden && /^ocsrf1_[0-9a-f]{64}$/.test(meta), 'CSRF projection mismatch')
+        const scripts = targetPage.locator('script')
+        assert(await scripts.count() === 1, 'Summary must contain one inert script only')
+        const script = scripts.first()
+        assert(await script.getAttribute('type') === 'application/json'
+            && await script.getAttribute('id') === 'checkout-summary-v1'
+            && await script.getAttribute('src') === null, 'Summary JSON is not inert')
+        const summary = JSON.parse(await script.textContent())
+        const exact = (value, keys, label) => assert(JSON.stringify(Object.keys(value)) === JSON.stringify(keys), `${label} keys differ`)
+        exact(summary, ['contractVersion', 'sourceName', 'branchName', 'packageName', 'packageSource', 'attemptLabel',
+            'profile', 'identityMessage', 'payment', 'access', 'consents'], 'summary')
+        exact(summary.access, ['state', 'tests', 'startAvailable', 'message'], 'access')
+        exact(summary.consents, ['psychotest', 'dass', 'legalReviewPending'], 'consents')
+        exact(summary.payment, ['payer', 'state', 'amountIdr', 'amountSource', 'consultationRequested', 'actionAvailable',
+            ...(summary.payment.payer === 'organization' ? ['organizationName'] : [])], 'payment')
+        const profileKeys = ['fullName', 'birthDate', 'gender', 'educationLevel', 'intendedField', 'email', 'phone']
+        assert(JSON.stringify(summary.profile.map((field) => field.key)) === JSON.stringify(profileKeys), 'Profile field order differs')
+        for (const field of summary.profile) {
+            exact(field, ['key', 'label', 'state', 'required', ...(field.state === 'locked' ? ['displayValue'] : [])], 'profile field')
+            assert(['locked', 'missing'].includes(field.state) && typeof field.label === 'string'
+                && typeof field.required === 'boolean' && (field.state !== 'locked' || typeof field.displayValue === 'string'), 'Profile types differ')
+        }
+        for (const test of summary.access.tests) {
+            exact(test, ['testType', 'state'], 'test')
+            assert(typeof test.testType === 'string' && ['locked', 'ready'].includes(test.state), 'Test state differs')
+        }
+        for (const key of ['psychotest', 'dass']) {
+            const consent = summary.consents[key]
+            exact(consent, consent.state === 'accepted' ? ['state', 'version']
+                : consent.state === 'required' ? ['state', 'document'] : ['state'], 'consent')
+            assert(['accepted', 'required', 'not_applicable'].includes(consent.state), 'Consent state differs')
+            if (consent.state === 'required') {
+                exact(consent.document, ['version', 'title', 'text'], 'consent document')
+                assert(Object.values(consent.document).every((value) => typeof value === 'string'), 'Document types differ')
+            }
+        }
+        assert(typeof summary.consents.legalReviewPending === 'boolean', 'Legal state type differs')
+        const encoded = JSON.stringify(summary)
+        assert(!/och1_|ocs1_|ocsrf1_|PRIVATE_OTHER_PROFILE|PRIVATE_GATEWAY|PRIVATE_INVOICE/.test(encoded), 'Summary JSON leaks forbidden data')
+        assert(summary.contractVersion === 'checkout-summary-v1' && summary.sourceName === 'Integrasi seleksi', 'Summary version/source mismatch')
+        assert(summary.payment.actionAvailable === false && summary.access.startAvailable === false, 'Summary invented an action')
+        assert(Array.isArray(summary.profile) && summary.profile.length === 7 && Array.isArray(summary.access.tests), 'Summary collections mismatch')
+        assert(await targetPage.locator('script:not([type="application/json"]), script[src], [onerror], img').count() === 0,
+            'Summary created executable content')
+        const body = await targetPage.locator('body').innerText()
+        for (const forbidden of ['PRIVATE_OTHER_PROFILE', 'PRIVATE_GATEWAY', 'PRIVATE_INVOICE', 'ocs1_', 'ocsrf1_', 'och1_']) {
+            assert(!body.includes(forbidden), 'Summary exposed a forbidden marker')
+        }
+
+        return summary
     }
     const mutation = async (targetPage, headers = {}, body = undefined) => {
         const responsePromise = targetPage.waitForResponse((response) => {
@@ -217,7 +273,7 @@ async (page) => {
                     expectedHttpConsole.push(Number(rejected[1]))
                     return
                 }
-                consoleMessages.push(message.text().replace(/och1_[0-9a-f]+|ocs(?:rf)?1_[0-9a-f]+/g, '[credential]'))
+                consoleMessages.push('unexpected browser console message')
             }
         })
         targetPage.on('pageerror', (error) => {
@@ -251,7 +307,9 @@ async (page) => {
         { name: csrfName, value: fixedCsrf, domain: 'psikotes.oncam.id', path: '/checkout', secure: true, httpOnly: true, sameSite: 'Lax' },
     ])
     await submit(page, sources[0], firstToken)
-    await assertCheckoutPage(page)
+    let summary = await assertCheckoutPage(page)
+    assert(summary.payment.amountIdr === null && summary.payment.consultationRequested === null
+        && summary.payment.state === 'unselected' && summary.access.state === 'locked', 'No-charge summary invented payment/access')
     let credentials = await checkoutCookies(page.context())
     assertCookieContract(credentials)
     assert(credentials.every((cookie) => ![fixedSelector, fixedCsrf].includes(cookie.value)), 'Fixation cookie survived exchange')
@@ -267,6 +325,25 @@ async (page) => {
     assertSafeLocation(page)
     await page.goto(`${appOrigin}/checkout`)
     await assertCheckoutPage(page)
+
+    // Another attempt in the same cookie jar replaces only the dedicated pair. Old DOM is observation, not authority.
+    const staleCsrf = await page.locator('meta[name="checkout-csrf-token"]').getAttribute('content')
+    const staleName = summary.profile[0].displayValue
+    const switchTab = await page.context().newPage()
+    observeConsole(switchTab)
+    await submit(switchTab, sources[1], await issue('same-person'))
+    const switched = await assertCheckoutPage(switchTab)
+    assert(switched.packageName === 'Package same-person', 'Shared cookie did not select the newly exchanged attempt')
+    assert((await page.locator('script#checkout-summary-v1').count()) === 1
+        && (await page.locator('script#checkout-summary-v1').textContent()).includes(staleName), 'Already delivered DOM was unexpectedly rewritten')
+    const staleResponse = await mutation(page, { 'Content-Type': 'application/x-www-form-urlencoded' }, `_checkout_csrf=${staleCsrf}`)
+    assert(staleResponse.status() === 419, 'Stale-tab CSRF mutated the new shared attempt')
+    await page.reload()
+    assert((await assertCheckoutPage(page)).packageName === 'Package same-person', 'Reload did not revalidate current shared attempt')
+    const freshCsrf = await switchTab.locator('meta[name="checkout-csrf-token"]').getAttribute('content')
+    const switchLogout = await mutation(switchTab, { 'X-Checkout-CSRF': freshCsrf })
+    assert(switchLogout.status() === 303, 'Fresh shared-attempt logout failed')
+    await switchTab.close()
 
     const secondToken = await issue('second')
     await submit(page, sources[1], secondToken)
@@ -286,9 +363,9 @@ async (page) => {
     const secondTab = await page.context().newPage()
     await secondTab.goto(`${appOrigin}/checkout`)
     await assertCheckoutPage(secondTab)
-    const firstPublic = await page.locator('main').getAttribute('data-checkout-session')
-    const secondPublic = await secondTab.locator('main').getAttribute('data-checkout-session')
-    assert(firstPublic === secondPublic, 'Tabs did not share the exact checkout principal')
+    const firstSummary = JSON.parse(await page.locator('script#checkout-summary-v1').textContent())
+    const secondSummary = JSON.parse(await secondTab.locator('script#checkout-summary-v1').textContent())
+    assert(JSON.stringify(firstSummary) === JSON.stringify(secondSummary), 'Tabs did not share the same authorized summary')
     await secondTab.close()
     for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 }, { width: 320, height: 720 }]) {
         await page.setViewportSize(viewport)
@@ -323,6 +400,17 @@ async (page) => {
     assert((await page.context().cookies(appOrigin)).find((cookie) => cookie.name === loginCookieName)?.value === loginBefore.value,
         'Progressive logout changed Laravel login cookie')
 
+    await drainObservations()
+    let documentsBefore = checkoutDocumentResponses
+    await page.goBack()
+    assertSafeLocation(page)
+    await drainObservations()
+    historyObservations.push({ phase: 'after-logout-back', documentResponseObserved: checkoutDocumentResponses > documentsBefore,
+        summaryDOMVisible: await page.locator('script#checkout-summary-v1').count() === 1 })
+    await page.goto(`${appOrigin}/checkout`)
+    await page.waitForURL(`${appOrigin}/checkout/unavailable`)
+    assert(await page.locator('script#checkout-summary-v1').count() === 0, 'Logged-out server read returned summary')
+
     // Natural expiry and persisted scope revocation clear both credentials.
     const expiryToken = await issue('expiry')
     await submit(page, sources[0], expiryToken)
@@ -354,6 +442,15 @@ async (page) => {
     assert((await checkoutCookies(page.context())).length === 0, 'Recovery did not fence old checkout credentials')
     await submit(page, sources[1], recoveryToken)
     await assertCheckoutPage(page)
+    await drainObservations()
+    documentsBefore = checkoutDocumentResponses
+    await page.goBack()
+    assertSafeLocation(page)
+    await drainObservations()
+    historyObservations.push({ phase: 'after-recovery-back', documentResponseObserved: checkoutDocumentResponses > documentsBefore,
+        summaryDOMVisible: await page.locator('script#checkout-summary-v1').count() === 1 })
+    await page.goto(`${appOrigin}/checkout`)
+    await assertCheckoutPage(page)
 
     // Actual foreign Origin and wrong HTTPS host are rejected through the intercepted browser path.
     const foreignToken = await issue('foreign-origin')
@@ -366,7 +463,7 @@ async (page) => {
     assert((await page.locator('body').innerText()) === 'Not Found', 'Wrong host did not fail closed')
 
     await drainObservations()
-    assert(exchangePosts === 8, 'Browser did not exercise the eight preceding cross-site POSTs')
+    assert(exchangePosts === 9, 'Browser did not exercise the nine preceding cross-site POSTs')
 
     // Native logout must preserve real Laravel login, reject hostile forms, and audit exactly once.
     const noJs = await page.context().browser().newContext({ javaScriptEnabled: false, ignoreHTTPSErrors: true, serviceWorkers: 'block' })
@@ -464,7 +561,23 @@ async (page) => {
         await noJs.close()
     }
     await drainObservations()
-    assert(exchangePosts === 9, 'Browser did not exercise all canonical exchanges')
+    // Frozen own allocation is visible; parent total, peer and invoice markers remain absent.
+    await submit(page, sources[0], await issue('price'))
+    summary = await assertCheckoutPage(page)
+    assert(summary.payment.state === 'paid' && summary.access.state === 'locked', 'PROVISIONED fixture unexpectedly ready')
+    await control('prepare-price', 'price')
+    await page.reload()
+    summary = await assertCheckoutPage(page)
+    assert(summary.packageName === 'Synthetic' && summary.packageSource === 'charge_snapshot'
+        && summary.payment.amountIdr === 100 && summary.payment.state === 'paid'
+        && summary.access.state === 'partial' && summary.consents.dass.state === 'required', 'Own frozen/partial summary mismatch')
+    assert(summary.consents.dass.document.text === 'Synthetic DASS </script><img src=x onerror="alert(1)"> & 日本語',
+        'Escaped legal text did not roundtrip exactly')
+    assert(!(await page.content()).includes('PRIVATE_CHANGED_CATALOG'), 'Changed catalogue replaced frozen summary')
+    const verified = await control('verify', 'first')
+    assert(verified.businessMatchesFixedPlan === true, 'Full business postcondition with exact fixture-control deltas failed')
+    await drainObservations()
+    assert(exchangePosts === 11, 'Browser did not exercise all canonical exchanges')
     assert(hostileForms === 6, 'Browser did not complete the hostile native forms')
     assert(violations.length === 0, `Browser boundary violations: ${JSON.stringify(violations)}`)
     assert(consoleMessages.length === 0, `Browser console was not clean: ${JSON.stringify(consoleMessages)}`)
@@ -477,7 +590,9 @@ async (page) => {
             'two controlled cross-site origins and exact body-only exchange',
             'real Laravel Lax login cookie omitted on POST and authority preserved',
             'exact host-only Secure HttpOnly Lax checkout cookies and private headers',
-            'fixation/replay/history/refresh/multi-tab/recovery fenced',
+            'exact inert checkout-summary-v1, escaped DOM and CSP without executable application script',
+            'own frozen amount and partial access without parent/peer/invoice disclosure',
+            'fixation/replay/history/refresh/shared-tab stale-CSRF/recovery fenced',
             'CSRF projection, invalid channels, progressive and no-JS logout',
             'six foreign/opaque/sibling native forms denied; one LOGOUT audit and real login preserved',
             'expiry and scope revocation clear credentials',
@@ -491,5 +606,8 @@ async (page) => {
         controlledNetworkEntries: safeNetwork.size,
         credentialMaterialRecorded: false,
         screenshotsContainingCredentials: 0,
+        fullBusinessPostcondition: true,
+        historyObservations,
+        immediateDeliveredDOMRemovalClaimed: false,
     }
 }
