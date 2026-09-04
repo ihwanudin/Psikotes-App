@@ -1,5 +1,36 @@
 # Koordinasi task paralel organization-payment
 
+## Parallel follow-ups dispatched — 2026-09-04
+
+User renewed parallel coordination and permits further independent task splits.
+Three existing lanes received ONE report-only increment each; no extra task is
+needed until another dependency-independent slice is identified. Root owns review,
+integration and canonical planning. No application/runtime changes authorized here.
+
+- Backend `01a05839-3b48-7801-8175-0392e8764c23`, completed cursor
+  `4155cd61-0c2b-4909-bd55-db926b1dc9fe:50`: propose bounded browser-harness
+  performance correction in `reports/backend-browser-performance-plan.md`.
+  Compare preserved checks versus pre/post full integrity and lightweight runtime
+  checks, explicitly documenting TOCTOU limitations and negative-test criteria.
+  Latest 5340ef7/50e2800 remain pending root integration; no timeout/TTL increase,
+  guard weakening, server/browser rerun or browser acceptance authorized.
+- Frontend `01a05839-3b39-7d83-b59f-9e7432d7883e`, completed/notLoaded cursor
+  `48839421-96c5-4ac3-972e-751f2702a64a:8`: prepare read-only summary UI slice in
+  `reports/frontend-summary-ui-plan.md` against accepted v1/HTTP contracts.
+  Do not change old interactive draft, contract, routes or enable actions.
+- Portal `01a05839-3b18-73e0-8fdc-8db3b02f835d`, completed/notLoaded cursor
+  `2ea20b3e-8c96-4770-a173-8b8ae87a13fb:5`: evidence/gap map for P12/P17c in
+  `reports/branch-acceptance-gap-map.md`; no implementation or runtime rerun.
+
+All three send_message_to_thread calls succeeded. Each lane must commit only its
+own report, report back to coordinator, then wait for review (no self-chaining).
+Portal completed cursor `:7` answered an old Vite correction instead of its gap
+report. Existing 49c0ff4/root20cd529 must not be duplicated. Sent one scope
+correction while idle to finish the already assigned gap report; no new increment.
+Existing ten-minute heartbeat remains ACTIVE; check latest status before any
+continuation, never duplicate these dispatched increments. P14 browser, P15, P16
+and P17 acceptance remain open. No live data, source/gate activation or deploy.
+
 ## Direct login recovered; warning localization before browser budget — 2026-09-04
 
 Backend completed cursor `:49`; reviewed bf44b9d/78b2f6a, integrated fc14e60/32ae52f,
