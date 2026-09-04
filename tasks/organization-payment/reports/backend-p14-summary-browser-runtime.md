@@ -275,3 +275,69 @@ all42 tables; handoffs0, sessions0, audits0, outbox0. Synthetic baseline and old
 scratch remain untouched. No successful-browser verifier claim; no browser ran.
 Only this report is committed, with diff-check/single-file staging. STOP for
 server-failure review rather than applying the proposed timeout changes.
+
+## Confirmed execution limit and conditional recovery attempt — 2026-09-04
+
+Coordinator authorized one diagnostic GET, then exactly one conditional recovery
+GET only if cli-server30 exhaustion was confirmed. No TLS/browser/full matrix.
+Beforehand, all 42 tables matched baseline and four lifecycle/outbox counters
+were zero. All 22,126 source files matched the unchanged exact manifest; no .env*,
+reparse files or source changes. Required PHP modules/prepend/append rechecked.
+
+Created only run-local diagnostic-router.php. It requires cli-server, exact
+127.0.0.1 client, port8126, Host psikotes.oncam.id, GET and /__browser/login, verifies
+the reviewed harness SHA-256, then includes that same harness without replacing
+guards/authorization/exception behavior. Before include it writes only SAPI and
+numeric max_execution_time. Its shutdown callback records only numeric errorType
+and a boolean matching the maximum-execution-time exhaustion message. It never
+logs the error message/file/line, response body/headers, request or credentials.
+Wrapper syntax passed. No wrapper was added to the source manifest/application.
+
+Launched verified-owned diagnostic PHP PID23600 with original run INI and wrapper,
+only127.0.0.1:8126 after clean all-family ports. One direct GET, Host exact, no
+Cookie header/jar/submission/redirect/control, finite120s client deadline:
+HTTP500, empty body,30.0167s. Sanitized diagnostic rows are exactly:
+
+```json
+{"sapi":"cli-server","maxExecutionTime":30}
+{"errorType":1,"maximumExecutionTimeExhausted":true}
+```
+
+This confirms the original30s failure mechanism, rather than inferring it solely
+from elapsed time. Stopped only verified PID23600 and checked listeners empty.
+
+The explicit conditional authorization therefore applied. Using apply_patch,
+added ONLY max_execution_time=90 to this run's runtime.ini. No source/harness,
+manifest, provider, proxy, browser or shared PHP config changed. A subsequent CLI
+probe still reported configuredMaxExecutionTime0 (CLI override), with empty
+prepend/append; that is not a reading of the cli-server request's effective value.
+The run-local INI contains90; no diagnostic wrapper was used for recovery.
+
+Started verified-owned PHP PID56164 using the ORIGINAL reviewed router, same
+synthetic document root/environment and127.0.0.1:8126 only. Exactly one direct GET
+with client120s deadline: HTTP500, body0,90.0205s, expectedLoginBody=false,
+violationsFileExists=false. PHP accepted21:43:54 and closed21:45:24. No200 or
+successful application response occurred. No further GET/retry or timeout increase.
+
+The second response tracking90s strongly suggests exhaustion at the new budget,
+but the original router intentionally had no diagnostic shutdown hook, so the
+second fatal type is not directly confirmed. The previously measured41.8-47.8s
+pure guards do not explain the full90s response by themselves. Exact stage and
+additional latency remain unknown. Do not treat90s as a sufficient budget or
+proceed with the proposed bridge/browser budgets. A further bounded stage
+diagnosis would require separate coordinator review; no instrumentation/timeout
+change was made automatically to get a passing response.
+
+Stopped only PID56164 after verifying executable and exact run/router command.
+At2026-09-04T21:45:55.3188356+07:00 both diagnostic/recovery PIDs were absent and
+all-family8126/443 listener query was empty. Before/after read-only SQLite checks
+match all42 tables; handoffs0, checkout sessions0, audits0, outbox0. No reinit,
+checkout mutation or successful-browser verifier ran. Five new local log/diagnostic
+files scanned with the existing bounded marker patterns:0 hits. No raw bodies,
+cookies, exception messages or file/line data printed/exported. Local synthetic
+scratch and the modified disposable INI are retained; old scratch untouched.
+
+Only this runtime report is committed. Source/vendor/manifest remain unchanged;
+no installs, .env/active DB, real provider, public wiring, deployment/push, new
+task/agent or reset. Diff-check and single-file staging passed. STOP: execution
+limit confirmed, direct recovery FAILED, P14 browser acceptance still incomplete.
