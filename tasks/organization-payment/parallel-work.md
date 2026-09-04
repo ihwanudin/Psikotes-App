@@ -1,5 +1,19 @@
 # Koordinasi task paralel organization-payment
 
+## Direct login recovered; warning localization before browser budget — 2026-09-04
+
+Backend completed cursor `:49`; reviewed bf44b9d/78b2f6a, integrated fc14e60/32ae52f,
+root pure52 passed. Direct login200 in44.68s: pre-autoload42.54s dominates; prior90s
+variance not reproduced. Shutdown reported nonfatal type2 warning, cause unknown.
+No checkout state changed and owned listener stopped; not browser acceptance.
+
+ONE follow-up: opt-in diagnostics may include numeric warning type and strictly
+manifest-validated SOURCE-relative filename/line at fixed stage boundaries, never
+raw messages/absolute paths/request data; outside-source maps to fixed sentinel.
+One direct90s GET after reviewed-copy refresh, baseline/process checks preserved.
+Classify warning from code location; do not autoedit vendor/app. Estimate full-run
+request/time budget before changing proxy/browser limits. No TLS/browser yet.
+
 ## Execution exhaustion confirmed; stage localization next — 2026-09-04
 
 Backend completed cursor `:48`; bb443e4 confirms cli-server30 exhaustion via
