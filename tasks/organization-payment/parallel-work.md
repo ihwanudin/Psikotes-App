@@ -1,5 +1,19 @@
 # Koordinasi task paralel organization-payment
 
+## Recovery after Codex close
+
+User requested status recheck and continuation. Root234da10 clean; previous
+composition b1d35ea (4/863 independently verified) remains committed. Backend
+847b6da and frontend4eb2385 latest turns interrupted/notLoaded, not completed:
+backend harness work uncommitted; frontend inventory interrupted before report.
+Sent exactly one RESUME to each existing task, preserving original234da10 scopes,
+dirty baseline, in-flight process/evidence checks and exclusive temp ownership.
+No new increment or baseline reset. Portal completed/idle, left untouched.
+Heartbeat configuration remains ACTIVE every10min. New task cursors before resume:
+backendaf430373-a868-4009-9d26-21ebbc336071:1,
+frontend1558a8ff-f3ca-4784-9299-fa18869f8482:1,
+portal234ad76d-5ad1-481d-a6a2-c6fa98830847:1.
+
 ## User continuation: synthetic integrity change approved — 2026-09-04
 
 User answered "lanjutkan" to explicit question disclosing full pre/post checks and
