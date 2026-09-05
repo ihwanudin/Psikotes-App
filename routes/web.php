@@ -6,6 +6,7 @@ use App\Http\Controllers\Admin\AssessmentParticipantExportController;
 use App\Http\Controllers\Admin\IdentityEvidenceAccessController;
 use App\Http\Controllers\Admin\ManualPaymentProofAccessController;
 use App\Http\Controllers\AssessmentInvitationController;
+use App\Http\Controllers\CheckoutPaymentController;
 use App\Http\Controllers\CheckoutSessionController;
 use App\Http\Controllers\HealthCheckController;
 use App\Http\Controllers\IdentityEvidenceUploadController;
@@ -18,7 +19,9 @@ use App\Http\Controllers\SelectionLaunchController;
 use App\Http\Controllers\XenditWebhookController;
 use App\Http\Middleware\ApplyRlsContext;
 use App\Http\Middleware\AuthenticateCheckoutSession;
+use App\Http\Middleware\PreventCheckoutResponseCaching;
 use App\Http\Middleware\ProtectCheckoutSessionHttpBoundary;
+use App\Http\Middleware\VerifyCheckoutPaymentJsonMutation;
 use App\Http\Middleware\VerifyCheckoutSessionJsonMutation;
 use App\Http\Middleware\VerifyCheckoutSessionMutation;
 use App\Services\Integrations\CheckoutSessionHttpContract;
@@ -46,6 +49,14 @@ Route::get('/checkout/unavailable', [CheckoutSessionController::class, 'unavaila
 Route::post('/checkout/confirm', IntegratedCheckoutConfirmationController::class)
     ->withoutMiddleware('web')->middleware([...$checkoutBoundary,
         AuthenticateCheckoutSession::class, VerifyCheckoutSessionJsonMutation::class])->name('checkout.confirm');
+Route::post('/checkout/payment', CheckoutPaymentController::class)
+    ->withoutMiddleware('web')->middleware([
+        PreventCheckoutResponseCaching::class,
+        ProtectCheckoutSessionHttpBoundary::class,
+        'throttle:'.CheckoutSessionHttpContract::LIMITER,
+        VerifyCheckoutPaymentJsonMutation::class,
+        AuthenticateCheckoutSession::class,
+    ])->name('checkout.payment');
 
 Route::get('/health', HealthCheckController::class)->name('health');
 

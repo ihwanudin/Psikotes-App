@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests;
 
+use App\Data\Integrations\CheckoutSessionMutationCredentials;
 use App\Data\Integrations\CheckoutSessionPrincipal;
 use App\Services\Integrations\CheckoutSessionHttpContract;
 use Illuminate\Foundation\Http\FormRequest;
@@ -44,5 +45,21 @@ final class CheckoutPaymentRequest extends FormRequest
         }
 
         return $value;
+    }
+
+    public function mutationCredentials(): CheckoutSessionMutationCredentials
+    {
+        $selector = $this->cookies->get(CheckoutSessionHttpContract::SELECTOR_COOKIE);
+        $delivery = $this->cookies->get(CheckoutSessionHttpContract::CSRF_COOKIE);
+        $headers = $this->headers->all('X-Checkout-CSRF');
+        $explicit = count($headers) === 1 ? $headers[0] : null;
+        if (! is_string($selector) || preg_match('/^ocs1_[0-9a-f]{64}$/D', $selector) !== 1
+            || ! is_string($delivery) || preg_match('/^ocsrf1_[0-9a-f]{64}$/D', $delivery) !== 1
+            || ! is_string($explicit) || preg_match('/^ocsrf1_[0-9a-f]{64}$/D', $explicit) !== 1
+            || ! hash_equals($delivery, $explicit)) {
+            abort(419);
+        }
+
+        return new CheckoutSessionMutationCredentials($selector, $explicit);
     }
 }
