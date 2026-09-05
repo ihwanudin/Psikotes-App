@@ -32,6 +32,45 @@ export const selectableAction: CheckoutSummaryV2PaymentAction = {
     ],
 };
 
+export const continuingPayment: CheckoutSummaryV2Payment = {
+    payer: 'self',
+    state: 'pending',
+    amountSource: 'charge_snapshot',
+    amountIdr: 149_000,
+    consultationRequested: true,
+    actionAvailable: true,
+    action: {
+        path: '/checkout/payment',
+        mode: 'continue',
+        currency: 'IDR',
+        choices: [
+            {
+                consultationRequested: true,
+                baseAmountIdr: 99_000,
+                consultationAmountIdr: 50_000,
+                amountIdr: 149_000,
+            },
+        ],
+    },
+};
+
+// @ts-expect-error Terminal payment states cannot expose an action.
+export const terminalAction: CheckoutSummaryV2Payment = {
+    ...continuingPayment,
+    state: 'paid',
+};
+
+// @ts-expect-error A self select action requires unavailable amount evidence.
+export const selectWithSnapshot: CheckoutSummaryV2Payment = {
+    payer: 'self',
+    state: 'unpaid',
+    amountSource: 'charge_snapshot',
+    amountIdr: 99_000,
+    consultationRequested: false,
+    actionAvailable: true,
+    action: selectableAction,
+};
+
 export const absentDass: CheckoutSummaryV2Consent = {
     // @ts-expect-error Mandatory DASS consent has no not_applicable variant.
     state: 'not_applicable',

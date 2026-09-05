@@ -102,16 +102,17 @@ type SnapshotAmount = Readonly<{
     consultationRequested: boolean;
 }>;
 
+type SnapshotAmountFor<Consultation extends boolean> = Readonly<{
+    amountSource: 'charge_snapshot';
+    amountIdr: number;
+    consultationRequested: Consultation;
+}>;
+
 type Amount = UnavailableAmount | SnapshotAmount;
 
 type UnavailableCapability = Readonly<{
     actionAvailable: false;
     action: null;
-}>;
-
-type AvailableCapability = Readonly<{
-    actionAvailable: true;
-    action: CheckoutSummaryV2PaymentAction;
 }>;
 
 type OrganizationZeroCapability = Readonly<{
@@ -130,18 +131,62 @@ type OrganizationZeroCapability = Readonly<{
         }>;
 }>;
 
-type PayerCapability =
+type SelfSelectCapability = Readonly<{
+    payer: 'self';
+    organizationName?: never;
+    state: 'unpaid';
+}> &
+    UnavailableAmount &
+    Readonly<{
+        actionAvailable: true;
+        action: Extract<CheckoutSummaryV2PaymentAction, { mode: 'select' }>;
+    }>;
+
+type SelfContinueCapability<Consultation extends boolean> = Readonly<{
+    payer: 'self';
+    organizationName?: never;
+    state: 'pending';
+}> &
+    SnapshotAmountFor<Consultation> &
+    Readonly<{
+        actionAvailable: true;
+        action: PaymentActionBase &
+            Readonly<{
+                mode: 'continue';
+                choices: readonly [Choice<Consultation>];
+            }>;
+    }>;
+
+type OrganizationZeroPayment = Readonly<{
+    payer: 'organization';
+    organizationName: string;
+    state: 'unbilled';
+}> &
+    UnavailableAmount &
+    OrganizationZeroCapability;
+
+type UnavailablePaymentCapability =
     | (Readonly<{
           payer: 'unselected' | 'self';
           organizationName?: never;
+          state: CheckoutSummaryV2PaymentState;
       }> &
-          (UnavailableCapability | AvailableCapability))
-    | (Readonly<{ payer: 'organization'; organizationName: string }> &
-          (UnavailableCapability | OrganizationZeroCapability));
+          Amount &
+          UnavailableCapability)
+    | (Readonly<{
+          payer: 'organization';
+          organizationName: string;
+          state: CheckoutSummaryV2PaymentState;
+      }> &
+          Amount &
+          UnavailableCapability);
 
-export type CheckoutSummaryV2Payment = PayerCapability &
-    Amount &
-    Readonly<{ state: CheckoutSummaryV2PaymentState }>;
+export type CheckoutSummaryV2Payment =
+    | UnavailablePaymentCapability
+    | SelfSelectCapability
+    | SelfContinueCapability<false>
+    | SelfContinueCapability<true>
+    | OrganizationZeroPayment;
 
 export type CheckoutSummaryV2TestType =
     'dass21' | 'ist' | 'kraepelin' | 'papi' | 'rmib';
@@ -388,12 +433,45 @@ function isPayment(value: unknown): value is CheckoutSummaryV2Payment {
         (value.actionAvailable === false && value.action === null) ||
         (value.actionAvailable === true && isAction(value.action));
 
+    if (!amountValid || !capabilityValid) {
+        return false;
+    }
+
+    if (value.actionAvailable === false) {
+        return true;
+    }
+
+    if (!isAction(value.action)) {
+        return false;
+    }
+
+    if (value.payer === 'self' && value.action.mode === 'select') {
+        return (
+            value.state === 'unpaid' &&
+            value.amountSource === 'unavailable' &&
+            value.amountIdr === null &&
+            value.consultationRequested === null
+        );
+    }
+
+    if (value.payer === 'self' && value.action.mode === 'continue') {
+        const choice = value.action.choices[0];
+
+        return (
+            value.state === 'pending' &&
+            value.amountSource === 'charge_snapshot' &&
+            value.amountIdr === choice.amountIdr &&
+            value.consultationRequested === choice.consultationRequested
+        );
+    }
+
     return (
-        amountValid &&
-        capabilityValid &&
-        (value.payer !== 'organization' ||
-            value.actionAvailable === false ||
-            (isAction(value.action) && isOrganizationZeroAction(value.action)))
+        value.payer === 'organization' &&
+        value.state === 'unbilled' &&
+        value.amountSource === 'unavailable' &&
+        value.amountIdr === null &&
+        value.consultationRequested === null &&
+        isOrganizationZeroAction(value.action)
     );
 }
 

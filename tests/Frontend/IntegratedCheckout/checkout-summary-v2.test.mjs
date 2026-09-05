@@ -11,7 +11,10 @@ function summary(payment = paymentWithSelect()) {
         sourceName: 'Integrasi sintetis',
         branchName: 'Cabang Sintetis',
         packageName: 'Paket Sintetis',
-        packageSource: 'catalog',
+        packageSource:
+            payment.amountSource === 'charge_snapshot'
+                ? 'charge_snapshot'
+                : 'catalog',
         attemptLabel: 'Assessment Anda',
         profile: [
             profile('fullName', 'Nama lengkap', true),
@@ -93,6 +96,10 @@ test('accepts exact select, continue, and unavailable payment capabilities', () 
     assert.deepEqual(parseCheckoutSummaryV2(select), select);
 
     const continuing = paymentWithSelect();
+    continuing.state = 'pending';
+    continuing.amountSource = 'charge_snapshot';
+    continuing.amountIdr = 149_000;
+    continuing.consultationRequested = true;
     continuing.action.mode = 'continue';
     continuing.action.choices = [continuing.action.choices[1]];
     assert.deepEqual(
@@ -152,6 +159,7 @@ test('allows only the exact zero select capability for organization payer', () =
     const zeroOrganization = paymentWithSelect();
     zeroOrganization.payer = 'organization';
     zeroOrganization.organizationName = 'Cabang Sintetis';
+    zeroOrganization.state = 'unbilled';
     zeroOrganization.action.choices = [
         {
             consultationRequested: false,
@@ -172,6 +180,7 @@ test('allows only the exact zero select capability for organization payer', () =
     rejects((value) => {
         value.payment.payer = 'organization';
         value.payment.organizationName = 'Cabang Sintetis';
+        value.payment.state = 'unbilled';
         value.payment.action.mode = 'continue';
         value.payment.action.choices = [
             {
@@ -182,6 +191,72 @@ test('allows only the exact zero select capability for organization payer', () =
             },
         ];
     });
+});
+
+test('correlates action mode with payer, lifecycle state, and server amount evidence', () => {
+    rejects((value) => {
+        value.payment.state = 'pending';
+    });
+    rejects((value) => {
+        value.payment.amountSource = 'charge_snapshot';
+        value.payment.amountIdr = 99_000;
+        value.payment.consultationRequested = false;
+        value.packageSource = 'charge_snapshot';
+    });
+
+    for (const state of [
+        'unselected',
+        'preparing',
+        'recovery_required',
+        'expired',
+        'rejected',
+        'paid',
+        'free',
+    ]) {
+        rejects((value) => {
+            value.payment.state = state;
+        });
+    }
+
+    const continuing = paymentWithSelect();
+    continuing.state = 'pending';
+    continuing.amountSource = 'charge_snapshot';
+    continuing.amountIdr = 149_000;
+    continuing.consultationRequested = true;
+    continuing.action.mode = 'continue';
+    continuing.action.choices = [continuing.action.choices[1]];
+    const mismatchedAmount = summary(clone(continuing));
+    mismatchedAmount.payment.amountIdr = 99_000;
+    assert.throws(
+        () => parseCheckoutSummaryV2(mismatchedAmount),
+        /Invalid checkout summary v2/,
+    );
+    const mismatchedConsultation = summary(clone(continuing));
+    mismatchedConsultation.payment.consultationRequested = false;
+    assert.throws(
+        () => parseCheckoutSummaryV2(mismatchedConsultation),
+        /Invalid checkout summary v2/,
+    );
+
+    const positiveOrganization = paymentWithSelect();
+    positiveOrganization.payer = 'organization';
+    positiveOrganization.organizationName = 'Cabang Sintetis';
+    positiveOrganization.state = 'unbilled';
+    positiveOrganization.amountSource = 'charge_snapshot';
+    positiveOrganization.amountIdr = 99_000;
+    positiveOrganization.consultationRequested = false;
+    positiveOrganization.action.choices = [
+        {
+            consultationRequested: false,
+            baseAmountIdr: 0,
+            consultationAmountIdr: 0,
+            amountIdr: 0,
+        },
+    ];
+    assert.throws(
+        () => parseCheckoutSummaryV2(summary(positiveOrganization)),
+        /Invalid checkout summary v2/,
+    );
 });
 
 test('accepts only safe exact server totals and consultation addon rules', () => {
@@ -278,6 +353,8 @@ test('retains exact v1 visible semantics outside the v2 capability', () => {
     snapshot.amountSource = 'charge_snapshot';
     snapshot.amountIdr = 149_000;
     snapshot.consultationRequested = true;
+    snapshot.actionAvailable = false;
+    snapshot.action = null;
     const snapshotSummary = summary(snapshot);
     snapshotSummary.packageSource = 'charge_snapshot';
     assert.deepEqual(parseCheckoutSummaryV2(snapshotSummary), snapshotSummary);
