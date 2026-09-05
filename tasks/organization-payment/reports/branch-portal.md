@@ -1,5 +1,86 @@
 # P12a-prep — portal cabang baca-saja
 
+## P17a acceptance — checkout route, pembayaran, dan isolasi attempt
+
+Tanggal 2026-09-05. Increment ini test-only terhadap root immutable
+`de27cd1`; tidak ada perubahan production app, config, route, schema, backend,
+frontend, atau feature default. Route production checkout diaktifkan hanya pada
+config memory harness `OrganizationPaymentTestCase`, dengan SQLite `:memory:`,
+fake payment provider/notifier, dan HTTP stray request denial.
+
+Test `CheckoutAcceptanceMatrixTest` memakai action canonical untuk provisioning
+checkout-v2, handoff, exchange session melalui route production, preview dan
+reservation, claim/issue invoice fake, finalizer, serta confirmation JSON melalui
+route production. Fixture sintetis membuktikan komposisi berikut:
+
+- tepat 10 participant berbeda pada satu cabang, lima dari trusted source alpha
+  dan lima dari trusted source beta; sembilan profil lengkap dan satu profil
+  parsial kosong;
+- tiga package server-side berisi IST+DASS-21 dengan harga Rp100, Rp250, dan
+  Rp0. Setiap attempt package gratis meminta konsultasi Rp30 dari katalog server,
+  sehingga seluruh 10 attempt organization menjadi satu bill berisi 10 item;
+- participant parsial juga mempunyai attempt ke-11 yang diprovision canonical
+  sebagai self-pay pada round berbeda. Identity participant sama, sedangkan ID
+  attempt, charge, bill, payer dan lifecycle tetap terpisah;
+- bill organization diterbitkan melalui fake provider lalu disettle oleh
+  finalizer canonical. Tanpa consent, seluruh 10 attempt tetap PROVISIONED dan
+  gate canonical terkunci. Bill self tetap reserved/preparing dan attempt self
+  juga terkunci;
+- preview organisasi asing memberi `ASSESSMENT_NOT_AVAILABLE`, total null, dan
+  client asing tidak dapat menerbitkan handoff untuk attempt pemilik;
+- handoff dari kedua trusted source berhasil ditukar melalui
+  `/checkout/session`. Summary `/checkout` menunjukkan state pembayaran attempt
+  sendiri: `paid` untuk dua attempt organization dan `preparing` untuk self;
+- confirmation route hanya untuk session attempt organization pertama mengisi
+  profil yang memang kosong, mencatat dua consent current, dan mengaktifkan dua
+  entitlement attempt itu. Replay langsung action activation menghasilkan list
+  kosong, membuktikan confirmation sudah melakukan aktivasi. Attempt self dengan
+  participant sama tetap PROVISIONED/tanpa entitlement karena belum paid; sembilan
+  attempt organization lain juga tidak ikut dikonfirmasi;
+- query string selector attempt pada session source beta diarahkan ke halaman
+  unavailable, tanpa menerima ID browser sebagai authority.
+
+Proyeksi summary dan HTML dari tiga session diperiksa pada key dan value. Tidak
+ada anggota batch, item count, total kolektif, selection hash, public bill
+reference, invoice URL, gateway reference, participant ID, external candidate/
+process/round identity, kedua nama source persisted, nama participant lain, atau
+marker hasil klinis DASS sintetis. Summary hanya membawa fakta payment/product
+attempt sendiri dan dokumen consent publik yang memang dibutuhkan form. Header
+privacy production (`private`, `no-store`, CSP, no-referrer, DENY, nosniff) juga
+dibuktikan pada summary dan confirmation.
+
+### Bukti dan batas
+
+Test final terfokus lulus **1 tes / 241 assertions**. Regresi terkait dijalankan
+terpisah agar lifecycle database tiap suite tidak saling memengaruhi:
+
+- `CheckoutProvisioningTest`: **76 tes / 452 assertions**;
+- `CheckoutProductionWiringTest`: **5 tes / 211 assertions**;
+- `CollectiveBillLifecycleCompositionTest`: **5 tes / 1.256 assertions**.
+
+Pint Laravel preset, PHP lint, PHPStan level 7, dan diff-check lulus. SHA256 test
+final `A5EF3DE29E2A2EDFD8DFDAD7A423C01C0B15EBB5BA8FC6C5922913830386E4E3`.
+Copy test dan worker identik. Copy root berada di
+`C:/Users/ThinkPad/AppData/Local/Temp/oncam-p17-acceptance-12124051dfea40229c0b9f78e9031c7e`;
+hash `composer.lock` copy/root identik
+`44AA7EA181ECF0ACCDD18A05AE5DA39BC8D9016C88431BFE9AEBFCB536720E16`.
+Copy tidak mempunyai `.env`; vendor dan public build disalin fisik, sedangkan
+cache/storage dibuat sebagai direktori kosong. Migration generic-result copy
+identik dengan blob `de27cd1`, membedakannya dari root yang maju ke `1f7c8fb`
+setelah archive dibuat.
+
+Run pertama berhenti sebelum test karena direktori cache ignored belum tersedia.
+Setelah direktori kosong dibuat, run kontrak pertama menemukan fixture package
+gratis yang tidak meminta konsultasi sehingga canonical preview benar menghitung
+7 payable/3 free; fixture diperbaiki agar semua package gratis memakai konsultasi
+server Rp30. Tidak ada defect production yang ditemukan.
+
+Batas bukti: ini komposisi sequential SQLite, bukan PostgreSQL RLS/race, browser,
+layanan provider nyata, atau aktivasi config publik. Confirmation tidak membayar
+attempt self dan tidak mengaktifkan attempt lain; tidak ada klaim bahwa consent
+participant-scoped berubah menjadi consent per-attempt. Tidak ada DB aktif,
+`.env`, outbound, browser, deploy, atau push. Berhenti untuk review.
+
 ## P17a PostgreSQL GREEN — consent DASS privat tanpa regresi consent umum
 
 ### Correction P1 — guard driver SQLite
