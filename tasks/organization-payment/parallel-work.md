@@ -1,5 +1,22 @@
 # Koordinasi task paralel organization-payment
 
+## P16-pay-b accepted; canonical self reservation prepared — 2026-09-05
+
+Backend `cc7d0ee` was reviewed and integrated as root `63eeee9`. The internal
+action accepts only transaction-bound checkout credentials plus the consultation
+boolean, checks a stable attempt-derived self intent before preview, and reuses
+the P7 preview/reservation primitives. New reservations require active Xendit;
+canonical reserved, pending, and fully-paid replay remains valid after method
+deactivation. Organization, zero-price, stale, terminal, recovery, or corrupt
+state fails closed without a replacement bill or external effect.
+
+Root reran the related baseline at **173 tests / 1,113 assertions**; syntax,
+Pint, PHPStan 0 errors, and diff-check passed. No PostgreSQL code/test changed,
+so the immediately preceding fresh disposable evidence remains **395 / 3,877**.
+P16-pay-c may now add the separate post-reservation claim/orchestration seam;
+the frontend may independently add a pure strict payment transport module. These
+lanes must not edit each other's application or test files.
+
 ## P16-pay-a accepted; transaction-bound mutation scope verified — 2026-09-05
 
 Backend `86e4c4d` was reviewed and integrated as root `d575f60`. The internal

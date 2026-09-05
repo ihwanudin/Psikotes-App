@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P13b, core privat P14/P15, dan P17a–P17b selesai lokal. P16 memiliki halaman/confirmation default OFF; ADR-014 menetapkan boundary pembayaran peserta dan P16-pay-a transaction-bound mutation scope telah diterima dengan fresh PostgreSQL disposable 395/3.877. Penulisan pembayaran peserta belum selesai. P17c browser serta P18 masih terbuka. Tidak deploy, tidak migrasi DB aktif, dan tidak menyalakan sumber/feature flag atau outbound nyata.**
+Status: **P1–P13b, core privat P14/P15, dan P17a–P17b selesai lokal. P16 memiliki halaman/confirmation default OFF; P16-pay-a mutation scope dan P16-pay-b canonical self reservation telah diterima. Regresi pay-b lulus 173/1.113; fresh PostgreSQL terakhir 395/3.877. Claim/provider, gratis, HTTP/UI, dan browser belum selesai. P17c serta P18 masih terbuka. Tidak deploy, tidak migrasi DB aktif, dan tidak menyalakan sumber/feature flag atau outbound nyata.**
 
 ## Gerbang revisi kolektif
 
