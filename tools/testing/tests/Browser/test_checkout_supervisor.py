@@ -66,7 +66,7 @@ class SupervisorTests(unittest.TestCase):
             "directory": directory, "manifest": "a" * 64, **paths,
             "tool_hashes": {name: hashlib.sha256(Path(path).read_bytes()).hexdigest()
                             for name, path in paths.items()},
-        })
+        }, anchor_publisher=lambda anchor: None)
 
     def rewrite_journal(self, run, mutate):
         path = sorted(run.run.glob(m.JOURNAL_PREFIX + "*.json"))[-1]
@@ -95,6 +95,20 @@ class SupervisorTests(unittest.TestCase):
             with self.assertRaisesRegex(m.Refused, "synthetic"):
                 run.launch("browser", 1)
             self.assertEqual(observed, [[{"role": "browser", "executable": run.c["browser"]}]])
+
+    def test_claim_without_publisher_refuses_before_claim_journal_or_popen(self):
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            baseline = self.journal_run(directory)
+            run = m.WindowsRun(baseline.c)
+            run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            run.session = "checkout-" + "c" * 32
+            with patch.object(m.subprocess, "Popen") as popen:
+                with self.assertRaisesRegex(m.Refused, "^anchor_publisher$"):
+                    run.claim(1)
+                popen.assert_not_called()
+            self.assertFalse((Path(directory) / "supervisor.json").exists())
+            self.assertFalse((Path(directory) / m.JOURNAL).exists())
+            self.assertEqual(list(Path(directory).glob(m.JOURNAL_PREFIX + "*.json")), [])
 
     def test_journal_persists_exact_lineage_and_rejects_tampering(self):
         with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
@@ -283,6 +297,122 @@ class SupervisorTests(unittest.TestCase):
                 with self.subTest(anchor=anchor), self.assertRaisesRegex(m.Refused, "^journal_anchor$"):
                     candidate.recover_ownership(run.session, anchor)
 
+    def test_publisher_receives_ordered_durable_anchor_copies(self):
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            published = []
+
+            def publish(anchor):
+                self.assertTrue((Path(directory) / m.JOURNAL).is_file())
+                self.assertEqual(len(list(Path(directory).glob(m.JOURNAL_PREFIX + "*.json"))),
+                                 anchor["generation"])
+                published.append(dict(anchor))
+                anchor["generation"] = 999  # Callback cannot mutate supervisor state.
+
+            baseline = self.journal_run(directory)
+            run = m.WindowsRun(baseline.c, anchor_publisher=publish)
+            run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            run.session = "checkout-" + "c" * 32
+            run.claim(1)
+            run._push_launch_intent("php", run.c["php"])
+            self.assertEqual([anchor["generation"] for anchor in published], [1, 2])
+            self.assertEqual(run.journal_anchor(), published[-1])
+
+    def test_publisher_failure_prevents_managed_popen_and_preserves_chain(self):
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            delivered = []
+
+            def publish(anchor):
+                if anchor["generation"] == 2:
+                    raise RuntimeError("publisher unavailable")
+                delivered.append(dict(anchor))
+
+            baseline = self.journal_run(directory)
+            run = m.WindowsRun(baseline.c, anchor_publisher=publish)
+            run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            run.session = "checkout-" + "c" * 32
+            run.claim(1)
+            with patch.object(m.subprocess, "Popen") as popen:
+                with self.assertRaisesRegex(m.Refused, "^anchor_publish$"):
+                    run._command([run.c["php"], "synthetic"], 1, track=True)
+                popen.assert_not_called()
+            self.assertEqual(run._read_journal()["launchIntents"], [
+                {"role": "command", "executable": run.c["php"]},
+            ])
+            self.assertEqual(len(list(run.run.glob(m.JOURNAL_PREFIX + "*.json"))), 2)
+            self.assertEqual(delivered, [{"generation": 1, "digest": delivered[0]["digest"]}])
+
+    def test_publisher_failure_after_popen_retains_handle_and_never_yields_success(self):
+        for error_type in (RuntimeError, KeyboardInterrupt, SystemExit):
+            with self.subTest(error=error_type.__name__), TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+                delivered = []
+
+                def publish(anchor):
+                    if anchor["generation"] == 3:
+                        raise error_type("publisher-window")
+                    delivered.append(dict(anchor))
+
+                baseline = self.journal_run(directory)
+                run = m.WindowsRun(baseline.c, anchor_publisher=publish)
+                run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+                run.session = "checkout-" + "c" * 32
+                run.claim(1)
+
+                class Process:
+                    pid = 10
+                    returncode = 0
+
+                    def poll(self): return 1
+
+                process = Process()
+                run._identity = lambda pid: {"pid": pid, "started": "110"}
+                expected = m.Refused if error_type is RuntimeError else error_type
+                with patch.object(m.subprocess, "Popen", return_value=process):
+                    with self.assertRaises(expected):
+                        run._command([run.c["php"], "synthetic"], 1, track=True)
+                self.assertIn(process, run.handles)
+                self.assertEqual(run.journal_anchor()["generation"], 3)
+                self.assertEqual(delivered[-1]["generation"], 2)
+                candidate = self.journal_run(directory)
+                candidate._snapshot = lambda: []
+                with self.assertRaisesRegex(m.Refused, "^journal_anchor$"):
+                    candidate.recover_ownership(run.session, delivered[-1])
+
+                orchestration = Fake()
+
+                def fail_launch(role, left):
+                    orchestration.launched.append(role)
+                    orchestration.call("launch-" + role)
+                    if role == "php":
+                        raise error_type("publisher-window")
+
+                orchestration.launch = fail_launch
+                if error_type is RuntimeError:
+                    result = m.supervise(orchestration)
+                    self.assertEqual(result["state"], "invalid")
+                    self.assertFalse(result["accepted"])
+                else:
+                    with self.assertRaises(error_type):
+                        m.supervise(orchestration)
+                self.assertIn("cleanup", orchestration.calls)
+                self.assertIn("invalid", orchestration.calls)
+
+    def test_latest_published_anchor_supports_new_instance_recovery(self):
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            published = []
+            baseline = self.journal_run(directory)
+            run = m.WindowsRun(baseline.c, anchor_publisher=lambda anchor: published.append(dict(anchor)))
+            run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            run.session = "checkout-" + "c" * 32
+            run.claim(1)
+            run._register_owned({"pid": 10, "started": "110"}, "php", run.owner, run.c["php"])
+
+            candidate = self.journal_run(directory)
+            candidate._snapshot = lambda: [
+                {"pid": 10, "parent": 7, "started": "110", "executable": run.c["php"]},
+            ]
+            candidate.recover_ownership(run.session, published[-1])
+            self.assertEqual(candidate.owned, {10: "110"})
+
     def test_recovery_rejects_malformed_or_incomplete_claim_journal_pairs(self):
         def claimed(directory):
             run = self.journal_run(directory)
@@ -392,6 +522,31 @@ class SupervisorTests(unittest.TestCase):
                     with self.assertRaises(KeyboardInterrupt):
                         run.cleanup(1)
                 self.assertTrue((Path(directory) / m.JOURNAL).is_file())
+
+    def test_stale_prefix_cleanup_fails_before_any_journal_artifact_is_deleted(self):
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            run = self.journal_run(directory)
+            run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            run.session = "checkout-" + "c" * 32
+            run.claim(1)
+            old_head = (run.run / m.JOURNAL).read_text(encoding="ascii")
+            run._register_owned({"pid": 10, "started": "110"}, "php", run.owner, run.c["php"])
+            suffix = sorted(run.run.glob(m.JOURNAL_PREFIX + "*.json"))[-1]
+            suffix.unlink()
+            (run.run / m.JOURNAL).write_text(old_head, encoding="ascii")
+            run._discover = lambda: {}
+            run._listeners = lambda: []
+            run._WindowsRun__accept_harness_result(
+                "integrity-post", {"state": "postverified", "accepted": False}
+            )
+
+            self.assertFalse(run.cleanup(1))
+            self.assertEqual(run.uncertainty_categories, {"cleanup_exception"})
+            self.assertTrue((run.run / "supervisor.json").is_file())
+            self.assertTrue((run.run / m.JOURNAL).is_file())
+            self.assertEqual(len(list(run.run.glob(m.JOURNAL_PREFIX + "*.json"))), 1)
+            run.invalidate()
+            self.assertTrue((run.run / "integrity-invalid").is_file())
 
     def test_recover_flow_invokes_persisted_recovery_cleanup_and_invalidation(self):
         class Recovery:

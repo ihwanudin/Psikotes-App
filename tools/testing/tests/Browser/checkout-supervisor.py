@@ -161,8 +161,11 @@ def recover(io, *, session, anchor, budget=15):
 class WindowsRun:
     """Explicit reviewed paths only. No downloads, shared sessions or default config discovery."""
 
-    def __init__(self, config):
+    def __init__(self, config, *, anchor_publisher=None):
+        if anchor_publisher is not None and not callable(anchor_publisher):
+            raise Refused("anchor_publisher")
         self.c = config
+        self.anchor_publisher = anchor_publisher
         self.run = Path(config["directory"])
         self.source = self.run / "source"
         self.env = {}
@@ -351,6 +354,14 @@ class WindowsRun:
             raise Refused("journal_write") from None
         self.journal_generation = generation
         self.journal_digest = digest
+        if self.anchor_publisher is not None:
+            anchor = self.journal_anchor()
+            self._validate_anchor(anchor)
+            try:
+                self.anchor_publisher(dict(anchor))
+            except Exception:
+                # The durable generation remains authoritative; managed spawn must stop.
+                raise Refused("anchor_publish") from None
 
     def journal_anchor(self):
         if type(self.journal_generation) is not int or self.journal_generation <= 0 \
@@ -564,7 +575,8 @@ class WindowsRun:
                       for pid, record in live.items() if record["role"] in {"php", "tls", "browser"}}
 
     def _clear_journal(self):
-        self._read_journal()
+        expected_anchor = self.journal_anchor()
+        self._read_journal(expected_anchor)
         paths = sorted(self.run.glob(JOURNAL_PREFIX + "*.json"))
         for path in reversed(paths):
             self._canonical(path)
@@ -684,6 +696,8 @@ class WindowsRun:
             raise Refused("occupied_port")
 
     def claim(self, remaining):
+        if self.anchor_publisher is None:
+            raise Refused("anchor_publisher")
         binding = self._config_binding(self.session)
         with (self.run / "supervisor.json").open("x") as file:
             self.claimed = True
