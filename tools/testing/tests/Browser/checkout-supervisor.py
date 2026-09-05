@@ -15,8 +15,13 @@ PORTS = (8126, 443)
 ASSETS = ("public/css/checkout-summary-v1.css", "public/brand/oncam-logo-full-color.png")
 HARNESS = "tools/testing/tests/Browser/serve-checkout-session.php"
 DRIVER = "tools/testing/tests/Browser/checkout-session.browser.mjs"
+JOURNAL = "ownership-journal.head"
+JOURNAL_TEMP = "ownership-journal.tmp"
+JOURNAL_PREFIX = "ownership-journal-"
+JOURNAL_LIMIT = 1024
 CLI_SUFFIX = "31e32ef8478fbf80/node_modules/@playwright/cli/playwright-cli.js"
 BROWSER_SUFFIX = "ms-playwright/chromium-1234/chrome-win64/chrome.exe"
+JOURNAL_ROLES = frozenset({"php", "tls", "browser_launcher", "browser", "command", "descendant"})
 UNCERTAINTY_CATEGORIES = frozenset({"pid_reuse", "parent_missing", "parent_identity_mismatch",
                                    "child_tick_invalid", "identity_probe_failed",
                                    "postcheck_live_process", "cleanup_exception"})
@@ -99,7 +104,6 @@ def supervise(io, *, mode="smoke", requests=3, budget=180):
             if not cleanup():
                 raise Refused("cleanup")
             step("postcheck", lambda remaining: io.harness("integrity-post", remaining))
-            io.postcheck_complete = True
         completed = True
     except Exception as error:
         primary_failed = True
@@ -136,6 +140,24 @@ def supervise(io, *, mode="smoke", requests=3, budget=180):
     return result
 
 
+def recover(io, *, session, anchor, budget=15):
+    """Callable crash-recovery flow; never resumes a run or marks it accepted."""
+    if type(budget) is not int or not 1 <= budget <= 60:
+        raise Refused("invalid_budget")
+    deadline = io.clock() + budget
+    io.io_deadline = deadline
+    io.recover_ownership(session, anchor)
+    try:
+        remaining = deadline - io.clock()
+        if remaining <= 0:
+            raise Refused("recovery_budget")
+        if io.cleanup(remaining) is not True or getattr(io, "uncertain", False):
+            raise Refused("recovery_cleanup")
+        return {"state": "recovered_cleanup", "accepted": False}
+    finally:
+        io.invalidate()
+
+
 class WindowsRun:
     """Explicit reviewed paths only. No downloads, shared sessions or default config discovery."""
 
@@ -145,13 +167,18 @@ class WindowsRun:
         self.source = self.run / "source"
         self.env = {}
         self.owned = {}  # PID -> exact creation ticks, including short-lived CLI children.
+        self.owned_records = {}
         self.roles = {}
         self.handles = []
         self.claimed = False
         self.uncertainty_categories = set()
         self.postcheck_complete = False
+        self.__journal_postchecked = False
         self.session = "checkout-" + secrets.token_hex(16)
         self.owner = None
+        self.launch_intents = []
+        self.journal_generation = 0
+        self.journal_digest = None
         self.io_deadline = float("inf")
 
     @property
@@ -183,7 +210,10 @@ class WindowsRun:
             self._canonical(path)
             if list(path.glob(".env*")):
                 raise Refused("environment")
-        if any((self.run / p).exists() for p in ("supervisor.json", "integrity-evidence.json", "integrity-invalid")):
+        if any((self.run / p).exists() for p in
+               ("supervisor.json", JOURNAL, JOURNAL_TEMP, "integrity-evidence.json", "integrity-invalid")):
+            raise Refused("not_fresh")
+        if list(self.run.glob(JOURNAL_PREFIX + "*.json")):
             raise Refused("not_fresh")
         for name in ("browser.sqlite", "baseline.json", "fixtures.json"):
             path = self.run / name
@@ -239,10 +269,315 @@ class WindowsRun:
         self.owner["nonce"] = secrets.token_hex(32)
         self.env["ONCAM_CHECKOUT_BROWSER_OWNER"] = json.dumps(self.owner, separators=(",", ":"))
 
-    def _command(self, args, timeout, *, track=True):
+    @staticmethod
+    def _normalized_path(value):
+        if not isinstance(value, str) or not Path(value).is_absolute() or "\0" in value:
+            raise Refused("journal_shape")
+        return os.path.normcase(str(Path(value).absolute())).replace("\\", "/")
+
+    def _config_binding(self, session):
+        keys = ("php", "python", "node", "powershell", "cli", "browser", "ini", "browser_config", "cert", "key")
+        hashes = self.c.get("tool_hashes")
+        if not isinstance(session, str) or not re.fullmatch(r"checkout-[a-f0-9]{32}", session):
+            raise Refused("journal_shape")
+        if not isinstance(self.c.get("manifest"), str) or not re.fullmatch(r"[a-f0-9]{64}", self.c["manifest"]):
+            raise Refused("journal_shape")
+        if not isinstance(hashes, dict) or any(
+            key not in self.c or key not in hashes or not isinstance(hashes[key], str)
+            or not re.fullmatch(r"[a-f0-9]{64}", hashes[key]) for key in keys
+        ):
+            raise Refused("journal_shape")
+        payload = {"run": self._normalized_path(str(self.run.absolute())), "manifest": self.c["manifest"],
+                   "session": session, "tools": {key: {"path": self._normalized_path(self.c[key]),
+                   "sha256": hashes[key]} for key in keys}}
+        return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+    @staticmethod
+    def _journal_digest(payload):
+        body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        return hashlib.sha256(body).hexdigest()
+
+    def _read_claim(self):
+        try:
+            claim = json.loads((self.run / "supervisor.json").read_text(encoding="utf-8"))
+        except Exception:
+            raise Refused("journal_claim") from None
+        if not isinstance(claim, dict) or set(claim) != {
+            "version", "mode", "owner", "session", "configBinding", "journalBinding", "accepted"
+        } or claim["version"] != 2 or claim["mode"] != "cooperative" or claim["accepted"] is not False:
+            raise Refused("journal_claim")
+        owner = claim["owner"]
+        if not isinstance(owner, dict) or set(owner) != {"pid", "started", "nonce"} \
+                or type(owner["pid"]) is not int or owner["pid"] <= 0 \
+                or not isinstance(owner["started"], str) or not re.fullmatch(r"[0-9]{1,20}", owner["started"]) \
+                or not isinstance(owner["nonce"], str) or not re.fullmatch(r"[a-f0-9]{64}", owner["nonce"]):
+            raise Refused("journal_claim")
+        if not isinstance(claim["journalBinding"], str) or not re.fullmatch(r"[a-f0-9]{64}", claim["journalBinding"]):
+            raise Refused("journal_claim")
+        return claim
+
+    def _journal_payload(self, claim):
+        records = sorted(self.owned_records.values(), key=lambda item: item["pid"])
+        return {"version": 1, "run": self._normalized_path(str(self.run.absolute())), "session": self.session,
+                "configBinding": self._config_binding(self.session), "launchIntents": list(self.launch_intents),
+                "owned": records, "claimDigest": self._journal_digest(claim)}
+
+    def _persist_journal(self):
+        if not self.claimed:
+            return
+        claim = self._read_claim()
+        payload = self._journal_payload(claim)
+        self._validate_journal_entries(payload)
+        if claim["session"] != payload["session"] or claim["configBinding"] != payload["configBinding"]:
+            raise Refused("journal_claim")
+        generation = self.journal_generation + 1
+        if generation > JOURNAL_LIMIT:
+            raise Refused("journal_limit")
+        previous = self.journal_digest or claim["journalBinding"]
+        chained = {**payload, "generation": generation, "prevDigest": previous}
+        digest = self._journal_digest(chained)
+        document = {**chained, "integrity": digest}
+        generation_path = self.run / f"{JOURNAL_PREFIX}{generation:08d}.json"
+        try:
+            with generation_path.open("x", encoding="utf-8", newline="\n") as file:
+                json.dump(document, file, sort_keys=True, separators=(",", ":"))
+                file.flush()
+                os.fsync(file.fileno())
+            with (self.run / JOURNAL).open("x" if generation == 1 else "a", encoding="ascii", newline="\n") as head:
+                head.write(f"{generation:08d} {digest}\n")
+                head.flush()
+                os.fsync(head.fileno())
+        except Exception:
+            raise Refused("journal_write") from None
+        self.journal_generation = generation
+        self.journal_digest = digest
+
+    def journal_anchor(self):
+        if type(self.journal_generation) is not int or self.journal_generation <= 0 \
+                or not isinstance(self.journal_digest, str):
+            raise Refused("journal_anchor")
+        return {"generation": self.journal_generation, "digest": self.journal_digest}
+
+    @staticmethod
+    def _validate_anchor(anchor):
+        if not isinstance(anchor, dict) or set(anchor) != {"generation", "digest"} \
+                or type(anchor["generation"]) is not int or not 1 <= anchor["generation"] <= JOURNAL_LIMIT \
+                or not isinstance(anchor["digest"], str) or not re.fullmatch(r"[a-f0-9]{64}", anchor["digest"]):
+            raise Refused("journal_anchor")
+
+    def _read_journal(self, anchor=None):
+        claim = self._read_claim()
+        if (self.run / JOURNAL_TEMP).exists():
+            raise Refused("journal_read")
+        try:
+            lines = (self.run / JOURNAL).read_text(encoding="ascii").splitlines()
+            paths = sorted(self.run.glob(JOURNAL_PREFIX + "*.json"))
+        except Exception:
+            raise Refused("journal_read") from None
+        if not 1 <= len(lines) == len(paths) <= JOURNAL_LIMIT:
+            raise Refused("journal_chain")
+        previous = claim["journalBinding"]
+        latest = None
+        for generation, (line, path) in enumerate(zip(lines, paths), 1):
+            expected_name = f"{JOURNAL_PREFIX}{generation:08d}.json"
+            if path.name != expected_name or not re.fullmatch(r"[0-9]{8} [a-f0-9]{64}", line):
+                raise Refused("journal_chain")
+            number, head_digest = line.split(" ")
+            if int(number) != generation:
+                raise Refused("journal_chain")
+            try:
+                document = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                raise Refused("journal_read") from None
+            if not isinstance(document, dict) or set(document) != {
+                "version", "run", "session", "configBinding", "launchIntents", "owned", "claimDigest",
+                "generation", "prevDigest", "integrity"
+            }:
+                raise Refused("journal_shape")
+            integrity = document.pop("integrity")
+            if integrity != head_digest or integrity != self._journal_digest(document) \
+                    or document["generation"] != generation or document["prevDigest"] != previous:
+                raise Refused("journal_integrity")
+            if document["version"] != 1 or document["run"] != self._normalized_path(str(self.run.absolute())):
+                raise Refused("journal_shape")
+            if document["session"] != claim["session"] or document["configBinding"] != claim["configBinding"] \
+                    or document["claimDigest"] != self._journal_digest(claim):
+                raise Refused("journal_claim")
+            self._validate_journal_entries(document)
+            previous, latest = integrity, document
+        self.journal_generation = len(lines)
+        self.journal_digest = previous
+        if anchor is not None:
+            self._validate_anchor(anchor)
+            if anchor != self.journal_anchor():
+                raise Refused("journal_anchor")
+        return latest
+
+    def _validate_journal_entries(self, journal):
+        intents = journal["launchIntents"]
+        if not isinstance(intents, list):
+            raise Refused("journal_shape")
+        for intent in intents:
+            if not isinstance(intent, dict) or set(intent) != {"role", "executable"} \
+                    or intent["role"] not in {"php", "tls", "browser", "browser_launcher", "command"}:
+                raise Refused("journal_shape")
+            if self._normalized_path(intent["executable"]) not in self._expected_executables(
+                intent["role"]
+            ):
+                raise Refused("journal_shape")
+        records = journal["owned"]
+        if not isinstance(records, list) or any(not isinstance(record, dict) for record in records):
+            raise Refused("journal_shape")
+        seen = {}
+        unique_roles = set()
+        for record in records:
+            parent = record.get("parent")
+            if set(record) != {"pid", "started", "role", "parent", "executable"} \
+                    or type(record["pid"]) is not int or record["pid"] <= 0 \
+                    or not isinstance(record["started"], str) or not re.fullmatch(r"[0-9]{1,20}", record["started"]) \
+                    or record["role"] not in JOURNAL_ROLES or not isinstance(parent, dict) \
+                    or set(parent) != {"pid", "started"} or type(parent["pid"]) is not int or parent["pid"] <= 0 \
+                    or not isinstance(parent["started"], str) or not re.fullmatch(r"[0-9]{1,20}", parent["started"]):
+                raise Refused("journal_shape")
+            self._normalized_path(record["executable"])
+            if record["pid"] in seen:
+                raise Refused("journal_shape")
+            if record["role"] in {"php", "tls", "browser_launcher", "browser"}:
+                if record["role"] in unique_roles:
+                    raise Refused("journal_shape")
+                unique_roles.add(record["role"])
+            seen[record["pid"]] = record["started"]
+        if [record["pid"] for record in records] != sorted(seen):
+            raise Refused("journal_shape")
+
+    def _push_launch_intent(self, role, executable):
+        if role not in {"php", "tls", "browser", "browser_launcher", "command"}:
+            raise Refused("journal_shape")
+        intent = {"role": role, "executable": executable}
+        self.launch_intents.append(intent)
+        self._persist_journal()
+        return intent
+
+    def _clear_launch_intent(self, intent):
+        if not self.launch_intents or self.launch_intents[-1] != intent:
+            raise Refused("journal_shape")
+        self.launch_intents.pop()
+        self._persist_journal()
+
+    def _register_owned(self, identity, role, parent, executable):
+        if role not in JOURNAL_ROLES or not isinstance(identity, dict) or set(identity) != {"pid", "started"} \
+                or not isinstance(parent, dict) or not {"pid", "started"} <= set(parent):
+            raise Refused("journal_shape")
+        record = {"pid": identity["pid"], "started": identity["started"], "role": role,
+                  "parent": {"pid": parent["pid"], "started": parent["started"]}, "executable": executable}
+        candidate = {**self.owned_records, identity["pid"]: record}
+        if identity["pid"] in self.owned_records and self.owned_records[identity["pid"]] != record:
+            raise Refused("journal_shape")
+        self._validate_journal_entries({"launchIntents": [],
+                                        "owned": sorted(candidate.values(), key=lambda item: item["pid"])})
+        self.owned[identity["pid"]] = identity["started"]
+        self.owned_records[identity["pid"]] = record
+        self._persist_journal()
+
+    def _expected_executables(self, role):
+        keys = {"php": ("php",), "tls": ("python",), "browser_launcher": ("node",),
+                "browser": ("browser",), "command": ("php", "node"),
+                "descendant": ("php", "python", "node", "browser")}[role]
+        return {self._normalized_path(self.c[key]) for key in keys}
+
+    def recover_ownership(self, session, anchor):
+        self._validate_anchor(anchor)
+        claim = self._read_claim()
+        if session != claim["session"]:
+            raise Refused("recovery_session")
+        try:
+            binding = self._config_binding(session)
+        except Refused:
+            raise Refused("recovery_config") from None
+        if binding != claim["configBinding"]:
+            raise Refused("recovery_config")
+        try:
+            for key, expected in self.c["tool_hashes"].items():
+                path = Path(self.c[key])
+                self._canonical(path)
+                if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+                    raise Refused("recovery_config")
+        except Exception:
+            raise Refused("recovery_config") from None
+        journal = self._read_journal(anchor)
+        if journal["launchIntents"]:
+            # A crash between spawn and exact PID registration cannot be recovered by guessing.
+            raise Refused("recovery_incomplete")
+        records = {record["pid"]: record for record in journal["owned"]}
+        owner = claim["owner"]
+        relevant = {owner["pid"], *records, *(record["parent"]["pid"] for record in records.values())}
+        current_rows = self._snapshot()
+        if not isinstance(current_rows, list):
+            raise Refused("recovery_identity")
+        current = {}
+        for row in current_rows:
+            if not isinstance(row, dict) or type(row.get("pid")) is not int or row["pid"] <= 0:
+                continue
+            if row["pid"] not in relevant:
+                continue
+            if set(row) != {"pid", "parent", "started", "executable"} \
+                    or type(row["parent"]) is not int or row["parent"] < 0 \
+                    or not isinstance(row["started"], str) or not re.fullmatch(r"[0-9]{1,20}", row["started"]) \
+                    or not isinstance(row["executable"], str) or not Path(row["executable"]).is_absolute() \
+                    or row["pid"] in current:
+                raise Refused("recovery_identity")
+            current[row["pid"]] = row
+        if current.get(owner["pid"], {}).get("started") == owner["started"]:
+            raise Refused("recovery_owner_active")
+        live = {}
+        for pid, record in records.items():
+            row = current.get(pid)
+            if row is None:
+                continue
+            if row.get("started") != record["started"]:
+                raise Refused("recovery_identity")
+            try:
+                actual_executable = self._normalized_path(row.get("executable"))
+            except Refused:
+                raise Refused("recovery_executable") from None
+            if actual_executable != self._normalized_path(record["executable"]) \
+                    or self._normalized_path(record["executable"]) not in self._expected_executables(record["role"]):
+                raise Refused("recovery_executable")
+            if row["parent"] != record["parent"]["pid"]:
+                raise Refused("recovery_parent")
+            live[pid] = record
+        for record in live.values():
+            parent = record["parent"]
+            row = current.get(parent["pid"])
+            if parent["pid"] == owner["pid"]:
+                continue
+            if row is None or row.get("started") != parent["started"]:
+                raise Refused("recovery_parent")
+            if parent["pid"] not in records:
+                raise Refused("recovery_parent")
+        self.session = session
+        self.owner = owner
+        self.claimed = True
+        self.owned = {pid: record["started"] for pid, record in live.items()}
+        self.owned_records = records
+        self.roles = {record["role"]: {"pid": pid, "started": record["started"]}
+                      for pid, record in live.items() if record["role"] in {"php", "tls", "browser"}}
+
+    def _clear_journal(self):
+        self._read_journal()
+        paths = sorted(self.run.glob(JOURNAL_PREFIX + "*.json"))
+        for path in reversed(paths):
+            self._canonical(path)
+            path.unlink()
+        head = self.run / JOURNAL
+        self._canonical(head)
+        head.unlink()
+
+    def _command(self, args, timeout, *, track=True, role="command"):
         end = min(self.clock() + timeout, self.io_deadline)
         if self.clock() >= end:
             raise Refused("budget")
+        intent = self._push_launch_intent(role, str(Path(args[0]).absolute())) if track else None
         # Real files avoid Windows pipe-read hangs. Output is bounded on capture/poll.
         with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as errors:
             process = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=output, stderr=errors,
@@ -251,7 +586,9 @@ class WindowsRun:
             try:
                 if track:
                     try:
-                        self.owned[process.pid] = self._identity(process.pid)["started"]
+                        identity = self._identity(process.pid)
+                        self._register_owned(identity, role, self.owner, str(Path(args[0]).absolute()))
+                        self._clear_launch_intent(intent)
                     except Exception:
                         self._mark_uncertain("identity_probe_failed")
                         raise
@@ -286,7 +623,7 @@ class WindowsRun:
         return {"pid": pid, "started": ticks}
 
     def _snapshot(self):
-        script = "$ErrorActionPreference='Stop'; $rows=@(Get-CimInstance Win32_Process | ForEach-Object { $t=$null; try {$p=[Diagnostics.Process]::GetProcessById([int]$_.ProcessId); $t=$p.StartTime.ToUniversalTime().Ticks.ToString(); $p.Dispose()} catch {}; @{pid=[int]$_.ProcessId; parent=[int]$_.ParentProcessId; started=$t} }); ConvertTo-Json -InputObject $rows -Compress"
+        script = "$ErrorActionPreference='Stop'; $rows=@(Get-CimInstance Win32_Process | ForEach-Object { $t=$null; $x=$null; try {$p=[Diagnostics.Process]::GetProcessById([int]$_.ProcessId); $t=$p.StartTime.ToUniversalTime().Ticks.ToString(); $x=$p.MainModule.FileName; $p.Dispose()} catch {}; @{pid=[int]$_.ProcessId; parent=[int]$_.ParentProcessId; started=$t; executable=$x} }); ConvertTo-Json -InputObject $rows -Compress"
         return json.loads(self._ps(script))
 
     def _discover(self):
@@ -312,7 +649,16 @@ class WindowsRun:
                 if not row["started"] or int(row["started"]) < int(self.owned[parent]):
                     self._mark_uncertain("child_tick_invalid")
                     continue
-                self.owned[row["pid"]] = row["started"]
+                if self.claimed:
+                    executable = row.get("executable")
+                    if not isinstance(executable, str) or not Path(executable).is_absolute():
+                        self._mark_uncertain("identity_probe_failed")
+                        continue
+                    parent_record = {"pid": parent, "started": self.owned[parent]}
+                    self._register_owned({"pid": row["pid"], "started": row["started"]},
+                                         "descendant", parent_record, executable)
+                else:
+                    self.owned[row["pid"]] = row["started"]
                 changed = True
         return current
 
@@ -338,10 +684,14 @@ class WindowsRun:
             raise Refused("occupied_port")
 
     def claim(self, remaining):
+        binding = self._config_binding(self.session)
         with (self.run / "supervisor.json").open("x") as file:
             self.claimed = True
-            json.dump({"mode": "cooperative", "owner": self.owner, "accepted": False}, file)
+            json.dump({"version": 2, "mode": "cooperative", "owner": self.owner, "session": self.session,
+                       "configBinding": binding, "journalBinding": secrets.token_hex(32),
+                       "accepted": False}, file, sort_keys=True, separators=(",", ":"))
         self.claimed = True
+        self._persist_journal()
 
     def harness(self, mode, remaining, assertions=False):
         self.io_deadline = self.clock() + remaining
@@ -351,18 +701,26 @@ class WindowsRun:
             self.env["ONCAM_CHECKOUT_BROWSER_OWNED_PROCESSES"] = json.dumps(self.roles, separators=(",", ":"))
         text = self._command([self.c["php"], "-n", "-c", self.c["ini"], str(self.source / HARNESS), mode], remaining)
         data = json.loads(text)
+        self.__accept_harness_result(mode, data)
+
+    def __accept_harness_result(self, mode, data):
         expected = {"integrity-pre": "preverified", "integrity-start": "serving", "integrity-stop": "stopped", "integrity-post": "postverified"}
         if mode == "verify":
             if data != {"businessMatchesFixedPlan": True, "lifecycleAuditsChecked": True}:
                 raise Refused("business")
-        elif data != {"state": expected[mode], "accepted": False}:
+        elif mode not in expected or data != {"state": expected[mode], "accepted": False}:
             raise Refused("harness")
+        if mode == "integrity-post":
+            self.postcheck_complete = True
+            self.__journal_postchecked = True
 
     def _cli(self, args, remaining):
         return self._command([self.c["node"], self.c["cli"], "-s=" + self.session, *args], remaining,
-                             track=args[0] != "close")
+                             track=True, role="browser_launcher" if args[0] == "open" else "command")
 
     def launch(self, role, remaining):
+        expected = self.c[{"php": "php", "tls": "python", "browser": "browser"}[role]]
+        intent = self._push_launch_intent(role, expected)
         if role == "browser":
             text = self._cli(["open", "about:blank", "--config=" + self.c["browser_config"]], remaining)
             match = re.search(r"opened with pid ([0-9]+)\.", text)
@@ -372,6 +730,11 @@ class WindowsRun:
             self._discover()
             if self.owned.get(identity["pid"]) != identity["started"]:
                 raise Refused("unowned_browser")
+            record = self.owned_records[identity["pid"]]
+            if self._normalized_path(record["executable"]) != self._normalized_path(self.c["browser"]):
+                raise Refused("unowned_browser")
+            record["role"] = "browser"
+            self._persist_journal()
         else:
             args = ([self.c["php"], "-n", "-c", self.c["ini"], "-S", "127.0.0.1:8126", "-t", str(self.run / "storage/public"), str(self.source / HARNESS)] if role == "php" else
                     [self.c["python"], str(self.source / "tools/testing/tests/Browser/https-loopback-proxy.py"), self.c["cert"], self.c["key"], "443", "8126"])
@@ -383,8 +746,9 @@ class WindowsRun:
             except Exception:
                 self._mark_uncertain("identity_probe_failed")
                 raise
-            self.owned[identity["pid"]] = identity["started"]
+            self._register_owned(identity, role, self.owner, str(Path(args[0]).absolute()))
         self.roles[role] = identity
+        self._clear_launch_intent(intent)
 
     def assert_owned(self, remaining):
         current = self._discover()
@@ -467,6 +831,12 @@ class WindowsRun:
                         handle.wait(timeout=max(.01, min(2, end - self.clock())))
                 except Exception:
                     self._mark_uncertain("cleanup_exception")
+        if clean and not self.uncertain and self.__journal_postchecked:
+            try:
+                self._clear_journal()
+            except Exception:
+                self._mark_uncertain("cleanup_exception")
+                clean = False
         return clean and not self.uncertain
 
     def invalidate(self):

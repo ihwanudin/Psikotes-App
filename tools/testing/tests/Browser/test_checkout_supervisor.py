@@ -1,9 +1,11 @@
 """Supervisor unit tests plus one owned local listener inspection; no browser or DB."""
+import hashlib
 import importlib.util
 import json
 import os
 from pathlib import Path
 import socket
+from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
 
@@ -54,6 +56,362 @@ class Fake:
 
 
 class SupervisorTests(unittest.TestCase):
+    def journal_run(self, directory):
+        paths = {name: str(Path(directory) / name) for name in
+                 ("php", "python", "node", "powershell", "cli", "browser", "ini", "browser_config", "cert", "key")}
+        for index, path in enumerate(paths.values(), 1):
+            if not Path(path).exists():
+                Path(path).write_bytes(f"synthetic-{index}".encode())
+        return m.WindowsRun({
+            "directory": directory, "manifest": "a" * 64, **paths,
+            "tool_hashes": {name: hashlib.sha256(Path(path).read_bytes()).hexdigest()
+                            for name, path in paths.items()},
+        })
+
+    def rewrite_journal(self, run, mutate):
+        path = sorted(run.run.glob(m.JOURNAL_PREFIX + "*.json"))[-1]
+        document = json.loads(path.read_text(encoding="utf-8"))
+        document.pop("integrity")
+        mutate(document)
+        document["integrity"] = run._journal_digest(document)
+        path.write_text(json.dumps(document, sort_keys=True, separators=(",", ":")), encoding="utf-8")
+        lines = (run.run / m.JOURNAL).read_text(encoding="ascii").splitlines()
+        lines[-1] = f'{document["generation"]:08d} {document["integrity"]}'
+        (run.run / m.JOURNAL).write_text("\n".join(lines) + "\n", encoding="ascii")
+
+    def test_claim_creates_integrity_bound_empty_journal_and_browser_intent_precedes_cli(self):
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            run = self.journal_run(directory)
+            run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            run.session = "checkout-" + "c" * 32
+            run.claim(1)
+            journal = run._read_journal()
+            self.assertEqual(journal["owned"], [])
+            self.assertEqual(journal["launchIntents"], [])
+            self.assertEqual(journal["session"], run.session)
+
+            observed = []
+            run._cli = lambda args, remaining: observed.append(run._read_journal()["launchIntents"]) or (_ for _ in ()).throw(m.Refused("synthetic"))
+            with self.assertRaisesRegex(m.Refused, "synthetic"):
+                run.launch("browser", 1)
+            self.assertEqual(observed, [[{"role": "browser", "executable": run.c["browser"]}]])
+
+    def test_journal_persists_exact_lineage_and_rejects_tampering(self):
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            run = self.journal_run(directory)
+            run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            run.session = "checkout-" + "c" * 32
+            run.claim(1)
+            run._register_owned({"pid": 10, "started": "110"}, "php", run.owner, run.c["php"])
+            journal = run._read_journal()
+            self.assertEqual(journal["owned"], [{
+                "pid": 10, "started": "110", "role": "php",
+                "parent": {"pid": 7, "started": "100"}, "executable": run.c["php"],
+            }])
+
+            path = sorted(Path(directory).glob(m.JOURNAL_PREFIX + "*.json"))[-1]
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            raw["owned"][0]["started"] = "999"
+            path.write_text(json.dumps(raw), encoding="utf-8")
+            with self.assertRaisesRegex(m.Refused, "^journal_integrity$"):
+                run._read_journal()
+
+    def test_recovery_requires_exact_session_config_executable_tick_and_parent(self):
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            run = self.journal_run(directory)
+            run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            run.session = "checkout-" + "c" * 32
+            run.claim(1)
+            run._register_owned({"pid": 10, "started": "110"}, "php", run.owner, run.c["php"])
+            run._register_owned({"pid": 11, "started": "120"}, "descendant",
+                                {"pid": 10, "started": "110"}, run.c["php"])
+            rows = [
+                {"pid": 10, "parent": 7, "started": "110", "executable": run.c["php"]},
+                {"pid": 11, "parent": 10, "started": "120", "executable": run.c["php"]},
+            ]
+            anchor = run.journal_anchor()
+
+            recovered = self.journal_run(directory)
+            recovered._snapshot = lambda: rows
+            recovered.recover_ownership(run.session, anchor)
+            self.assertEqual(recovered.owned, {10: "110", 11: "120"})
+
+            missing_parent = self.journal_run(directory)
+            missing_parent._snapshot = lambda: rows[1:]
+            with self.assertRaisesRegex(m.Refused, "^recovery_parent$"):
+                missing_parent.recover_ownership(run.session, anchor)
+
+            cases = {
+                "recovery_session": ("checkout-" + "d" * 32, rows, None),
+                "recovery_parent": (run.session, [{**rows[0], "parent": 8}, rows[1]], None),
+                "recovery_identity": (run.session, [{**rows[0], "started": "999"}, rows[1]], None),
+                "recovery_executable": (run.session, [{**rows[0], "executable": str(Path(directory) / "other.exe")}, rows[1]], None),
+                "recovery_config": (run.session, rows, "manifest"),
+            }
+            for reason, (session, snapshot, drift) in cases.items():
+                with self.subTest(reason=reason):
+                    candidate = self.journal_run(directory)
+                    if drift:
+                        candidate.c[drift] = "f" * 64
+                    candidate._snapshot = lambda snapshot=snapshot: snapshot
+                    with self.assertRaisesRegex(m.Refused, f"^{reason}$"):
+                        candidate.recover_ownership(session, anchor)
+
+    def test_recovery_refuses_active_owner_and_takes_its_own_snapshot(self):
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            run = self.journal_run(directory)
+            run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            run.session = "checkout-" + "c" * 32
+            run.claim(1)
+            run._register_owned({"pid": 10, "started": "110"}, "php", run.owner, run.c["php"])
+
+            candidate = self.journal_run(directory)
+            snapshots = [[
+                {"pid": 7, "parent": 1, "started": "100", "executable": str(Path(directory) / "owner.exe")},
+                {"pid": 10, "parent": 7, "started": "110", "executable": run.c["php"]},
+            ]]
+            candidate._snapshot = lambda: snapshots.pop()
+            with self.assertRaisesRegex(m.Refused, "^recovery_owner_active$"):
+                candidate.recover_ownership(run.session, run.journal_anchor())
+            self.assertEqual(snapshots, [])
+
+    def test_recovery_refuses_unresolved_launch_intent(self):
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            run = self.journal_run(directory)
+            run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            run.session = "checkout-" + "c" * 32
+            run.claim(1)
+            run._push_launch_intent("php", run.c["php"])
+
+            candidate = self.journal_run(directory)
+            candidate._snapshot = lambda: []
+            with self.assertRaisesRegex(m.Refused, "^recovery_incomplete$"):
+                candidate.recover_ownership(run.session, run.journal_anchor())
+
+    def test_every_tracked_popen_persists_intent_before_identity_registration(self):
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            run = self.journal_run(directory)
+            run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            run.session = "checkout-" + "c" * 32
+            run.claim(1)
+
+            class Process:
+                pid = 10
+                returncode = 0
+
+                def poll(self): return 1
+
+            with patch.object(m.subprocess, "Popen", return_value=Process()), \
+                    patch.object(run, "_identity", side_effect=RuntimeError("crash-before-identity")):
+                with self.assertRaisesRegex(RuntimeError, "crash-before-identity"):
+                    run._command([run.c["php"], "synthetic"], 1, track=True, role="command")
+            self.assertEqual(run._read_journal()["launchIntents"], [
+                {"role": "command", "executable": run.c["php"]},
+            ])
+
+            candidate = self.journal_run(directory)
+            candidate._snapshot = lambda: []
+            with self.assertRaisesRegex(m.Refused, "^recovery_incomplete$"):
+                candidate.recover_ownership(run.session, run.journal_anchor())
+
+    def test_close_cli_is_tracked_while_recursive_snapshot_helper_is_explicitly_untracked(self):
+        run = m.WindowsRun({"directory": "synthetic-unused", "node": "node.exe",
+                            "cli": "playwright-cli.js", "powershell": "powershell.exe"})
+        calls = []
+        run._command = lambda args, timeout, **kwargs: calls.append((args, kwargs)) or ""
+        run._cli(["close"], 1)
+        run._ps("synthetic", timeout=1)
+        self.assertEqual(calls[0][1], {"track": True, "role": "command"})
+        self.assertEqual(calls[1][1], {"track": False})
+
+    def test_nested_browser_launcher_intent_does_not_overwrite_outer_browser_intent(self):
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            run = self.journal_run(directory)
+            run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            run.session = "checkout-" + "c" * 32
+            run.claim(1)
+            outer = run._push_launch_intent("browser", run.c["browser"])
+            inner = run._push_launch_intent("browser_launcher", run.c["node"])
+            self.assertEqual(run._read_journal()["launchIntents"], [outer, inner])
+            run._clear_launch_intent(inner)
+            self.assertEqual(run._read_journal()["launchIntents"], [outer])
+            run._clear_launch_intent(outer)
+            self.assertEqual(run._read_journal()["launchIntents"], [])
+
+    def test_stale_valid_generation_cannot_replace_current_journal(self):
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            run = self.journal_run(directory)
+            run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            run.session = "checkout-" + "c" * 32
+            run.claim(1)
+            first = sorted(run.run.glob(m.JOURNAL_PREFIX + "*.json"))[-1].read_bytes()
+            run._push_launch_intent("php", run.c["php"])
+            latest = sorted(run.run.glob(m.JOURNAL_PREFIX + "*.json"))[-1]
+            latest.write_bytes(first)
+            with self.assertRaisesRegex(m.Refused, "^journal_integrity$"):
+                run._read_journal()
+
+    def test_external_latest_anchor_rejects_coordinated_suffix_and_head_rollback(self):
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            run = self.journal_run(directory)
+            run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            run.session = "checkout-" + "c" * 32
+            run.claim(1)
+            old_head = (run.run / m.JOURNAL).read_text(encoding="ascii")
+            run._push_launch_intent("php", run.c["php"])
+            latest_anchor = run.journal_anchor()
+
+            sorted(run.run.glob(m.JOURNAL_PREFIX + "*.json"))[-1].unlink()
+            (run.run / m.JOURNAL).write_text(old_head, encoding="ascii")
+            candidate = self.journal_run(directory)
+            candidate._snapshot = lambda: []
+            with self.assertRaisesRegex(m.Refused, "^journal_anchor$"):
+                candidate.recover_ownership(run.session, latest_anchor)
+
+    def test_recovery_anchor_requires_exact_shape_and_types(self):
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            run = self.journal_run(directory)
+            run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            run.session = "checkout-" + "c" * 32
+            run.claim(1)
+            candidate = self.journal_run(directory)
+            candidate._snapshot = lambda: []
+            invalid = [None, {}, {"generation": True, "digest": "a" * 64},
+                       {"generation": 1, "digest": "A" * 64},
+                       {"generation": 1, "digest": "a" * 64, "extra": False}]
+            for anchor in invalid:
+                with self.subTest(anchor=anchor), self.assertRaisesRegex(m.Refused, "^journal_anchor$"):
+                    candidate.recover_ownership(run.session, anchor)
+
+    def test_recovery_rejects_malformed_or_incomplete_claim_journal_pairs(self):
+        def claimed(directory):
+            run = self.journal_run(directory)
+            run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            run.session = "checkout-" + "c" * 32
+            run.claim(1)
+            return run
+
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            run = claimed(directory)
+            sorted(run.run.glob(m.JOURNAL_PREFIX + "*.json"))[-1].write_text('{"truncated":', encoding="utf-8")
+            with self.assertRaisesRegex(m.Refused, "^journal_read$"):
+                run._read_journal()
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            run = claimed(directory)
+            (run.run / m.JOURNAL).unlink()
+            with self.assertRaisesRegex(m.Refused, "^journal_read$"):
+                run._read_journal()
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            run = claimed(directory)
+            (run.run / "supervisor.json").unlink()
+            with self.assertRaisesRegex(m.Refused, "^journal_claim$"):
+                run._read_journal()
+
+    def test_recovery_rejects_duplicate_pid_or_singleton_role_even_with_valid_mac(self):
+        for mutation in ("pid", "role"):
+            with self.subTest(mutation=mutation), TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+                run = self.journal_run(directory)
+                run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+                run.session = "checkout-" + "c" * 32
+                run.claim(1)
+                run._register_owned({"pid": 10, "started": "110"}, "php", run.owner, run.c["php"])
+
+                def duplicate(document):
+                    clone = dict(document["owned"][0])
+                    if mutation == "role":
+                        clone["pid"], clone["started"] = 11, "120"
+                    document["owned"].append(clone)
+
+                self.rewrite_journal(run, duplicate)
+                with self.assertRaisesRegex(m.Refused, "^journal_shape$"):
+                    run._read_journal()
+
+    def test_recovery_rejects_tool_hash_and_executable_config_drift(self):
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            run = self.journal_run(directory)
+            run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            run.session = "checkout-" + "c" * 32
+            run.claim(1)
+            for mutate in (lambda candidate: candidate.c["tool_hashes"].__setitem__("php", "f" * 64),
+                           lambda candidate: candidate.c.__setitem__("php", str(Path(directory) / "other-php"))):
+                candidate = self.journal_run(directory)
+                mutate(candidate)
+                with self.assertRaisesRegex(m.Refused, "^recovery_config$"):
+                    candidate.recover_ownership(run.session, run.journal_anchor())
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            run = self.journal_run(directory)
+            run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            run.session = "checkout-" + "c" * 32
+            run.claim(1)
+            Path(run.c["php"]).write_bytes(b"drifted-after-claim")
+            candidate = self.journal_run(directory)
+            candidate.c["tool_hashes"] = dict(run.c["tool_hashes"])
+            with self.assertRaisesRegex(m.Refused, "^recovery_config$"):
+                candidate.recover_ownership(run.session, run.journal_anchor())
+
+    def test_journal_clears_only_when_final_exact_cleanup_is_allowed(self):
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            run = self.journal_run(directory)
+            run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            run.session = "checkout-" + "c" * 32
+            run.claim(1)
+            run._discover = lambda: {}
+            run._listeners = lambda: []
+            self.assertTrue(run.cleanup(1))
+            self.assertTrue((Path(directory) / m.JOURNAL).is_file())
+            run.postcheck_complete = True  # Public mutation is not the private monotonic gate.
+            self.assertTrue(run.cleanup(1))
+            self.assertTrue((Path(directory) / m.JOURNAL).is_file())
+            with self.assertRaisesRegex(m.Refused, "^harness$"):
+                run._WindowsRun__accept_harness_result(
+                    "integrity-post", {"state": "postverified", "accepted": True}
+                )
+            self.assertTrue((Path(directory) / m.JOURNAL).is_file())
+            run._WindowsRun__accept_harness_result(
+                "integrity-post", {"state": "postverified", "accepted": False}
+            )
+            self.assertTrue(run.cleanup(1))
+            self.assertFalse((Path(directory) / m.JOURNAL).exists())
+
+    def test_failed_or_interrupted_cleanup_cannot_clear_postchecked_journal(self):
+        for outcome in ("failure", "interrupt"):
+            with self.subTest(outcome=outcome), TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+                run = self.journal_run(directory)
+                run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+                run.session = "checkout-" + "c" * 32
+                run.claim(1)
+                run._WindowsRun__accept_harness_result(
+                    "integrity-post", {"state": "postverified", "accepted": False}
+                )
+                if outcome == "failure":
+                    run._discover = lambda: {}
+                    run._listeners = lambda: (_ for _ in ()).throw(RuntimeError("synthetic"))
+                    self.assertFalse(run.cleanup(1))
+                else:
+                    run._discover = lambda: (_ for _ in ()).throw(KeyboardInterrupt())
+                    with self.assertRaises(KeyboardInterrupt):
+                        run.cleanup(1)
+                self.assertTrue((Path(directory) / m.JOURNAL).is_file())
+
+    def test_recover_flow_invokes_persisted_recovery_cleanup_and_invalidation(self):
+        class Recovery:
+            uncertain = False
+
+            def __init__(self):
+                self.calls = []
+
+            def clock(self): return 10
+            def recover_ownership(self, session, anchor): self.calls.append(("recover", session, anchor))
+            def cleanup(self, budget): self.calls.append(("cleanup", budget)); return True
+            def invalidate(self): self.calls.append(("invalidate",))
+
+        io = Recovery()
+        anchor = {"generation": 3, "digest": "a" * 64}
+        result = m.recover(io, session="checkout-" + "c" * 32, anchor=anchor, budget=12)
+        self.assertEqual(result, {"state": "recovered_cleanup", "accepted": False})
+        self.assertEqual(io.calls, [("recover", "checkout-" + "c" * 32, anchor),
+                                    ("cleanup", 12), ("invalidate",)])
+
     def test_primary_reason_and_cleanup_status_matrix_are_independent(self):
         cases = [
             ("preflight", True, False, "preflight", "not_required"),
@@ -271,8 +629,8 @@ class SupervisorTests(unittest.TestCase):
 
         source = Path(m.__file__).read_text(encoding="utf-8")
         sites = {"pid_reuse": 1, "parent_missing": 1, "parent_identity_mismatch": 1,
-                 "child_tick_invalid": 1, "identity_probe_failed": 2,
-                 "postcheck_live_process": 2, "cleanup_exception": 2}
+                 "child_tick_invalid": 1, "identity_probe_failed": 3,
+                 "postcheck_live_process": 2, "cleanup_exception": 3}
         self.assertEqual(set(sites), m.UNCERTAINTY_CATEGORIES)
         for category, count in sites.items():
             self.assertEqual(source.count(f'_mark_uncertain("{category}")'), count)
