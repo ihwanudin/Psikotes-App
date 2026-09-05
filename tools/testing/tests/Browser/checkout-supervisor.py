@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import stat
 import subprocess
 import tempfile
 import time
@@ -65,6 +66,8 @@ JOURNAL_ROLES = frozenset({"php", "tls", "browser_launcher", "browser", "command
 UNCERTAINTY_CATEGORIES = frozenset({"pid_reuse", "parent_missing", "parent_identity_mismatch",
                                    "child_tick_invalid", "identity_probe_failed",
                                    "postcheck_live_process", "cleanup_exception"})
+_FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+_BROWSER_CONFIG_LIMIT = 65536
 
 
 class Refused(Exception):
@@ -89,6 +92,124 @@ def _validated_asset_review(value, manifest=None):
                                         for name in ASSET_REVIEW_FILES)):
         raise Refused("asset_overlay_mismatch")
     return {name: value[name] for name in ASSET_REVIEW_FILES}
+
+
+def _validated_browser_config(raw, expected_browser):
+    """Decode only the exact offline browser schema emitted by the candidate builder."""
+    try:
+        if type(raw) is not bytes or not 0 < len(raw) <= _BROWSER_CONFIG_LIMIT \
+                or type(expected_browser) is not str:
+            raise ValueError("shape")
+
+        def object_without_duplicates(pairs):
+            result = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError("duplicate")
+                result[key] = value
+            return result
+
+        def reject_nonfinite(value):
+            raise ValueError("nonfinite")
+
+        document = json.loads(
+            raw.decode("utf-8", errors="strict"),
+            object_pairs_hook=object_without_duplicates,
+            parse_constant=reject_nonfinite,
+        )
+        if type(document) is not dict or set(document) != {"browser"}:
+            raise ValueError("shape")
+        browser = document["browser"]
+        if type(browser) is not dict or set(browser) != {
+            "contextOptions", "isolated", "launchOptions", "timeouts"
+        }:
+            raise ValueError("shape")
+        context = browser["contextOptions"]
+        launch = browser["launchOptions"]
+        timeouts = browser["timeouts"]
+        if type(context) is not dict or set(context) != {"offline", "serviceWorkers"} \
+                or context["offline"] is not True or context["serviceWorkers"] != "block" \
+                or browser["isolated"] is not True \
+                or type(launch) is not dict \
+                or set(launch) != {"args", "executablePath", "headless"} \
+                or launch["executablePath"] != expected_browser \
+                or type(launch["executablePath"]) is not str \
+                or launch["headless"] is not True \
+                or type(timeouts) is not dict or set(timeouts) != {"action", "navigation"} \
+                or type(timeouts["action"]) is not int or timeouts["action"] != 30000 \
+                or type(timeouts["navigation"]) is not int or timeouts["navigation"] != 30000:
+            raise ValueError("semantics")
+        WindowsRun._validate_browser_launch_args(launch["args"])
+        return browser
+    except Exception:
+        raise Refused("browser_config") from None
+
+
+def _browser_config_identity(info):
+    return (info.st_dev, info.st_ino, stat.S_IFMT(info.st_mode),
+            getattr(info, "st_file_attributes", 0))
+
+
+def _read_validated_browser_config(path, expected_hash, expected_browser, expected_parent):
+    descriptor = None
+    try:
+        if not isinstance(path, Path) or type(expected_hash) is not str \
+                or re.fullmatch(r"[a-f0-9]{64}", expected_hash) is None \
+                or not isinstance(expected_parent, Path):
+            raise ValueError("shape")
+        parent = path.parent
+        parent_info = parent.lstat()
+        parent_identity = _browser_config_identity(parent_info)
+        if (not stat.S_ISDIR(parent_info.st_mode) or parent.is_symlink()
+                or getattr(parent_info, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT
+                or parent.resolve() != parent.absolute()
+                or parent.absolute() != expected_parent.absolute()):
+            raise ValueError("parent")
+        before = path.lstat()
+        identity = _browser_config_identity(before)
+        if (not stat.S_ISREG(before.st_mode) or path.is_symlink()
+                or getattr(before, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT
+                or path.resolve() != path.absolute()
+                or not 0 < before.st_size <= _BROWSER_CONFIG_LIMIT):
+            raise ValueError("file")
+        descriptor = os.open(
+            path,
+            os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0),
+        )
+        if _browser_config_identity(os.fstat(descriptor)) != identity:
+            raise ValueError("identity")
+
+        def read_bounded():
+            chunks, total = [], 0
+            while True:
+                chunk = os.read(descriptor, min(8192, _BROWSER_CONFIG_LIMIT + 1 - total))
+                if not chunk:
+                    return b"".join(chunks)
+                chunks.append(chunk)
+                total += len(chunk)
+                if total > _BROWSER_CONFIG_LIMIT:
+                    raise ValueError("size")
+
+        raw = read_bounded()
+        if hashlib.sha256(raw).hexdigest() != expected_hash:
+            raise ValueError("hash")
+        browser = _validated_browser_config(raw, expected_browser)
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        repeated = read_bounded()
+        if repeated != raw or hashlib.sha256(repeated).hexdigest() != expected_hash \
+                or _browser_config_identity(os.fstat(descriptor)) != identity \
+                or _browser_config_identity(path.lstat()) != identity \
+                or _browser_config_identity(parent.lstat()) != parent_identity:
+            raise ValueError("drift")
+        return browser
+    except Exception:
+        raise Refused("browser_config") from None
+    finally:
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except Exception:
+                raise Refused("browser_config") from None
 
 
 def supervise(io, *, mode="smoke", requests=3, budget=180):
@@ -372,6 +493,7 @@ class WindowsRun:
             if digest != manifest.get(name) or digest != review[name]:
                 raise Refused("asset_overlay_mismatch")
         # Reviewed executable/config hashes are supplied by root, never auto-refreshed here.
+        browser_config = None
         for key in ("php", "python", "node", "powershell", "cli", "browser", "ini", "browser_config", "cert", "key"):
             path = Path(self.c[key])
             self._canonical(path)
@@ -381,16 +503,14 @@ class WindowsRun:
                 raise Refused("browser")
             if key in ("ini", "browser_config", "cert", "key") and path.parent.resolve() != self.run.resolve():
                 raise Refused("runtime_file_scope")
-            if hashlib.sha256(path.read_bytes()).hexdigest() != self.c["tool_hashes"][key]:
+            if key == "browser_config":
+                browser_config = _read_validated_browser_config(
+                    path, self.c["tool_hashes"][key], self.c["browser"], self.run
+                )
+            elif hashlib.sha256(path.read_bytes()).hexdigest() != self.c["tool_hashes"][key]:
                 raise Refused("tool_hash")
-        browser = json.loads(Path(self.c["browser_config"]).read_text())["browser"]
-        if browser.get("isolated") is not True or browser["launchOptions"].get("headless") is not True:
+        if browser_config is None:
             raise Refused("browser_config")
-        if browser["launchOptions"].get("executablePath") != self.c["browser"]:
-            raise Refused("browser_config")
-        if browser["contextOptions"].get("offline") is not True or browser["contextOptions"].get("serviceWorkers") != "block":
-            raise Refused("browser_config")
-        self._validate_browser_launch_args(browser["launchOptions"].get("args"))
         # Process-local allowlist; do not copy the calling shell's application environment.
         self.env = {key: os.environ[key] for key in ("SystemRoot", "TEMP", "TMP")}
         runtime_home = self.run / "storage/framework/supervisor-home"
@@ -979,6 +1099,11 @@ class WindowsRun:
     def launch(self, role, remaining):
         self._require_normal_run()
         expected = self.c[{"php": "php", "tls": "python", "browser": "browser"}[role]]
+        if role == "browser":
+            _read_validated_browser_config(
+                Path(self.c["browser_config"]), self.c["tool_hashes"]["browser_config"],
+                self.c["browser"], self.run,
+            )
         intent = self._push_launch_intent(role, expected)
         if role == "browser":
             text = self._cli(["open", "about:blank", "--config=" + self.c["browser_config"]], remaining)

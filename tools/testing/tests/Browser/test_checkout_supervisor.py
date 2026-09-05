@@ -104,6 +104,9 @@ class SupervisorTests(unittest.TestCase):
         for index, path in enumerate(paths.values(), 1):
             if not Path(path).exists():
                 Path(path).write_bytes(f"synthetic-{index}".encode())
+        Path(paths["browser_config"]).write_text(
+            json.dumps(self.browser_config(paths["browser"])), encoding="utf-8"
+        )
         store = self.anchor_stores.setdefault(str(Path(directory)), AnchorStore())
         return m.WindowsRun({
             "directory": directory, "manifest": "a" * 64, **paths,
@@ -154,6 +157,190 @@ class SupervisorTests(unittest.TestCase):
             ],
             "immediateDeliveredDOMRemovalClaimed": False,
         }
+
+    @staticmethod
+    def browser_config(browser="C:/approved/chrome.exe"):
+        return {
+            "browser": {
+                "contextOptions": {"offline": True, "serviceWorkers": "block"},
+                "isolated": True,
+                "launchOptions": {
+                    "args": list(m.BROWSER_LAUNCH_ARGS),
+                    "executablePath": browser,
+                    "headless": True,
+                },
+                "timeouts": {"action": 30000, "navigation": 30000},
+            },
+        }
+
+    def test_browser_config_decoder_accepts_only_exact_semantic_schema(self):
+        browser = "C:/approved/chrome.exe"
+        valid = self.browser_config(browser)
+        encoded = json.dumps(valid, sort_keys=True, indent=2).encode("utf-8")
+        self.assertEqual(m._validated_browser_config(encoded, browser), valid["browser"])
+
+        invalid_documents = []
+        for path, key, value in (
+            ((), "projects", []),
+            (("browser",), "use", {}),
+            (("browser",), "options", {}),
+            (("browser", "contextOptions"), "proxy", {"server": "http://127.0.0.1"}),
+            (("browser", "launchOptions"), "proxy", {"server": "http://127.0.0.1"}),
+            (("browser", "timeouts"), "expect", 30000),
+        ):
+            candidate = json.loads(json.dumps(valid))
+            target = candidate
+            for part in path:
+                target = target[part]
+            target[key] = value
+            invalid_documents.append(candidate)
+        for path, key in (
+            ((), "browser"),
+            (("browser",), "contextOptions"),
+            (("browser",), "isolated"),
+            (("browser",), "launchOptions"),
+            (("browser",), "timeouts"),
+            (("browser", "contextOptions"), "offline"),
+            (("browser", "contextOptions"), "serviceWorkers"),
+            (("browser", "launchOptions"), "args"),
+            (("browser", "launchOptions"), "executablePath"),
+            (("browser", "launchOptions"), "headless"),
+            (("browser", "timeouts"), "action"),
+            (("browser", "timeouts"), "navigation"),
+        ):
+            candidate = json.loads(json.dumps(valid))
+            target = candidate
+            for part in path:
+                target = target[part]
+            target.pop(key)
+            invalid_documents.append(candidate)
+        for mutation in (
+            lambda c: c["browser"].__setitem__("isolated", 1),
+            lambda c: c["browser"]["contextOptions"].__setitem__("offline", 1),
+            lambda c: c["browser"]["contextOptions"].__setitem__("serviceWorkers", "allow"),
+            lambda c: c["browser"]["launchOptions"].__setitem__("headless", 1),
+            lambda c: c["browser"]["launchOptions"].__setitem__("executablePath", browser + ".other"),
+            lambda c: c["browser"]["launchOptions"].__setitem__("args", list(m.BROWSER_LAUNCH_ARGS)[::-1]),
+            lambda c: c["browser"]["timeouts"].__setitem__("action", True),
+            lambda c: c["browser"]["timeouts"].__setitem__("navigation", 29999),
+        ):
+            candidate = json.loads(json.dumps(valid))
+            mutation(candidate)
+            invalid_documents.append(candidate)
+        for candidate in invalid_documents:
+            with self.subTest(candidate=candidate), self.assertRaisesRegex(m.Refused, "^browser_config$"):
+                m._validated_browser_config(json.dumps(candidate).encode("utf-8"), browser)
+
+        compact = json.dumps(valid, separators=(",", ":")).encode("utf-8")
+        malformed = (
+            b"null", b"[]", b'"scalar"', b"{} {}", b"{", b'{"browser":NaN}',
+            b'{"browser":Infinity}', b"\xff", b" " * 65537,
+            b'{"browser":{},"browser":{}}',
+            b'{"browser":{"contextOptions":{},"contextOptions":{}}}',
+            b'{"browser":{"contextOptions":{"offline":true,"offline":false}}}',
+            compact.replace(b'"headless":true', b'"headless":true,"headless":true'),
+            compact.replace(b'"action":30000', b'"action":30000,"action":30000'),
+        )
+        for raw in malformed:
+            with self.subTest(raw=raw[:80]), self.assertRaisesRegex(m.Refused, "^browser_config$"):
+                m._validated_browser_config(raw, browser)
+
+        with TemporaryDirectory(prefix="oncam-browser-config-") as directory:
+            path = Path(directory) / "browser-config.json"
+            path.write_bytes(encoded)
+            self.assertEqual(
+                m._read_validated_browser_config(
+                    path, hashlib.sha256(encoded).hexdigest(), browser, Path(directory)
+                ),
+                valid["browser"],
+            )
+            original_validator = m._validated_browser_config
+
+            def mutate_after_parse(raw, expected):
+                result = original_validator(raw, expected)
+                path.write_bytes(raw.replace(b"30000", b"30001", 1))
+                return result
+
+            with patch.object(m, "_validated_browser_config", side_effect=mutate_after_parse):
+                with self.assertRaisesRegex(m.Refused, "^browser_config$"):
+                    m._read_validated_browser_config(
+                        path, hashlib.sha256(encoded).hexdigest(), browser, Path(directory)
+                    )
+
+    def test_browser_launch_revalidates_config_before_intent_or_cli(self):
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            run = self.journal_run(directory)
+            run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            run.session = "checkout-" + "c" * 32
+            run.claim(1)
+            config = self.browser_config(run.c["browser"])
+            config["browser"]["contextOptions"]["proxy"] = {
+                "server": "http://127.0.0.1:9999"
+            }
+            raw = json.dumps(config).encode("utf-8")
+            Path(run.c["browser_config"]).write_bytes(raw)
+            run.c["tool_hashes"]["browser_config"] = hashlib.sha256(raw).hexdigest()
+            run._cli = lambda args, remaining: self.fail("must not invoke CLI")
+            with patch.object(m.subprocess, "Popen", side_effect=AssertionError("must not spawn")):
+                with self.assertRaisesRegex(m.Refused, "^browser_config$"):
+                    run.launch("browser", 1)
+            self.assertEqual(run.launch_intents, [])
+
+    def test_malformed_pinned_browser_config_preflight_leaves_no_claim_or_spawn(self):
+        with TemporaryDirectory(prefix="oncam-preflight-root-") as temp_root:
+            root = Path(temp_root)
+            run_path = root / ("oncam-checkout-" + "a" * 32)
+            run_path.mkdir()
+            source = run_path / "source"
+            source.mkdir()
+            for name in ("browser.sqlite", "baseline.json", "fixtures.json"):
+                (run_path / name).write_bytes(b"synthetic")
+            review = {}
+            for index, name in enumerate(m.ASSET_REVIEW_FILES):
+                path = source / Path(name)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                value = f"asset-{index}".encode()
+                path.write_bytes(value)
+                review[name] = hashlib.sha256(value).hexdigest()
+            manifest_bytes = json.dumps(review, sort_keys=True, separators=(",", ":")).encode()
+            (run_path / "source-manifest.json").write_bytes(manifest_bytes)
+            paths = {}
+            for name in ("php", "python", "node", "powershell", "ini", "cert", "key"):
+                path = run_path / name
+                path.write_bytes(name.encode())
+                paths[name] = str(path.absolute())
+            cli = run_path / Path(m.CLI_SUFFIX)
+            browser_path = run_path / Path(m.BROWSER_SUFFIX)
+            cli.parent.mkdir(parents=True)
+            browser_path.parent.mkdir(parents=True)
+            cli.write_bytes(b"cli")
+            browser_path.write_bytes(b"browser")
+            paths["cli"], paths["browser"] = str(cli.absolute()), str(browser_path.absolute())
+            malformed_config = self.browser_config(paths["browser"])
+            malformed_config["browser"]["projects"] = []
+            browser_bytes = json.dumps(malformed_config).encode()
+            browser_config = run_path / "browser-config.json"
+            browser_config.write_bytes(browser_bytes)
+            paths["browser_config"] = str(browser_config.absolute())
+            config = {
+                "directory": str(run_path.absolute()),
+                "manifest": hashlib.sha256(manifest_bytes).hexdigest(),
+                **paths,
+                "tool_hashes": {
+                    name: hashlib.sha256(Path(path).read_bytes()).hexdigest()
+                    for name, path in paths.items()
+                },
+                "asset_delivery_review": review,
+            }
+            run = m.WindowsRun(config)
+            with patch.object(m.tempfile, "gettempdir", return_value=str(root)), \
+                    patch.object(run, "_identity", side_effect=AssertionError("identity")), \
+                    patch.object(m.subprocess, "Popen", side_effect=AssertionError("spawn")):
+                with self.assertRaisesRegex(m.Refused, "^browser_config$"):
+                    run.preflight(1)
+            self.assertFalse((run_path / "supervisor.json").exists())
+            self.assertFalse((run_path / m.JOURNAL).exists())
+            self.assertEqual(run.launch_intents, [])
 
     def test_browser_launch_args_require_exact_canonical_ordered_list(self):
         approved = [
