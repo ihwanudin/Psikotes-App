@@ -175,10 +175,21 @@ class WindowsRun:
     """Explicit reviewed paths only. No downloads, shared sessions or default config discovery."""
 
     def __init__(self, config, *, anchor_publisher=None):
-        if anchor_publisher is not None and not callable(anchor_publisher):
+        if anchor_publisher is not None and (
+            not callable(anchor_publisher) or not callable(getattr(anchor_publisher, "load", None))
+        ):
             raise Refused("anchor_publisher")
         self.c = config
         self.anchor_publisher = anchor_publisher
+        self.__expected_anchor_publisher = None
+        self.__expected_anchor_publisher_type = None
+        self.__expected_anchor_publish_implementation = None
+        self.__anchor_publish = None
+        self.__anchor_publish_fingerprint = None
+        self.__anchor_load = None
+        self.__anchor_load_fingerprint = None
+        if anchor_publisher is not None:
+            self._pin_anchor_publisher(anchor_publisher)
         self.run = Path(config["directory"])
         self.source = self.run / "source"
         self.env = {}
@@ -203,6 +214,66 @@ class WindowsRun:
     @property
     def uncertain(self):
         return bool(self.uncertainty_categories)
+
+    def bind_anchor_publisher(self, publisher):
+        if self.lifecycle_phase != "new" or self.claimed is not False \
+                or self.anchor_publisher is not None or self.__expected_anchor_publisher is not None \
+                or not callable(publisher) or not callable(getattr(publisher, "load", None)):
+            raise Refused("anchor_publisher_bind")
+        self.anchor_publisher = publisher
+        self._pin_anchor_publisher(publisher)
+
+    @staticmethod
+    def _callable_fingerprint(value):
+        bound_self = getattr(value, "__self__", None)
+        bound_func = getattr(value, "__func__", None)
+        if bound_self is not None and bound_func is not None:
+            return ("bound", bound_self, bound_func, type(value))
+        if bound_self is not None:
+            return ("slot", bound_self, getattr(value, "__name__", None),
+                    getattr(value, "__objclass__", None), type(value))
+        return ("exact", value, type(value))
+
+    @staticmethod
+    def _callable_matches(value, fingerprint):
+        if fingerprint[0] == "bound":
+            return type(value) is fingerprint[3] \
+                and getattr(value, "__self__", None) is fingerprint[1] \
+                and getattr(value, "__func__", None) is fingerprint[2]
+        if fingerprint[0] == "slot":
+            return type(value) is fingerprint[4] \
+                and getattr(value, "__self__", None) is fingerprint[1] \
+                and getattr(value, "__name__", None) == fingerprint[2] \
+                and getattr(value, "__objclass__", None) is fingerprint[3]
+        return type(value) is fingerprint[2] and value is fingerprint[1]
+
+    def _pin_anchor_publisher(self, publisher):
+        publish = publisher.__call__
+        load = publisher.load
+        self.__expected_anchor_publisher = publisher
+        self.__expected_anchor_publisher_type = type(publisher)
+        self.__expected_anchor_publish_implementation = getattr(type(publisher), "__call__", None)
+        self.__anchor_publish = publish
+        self.__anchor_publish_fingerprint = self._callable_fingerprint(publish)
+        self.__anchor_load = load
+        self.__anchor_load_fingerprint = self._callable_fingerprint(load)
+
+    def _bound_anchor_publisher(self):
+        expected = self.__expected_anchor_publisher
+        if expected is None:
+            raise Refused("anchor_publisher")
+        try:
+            current_publish = expected.__call__
+            current_load = expected.load
+        except Exception:
+            raise Refused("anchor_publisher_identity") from None
+        if self.anchor_publisher is not expected or type(expected) is not self.__expected_anchor_publisher_type \
+                or getattr(type(expected), "__call__", None) is not self.__expected_anchor_publish_implementation \
+                or not callable(current_publish) or not callable(current_load) \
+                or not self._callable_matches(current_publish, self.__anchor_publish_fingerprint) \
+                or not self._callable_matches(current_load, self.__anchor_load_fingerprint):
+            raise Refused("anchor_publisher_identity")
+        return expected, self.__anchor_publish, self.__anchor_load
 
     def _mark_uncertain(self, category):
         if category not in UNCERTAINTY_CATEGORIES:
@@ -386,6 +457,7 @@ class WindowsRun:
     def _persist_journal(self):
         if not self.claimed:
             return
+        publisher, publish, load = self._bound_anchor_publisher()
         claim = self._read_claim()
         payload = self._journal_payload(claim)
         self._validate_journal_entries(payload)
@@ -412,32 +484,41 @@ class WindowsRun:
             raise Refused("journal_write") from None
         self.journal_generation = generation
         self.journal_digest = digest
-        if self.anchor_publisher is not None:
-            anchor = self.journal_anchor()
-            self._validate_anchor(anchor)
-            try:
-                self.anchor_publisher(dict(anchor))
-                reopened = self.anchor_publisher.load()
-                self._validate_anchor(reopened)
-                if reopened != anchor:
-                    raise Refused("anchor_publish")
-            except Refused:
-                raise Refused("anchor_publish") from None
-            except Exception:
-                # The durable generation remains authoritative; managed spawn must stop.
-                raise Refused("anchor_publish") from None
+        anchor = self.journal_anchor()
+        self._validate_anchor(anchor)
+        if self._bound_anchor_publisher()[0] is not publisher:
+            raise Refused("anchor_publisher_identity")
+        try:
+            publish(dict(anchor))
+        except Exception:
+            # The durable generation remains authoritative; managed spawn must stop.
+            raise Refused("anchor_publish") from None
+        if self._bound_anchor_publisher()[0] is not publisher:
+            raise Refused("anchor_publisher_identity")
+        try:
+            reopened = load()
+            self._validate_anchor(reopened)
+            if reopened != anchor:
+                raise Refused("anchor_publish")
+        except Refused:
+            raise Refused("anchor_publish") from None
+        except Exception:
+            raise Refused("anchor_publish") from None
+        if self._bound_anchor_publisher()[0] is not publisher:
+            raise Refused("anchor_publisher_identity")
 
     def _publisher_anchor(self):
-        if not callable(self.anchor_publisher) or not callable(getattr(self.anchor_publisher, "load", None)):
-            raise Refused("anchor_publisher")
+        publisher, _, load = self._bound_anchor_publisher()
         try:
-            anchor = self.anchor_publisher.load()
+            anchor = load()
             self._validate_anchor(anchor)
-            return anchor
         except Refused:
             raise
         except Exception:
             raise Refused("anchor_publisher") from None
+        if self._bound_anchor_publisher()[0] is not publisher:
+            raise Refused("anchor_publisher_identity")
+        return anchor
 
     def journal_anchor(self):
         if type(self.journal_generation) is not int or self.journal_generation <= 0 \
@@ -804,8 +885,7 @@ class WindowsRun:
     def claim(self, remaining):
         if self.lifecycle_phase != "new":
             raise Refused("lifecycle_phase")
-        if not callable(self.anchor_publisher) or not callable(getattr(self.anchor_publisher, "load", None)):
-            raise Refused("anchor_publisher")
+        self._bound_anchor_publisher()
         binding = self._config_binding(self.session)
         with (self.run / "supervisor.json").open("x") as file:
             self.claimed = True

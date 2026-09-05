@@ -59,11 +59,13 @@ class AnchorStore:
     def __init__(self, hook=None):
         self.latest = None
         self.hook = hook
+        self.frozen = False
 
     def __call__(self, anchor):
         if self.hook is not None:
             self.hook(anchor)
-        self.latest = dict(anchor)
+        if not self.frozen:
+            self.latest = dict(anchor)
 
     def load(self):
         return None if self.latest is None else dict(self.latest)
@@ -229,6 +231,107 @@ class SupervisorTests(unittest.TestCase):
             self.assertFalse((Path(directory) / m.JOURNAL).exists())
             self.assertEqual(list(Path(directory).glob(m.JOURNAL_PREFIX + "*.json")), [])
 
+    def test_anchor_publisher_bind_is_attach_once_and_normal_path_claims(self):
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            baseline = self.journal_run(directory)
+            run = m.WindowsRun(baseline.c)
+            publisher = self.publisher(directory)
+            self.assertIsNone(run.bind_anchor_publisher(publisher))
+            self.assertIs(run.anchor_publisher, publisher)
+            with self.assertRaisesRegex(m.Refused, "^anchor_publisher_bind$"):
+                run.bind_anchor_publisher(publisher)
+            run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            run.session = "checkout-" + "c" * 32
+            run.claim(1)
+            self.assertEqual(publisher.load(), run.journal_anchor())
+
+    def test_anchor_publisher_bind_rejects_wrong_type_or_phase(self):
+        for publisher in (None, object(), lambda anchor: None):
+            with self.subTest(publisher=publisher):
+                run = m.WindowsRun({"directory": "synthetic-unused"})
+                with self.assertRaisesRegex(m.Refused, "^anchor_publisher_bind$"):
+                    run.bind_anchor_publisher(publisher)
+        run = m.WindowsRun({"directory": "synthetic-unused"})
+        run.lifecycle_phase = "recovery"
+        with self.assertRaisesRegex(m.Refused, "^anchor_publisher_bind$"):
+            run.bind_anchor_publisher(StaticPublisher())
+
+    def test_anchor_publisher_alias_drift_blocks_claim_before_artifacts_or_popen(self):
+        for replacement in (None, StaticPublisher()):
+            with self.subTest(replacement=replacement), TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+                baseline = self.journal_run(directory)
+                run = m.WindowsRun(baseline.c, anchor_publisher=self.publisher(directory))
+                run.anchor_publisher = replacement
+                run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+                run.session = "checkout-" + "c" * 32
+                with patch.object(m.subprocess, "Popen") as popen:
+                    with self.assertRaisesRegex(m.Refused, "^anchor_publisher_identity$"):
+                        run.claim(1)
+                    popen.assert_not_called()
+                self.assertFalse((Path(directory) / "supervisor.json").exists())
+
+    def test_publisher_callable_drift_before_claim_blocks_before_artifacts(self):
+        for drift in ("instance_load", "class_publish"):
+            with self.subTest(drift=drift), TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+                baseline = self.journal_run(directory)
+
+                class Publisher(AnchorStore):
+                    pass
+
+                publisher = Publisher()
+                run = m.WindowsRun(baseline.c, anchor_publisher=publisher)
+                if drift == "instance_load":
+                    publisher.load = lambda: None
+                else:
+                    Publisher.__call__ = lambda self, anchor: None
+                run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+                run.session = "checkout-" + "c" * 32
+                with patch.object(m.subprocess, "Popen") as popen:
+                    with self.assertRaisesRegex(m.Refused, "^anchor_publisher_identity$"):
+                        run.claim(1)
+                    popen.assert_not_called()
+                self.assertFalse((Path(directory) / "supervisor.json").exists())
+
+    def test_publisher_callable_drift_blocks_command_or_launch_before_popen(self):
+        for operation, drift in (
+            ("command", "class_publish_during_publish"),
+            ("command", "instance_load_during_load"),
+            ("launch", "instance_load_during_publish"),
+        ):
+            with self.subTest(operation=operation, drift=drift), \
+                    TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+                baseline = self.journal_run(directory)
+
+                class Publisher(AnchorStore):
+                    active = False
+
+                    def __call__(self, anchor):
+                        super().__call__(anchor)
+                        if self.active and drift == "class_publish_during_publish":
+                            Publisher.__call__ = lambda self, value: None
+                        if self.active and drift == "instance_load_during_publish":
+                            self.load = lambda: dict(self.latest)
+
+                    def load(self):
+                        anchor = super().load()
+                        if self.active and drift == "instance_load_during_load":
+                            self.load = lambda: dict(self.latest)
+                        return anchor
+
+                publisher = Publisher()
+                run = m.WindowsRun(baseline.c, anchor_publisher=publisher)
+                run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+                run.session = "checkout-" + "c" * 32
+                run.claim(1)
+                publisher.active = True
+                with patch.object(m.subprocess, "Popen") as popen:
+                    with self.assertRaisesRegex(m.Refused, "^anchor_publisher_identity$"):
+                        if operation == "command":
+                            run._command([run.c["php"], "synthetic"], 1, policy="owned")
+                        else:
+                            run.launch("php", 1)
+                    popen.assert_not_called()
+
     def test_claim_rejects_noop_stale_malformed_or_failing_publisher_acknowledgement(self):
         cases = (
             StaticPublisher(None),
@@ -250,25 +353,77 @@ class SupervisorTests(unittest.TestCase):
                 self.assertEqual(run.lifecycle_phase, "claiming")
                 self.assertEqual(len(publisher.calls), 1)
 
-    def test_stale_publisher_ack_blocks_command_and_direct_launch_before_popen(self):
+    def test_publisher_alias_drift_blocks_command_and_direct_launch_before_popen(self):
         for operation in ("command", "launch"):
-            with self.subTest(operation=operation), TemporaryDirectory(prefix="oncam-journal-test-") as directory:
-                run = self.journal_run(directory)
+            for replacement in (None, StaticPublisher()):
+                with self.subTest(operation=operation, replacement=replacement), \
+                        TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+                    run = self.journal_run(directory)
+                    run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+                    run.session = "checkout-" + "c" * 32
+                    run.claim(1)
+                    run.anchor_publisher = replacement
+                    with patch.object(m.subprocess, "Popen") as popen:
+                        with self.assertRaisesRegex(m.Refused, "^anchor_publisher_identity$"):
+                            if operation == "command":
+                                run._command([run.c["php"], "synthetic"], 1, policy="owned")
+                            else:
+                                run.launch("php", 1)
+                        popen.assert_not_called()
+                    expected_intent = {
+                        "role": "command" if operation == "command" else "php",
+                        "executable": run.c["php"],
+                    }
+                    self.assertEqual(run.launch_intents, [expected_intent])
+                    self.assertEqual(run._read_journal()["launchIntents"], [])
+
+    def test_publisher_alias_drift_during_publish_or_reload_blocks_before_popen(self):
+        for stage in ("publish", "load"):
+            with self.subTest(stage=stage), TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+                baseline = self.journal_run(directory)
+
+                class DriftingPublisher(AnchorStore):
+                    active = False
+                    run = None
+
+                    def __call__(self, anchor):
+                        super().__call__(anchor)
+                        if self.active and stage == "publish":
+                            self.run.anchor_publisher = StaticPublisher()
+
+                    def load(self):
+                        anchor = super().load()
+                        if self.active and stage == "load":
+                            self.run.anchor_publisher = StaticPublisher()
+                        return anchor
+
+                publisher = DriftingPublisher()
+                run = m.WindowsRun(baseline.c, anchor_publisher=publisher)
+                publisher.run = run
                 run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
                 run.session = "checkout-" + "c" * 32
                 run.claim(1)
-                run.anchor_publisher = StaticPublisher(run.anchor_publisher.load())
+                publisher.active = True
                 with patch.object(m.subprocess, "Popen") as popen:
-                    with self.assertRaisesRegex(m.Refused, "^anchor_publish$"):
-                        if operation == "command":
-                            run._command([run.c["php"], "synthetic"], 1, policy="owned")
-                        else:
-                            run.launch("php", 1)
+                    with self.assertRaisesRegex(m.Refused, "^anchor_publisher_identity$"):
+                        run._command([run.c["php"], "synthetic"], 1, policy="owned")
                     popen.assert_not_called()
-                self.assertEqual(run._read_journal()["launchIntents"], [{
-                    "role": "command" if operation == "command" else "php",
-                    "executable": run.c["php"],
-                }])
+
+    def test_stale_bound_publisher_ack_blocks_command_before_popen(self):
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            run = self.journal_run(directory)
+            run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            run.session = "checkout-" + "c" * 32
+            run.claim(1)
+            run.anchor_publisher.frozen = True
+            with patch.object(m.subprocess, "Popen") as popen:
+                with self.assertRaisesRegex(m.Refused, "^anchor_publish$"):
+                    run._command([run.c["php"], "synthetic"], 1, policy="owned")
+                popen.assert_not_called()
+            self.assertEqual(run._read_journal()["launchIntents"], [{
+                "role": "command",
+                "executable": run.c["php"],
+            }])
 
     def test_reopened_publisher_ack_allows_normal_claim_and_owned_command(self):
         with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
@@ -444,6 +599,37 @@ class SupervisorTests(unittest.TestCase):
                     candidate.recover_ownership(run.session, run.journal_anchor())
                 popen.assert_not_called()
             self.assertFalse(candidate.claimed)
+            self.assertFalse(candidate.recovery_hydrated)
+
+    def test_publisher_alias_drift_blocks_recovery_before_snapshot_or_hydration(self):
+        for replacement in (None, StaticPublisher()):
+            with self.subTest(replacement=replacement), TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+                run = self.journal_run(directory)
+                run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+                run.session = "checkout-" + "c" * 32
+                run.claim(1)
+                candidate = m.WindowsRun(run.c, anchor_publisher=run.anchor_publisher)
+                candidate.anchor_publisher = replacement
+                candidate._snapshot = lambda: self.fail("snapshot must not run")
+                with patch.object(m.subprocess, "Popen") as popen:
+                    with self.assertRaisesRegex(m.Refused, "^anchor_publisher_identity$"):
+                        candidate.recover_ownership(run.session, run.journal_anchor())
+                    popen.assert_not_called()
+                self.assertFalse(candidate.recovery_hydrated)
+
+    def test_publisher_load_implementation_drift_blocks_recovery_before_snapshot(self):
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            run = self.journal_run(directory)
+            run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            run.session = "checkout-" + "c" * 32
+            run.claim(1)
+            candidate = m.WindowsRun(run.c, anchor_publisher=run.anchor_publisher)
+            candidate.anchor_publisher.load = lambda: run.journal_anchor()
+            candidate._snapshot = lambda: self.fail("snapshot must not run")
+            with patch.object(m.subprocess, "Popen") as popen:
+                with self.assertRaisesRegex(m.Refused, "^anchor_publisher_identity$"):
+                    candidate.recover_ownership(run.session, run.journal_anchor())
+                popen.assert_not_called()
             self.assertFalse(candidate.recovery_hydrated)
 
     def test_recovery_hydrates_before_census_and_publishes_helper_intent(self):
