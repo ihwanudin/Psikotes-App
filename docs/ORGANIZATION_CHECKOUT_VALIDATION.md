@@ -613,8 +613,12 @@ git diff --check
 - Gratis membutuhkan settlement nol eksplisit dan tetap memerlukan consent;
   diuji di SQLite dan PostgreSQL, bukan memanggil gateway.
 - Consent versi/hash saat ini, penarikan, penolakan, future consent diuji.
-  DASS yang ditolak tidak menghambat tes utama. Tes batch PostgreSQL menunjukkan
-  consent anggota lain tidak menghalangi peserta yang sudah memenuhi syarat.
+  Catatan P8a bahwa penolakan DASS tidak menghambat tes utama adalah perilaku
+  historis yang telah disupersede ADR-013 dan kontrak checkout-v2 saat ini:
+  consent DASS current wajib untuk aktivasi, dan komposisi paket selalu DASS-21
+  ditambah minimal satu tes non-DASS. DASS tetap tidak mengubah scoring atau
+  hasil psikotes utama. Tes batch PostgreSQL menunjukkan consent anggota lain
+  tidak menghalangi peserta yang sudah memenuhi syarat.
 - Profil kurang, peserta soft-deleted, verifikasi pending/mismatch/error,
   manual reject, penerimaan tanpa reviewer, timestamp masa depan, bukti hilang
   atau diganti setelah verifikasi ditolak. Manual accepted sah diuji pada PG.
