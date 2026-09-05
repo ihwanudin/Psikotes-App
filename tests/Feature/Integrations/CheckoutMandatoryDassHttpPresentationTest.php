@@ -241,11 +241,13 @@ final class CheckoutMandatoryDassHttpPresentationTest extends OrganizationPaymen
         $this->assertSame($amount, $payment['amountIdr']);
         $this->assertSame($consultation, $payment['consultationRequested']);
         $this->assertFalse($payment['actionAvailable']);
+        $this->assertNull($payment['action']);
+        $this->assertSame($payment['actionAvailable'], $payment['action'] !== null);
         $this->assertSame($payerLabel, trim($xpath->query('//dt[text()="Pembayar"]/following-sibling::dd[1]')->item(0)->textContent));
         $this->assertSame($stateLabel, trim($xpath->query('//dt[text()="Status"]/following-sibling::dd[1]')->item(0)->textContent));
         $this->assertSame('Rp '.number_format($amount, 0, ',', '.'), trim($xpath->query('//dt[text()="Nominal Anda"]/following-sibling::dd[1]')->item(0)->textContent));
         $this->assertSame($consultation ? 'Ya' : 'Tidak', trim($xpath->query('//dt[text()="Konsultasi diminta"]/following-sibling::dd[1]')->item(0)->textContent));
-        $this->assertSame(['payer', 'state', 'amountIdr', 'amountSource', 'consultationRequested', 'actionAvailable', ...($payer === 'organization' ? ['organizationName'] : [])], array_keys($payment));
+        $this->assertSame(['payer', 'state', 'amountIdr', 'amountSource', 'consultationRequested', 'actionAvailable', 'action', ...($payer === 'organization' ? ['organizationName'] : [])], array_keys($payment));
         foreach (['PRIVATE_INVOICE', 'PRIVATE_PROVIDER_REFERENCE', 'PRIVATE_PROOF_KEY', 'provider.invalid'] as $private) {
             $this->assertStringNotContainsString($private, $response->getContent());
         }

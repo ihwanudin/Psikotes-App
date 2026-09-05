@@ -11,8 +11,12 @@ use App\Data\Integrations\CheckoutSessionMutationScope;
 use App\Data\Integrations\CheckoutSessionPrincipal;
 use App\Data\Integrations\CheckoutSessionSelector;
 use App\Data\Integrations\CheckoutSummary;
+use App\Data\Integrations\CheckoutSummaryEvidence;
 use App\Enums\CheckoutSessionOperation;
 use App\Enums\PayerType;
+use App\Models\AssessmentBill;
+use App\Models\AssessmentBillItem;
+use App\Models\AssessmentCharge;
 use App\Models\AssessmentParticipant;
 use App\Models\Branch;
 use App\Models\CheckoutHandoff;
@@ -20,6 +24,7 @@ use App\Models\CheckoutSession;
 use App\Models\IntegrationClient;
 use App\Models\IntegrationSource;
 use App\Models\Participant;
+use App\Models\PaymentMethod;
 use App\Models\TestPackage;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
@@ -30,6 +35,7 @@ use App\Services\Integrations\CheckoutSummaryComposer;
 use App\Services\Payments\ResolvePayerPolicy;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use DomainException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use LogicException;
@@ -217,9 +223,13 @@ final readonly class CheckoutSessionLifecycle
         if ($organization === null || $client === null || $source === null || $package === null) {
             throw new InvalidCheckoutSession;
         }
-        $itemQuery = $package->items()->orderBy('id')->lockForUpdate();
-        $summaryItems = $operation === CheckoutSessionOperation::Summary ? $itemQuery->get() : null;
-        $packageItems = $summaryItems === null ? $itemQuery->pluck('id')->all() : $summaryItems->modelKeys();
+        $packageItems = $package->items()->orderBy('id')->lockForUpdate()->get();
+        try {
+            TestPackage::canonicalComposition($packageItems->pluck('test_type')->all());
+            $packageCompositionValid = true;
+        } catch (DomainException) {
+            $packageCompositionValid = false;
+        }
         $attempt = AssessmentParticipant::query()->where('organization_id', $organization->id)
             ->where('integration_client_id', $client->id)->where('package_id', $package->id)
             ->where('source_system', $source->source_system)->lockForUpdate()->find($hint->assessment_participant_id);
@@ -290,7 +300,7 @@ final readonly class CheckoutSessionLifecycle
             && $package->currency === 'IDR'
             && ($package->consultation_amount === null || $package->consultation_amount >= 0)
             && in_array($package->code, $source->allowed_assessment_packages, true)
-            && $packageItems !== []
+            && $packageCompositionValid
             && $participant->deleted_at === null && $attempt->revoked_at === null
             && ! in_array($attempt->assessment_status, ['REVOKED', 'VOID'], true)
             && is_array($attempt->metadata)
@@ -325,10 +335,8 @@ final readonly class CheckoutSessionLifecycle
         }
 
         if ($operation === CheckoutSessionOperation::Summary) {
-            $package->setRelation('items', $summaryItems);
+            $package->setRelation('items', $packageItems);
             $attempt->setRelation('package', $package);
-
-            return $this->summaries->compose($attempt, $participant, $organization, $now);
         }
 
         $principal = new CheckoutSessionPrincipal(
@@ -349,6 +357,26 @@ final readonly class CheckoutSessionLifecycle
             $idleExpiresAt,
             $absolute,
         );
+        if ($operation === CheckoutSessionOperation::Summary) {
+            [$charge, $billItem, $bill, $paymentMethod, $paymentEvidenceCanonical] =
+                $this->lockSummaryPaymentEvidence($attempt, $organization);
+
+            return $this->summaries->compose(new CheckoutSummaryEvidence(
+                $principal,
+                $organization,
+                $client,
+                $source,
+                $package,
+                $attempt,
+                $participant,
+                $charge,
+                $billItem,
+                $bill,
+                $paymentMethod,
+                $paymentEvidenceCanonical,
+                $now,
+            ));
+        }
         if (! $mutation) {
             return $principal;
         }
@@ -366,6 +394,69 @@ final readonly class CheckoutSessionLifecycle
         }
 
         return new CheckoutSessionMutationScope($principal, $this->contexts, DB::transactionLevel());
+    }
+
+    /** @return array{AssessmentCharge|null,AssessmentBillItem|null,AssessmentBill|null,PaymentMethod|null,bool} */
+    private function lockSummaryPaymentEvidence(AssessmentParticipant $attempt, Branch $organization): array
+    {
+        $chargeIds = AssessmentCharge::query()->where('assessment_participant_id', $attempt->id)
+            ->orderBy('id')->limit(2)->pluck('id');
+        if ($chargeIds->isEmpty()) {
+            return [null, null, null, null, true];
+        }
+        if ($chargeIds->count() !== 1) {
+            return [null, null, null, null, false];
+        }
+        $chargeId = $chargeIds->first();
+        if (! is_int($chargeId)) {
+            return [null, null, null, null, false];
+        }
+        $itemHints = AssessmentBillItem::query()->where('charge_id', $chargeId)
+            ->orderBy('id')->limit(2)->get(['id', 'bill_id', 'charge_id']);
+        if ($itemHints->isEmpty()) {
+            $charge = AssessmentCharge::query()->where('assessment_participant_id', $attempt->id)
+                ->lockForUpdate()->find($chargeId);
+            if (! $charge instanceof AssessmentCharge
+                || $charge->organization_id !== $organization->id
+                || $charge->participant_id !== $attempt->participant_id
+                || $charge->package_id !== $attempt->package_id
+                || AssessmentBillItem::query()->where('charge_id', $chargeId)->exists()
+                || AssessmentCharge::query()->where('assessment_participant_id', $attempt->id)
+                    ->limit(2)->count() !== 1) {
+                return [null, null, null, null, false];
+            }
+
+            return [$charge, null, null, null, true];
+        }
+        if ($itemHints->count() !== 1) {
+            return [null, null, null, null, false];
+        }
+        $hint = $itemHints->first();
+
+        // Match the payment writer's canonical lock order: bill, method, items, charges.
+        $bill = AssessmentBill::query()->where('organization_id', $organization->id)
+            ->lockForUpdate()->find($hint->bill_id);
+        $paymentMethod = $bill instanceof AssessmentBill
+            ? PaymentMethod::query()->lockForUpdate()->find($bill->payment_method_id) : null;
+        $item = AssessmentBillItem::query()->where('bill_id', $hint->bill_id)
+            ->where('charge_id', $chargeId)->lockForUpdate()->find($hint->id);
+        $charge = AssessmentCharge::query()->where('assessment_participant_id', $attempt->id)
+            ->lockForUpdate()->find($chargeId);
+        if (! $bill instanceof AssessmentBill || ! $paymentMethod instanceof PaymentMethod
+            || ! $item instanceof AssessmentBillItem || ! $charge instanceof AssessmentCharge
+            || $paymentMethod->id !== $bill->payment_method_id
+            || $bill->organization_id !== $organization->id
+            || $item->bill_id !== $bill->id || $item->charge_id !== $charge->id
+            || $item->organization_id !== $organization->id || $item->participant_id !== $attempt->participant_id
+            || $charge->assessment_participant_id !== $attempt->id
+            || $charge->organization_id !== $organization->id || $charge->participant_id !== $attempt->participant_id
+            || $charge->package_id !== $attempt->package_id
+            || AssessmentBillItem::query()->where('charge_id', $chargeId)->limit(2)->count() !== 1
+            || AssessmentCharge::query()->where('assessment_participant_id', $attempt->id)->limit(2)->count() !== 1) {
+            return [null, null, null, null, false];
+        }
+
+        return [$charge, $item, $bill, $paymentMethod, true];
     }
 
     private function preflight(): int

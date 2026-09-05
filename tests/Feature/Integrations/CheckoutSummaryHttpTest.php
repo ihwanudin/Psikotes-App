@@ -118,10 +118,12 @@ final class CheckoutSummaryHttpTest extends OrganizationPaymentTestCase
         $data = $this->payload($response);
         $this->assertSame(['contractVersion', 'sourceName', 'branchName', 'packageName', 'packageSource', 'attemptLabel', 'profile',
             'identityMessage', 'payment', 'access', 'consents'], array_keys($data));
-        $this->assertSame('checkout-summary-v1', $data['contractVersion']);
+        $this->assertSame('checkout-summary-v2', $data['contractVersion']);
         $this->assertSame('paid', $data['payment']['state']);
         $this->assertSame('ready', $data['access']['state']);
         $this->assertFalse($data['payment']['actionAvailable']);
+        $this->assertNull($data['payment']['action']);
+        $this->assertSame($data['payment']['actionAvailable'], $data['payment']['action'] !== null);
         $this->assertFalse($data['access']['startAvailable']);
         $this->assertSame(2, substr_count($response->getContent(), $this->cookies[Contract::CSRF_COOKIE]));
         foreach ($this->cookies as $credential) {
@@ -137,6 +139,38 @@ final class CheckoutSummaryHttpTest extends OrganizationPaymentTestCase
         $this->assertNull(app(RlsContextRunner::class)->current());
         $this->assertSame(0, DB::transactionLevel());
         $this->assertStringStartsWith('text/html', $this->page(['HTTP_ACCEPT' => 'application/json'])->assertOk()->headers->get('Content-Type'));
+    }
+
+    public function test_enabled_summary_exposes_only_exact_server_priced_self_action(): void
+    {
+        config()->set('assessment_integration.checkout_session.http.payment', [
+            'enabled' => true, 'writer_enabled' => true, 'max_body_bytes' => 256,
+        ]);
+        DB::table('assessment_entitlements')->delete();
+        DB::table('assessment_bill_items')->delete();
+        DB::table('assessment_charges')->delete();
+        DB::table('assessment_participants')->update(['assessment_status' => 'PROVISIONED',
+            'funding_mode' => 'COMMERCIAL_SELF_PAY',
+            'metadata' => '{"checkout_contract_version":"checkout-v2","checkout_initial_funding_mode":"COMMERCIAL_SELF_PAY"}']);
+        DB::table('branches')->update(['allowed_payer_types' => '["self"]']);
+        DB::table('integration_sources')->update(['allowed_payer_types' => '["self"]', 'locked_payer_type' => 'self']);
+        DB::table('packages')->update(['consultation_amount' => 50_000]);
+
+        $response = $this->page()->assertOk();
+        $payment = $this->payload($response)['payment'];
+
+        $this->assertSame(['payer', 'state', 'amountIdr', 'amountSource', 'consultationRequested',
+            'actionAvailable', 'action'], array_keys($payment));
+        $this->assertTrue($payment['actionAvailable']);
+        $this->assertSame($payment['actionAvailable'], $payment['action'] !== null);
+        $this->assertSame(['path', 'mode', 'currency', 'choices'], array_keys($payment['action']));
+        $this->assertSame('/checkout/payment', $payment['action']['path']);
+        $this->assertSame('select', $payment['action']['mode']);
+        $this->assertSame('IDR', $payment['action']['currency']);
+        $this->assertSame([false, true], array_column($payment['action']['choices'], 'consultationRequested'));
+        foreach (['invoice_url', 'gateway_ref', 'public_reference', 'item_count', 'participantId'] as $private) {
+            $this->assertStringNotContainsString($private, json_encode($payment, JSON_THROW_ON_ERROR));
+        }
     }
 
     public function test_escaping_preserves_exact_data_and_document_without_executable_markup(): void
@@ -338,12 +372,9 @@ final class CheckoutSummaryHttpTest extends OrganizationPaymentTestCase
         $snapshot = $charge->price_snapshot;
         $snapshot['testTypes'] = ['dass21', 'ist'];
         $charge->update(['price_snapshot' => $snapshot]);
-        DB::table('assessment_entitlements')->insert(['assessment_participant_id' => $this->fixture['attempt'],
-            'organization_id' => $this->fixture['organization'], 'participant_id' => $this->fixture['participant'],
-            'charge_id' => $charge->id, 'test_type' => 'dass21', 'status' => 'ready', 'ready_at' => now()]);
         DB::table('consent_records')->where('consent_type', 'dass')->update(['status' => 'declined']);
         DB::table('packages')->update(['name' => 'PRIVATE_CHANGED_CATALOG', 'amount' => 999]);
-        DB::table('package_items')->update(['test_type' => 'papi']);
+        DB::table('package_items')->where('test_type', 'ist')->update(['test_type' => 'papi']);
         $other = Fixture::create(identity: ['organization' => $this->fixture['organization']]);
         DB::table('participants')->where('id', $other['participant'])->update(['full_name' => 'PRIVATE_OTHER_PROFILE']);
         DB::table('assessment_bill_items')->where('id', $other['item'])->update(['bill_id' => $this->fixture['bill']]);

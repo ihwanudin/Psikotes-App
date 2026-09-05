@@ -11,6 +11,7 @@ use App\Actions\Integrations\IssueCheckoutHandoff;
 use App\Data\Integrations\CheckoutHandoffIssueInput;
 use App\Data\Integrations\CheckoutSessionExchangeInput;
 use App\Data\Integrations\CheckoutSessionMutationCredentials;
+use App\Data\Integrations\CheckoutSessionSelector;
 use App\Data\Integrations\CheckoutSummary;
 use App\Enums\CheckoutHandoffIntent;
 use App\Models\AssessmentParticipant;
@@ -131,6 +132,100 @@ final class CheckoutSummaryLifecycleTest extends OrganizationPaymentTestCase
         foreach (['id', 'participantId', 'assessmentAttemptId', 'billId', 'invoice', 'count', 'total', 'formKey',
             'confidence', 'score', 'credential', 'csrf', 'sessionPublicId'] as $forbidden) {
             $this->assertNotContains($forbidden, $keys);
+        }
+    }
+
+    public function test_pending_self_action_uses_locked_current_bill_graph_and_exact_invariant(): void
+    {
+        config()->set('assessment_integration.checkout_session.http.payment', [
+            'enabled' => true, 'writer_enabled' => true, 'max_body_bytes' => 256,
+        ]);
+        DB::table('assessment_participants')->update(['assessment_status' => 'PROVISIONED',
+            'funding_mode' => 'COMMERCIAL_SELF_PAY',
+            'metadata' => '{"checkout_contract_version":"checkout-v2","checkout_initial_funding_mode":"COMMERCIAL_SELF_PAY"}']);
+        DB::table('branches')->update(['allowed_payer_types' => '["self"]']);
+        DB::table('integration_sources')->update(['allowed_payer_types' => '["self"]', 'locked_payer_type' => 'self']);
+        DB::table('packages')->update(['consultation_amount' => 50_000]);
+        DB::table('payment_methods')->update(['code' => 'xendit']);
+        $policy = ['organizationId' => $this->fixture['organization'],
+            'integrationClientId' => DB::table('assessment_participants')->value('integration_client_id'),
+            'sourceId' => DB::table('integration_sources')->value('id'), 'contractVersion' => 'checkout-v2',
+            'allowedPayerTypes' => ['self'], 'payerType' => 'self', 'lockedPayerType' => 'self'];
+        $item = (array) DB::table('assessment_bill_items')->sole();
+        DB::table('assessment_bill_items')->delete();
+        DB::table('assessment_charges')->update(['payer_type' => 'self', 'policy_snapshot' => json_encode($policy, JSON_THROW_ON_ERROR)]);
+        DB::table('assessment_bills')->update(['payer_type' => 'self',
+            'payer_participant_id' => $this->fixture['participant'], 'status' => 'pending', 'paid_at' => null,
+            'gateway_ref' => 'synthetic-gateway', 'invoice_url' => 'https://checkout.example/synthetic',
+            'expires_at' => now()->addHour()]);
+        DB::table('assessment_bill_items')->insert(array_replace($item, ['payer_type' => 'self',
+            'payer_participant_id' => $this->fixture['participant'], 'settled_at' => null]));
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        try {
+            $summary = $this->read();
+            $queries = array_column(DB::getQueryLog(), 'query');
+        } finally {
+            DB::disableQueryLog();
+        }
+
+        $this->assertTrue($summary['payment']['actionAvailable']);
+        $this->assertSame($summary['payment']['actionAvailable'], $summary['payment']['action'] !== null);
+        $this->assertSame('continue', $summary['payment']['action']['mode']);
+        $this->assertSame([['consultationRequested' => false, 'baseAmountIdr' => 100,
+            'consultationAmountIdr' => 0, 'amountIdr' => 100]], $summary['payment']['action']['choices']);
+        $billLock = $this->queryIndex($queries, 'from "assessment_bills"', '"organization_id"', '"assessment_bills"."id"');
+        $methodLock = $this->queryIndex($queries, 'from "payment_methods"', '"payment_methods"."id"');
+        $itemLock = $this->queryIndex($queries, 'from "assessment_bill_items"', '"bill_id"', '"charge_id"', '"assessment_bill_items"."id"');
+        $chargeLock = $this->queryIndex($queries, 'from "assessment_charges"', '"assessment_participant_id"', '"assessment_charges"."id"');
+        $this->assertTrue($billLock < $methodLock && $methodLock < $itemLock && $itemLock < $chargeLock,
+            'Summary evidence must follow bill -> method -> item -> charge lock order.');
+    }
+
+    #[DataProvider('invalidPackageOperations')]
+    public function test_legacy_invalid_package_revokes_before_idle_touch_for_every_operation(
+        string $operation,
+        string $invalidComposition,
+    ): void {
+        DB::table('package_items')->where('test_type', $invalidComposition === 'dass-less' ? 'dass21' : 'ist')->delete();
+        $before = DB::table('checkout_sessions')->value('last_seen_at');
+
+        try {
+            if ($operation === 'hydrate') {
+                app(CheckoutSessionLifecycle::class)->hydrate(
+                    new CheckoutSessionSelector($this->credentials->rawSelector()),
+                );
+            } elseif ($operation === 'csrf') {
+                app(CheckoutSessionLifecycle::class)->hydrateWithCsrfDelivery($this->credentials);
+            } elseif ($operation === 'profile') {
+                app(CheckoutSessionLifecycle::class)->readProfile($this->credentials);
+            } elseif ($operation === 'payment') {
+                app(CheckoutSessionLifecycle::class)->readPayment($this->credentials);
+            } elseif ($operation === 'summary') {
+                app(CheckoutSessionLifecycle::class)->readSummary($this->credentials);
+            } else {
+                app(CheckoutSessionLifecycle::class)->logout($this->credentials);
+            }
+            $this->fail('Legacy package composition retained session authority.');
+        } catch (InvalidCheckoutSession $error) {
+            $this->assertSame('CHECKOUT_SESSION_INVALID', $error->getMessage());
+        }
+
+        $session = CheckoutSession::firstOrFail();
+        $this->assertSame('REVOKED', $session->status);
+        $this->assertSame('SCOPE_REVOKED', $session->revocation_reason);
+        $this->assertSame($before, DB::table('checkout_sessions')->value('last_seen_at'));
+        $this->assertSame(1, DB::table('audit_logs')->where('action', 'checkout_session.revoked')->count());
+        $this->assertCleanContext();
+    }
+
+    public static function invalidPackageOperations(): iterable
+    {
+        foreach (['hydrate', 'csrf', 'profile', 'payment', 'summary', 'logout'] as $operation) {
+            foreach (['dass-less', 'dass-only'] as $invalidComposition) {
+                yield $operation.' '.$invalidComposition => [$operation, $invalidComposition];
+            }
         }
     }
 
@@ -324,5 +419,21 @@ final class CheckoutSummaryLifecycleTest extends OrganizationPaymentTestCase
         }
 
         return $rows;
+    }
+
+    /** @param list<string> $queries */
+    private function queryIndex(array $queries, string ...$needles): int
+    {
+        foreach ($queries as $index => $query) {
+            $matches = true;
+            foreach ($needles as $needle) {
+                $matches = $matches && str_contains($query, $needle);
+            }
+            if ($matches) {
+                return $index;
+            }
+        }
+
+        $this->fail('Expected query was not observed: '.implode(', ', $needles));
     }
 }

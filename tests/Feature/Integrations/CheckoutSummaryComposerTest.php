@@ -4,10 +4,17 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Integrations;
 
+use App\Data\Integrations\CheckoutSessionPrincipal;
+use App\Data\Integrations\CheckoutSummaryEvidence;
+use App\Models\AssessmentBill;
+use App\Models\AssessmentBillItem;
 use App\Models\AssessmentCharge;
 use App\Models\AssessmentParticipant;
 use App\Models\Branch;
+use App\Models\IntegrationClient;
+use App\Models\IntegrationSource;
 use App\Models\Participant;
+use App\Models\PaymentMethod;
 use App\Registration\ConsentDocument;
 use App\Security\RlsContextRunner;
 use App\Services\Integrations\CheckoutSummaryComposer;
@@ -35,6 +42,13 @@ final class CheckoutSummaryComposerTest extends OrganizationPaymentTestCase
         $this->fixture = Fixture::create();
         DB::table('assessment_participants')->update(['funding_mode' => 'INVOICED_TO_ORGANIZATION',
             'metadata' => '{"checkout_contract_version":"checkout-v2","checkout_initial_funding_mode":null}']);
+        DB::table('branches')->update(['status' => 'ACTIVE', 'is_active' => true]);
+        DB::table('integration_clients')->update(['enabled' => true]);
+        $attempt = AssessmentParticipant::findOrFail($this->fixture['attempt']);
+        DB::table('integration_sources')->insert(['integration_client_id' => $attempt->integration_client_id,
+            'source_system' => $attempt->source_system, 'contract_version' => 'checkout-v2', 'status' => 'ACTIVE',
+            'allowed_assessment_packages' => json_encode([DB::table('packages')->where('id', $attempt->package_id)->value('code')], JSON_THROW_ON_ERROR),
+            'allowed_funding_modes' => '[]']);
     }
 
     public function test_complete_summary_has_recursive_exact_privacy_keys_and_no_business_writes(): void
@@ -43,23 +57,27 @@ final class CheckoutSummaryComposerTest extends OrganizationPaymentTestCase
         $summary = $this->read();
         $this->assertSame(['contractVersion', 'sourceName', 'branchName', 'packageName', 'packageSource', 'attemptLabel',
             'profile', 'identityMessage', 'payment', 'access', 'consents'], array_keys($summary));
-        $this->assertSame('checkout-summary-v1', $summary['contractVersion']);
+        $this->assertSame('checkout-summary-v2', $summary['contractVersion']);
         $this->assertSame('Integrasi seleksi', $summary['sourceName']);
         $this->assertSame('Assessment Anda', $summary['attemptLabel']);
         $this->assertCount(7, $summary['profile']);
         foreach ($summary['profile'] as $field) {
             $this->assertSame($field['state'] === 'missing' ? ['key', 'label', 'state', 'required'] : ['key', 'label', 'state', 'required', 'displayValue'], array_keys($field));
         }
-        $this->assertSame(['payer', 'state', 'amountIdr', 'amountSource', 'consultationRequested', 'actionAvailable', 'organizationName'], array_keys($summary['payment']));
+        $this->assertSame(['payer', 'state', 'amountIdr', 'amountSource', 'consultationRequested', 'actionAvailable', 'action', 'organizationName'], array_keys($summary['payment']));
         $this->assertSame('Synthetic', $summary['payment']['organizationName']);
         $this->assertSame(['state', 'tests', 'startAvailable', 'message'], array_keys($summary['access']));
-        $this->assertSame([['testType' => 'ist', 'state' => 'ready']], $summary['access']['tests']);
+        $this->assertSame([
+            ['testType' => 'dass21', 'state' => 'ready'],
+            ['testType' => 'ist', 'state' => 'ready'],
+        ], $summary['access']['tests']);
         $this->assertSame('ready', $summary['access']['state']);
         $this->assertFalse($summary['access']['startAvailable']);
         $this->assertFalse($summary['payment']['actionAvailable']);
+        $this->assertNull($summary['payment']['action']);
         $this->assertSame(['psychotest', 'dass', 'legalReviewPending'], array_keys($summary['consents']));
         $this->assertSame(['state' => 'accepted', 'version' => ConsentDocument::for('psychotest')->version], $summary['consents']['psychotest']);
-        $this->assertSame(['state' => 'not_applicable'], $summary['consents']['dass']);
+        $this->assertSame(['state' => 'accepted', 'version' => ConsentDocument::for('dass')->version], $summary['consents']['dass']);
         $this->assertTrue($summary['consents']['legalReviewPending']);
         $this->assertSame($before, $this->rows());
         $this->assertNull(app(RlsContextRunner::class)->current());
@@ -94,19 +112,13 @@ final class CheckoutSummaryComposerTest extends OrganizationPaymentTestCase
         $this->assertArrayNotHasKey('organizationName', $summary['payment']);
     }
 
-    public function test_changed_catalog_cannot_replace_snapshot_and_dass_is_independently_optional(): void
+    public function test_changed_catalog_cannot_replace_snapshot_and_mandatory_dass_is_independent(): void
     {
         $charge = AssessmentCharge::findOrFail($this->fixture['charge']);
         $snapshot = $charge->price_snapshot;
-        $snapshot['testTypes'] = ['dass21', 'ist'];
         $charge->update(['price_snapshot' => $snapshot]);
-        DB::table('assessment_entitlements')->insert([
-            'assessment_participant_id' => $this->fixture['attempt'], 'organization_id' => $this->fixture['organization'],
-            'participant_id' => $this->fixture['participant'], 'charge_id' => $charge->id,
-            'test_type' => 'dass21', 'status' => 'ready', 'ready_at' => $this->asOf,
-        ]);
         DB::table('packages')->update(['name' => 'Changed catalogue', 'amount' => 999]);
-        DB::table('package_items')->update(['test_type' => 'papi']);
+        DB::table('package_items')->where('test_type', 'ist')->update(['test_type' => 'papi']);
         DB::table('consent_records')->where('consent_type', 'dass')->update(['status' => 'declined']);
         $summary = $this->read();
         $this->assertSame('Synthetic', $summary['packageName']);
@@ -144,7 +156,8 @@ final class CheckoutSummaryComposerTest extends OrganizationPaymentTestCase
         config()->set('consent.documents.psychotest.text', 'Changed text');
         $this->assertSame('required', $this->read()['consents']['psychotest']['state']);
         config()->set('consent.documents.dass', null);
-        $this->assertSame(['state' => 'not_applicable'], $this->read()['consents']['dass']);
+        $this->expectExceptionMessage('CHECKOUT_SUMMARY_UNAVAILABLE');
+        $this->read();
     }
 
     public function test_free_without_identity_remains_free_but_locked(): void
@@ -184,6 +197,116 @@ final class CheckoutSummaryComposerTest extends OrganizationPaymentTestCase
         $this->assertFalse($summary['payment']['actionAvailable']);
         $this->assertSame('locked', $summary['access']['state']);
         $this->assertFalse($summary['access']['startAvailable']);
+    }
+
+    public function test_enabled_fresh_self_action_is_exact_server_priced_and_invariant_bound(): void
+    {
+        config()->set('assessment_integration.checkout_session.http.payment', [
+            'enabled' => true, 'writer_enabled' => true, 'max_body_bytes' => 256,
+        ]);
+        DB::table('assessment_entitlements')->delete();
+        DB::table('assessment_bill_items')->delete();
+        DB::table('assessment_charges')->delete();
+        DB::table('assessment_participants')->update(['assessment_status' => 'PROVISIONED',
+            'funding_mode' => 'COMMERCIAL_SELF_PAY',
+            'metadata' => '{"checkout_contract_version":"checkout-v2","checkout_initial_funding_mode":"COMMERCIAL_SELF_PAY"}']);
+        DB::table('branches')->update(['allowed_payer_types' => '["self"]']);
+        DB::table('integration_sources')->update(['allowed_payer_types' => '["self"]', 'locked_payer_type' => 'self']);
+        DB::table('packages')->update(['consultation_amount' => 50_000]);
+
+        $summary = $this->read();
+
+        $this->assertTrue($summary['payment']['actionAvailable']);
+        $this->assertSame($summary['payment']['actionAvailable'], $summary['payment']['action'] !== null);
+        $this->assertSame('/checkout/payment', $summary['payment']['action']['path']);
+        $this->assertSame('select', $summary['payment']['action']['mode']);
+        $this->assertSame('IDR', $summary['payment']['action']['currency']);
+        $this->assertSame([false, true], array_column($summary['payment']['action']['choices'], 'consultationRequested'));
+        $this->assertSame([100, 100], array_column($summary['payment']['action']['choices'], 'baseAmountIdr'));
+    }
+
+    public function test_missing_mandatory_dass_fails_closed_in_v2(): void
+    {
+        DB::table('assessment_entitlements')->delete();
+        DB::table('package_items')->where('test_type', 'dass21')->delete();
+        DB::table('assessment_bill_items')->delete();
+        DB::table('assessment_charges')->delete();
+
+        $this->expectExceptionMessage('CHECKOUT_SUMMARY_UNAVAILABLE');
+        $this->read();
+    }
+
+    public function test_positive_organization_catalog_never_exposes_action_or_choice_pricing(): void
+    {
+        config()->set('assessment_integration.checkout_session.http.payment', [
+            'enabled' => true, 'writer_enabled' => true, 'max_body_bytes' => 256,
+        ]);
+        DB::table('assessment_entitlements')->delete();
+        DB::table('assessment_bill_items')->delete();
+        DB::table('assessment_charges')->delete();
+        DB::table('assessment_participants')->update(['assessment_status' => 'PROVISIONED',
+            'funding_mode' => 'INVOICED_TO_ORGANIZATION',
+            'metadata' => '{"checkout_contract_version":"checkout-v2","checkout_initial_funding_mode":"INVOICED_TO_ORGANIZATION"}']);
+        DB::table('branches')->update(['allowed_payer_types' => '["organization"]']);
+        DB::table('integration_sources')->update(['allowed_payer_types' => '["organization"]',
+            'locked_payer_type' => 'organization']);
+
+        $payment = $this->read()['payment'];
+
+        $this->assertSame('organization', $payment['payer']);
+        $this->assertNull($payment['amountIdr']);
+        $this->assertFalse($payment['actionAvailable']);
+        $this->assertNull($payment['action']);
+        $this->assertArrayNotHasKey('choices', $payment);
+    }
+
+    public function test_zero_organization_action_requires_both_current_mandatory_consents(): void
+    {
+        config()->set('assessment_integration.checkout_session.http.payment', [
+            'enabled' => true, 'writer_enabled' => true, 'max_body_bytes' => 256,
+        ]);
+        DB::table('assessment_entitlements')->delete();
+        DB::table('assessment_bill_items')->delete();
+        DB::table('assessment_charges')->delete();
+        DB::table('packages')->update(['amount' => 0, 'consultation_amount' => 50_000]);
+        DB::table('assessment_participants')->update(['assessment_status' => 'PROVISIONED',
+            'funding_mode' => 'INVOICED_TO_ORGANIZATION',
+            'metadata' => '{"checkout_contract_version":"checkout-v2","checkout_initial_funding_mode":"INVOICED_TO_ORGANIZATION"}']);
+        DB::table('branches')->update(['allowed_payer_types' => '["organization"]']);
+        DB::table('integration_sources')->update(['allowed_payer_types' => '["organization"]',
+            'locked_payer_type' => 'organization']);
+
+        $payment = $this->read()['payment'];
+        $this->assertTrue($payment['actionAvailable']);
+        $this->assertSame([['consultationRequested' => false, 'baseAmountIdr' => 0,
+            'consultationAmountIdr' => 0, 'amountIdr' => 0]], $payment['action']['choices']);
+
+        DB::table('consent_records')->where('consent_type', 'dass')->update(['status' => 'declined']);
+        $payment = $this->read()['payment'];
+        $this->assertFalse($payment['actionAvailable']);
+        $this->assertNull($payment['action']);
+    }
+
+    public function test_noncanonical_empty_payment_evidence_never_becomes_a_fresh_action(): void
+    {
+        config()->set('assessment_integration.checkout_session.http.payment', [
+            'enabled' => true, 'writer_enabled' => true, 'max_body_bytes' => 256,
+        ]);
+        DB::table('assessment_entitlements')->delete();
+        DB::table('assessment_bill_items')->delete();
+        DB::table('assessment_charges')->delete();
+        DB::table('assessment_participants')->update(['assessment_status' => 'PROVISIONED',
+            'funding_mode' => 'COMMERCIAL_SELF_PAY',
+            'metadata' => '{"checkout_contract_version":"checkout-v2","checkout_initial_funding_mode":"COMMERCIAL_SELF_PAY"}']);
+        DB::table('branches')->update(['allowed_payer_types' => '["self"]']);
+        DB::table('integration_sources')->update(['allowed_payer_types' => '["self"]', 'locked_payer_type' => 'self']);
+        DB::table('packages')->update(['consultation_amount' => 50_000]);
+
+        $payment = $this->read(false)['payment'];
+
+        $this->assertFalse($payment['actionAvailable']);
+        $this->assertNull($payment['action']);
+        $this->assertArrayNotHasKey('choices', $payment);
     }
 
     #[DataProvider('invalidConfig')]
@@ -234,12 +357,31 @@ final class CheckoutSummaryComposerTest extends OrganizationPaymentTestCase
         }
     }
 
-    private function read(): array
+    private function read(bool $paymentEvidenceCanonical = true): array
     {
-        return app(RlsContextRunner::class)->runAsService(function (): array {
-            $dto = app(CheckoutSummaryComposer::class)->compose(
-                AssessmentParticipant::with('package.items')->findOrFail($this->fixture['attempt']),
-                Participant::findOrFail($this->fixture['participant']), Branch::findOrFail($this->fixture['organization']), $this->asOf);
+        return app(RlsContextRunner::class)->runAsService(function () use ($paymentEvidenceCanonical): array {
+            $attempt = AssessmentParticipant::with('package.items')->findOrFail($this->fixture['attempt']);
+            $organization = Branch::findOrFail($this->fixture['organization']);
+            $client = IntegrationClient::findOrFail($attempt->integration_client_id);
+            $source = IntegrationSource::where('integration_client_id', $client->id)
+                ->where('source_system', $attempt->source_system)->sole();
+            $package = $attempt->getRelation('package');
+            $charge = AssessmentCharge::where('assessment_participant_id', $attempt->id)->first();
+            $item = $charge instanceof AssessmentCharge
+                ? AssessmentBillItem::where('charge_id', $charge->id)->first() : null;
+            $bill = $item instanceof AssessmentBillItem ? AssessmentBill::find($item->bill_id) : null;
+            $paymentMethod = $bill instanceof AssessmentBill ? PaymentMethod::find($bill->payment_method_id) : null;
+            $principal = new CheckoutSessionPrincipal(
+                'CS_'.str_repeat('A', 26), 'CH_'.str_repeat('B', 26), $attempt->id,
+                $attempt->assessment_attempt_id, $organization->id, $attempt->participant_id, $attempt->package_id,
+                $client->id, $source->id, $source->source_system, $attempt->assessment_status,
+                $attempt->funding_mode, $this->asOf, $this->asOf, $this->asOf->addHour(), $this->asOf->addHours(2),
+            );
+            $dto = app(CheckoutSummaryComposer::class)->compose(new CheckoutSummaryEvidence(
+                $principal, $organization, $client, $source, $package, $attempt,
+                Participant::findOrFail($this->fixture['participant']), $charge, $item, $bill, $paymentMethod,
+                $paymentEvidenceCanonical, $this->asOf,
+            ));
             $data = $dto->toArray();
             $this->assertSame($data, json_decode(json_encode($dto, JSON_THROW_ON_ERROR), true));
 

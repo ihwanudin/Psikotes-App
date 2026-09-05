@@ -19,9 +19,10 @@ final readonly class CheckoutSummary implements JsonSerializable
     public function __construct(
         CheckoutProfile $profile,
         CheckoutProductPaymentFacts $product,
+        ?CheckoutPaymentAction $paymentAction,
         string $branchName,
         ConsentDocument $psychotest,
-        ?ConsentDocument $dass,
+        ConsentDocument $dass,
         bool $psychotestAccepted,
         bool $dassAccepted,
         bool $legalReviewPending,
@@ -29,8 +30,9 @@ final readonly class CheckoutSummary implements JsonSerializable
     ) {
         if (trim($branchName) === '' || array_keys($readyByType) !== $product->testTypes
             || $psychotest->type !== 'psychotest'
-            || ($dass !== null) !== in_array('dass21', $product->testTypes, true)
-            || ($dass !== null && $dass->type !== 'dass')) {
+            || ! in_array('dass21', $product->testTypes, true)
+            || array_diff($product->testTypes, ['dass21']) === []
+            || $dass->type !== 'dass') {
             throw new DomainException('CHECKOUT_SUMMARY_UNAVAILABLE');
         }
         $tests = [];
@@ -41,11 +43,13 @@ final readonly class CheckoutSummary implements JsonSerializable
         }
         $state = $readyCount === count($tests) ? 'ready' : ($readyCount === 0 ? 'locked' : 'partial');
         $payment = $product->payment->toArray()['payment'];
+        $payment['actionAvailable'] = $paymentAction !== null;
+        $payment['action'] = $paymentAction?->toArray();
         if ($product->payment->payer === PayerType::Organization) {
             $payment['organizationName'] = $branchName;
         }
         $this->data = [
-            'contractVersion' => 'checkout-summary-v1',
+            'contractVersion' => 'checkout-summary-v2',
             'sourceName' => 'Integrasi seleksi',
             'branchName' => $branchName,
             'packageName' => $product->packageLabel,
@@ -60,7 +64,7 @@ final readonly class CheckoutSummary implements JsonSerializable
                 default => 'Akses tes belum siap.',
             }],
             'consents' => ['psychotest' => $this->consent($psychotest, $psychotestAccepted),
-                'dass' => $dass === null ? ['state' => 'not_applicable'] : $this->consent($dass, $dassAccepted),
+                'dass' => $this->consent($dass, $dassAccepted),
                 'legalReviewPending' => $legalReviewPending],
         ];
     }
