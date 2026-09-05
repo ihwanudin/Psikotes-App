@@ -1,5 +1,24 @@
 # Koordinasi task paralel organization-payment
 
+## P15 writer accepted; P16 presentation and DASS RLS repair active — 2026-09-05
+
+Backend `89f7ca1` was reviewed and integrated as root `c1bbc6d`. Root reran the
+focused writer **16/16 tests, 165 assertions** and the wider checkout regression
+**490/490 tests, 4,943 assertions**, plus Pint, PHPStan 0 errors, and diff-check.
+The writer remains internal, test-route-only and default OFF; no production route
+or active service was enabled. Frontend now owns one P16 presentation-only slice
+against this reviewed contract and must not edit the P15 writer or production
+routes/controllers.
+
+Portal PostgreSQL proof `a2b1971` exposed a real DASS consent privacy gap and is
+not integrated while RED. The `consent_records_read` policy allowed branch staff,
+and the permissive `consent_records_write FOR ALL` policy also granted SELECT to
+super admin. Portal owns one additive migration/fresh-schema/test correction that
+preserves generic psychotest consent visibility and the existing write authority,
+while restricting DASS consent reads to service, psychologist, and the participant
+owner. PostgreSQL disposable proof is mandatory; no active database migration is
+authorized.
+
 ## Pending work resumed: P15 writer and P17a PostgreSQL — 2026-09-05
 
 Backend security boundary `a39bd8b` was reviewed and integrated as root
