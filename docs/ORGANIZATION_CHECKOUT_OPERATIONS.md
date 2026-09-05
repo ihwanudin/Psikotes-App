@@ -131,8 +131,9 @@ Setelah wiring khusus direview dan diaktifkan melalui perubahan terpisah:
    `pending` dan menyimpan reference/URL/expiry secara atomik.
 7. Hasil `validationRejected` atau `recoveryRequired` adalah eskalasi engineer;
    jangan retry tanpa diagnosis invariant.
-8. Setelah selesai, verifikasi audit `invoice_unknown` atau `invoice_issued`,
-   lease sudah dilepas, dan tidak ada create kedua.
+8. Setelah selesai, verifikasi audit `assessment_bill.invoice_unknown` atau
+   `assessment_bill.invoice_issued`, lease sudah dilepas, dan tidak ada create
+   kedua.
 
 ## Rekonsiliasi transfer manual
 
@@ -212,6 +213,23 @@ payload provider.
 
 Aktivasi adalah pekerjaan terpisah yang memerlukan change approval. Urutan
 berikut bersifat fail-closed:
+
+Lima kelompok gate berikut berbeda. Setiap key di bawah adalah key dotted dari
+`config/assessment_integration.php` dan nilai committed-nya `false`:
+
+| Kelompok gate | Key konfigurasi exact | Dependensi sebelum aktivasi |
+| --- | --- | --- |
+| checkout utama | `assessment_integration.checkout.enabled` | Seluruh gate hilir, bukti P17c/P18, observability, dan source canary sudah disetujui; aktifkan paling akhir sebelum opt-in source. |
+| handoff | `assessment_integration.checkout_handoff.enabled` | Integration client/source valid dan consumer sesi hilir siap; tidak mengaktifkan sesi atau HTTP dengan sendirinya. |
+| sesi | `assessment_integration.checkout_session.enabled` | Handoff consumer, retention, dan isolasi sesi siap; gate HTTP tetap terpisah. |
+| konfirmasi | `assessment_integration.checkout_session.http.confirmation.enabled` lalu `assessment_integration.checkout_session.http.confirmation.writer_enabled` | Sesi aktif, kontrak profil/consent current dan privacy audit tervalidasi; transport dibuka sebelum writer. |
+| pembayaran | `assessment_integration.checkout_session.http.payment.enabled` lalu `assessment_integration.checkout_session.http.payment.writer_enabled` | Sesi aktif, provider fake/sandbox, outbound control, credential isolation, observability, dan hold point operator terbukti; writer dibuka terakhir. |
+
+Kelima kelompok gate tetap berbeda dan tidak boleh diperlakukan sebagai satu
+switch. `enabled` pada transport tidak mengizinkan write ketika
+`writer_enabled` masih `false`; gate induk yang OFF tetap harus fail closed
+walaupun gate anak berubah. Tidak satu pun key ini mengubah
+`IntegrationSource.contract_version` atau mengaktifkan source secara implisit.
 
 1. Selesaikan P17c, cocokkan bukti browser ke
    [catatan validasi](ORGANIZATION_CHECKOUT_VALIDATION.md), lalu review ulang

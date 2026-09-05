@@ -132,4 +132,152 @@ final class OrganizationCheckoutOperationsDocumentationTest extends TestCase
             $this->normalizedDocument,
         );
     }
+
+    public function test_bill_state_matrix_is_exact_and_uses_canonical_invoice_audit_actions(): void
+    {
+        $rows = $this->markdownTableBetweenHeadings(
+            'Triage berdasarkan state bill',
+            'Claim dan penerbitan invoice',
+            ['State', 'Arti operasional', 'Tindakan aman', 'Larangan'],
+        );
+
+        self::assertCount(7, $rows);
+        foreach ($rows as $row) {
+            self::assertCount(4, $row);
+        }
+        self::assertSame(
+            ['`reserved`', '`issuing`', '`unknown`', '`pending`', '`expired`', '`rejected`', '`paid`'],
+            array_column($rows, 0),
+        );
+
+        $source = file_get_contents($this->root.'/app/Actions/Payments/PersistAssessmentInvoiceOutcome.php');
+        self::assertIsString($source);
+
+        foreach (['assessment_bill.invoice_unknown', 'assessment_bill.invoice_issued'] as $action) {
+            self::assertStringContainsString("`{$action}`", $this->document);
+            self::assertStringContainsString("'{$action}'", $source);
+        }
+
+        self::assertStringNotContainsString('`invoice_unknown`', $this->document);
+        self::assertStringNotContainsString('`invoice_issued`', $this->document);
+    }
+
+    public function test_documented_activation_gate_groups_match_default_off_config(): void
+    {
+        $configuration = require $this->root.'/config/assessment_integration.php';
+        self::assertIsArray($configuration);
+
+        $expectedGroups = [
+            'checkout utama' => ['assessment_integration.checkout.enabled'],
+            'handoff' => ['assessment_integration.checkout_handoff.enabled'],
+            'sesi' => ['assessment_integration.checkout_session.enabled'],
+            'konfirmasi' => [
+                'assessment_integration.checkout_session.http.confirmation.enabled',
+                'assessment_integration.checkout_session.http.confirmation.writer_enabled',
+            ],
+            'pembayaran' => [
+                'assessment_integration.checkout_session.http.payment.enabled',
+                'assessment_integration.checkout_session.http.payment.writer_enabled',
+            ],
+        ];
+
+        $rows = $this->markdownTableBetweenHeadings(
+            'Urutan aktivasi yang aman',
+            'Rollback dan containment',
+            ['Kelompok gate', 'Key konfigurasi exact', 'Dependensi sebelum aktivasi'],
+        );
+        self::assertCount(5, $rows);
+
+        $documentedGroups = [];
+        $allKeysInTable = [];
+        foreach ($rows as $row) {
+            self::assertCount(3, $row);
+
+            $matches = [];
+            $count = preg_match_all('/`(?<key>assessment_integration\.[a-z_.]+)`/', implode(' | ', $row), $matches);
+            self::assertIsInt($count);
+            $allKeysInTable = [...$allKeysInTable, ...$matches['key']];
+
+            $keyCellMatches = [];
+            $keyCellCount = preg_match_all('/`(?<key>assessment_integration\.[a-z_.]+)`/', $row[1], $keyCellMatches);
+            self::assertIsInt($keyCellCount);
+            self::assertGreaterThan(0, $keyCellCount, "Activation gate group has no key: {$row[0]}");
+            self::assertSame($matches['key'], $keyCellMatches['key'], "Activation keys moved outside the key cell: {$row[0]}");
+
+            $documentedGroups[$row[0]] = $keyCellMatches['key'];
+        }
+
+        self::assertSame($expectedGroups, $documentedGroups);
+
+        $expectedKeys = array_merge(...array_values($expectedGroups));
+        self::assertCount(7, $allKeysInTable);
+        self::assertCount(7, array_unique($allKeysInTable));
+        self::assertSame($expectedKeys, $allKeysInTable);
+
+        foreach ($documentedGroups as $keys) {
+            foreach ($keys as $key) {
+                $segments = explode('.', preg_replace('/^assessment_integration\./', '', $key) ?? $key);
+                $value = $configuration;
+                foreach ($segments as $segment) {
+                    self::assertIsArray($value);
+                    self::assertArrayHasKey($segment, $value, "Missing configuration key: {$key}");
+                    $value = $value[$segment];
+                }
+                self::assertFalse($value, "Activation gate must remain OFF by default: {$key}");
+            }
+        }
+
+        self::assertStringContainsString(
+            'Kelima kelompok gate tetap berbeda dan tidak boleh diperlakukan sebagai satu switch.',
+            $this->normalizedDocument,
+        );
+    }
+
+    /**
+     * @param  list<string>  $expectedHeader
+     * @return list<list<string>>
+     */
+    private function markdownTableBetweenHeadings(
+        string $heading,
+        string $nextHeading,
+        array $expectedHeader,
+    ): array {
+        $matches = [];
+        $count = preg_match(
+            '/^## '.preg_quote($heading, '/').'\R(?<section>.*?)^## '.preg_quote($nextHeading, '/').'\R/ms',
+            $this->document,
+            $matches,
+        );
+
+        self::assertSame(1, $count, "Unable to isolate documentation section: {$heading}");
+        self::assertArrayHasKey('section', $matches);
+
+        $lines = preg_split('/\R/', $matches['section']);
+        self::assertIsArray($lines);
+
+        $headerLine = '| '.implode(' | ', $expectedHeader).' |';
+        $headerIndexes = array_keys($lines, $headerLine, true);
+        self::assertCount(1, $headerIndexes, "Expected exactly one table header in section: {$heading}");
+
+        $headerIndex = $headerIndexes[0];
+        self::assertSame(
+            '| '.implode(' | ', array_fill(0, count($expectedHeader), '---')).' |',
+            $lines[$headerIndex + 1] ?? null,
+            "Malformed table separator in section: {$heading}",
+        );
+
+        $rows = [];
+        for ($index = $headerIndex + 2; isset($lines[$index]); $index++) {
+            $line = $lines[$index];
+            if (! str_starts_with($line, '| ') || ! str_ends_with($line, ' |')) {
+                break;
+            }
+
+            $cells = array_map('trim', explode('|', trim($line, '|')));
+            self::assertCount(count($expectedHeader), $cells, "Malformed table row in section: {$heading}");
+            $rows[] = $cells;
+        }
+
+        return $rows;
+    }
 }
