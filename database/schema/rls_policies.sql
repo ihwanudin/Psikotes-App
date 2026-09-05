@@ -115,16 +115,30 @@ WITH CHECK (app_private.app_role() = 'service');
 
 CREATE POLICY consent_records_read ON consent_records FOR SELECT TO psikotes_runtime
 USING (
-    app_private.app_role() IN ('service', 'super_admin', 'psychologist')
+    app_private.app_role() IN ('service', 'psychologist')
     OR (app_private.app_role() = 'participant' AND participant_id = app_private.app_participant_id())
     OR (
-        app_private.app_role() IN ('branch_admin', 'staff')
-        AND EXISTS (
-            SELECT 1 FROM participants
-            WHERE participants.id = consent_records.participant_id
-              AND participants.branch_id = app_private.app_branch_id()
+        consent_type <> 'dass'
+        AND (
+            app_private.app_role() = 'super_admin'
+            OR (
+                app_private.app_role() IN ('branch_admin', 'staff')
+                AND EXISTS (
+                    SELECT 1 FROM participants
+                    WHERE participants.id = consent_records.participant_id
+                      AND participants.branch_id = app_private.app_branch_id()
+                )
+            )
         )
     )
+);
+-- consent_records_write is permissive FOR ALL, so this SELECT guard prevents it
+-- from granting DASS reads that consent_records_read intentionally withholds.
+CREATE POLICY consent_records_dass_privacy ON consent_records AS RESTRICTIVE FOR SELECT TO psikotes_runtime
+USING (
+    consent_type <> 'dass'
+    OR app_private.app_role() IN ('service', 'psychologist')
+    OR (app_private.app_role() = 'participant' AND participant_id = app_private.app_participant_id())
 );
 CREATE POLICY consent_records_write ON consent_records FOR ALL TO psikotes_runtime
 USING (app_private.app_role() IN ('service', 'super_admin'))

@@ -1,76 +1,87 @@
 # P12a-prep — portal cabang baca-saja
 
-## P17a PostgreSQL blocker — detail consent DASS terbaca branch admin
+## P17a PostgreSQL GREEN — consent DASS privat tanpa regresi consent umum
 
-Tanggal 2026-09-05. Increment berhenti sebagai blocker test-only; tidak ada
-perubahan policy, schema, migration, runner, app, backend/frontend, route atau
-config. Test baru `DassConsentBranchPrivacyTest` memakai runtime
-`psikotes_runtime` non-owner, non-superuser, `NOBYPASSRLS` pada runner PostgreSQL
-disposable existing. Hash `database/schema/rls_policies.sql` worker dan root
-identik:
-`710B62B07A2376BB39585744A7768AC65F012A26EA3226338E1EE598DDB388AE`.
+Tanggal 2026-09-05. Increment ini mempertahankan commit RED `a2b1971`, lalu
+menambah migration aditif `2026_09_05_000500_restrict_dass_consent_read_policy`.
+Historical migration tidak diedit. Definisi fresh-install di
+`database/schema/rls_policies.sql` diselaraskan, sedangkan policy
+`consent_records_write` tidak diubah.
 
-Fixture service membuat satu participant sintetis dengan dua attempt/package
-berbeda; kedua package memuat IST+DASS-21. Fixture juga membuat satu organisasi
-asing dan satu assessment, response, result, serta consent DASS sintetis. Tidak
-ada data klinis atau identitas nyata.
+Policy read baru mempertahankan pembaca existing untuk consent non-DASS:
+service, super admin, psychologist, participant pemilik, serta branch admin dan
+staff pada participant cabang sendiri. Untuk `consent_type = 'dass'`, hanya
+service, psychologist, dan participant pemilik yang dapat membaca. Context
+kosong, super admin, branch admin/staff cabang sendiri maupun asing, serta
+participant asing melihat nol row DASS.
 
-### Reproduksi
+### Temuan semantik policy dan perbaikan
 
-Di bawah context branch asing, direct SQL melihat nol row pada
-`dass.assessments`, `dass.responses`, `dass.results`, dan `consent_records`.
-Di bawah branch pemilik, direct SQL juga melihat nol assessment/response/result
-DASS. Namun query berikut mengembalikan satu row:
+Percobaan GREEN pertama yang hanya mengganti `consent_records_read` masih gagal
+untuk super admin: expected nol, actual satu. Penyebabnya policy existing
+`consent_records_write` didefinisikan `FOR ALL`, sehingga juga berlaku pada
+SELECT. Karena policy permissive PostgreSQL digabung dengan OR, hak super admin
+dari policy write masih membuka row DASS.
 
-```sql
-select status, document_version, document_hash, consented_at, withdrawn_at
-from consent_records
-where participant_id = :participant and consent_type = 'dass'
-```
+Policy write tetap persis sama. Migration menambahkan
+`consent_records_dass_privacy AS RESTRICTIVE FOR SELECT`; guard ini bernilai
+true bagi consent non-DASS, dan untuk DASS hanya bagi service, psychologist,
+atau participant pemilik. Dengan demikian hak insert/update/delete existing
+tidak diubah, sedangkan semua policy yang dapat berlaku pada SELECT harus
+melewati batas privasi DASS. `down()` menghapus guard dan mengembalikan
+`consent_records_read` lama; `up()` aman menghapus/membuat ulang kedua policy
+read terkait.
 
-Tes mengharapkan nol karena instruksi P17a melarang detail consent DASS pada
-branch admin, lalu gagal spesifik:
+### Bukti PostgreSQL disposable
 
-```text
-Branch admin can read DASS consent status/version/hash/timestamps; P17a requires this detail hidden.
-Failed asserting that actual size 1 matches expected size 0.
-```
+Test memakai `psikotes_runtime`, dibuktikan non-owner, non-superuser dan
+`NOBYPASSRLS`. Fixture sintetis berisi satu participant dengan dua attempt,
+consent `psychotest` dan `dass`, satu assessment/response/result DASS, serta
+organisasi dan participant asing. Matriks runtime membuktikan:
 
-Penyebab ada pada policy existing `consent_records_read`: branch admin/staff
-diizinkan membaca semua consent milik participant cabangnya tanpa pengecualian
-`consent_type = 'dass'`. Ini berbeda dari tiga policy tabel DASS yang hanya
-memberi baca ke service, psychologist, atau participant pemilik. Test SHA256:
-`3CCE3BCFD24C631273C75A43FD73D0D036877C94A502E6B2DD8A26C5392082E7`.
+- service, psychologist, dan participant pemilik melihat dua consent serta tiga
+  tabel DASS;
+- super admin, branch admin dan staff cabang pemilik hanya melihat consent
+  psychotest, tanpa consent/tabel DASS;
+- branch admin/staff asing, participant asing, dan context kosong melihat nol
+  row target;
+- consent psychotest tetap mengikuti perilaku lama untuk seluruh pembaca yang
+  semula berhak.
 
-### Hasil runner dan batas
+Test kedua membuka koneksi DDL `org_test_owner` hanya pada database disposable,
+membuat schema sintetis di dalam transaksi owner, lalu menjalankan migration
+`up/down/up`. Catalog membuktikan guard SELECT bersifat `RESTRICTIVE`, down
+menghapusnya dan mengembalikan expression lama, serta up kedua menghasilkan
+expression identik dengan up pertama. Snapshot catalog policy write publik
+identik sebelum/sesudah siklus. Transaksi owner di-rollback; runtime default
+dipulihkan.
 
-Run disposable worker menghasilkan **166 tes / 1.110 assertions**, dengan
-**1 failure P17a** di atas dan 8 error baseline snapshot lama terkait migrasi
-proof/fixture portal. Failure P17a terjadi setelah assertion runtime non-owner,
-NOBYPASSRLS, dua attempt berbeda, foreign denial, dan tiga tabel DASS tersembunyi
-lulus. Runner mencetak `Disposable test resources cleaned up; application
-containers were not targeted.`
+Runner fokus sementara berasal dari salinan runner established dan hanya
+menambahkan filter kelas; file sementara dihapus setelah run dan runner shared
+tidak diubah. Hasil final **2 tes / 72 assertions**, nol failure/error/skip.
+Runner membersihkan container/network berlabel exact dan melaporkan application
+containers tidak ditargetkan. Pemeriksaan sesudah run tidak menemukan resource
+disposable tersisa.
 
-Untuk memisahkan error snapshot lama, dibuat archive bersih root commit
-`7aa41b3` tanpa `.env`; vendor disalin secara fisik setelah `composer.lock`
-cocok. Runner kedua berhenti pada bootstrap sebelum PHPUnit karena migration
-`2026_09_05_000100_create_generic_assessment_result_versions.php` memasang FK
-self-reference PostgreSQL tanpa unique constraint yang dapat dirujuk. Root HEAD
-saat pemeriksaan masih memakai isi migration identik. Runner kedua juga mencetak
-cleanup disposable yang sama. Tidak ada migration yang diubah dalam lane ini.
+Run seluruh suite worker menghasilkan **167 tes / 1.170 assertions**, tanpa
+failure P17a dan dengan 8 error snapshot lama: satu rollback schema billing
+kehilangan kolom proof saat reinsertion, serta tujuh fixture portal lama
+melanggar constraint pasangan identitas proof. Ini daftar error yang sama dengan
+baseline worker sebelum GREEN dan berada di luar delta policy. Archive bersih
+root yang dicoba pada increment RED tetap terhalang lebih awal oleh migration
+generic-result self-FK yang belum mempunyai referenced unique constraint; karena
+itu bukti final terfokus dijalankan dari baseline worker valid yang memakai
+policy source identik.
 
-Karena privacy contract sudah gagal, pembuktian canonical app action untuk
-foreign service scope serta lifecycle paid/unpaid dua attempt tidak dilanjutkan
-atau diklaim. Perbaikannya memerlukan keputusan policy: sembunyikan row DASS
-dari branch admin/staff, atau sediakan proyeksi derived minimum bila cabang
-memang perlu mengetahui pemenuhan consent tanpa hash/version/timestamp mentah.
-Itu memerlukan review ownership schema/security sebelum implementasi.
+Pint Laravel preset, PHP lint, dan PHPStan level 7 terfokus lulus. SHA256:
 
-Pint, PHP lint, dan PHPStan level 7 untuk test blocker lulus. Tidak ada `.env`,
-DB aktif, browser, outbound, deploy, push atau aktivasi production. Archive temp
-yang tersisa hanya berisi source/dependency sintetis:
-`C:/Users/ThinkPad/AppData/Local/Temp/oncam-p17-pg-blocker-047a8babf69b4faaa3a58b7cd9a77c3c`.
-Berhenti untuk review.
+- migration: `8E33846DEC1DBAC89F4C222E50E7D42E5EC0DC1585F75AFED66003598979CA78`;
+- fresh-install RLS: `D7BC8625A2227CC49CCED1A4E80ECF4C44591D6D2AF32011180DB081E1FF474B`;
+- test: `64979DD77D8A4F97C22F4B05576B3DC7EA8F7FDF1D2134352D8BA230B3A84F86`.
+
+Tidak ada DB aktif, `.env`, browser, provider/notifier, outbound, deploy, push,
+atau perubahan write policy. Scope hanya migration aditif, source fresh-install,
+test PostgreSQL, dan laporan lane. Berhenti untuk review.
 
 ## P17a-prep — dua trusted source, satu participant, lifecycle per attempt
 
