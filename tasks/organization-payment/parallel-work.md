@@ -1,5 +1,22 @@
 # Koordinasi task paralel organization-payment
 
+## P16 presentation accepted; transport split active — 2026-09-05
+
+Frontend `337d22e` was reviewed and integrated as root `73eb56a`. Root reran the
+real-Blade matrix **6/6 cases** and private HTTP regressions **33/33 tests, 910
+assertions**, plus Pint, PHP syntax, and diff-check. The injected form is absent
+from production responses because no controller supplies its contract. It renders
+only exact missing required profile fields and both unchecked mandatory consents;
+all payment/tenant/identity facts stay read-only and are not submitted.
+
+Native form encoding cannot satisfy the reviewed P15 strict-JSON/literal-boolean
+boundary. The next increment is therefore split without overlapping files:
+backend owns a controller/HTTP adapter and test-only route evidence, while frontend
+owns an external same-origin JavaScript adapter plus accessible no-JavaScript and
+error states. Neither lane may add a production route, enable configuration, or
+change the P15 writer/schema. Browser verification remains withheld by the prior
+host-process blocker.
+
 ## DASS consent RLS repaired and reviewed — 2026-09-05
 
 Portal RED `a2b1971`, GREEN `ec59c12`, and driver correction `4825981` were
