@@ -58,7 +58,8 @@ export async function verifyCheckoutKeyboardAndReflow(page) {
     const psychName =
         'Saya telah membaca dan menyetujui persetujuan psikotes utama. *';
     const psych = () => role('checkbox', psychName);
-    const decline = () => role('radio', 'Saya tidak ingin mengikuti DASS-21.');
+    const dassName = 'Saya telah membaca dan menyetujui persetujuan DASS-21. *';
+    const dass = () => role('checkbox', dassName);
     const count = async () =>
         Number(await role('status', 'Jumlah konfirmasi').textContent());
     const payload = async () => {
@@ -221,23 +222,22 @@ export async function verifyCheckoutKeyboardAndReflow(page) {
         'Unchecked consent submitted',
     );
     await toggle(psychName);
-    await tabTo(role('radio', 'Saya setuju mengikuti DASS-21.'));
+    await tabTo(dass());
     await key('Space');
-    await key('ArrowDown');
     check(
-        (await decline().isChecked()) && (await psych().isChecked()),
-        'Native radio arrows changed main consent',
+        (await dass().isChecked()) && (await psych().isChecked()),
+        'Native DASS acceptance changed main consent',
     );
     await tabTo(submit());
     await key('Enter');
     check(
         (await count()) === 3 &&
-            (await payload()).dass.accepted === false &&
+            (await payload()).dass.accepted === true &&
             (await payload()).psychotest.accepted === true,
         'Separate consent payload',
     );
     results.push(
-        'native Space/ArrowDown/Enter: main consent separate from explicit DASS decline',
+        'native Space/Enter: main consent separate from mandatory DASS acceptance',
     );
 
     for (const reset of [
@@ -249,7 +249,7 @@ export async function verifyCheckoutKeyboardAndReflow(page) {
         check(
             (await email().inputValue()) === '' &&
                 !(await psych().isChecked()) &&
-                !(await decline().isChecked()),
+                !(await dass().isChecked()),
             `${reset}: not reset`,
         );
         check(await submit().isDisabled(), `${reset}: submit enabled`);
@@ -258,9 +258,8 @@ export async function verifyCheckoutKeyboardAndReflow(page) {
         check((await count()) === 3, `${reset}: premature callback`);
         await type(email(), 'keyboard@example.test');
         await toggle(psychName);
-        await tabTo(role('radio', 'Saya setuju mengikuti DASS-21.'));
+        await tabTo(dass());
         await key('Space');
-        await key('ArrowDown');
     }
 
     await type(email(), '');

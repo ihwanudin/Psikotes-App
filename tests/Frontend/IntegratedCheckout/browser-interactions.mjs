@@ -204,8 +204,17 @@ export async function verifyOptionalEmail(page) {
             'checkbox',
             'Saya telah membaca dan menyetujui persetujuan psikotes utama. *',
         );
+    const dass = () =>
+        role(
+            'checkbox',
+            'Saya telah membaca dan menyetujui persetujuan DASS-21. *',
+        );
     await psych().check();
     await email().fill('');
+    check(await submit().isDisabled(), 'DASS consent still required');
+    await probe();
+    check((await count()) === 2, 'DASS handler guard');
+    await dass().check();
     await submit().click();
     check((await count()) === 3, 'Consent-only confirmation remains possible');
     check(
@@ -213,43 +222,38 @@ export async function verifyOptionalEmail(page) {
             JSON.stringify({
                 missingProfile: {},
                 psychotest: { version: 'contoh-v1:0', accepted: true },
+                dass: { version: 'contoh-dass-v1:0', accepted: true },
             }),
-        'Blank email omitted; unselected DASS omitted',
+        'Blank email omitted; both mandatory consents accepted',
     );
-    results.push('consent confirmation works without email or DASS selection');
+    results.push('consent confirmation requires both mandatory acceptances');
 
     for (const revision of [
         'Revisi versi psikotes fixture',
         'Revisi versi DASS fixture',
     ]) {
         await email().fill('contoh@example.test');
-        await role('radio', 'Saya tidak ingin mengikuti DASS-21.').check();
+        await dass().check();
         await role('button', revision).click();
         check(
             (await email().inputValue()) === '' && !(await psych().isChecked()),
             `${revision}: reset fields/consent`,
         );
-        check(
-            !(await role(
-                'radio',
-                'Saya tidak ingin mengikuti DASS-21.',
-            ).isChecked()),
-            `${revision}: reset DASS`,
-        );
+        check(!(await dass().isChecked()), `${revision}: reset DASS`);
         check(await submit().isDisabled(), `${revision}: still guarded`);
         await probe();
         check((await count()) === 3, `${revision}: no callback`);
         await psych().check();
+        await dass().check();
     }
 
-    await role('radio', 'Saya tidak ingin mengikuti DASS-21.').check();
     await submit().click();
     check(
-        (await count()) === 4 && (await payload()).dass.accepted === false,
-        'DASS explicit decline preserved',
+        (await count()) === 4 && (await payload()).dass.accepted === true,
+        'DASS mandatory acceptance preserved',
     );
     results.push(
-        'both consent version resets preserved; explicit DASS decline remains separate',
+        'both consent version resets preserved; DASS acceptance remains mandatory and separate',
     );
 
     await select('Mandiri · pending');
@@ -305,6 +309,11 @@ export async function verifyCheckoutInteractions(page) {
             'checkbox',
             'Saya telah membaca dan menyetujui persetujuan psikotes utama. *',
         );
+    const dassConsent = () =>
+        role(
+            'checkbox',
+            'Saya telah membaca dan menyetujui persetujuan DASS-21. *',
+        );
     const counter = () => role('status', 'Jumlah konfirmasi').innerText();
     const receipt = () => role('status', 'Hasil callback simulasi').innerText();
     const probe = () =>
@@ -321,19 +330,19 @@ export async function verifyCheckoutInteractions(page) {
 
     await role('checkbox', 'Legal review pending (fixture)').uncheck();
     await mainConsent().check();
-    await role('radio', 'Saya tidak ingin mengikuti DASS-21.').check();
+    await dassConsent().check();
     await confirm().click();
     assert.equal(await counter(), '1');
     assert.match(
         await receipt(),
-        /"dass":\{"version":"contoh-dass-v1:0","accepted":false\}/,
+        /"dass":\{"version":"contoh-dass-v1:0","accepted":true\}/,
     );
     assert.match(
         await role('region', 'Pembayaran').innerText(),
         /Menunggu pembayaran lembaga/,
     );
     results.push(
-        'explicit DASS decline confirms once without changing payment/access',
+        'mandatory DASS acceptance confirms once without changing payment/access',
     );
 
     await role('checkbox', 'Sedang menyimpan').check();
@@ -365,7 +374,7 @@ export async function verifyCheckoutInteractions(page) {
     });
     await role('textbox', 'Nomor WhatsApp *').fill('080000000001');
     await mainConsent().check();
-    await role('radio', 'Saya tidak ingin mengikuti DASS-21.').check();
+    await dassConsent().check();
     await role('button', 'Simulasikan error validasi').click();
     let snapshot = await page.locator('body').ariaSnapshot();
     assert.equal(
@@ -407,10 +416,9 @@ export async function verifyCheckoutInteractions(page) {
             snapshot,
             /checkbox "Saya telah membaca[^\n]*\[checked\]/,
         );
-        assert.doesNotMatch(snapshot, /radio "Saya[^\n]*\[checked\]/);
         assert.equal(await confirm().isEnabled(), false);
         await mainConsent().check();
-        assert.equal(await confirm().isEnabled(), true);
+        assert.equal(await confirm().isEnabled(), false);
         const previous = await counter();
         await confirm().click();
         assert.equal(
@@ -425,13 +433,17 @@ export async function verifyCheckoutInteractions(page) {
             true,
         );
         await role('textbox', 'Nomor WhatsApp *').fill('080000000002');
+        assert.equal(await confirm().isEnabled(), false);
+        await dassConsent().check();
         await confirm().click();
         assert.equal(Number(await counter()), Number(previous) + 1);
         assert.match(await receipt(), /"phone":"080000000002"/);
-        assert.doesNotMatch(await receipt(), /"dass":/);
-        await role('radio', 'Saya tidak ingin mengikuti DASS-21.').check();
+        assert.match(
+            await receipt(),
+            /"dass":\{"version":"contoh-dass-v1:[0-9]+","accepted":true\}/,
+        );
         results.push(
-            `${reset}: profile and both choices reset; null DASS omitted after refill`,
+            `${reset}: profile and both mandatory consents reset; DASS must be accepted again`,
         );
     }
 

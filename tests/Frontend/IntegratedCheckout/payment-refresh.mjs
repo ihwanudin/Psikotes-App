@@ -45,7 +45,11 @@ async (page) => {
             'checkbox',
             'Saya telah membaca dan menyetujui persetujuan psikotes utama. *',
         );
-    const decline = () => role('radio', 'Saya tidak ingin mengikuti DASS-21.');
+    const dass = () =>
+        role(
+            'checkbox',
+            'Saya telah membaca dan menyetujui persetujuan DASS-21. *',
+        );
     const payment = () => role('region', 'Pembayaran');
     const paymentCalls = async () =>
         Number(
@@ -82,9 +86,8 @@ async (page) => {
     await page.keyboard.type('080000000004');
     await tabTo(psych());
     await key('Space');
-    await tabTo(role('radio', 'Saya setuju mengikuti DASS-21.'));
+    await tabTo(dass());
     await key('Space');
-    await key('ArrowDown');
     const originalForm = await role(
         'form',
         'Konfirmasi checkout',
@@ -111,7 +114,7 @@ async (page) => {
             'Missing profile edit lost',
         );
         check(
-            (await psych().isChecked()) && (await decline().isChecked()),
+            (await psych().isChecked()) && (await dass().isChecked()),
             'Consent choices lost',
         );
         check(

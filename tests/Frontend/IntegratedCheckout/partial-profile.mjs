@@ -111,12 +111,19 @@ async (page) => {
         ),
     );
     await key('Space');
-    await tabTo(role('radio', 'Saya setuju mengikuti DASS-21.'));
+    await tabTo(
+        role(
+            'checkbox',
+            'Saya telah membaca dan menyetujui persetujuan DASS-21. *',
+        ),
+    );
     await key('Space');
-    await key('ArrowDown');
     check(
-        await role('radio', 'Saya tidak ingin mengikuti DASS-21.').isChecked(),
-        'Explicit DASS decline',
+        await role(
+            'checkbox',
+            'Saya telah membaca dan menyetujui persetujuan DASS-21. *',
+        ).isChecked(),
+        'Mandatory DASS acceptance',
     );
 
     for (const [name, value] of [
@@ -185,7 +192,7 @@ async (page) => {
             phone: '080000000005',
         },
         psychotest: { version: 'contoh-v1:0', accepted: true },
-        dass: { version: 'contoh-dass-v1:0', accepted: false },
+        dass: { version: 'contoh-dass-v1:0', accepted: true },
     };
     check(
         JSON.stringify(payload) === JSON.stringify(expected),
@@ -204,7 +211,7 @@ async (page) => {
         path: 'output/playwright/partial-profile/filled.png',
     });
     results.push(
-        'exact missing-only payload, blank email omitted, versioned main consent and DASS decline; access locked',
+        'exact missing-only payload, blank email omitted, versioned main and mandatory DASS consent; access locked',
     );
 
     await role('combobox', 'Skenario').selectOption({
