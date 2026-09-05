@@ -150,7 +150,7 @@ final readonly class EstablishCheckoutSession
                 'absoluteExpiresAt' => $absoluteExpiresAt->toISOString(),
             ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
             'occurred_at' => $establishedAt,
-            'expires_at' => $establishedAt->addYearsNoOverflow(2),
+            'expires_at' => $absoluteExpiresAt->addYearsNoOverflow(2),
         ]);
     }
 }

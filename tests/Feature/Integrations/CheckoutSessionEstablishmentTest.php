@@ -17,6 +17,7 @@ use App\Models\CheckoutSession;
 use App\Models\IntegrationClient;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -107,6 +108,8 @@ final class CheckoutSessionEstablishmentTest extends OrganizationPaymentTestCase
     {
         $fixture = $this->issued();
         $this->establish($fixture['raw']);
+        $auditExpiry = DB::table('audit_logs')
+            ->where('action', 'checkout_session.established')->sole()->expires_at;
         try {
             $this->establish($fixture['raw']);
             $this->fail('Consumed bearer established twice.');
@@ -116,6 +119,28 @@ final class CheckoutSessionEstablishmentTest extends OrganizationPaymentTestCase
         $this->assertDatabaseCount('checkout_sessions', 1);
         $this->assertSame(1, DB::table('audit_logs')->where('action', 'checkout_handoff.consumed')->count());
         $this->assertSame(1, DB::table('audit_logs')->where('action', 'checkout_session.established')->count());
+        $this->assertSame($auditExpiry, DB::table('audit_logs')
+            ->where('action', 'checkout_session.established')->sole()->expires_at);
+    }
+
+    public function test_established_audit_retention_starts_at_absolute_session_boundary(): void
+    {
+        config()->set('assessment_integration.checkout_session.idle_minutes', 120);
+        config()->set('assessment_integration.checkout_session.absolute_minutes', 1440);
+        $fixture = $this->issued();
+
+        $this->establish($fixture['raw']);
+
+        $session = CheckoutSession::query()->sole();
+        $audit = DB::table('audit_logs')->where('action', 'checkout_session.established')->sole();
+        $auditExpiry = CarbonImmutable::parse($audit->expires_at)->utc();
+        $expectedExpiry = CarbonImmutable::instance($session->absolute_expires_at)
+            ->utc()->addYearsNoOverflow(2);
+
+        $this->assertTrue($auditExpiry->equalTo($expectedExpiry));
+        $this->assertTrue($auditExpiry->greaterThan(
+            CarbonImmutable::instance($session->established_at)->utc()->addYearsNoOverflow(2),
+        ));
     }
 
     public function test_config_and_ambient_authority_fail_closed_before_consumption(): void
@@ -268,6 +293,7 @@ final class CheckoutSessionEstablishmentTest extends OrganizationPaymentTestCase
             'currency' => 'IDR', 'is_active' => true,
         ]);
         DB::table('package_items')->insert(['package_id' => $package, 'test_type' => 'ist', 'sort_order' => 1]);
+        DB::table('package_items')->insert(['package_id' => $package, 'test_type' => 'dass21', 'sort_order' => 2]);
         $attempt = DB::table('assessment_participants')->insertGetId([
             'organization_id' => $organization, 'integration_client_id' => $client,
             'participant_id' => $participant, 'package_id' => $package,
