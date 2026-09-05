@@ -303,7 +303,7 @@ test('busy disables the form and payment action', () => {
 });
 
 for (const legalReviewPending of [true, false]) {
-    test(`confirmation with recorded psychotest consent is ${legalReviewPending ? 'blocked' : 'available'} when legal review pending is ${legalReviewPending}`, () => {
+    test(`recorded psychotest consent still requires explicit DASS acceptance when legal review pending is ${legalReviewPending}`, () => {
         const html = render({
             screen: {
                 state: 'ready',
@@ -328,6 +328,6 @@ for (const legalReviewPending of [true, false]) {
             button,
             'DASS consent remains available for explicit confirmation',
         );
-        assert.equal(button.includes('disabled=""'), legalReviewPending);
+        assert.equal(button.includes('disabled=""'), true);
     });
 }

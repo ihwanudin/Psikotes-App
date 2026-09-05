@@ -25,7 +25,7 @@ export function CheckoutConsents({
 }: {
     consents: CheckoutSummary['consents'];
     psychotest: boolean;
-    dass: boolean | null;
+    dass: boolean;
     onPsychotest: (value: boolean) => void;
     onDass: (value: boolean) => void;
 }) {
@@ -84,7 +84,7 @@ export function CheckoutConsents({
                             <input
                                 type="checkbox"
                                 name="checkout-dass"
-                                checked={dass === true}
+                                checked={dass}
                                 onChange={(event) =>
                                     onDass(event.target.checked)
                                 }

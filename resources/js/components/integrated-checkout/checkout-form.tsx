@@ -23,7 +23,7 @@ export function CheckoutForm({
         Partial<Record<CheckoutProfileKey, string>>
     >({});
     const [psychotest, setPsychotest] = useState(false);
-    const [dass, setDass] = useState<boolean | null>(null);
+    const [dass, setDass] = useState(false);
     const errorSummary = useRef<HTMLDivElement>(null);
     const missingFields = summary.profile.filter(
         (field) => field.state === 'missing',
@@ -38,6 +38,7 @@ export function CheckoutForm({
         needsConfirmation &&
         summary.consents.legalReviewPending === false &&
         (summary.consents.psychotest.state === 'accepted' || psychotest) &&
+        (summary.consents.dass.state === 'accepted' || dass) &&
         !busy &&
         Boolean(onConfirm);
 
@@ -80,13 +81,10 @@ export function CheckoutForm({
                     };
                 }
 
-                if (
-                    summary.consents.dass.state === 'required' &&
-                    dass !== null
-                ) {
+                if (summary.consents.dass.state === 'required' && dass) {
                     confirmation.dass = {
                         version: summary.consents.dass.document.version,
-                        accepted: dass,
+                        accepted: true,
                     };
                 }
 
