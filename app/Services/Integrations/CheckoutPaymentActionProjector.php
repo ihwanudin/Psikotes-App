@@ -16,6 +16,7 @@ use App\Models\Branch;
 use App\Models\IntegrationClient;
 use App\Models\IntegrationSource;
 use App\Models\PackageItem;
+use App\Models\PaymentMethod;
 use App\Models\TestPackage;
 use App\Services\Payments\AssessmentPriceSnapshot;
 use App\Services\Payments\ResolvePayerPolicy;
@@ -45,26 +46,29 @@ final readonly class CheckoutPaymentActionProjector
         ?AssessmentCharge $charge,
         ?AssessmentBillItem $item,
         ?AssessmentBill $bill,
+        ?PaymentMethod $method,
+        bool $paymentEvidenceCanonical,
         CarbonInterface $asOf,
         bool $psychotestConsentAccepted,
         bool $dassConsentAccepted,
     ): ?CheckoutPaymentAction {
         try {
-            if ($this->http->paymentJsonBodyLimit() === null) {
+            if (! $paymentEvidenceCanonical || $this->http->paymentJsonBodyLimit() === null) {
                 return null;
             }
             $payer = $this->assertGraph($principal, $organization, $client, $source, $package, $attempt);
             $decision = $this->payerPolicy->resolve($organization, $client, $source, $package, $asOf, $payer->value);
             $policy = $this->policySnapshot($decision, $principal, $payer);
-            if ($charge === null && $item === null && $bill === null) {
+            if ($charge === null && $item === null && $bill === null && $method === null) {
                 return $this->fresh($package, $payer, $psychotestConsentAccepted && $dassConsentAccepted);
             }
             if (! $charge instanceof AssessmentCharge || ! $item instanceof AssessmentBillItem
-                || ! $bill instanceof AssessmentBill || $payer !== PayerType::SelfPay) {
+                || ! $bill instanceof AssessmentBill || ! $method instanceof PaymentMethod
+                || $payer !== PayerType::SelfPay) {
                 return null;
             }
 
-            return $this->pending($principal, $package, $charge, $item, $bill, $policy);
+            return $this->pending($principal, $package, $charge, $item, $bill, $method, $policy);
         } catch (DomainException) {
             return null;
         }
@@ -134,10 +138,12 @@ final readonly class CheckoutPaymentActionProjector
 
     /** @param array<string, mixed> $currentPolicy */
     private function pending(CheckoutSessionPrincipal $principal, TestPackage $package, AssessmentCharge $charge,
-        AssessmentBillItem $item, AssessmentBill $bill, array $currentPolicy): ?CheckoutPaymentAction
+        AssessmentBillItem $item, AssessmentBill $bill, PaymentMethod $method,
+        array $currentPolicy): ?CheckoutPaymentAction
     {
-        if (! $charge->exists || ! $item->exists || ! $bill->exists
-            || $charge->isDirty() || $item->isDirty() || $bill->isDirty()
+        if (! $charge->exists || ! $item->exists || ! $bill->exists || ! $method->exists
+            || $charge->isDirty() || $item->isDirty() || $bill->isDirty() || $method->isDirty()
+            || $method->id !== $bill->payment_method_id || $method->code !== 'xendit'
             || $bill->status !== 'pending' || $bill->paid_at !== null || $item->settled_at !== null
             || $bill->organization_id !== $principal->organizationId || $bill->payer_type !== 'self'
             || $bill->payer_participant_id !== $principal->participantId || $bill->item_count !== 1

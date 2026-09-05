@@ -13,6 +13,7 @@ use App\Models\Branch;
 use App\Models\IntegrationClient;
 use App\Models\IntegrationSource;
 use App\Models\PackageItem;
+use App\Models\PaymentMethod;
 use App\Models\TestPackage;
 use App\Services\Integrations\CheckoutPaymentActionProjector;
 use App\Services\Payments\AssessmentPriceSnapshot;
@@ -48,6 +49,16 @@ final class CheckoutPaymentActionProjectorTest extends TestCase
                     'consultationAmountIdr' => 50_000, 'amountIdr' => 149_000],
             ],
         ], $action?->toArray());
+        $this->assertSame([], DB::getQueryLog());
+
+        $partialEvidence = $fixture;
+        $partialEvidence[6] = $this->model(new AssessmentCharge, ['id' => 53]);
+        $this->assertNull(app(CheckoutPaymentActionProjector::class)->project(...$partialEvidence));
+        $this->assertSame([], DB::getQueryLog());
+
+        $collapsedCorruptEvidence = $fixture;
+        $collapsedCorruptEvidence[10] = false;
+        $this->assertNull(app(CheckoutPaymentActionProjector::class)->project(...$collapsedCorruptEvidence));
         $this->assertSame([], DB::getQueryLog());
     }
 
@@ -103,6 +114,7 @@ final class CheckoutPaymentActionProjectorTest extends TestCase
             'policy_snapshot' => $policy, 'free_settled_at' => null]);
         $bill = $this->model(new AssessmentBill, ['id' => 31, 'organization_id' => 11, 'payer_type' => 'self',
             'payer_participant_id' => 21, 'amount' => 149_000, 'currency' => 'IDR', 'item_count' => 1,
+            'payment_method_id' => 47,
             'status' => 'pending', 'invoice_url' => 'https://checkout.example/invoice', 'gateway_ref' => 'gateway-1',
             'public_reference' => 'AB_'.str_repeat('0', 26), 'selection_hash' => str_repeat('a', 64),
             'request_hash' => str_repeat('b', 64), 'idempotency_key' => 'checkout-self-v1:attempt-1',
@@ -113,21 +125,43 @@ final class CheckoutPaymentActionProjectorTest extends TestCase
         $item = $this->model(new AssessmentBillItem, ['id' => 37, 'bill_id' => 31, 'charge_id' => 23,
             'organization_id' => 11, 'participant_id' => 21, 'payer_type' => 'self',
             'payer_participant_id' => 21, 'amount' => 149_000, 'currency' => 'IDR', 'settled_at' => null]);
+        $method = $this->model(new PaymentMethod, ['id' => 47, 'code' => 'xendit', 'is_active' => false]);
 
         $action = app(CheckoutPaymentActionProjector::class)->project($principal, $organization, $client,
-            $source, $package, $attempt, $charge, $item, $bill, CarbonImmutable::parse('2026-09-05T00:00:00Z'), true, true);
+            $source, $package, $attempt, $charge, $item, $bill, $method,
+            true, CarbonImmutable::parse('2026-09-05T00:00:00Z'), true, true);
 
         $this->assertSame('continue', $action->mode);
         $this->assertSame([['consultationRequested' => true, 'baseAmountIdr' => 99_000,
             'consultationAmountIdr' => 50_000, 'amountIdr' => 149_000]], $action->choices);
 
+        $this->assertNull(app(CheckoutPaymentActionProjector::class)->project($principal, $organization, $client,
+            $source, $package, $attempt, $charge, $item, $bill, null,
+            true, CarbonImmutable::parse('2026-09-05T00:00:00Z'), true, true));
+        $wrongMethod = $this->model(new PaymentMethod, ['id' => 48, 'code' => 'xendit', 'is_active' => true]);
+        $this->assertNull(app(CheckoutPaymentActionProjector::class)->project($principal, $organization, $client,
+            $source, $package, $attempt, $charge, $item, $bill, $wrongMethod,
+            true, CarbonImmutable::parse('2026-09-05T00:00:00Z'), true, true));
+        $method->code = 'manual_transfer';
+        $this->assertNull(app(CheckoutPaymentActionProjector::class)->project($principal, $organization, $client,
+            $source, $package, $attempt, $charge, $item, $bill, $method,
+            true, CarbonImmutable::parse('2026-09-05T00:00:00Z'), true, true));
+        $method->syncOriginal();
+        $this->assertNull(app(CheckoutPaymentActionProjector::class)->project($principal, $organization, $client,
+            $source, $package, $attempt, $charge, $item, $bill, $method,
+            true, CarbonImmutable::parse('2026-09-05T00:00:00Z'), true, true));
+        $method->code = 'xendit';
+        $method->syncOriginal();
+
         $package->amount = 100_000;
         $this->assertNull(app(CheckoutPaymentActionProjector::class)->project($principal, $organization, $client,
-            $source, $package, $attempt, $charge, $item, $bill, CarbonImmutable::parse('2026-09-05T00:00:00Z'), true, true));
+            $source, $package, $attempt, $charge, $item, $bill, $method,
+            true, CarbonImmutable::parse('2026-09-05T00:00:00Z'), true, true));
         $package->amount = 99_000;
         $bill->status = 'unknown';
         $this->assertNull(app(CheckoutPaymentActionProjector::class)->project($principal, $organization, $client,
-            $source, $package, $attempt, $charge, $item, $bill, CarbonImmutable::parse('2026-09-05T00:00:00Z'), true, true));
+            $source, $package, $attempt, $charge, $item, $bill, $method,
+            true, CarbonImmutable::parse('2026-09-05T00:00:00Z'), true, true));
     }
 
     /** @return array<int, mixed> */
@@ -160,7 +194,7 @@ final class CheckoutPaymentActionProjectorTest extends TestCase
             'funding_mode' => $funding, 'metadata' => ['checkout_contract_version' => 'checkout-v2',
                 'checkout_initial_funding_mode' => $funding]]);
 
-        return [$principal, $organization, $client, $source, $package, $attempt, null, null, null, $at,
+        return [$principal, $organization, $client, $source, $package, $attempt, null, null, null, null, true, $at,
             $psychotestConsent, $dassConsent];
     }
 
