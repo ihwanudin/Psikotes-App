@@ -31,6 +31,13 @@ final class GenericAssessmentResultProjectorTest extends TestCase
         ], array_keys($callback));
     }
 
+    public function test_iq_at_the_psychometric_contract_ceiling_is_accepted(): void
+    {
+        $projected = (new GenericAssessmentResultProjector)->project($this->source(iq: 300));
+
+        $this->assertSame(300, $projected['iq']);
+    }
+
     public function test_same_version_and_payload_is_an_exact_replay(): void
     {
         $projector = new GenericAssessmentResultProjector;
@@ -142,6 +149,8 @@ final class GenericAssessmentResultProjectorTest extends TestCase
         yield 'non finite IQ' => [['iq' => INF]];
         yield 'zero IQ' => [['iq' => 0]];
         yield 'negative IQ' => [['iq' => -1.25]];
+        yield 'above psychometric ceiling' => [['iq' => 300.000001]];
+        yield 'integer beyond exact binary float range' => [['iq' => 9_007_199_254_740_993]];
         yield 'blank engine version' => [['engineVersion' => '']];
         yield 'unsafe engine version' => [['engineVersion' => "engine\nsecret"]];
         yield 'invalid completed timestamp' => [['completedAt' => 'tomorrow']];

@@ -83,6 +83,7 @@ return new class extends Migration
                     NEW.result_version < 1
                     OR NEW.finality <> 'FINALIZED'
                     OR NEW.iq <= 0
+                    OR NEW.iq > 300
                     OR lower(CAST(NEW.iq AS TEXT)) IN ('inf', 'infinity', 'nan')
                     OR length(NEW.iq_canonical) < 1
                     OR length(NEW.iq_canonical) > 64
@@ -164,6 +165,7 @@ return new class extends Migration
                 IF NEW.result_version < 1
                     OR NEW.finality <> 'FINALIZED'
                     OR NEW.iq <= 0
+                    OR NEW.iq > 300
                     OR NEW.iq = 'NaN'::double precision
                     OR NEW.iq = 'Infinity'::double precision
                     OR length(NEW.iq_canonical) NOT BETWEEN 1 AND 64

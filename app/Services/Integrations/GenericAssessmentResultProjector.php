@@ -121,7 +121,8 @@ final class GenericAssessmentResultProjector
         $resultVersion = $source['resultVersion'];
 
         if (! is_string($attemptId) || ! Str::isUlid($attemptId)
-            || (! is_int($iq) && ! is_float($iq)) || ! is_finite((float) $iq) || (float) $iq <= 0.0
+            || (! is_int($iq) && ! is_float($iq)) || ! is_finite((float) $iq)
+            || (float) $iq <= 0.0 || (float) $iq > 300.0
             || ! is_string($engineVersion) || preg_match('/^[A-Za-z0-9][A-Za-z0-9._:+\/-]{0,99}$/', $engineVersion) !== 1
             || ! is_string($completedAt)
             || $finality !== 'FINALIZED'

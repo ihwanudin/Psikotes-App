@@ -16,6 +16,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 use LogicException;
 use Tests\TestCase;
 
@@ -120,6 +121,25 @@ final class GenericAssessmentResultPersistenceTest extends TestCase
         app(GenericAssessmentResultStore::class)->persistAuthorizedSnapshot(
             $this->snapshot((string) Str::ulid()),
         );
+    }
+
+    public function test_iq_above_the_contract_ceiling_is_rejected_before_any_result_or_audit_write(): void
+    {
+        $assessment = $this->assessment();
+
+        foreach ([300.000001, 9_007_199_254_740_993] as $iq) {
+            try {
+                app(GenericAssessmentResultStore::class)->persistAuthorizedSnapshot(
+                    $this->snapshot($assessment->assessment_attempt_id, iq: $iq),
+                );
+                $this->fail('Out-of-domain IQ was accepted.');
+            } catch (InvalidArgumentException $exception) {
+                $this->assertSame('ASSESSMENT_RESULT_SOURCE_INVALID', $exception->getMessage());
+            }
+        }
+
+        $this->assertDatabaseCount('generic_assessment_result_versions', 0);
+        $this->assertDatabaseCount('audit_logs', 0);
     }
 
     public function test_stale_skipped_conflicting_no_change_and_post_revocation_versions_fail_closed(): void
@@ -265,6 +285,15 @@ final class GenericAssessmentResultPersistenceTest extends TestCase
                 'iq' => 100,
                 'iq_canonical' => '100oops',
                 'result_checksum' => str_repeat('e', 64),
+            ]),
+            fn () => DB::table('generic_assessment_result_versions')->insert([
+                ...$row,
+                'id' => (string) Str::ulid(),
+                'result_version' => 2,
+                'supersedes_id' => $row['id'],
+                'iq' => 301,
+                'iq_canonical' => '301',
+                'result_checksum' => str_repeat('f', 64),
             ]),
             fn () => DB::table('generic_assessment_result_versions')->insert([
                 ...$row,
