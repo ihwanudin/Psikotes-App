@@ -9,6 +9,7 @@ use App\Actions\Payments\PreviewAssessmentBill;
 use App\Data\Integrations\CheckoutSessionMutationCredentials;
 use App\Data\Integrations\CheckoutSessionPrincipal;
 use App\Data\Integrations\CheckoutZeroPriceResult;
+use App\Data\Payments\PayerDecision;
 use App\Enums\PayerType;
 use App\Models\AssessmentCharge;
 use App\Models\AssessmentParticipant;
@@ -78,6 +79,7 @@ final readonly class SettleZeroPriceCheckout
         if ($decision->rejectionReason !== null || $decision->selectedPayerType !== $payer) {
             throw new DomainException('ZERO_PRICE_POLICY_INVALID');
         }
+        $currentPolicySnapshot = $this->policySnapshot($decision, $principal, $payer);
 
         $charges = AssessmentCharge::query()->where('assessment_participant_id', $attempt->id)
             ->orderBy('id')->lockForUpdate()->limit(2)->get();
@@ -86,7 +88,8 @@ final readonly class SettleZeroPriceCheckout
         }
         $charge = $charges->first();
         if ($charge instanceof AssessmentCharge) {
-            return $this->replay($principal, $charge, $payer, $consultationRequested, $now);
+            return $this->replay($principal, $package, $charge, $payer, $currentPolicySnapshot,
+                $consultationRequested, $now);
         }
         if ($attempt->assessment_status !== 'PROVISIONED') {
             throw new DomainException('ZERO_PRICE_ATTEMPT_INVALID');
@@ -105,7 +108,8 @@ final readonly class SettleZeroPriceCheckout
         $snapshot = is_array($item) ? ($item['snapshot'] ?? null) : null;
         $policySnapshot = is_array($item) ? ($item['policySnapshot'] ?? null) : null;
         if (! is_array($item) || ! is_array($snapshot) || ! is_array($policySnapshot)
-            || ($preview['totalAmount'] ?? null) !== ($snapshot['amount'] ?? null)) {
+            || ($preview['totalAmount'] ?? null) !== ($snapshot['amount'] ?? null)
+            || $policySnapshot !== $currentPolicySnapshot) {
             throw new DomainException('ZERO_PRICE_PREVIEW_INVALID');
         }
         if ($snapshot['amount'] !== 0) {
@@ -130,12 +134,12 @@ final readonly class SettleZeroPriceCheckout
             'amount' => $snapshot['amount'],
             'currency' => $snapshot['currency'],
             'price_snapshot' => $snapshot,
-            'policy_snapshot' => $policySnapshot,
+            'policy_snapshot' => $currentPolicySnapshot,
             'free_settled_at' => $now,
         ]);
         $this->writeAudit($principal, $charge, $consultationRequested, $snapshot, $now);
         $activated = $this->activation->execute(
-            new AssessmentPrincipal($participant->id, $organization->id, $attempt->id),
+            new AssessmentPrincipal($participant->id, $organization->id, $attempt->id), $now,
         );
         sort($activated);
 
@@ -194,50 +198,55 @@ final readonly class SettleZeroPriceCheckout
         }
     }
 
-    private function replay(CheckoutSessionPrincipal $principal, AssessmentCharge $charge, PayerType $payer,
-        bool $consultationRequested, CarbonImmutable $now): CheckoutZeroPriceResult
+    /** @param array<string, mixed> $currentPolicySnapshot */
+    private function replay(CheckoutSessionPrincipal $principal, TestPackage $package, AssessmentCharge $charge,
+        PayerType $payer, array $currentPolicySnapshot, bool $consultationRequested,
+        CarbonImmutable $now): CheckoutZeroPriceResult
     {
         $snapshot = $this->prices->fromCharge($charge, $consultationRequested);
+        $currentSnapshot = $this->prices->capture($package, $consultationRequested);
         if ($charge->organization_id !== $principal->organizationId
             || $charge->participant_id !== $principal->participantId
             || $charge->package_id !== $principal->packageId
             || $charge->assessment_participant_id !== $principal->assessmentParticipantId
             || $charge->payer_type !== $payer->value || $charge->amount !== 0 || $charge->currency !== 'IDR'
+            || $snapshot !== $currentSnapshot || $charge->policy_snapshot !== $currentPolicySnapshot
             || $charge->free_settled_at === null || $charge->free_settled_at->gt($now)
             || DB::table('assessment_bill_items')->where('charge_id', $charge->id)->lockForUpdate()->exists()) {
             throw new DomainException('ZERO_PRICE_CHARGE_INVALID');
         }
-        $this->assertPolicySnapshot($charge->policy_snapshot, $principal, $payer);
         $this->assertAudit($principal, $charge, $consultationRequested, $snapshot);
         $activated = $this->activation->execute(new AssessmentPrincipal(
             $principal->participantId,
             $principal->organizationId,
             $principal->assessmentParticipantId,
-        ));
+        ), $now);
         sort($activated);
 
         return new CheckoutZeroPriceResult('settled', $activated);
     }
 
-    /** @param array<string, mixed> $snapshot */
-    private function assertPolicySnapshot(array $snapshot, CheckoutSessionPrincipal $principal, PayerType $payer): void
+    /** @return array{organizationId:int,integrationClientId:int,sourceId:int,contractVersion:string,allowedPayerTypes:list<string>,payerType:string,lockedPayerType:string|null} */
+    private function policySnapshot(PayerDecision $decision, CheckoutSessionPrincipal $principal, PayerType $payer): array
     {
-        $allowed = $snapshot['allowedPayerTypes'] ?? null;
-        if (count($snapshot) !== 7 || ($snapshot['organizationId'] ?? null) !== $principal->organizationId
-            || ($snapshot['integrationClientId'] ?? null) !== $principal->integrationClientId
-            || ($snapshot['sourceId'] ?? null) !== $principal->integrationSourceId
-            || ($snapshot['contractVersion'] ?? null) !== 'checkout-v2'
-            || ($snapshot['payerType'] ?? null) !== $payer->value || ! is_array($allowed)
-            || ! array_is_list($allowed) || ! in_array($payer->value, $allowed, true)
-            || count(array_unique($allowed)) !== count($allowed)
-            || ! in_array($snapshot['lockedPayerType'] ?? null, [null, $payer->value], true)) {
+        $allowed = array_map(static fn (PayerType $type): string => $type->value, $decision->allowedPayerTypes);
+        $canonical = array_values(array_filter(PayerType::cases(),
+            static fn (PayerType $type): bool => in_array($type->value, $allowed, true)));
+        if ($decision->selectedPayerType !== $payer || $allowed !== array_map(
+            static fn (PayerType $type): string => $type->value, $canonical,
+        ) || ! in_array($payer->value, $allowed, true)) {
             throw new DomainException('ZERO_PRICE_POLICY_SNAPSHOT_INVALID');
         }
-        foreach ($allowed as $value) {
-            if (! in_array($value, ['self', 'organization'], true)) {
-                throw new DomainException('ZERO_PRICE_POLICY_SNAPSHOT_INVALID');
-            }
-        }
+
+        return [
+            'organizationId' => $principal->organizationId,
+            'integrationClientId' => $principal->integrationClientId,
+            'sourceId' => $principal->integrationSourceId,
+            'contractVersion' => 'checkout-v2',
+            'allowedPayerTypes' => $allowed,
+            'payerType' => $payer->value,
+            'lockedPayerType' => $decision->lockedPayerType?->value,
+        ];
     }
 
     /** @param array<string, mixed> $snapshot */

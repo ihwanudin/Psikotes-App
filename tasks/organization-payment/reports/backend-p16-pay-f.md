@@ -108,6 +108,50 @@ outer charge/free audit/entitlements/outbox/status transaction.
 Final PHP syntax checks and focused Pint passed for all four PHP files. Full
 application PHPStan passed with **0 errors**. Lane `git diff --check` is clean.
 
+## Review correction: exact replay state and authoritative time
+
+Coordinator review held the initial implementation commit `99c700f` and required
+the replay and clock-skew rules to be tightened before integration. The correction
+keeps the initial persisted price and policy decisions immutable while also
+requiring them to match the current authoritative catalog and payer policy on
+every replay. The locked package is passed into replay and
+`AssessmentPriceSnapshot::capture()` is compared strictly with the stored charge
+snapshot. The current policy snapshot is reconstructed directly from the resolved
+`PayerDecision` as the exact seven-field shape, including the enum-ordered allowed
+payer list and locked payer. Changes to package price, name, items, allowed payer
+types, or payer lock therefore fail with the generic unavailable result and do
+not rewrite the charge, audit, or bill state.
+
+`ActivateSettledAssessment::execute()` now accepts an optional authoritative
+`CarbonImmutable` instant. Existing callers remain source-compatible and retain
+their prior behavior. The zero-price writer passes its single database instant,
+which is then used for settlement evaluation, prerequisite evaluation, ready
+timestamps, and the activation audit. This removes dependence on a PHP clock that
+may temporarily be behind the database clock. A frozen-early PHP clock test proves
+both initial activation and replay still use the persisted database instant.
+
+The organization-funded zero-price branch is an explicit no-money/no-bill
+exception only. It does not introduce a positive-price organization checkout
+command, invoice, URL, or provider operation, and it does not make organization
+funding an entitlement signal. Canonical documentation clarification remains a
+root-owned follow-up; this lane does not edit ADR-014 or other canonical docs.
+
+Correction TDD and final verification:
+
+- The first correction-focused run reached **42 tests / 278 assertions** with one
+  test-fixture assertion failure: the new catalog/policy drift loop compared a
+  global audit count instead of the case-local baseline. The assertion was fixed;
+  no production code changed for that failure.
+- Focused zero-settlement plus activation regression passed
+  **42 tests / 292 assertions**.
+- Related zero/self/confirmation/activation/preview regression passed
+  **124 tests / 790 assertions**.
+- The full PostgreSQL disposable runner
+  `oncam-org-test-aba263c85a9e4c5ba33096f70f3be5b6` passed
+  **373 tests / 3,180 assertions** in 61.983 seconds and confirmed cleanup.
+- Syntax checks for the three changed PHP files, focused Pint, full PHPStan
+  (**0 errors**), and `git diff --check` all passed.
+
 ## Owned files
 
 - `app/Actions/Integrations/SettleZeroPriceCheckout.php`

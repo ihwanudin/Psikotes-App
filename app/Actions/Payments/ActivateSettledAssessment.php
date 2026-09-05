@@ -9,12 +9,15 @@ use App\Models\AssessmentCharge;
 use App\Models\AssessmentEntitlement;
 use App\Models\AssessmentParticipant;
 use App\Models\Participant;
+use App\Registration\ConsentDocument;
 use App\Security\RlsContextRunner;
 use App\Services\ParticipantAuth\AssessmentAccessPrerequisites;
+use App\Services\ParticipantAuth\AssessmentPrerequisiteFrame;
 use App\Services\ParticipantAuth\AssessmentPrincipal;
 use App\Services\ParticipantAuth\Exceptions\EntitlementLocked;
 use App\Services\Payments\AssessmentPriceSnapshot;
 use App\Services\Payments\AssessmentSettlementReader;
+use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 use LogicException;
@@ -30,13 +33,13 @@ final readonly class ActivateSettledAssessment
     ) {}
 
     /** @return list<string> Newly activated types; unmet prerequisites are a no-op, not a batch failure. */
-    public function execute(AssessmentPrincipal $principal): array
+    public function execute(AssessmentPrincipal $principal, ?CarbonImmutable $asOf = null): array
     {
         if (app(RlsContextRunner::class)->current()?->role !== 'service') {
             throw new LogicException('Assessment activation requires service RLS context.');
         }
 
-        return DB::transaction(function () use ($principal): array {
+        return DB::transaction(function () use ($principal, $asOf): array {
             // Same organization mutex as reservation. Future finalizers must acquire it before bill locks.
             if (DB::table('branches')->where('id', $principal->organizationId)->lockForUpdate()->first() === null) {
                 return [];
@@ -68,7 +71,7 @@ final readonly class ActivateSettledAssessment
             } catch (DomainException) {
                 return [];
             }
-            if (! $this->settlement->isSettled($charge)) {
+            if (! ($asOf === null ? $this->settlement->isSettled($charge) : $this->settlement->isSettledAt($charge, $asOf))) {
                 return [];
             }
             $entitlements = AssessmentEntitlement::query()->where('assessment_participant_id', $attempt->id)
@@ -77,6 +80,12 @@ final readonly class ActivateSettledAssessment
             foreach (['consent_records', 'identity_verifications', 'identity_evidence'] as $table) {
                 DB::table($table)->where('participant_id', $participant->id)->orderBy('id')->lockForUpdate()->get();
             }
+            $frame = $asOf === null ? null : new AssessmentPrerequisiteFrame(
+                $asOf,
+                date_default_timezone_get(),
+                ConsentDocument::for('psychotest'),
+                in_array('dass21', $snapshot['testTypes'], true) ? ConsentDocument::for('dass') : null,
+            );
             $activated = [];
             foreach ($snapshot['testTypes'] as $type) {
                 $entitlement = $entitlements->get($type);
@@ -91,14 +100,18 @@ final readonly class ActivateSettledAssessment
                     }
                 }
                 try {
-                    $this->prerequisites->assertSatisfied($participant, $type);
+                    if ($frame === null) {
+                        $this->prerequisites->assertSatisfied($participant, $type);
+                    } else {
+                        $this->prerequisites->assertSatisfiedAt($participant, $type, $frame);
+                    }
                 } catch (EntitlementLocked) {
                     continue; // DASS and other participants remain independent.
                 }
                 $entitlement ??= new AssessmentEntitlement(['charge_id' => $charge->id,
                     'assessment_participant_id' => $attempt->id, 'organization_id' => $attempt->organization_id,
                     'participant_id' => $participant->id, 'test_type' => $type]);
-                $entitlement->fill(['status' => 'ready', 'ready_at' => now()])->save();
+                $entitlement->fill(['status' => 'ready', 'ready_at' => $asOf ?? now()])->save();
                 $activated[] = $type;
             }
             if ($activated !== []) {
@@ -106,7 +119,7 @@ final readonly class ActivateSettledAssessment
                     $attempt->update(['assessment_status' => 'READY']);
                 }
                 $this->outbox->handle($attempt);
-                $at = now()->toImmutable();
+                $at = $asOf ?? now()->toImmutable();
                 DB::table('audit_logs')->insert(['branch_id' => $attempt->organization_id, 'actor_type' => 'system',
                     'actor_id' => null, 'action' => 'assessment.activated', 'subject_type' => AssessmentParticipant::class,
                     'subject_id' => (string) $attempt->id,

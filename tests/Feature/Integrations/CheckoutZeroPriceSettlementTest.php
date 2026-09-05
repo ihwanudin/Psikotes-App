@@ -17,6 +17,7 @@ use App\Models\IntegrationClient;
 use App\Registration\ConsentDocument;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
+use Carbon\Carbon;
 use DomainException;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Illuminate\Support\Facades\DB;
@@ -64,6 +65,13 @@ final class CheckoutZeroPriceSettlementTest extends OrganizationPaymentTestCase
         $this->assertSame(1, DB::table('outbox_messages')->where('topic', 'assessment.activation')->count());
         $this->assertDatabaseCount('assessment_bills', 0);
         $this->assertDatabaseCount('assessment_bill_items', 0);
+        $charge = DB::table('assessment_charges')->where('assessment_participant_id', $fixture['attempt'])->first();
+        $price = json_decode((string) $charge->price_snapshot, true, flags: JSON_THROW_ON_ERROR);
+        $policy = json_decode((string) $charge->policy_snapshot, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame(0, $price['amount']);
+        $this->assertFalse($price['consultationRequested']);
+        $this->assertSame(['self'], $policy['allowedPayerTypes']);
+        $this->assertSame('self', $policy['payerType']);
 
         $second = $this->settle($fixture, false);
         $this->assertSame('settled', $second->state);
@@ -104,6 +112,84 @@ final class CheckoutZeroPriceSettlementTest extends OrganizationPaymentTestCase
         $this->assertSame('not_applicable', $result->state);
         $this->assertSame([], $result->activatedTestTypes);
         $this->assertNoPaymentWrites();
+    }
+
+    public function test_consultation_choice_is_immutable_but_positive_first_does_not_claim_zero_path(): void
+    {
+        $fixture = $this->established();
+        $this->acceptCurrentConsents($fixture['participant']);
+        $this->assertSame('settled', $this->settle($fixture, false)->state);
+        $before = DB::table('assessment_charges')->where('assessment_participant_id', $fixture['attempt'])->first();
+        $this->assertUnavailable(fn () => $this->settle($fixture, true));
+        $this->assertEquals($before, DB::table('assessment_charges')
+            ->where('assessment_participant_id', $fixture['attempt'])->first());
+        $this->assertDatabaseCount('assessment_bills', 0);
+        $this->assertSame(1, $this->freeAuditCount());
+
+        $positiveFirst = $this->established();
+        $this->acceptCurrentConsents($positiveFirst['participant']);
+        $this->assertSame('not_applicable', $this->settle($positiveFirst, true)->state);
+        $this->assertSame('settled', $this->settle($positiveFirst, false)->state);
+        $this->assertSame(1, DB::table('assessment_charges')
+            ->where('assessment_participant_id', $positiveFirst['attempt'])->count());
+        $this->assertDatabaseCount('assessment_bills', 0);
+    }
+
+    public function test_replay_rejects_current_catalog_or_policy_drift_without_rewrite(): void
+    {
+        foreach (['price', 'name', 'items', 'allowed-policy', 'locked-policy'] as $case) {
+            $fixture = $this->established();
+            $this->acceptCurrentConsents($fixture['participant']);
+            $this->settle($fixture, false);
+            $charge = DB::table('assessment_charges')->where('assessment_participant_id', $fixture['attempt'])->first();
+            $auditCount = $this->freeAuditCount();
+            if ($case === 'price') {
+                DB::table('packages')->where('id', $fixture['package'])->update(['amount' => 1]);
+            } elseif ($case === 'name') {
+                DB::table('packages')->where('id', $fixture['package'])->update(['name' => 'Changed Catalog']);
+            } elseif ($case === 'items') {
+                DB::table('package_items')->insert([
+                    'package_id' => $fixture['package'], 'test_type' => 'papi', 'sort_order' => 3,
+                ]);
+            } elseif ($case === 'allowed-policy') {
+                foreach (['branches' => 'id', 'integration_sources' => 'id'] as $table => $key) {
+                    $id = $table === 'branches' ? $fixture['organization'] : $fixture['source'];
+                    DB::table($table)->where($key, $id)->update([
+                        'allowed_payer_types' => json_encode(['self', 'organization'], JSON_THROW_ON_ERROR),
+                    ]);
+                }
+            } else {
+                DB::table('integration_sources')->where('id', $fixture['source'])
+                    ->update(['locked_payer_type' => 'self']);
+            }
+            $this->assertUnavailable(fn () => $this->settle($fixture, false));
+            $this->assertEquals($charge, DB::table('assessment_charges')
+                ->where('assessment_participant_id', $fixture['attempt'])->first());
+            $this->assertSame($auditCount, $this->freeAuditCount());
+            $this->assertDatabaseCount('assessment_bills', 0);
+        }
+    }
+
+    public function test_database_instant_drives_initial_activation_and_replay_when_php_clock_is_earlier(): void
+    {
+        $fixture = $this->established(identity: true);
+        $this->acceptCurrentConsents($fixture['participant']);
+        Carbon::setTestNow('2020-01-01 00:00:00+00:00');
+        try {
+            $first = $this->settle($fixture, false);
+            $second = $this->settle($fixture, false);
+        } finally {
+            Carbon::setTestNow();
+        }
+
+        $this->assertSame(['dass21', 'ist'], $first->activatedTestTypes);
+        $this->assertSame([], $second->activatedTestTypes);
+        $this->assertDatabaseHas('assessment_participants', [
+            'id' => $fixture['attempt'], 'assessment_status' => 'READY',
+        ]);
+        $this->assertSame(2, DB::table('assessment_entitlements')
+            ->where('assessment_participant_id', $fixture['attempt'])->where('status', 'ready')->count());
+        $this->assertSame(1, DB::table('outbox_messages')->where('topic', 'assessment.activation')->count());
     }
 
     public function test_recovered_checkout_session_replays_the_attempt_scoped_settlement(): void
