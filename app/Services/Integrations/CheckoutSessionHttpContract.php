@@ -58,6 +58,10 @@ final readonly class CheckoutSessionHttpContract
             return null;
         }
 
+        if ('/'.$request->path() === '/checkout/payment') {
+            return $settings['mutationLimit'];
+        }
+
         return match ([$request->method(), '/'.$request->path()]) {
             ['POST', '/checkout/session'] => $settings['exchangeLimit'],
             ['GET', '/checkout'], ['GET', '/checkout/unavailable'] => $settings['hydrateLimit'],
@@ -68,9 +72,12 @@ final readonly class CheckoutSessionHttpContract
 
     public function rateKey(Request $request): string
     {
-        $kind = match ([$request->method(), '/'.$request->path()]) {
-            ['POST', '/checkout/session'] => 'exchange',
-            ['POST', '/checkout/logout'], ['POST', '/checkout/confirm'] => 'mutation',
+        $kind = match (true) {
+            '/'.$request->path() === '/checkout/payment' => 'payment',
+            [$request->method(), '/'.$request->path()] === ['POST', '/checkout/session'] => 'exchange',
+            in_array([$request->method(), '/'.$request->path()], [
+                ['POST', '/checkout/logout'], ['POST', '/checkout/confirm'],
+            ], true) => 'mutation',
             default => 'hydrate',
         };
 
@@ -93,6 +100,17 @@ final readonly class CheckoutSessionHttpContract
         $bytes = config('assessment_integration.checkout_session.http.confirmation.max_body_bytes');
 
         return $enabled === true && is_int($bytes) && $bytes >= 256 && $bytes <= 8192 ? $bytes : null;
+    }
+
+    public function paymentJsonBodyLimit(): ?int
+    {
+        $enabled = config('assessment_integration.checkout_session.http.payment.enabled');
+        $writer = config('assessment_integration.checkout_session.http.payment.writer_enabled');
+        $bytes = config('assessment_integration.checkout_session.http.payment.max_body_bytes');
+
+        return $enabled === true && $writer === true && is_int($bytes) && $bytes >= 32 && $bytes <= 4096
+            ? $bytes
+            : null;
     }
 
     /** @return array{0:Cookie,1:Cookie} */

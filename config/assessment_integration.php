@@ -37,6 +37,12 @@ return [
                 'writer_enabled' => false,
                 'max_body_bytes' => 4096,
             ],
+            // No production route is registered; both switches require a later reviewed wiring increment.
+            'payment' => [
+                'enabled' => false,
+                'writer_enabled' => false,
+                'max_body_bytes' => 256,
+            ],
         ],
     ],
     'invitation_ttl_hours' => (int) env('ASSESSMENT_INVITATION_TTL_HOURS', 168),
