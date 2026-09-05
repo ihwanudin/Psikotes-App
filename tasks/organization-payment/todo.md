@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P13b serta core privat P14/P15 selesai lokal. P16 memiliki halaman, form consent wajib DASS-21, transport JSON, adapter HTTP, dan route canonical default OFF; focused gabungan terakhir 66 tes/2.437 assertions, Node 4/4, dan Blade 6/6 lulus. P17a aktif. Full PostgreSQL fresh tertahan SQLSTATE 42830 pada self-FK migrasi generic result dan sedang diperbaiki; browser P16/P17c serta acceptance end-to-end P17–P18 masih terbuka. Tidak deploy, tidak migrasi DB aktif, dan tidak menyalakan sumber/feature flag atau outbound nyata.**
+Status: **P1–P13b serta core privat P14/P15 selesai lokal. P16 memiliki halaman, form consent wajib DASS-21, transport JSON, adapter HTTP, dan route canonical default OFF; focused gabungan terakhir 66 tes/2.437 assertions, Node 4/4, dan Blade 6/6 lulus. Self-FK generic result sudah diperbaiki; fresh PostgreSQL disposable lulus 392 tes/3.799 assertions. P17a aktif; browser P16/P17c serta acceptance end-to-end P17–P18 masih terbuka. Tidak deploy, tidak migrasi DB aktif, dan tidak menyalakan sumber/feature flag atau outbound nyata.**
 
 ## Gerbang revisi kolektif
 

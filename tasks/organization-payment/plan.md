@@ -1,7 +1,7 @@
 # Rencana: pembayaran lembaga dan checkout terintegrasi
 
 Tanggal: 2026-08-31
-Status: **P1–P13b serta core privat P14/P15 sudah selesai lokal. Presentasi dan transport konfirmasi P16 telah terhubung ke route produksi yang tetap default OFF; focused gabungan terakhir 66 tes/2.437 assertions, transport Node 4/4, dan render Blade 6/6 lulus. DASS-21 wajib sebagai bagian psikotes dengan consent terpisah; pembacaan consent DASS dibatasi melalui RLS. P17a sedang berjalan. Full runner PostgreSQL fresh saat ini tertahan pada self-FK migrasi generic result (SQLSTATE 42830) dan sedang diperbaiki di lane backend; browser P16/P17c belum dijalankan. Tidak ada deploy, migrasi DB aktif, invoice/notifikasi nyata, atau cutover sumber/feature flag.**
+Status: **P1–P13b serta core privat P14/P15 sudah selesai lokal. Presentasi dan transport konfirmasi P16 telah terhubung ke route produksi yang tetap default OFF; focused gabungan terakhir 66 tes/2.437 assertions, transport Node 4/4, dan render Blade 6/6 lulus. DASS-21 wajib sebagai bagian psikotes dengan consent terpisah; pembacaan consent DASS dibatasi melalui RLS. Self-FK generic result sudah diperbaiki dan fresh PostgreSQL disposable lulus 392 tes/3.799 assertions. P17a sedang berjalan; browser P16/P17c belum dijalankan. Tidak ada deploy, migrasi DB aktif, invoice/notifikasi nyata, atau cutover sumber/feature flag.**
 
 ## Perubahan lingkup: pembayaran kolektif cabang
 

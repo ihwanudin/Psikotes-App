@@ -1,5 +1,21 @@
 # Koordinasi task paralel organization-payment
 
+## PostgreSQL fresh-migration blocker resolved; P17a remains active — 2026-09-05
+
+Backend test commits `cbd133f` and correction `8f6352e` were reviewed and
+integrated as root `31a3722` and `1fa4622`. Root reproduced and rejected the
+first SQLite lifecycle test because it rolled the parent migration while three
+descendants remained; the corrected test now rolls descendants down in reverse
+dependency order and passes **1 test / 34 assertions**.
+
+Root applied the reviewed one-hunk production correction as `ec44198`: the
+generic-result self-FK is added only after the table primary key exists. The
+fresh disposable PostgreSQL runner now passes **392 tests / 3,799 assertions**;
+PHP syntax, focused Pint, PHPStan 0 errors, and diff-check pass. Exact disposable
+resources were cleaned and application containers were not targeted. Portal
+continues to own P17a only; no active database, feature flag, route, deploy,
+outbound provider, or browser environment changed.
+
 ## P17a matrix active; PostgreSQL fresh-migration blocker confirmed — 2026-09-05
 
 Root independently ran the current disposable PostgreSQL runner after accepting
