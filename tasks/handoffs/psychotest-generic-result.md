@@ -132,7 +132,9 @@ Compose kini mempunyai worker `integrations-queue` terpisah dari worker
 `notifications,default`. Worker baru hanya mendengarkan queue `integrations`,
 memakai Redis yang sama, timeout 120 detik dengan `retry_after` default 150 detik,
 recycle memori Laravel 256 MiB, maksimum hidup satu jam, restart
-`unless-stopped`, grace period 30 detik, dan tidak menerbitkan port. Jaringan
+`unless-stopped`, grace period 135 detik, dan tidak menerbitkan port. Grace
+period ini melampaui timeout worker 120 detik agar shutdown tidak memotong job
+yang masih sah. Jaringan
 `edge` hanya dibutuhkan untuk callback HTTPS keluar; jaringan `backend` tetap
 menjadi jalur privat ke Redis/PostgreSQL. Health check web dinonaktifkan karena
 proses CLI tidak menyediakan HTTP readiness endpoint.

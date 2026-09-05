@@ -94,7 +94,7 @@ final class ComposeTopologyTest extends TestCase
         $this->assertContains('--memory=256', $command);
         $this->assertContains('--max-time=3600', $command);
         $this->assertSame('unless-stopped', $worker['restart']);
-        $this->assertSame('30s', $worker['stop_grace_period']);
+        $this->assertSame('135s', $worker['stop_grace_period']);
         $this->assertTrue($worker['healthcheck']['disable']);
         $this->assertArrayNotHasKey('ports', $worker);
         $this->assertSame(['edge', 'backend'], $worker['networks']);
