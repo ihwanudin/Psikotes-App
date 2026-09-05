@@ -20,7 +20,11 @@ final class AssessmentAccessFixture
         DB::table('assessment_participants')->where('id', $f['attempt'])->update([
             'assessment_status' => 'READY', 'metadata' => '{"checkout_contract_version":"checkout-v2"}']);
         DB::table('packages')->where('id', $f['package'])->update(['is_active' => true]);
-        DB::table('package_items')->insert(['package_id' => $f['package'], 'test_type' => $type, 'sort_order' => 1]);
+        $companionType = $type === 'dass21' ? 'ist' : 'dass21';
+        DB::table('package_items')->insert([
+            ['package_id' => $f['package'], 'test_type' => $type, 'sort_order' => 1],
+            ['package_id' => $f['package'], 'test_type' => $companionType, 'sort_order' => 2],
+        ]);
         $snapshot = app(AssessmentPriceSnapshot::class)->capture(TestPackage::with('items')->findOrFail($f['package']), false);
         AssessmentCharge::findOrFail($f['charge'])->update(['price_snapshot' => $snapshot]);
         DB::table('assessment_bills')->where('id', $f['bill'])->update(['status' => 'paid', 'paid_at' => now()]);
