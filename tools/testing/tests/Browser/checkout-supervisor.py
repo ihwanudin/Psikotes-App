@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -38,6 +39,26 @@ BROWSER_LAUNCH_ARGS = (
     "--host-resolver-rules=MAP psikotes.oncam.id 127.0.0.1,MAP oncam.id 127.0.0.1,MAP * ~NOTFOUND",
     "--no-proxy-server",
     "--disable-background-networking",
+)
+FULL_MATRIX_KEYS = (
+    "checks", "exchangePosts", "hostileForms", "opaqueNetworkBlocks",
+    "expectedSandboxInstrumentationErrors", "controlledNetworkEntries",
+    "credentialMaterialRecorded", "screenshotsContainingCredentials",
+    "fullBusinessPostcondition", "historyObservations",
+    "immediateDeliveredDOMRemovalClaimed",
+)
+FULL_MATRIX_CHECKS = (
+    "two controlled cross-site origins and exact body-only exchange",
+    "real Laravel Lax login cookie omitted on POST and authority preserved",
+    "exact host-only Secure HttpOnly Lax checkout cookies and private headers",
+    "exact inert checkout-summary-v2, mandatory DASS-21, escaped DOM and CSP without executable application script in the default-off checkout state",
+    "own frozen amount and partial access without parent/peer/invoice disclosure",
+    "fixation/replay/history/refresh/shared-tab stale-CSRF/recovery fenced",
+    "CSRF projection, invalid channels, progressive and no-JS logout",
+    "six foreign/opaque/sibling native forms denied; one LOGOUT audit and real login preserved",
+    "expiry and scope revocation clear credentials",
+    "wrong origin and host fail closed",
+    "desktop 1280, mobile 390/320, keyboard, no unexpected console/network errors; opaque limits counted",
 )
 POSITIVE_TICK = re.compile(r"[1-9][0-9]{0,19}")
 JOURNAL_ROLES = frozenset({"php", "tls", "browser_launcher", "browser", "command", "descendant"})
@@ -1008,10 +1029,41 @@ class WindowsRun:
         with path.open("x") as file:
             file.write(code)
         text = self._cli(["run-code", "--filename=" + str(path)], remaining)
-        if "### Error" in text or "### Result\n" not in text.replace("\r\n", "\n"):
+        if type(text) is not str:
             raise Refused("driver")
-        data = text.replace("\r\n", "\n").split("### Result\n", 1)[1]
-        return json.JSONDecoder().raw_decode(data.lstrip())[0]
+        try:
+            text.encode("utf-8", errors="strict")
+        except UnicodeError:
+            raise Refused("driver") from None
+        normalized = text.replace("\r\n", "\n")
+        marker = "### Result\n"
+        if (len(normalized) > 262144 or "### Error" in normalized
+                or normalized.count(marker) != 1
+                or re.search(r"(?m)^### Result\n", normalized) is None):
+            raise Refused("driver")
+        payload = normalized.split(marker, 1)[1]
+        if len(payload) > 65536:
+            raise Refused("driver")
+
+        def object_without_duplicates(pairs):
+            result = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError("duplicate")
+                result[key] = value
+            return result
+
+        def reject_nonfinite(value):
+            raise ValueError("nonfinite")
+
+        try:
+            data = json.loads(payload, object_pairs_hook=object_without_duplicates,
+                              parse_constant=reject_nonfinite)
+        except (TypeError, ValueError, RecursionError):
+            raise Refused("driver") from None
+        if type(data) is not dict:
+            raise Refused("driver")
+        return data
 
     def smoke_request(self, remaining):
         code = '''async (page) => { const c=page.context(); await c.unrouteAll(); let n=0;
@@ -1019,15 +1071,53 @@ class WindowsRun:
         const start=Date.now(); const r=await page.goto('https://psikotes.oncam.id/__browser/login', {timeout:30000,waitUntil:'domcontentloaded'});
         if(!r || r.status()!==200 || n!==1) throw new Error('Smoke refused'); await c.setOffline(true); return {seconds:(Date.now()-start)/1000, requests:n}; }'''
         result = self._run_code(code, remaining)
-        if result.get("requests") != 1:
+        if list(result) != ["seconds", "requests"]:
+            raise Refused("smoke_result")
+        if type(result["requests"]) is not int or result["requests"] != 1:
             raise Refused("smoke_count")
-        return result["seconds"]
+        seconds = result["seconds"]
+        if (type(seconds) not in (int, float) or not math.isfinite(seconds)
+                or seconds < 0 or seconds > 5):
+            raise Refused("smoke_result")
+        return seconds
 
     def full_matrix(self, remaining):
         code = (self.source / DRIVER).read_text()
         code = "async(page)=>{await page.context().route('**/*',r=>r.abort()); await page.context().setOffline(false); return await (" + code + ")(page);}"
         result = self._run_code(code, remaining)
-        if result.get("fullBusinessPostcondition") is not True or result.get("credentialMaterialRecorded") is not False or len(result.get("checks", [])) != 11:
+        if list(result) != list(FULL_MATRIX_KEYS) or result["checks"] != list(FULL_MATRIX_CHECKS):
+            raise Refused("matrix")
+        exact_integers = {
+            "exchangePosts": 11,
+            "hostileForms": 6,
+            "screenshotsContainingCredentials": 0,
+        }
+        if any(type(result[key]) is not int or result[key] != value
+               for key, value in exact_integers.items()):
+            raise Refused("matrix")
+        if (result["credentialMaterialRecorded"] is not False
+                or result["fullBusinessPostcondition"] is not True
+                or result["immediateDeliveredDOMRemovalClaimed"] is not False):
+            raise Refused("matrix")
+        for key in ("opaqueNetworkBlocks", "expectedSandboxInstrumentationErrors"):
+            if type(result[key]) is not int or not 0 <= result[key] <= 2:
+                raise Refused("matrix")
+        if (type(result["controlledNetworkEntries"]) is not int
+                or not 1 <= result["controlledNetworkEntries"] <= 64):
+            raise Refused("matrix")
+        observations = result["historyObservations"]
+        if type(observations) is not list or len(observations) != 2:
+            raise Refused("matrix")
+        for observation, phase in zip(
+            observations, ("after-logout-back", "after-recovery-back"), strict=True
+        ):
+            if (type(observation) is not dict
+                    or list(observation) != ["phase", "documentResponseObserved", "summaryDOMVisible"]
+                    or observation["phase"] != phase
+                    or type(observation["documentResponseObserved"]) is not bool
+                    or type(observation["summaryDOMVisible"]) is not bool):
+                raise Refused("matrix")
+        if len(result) != 11:
             raise Refused("matrix")
 
     def cleanup(self, budget):

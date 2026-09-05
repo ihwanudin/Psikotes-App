@@ -122,6 +122,39 @@ class SupervisorTests(unittest.TestCase):
         lines[-1] = f'{document["generation"]:08d} {document["integrity"]}'
         (run.run / m.JOURNAL).write_text("\n".join(lines) + "\n", encoding="ascii")
 
+    @staticmethod
+    def matrix_result():
+        return {
+            "checks": [
+                "two controlled cross-site origins and exact body-only exchange",
+                "real Laravel Lax login cookie omitted on POST and authority preserved",
+                "exact host-only Secure HttpOnly Lax checkout cookies and private headers",
+                "exact inert checkout-summary-v2, mandatory DASS-21, escaped DOM and CSP without executable application script in the default-off checkout state",
+                "own frozen amount and partial access without parent/peer/invoice disclosure",
+                "fixation/replay/history/refresh/shared-tab stale-CSRF/recovery fenced",
+                "CSRF projection, invalid channels, progressive and no-JS logout",
+                "six foreign/opaque/sibling native forms denied; one LOGOUT audit and real login preserved",
+                "expiry and scope revocation clear credentials",
+                "wrong origin and host fail closed",
+                "desktop 1280, mobile 390/320, keyboard, no unexpected console/network errors; opaque limits counted",
+            ],
+            "exchangePosts": 11,
+            "hostileForms": 6,
+            "opaqueNetworkBlocks": 2,
+            "expectedSandboxInstrumentationErrors": 2,
+            "controlledNetworkEntries": 14,
+            "credentialMaterialRecorded": False,
+            "screenshotsContainingCredentials": 0,
+            "fullBusinessPostcondition": True,
+            "historyObservations": [
+                {"phase": "after-logout-back", "documentResponseObserved": True,
+                 "summaryDOMVisible": False},
+                {"phase": "after-recovery-back", "documentResponseObserved": False,
+                 "summaryDOMVisible": True},
+            ],
+            "immediateDeliveredDOMRemovalClaimed": False,
+        }
+
     def test_browser_launch_args_require_exact_canonical_ordered_list(self):
         approved = [
             "--host-resolver-rules=MAP psikotes.oncam.id 127.0.0.1,MAP oncam.id 127.0.0.1,MAP * ~NOTFOUND",
@@ -1622,11 +1655,145 @@ class SupervisorTests(unittest.TestCase):
     def test_full_mode_explicitly_releases_offline_after_abort_guard(self):
         run = m.WindowsRun({"directory": "synthetic-unused"})
         seen = []
-        run._run_code = lambda code, left: seen.append(code) or dict(fullBusinessPostcondition=True, credentialMaterialRecorded=False, checks=[1]*11)
+        run._run_code = lambda code, left: seen.append(code) or self.matrix_result()
         with patch.object(Path, "read_text", return_value="async(page)=>({})"):
             run.full_matrix(30)
         self.assertIn("setOffline(false)", seen[0])
         self.assertLess(seen[0].index("route('**/*'"), seen[0].index("setOffline(false)"))
+
+    def test_driver_result_frame_requires_one_fully_consumed_strict_json_object(self):
+        with TemporaryDirectory(prefix="oncam-driver-result-") as directory:
+            run = m.WindowsRun({"directory": directory})
+            run.claimed = True
+            run.lifecycle_phase = "normal"
+            valid = '### Result\r\n{"seconds":0.25,"requests":1}\r\n'
+            run._cli = lambda args, remaining: valid
+            self.assertEqual(run._run_code("async()=>({})", 1), {
+                "seconds": 0.25, "requests": 1,
+            })
+            invalid = (
+                "{}",
+                "### Result\n{}\n### Result\n{}",
+                "### Error\nPRIVATE\n### Result\n{}",
+                '### Result\n{"x":1,"x":2}',
+                '### Result\n{"x":NaN}',
+                '### Result\n{"x":Infinity}',
+                "### Result\nnull",
+                "### Result\n[]",
+                "### Result\n1",
+                "### Result\n{} {}",
+                "prefix ### Result\n{}",
+                "### Result\n{",
+                "### Result\n{\"x\":\"\ud800\"}",
+                "### Result\n" + "[" * 1100 + "]" * 1100,
+            )
+            for output in invalid:
+                with self.subTest(output=output), self.assertRaisesRegex(m.Refused, "^driver$"):
+                    run._cli = lambda args, remaining, output=output: output
+                    run._run_code("async()=>({})", 1)
+
+    def test_smoke_result_schema_types_bounds_and_fixed_counts_are_exact(self):
+        run = m.WindowsRun({"directory": "synthetic-unused"})
+        valid = {"seconds": 0.2, "requests": 1}
+        run._run_code = lambda code, left: valid
+        self.assertEqual(run.smoke_request(3), 0.2)
+        invalid = (
+            ({"requests": 1, "seconds": 0.2}, "smoke_result"),
+            ({"seconds": 0.2, "requests": True}, "smoke_count"),
+            ({"seconds": 0.2, "requests": 2}, "smoke_count"),
+            ({"seconds": True, "requests": 1}, "smoke_result"),
+            ({"seconds": -0.1, "requests": 1}, "smoke_result"),
+            ({"seconds": 5.1, "requests": 1}, "smoke_result"),
+            ({"seconds": float("nan"), "requests": 1}, "smoke_result"),
+            ({"seconds": float("inf"), "requests": 1}, "smoke_result"),
+            ({"seconds": 0.2, "requests": 1, "extra": 1}, "smoke_result"),
+            ({"requests": 1}, "smoke_result"),
+        )
+        for result, reason in invalid:
+            with self.subTest(result=result), self.assertRaisesRegex(m.Refused, f"^{reason}$"):
+                run._run_code = lambda code, left, result=result: result
+                run.smoke_request(3)
+
+    def test_full_matrix_result_requires_exact_ordered_canonical_envelope(self):
+        driver = (Path(__file__).with_name("checkout-session.browser.mjs")).read_text("utf-8")
+        def assert_exact_driver_return(source):
+            fields = (
+                ("checks", None),
+                ("exchangePosts", "exchangePosts"),
+                ("hostileForms", "hostileForms"),
+                ("opaqueNetworkBlocks", "opaqueNetworkBlocks"),
+                ("expectedSandboxInstrumentationErrors", "expectedSandboxInstrumentationErrors"),
+                ("controlledNetworkEntries", "safeNetwork.size"),
+                ("credentialMaterialRecorded", "false"),
+                ("screenshotsContainingCredentials", "0"),
+                ("fullBusinessPostcondition", "true"),
+                ("historyObservations", "historyObservations"),
+                ("immediateDeliveredDOMRemovalClaimed", "false"),
+            )
+            if tuple(key for key, _ in fields) != m.FULL_MATRIX_KEYS:
+                raise AssertionError("driver_result_keys")
+            lines = ["    return {", "        checks: ["]
+            lines.extend(f"            '{value}'," for value in m.FULL_MATRIX_CHECKS)
+            lines.append("        ],")
+            for key, expression in fields[1:]:
+                lines.append(
+                    f"        {key}," if key == expression else f"        {key}: {expression},"
+                )
+            lines.append("    }")
+            snippet = "\n".join(lines)
+            if source.count("    return {\n        checks: [") != 1 or source.count(snippet) != 1:
+                raise AssertionError("driver_result_source")
+
+        assert_exact_driver_return(driver)
+        reordered_driver = driver.replace(
+            "        exchangePosts,\n        hostileForms,",
+            "        hostileForms,\n        exchangePosts,",
+            1,
+        )
+        missing_driver = driver.replace("        hostileForms,\n", "", 1)
+        renamed_driver = driver.replace(
+            "        controlledNetworkEntries: safeNetwork.size,",
+            "        controlledEntries: safeNetwork.size,",
+            1,
+        )
+        for label, invalid in (
+            ("reordered", reordered_driver),
+            ("missing", missing_driver),
+            ("renamed", renamed_driver),
+        ):
+            with self.subTest(driver=label), self.assertRaises(AssertionError):
+                assert_exact_driver_return(invalid)
+        run = m.WindowsRun({"directory": "synthetic-unused"})
+        run._run_code = lambda code, left: self.matrix_result()
+        with patch.object(Path, "read_text", return_value="async(page)=>({})"):
+            self.assertIsNone(run.full_matrix(30))
+
+        cases = {}
+        missing = self.matrix_result(); missing.pop("exchangePosts"); cases["missing"] = missing
+        extra = self.matrix_result(); extra["extra"] = 1; cases["extra"] = extra
+        reordered = self.matrix_result(); reordered["checks"] = reordered.pop("checks"); cases["reordered"] = reordered
+        checks = self.matrix_result(); checks["checks"] = checks["checks"][::-1]; cases["checks"] = checks
+        exchange = self.matrix_result(); exchange["exchangePosts"] = True; cases["exchange"] = exchange
+        hostile = self.matrix_result(); hostile["hostileForms"] = 5; cases["hostile"] = hostile
+        screenshots = self.matrix_result(); screenshots["screenshotsContainingCredentials"] = False; cases["screenshots"] = screenshots
+        credential = self.matrix_result(); credential["credentialMaterialRecorded"] = 0; cases["credential"] = credential
+        full = self.matrix_result(); full["fullBusinessPostcondition"] = 1; cases["full"] = full
+        immediate = self.matrix_result(); immediate["immediateDeliveredDOMRemovalClaimed"] = True; cases["immediate"] = immediate
+        counter_bool = self.matrix_result(); counter_bool["opaqueNetworkBlocks"] = True; cases["counter_bool"] = counter_bool
+        counter_range = self.matrix_result(); counter_range["opaqueNetworkBlocks"] = 3; cases["counter_range"] = counter_range
+        instrumentation = self.matrix_result(); instrumentation["expectedSandboxInstrumentationErrors"] = -1; cases["instrumentation"] = instrumentation
+        entries_range = self.matrix_result(); entries_range["controlledNetworkEntries"] = 0; cases["entries_range"] = entries_range
+        entries_bool = self.matrix_result(); entries_bool["controlledNetworkEntries"] = True; cases["entries_bool"] = entries_bool
+        entries_upper = self.matrix_result(); entries_upper["controlledNetworkEntries"] = 65; cases["entries_upper"] = entries_upper
+        history_count = self.matrix_result(); history_count["historyObservations"].pop(); cases["history_count"] = history_count
+        history_phase = self.matrix_result(); history_phase["historyObservations"][0]["phase"] = "other"; cases["history_phase"] = history_phase
+        history_type = self.matrix_result(); history_type["historyObservations"][0]["summaryDOMVisible"] = 0; cases["history_type"] = history_type
+        history_keys = self.matrix_result(); history_keys["historyObservations"][0]["extra"] = False; cases["history_keys"] = history_keys
+        for label, result in cases.items():
+            with self.subTest(label=label), self.assertRaisesRegex(m.Refused, "^matrix$"):
+                run._run_code = lambda code, left, result=result: result
+                with patch.object(Path, "read_text", return_value="async(page)=>({})"):
+                    run.full_matrix(30)
 
     def test_missing_asset_delivery_review_blocks_before_process_or_source_read(self):
         run = m.WindowsRun({"directory": "synthetic-unused"})
