@@ -5342,3 +5342,28 @@ The coordinator should apply only the self-FK relocation hunk recorded above.
 Owned commit delta is the new SQLite migration test, PostgreSQL catalog test and
 this report. No other generic-result invariant, P17 portal, checkout route/config,
 frontend, consent RLS, active database, deploy or push changed. STOP for review.
+
+### Root-compatible descendant rollback correction
+
+Root review reproduced a test-only lifecycle error after `cbd133f`: the test called
+the 000100 parent migration's `down()` and `up()` while the already-migrated 000200
+outbox, 000300 dispatch-attempt and 000400 callback-schedule descendants remained.
+Migration 000200 owns `generic_result_outbox_source_unique`; rebuilding only the
+parent removed that composite unique while the descendant FK still referenced it,
+so SQLite correctly raised `foreign key mismatch` on the later parent insert.
+
+The focused test now invokes descendant `down()` methods in exact reverse order
+000400, 000300, 000200 before invoking 000100 `down()`. It asserts all three child
+tables are absent, then recreates 000100 alone and runs the original parent PK,
+FK, unique, append-only and chain checks. Production migrations are unchanged and
+000100 does not take ownership of any descendant constraint. Each PHPUnit test
+uses its own SQLite `:memory:` application, so the intentionally parent-only final
+state cannot cross a test boundary.
+
+Actual RED with the three root descendant migrations overlaid locally matched the
+review exactly: 1 test reached 25 assertions, then errored with `foreign key
+mismatch - generic_assessment_result_outbox referencing
+generic_assessment_result_versions`. GREEN after the reverse-order teardown was
+1 test / 34 assertions. PHP syntax, focused Pint and diff-check passed. PostgreSQL
+was not rerun for this test-only correction; the unchanged catalog test and prior
+369/3,126 disposable GREEN remain the relevant engine evidence. STOP for review.

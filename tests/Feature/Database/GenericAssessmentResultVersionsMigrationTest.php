@@ -22,6 +22,16 @@ final class GenericAssessmentResultVersionsMigrationTest extends OrganizationPay
     public function test_sqlite_up_down_up_preserves_keys_and_append_only_version_invariants(): void
     {
         $this->assertSchemaContract();
+        foreach ([
+            '2026_09_05_000400_create_generic_assessment_result_callback_schedules.php',
+            '2026_09_05_000300_create_generic_assessment_result_dispatch_attempts.php',
+            '2026_09_05_000200_create_generic_assessment_result_outbox.php',
+        ] as $descendant) {
+            (require database_path('migrations/'.$descendant))->down();
+        }
+        $this->assertFalse(Schema::hasTable('generic_assessment_result_callback_schedules'));
+        $this->assertFalse(Schema::hasTable('generic_assessment_result_dispatch_attempts'));
+        $this->assertFalse(Schema::hasTable('generic_assessment_result_outbox'));
         $migration = require database_path('migrations/2026_09_05_000100_create_generic_assessment_result_versions.php');
 
         $migration->down();
