@@ -152,6 +152,18 @@ def _revalidate_file(path, identity, code):
         raise CandidateRefused(code)
 
 
+def _attempt_descriptor_closes(descriptors, primary=None):
+    for descriptor, code in descriptors:
+        if descriptor is None:
+            continue
+        try:
+            os.close(descriptor)
+        except BaseException as error:
+            if primary is None:
+                primary = CandidateRefused(code) if isinstance(error, Exception) else error
+    return primary
+
+
 def _canonical_directory(value, code):
     try:
         raw = os.fspath(value)
@@ -201,10 +213,50 @@ def _assert_tree_component(path):
         raise CandidateRefused("source_identity") from None
 
 
-def _inventory(source_root):
+class _SourceGuard:
+    def __init__(self, root, root_identity):
+        self.root = root
+        self.directories = {root: root_identity}
+
+    def _chain(self, path):
+        try:
+            relative = path.relative_to(self.root)
+        except ValueError:
+            raise CandidateRefused("source_identity") from None
+        current = self.root
+        chain = [current]
+        for part in relative.parts:
+            current = current / part
+            chain.append(current)
+        return chain
+
+    def pin_directory(self, path):
+        for current in self._chain(path):
+            identity = self.directories.get(current)
+            if identity is None:
+                identity = _directory_identity(current, "source_identity")
+                self.directories[current] = identity
+            _revalidate_directory(current, identity, "source_identity")
+
+    def validate_parent(self, path):
+        for current in self._chain(path):
+            identity = self.directories.get(current)
+            if identity is None:
+                raise CandidateRefused("source_identity")
+            _revalidate_directory(current, identity, "source_identity")
+
+    def validate(self):
+        for path, identity in sorted(
+            self.directories.items(), key=lambda item: (len(item[0].parts), str(item[0]))
+        ):
+            _revalidate_directory(path, identity, "source_identity")
+
+
+def _inventory(source_root, guard):
     found = set()
 
     def add_file(path, relative):
+        guard.validate_parent(path.parent)
         _assert_tree_component(path)
         try:
             if not stat.S_ISREG(path.lstat().st_mode):
@@ -213,27 +265,26 @@ def _inventory(source_root):
             raise
         except Exception:
             raise CandidateRefused("source_identity") from None
+        guard.validate_parent(path.parent)
         found.add(relative)
 
+    guard.validate()
     for relative in sorted(_ROOT_FILES | BROWSER_TOOLS | frozenset(ASSET_REVIEW_FILES) | SCRIPT_SOURCE_FILES):
         path = source_root / Path(*relative.split("/"))
         if path.exists() or path.is_symlink():
-            for parent in path.parents:
-                if parent == source_root.parent:
-                    break
-                _assert_tree_component(parent)
+            guard.pin_directory(path.parent)
             add_file(path, relative)
 
     for root, suffix in {**_CODE_ROOTS, "vendor": None}.items():
         directory = source_root / Path(*root.split("/"))
         if not directory.exists():
             continue
-        _assert_tree_component(directory)
+        guard.pin_directory(directory)
         for current, directories, files in os.walk(directory, followlinks=False):
             current_path = Path(current)
-            _assert_tree_component(current_path)
+            guard.pin_directory(current_path)
             for name in list(directories):
-                _assert_tree_component(current_path / name)
+                guard.pin_directory(current_path / name)
             for name in files:
                 path = current_path / name
                 relative = path.relative_to(source_root).as_posix()
@@ -241,12 +292,17 @@ def _inventory(source_root):
                     if not _allowed_source(relative):
                         raise CandidateRefused("manifest_policy")
                     add_file(path, relative)
+    guard.validate()
     return found
 
 
-def _open_verified(path, expected, code="source_identity"):
+def _open_verified(path, expected, code="source_identity", guard=None):
     flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = None
     try:
+        if guard is not None:
+            guard.validate()
+            guard.validate_parent(path.parent)
         before = path.lstat()
         if path.is_symlink() or _is_reparse(before) or not stat.S_ISREG(before.st_mode) \
                 or before.st_size > _MAX_FILE_BYTES:
@@ -255,21 +311,34 @@ def _open_verified(path, expected, code="source_identity"):
         after = os.fstat(descriptor)
         if (before.st_dev, before.st_ino) != (after.st_dev, after.st_ino) \
                 or not stat.S_ISREG(after.st_mode) or after.st_size > _MAX_FILE_BYTES:
-            os.close(descriptor)
             raise CandidateRefused(code)
-        return descriptor, _identity(after)
-    except CandidateRefused:
+        identity = _identity(after)
+        _revalidate_file(path, identity, code)
+        if guard is not None:
+            guard.validate_parent(path.parent)
+            guard.validate()
+        result = descriptor, identity
+        descriptor = None
+        return result
+    except CandidateRefused as error:
+        _attempt_descriptor_closes(((descriptor, code),), primary=error)
         raise
-    except Exception:
+    except Exception as error:
+        _attempt_descriptor_closes(((descriptor, code),), primary=error)
         raise CandidateRefused(code) from None
+    except BaseException as error:
+        _attempt_descriptor_closes(((descriptor, code),), primary=error)
+        raise
 
 
 def _hash_verified(path, expected, guard=None, code="source_identity"):
     if guard is not None:
+        guard.validate()
         guard.validate_parent(path.parent)
-    descriptor, identity = _open_verified(path, expected, code)
+    descriptor, identity = _open_verified(path, expected, code, guard)
     checksum = hashlib.sha256()
     total = 0
+    primary = None
     try:
         while True:
             chunk = os.read(descriptor, 1024 * 1024)
@@ -279,11 +348,19 @@ def _hash_verified(path, expected, guard=None, code="source_identity"):
             if total > _MAX_FILE_BYTES:
                 raise CandidateRefused("source_identity")
             checksum.update(chunk)
-    finally:
+    except BaseException as error:
+        primary = error
+    try:
         _revalidate_file(path, identity, code)
-        os.close(descriptor)
+    except BaseException as error:
+        if primary is None:
+            primary = error
+    primary = _attempt_descriptor_closes(((descriptor, code),), primary)
+    if primary is not None:
+        raise primary
     if guard is not None:
         guard.validate_parent(path.parent)
+        guard.validate()
     if checksum.hexdigest() != expected:
         raise CandidateRefused("source_digest")
 
@@ -361,11 +438,14 @@ def _write_new(path, value, guard):
             os.close(descriptor)
 
 
-def _copy_verified(source, target, expected, guard):
+def _copy_verified(source, target, expected, guard, source_guard):
     guard.validate_parent(target.parent)
-    source_descriptor, source_identity = _open_verified(source, expected)
+    source_guard.validate()
+    source_guard.validate_parent(source.parent)
+    source_descriptor, source_identity = _open_verified(source, expected, guard=source_guard)
     target_descriptor = None
     checksum = hashlib.sha256()
+    primary = None
     try:
         target_descriptor = os.open(
             target,
@@ -389,13 +469,23 @@ def _copy_verified(source, target, expected, guard):
         os.fsync(target_descriptor)
         if _identity(os.fstat(target_descriptor)) != target_identity:
             raise CandidateRefused("destination_identity")
-        _revalidate_file(source, source_identity, "source_identity")
         _revalidate_file(target, target_identity, "destination_identity")
         guard.validate_parent(target.parent)
-    finally:
-        os.close(source_descriptor)
-        if target_descriptor is not None:
-            os.close(target_descriptor)
+    except BaseException as error:
+        primary = error
+    try:
+        _revalidate_file(source, source_identity, "source_identity")
+        source_guard.validate_parent(source.parent)
+        source_guard.validate()
+    except BaseException as error:
+        if primary is None:
+            primary = error
+    primary = _attempt_descriptor_closes((
+        (source_descriptor, "source_identity"),
+        (target_descriptor, "destination_identity"),
+    ), primary)
+    if primary is not None:
+        raise primary
     if checksum.hexdigest() != expected:
         raise CandidateRefused("source_digest")
     _hash_verified(target, expected, guard, "destination_identity")
@@ -403,7 +493,7 @@ def _copy_verified(source, target, expected, guard):
     guard.validate_parent(target.parent)
 
 
-def _validated_manifest(value, source_root):
+def _validated_manifest(value, source_root, guard):
     if type(value) is not dict or not 10 <= len(value) <= _MAX_MANIFEST_FILES:
         raise CandidateRefused("manifest_shape")
     lowered = set()
@@ -416,10 +506,11 @@ def _validated_manifest(value, source_root):
             raise CandidateRefused("manifest_shape")
         lowered.add(folded)
         manifest[relative] = expected
-    if not REQUIRED_SOURCE.issubset(manifest) or set(manifest) != _inventory(source_root):
+    if not REQUIRED_SOURCE.issubset(manifest) or set(manifest) != _inventory(source_root, guard):
         raise CandidateRefused("manifest_inventory")
     for relative, expected in manifest.items():
-        _hash_verified(source_root / Path(*relative.split("/")), expected)
+        _hash_verified(source_root / Path(*relative.split("/")), expected, guard)
+    guard.validate()
     return dict(sorted(manifest.items()))
 
 
@@ -550,6 +641,9 @@ def build_candidate(*, destination, candidate_parent, source_root, expected_mani
             or parent_identity != _directory_identity(system_temp, "destination_scope"):
         raise CandidateRefused("destination_scope")
     source = _canonical_directory(source_root, "source_identity")
+    source_guard = _SourceGuard(
+        source, _directory_identity(source, "source_identity")
+    )
     try:
         raw_destination = os.fspath(destination)
         if not isinstance(raw_destination, str) or "\0" in raw_destination:
@@ -568,7 +662,7 @@ def build_candidate(*, destination, candidate_parent, source_root, expected_mani
     if type(source_revision) is not str or _REVISION.fullmatch(source_revision) is None:
         raise CandidateRefused("source_revision")
 
-    manifest = _validated_manifest(expected_manifest, source)
+    manifest = _validated_manifest(expected_manifest, source, source_guard)
     reviewed_tools = _validated_tools(tools)
     runtime = _validated_runtime(runtime_files)
     review = _validated_review(asset_delivery_review, manifest)
@@ -592,7 +686,9 @@ def build_candidate(*, destination, candidate_parent, source_root, expected_mani
         for relative, expected in manifest.items():
             output = output_source / Path(*relative.split("/"))
             guard.ensure_directory(output.parent)
-            _copy_verified(source / Path(*relative.split("/")), output, expected, guard)
+            _copy_verified(
+                source / Path(*relative.split("/")), output, expected, guard, source_guard
+            )
 
         manifest_bytes = _json_bytes(manifest)
         _write_new(target / "source-manifest.json", manifest_bytes, guard)
@@ -654,13 +750,16 @@ def build_candidate(*, destination, candidate_parent, source_root, expected_mani
             _hash_verified(output_source / Path(*relative.split("/")), expected, guard,
                            "destination_identity")
 
+        source_guard.validate()
         pending = target / "supervisor-config.pending"
         pending_identity = _write_new(pending, _json_bytes(config), guard)
+        source_guard.validate()
         guard.validate_parent(target)
         _revalidate_file(pending, pending_identity, "destination_identity")
         final = target / "supervisor-config.json"
         if final.exists() or final.is_symlink():
             raise CandidateRefused("destination_identity")
+        source_guard.validate()
         os.rename(pending, target / "supervisor-config.json")
         guard.validate_parent(target)
         _revalidate_file(final, pending_identity, "destination_identity")

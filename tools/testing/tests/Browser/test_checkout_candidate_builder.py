@@ -319,6 +319,189 @@ class CandidateBuilderTests(unittest.TestCase):
                 if boundary == "component":
                     self.assertTrue((target / m.INCOMPLETE_MARKER).is_file())
 
+    def test_source_root_component_and_reparse_swap_before_publication_fail_closed(self):
+        for boundary in ("root", "component", "reparse"):
+            with self.subTest(boundary=boundary), \
+                    tempfile.TemporaryDirectory(prefix="candidate-builder-test-") as directory:
+                args = self.fixture(directory)
+                source = Path(args["source_root"])
+                target = Path(args["destination"])
+                original_write = m._write_new
+                mutated = False
+
+                def swap_before_publication(path, value, guard):
+                    nonlocal mutated
+                    if Path(path).name == "supervisor-config.pending" and not mutated:
+                        mutated = True
+                        selected = source if boundary == "root" else source / "app"
+                        backup = source.parent / f"{selected.name}-{boundary}-original"
+                        selected.rename(backup)
+                        if boundary == "reparse":
+                            try:
+                                selected.symlink_to(backup, target_is_directory=True)
+                            except OSError:
+                                backup.rename(selected)
+                                self.skipTest("directory symlink creation unavailable")
+                        else:
+                            shutil.copytree(backup, selected)
+                    return original_write(path, value, guard)
+
+                with patch.object(m, "_write_new", side_effect=swap_before_publication):
+                    with self.assertRaisesRegex(m.CandidateRefused, "^source_identity$"):
+                        self.build(args)
+                self.assertTrue(mutated)
+                self.assertTrue((target / m.INCOMPLETE_MARKER).is_file())
+                self.assertFalse((target / "supervisor-config.json").exists())
+
+    def test_descriptor_cleanup_preserves_primary_and_attempts_every_close(self):
+        class ReadInterrupted(BaseException):
+            pass
+
+        class IdentityInterrupted(BaseException):
+            pass
+
+        with tempfile.TemporaryDirectory(prefix="candidate-builder-test-") as directory:
+            root = Path(directory)
+            source_root = root / "source"
+            destination = root / "candidate"
+            source_root.mkdir()
+            destination.mkdir()
+            source = source_root / "input.php"
+            target = destination / "output.php"
+            value = b"reviewed"
+            source.write_bytes(value)
+            source_guard = m._SourceGuard(
+                source_root, m._directory_identity(source_root, "source_identity")
+            )
+            destination_guard = m._DestinationGuard(
+                root,
+                m._directory_identity(root, "destination_identity"),
+                destination,
+                m._directory_identity(destination, "destination_identity"),
+            )
+            real_close = os.close
+            closed = []
+
+            def close_then_fail_first(descriptor):
+                closed.append(descriptor)
+                real_close(descriptor)
+                if len(closed) == 1:
+                    raise OSError("synthetic close failure")
+
+            interrupted = ReadInterrupted()
+            with patch.object(m.os, "read", side_effect=interrupted), \
+                    patch.object(m.os, "close", side_effect=close_then_fail_first):
+                with self.assertRaises(ReadInterrupted) as caught:
+                    m._copy_verified(
+                        source, target, digest(value), destination_guard, source_guard
+                    )
+            self.assertIs(caught.exception, interrupted)
+            self.assertEqual(len(closed), 2)
+
+            identity_interrupted = IdentityInterrupted()
+            identity_closes = []
+
+            def close_after_identity_failure(descriptor):
+                identity_closes.append(descriptor)
+                real_close(descriptor)
+                raise OSError("synthetic close failure")
+
+            with patch.object(m, "_revalidate_file", side_effect=identity_interrupted), \
+                    patch.object(m.os, "close", side_effect=close_after_identity_failure):
+                with self.assertRaises(IdentityInterrupted) as caught:
+                    m._open_verified(source, digest(value), guard=source_guard)
+            self.assertIs(caught.exception, identity_interrupted)
+            self.assertEqual(len(identity_closes), 1)
+
+    def test_standalone_descriptor_close_failures_are_fixed_refusals(self):
+        with tempfile.TemporaryDirectory(prefix="candidate-builder-test-") as directory:
+            root = Path(directory)
+            source_root = root / "source"
+            destination = root / "candidate"
+            source_root.mkdir()
+            destination.mkdir()
+            source = source_root / "input.php"
+            value = b"reviewed"
+            source.write_bytes(value)
+            source_guard = m._SourceGuard(
+                source_root, m._directory_identity(source_root, "source_identity")
+            )
+            real_close = os.close
+
+            def close_then_fail(descriptor):
+                real_close(descriptor)
+                raise OSError("synthetic close failure")
+
+            with patch.object(m.os, "close", side_effect=close_then_fail):
+                with self.assertRaisesRegex(m.CandidateRefused, "^source_identity$"):
+                    m._hash_verified(source, digest(value), source_guard)
+
+            target = destination / "output.php"
+            destination_guard = m._DestinationGuard(
+                root,
+                m._directory_identity(root, "destination_identity"),
+                destination,
+                m._directory_identity(destination, "destination_identity"),
+            )
+            close_count = 0
+
+            def fail_target_close(descriptor):
+                nonlocal close_count
+                close_count += 1
+                real_close(descriptor)
+                if close_count == 2:
+                    raise OSError("synthetic target close failure")
+
+            with patch.object(m.os, "close", side_effect=fail_target_close):
+                with self.assertRaisesRegex(m.CandidateRefused, "^destination_identity$"):
+                    m._copy_verified(
+                        source, target, digest(value), destination_guard, source_guard
+                    )
+            self.assertEqual(close_count, 2)
+
+    def test_close_only_non_exception_baseexceptions_propagate_after_all_closes(self):
+        with tempfile.TemporaryDirectory(prefix="candidate-builder-test-") as directory:
+            root = Path(directory)
+            source_root = root / "source"
+            destination = root / "candidate"
+            source_root.mkdir()
+            destination.mkdir()
+            source = source_root / "input.php"
+            value = b"reviewed"
+            source.write_bytes(value)
+            source_guard = m._SourceGuard(
+                source_root, m._directory_identity(source_root, "source_identity")
+            )
+            destination_guard = m._DestinationGuard(
+                root,
+                m._directory_identity(root, "destination_identity"),
+                destination,
+                m._directory_identity(destination, "destination_identity"),
+            )
+            real_close = os.close
+
+            for index, interruption in enumerate((KeyboardInterrupt(), SystemExit(9))):
+                with self.subTest(interruption=type(interruption).__name__):
+                    closed = []
+
+                    def close_then_interrupt_source(descriptor):
+                        closed.append(descriptor)
+                        real_close(descriptor)
+                        if len(closed) == 1:
+                            raise interruption
+
+                    with patch.object(m.os, "close", side_effect=close_then_interrupt_source):
+                        with self.assertRaises(type(interruption)) as caught:
+                            m._copy_verified(
+                                source,
+                                destination / f"output-{index}.php",
+                                digest(value),
+                                destination_guard,
+                                source_guard,
+                            )
+                    self.assertIs(caught.exception, interruption)
+                    self.assertEqual(len(closed), 2)
+
     def test_final_rename_identity_drift_keeps_incomplete_marker(self):
         with tempfile.TemporaryDirectory(prefix="candidate-builder-test-") as directory:
             args = self.fixture(directory)
