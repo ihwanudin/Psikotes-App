@@ -1,5 +1,15 @@
 # Koordinasi task paralel organization-payment
 
+## P16 payment boundary preflight accepted as ADR-014 — 2026-09-05
+
+Backend report-only `ab20c8d` was reviewed and integrated as root `eaec1f1`.
+ADR-014 accepts only local, incremental, default-off implementation: exact
+`consultationRequested` input; all payer, amount, IDR, method, attempt, bill,
+idempotency, and provider authority remains server-side. A typed transactional
+session-scope seam must precede billing. Self reuses canonical P7/P10 primitives;
+organization stays read-only; zero price uses a separate no-bill/no-provider
+writer after both required consents. No route or feature flag is active.
+
 ## P17b evidence audit split without shared files — 2026-09-05
 
 After P17a acceptance, root inspected the current PostgreSQL suite and found
