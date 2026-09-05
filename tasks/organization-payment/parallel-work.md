@@ -2355,3 +2355,19 @@ Lane ownership membutuhkan latest anchor yang dipertahankan independen, sedangka
 runner disabled belum memublikasikannya. Helper `_ps`, lineage/cleanup OS nyata,
 dan runtime browser/service tetap gate P17c. Commit verifier P18 hanya preparation.
 Tidak ada instruksi atau hasil ini yang menutup P15/P16/P17c/P18 maupun checkpoint.
+
+### Konsolidasi lanjutan ownership/anchor
+
+Commit accepted `77aa2bc`, `446e881`, dan `da1daeb` membentuk satu rangkaian
+preparation P17c: supervisor mewajibkan publisher anchor yang dapat dibaca ulang;
+coordinator anchor store menyimpan anchor monotonic beserta provenance run/session/
+config di luar candidate; lalu lifecycle supervisor membatasi phase dan policy
+spawn, memublikasikan intent sebelum proses, serta membuat recovery dan cleanup
+fail-closed. Bukti murni terakhir adalah **14/14** tes anchor store dan **72/72**
+tes pure/mock supervisor (census host nyata sengaja dikecualikan).
+
+Store lokal hanya mendeteksi korupsi/rollback, bukan mengautentikasi pihak yang
+dapat menulis kedua lokasi. Wiring coordinator, ACL/single-writer, durability dan
+TOCTOU Windows nyata, lineage/helper/cleanup OS, manifest/tool hash disposable,
+serta browser/service runtime tetap gate. Runner tetap disabled dan payment tetap
+default OFF; P15/P16/P17c/P18 serta checkpoint terkait tidak ditutup.

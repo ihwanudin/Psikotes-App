@@ -26,6 +26,29 @@ scheduler, provider, dan outbound aktif tidak dijalankan atau diaktifkan.
 Acceptance P15, P16, P17c, dan P18 tetap terbuka, dan seluruh gate/writer tetap
 default OFF.
 
+### Preparation ownership dan anchor coordinator
+
+Rangkaian accepted `77aa2bc`, `446e881`, dan `da1daeb` memperketat preparation
+tanpa menyalakan runner. Supervisor kini mensyaratkan publisher anchor reloadable;
+primitive coordinator menyimpan anchor monotonic yang terikat exact run, session,
+dan config di luar candidate; lifecycle berikutnya membatasi phase/policy spawn,
+memastikan intent dipublikasikan sebelum `Popen`, serta menolak recovery/cleanup
+yang tidak memiliki bukti kanonik. Verifikasi code-only terakhir mencatat:
+
+- anchor store: **14/14 tes**;
+- supervisor: **72/72 pure/mock tests**, dengan census host nyata sengaja tidak
+  dijalankan.
+
+Primitive penyimpanan lokal adalah deteksi korupsi/rollback, bukan autentikasi
+terhadap pihak yang dapat menulis journal dan anchor. Publisher belum di-wire ke
+runner disabled; ACL dan exclusive single-writer coordinator, opened-handle/
+reparse/TOCTOU serta flush/replace/crash durability Windows nyata, historical
+process lineage, helper dan cleanup OS, manifest/tool hash disposable, standalone
+recovery, browser, dan service runtime belum diterima. Tidak ada process census,
+browser, service, database aktif, provider, outbound, deploy, atau aktivasi gate
+dalam bukti ini. Payment tetap default OFF dan checkbox P15/P16/P17c/P18 tetap
+terbuka.
+
 ## Checkpoint P16 consent subset dan privacy audit — 2026-09-06
 
 Commit `918eb93` menambah policy PostgreSQL restrictive yang membuat audit
