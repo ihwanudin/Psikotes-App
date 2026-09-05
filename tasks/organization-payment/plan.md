@@ -1,7 +1,24 @@
 # Rencana: pembayaran lembaga dan checkout terintegrasi
 
 Tanggal: 2026-08-31
-Status: **P1–P13b, core privat P14/P15, dan P17a–P17b selesai lokal. P16-pay-a–i selesai lokal dan default OFF; DASS-21 wajib pada ingress/snapshot, dan primitive capability harga/action tersedia internal. Fresh PostgreSQL lulus 398/3.919. Summary v2, binding UI, browser, dan defense-in-depth sesi historis tanpa DASS belum selesai. DASS consent tetap terpisah dan RLS privat. P17c masih tertahan gerbang ownership proses. Tidak ada deploy, migrasi DB aktif, invoice/notifikasi nyata, atau cutover sumber/feature flag.**
+Status: **P1–P13b, core privat P14/P15, dan P17a–P17b selesai lokal. P16-pay-a–i selesai lokal dan default OFF; DASS-21 wajib pada ingress/snapshot/handoff/session, kontrak strict TypeScript summary-v2 dan proyeksi action server sudah diterima. Fresh PostgreSQL historis lulus 398/3.919; checkpoint terbaru lulus root 207/2.189, handoff 29/385, dan frontend 8/8 beserta TS/lint/format. Binding Blade/UI serta browser belum selesai. DASS consent tetap terpisah dan RLS privat. P17c masih tertahan gerbang ownership proses. Tidak ada deploy, migrasi DB aktif, invoice/notifikasi nyata, atau cutover sumber/feature flag.**
+
+## Checkpoint P16 summary-v2 dan DASS lifecycle — 2026-09-05
+
+Lima commit diterima sebagai satu checkpoint server/frontend lokal. `cac65f1`
+menolak handoff issuance, consume, dan recovery yang tidak membawa komposisi
+psikotes+DASS-21 canonical; `ce036bb` menyelaraskan fixture checkout bersama.
+`04e1499` menetapkan tipe summary-v2 yang strict. `edebc7c` mewajibkan evidence
+pembayaran canonical dan metode Xendit persisted pada replay pending, tanpa query
+baru. `1547501` memproyeksikan pilihan/action harga IDR dari graph lifecycle dan
+snapshot server tanpa ID, batch, reference, atau URL provider.
+
+Root gabungan lulus **207 tes / 2.189 assertions**, handoff **29/385**, dan
+frontend **8/8** plus TypeScript, lint, serta format. Ini menyelesaikan kontrak
+summary-v2 dan defense-in-depth DASS pada server, bukan P16 secara keseluruhan.
+Tahap berikut tetap binding Blade/UI produksi lalu acceptance browser. Payment
+masih literal default OFF; checkpoint tidak mencakup deploy, migrasi DB aktif,
+provider/outbound nyata, atau aktivasi sumber/feature flag.
 
 ## Perubahan lingkup: pembayaran kolektif cabang
 

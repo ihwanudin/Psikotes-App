@@ -1,5 +1,28 @@
 # Koordinasi task paralel organization-payment
 
+## P16 summary-v2 dan pertahanan DASS lifecycle diterima — 2026-09-05
+
+Checkpoint server/frontend lokal menerima lima commit yang tidak mengaktifkan
+fitur produksi. `cac65f1` membuat issuance, consume, dan recovery handoff menolak
+paket legacy yang tidak memuat komposisi psikotes+DASS-21 canonical. `04e1499`
+menetapkan kontrak TypeScript `checkout-summary-v2` yang strict, sedangkan
+`ce036bb` menyelaraskan fixture bersama agar seluruh graph checkout sintetis
+memuat DASS-21 wajib.
+
+`edebc7c` memperketat capability pembayaran query-free: lifecycle wajib memberi
+evidence canonical eksplisit, dan replay pending hanya menerima charge/item/bill
+serta metode Xendit persisted yang saling cocok. `1547501` kemudian memproyeksikan
+summary-v2 server dari graph lifecycle yang sama, termasuk pilihan harga IDR dan
+action sempit tanpa mengekspos ID, batch, reference, atau URL provider.
+
+Bukti root gabungan lulus **207 tes / 2.189 assertions**; suite handoff lulus
+**29 / 385**. Kontrak frontend lulus **8/8**, beserta TypeScript, lint, dan
+format. Payment tetap default **OFF**. Checkpoint ini menutup pekerjaan kontrak
+summary-v2 dan defense-in-depth DASS pada handoff/session, tetapi belum mengikat
+action ke Blade/UI produksi dan belum menjalankan acceptance browser. Tidak ada
+deploy, migrasi database aktif, provider/outbound nyata, atau feature flag yang
+dinyalakan.
+
 ## P16-pay-i and mandatory DASS ingress accepted — 2026-09-05
 
 Root accepted three non-overlapping local increments. `7891bee` makes DASS-21 a
@@ -24,9 +47,9 @@ or paid+null. Organization-positive and invalid/recovery paths are generic; no
 assertions**. Pint, PHPStan 0 errors, and diff-check passed. No flag, provider,
 active database, browser, deployment, or external notification was activated.
 
-Remaining P16 work is a versioned summary capability contract, production Blade
-binding, browser proof, and defense-in-depth rejection of legacy DASS-less
-handoff/session state.
+Kontrak summary-v2 dan defense-in-depth legacy DASS-less handoff/session yang
+sebelumnya tersisa telah diterima pada checkpoint berikutnya di atas. Pekerjaan
+P16 yang tersisa adalah binding Blade/UI produksi dan bukti browser; payment tetap OFF.
 
 ## P16-pay-g/h accepted; persisted URL and HTTP boundary verified — 2026-09-05
 
