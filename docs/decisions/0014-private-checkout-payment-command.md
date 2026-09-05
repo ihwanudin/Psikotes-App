@@ -10,6 +10,11 @@ cutover sumber.
 
 2026-09-05
 
+Amended 2026-09-05: the zero-price writer is invoked by the authenticated
+payment command, not by confirmation. The payment command is the only accepted
+contract carrying the explicit consultation choice; confirmation continues to
+own profile completion and both mandatory consents.
+
 ## Context
 
 ADR-012 menyediakan sesi checkout privat yang terikat satu attempt. Ringkasan
@@ -91,9 +96,10 @@ Funding `INVOICED_TO_ORGANIZATION` tetap read-only pada checkout peserta:
 atau payment URL.
 
 Harga total nol tidak membuat bill dan tidak memanggil provider. Tambahkan primitive
-internal `SettleZeroPriceCheckout` yang hanya dipanggil confirmation setelah consent
-psychotest dan DASS current tersimpan. Dalam transaction authority yang sama ia
-memuat ulang policy/katalog, menulis atau memvalidasi charge snapshot nol,
+internal `SettleZeroPriceCheckout` yang hanya dipanggil command pembayaran setelah
+consent psychotest dan DASS current tersimpan. Command membawa pilihan konsultasi
+eksplisit dan, dalam transaction authority yang sama, memuat ulang kedua consent,
+policy/katalog, lalu menulis atau memvalidasi charge snapshot nol,
 `free_settled_at`, dan audit secara idempotent, lalu mencoba aktivasi. Identity yang
 belum lengkap membiarkan attempt settled tetapi locked. Kegagalan audit, aktivasi,
 atau outbox menggulung seluruh perubahan gratis; tidak ada partial entitlement.
@@ -133,10 +139,9 @@ resource batch yang bukan miliknya.
   route/controller.
 - Jalur self memakai primitive billing P7/P10 yang ada; tidak ada invoice engine
   kedua.
-- Jalur gratis membutuhkan primitive baru dan integrasi confirmation, tetapi tidak
-  membutuhkan schema baru berdasarkan kontrak saat ini.
+- Jalur gratis membutuhkan primitive baru dan routing dari command pembayaran,
+  tetapi tidak membutuhkan schema baru atau perluasan payload confirmation.
 - PostgreSQL disposable wajib membuktikan replay/concurrency, revocation, policy
   change, dan atomic rollback. SQLite/feature test tidak dianggap bukti race.
 - Route produksi baru boleh diregistrasikan default OFF setelah internal actions,
   security tests, dan adapter HTTP lolos review terpisah.
-

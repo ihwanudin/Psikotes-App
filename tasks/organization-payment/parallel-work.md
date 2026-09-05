@@ -1,5 +1,21 @@
 # Koordinasi task paralel organization-payment
 
+## P16-pay-e design accepted; zero-price caller corrected — 2026-09-05
+
+Backend report `967ec2b` was reviewed and integrated as root `276e173`. It found
+that confirmation cannot safely settle a base-zero package because its accepted
+body has no consultation choice; consultation can make that same package payable.
+ADR-014 is therefore explicitly amended: confirmation stores profile plus both
+mandatory consents, while the authenticated payment command carries the boolean
+choice and may atomically settle only an exact server-priced zero result after
+reloading both current consents. Summary GET remains read-only.
+
+The accepted remaining split is zero writer core, final persisted self URL
+projection, HTTP mutation boundary, default-off controller/route, then UI/browser.
+No schema change is required. Frontend stays idle until the server projects a
+real action/catalog capability; its current draft cannot authoritatively infer a
+consultation choice from the read-only payment snapshot.
+
 ## P16-pay-d accepted; provider issuance remains canonically fenced — 2026-09-05
 
 Backend `c864424` was reviewed and integrated as root `a23cf2a`. The internal
