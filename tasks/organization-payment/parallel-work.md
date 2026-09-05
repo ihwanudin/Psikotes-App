@@ -1,5 +1,22 @@
 # Koordinasi task paralel organization-payment
 
+## DASS consent RLS repaired and reviewed — 2026-09-05
+
+Portal RED `a2b1971`, GREEN `ec59c12`, and driver correction `4825981` were
+reviewed and integrated as root `0801e59`, `e23f10c`, and `a17a62d`. The final
+policy combines a narrowed permissive read policy with a restrictive SELECT guard,
+because the historical super-admin write policy is `FOR ALL` and otherwise also
+grants reads. DASS consent rows are now visible only to service, psychologist, and
+the participant owner; generic psychotest consent retains its existing readers.
+
+Portal PostgreSQL disposable evidence passed **2/2 tests, 72 assertions** as the
+non-owner, non-superuser, NOBYPASSRLS runtime, including role/tenant matrix and
+owner-only migration up/down/up. Root independently verified the exact policy
+files, the non-PostgreSQL migration guard, and SQLite schema no-op with **11/11
+tests, 78 assertions**, plus Pint, PHP lint, and diff-check. The full PostgreSQL
+worker still has eight pre-existing snapshot errors unrelated to this policy; no
+active database was migrated.
+
 ## P15 writer accepted; P16 presentation and DASS RLS repair active — 2026-09-05
 
 Backend `89f7ca1` was reviewed and integrated as root `c1bbc6d`. Root reran the
