@@ -133,7 +133,7 @@ final readonly class PrepareCheckoutSelfPayment
 
         if (! $method instanceof PaymentMethod || $method->code !== 'xendit'
             || ! $item instanceof AssessmentBillItem || ! $charge instanceof AssessmentCharge
-            || ! in_array($bill->status, ['reserved', 'pending', 'paid'], true)
+            || ! in_array($bill->status, ['reserved', 'issuing', 'pending', 'paid'], true)
             || $bill->organization_id !== $principal->organizationId || $bill->payer_type !== 'self'
             || $bill->payer_participant_id !== $principal->participantId || $bill->item_count !== 1
             || $bill->amount < 1 || $bill->currency !== 'IDR'
@@ -203,7 +203,7 @@ final readonly class PrepareCheckoutSelfPayment
         $providerIdentity = is_string($bill->gateway_ref) && trim($bill->gateway_ref) !== ''
             && is_string($bill->invoice_url) && $this->validHttpsUrl($bill->invoice_url)
             && $bill->expires_at !== null;
-        if ($bill->status === 'reserved') {
+        if (in_array($bill->status, ['reserved', 'issuing'], true)) {
             if ($bill->gateway_ref !== null || $bill->invoice_url !== null || $bill->expires_at !== null
                 || $bill->paid_at !== null || $item->settled_at !== null) {
                 throw new DomainException('SELF_PAYMENT_STATE_INVALID');

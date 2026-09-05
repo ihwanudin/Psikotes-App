@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace Tests\Feature\Integrations;
 
 use App\Actions\Integrations\CheckoutSessionLifecycle;
+use App\Actions\Integrations\CoordinateCheckoutSelfPayment;
 use App\Actions\Integrations\EstablishCheckoutSession;
 use App\Actions\Integrations\IssueCheckoutHandoff;
 use App\Actions\Integrations\PrepareCheckoutSelfPayment;
 use App\Data\Integrations\CheckoutHandoffIssueInput;
+use App\Data\Integrations\CheckoutSelfPaymentClaimResult;
 use App\Data\Integrations\CheckoutSelfPaymentPreparation;
 use App\Data\Integrations\CheckoutSessionExchangeInput;
 use App\Data\Integrations\CheckoutSessionMutationCredentials;
@@ -42,6 +44,7 @@ final class CheckoutSelfPaymentPreparationTest extends OrganizationPaymentTestCa
             'enabled' => true, 'idle_minutes' => 30, 'absolute_minutes' => 120,
             'terminal_retention_days' => 30,
         ]);
+        config()->set('assessment_integration.checkout.enabled', true);
         $this->method = DB::table('payment_methods')->insertGetId([
             'code' => 'xendit', 'display_name' => 'Synthetic Xendit', 'is_active' => true,
         ]);
@@ -215,7 +218,6 @@ final class CheckoutSelfPaymentPreparationTest extends OrganizationPaymentTestCa
 
     public static function blockedExistingStates(): iterable
     {
-        yield 'issuing' => ['issuing'];
         yield 'unknown' => ['unknown'];
         yield 'expired' => ['expired'];
         yield 'rejected' => ['rejected'];
@@ -269,10 +271,179 @@ final class CheckoutSelfPaymentPreparationTest extends OrganizationPaymentTestCa
         $this->assertSame(0, DB::transactionLevel());
     }
 
+    public function test_claim_runs_after_preparation_commit_and_replays_one_canonical_message(): void
+    {
+        $fixture = $this->established();
+        $preparationCommitted = false;
+        DB::listen(function (QueryExecuted $query) use (&$preparationCommitted): void {
+            if (str_contains($query->sql, 'insert into "audit_logs"')
+                && in_array('assessment_bill.reserved', $query->bindings, true)) {
+                DB::afterCommit(function () use (&$preparationCommitted): void {
+                    $preparationCommitted = true;
+                });
+            }
+            if (str_contains($query->sql, 'insert into "outbox_messages"')) {
+                $this->assertTrue($preparationCommitted, 'Claim began before preparation committed.');
+            }
+        });
+
+        $first = $this->coordinate($fixture, false);
+        $second = $this->coordinate($fixture, false);
+        $this->assertInstanceOf(CheckoutSelfPaymentClaimResult::class, $first);
+        $this->assertSame('issuance_required', $first->state);
+        $this->assertNotNull($first->messageId);
+        $this->assertTrue(Str::isUlid($first->messageId));
+        $this->assertSame($first->messageId, $second->messageId);
+        $this->assertSame('issuing', DB::table('assessment_bills')->value('status'));
+        $this->assertDatabaseCount('assessment_bills', 1);
+        $this->assertDatabaseCount('assessment_charges', 1);
+        $this->assertDatabaseCount('assessment_bill_items', 1);
+        $this->assertDatabaseCount('outbox_messages', 1);
+        $this->assertDatabaseHas('outbox_messages', [
+            'message_id' => $first->messageId, 'topic' => 'assessment.bill.invoice-issuance',
+            'status' => 'pending', 'attempts' => 0, 'processed_at' => null,
+        ]);
+        $this->assertSame(1, DB::table('audit_logs')->where('action', 'assessment_bill.invoice_claimed')->count());
+        $this->assertNull(app(RlsContextRunner::class)->current());
+        $this->assertSame(0, DB::transactionLevel());
+    }
+
+    #[DataProvider('claimBypassStates')]
+    public function test_pending_and_paid_bypass_claim_even_when_xendit_is_inactive(string $status): void
+    {
+        $fixture = $this->established();
+        $prepared = $this->prepare($fixture, false);
+        $bill = AssessmentBill::query()->findOrFail($prepared->billId);
+        $attributes = [
+            'status' => $status, 'gateway_ref' => 'synthetic-provider-ref',
+            'invoice_url' => 'https://invoice.xendit.co/synthetic', 'expires_at' => now()->addDay(),
+        ];
+        if ($status === 'paid') {
+            $paidAt = now()->startOfSecond();
+            $attributes['paid_at'] = $paidAt;
+            DB::table('assessment_bill_items')->where('bill_id', $bill->id)->update(['settled_at' => $paidAt]);
+            DB::table('audit_logs')->insert([
+                'branch_id' => $fixture['organization'], 'actor_type' => 'system', 'actor_id' => 'payment-provider',
+                'action' => 'assessment_bill.paid', 'subject_type' => AssessmentBill::class,
+                'subject_id' => (string) $bill->id, 'context' => '{}', 'occurred_at' => $paidAt,
+                'expires_at' => $paidAt->copy()->addYears(2),
+            ]);
+        }
+        $bill->update($attributes);
+        DB::table('payment_methods')->where('id', $this->method)->update(['is_active' => false]);
+
+        $result = $this->coordinate($fixture, false);
+        $this->assertSame($status, $result->state);
+        $this->assertNull($result->messageId);
+        $this->assertDatabaseCount('outbox_messages', 0);
+        $this->assertSame(0, DB::table('audit_logs')->where('action', 'assessment_bill.invoice_claimed')->count());
+    }
+
+    public static function claimBypassStates(): iterable
+    {
+        yield ['pending'];
+        yield ['paid'];
+    }
+
+    #[DataProvider('claimUnavailableChanges')]
+    public function test_recovery_terminal_corrupt_and_stale_claims_fail_generic(string $change): void
+    {
+        $fixture = $this->established();
+        if ($change === 'recovery-required') {
+            $claimed = $this->coordinate($fixture, false);
+            DB::table('outbox_messages')->where('message_id', $claimed->messageId)->update([
+                'status' => 'processing', 'attempts' => 1,
+            ]);
+        } elseif (in_array($change, ['expired', 'corrupt'], true)) {
+            $prepared = $this->prepare($fixture, false);
+            AssessmentBill::query()->whereKey($prepared->billId)->update($change === 'expired'
+                ? ['status' => 'expired'] : ['request_hash' => str_repeat('f', 64)]);
+        } elseif ($change === 'policy') {
+            app(CheckoutSessionLifecycle::class)->hydrateWithCsrfDelivery($this->credentials($fixture));
+            $this->changeAuthority('policy', $fixture);
+        } else {
+            app(CheckoutSessionLifecycle::class)->hydrateWithCsrfDelivery($this->credentials($fixture));
+            $this->changeAuthority('session', $fixture);
+        }
+
+        $this->assertUnavailable(fn () => $this->coordinate($fixture, false));
+        $this->assertSame(in_array($change, ['policy', 'session'], true) ? 0 : 1,
+            DB::table('assessment_bills')->count());
+        $this->assertLessThanOrEqual(1, DB::table('outbox_messages')->count());
+        $this->assertNull(app(RlsContextRunner::class)->current());
+        $this->assertSame(0, DB::transactionLevel());
+    }
+
+    public static function claimUnavailableChanges(): iterable
+    {
+        yield ['recovery-required'];
+        yield ['expired'];
+        yield ['corrupt'];
+        yield ['policy'];
+        yield ['session'];
+    }
+
+    public function test_claim_audit_failure_rolls_back_to_reserved_then_retry_claims_once(): void
+    {
+        $fixture = $this->established();
+        $fail = true;
+        DB::listen(function (QueryExecuted $query) use (&$fail): void {
+            if ($fail && str_contains($query->sql, 'insert into "audit_logs"')
+                && in_array('assessment_bill.invoice_claimed', $query->bindings, true)) {
+                $fail = false;
+                throw new RuntimeException('synthetic-claim-audit-failure');
+            }
+        });
+        try {
+            $this->coordinate($fixture, false);
+            $this->fail('Synthetic claim failure did not run.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('synthetic-claim-audit-failure', $exception->getMessage());
+        }
+        $this->assertDatabaseHas('assessment_bills', ['status' => 'reserved']);
+        $this->assertDatabaseCount('assessment_bills', 1);
+        $this->assertDatabaseCount('assessment_charges', 1);
+        $this->assertDatabaseCount('outbox_messages', 0);
+        $this->assertSame(0, DB::table('audit_logs')->where('action', 'assessment_bill.invoice_claimed')->count());
+        $this->assertNull(app(RlsContextRunner::class)->current());
+        $this->assertSame(0, DB::transactionLevel());
+
+        $result = $this->coordinate($fixture, false);
+        $this->assertSame('issuance_required', $result->state);
+        $this->assertDatabaseCount('outbox_messages', 1);
+        $this->assertSame(1, DB::table('audit_logs')->where('action', 'assessment_bill.invoice_claimed')->count());
+    }
+
+    public function test_claim_coordinator_rejects_ambient_context_or_transaction(): void
+    {
+        $fixture = $this->established();
+        foreach ([
+            fn () => app(RlsContextRunner::class)->runAsService(fn () => $this->coordinate($fixture, false)),
+            fn () => DB::transaction(fn () => $this->coordinate($fixture, false)),
+        ] as $operation) {
+            try {
+                $operation();
+                $this->fail('Ambient claim coordination was accepted.');
+            } catch (\LogicException $exception) {
+                $this->assertSame('Checkout payment claim owns an empty context and transaction.', $exception->getMessage());
+            }
+        }
+        $this->assertDatabaseCount('assessment_bills', 0);
+        $this->assertDatabaseCount('outbox_messages', 0);
+        $this->assertNull(app(RlsContextRunner::class)->current());
+        $this->assertSame(0, DB::transactionLevel());
+    }
+
     /** @param array<string, mixed> $fixture */
     private function prepare(array $fixture, bool $consultation): CheckoutSelfPaymentPreparation
     {
         return app(PrepareCheckoutSelfPayment::class)->execute($this->credentials($fixture), $consultation);
+    }
+
+    /** @param array<string, mixed> $fixture */
+    private function coordinate(array $fixture, bool $consultation): CheckoutSelfPaymentClaimResult
+    {
+        return app(CoordinateCheckoutSelfPayment::class)->execute($this->credentials($fixture), $consultation);
     }
 
     private function assertUnavailable(callable $operation): void
