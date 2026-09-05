@@ -1634,6 +1634,40 @@ class SupervisorTests(unittest.TestCase):
             with self.assertRaisesRegex(m.Refused, "asset_delivery_review_required"):
                 run.preflight(1)
 
+    def test_asset_delivery_review_contract_rejects_old_or_malformed_before_identity(self):
+        valid = {name: "a" * 64 for name in m.ASSET_REVIEW_FILES}
+        old_four = {
+            name: valid[name]
+            for name in (
+                "public/css/checkout-summary-v1.css",
+                "public/brand/oncam-logo-full-color.png",
+                "resources/views/checkout/summary.blade.php",
+                m.HARNESS,
+            )
+        }
+        invalid = (
+            old_four,
+            {key: value for key, value in valid.items() if key != m.ASSET_REVIEW_FILES[0]},
+            {**valid, "public/extra.js": "a" * 64},
+            {**valid, m.ASSET_REVIEW_FILES[0]: True},
+            {**valid, m.ASSET_REVIEW_FILES[0]: "a" * 63},
+        )
+        for review in invalid:
+            with self.subTest(keys=tuple(review)):
+                run = m.WindowsRun({
+                    "directory": "synthetic-unused",
+                    "asset_delivery_review": review,
+                })
+                with patch.object(run, "_canonical", side_effect=AssertionError("identity")), \
+                        patch.object(m.subprocess, "Popen", side_effect=AssertionError("spawn")):
+                    with self.assertRaisesRegex(m.Refused, "^asset_delivery_review_required$"):
+                        run.preflight(1)
+
+        manifest = dict(valid)
+        manifest[m.ASSET_REVIEW_FILES[0]] = "b" * 64
+        with self.assertRaisesRegex(m.Refused, "^asset_overlay_mismatch$"):
+            m._validated_asset_review(valid, manifest)
+
     def test_keyboard_interrupt_still_cleans_owned_work(self):
         f = Fake()
         def interrupt(left):

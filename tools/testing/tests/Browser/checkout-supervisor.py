@@ -12,7 +12,20 @@ import tempfile
 import time
 
 PORTS = (8126, 443)
-ASSETS = ("public/css/checkout-summary-v1.css", "public/brand/oncam-logo-full-color.png")
+DELIVERED_ASSETS = (
+    "public/css/checkout-summary-v1.css",
+    "public/brand/oncam-logo-full-color.png",
+    "public/js/checkout-confirmation-v1.js",
+    "public/js/checkout-payment-v1.js",
+)
+ASSET_REVIEW_FILES = (
+    "public/css/checkout-summary-v1.css",
+    "public/brand/oncam-logo-full-color.png",
+    "public/js/checkout-confirmation-v1.js",
+    "public/js/checkout-payment-v1.js",
+    "resources/views/checkout/summary.blade.php",
+    "tools/testing/tests/Browser/serve-checkout-session.php",
+)
 HARNESS = "tools/testing/tests/Browser/serve-checkout-session.php"
 DRIVER = "tools/testing/tests/Browser/checkout-session.browser.mjs"
 JOURNAL = "ownership-journal.head"
@@ -43,6 +56,18 @@ def canonical_tick(value):
 
 def _approved_tool_path(value, suffix):
     return str(value).replace("\\", "/").endswith("/" + suffix)
+
+
+def _validated_asset_review(value, manifest=None):
+    if type(value) is not dict or set(value) != set(ASSET_REVIEW_FILES) \
+            or any(type(item) is not str or re.fullmatch(r"[a-f0-9]{64}", item) is None
+                   for item in value.values()):
+        raise Refused("asset_delivery_review_required")
+    if manifest is not None and (type(manifest) is not dict
+                                 or any(manifest.get(name) != value[name]
+                                        for name in ASSET_REVIEW_FILES)):
+        raise Refused("asset_overlay_mismatch")
+    return {name: value[name] for name in ASSET_REVIEW_FILES}
 
 
 def supervise(io, *, mode="smoke", requests=3, budget=180):
@@ -292,10 +317,8 @@ class WindowsRun:
             raise Refused("noncanonical")
 
     def preflight(self, remaining):
-        review = self.c.get("asset_delivery_review", {})
-        required = (*ASSETS, "resources/views/checkout/summary.blade.php", HARNESS)
-        if set(review) != set(required) or any(not isinstance(v, str) or not re.fullmatch(r"[a-f0-9]{64}", v) for v in review.values()):
-            raise Refused("asset_delivery_review_required")
+        review = _validated_asset_review(self.c.get("asset_delivery_review", {}))
+        required = ASSET_REVIEW_FILES
         if os.name != "nt" or self.run.parent.resolve() != Path(tempfile.gettempdir()).resolve():
             raise Refused("scope")
         if not re.fullmatch(r"oncam-checkout-[0-9a-f]{32}", self.run.name):
@@ -318,6 +341,7 @@ class WindowsRun:
         if hashlib.sha256(raw).hexdigest() != self.c["manifest"]:
             raise Refused("manifest")
         manifest = json.loads(raw)
+        review = _validated_asset_review(review, manifest)
         # This reviewed asset-delivery contract is deliberately absent from the old copy.
         # Presence alone does not authorize a generic static-file router.
         for name in required:

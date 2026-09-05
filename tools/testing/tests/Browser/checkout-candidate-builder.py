@@ -15,16 +15,21 @@ import tempfile
 EXTERNAL_TOOLS = ("php", "python", "node", "powershell", "cli", "browser")
 RUN_LOCAL_FILES = ("ini", "browser_config", "cert", "key")
 ALL_TOOL_KEYS = (*EXTERNAL_TOOLS, *RUN_LOCAL_FILES)
+DELIVERED_ASSETS = (
+    "public/css/checkout-summary-v1.css",
+    "public/brand/oncam-logo-full-color.png",
+    "public/js/checkout-confirmation-v1.js",
+    "public/js/checkout-payment-v1.js",
+)
 ASSET_REVIEW_FILES = (
     "public/css/checkout-summary-v1.css",
     "public/brand/oncam-logo-full-color.png",
+    "public/js/checkout-confirmation-v1.js",
+    "public/js/checkout-payment-v1.js",
     "resources/views/checkout/summary.blade.php",
     "tools/testing/tests/Browser/serve-checkout-session.php",
 )
-SCRIPT_SOURCE_FILES = frozenset({
-    "public/js/checkout-confirmation-v1.js",
-    "public/js/checkout-payment-v1.js",
-})
+SCRIPT_SOURCE_FILES = frozenset(DELIVERED_ASSETS[2:])
 BROWSER_TOOLS = frozenset({
     "tools/testing/tests/Browser/checkout-anchor-store.py",
     "tools/testing/tests/Browser/checkout-candidate-builder.py",

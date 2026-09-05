@@ -119,6 +119,9 @@ class CandidateBuilderTests(unittest.TestCase):
             self.assertEqual(config["manifest"], digest(manifest_bytes))
             self.assertEqual(json.loads(manifest_bytes), args["expected_manifest"])
             self.assertEqual(config["asset_delivery_review"], args["asset_delivery_review"])
+            self.assertEqual(
+                set(config["asset_delivery_review"]), set(m.ASSET_REVIEW_FILES)
+            )
             self.assertEqual(set(config), m.CONFIG_KEYS)
             self.assertEqual(set(config["tool_hashes"]), set(m.ALL_TOOL_KEYS))
             self.assertEqual((destination / "source-revision.txt").read_text("ascii"), "b" * 40 + "\n")
@@ -319,6 +322,48 @@ class CandidateBuilderTests(unittest.TestCase):
                         self.build(args)
                     self.assertFalse(Path(args["destination"]).exists())
 
+    def test_asset_delivery_review_is_exact_and_manifest_bound_before_target(self):
+        def old_four(args):
+            args["asset_delivery_review"] = {
+                name: args["expected_manifest"][name]
+                for name in (
+                    "public/css/checkout-summary-v1.css",
+                    "public/brand/oncam-logo-full-color.png",
+                    "resources/views/checkout/summary.blade.php",
+                    "tools/testing/tests/Browser/serve-checkout-session.php",
+                )
+            }
+
+        def missing(args):
+            args["asset_delivery_review"].pop(m.ASSET_REVIEW_FILES[0])
+
+        def extra(args):
+            args["asset_delivery_review"]["public/extra.js"] = "f" * 64
+
+        def wrong_type(args):
+            args["asset_delivery_review"][m.ASSET_REVIEW_FILES[0]] = True
+
+        def invalid_hash(args):
+            args["asset_delivery_review"][m.ASSET_REVIEW_FILES[0]] = "f" * 63
+
+        def manifest_mismatch(args):
+            args["asset_delivery_review"][m.ASSET_REVIEW_FILES[0]] = "f" * 64
+
+        mutations = (old_four, missing, extra, wrong_type, invalid_hash, manifest_mismatch)
+        with tempfile.TemporaryDirectory(prefix="candidate-builder-test-") as directory:
+            base = self.fixture(directory)
+            for mutate in mutations:
+                with self.subTest(case=mutate.__name__):
+                    args = {
+                        **base,
+                        "destination": self.new_destination(),
+                        "asset_delivery_review": dict(base["asset_delivery_review"]),
+                    }
+                    mutate(args)
+                    with self.assertRaisesRegex(m.CandidateRefused, "^asset_review$"):
+                        self.build(args)
+                    self.assertFalse(Path(args["destination"]).exists())
+
     def test_refuses_cli_or_browser_path_without_exact_approved_suffix(self):
         with tempfile.TemporaryDirectory(prefix="candidate-builder-test-") as directory:
             base = self.fixture(directory)
@@ -363,7 +408,7 @@ class CandidateBuilderTests(unittest.TestCase):
                         self.build(args)
                     self.assertFalse(Path(args["destination"]).exists())
 
-    def test_tool_suffix_and_browser_arg_constants_match_supervisor_source_without_import(self):
+    def test_builder_constants_match_supervisor_source_without_import(self):
         supervisor = ast.parse((HERE / "checkout-supervisor.py").read_text("utf-8"))
         assignments = {
             target.id: ast.literal_eval(node.value)
@@ -371,13 +416,19 @@ class CandidateBuilderTests(unittest.TestCase):
             if isinstance(node, ast.Assign)
             for target in node.targets
             if isinstance(target, ast.Name)
-            and target.id in {"CLI_SUFFIX", "BROWSER_SUFFIX", "BROWSER_LAUNCH_ARGS"}
+            and target.id in {
+                "CLI_SUFFIX", "BROWSER_SUFFIX", "BROWSER_LAUNCH_ARGS",
+                "DELIVERED_ASSETS", "ASSET_REVIEW_FILES",
+            }
         }
         self.assertEqual(assignments, {
             "CLI_SUFFIX": m.CLI_SUFFIX,
             "BROWSER_SUFFIX": m.BROWSER_SUFFIX,
             "BROWSER_LAUNCH_ARGS": m.BROWSER_LAUNCH_ARGS,
+            "DELIVERED_ASSETS": m.DELIVERED_ASSETS,
+            "ASSET_REVIEW_FILES": m.ASSET_REVIEW_FILES,
         })
+        self.assertEqual(m.ASSET_REVIEW_FILES[:4], m.DELIVERED_ASSETS)
         helper = next(
             node for node in supervisor.body
             if isinstance(node, ast.FunctionDef) and node.name == "_approved_tool_path"
@@ -427,6 +478,7 @@ class CandidateBuilderTests(unittest.TestCase):
             expected = json.loads((destination / "supervisor-config.json").read_text("utf-8"))
             result["manifest"] = "0" * 64
             result["tool_hashes"]["php"] = "0" * 64
+            result["asset_delivery_review"].clear()
             args["tools"]["php"]["sha256"] = "0" * 64
             args["asset_delivery_review"].clear()
             self.assertEqual(
