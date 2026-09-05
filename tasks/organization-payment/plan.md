@@ -487,3 +487,15 @@ serta hash divalidasi sebelum/sesudah load. Evidence root adalah builder
 Acceptance ini bukan validasi SAN, validity, EKU, CA/chain/trust, key strength,
 browser, atau ACL. Candidate belum dibangun dan tidak ada deploy/runtime aktif;
 P17c/P18 serta semua gate default-OFF tidak berubah.
+
+### Checkpoint strict result envelope Playwright
+
+Commit `d954b3c` mengikat output driver pada satu marker own-line, JSON penuh
+tanpa duplicate/nonfinite/trailing, serta schema ordered smoke/full, counter,
+history, check canonical, dan source return exact. Bukti root: supervisor
+**93/93**, parity AST **2/2**, dan check Node lulus. Wording executable-script
+secara eksplisit hanya berlaku pada state checkout default-OFF.
+
+Ini evidence statis/pure: tidak ada browser, service/aplikasi, DB, env aktif,
+network, atau candidate; hanya proses tes Python/Node lokal. P17c/P18 dan semua
+gate default-OFF tetap tidak berubah.

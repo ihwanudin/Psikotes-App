@@ -2400,3 +2400,15 @@ builder **20/20**, parity AST **2/2**, dan scan header private-key fixture bersi
 Bukti ini tidak mencakup SAN, masa berlaku, EKU, CA/chain/trust, kekuatan key,
 browser, atau ACL Windows. Candidate nyata tidak dibangun; tidak ada deploy atau
 runtime aktif. P17c/P18 tetap terbuka dan semua gate tetap default OFF.
+
+### Checkpoint envelope hasil Playwright — accepted `d954b3c`
+
+Supervisor kini menerima tepat satu marker result pada baris sendiri dan satu
+objek JSON utuh; duplicate key, nonfinite, trailing payload, serta bentuk root
+lain ditolak. Schema smoke/full, counter, history, urutan check, dan source return
+driver diikat exact. Bukti root aman: supervisor **93/93**, parity AST **2/2**,
+dan check Node lulus; wording executable-script dibatasi pada state default-OFF.
+
+Tidak ada browser, service/aplikasi, DB, env aktif, network, atau candidate yang
+dijalankan; hanya proses tes Python/Node lokal. P17c/P18 tetap terbuka dan
+seluruh gate tetap default OFF.

@@ -790,3 +790,15 @@ header private-key fixture bersih.
 Belum ada bukti SAN/validity/EKU/CA/chain/trust/key strength, browser, atau ACL.
 Tidak ada candidate build, deploy, maupun runtime aktif; checkbox P17c/P18 tidak
 ditutup dan gate tetap default OFF.
+
+### Bukti envelope Playwright accepted — checklist tetap terbuka
+
+`d954b3c` menerima framing marker own-line dan JSON utuh yang strict, termasuk
+penolakan duplicate/nonfinite/trailing. Schema smoke/full, counter, history,
+check canonical, serta return source driver kini exact-bound. Root lulus
+supervisor **93/93**, parity AST **2/2**, dan check Node; klaim script hanya untuk
+checkout default-OFF.
+
+Tidak ada browser, service/aplikasi, DB, env aktif, network, atau candidate;
+hanya proses tes Python/Node lokal. P17c/P18 tidak dicentang dan semua gate
+tetap default OFF.

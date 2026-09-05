@@ -83,6 +83,19 @@ Scope ini tidak membuktikan SAN, validity, EKU, CA/chain/trust, key strength,
 perilaku browser, atau ACL Windows. Candidate nyata belum dibangun dan tidak ada
 deploy maupun runtime aktif. P17c/P18 tetap terbuka dan gate tetap default OFF.
 
+### Envelope hasil Playwright strict — `d954b3c`
+
+Supervisor sekarang mensyaratkan tepat satu marker result pada baris sendiri dan
+satu objek JSON yang dikonsumsi penuh. Duplicate key, nilai nonfinite, trailing
+payload, dan root non-object ditolak. Schema/order smoke serta full, counter,
+history, check canonical, dan source return driver diikat exact. Root mencatat
+supervisor **93/93**, parity AST **2/2**, dan check Node lulus; wording tanpa
+executable application script telah dibatasi ke state checkout default-OFF.
+
+Tidak ada browser, service/aplikasi, database, environment aktif, network, atau
+candidate yang dijalankan; hanya proses tes Python/Node lokal. P17c/P18 tetap
+terbuka dan gate tetap default OFF.
+
 ## Checkpoint P16 consent subset dan privacy audit — 2026-09-06
 
 Commit `918eb93` menambah policy PostgreSQL restrictive yang membuat audit
