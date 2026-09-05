@@ -187,7 +187,11 @@ def _run_from_config(config):
         config_copy = copy.deepcopy(config)
         if type(config_copy) is not dict:
             raise CoordinatorRefused("coordinator_config")
-        return supervisor_module.WindowsRun(config_copy)
+        run = supervisor_module.WindowsRun(config_copy)
+        # Validate the complete candidate contract at this boundary so callers
+        # never observe the supervisor's lower-level refusal vocabulary.
+        run._config_binding(run.session)
+        return run
     except CoordinatorRefused:
         raise
     except Exception:

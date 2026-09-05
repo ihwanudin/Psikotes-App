@@ -99,8 +99,12 @@ class SupervisorTests(unittest.TestCase):
         return store
 
     def journal_run(self, directory):
-        paths = {name: str(Path(directory) / name) for name in
-                 ("php", "python", "node", "powershell", "cli", "browser", "ini", "browser_config", "cert", "key")}
+        filenames = {
+            "php": "php", "python": "python", "node": "node", "powershell": "powershell",
+            "cli": "cli", "browser": "browser", "ini": "runtime.ini",
+            "browser_config": "browser-config.json", "cert": "cert.pem", "key": "key.pem",
+        }
+        paths = {name: str(Path(directory) / filename) for name, filename in filenames.items()}
         for index, path in enumerate(paths.values(), 1):
             if not Path(path).exists():
                 Path(path).write_bytes(f"synthetic-{index}".encode())
@@ -112,6 +116,7 @@ class SupervisorTests(unittest.TestCase):
             "directory": directory, "manifest": "a" * 64, **paths,
             "tool_hashes": {name: hashlib.sha256(Path(path).read_bytes()).hexdigest()
                             for name, path in paths.items()},
+            "asset_delivery_review": {name: "b" * 64 for name in m.ASSET_REVIEW_FILES},
         }, anchor_publisher=store)
 
     def rewrite_journal(self, run, mutate):
@@ -172,6 +177,135 @@ class SupervisorTests(unittest.TestCase):
                 "timeouts": {"action": 30000, "navigation": 30000},
             },
         }
+
+    @staticmethod
+    def candidate_config():
+        tool_keys = (
+            "php", "python", "node", "powershell", "cli", "browser", "ini",
+            "browser_config", "cert", "key",
+        )
+        filenames = {
+            "ini": "runtime.ini", "browser_config": "browser-config.json",
+            "cert": "cert.pem", "key": "key.pem",
+        }
+        run = (Path.cwd() / ("oncam-checkout-" + "a" * 32)).absolute()
+        paths = {
+            name: str((run / filenames[name]).absolute()) if name in filenames
+            else str((Path.cwd() / f"synthetic-{name}").absolute())
+            for name in tool_keys
+        }
+        return {
+            "directory": str(run),
+            "manifest": "a" * 64,
+            **paths,
+            "tool_hashes": {name: "b" * 64 for name in tool_keys},
+            "asset_delivery_review": {name: "c" * 64 for name in m.ASSET_REVIEW_FILES},
+        }
+
+    def test_candidate_config_shape_is_exact_before_filesystem_or_identity(self):
+        valid = self.candidate_config()
+        run = m.WindowsRun(valid)
+        self.assertEqual(run._validate_candidate_config(), valid["asset_delivery_review"])
+
+        invalid = []
+        for key in valid:
+            candidate = json.loads(json.dumps(valid))
+            candidate.pop(key)
+            invalid.append((f"missing-{key}", candidate))
+        extra = json.loads(json.dumps(valid)); extra["extra"] = True
+        invalid.append(("extra", extra))
+        for key in valid["tool_hashes"]:
+            candidate = json.loads(json.dumps(valid))
+            candidate["tool_hashes"].pop(key)
+            invalid.append((f"missing-hash-{key}", candidate))
+        extra_hash = json.loads(json.dumps(valid)); extra_hash["tool_hashes"]["extra"] = "d" * 64
+        invalid.append(("extra-hash", extra_hash))
+        for label, value in (
+            ("manifest-bool", True), ("manifest-upper", "A" * 64),
+            ("manifest-short", "a" * 63),
+        ):
+            candidate = json.loads(json.dumps(valid)); candidate["manifest"] = value
+            invalid.append((label, candidate))
+        for label, value in (
+            ("hash-bool", True), ("hash-upper", "B" * 64), ("hash-short", "b" * 63),
+        ):
+            candidate = json.loads(json.dumps(valid)); candidate["tool_hashes"]["php"] = value
+            invalid.append((label, candidate))
+        for label, value in (
+            ("path-empty", ""), ("path-relative", "relative/php"),
+            ("path-bool", True), ("path-nul", "C:/php\0hidden"),
+        ):
+            candidate = json.loads(json.dumps(valid)); candidate["php"] = value
+            invalid.append((label, candidate))
+        php_path = valid["php"]
+        php_parent = str(Path(php_path).parent)
+        php_name = Path(php_path).name
+        for label, value in (
+            ("path-dot", php_parent + "\\.\\" + php_name),
+            ("path-dot-dot", php_parent + "\\child\\..\\" + php_name),
+            ("path-forward-slash", php_path.replace("\\", "/")),
+            ("path-duplicate-separator", php_parent + "\\\\" + php_name),
+        ):
+            candidate = json.loads(json.dumps(valid)); candidate["php"] = value
+            invalid.append((label, candidate))
+        directory = json.loads(json.dumps(valid)); directory["directory"] = str(Path(valid["directory"]).with_name("other"))
+        invalid.append(("directory-drift", directory))
+        duplicate_path = json.loads(json.dumps(valid)); duplicate_path["python"] = duplicate_path["php"]
+        invalid.append(("duplicate-path", duplicate_path))
+        local_name = json.loads(json.dumps(valid)); local_name["ini"] = str(Path(valid["directory"]) / "other.ini")
+        invalid.append(("local-name", local_name))
+        review = json.loads(json.dumps(valid)); review["asset_delivery_review"].pop(m.ASSET_REVIEW_FILES[0])
+        invalid.append(("asset-review", review))
+
+        for label, candidate in invalid:
+            with self.subTest(label=label):
+                candidate_run = m.WindowsRun(valid)
+                candidate_run.c = candidate
+                with patch.object(candidate_run, "_canonical", side_effect=AssertionError("filesystem")), \
+                        patch.object(candidate_run, "_identity", side_effect=AssertionError("identity")), \
+                        patch.object(Path, "read_bytes", side_effect=AssertionError("read")), \
+                        patch.object(m.subprocess, "Popen", side_effect=AssertionError("spawn")):
+                    with self.assertRaisesRegex(m.Refused, "^candidate_config$"):
+                        candidate_run.preflight(1)
+
+        directory_path = valid["directory"]
+        directory_parent = str(Path(directory_path).parent)
+        directory_name = Path(directory_path).name
+        for label, alias in (
+            ("directory-self-dot-dot", directory_parent + "\\child\\..\\" + directory_name),
+            ("directory-self-forward-slash", directory_path.replace("\\", "/")),
+            ("directory-self-duplicate-separator", directory_parent + "\\\\" + directory_name),
+        ):
+            candidate = json.loads(json.dumps(valid))
+            candidate["directory"] = alias
+            candidate_run = m.WindowsRun(candidate)
+            with self.subTest(label=label), \
+                    patch.object(candidate_run, "_canonical", side_effect=AssertionError("filesystem")), \
+                    patch.object(Path, "read_bytes", side_effect=AssertionError("read")), \
+                    patch.object(m.subprocess, "Popen", side_effect=AssertionError("spawn")):
+                with self.assertRaisesRegex(m.Refused, "^candidate_config$"):
+                    candidate_run.preflight(1)
+
+    def test_candidate_config_shape_guards_binding_and_recovery_before_anchor_load(self):
+        valid = self.candidate_config()
+        run = m.WindowsRun(valid, anchor_publisher=AnchorStore())
+        session = "checkout-" + "c" * 32
+        original_binding = run._config_binding(session)
+        run.c["asset_delivery_review"][m.ASSET_REVIEW_FILES[0]] = "d" * 64
+        self.assertNotEqual(run._config_binding(session), original_binding)
+
+        run.c = json.loads(json.dumps(valid))
+        run.c["tool_hashes"]["php"] = "B" * 64
+        with self.assertRaisesRegex(m.Refused, "^candidate_config$"):
+            run._config_binding(session)
+        with patch.object(run, "_publisher_anchor", side_effect=AssertionError("anchor")), \
+                patch.object(run, "_snapshot", side_effect=AssertionError("snapshot")), \
+                patch.object(m.subprocess, "Popen", side_effect=AssertionError("spawn")):
+            with self.assertRaisesRegex(m.Refused, "^recovery_config$"):
+                run.recover_ownership(
+                    session,
+                    {"generation": 1, "digest": "d" * 64},
+                )
 
     def test_browser_config_decoder_accepts_only_exact_semantic_schema(self):
         browser = "C:/approved/chrome.exe"
@@ -305,8 +439,9 @@ class SupervisorTests(unittest.TestCase):
             manifest_bytes = json.dumps(review, sort_keys=True, separators=(",", ":")).encode()
             (run_path / "source-manifest.json").write_bytes(manifest_bytes)
             paths = {}
+            local_names = {"ini": "runtime.ini", "cert": "cert.pem", "key": "key.pem"}
             for name in ("php", "python", "node", "powershell", "ini", "cert", "key"):
-                path = run_path / name
+                path = run_path / local_names.get(name, name)
                 path.write_bytes(name.encode())
                 paths[name] = str(path.absolute())
             cli = run_path / Path(m.CLI_SUFFIX)
@@ -1983,9 +2118,11 @@ class SupervisorTests(unittest.TestCase):
                     run.full_matrix(30)
 
     def test_missing_asset_delivery_review_blocks_before_process_or_source_read(self):
-        run = m.WindowsRun({"directory": "synthetic-unused"})
+        config = self.candidate_config()
+        config.pop("asset_delivery_review")
+        run = m.WindowsRun(config)
         with patch.object(Path, "read_bytes", side_effect=AssertionError("must not read")), patch.object(m.subprocess, "Popen", side_effect=AssertionError("must not spawn")):
-            with self.assertRaisesRegex(m.Refused, "asset_delivery_review_required"):
+            with self.assertRaisesRegex(m.Refused, "candidate_config"):
                 run.preflight(1)
 
     def test_asset_delivery_review_contract_rejects_old_or_malformed_before_identity(self):
@@ -2008,13 +2145,12 @@ class SupervisorTests(unittest.TestCase):
         )
         for review in invalid:
             with self.subTest(keys=tuple(review)):
-                run = m.WindowsRun({
-                    "directory": "synthetic-unused",
-                    "asset_delivery_review": review,
-                })
+                config = self.candidate_config()
+                config["asset_delivery_review"] = review
+                run = m.WindowsRun(config)
                 with patch.object(run, "_canonical", side_effect=AssertionError("identity")), \
                         patch.object(m.subprocess, "Popen", side_effect=AssertionError("spawn")):
-                    with self.assertRaisesRegex(m.Refused, "^asset_delivery_review_required$"):
+                    with self.assertRaisesRegex(m.Refused, "^candidate_config$"):
                         run.preflight(1)
 
         manifest = dict(valid)

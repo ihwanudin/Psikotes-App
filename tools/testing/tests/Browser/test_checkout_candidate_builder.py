@@ -26,6 +26,59 @@ def digest(value):
     return hashlib.sha256(value).hexdigest()
 
 
+def static_config_keys(module, tool_keys):
+    def targets_config_keys(target):
+        return any(isinstance(item, ast.Name) and item.id == "CONFIG_KEYS"
+                   for item in ast.walk(target))
+
+    writes = []
+    for node in ast.walk(module):
+        if isinstance(node, ast.Assign) and any(
+                targets_config_keys(target) for target in node.targets):
+            writes.append(node)
+        elif isinstance(node, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr)) \
+                and targets_config_keys(node.target):
+            writes.append(node)
+        elif isinstance(node, ast.Delete) and any(
+                targets_config_keys(target) for target in node.targets):
+            writes.append(node)
+        elif isinstance(node, ast.Call) and (
+            isinstance(node.func, ast.Attribute)
+            and targets_config_keys(node.func.value)
+            or isinstance(node.func, ast.Name)
+            and node.func.id in {"setattr", "delattr"}
+            and node.args
+            and targets_config_keys(node.args[0])
+        ):
+            writes.append(node)
+
+    assert len(writes) == 1
+    assignment = writes[0]
+    assert isinstance(assignment, ast.Assign)
+    assert len(assignment.targets) == 1
+    assert isinstance(assignment.targets[0], ast.Name)
+    assert assignment.targets[0].id == "CONFIG_KEYS"
+    value = assignment.value
+    assert isinstance(value, ast.Call)
+    assert isinstance(value.func, ast.Name) and value.func.id == "frozenset"
+    assert len(value.args) == 1 and not value.keywords
+    assert isinstance(value.args[0], ast.Set)
+
+    constants = []
+    stars = 0
+    for item in value.args[0].elts:
+        if isinstance(item, ast.Constant) and type(item.value) is str:
+            constants.append(item.value)
+        elif isinstance(item, ast.Starred) and isinstance(item.value, ast.Name) \
+                and item.value.id == "CONFIG_TOOL_KEYS":
+            stars += 1
+        else:
+            raise AssertionError("CONFIG_KEYS contains a non-allowlisted expression")
+    assert stars == 1
+    assert len(constants) == len(set(constants))
+    return frozenset((*constants, *tool_keys))
+
+
 TEST_CERT = b"""-----BEGIN CERTIFICATE-----
 MIIBJTCBy6ADAgECAgECMAoGCCqGSM49BAMCMBwxGjAYBgNVBAMMEXN5bnRoZXRp
 Yy5pbnZhbGlkMB4XDTI2MDkwNDIwNTAwNFoXDTI2MDkwNjIwNTAwNFowHDEaMBgG
@@ -527,7 +580,7 @@ class CandidateBuilderTests(unittest.TestCase):
             for target in node.targets
             if isinstance(target, ast.Name)
             and target.id in {
-                "CLI_SUFFIX", "BROWSER_SUFFIX", "BROWSER_LAUNCH_ARGS",
+                "CLI_SUFFIX", "BROWSER_SUFFIX", "BROWSER_LAUNCH_ARGS", "CONFIG_TOOL_KEYS",
                 "DELIVERED_ASSETS", "ASSET_REVIEW_FILES",
             }
         }
@@ -535,17 +588,22 @@ class CandidateBuilderTests(unittest.TestCase):
             "CLI_SUFFIX": m.CLI_SUFFIX,
             "BROWSER_SUFFIX": m.BROWSER_SUFFIX,
             "BROWSER_LAUNCH_ARGS": m.BROWSER_LAUNCH_ARGS,
+            "CONFIG_TOOL_KEYS": m.ALL_TOOL_KEYS,
             "DELIVERED_ASSETS": m.DELIVERED_ASSETS,
             "ASSET_REVIEW_FILES": m.ASSET_REVIEW_FILES,
         })
+        self.assertEqual(static_config_keys(supervisor, m.ALL_TOOL_KEYS), m.CONFIG_KEYS)
         self.assertEqual(m.ASSET_REVIEW_FILES[:4], m.DELIVERED_ASSETS)
-        helper = next(
+        supervisor_helper = next(
             node for node in supervisor.body
             if isinstance(node, ast.FunctionDef) and node.name == "_approved_tool_path"
         )
-        isolated = {}
-        exec(compile(ast.fix_missing_locations(ast.Module(body=[helper], type_ignores=[])),
-                     "<supervisor-helper>", "exec"), isolated)
+        builder = ast.parse((HERE / "checkout-candidate-builder.py").read_text("utf-8"))
+        builder_helper = next(
+            node for node in builder.body
+            if isinstance(node, ast.FunctionDef) and node.name == "_approved_tool_path"
+        )
+        self.assertEqual(ast.dump(supervisor_helper), ast.dump(builder_helper))
         cases = (
             ("C:\\approved\\" + m.CLI_SUFFIX.replace("/", "\\"), m.CLI_SUFFIX, True),
             ("/approved/" + m.BROWSER_SUFFIX, m.BROWSER_SUFFIX, True),
@@ -555,7 +613,28 @@ class CandidateBuilderTests(unittest.TestCase):
         for path, suffix, expected in cases:
             with self.subTest(path=path):
                 self.assertEqual(m._approved_tool_path(path, suffix), expected)
-                self.assertEqual(isolated["_approved_tool_path"](path, suffix), expected)
+
+    def test_supervisor_config_key_static_reader_refuses_writes_and_expressions(self):
+        valid = ast.parse(
+            'CONFIG_KEYS = frozenset({"directory", *CONFIG_TOOL_KEYS, "manifest"})'
+        )
+        self.assertEqual(
+            static_config_keys(valid, ("php", "node")),
+            frozenset({"directory", "php", "node", "manifest"}),
+        )
+        invalid = (
+            'CONFIG_KEYS = frozenset({"directory", *CONFIG_TOOL_KEYS})\nCONFIG_KEYS = frozenset()',
+            'CONFIG_KEYS: frozenset = frozenset({"directory", *CONFIG_TOOL_KEYS})',
+            'CONFIG_KEYS = frozenset({"directory", *CONFIG_TOOL_KEYS})\nCONFIG_KEYS |= {"extra"}',
+            'CONFIG_KEYS = frozenset({"directory", *CONFIG_TOOL_KEYS})\nCONFIG_KEYS.add("extra")',
+            'CONFIG_KEYS = dangerous({"directory", *CONFIG_TOOL_KEYS})',
+            'CONFIG_KEYS = frozenset({"directory", *OTHER_KEYS})',
+            'CONFIG_KEYS = frozenset({"directory", *CONFIG_TOOL_KEYS, *CONFIG_TOOL_KEYS})',
+            'CONFIG_KEYS = frozenset({"directory", "directory", *CONFIG_TOOL_KEYS})',
+        )
+        for source in invalid:
+            with self.subTest(source=source), self.assertRaises(AssertionError):
+                static_config_keys(ast.parse(source), ("php", "node"))
 
     def test_partial_copy_failure_is_never_deleted_or_finalized(self):
         with tempfile.TemporaryDirectory(prefix="candidate-builder-test-") as directory:

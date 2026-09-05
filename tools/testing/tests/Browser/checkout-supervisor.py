@@ -41,6 +41,13 @@ BROWSER_LAUNCH_ARGS = (
     "--no-proxy-server",
     "--disable-background-networking",
 )
+CONFIG_TOOL_KEYS = (
+    "php", "python", "node", "powershell", "cli", "browser", "ini",
+    "browser_config", "cert", "key",
+)
+CONFIG_KEYS = frozenset({
+    "directory", "manifest", *CONFIG_TOOL_KEYS, "tool_hashes", "asset_delivery_review",
+})
 FULL_MATRIX_KEYS = (
     "checks", "exchangePosts", "hostileForms", "opaqueNetworkBlocks",
     "expectedSandboxInstrumentationErrors", "controlledNetworkEntries",
@@ -458,8 +465,52 @@ class WindowsRun:
         if path.is_symlink() or path.resolve() != path.absolute():
             raise Refused("noncanonical")
 
+    def _validate_candidate_config(self):
+        try:
+            if type(self.c) is not dict or set(self.c) != CONFIG_KEYS:
+                raise ValueError("keys")
+            if type(self.c["manifest"]) is not str \
+                    or re.fullmatch(r"[a-f0-9]{64}", self.c["manifest"]) is None:
+                raise ValueError("manifest")
+            hashes = self.c["tool_hashes"]
+            if type(hashes) is not dict or set(hashes) != set(CONFIG_TOOL_KEYS):
+                raise ValueError("hashes")
+            normalized_paths = []
+            for key in CONFIG_TOOL_KEYS:
+                value = self.c[key]
+                if type(value) is not str or value == "" or "\0" in value \
+                        or not Path(value).is_absolute() \
+                        or value != str(Path(value).absolute()) \
+                        or ".." in Path(value).parts \
+                        or type(hashes[key]) is not str \
+                        or re.fullmatch(r"[a-f0-9]{64}", hashes[key]) is None:
+                    raise ValueError("tool")
+                normalized_paths.append(self._normalized_path(value))
+            if len(set(normalized_paths)) != len(CONFIG_TOOL_KEYS):
+                raise ValueError("tool_uniqueness")
+            directory = self.c["directory"]
+            if type(directory) is not str or directory == "" or "\0" in directory \
+                    or not Path(directory).is_absolute() \
+                    or ".." in Path(directory).parts \
+                    or directory != str(self.run.absolute()):
+                raise ValueError("directory")
+            local_names = {
+                "ini": "runtime.ini",
+                "browser_config": "browser-config.json",
+                "cert": "cert.pem",
+                "key": "key.pem",
+            }
+            for key, name in local_names.items():
+                path = Path(self.c[key])
+                if path.name != name or self._normalized_path(str(path.parent.absolute())) \
+                        != self._normalized_path(directory):
+                    raise ValueError("runtime_scope")
+            return _validated_asset_review(self.c["asset_delivery_review"])
+        except Exception:
+            raise Refused("candidate_config") from None
+
     def preflight(self, remaining):
-        review = _validated_asset_review(self.c.get("asset_delivery_review", {}))
+        review = self._validate_candidate_config()
         required = ASSET_REVIEW_FILES
         if os.name != "nt" or self.run.parent.resolve() != Path(tempfile.gettempdir()).resolve():
             raise Refused("scope")
@@ -577,7 +628,8 @@ class WindowsRun:
         return current
 
     def _config_binding(self, session):
-        keys = ("php", "python", "node", "powershell", "cli", "browser", "ini", "browser_config", "cert", "key")
+        review = self._validate_candidate_config()
+        keys = CONFIG_TOOL_KEYS
         hashes = self.c.get("tool_hashes")
         if not isinstance(session, str) or not re.fullmatch(r"checkout-[a-f0-9]{32}", session):
             raise Refused("journal_shape")
@@ -588,9 +640,14 @@ class WindowsRun:
             or not re.fullmatch(r"[a-f0-9]{64}", hashes[key]) for key in keys
         ):
             raise Refused("journal_shape")
-        payload = {"run": self._normalized_path(str(self.run.absolute())), "manifest": self.c["manifest"],
-                   "session": session, "tools": {key: {"path": self._normalized_path(self.c[key]),
-                   "sha256": hashes[key]} for key in keys}}
+        payload = {
+            "directory": self._normalized_path(self.c["directory"]),
+            "manifest": self.c["manifest"],
+            "session": session,
+            "tools": {key: {"path": self._normalized_path(self.c[key]), "sha256": hashes[key]}
+                      for key in keys},
+            "assetDeliveryReview": review,
+        }
         return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
     @staticmethod
@@ -838,6 +895,10 @@ class WindowsRun:
             raise
 
     def _recover_ownership(self, session, anchor):
+        try:
+            self._validate_candidate_config()
+        except Refused:
+            raise Refused("recovery_config") from None
         self._validate_anchor(anchor)
         if self._publisher_anchor() != anchor:
             raise Refused("journal_anchor")

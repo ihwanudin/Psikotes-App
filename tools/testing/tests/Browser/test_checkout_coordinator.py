@@ -18,14 +18,28 @@ def load_module(name: str, filename: str):
 
 class CheckoutCoordinatorTests(unittest.TestCase):
     session = "checkout-" + "a" * 32
+    asset_review_files = (
+        "public/css/checkout-summary-v1.css",
+        "public/brand/oncam-logo-full-color.png",
+        "public/js/checkout-confirmation-v1.js",
+        "public/js/checkout-payment-v1.js",
+        "resources/views/checkout/summary.blade.php",
+        "tools/testing/tests/Browser/serve-checkout-session.php",
+    )
 
     def module(self):
         return load_module("checkout_coordinator", "checkout-coordinator.py")
 
     @staticmethod
     def config(run: Path):
+        names = {
+            "ini": "runtime.ini",
+            "browser_config": "browser-config.json",
+            "cert": "cert.pem",
+            "key": "key.pem",
+        }
         paths = {
-            name: str((run / name).absolute())
+            name: str((run / names.get(name, name)).absolute())
             for name in ("php", "python", "node", "powershell", "cli", "browser",
                          "ini", "browser_config", "cert", "key")
         }
@@ -34,6 +48,10 @@ class CheckoutCoordinatorTests(unittest.TestCase):
             "manifest": "a" * 64,
             **paths,
             "tool_hashes": {name: format(index, "064x") for index, name in enumerate(paths, 1)},
+            "asset_delivery_review": {
+                name: format(index, "064x")
+                for index, name in enumerate(CheckoutCoordinatorTests.asset_review_files, 20)
+            },
         }
 
     def test_adapter_delegates_publish_and_returns_an_isolated_raw_anchor(self):
@@ -212,6 +230,14 @@ class CheckoutCoordinatorTests(unittest.TestCase):
             mutations = {
                 "config_top": lambda run, store: run.c.__setitem__("manifest", "f" * 64),
                 "config_nested": lambda run, store: run.c["tool_hashes"].__setitem__("php", "f" * 64),
+                "config_directory": lambda run, store: run.c.__setitem__("directory", str(other)),
+                "config_review": lambda run, store: run.c["asset_delivery_review"].__setitem__(
+                    self.asset_review_files[0], "f" * 64
+                ),
+                "config_extra": lambda run, store: run.c.__setitem__("unexpected", False),
+                "config_hash_extra": lambda run, store: run.c["tool_hashes"].__setitem__(
+                    "unexpected", "f" * 64
+                ),
                 "run_directory": lambda run, store: setattr(run, "run", other),
                 "run_session": lambda run, store: setattr(run, "session", "checkout-" + "f" * 32),
                 "store_run": lambda run, store: setattr(store, "run", "c:/mutated"),
@@ -444,6 +470,46 @@ class CheckoutCoordinatorTests(unittest.TestCase):
                 with self.subTest(reason=reason), self.assertRaisesRegex(exception, f"^{reason}$"):
                     module.assemble_fresh(**kwargs)
             self.assertFalse(missing.exists())
+
+    def test_assembly_maps_malformed_nested_candidate_config_to_fixed_coordinator_error(self):
+        module = self.module()
+        with TemporaryDirectory(prefix="oncam-coordinator-test-") as root:
+            root = Path(root)
+            coordinator, run_directory = root / "coordinator", root / "candidate"
+            coordinator.mkdir()
+            run_directory.mkdir()
+            valid = self.config(run_directory)
+            invalid = []
+
+            missing_hash = {**valid, "tool_hashes": dict(valid["tool_hashes"])}
+            missing_hash["tool_hashes"].pop("php")
+            invalid.append(missing_hash)
+            invalid.append({**valid, "tool_hashes": {**valid["tool_hashes"], "extra": "f" * 64}})
+
+            missing_review = {
+                **valid,
+                "asset_delivery_review": dict(valid["asset_delivery_review"]),
+            }
+            missing_review["asset_delivery_review"].pop(self.asset_review_files[0])
+            invalid.append(missing_review)
+            invalid.append({
+                **valid,
+                "asset_delivery_review": {
+                    **valid["asset_delivery_review"],
+                    self.asset_review_files[0]: True,
+                },
+            })
+            invalid.append({**valid, "unexpected": "PRIVATE_VALUE"})
+
+            for candidate in invalid:
+                with self.subTest(keys=tuple(candidate)), \
+                        patch.object(module.supervisor_module.subprocess, "Popen",
+                                     side_effect=AssertionError("no process")), \
+                        self.assertRaisesRegex(module.CoordinatorRefused, "^coordinator_config$"):
+                    module.assemble_fresh(
+                        config=candidate,
+                        coordinator_directory=coordinator,
+                    )
 
     def test_import_and_assembly_do_not_read_environment_or_start_runtime(self):
         module = self.module()
