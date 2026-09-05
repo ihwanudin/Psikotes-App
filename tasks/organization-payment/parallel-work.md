@@ -1,5 +1,21 @@
 # Koordinasi task paralel organization-payment
 
+## P17a matrix active; PostgreSQL fresh-migration blocker confirmed — 2026-09-05
+
+Root independently ran the current disposable PostgreSQL runner after accepting
+default-off checkout wiring. Bootstrap failed before PHPUnit with SQLSTATE 42830:
+`generic_result_supersedes_fk` could not reference `generic_assessment_result_versions.id`
+because PostgreSQL did not yet see a matching unique constraint when Laravel added
+the self-reference. The runner cleaned its exact container/network and did not
+target application containers.
+
+Backend owns one isolated correction to the unreleased generic-result migration,
+with SQLite up/down/up and fresh PostgreSQL proof. Portal independently owns one
+P17a feature-level acceptance matrix using config-memory activation, synthetic
+data, and fake outbound services. These lanes have no shared files. No active
+database migration, public feature activation, browser run, deploy, or push is
+authorized.
+
 ## Default-off checkout routes accepted; P17 prerequisites split — 2026-09-05
 
 Backend `921869e` was reviewed and integrated as root `63558c0`; the route import
