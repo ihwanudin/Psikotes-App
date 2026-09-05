@@ -55,10 +55,18 @@ final readonly class GenericAssessmentResultCallbackOrchestrator
             try {
                 $pending = DispatchGenericAssessmentResultCallback::dispatch((string) $schedule['scheduleId']);
                 unset($pending);
-                $this->markBrokerAccepted((string) $schedule['scheduleId']);
+                $this->markBrokerAccepted(
+                    (string) $schedule['scheduleId'],
+                    (int) $schedule['brokerAttempt'],
+                    (string) $schedule['preparedAt'],
+                );
                 $queued++;
             } catch (Throwable) {
-                $this->markBrokerFailed((string) $schedule['scheduleId']);
+                $this->markBrokerFailed(
+                    (string) $schedule['scheduleId'],
+                    (int) $schedule['brokerAttempt'],
+                    (string) $schedule['preparedAt'],
+                );
                 $brokerFailures++;
             }
         }
@@ -119,6 +127,7 @@ final readonly class GenericAssessmentResultCallbackOrchestrator
     private function eligibleQuery(): Builder
     {
         $now = CarbonImmutable::instance(now())->utc();
+        $stalePreparationAt = $now->subSeconds(self::RECOVERY_SECONDS);
         $latestAttempts = DB::table('generic_assessment_result_dispatch_attempts')
             ->select('outbox_id')->selectRaw('MAX(attempt_number) AS attempt_number')->groupBy('outbox_id');
 
@@ -147,23 +156,30 @@ final readonly class GenericAssessmentResultCallbackOrchestrator
                         ->where('a.attempt_number', '<', self::MAX_ATTEMPTS)
                         ->whereNotNull('a.next_attempt_at')->where('a.next_attempt_at', '<=', $now));
             })
-            ->where(function (Builder $query) use ($now): void {
-                $query->whereNull('s.id')->orWhere(function (Builder $due) use ($now): void {
-                    $due->where('s.state', '<>', 'BROKER_EXHAUSTED')->where('s.next_dispatch_at', '<=', $now);
+            ->where(function (Builder $query) use ($now, $stalePreparationAt): void {
+                $query->whereNull('s.id')->orWhere(function (Builder $due) use ($now, $stalePreparationAt): void {
+                    $due->where('s.next_dispatch_at', '<=', $now)
+                        ->where(function (Builder $recoverable) use ($stalePreparationAt): void {
+                            $recoverable
+                                ->where(fn (Builder $prepared): Builder => $prepared
+                                    ->where('s.state', 'PENDING')
+                                    ->where('s.updated_at', '<=', $stalePreparationAt))
+                                ->orWhereIn('s.state', ['QUEUED', 'RUNNING', 'BROKER_FAILED', 'WORKER_FAILED', 'RETRY_WAIT']);
+                        });
                 });
             })
             ->orderBy('o.created_at')->orderBy('o.id')
             ->select(['o.id as outbox_id', 'r.id as source_id', 'r.result_version', 'r.result_checksum', 'p.organization_id']);
     }
 
-    /** @return array{scheduleId:string}|null */
+    /** @return array{scheduleId:string,brokerAttempt:int,preparedAt:string}|null */
     private function prepareSchedule(GenericAssessmentResultCallbackScheduleBinding $binding): ?array
     {
         $now = CarbonImmutable::instance(now())->utc();
         $id = (string) Str::ulid();
         $inserted = DB::table('generic_assessment_result_callback_schedules')->insertOrIgnore([
             'id' => $id, 'outbox_id' => $binding->outboxId, 'state' => 'PENDING',
-            'broker_attempts' => 1, 'next_dispatch_at' => $now->addSeconds(self::RECOVERY_SECONDS),
+            'broker_attempts' => 1, 'next_dispatch_at' => $now,
             'queued_at' => null, 'completed_at' => null, 'last_failure_code' => null,
             'created_at' => $now, 'updated_at' => $now,
         ]);
@@ -183,6 +199,14 @@ final readonly class GenericAssessmentResultCallbackOrchestrator
                 || CarbonImmutable::parse($schedule->nextDispatchAt)->utc()->gt($now)) {
                 return null;
             }
+            if (! in_array($schedule->state, ['PENDING', 'QUEUED', 'RUNNING', 'BROKER_FAILED', 'WORKER_FAILED', 'RETRY_WAIT'], true)
+                || ($schedule->state === 'PENDING'
+                    && ($schedule->updatedAt === null
+                        || CarbonImmutable::parse($schedule->updatedAt)->utc()->gt(
+                            $now->subSeconds(self::RECOVERY_SECONDS),
+                        )))) {
+                return null;
+            }
             if (($schedule->brokerAttempts ?? 0) >= self::MAX_ATTEMPTS) {
                 DB::table('generic_assessment_result_callback_schedules')->where('id', $scheduleId)->update([
                     'state' => 'BROKER_EXHAUSTED', 'next_dispatch_at' => null,
@@ -194,21 +218,29 @@ final readonly class GenericAssessmentResultCallbackOrchestrator
             }
             DB::table('generic_assessment_result_callback_schedules')->where('id', $scheduleId)->update([
                 'state' => 'PENDING', 'broker_attempts' => ($schedule->brokerAttempts ?? 0) + 1,
-                'next_dispatch_at' => $now->addSeconds(self::RECOVERY_SECONDS),
+                'next_dispatch_at' => $now,
                 'queued_at' => null, 'completed_at' => null, 'last_failure_code' => null, 'updated_at' => $now,
             ]);
         }
 
+        $prepared = $this->scheduleBinding($scheduleId, true);
+        if ($prepared === null || $prepared->brokerAttempts === null || $prepared->nextDispatchAt === null) {
+            throw new LogicException('ASSESSMENT_RESULT_CALLBACK_SCHEDULE_PERSISTENCE_FAILED');
+        }
         $this->audit($binding, 'scheduled', null);
 
-        return ['scheduleId' => $scheduleId];
+        return [
+            'scheduleId' => $scheduleId,
+            'brokerAttempt' => $prepared->brokerAttempts,
+            'preparedAt' => $prepared->nextDispatchAt,
+        ];
     }
 
-    private function markBrokerAccepted(string $scheduleId): void
+    private function markBrokerAccepted(string $scheduleId, int $brokerAttempt, string $preparedAt): void
     {
-        $this->runner->run(new RlsContext('service'), function () use ($scheduleId): void {
+        $this->runner->run(new RlsContext('service'), function () use ($scheduleId, $brokerAttempt, $preparedAt): void {
             $row = $this->scheduleBinding($scheduleId, true);
-            if ($row === null || $row->state !== 'PENDING') {
+            if (! $this->matchesPreparedDispatch($row, $brokerAttempt, $preparedAt)) {
                 return;
             }
             $now = CarbonImmutable::instance(now())->utc();
@@ -220,11 +252,11 @@ final readonly class GenericAssessmentResultCallbackOrchestrator
         });
     }
 
-    private function markBrokerFailed(string $scheduleId): void
+    private function markBrokerFailed(string $scheduleId, int $brokerAttempt, string $preparedAt): void
     {
-        $this->runner->run(new RlsContext('service'), function () use ($scheduleId): void {
+        $this->runner->run(new RlsContext('service'), function () use ($scheduleId, $brokerAttempt, $preparedAt): void {
             $row = $this->scheduleBinding($scheduleId, true);
-            if ($row === null || $row->state !== 'PENDING') {
+            if (! $this->matchesPreparedDispatch($row, $brokerAttempt, $preparedAt)) {
                 return;
             }
             $now = CarbonImmutable::instance(now())->utc();
@@ -236,6 +268,20 @@ final readonly class GenericAssessmentResultCallbackOrchestrator
             ]);
             $this->audit($row, $exhausted ? 'broker_exhausted' : 'broker_failed', 'BROKER_DISPATCH_FAILED');
         });
+    }
+
+    private function matchesPreparedDispatch(
+        ?GenericAssessmentResultCallbackScheduleBinding $row,
+        int $brokerAttempt,
+        string $preparedAt,
+    ): bool {
+        return $row !== null
+            && $row->state === 'PENDING'
+            && $row->brokerAttempts === $brokerAttempt
+            && $row->nextDispatchAt !== null
+            && CarbonImmutable::parse($row->nextDispatchAt)->utc()->equalTo(
+                CarbonImmutable::parse($preparedAt)->utc(),
+            );
     }
 
     private function beginExecution(string $scheduleId): ?GenericAssessmentResultCallbackScheduleBinding
@@ -250,7 +296,7 @@ final readonly class GenericAssessmentResultCallbackOrchestrator
                 return null;
             }
             $now = CarbonImmutable::instance(now())->utc();
-            if ($row->state === 'PENDING' && $row->nextDispatchAt !== null
+            if (in_array($row->state, ['PENDING', 'BROKER_FAILED'], true) && $row->nextDispatchAt !== null
                 && CarbonImmutable::parse($row->nextDispatchAt)->utc()->gt($now)) {
                 $this->audit($row, 'skipped', 'SCHEDULE_NOT_DUE');
 
@@ -279,7 +325,7 @@ final readonly class GenericAssessmentResultCallbackOrchestrator
                 ? CarbonImmutable::parse($result['nextAttemptAt'])->utc()
                 : null;
             DB::table('generic_assessment_result_callback_schedules')->where('id', $scheduleId)->update([
-                'state' => $retryAt === null ? 'COMPLETED' : 'PENDING',
+                'state' => $retryAt === null ? 'COMPLETED' : 'RETRY_WAIT',
                 'next_dispatch_at' => $retryAt, 'completed_at' => $retryAt === null ? $now : null,
                 'queued_at' => null,
                 'last_failure_code' => null, 'updated_at' => $now,
@@ -340,6 +386,7 @@ final readonly class GenericAssessmentResultCallbackScheduleBinding
         public ?string $state = null,
         public ?int $brokerAttempts = null,
         public ?string $nextDispatchAt = null,
+        public ?string $updatedAt = null,
     ) {}
 
     public static function fromRow(object $row): self
@@ -361,6 +408,7 @@ final readonly class GenericAssessmentResultCallbackScheduleBinding
             state: isset($values['state']) ? (string) $values['state'] : null,
             brokerAttempts: isset($values['broker_attempts']) ? (int) $values['broker_attempts'] : null,
             nextDispatchAt: isset($values['next_dispatch_at']) ? (string) $values['next_dispatch_at'] : null,
+            updatedAt: isset($values['updated_at']) ? (string) $values['updated_at'] : null,
         );
     }
 }

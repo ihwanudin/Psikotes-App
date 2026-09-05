@@ -57,7 +57,7 @@ return new class extends Migration
                     NEW.state <> 'PENDING'
                     OR NEW.broker_attempts <> 1
                     OR NEW.next_dispatch_at IS NULL
-                    OR NEW.next_dispatch_at <= NEW.created_at
+                    OR NEW.next_dispatch_at < NEW.created_at
                     OR NEW.queued_at IS NOT NULL
                     OR NEW.completed_at IS NOT NULL
                     OR NEW.last_failure_code IS NOT NULL
@@ -76,21 +76,21 @@ return new class extends Migration
                     OR NEW.broker_attempts > OLD.broker_attempts + 1
                     OR NEW.broker_attempts < 1
                     OR NEW.broker_attempts > 4
-                    OR NEW.state NOT IN ('PENDING','QUEUED','RUNNING','COMPLETED','BROKER_FAILED','WORKER_FAILED','BROKER_EXHAUSTED')
+                    OR NEW.state NOT IN ('PENDING','QUEUED','RUNNING','RETRY_WAIT','COMPLETED','BROKER_FAILED','WORKER_FAILED','BROKER_EXHAUSTED')
                     OR (NEW.state = 'BROKER_EXHAUSTED' AND NEW.broker_attempts <> 4)
                     OR NOT (
                         (NEW.broker_attempts = OLD.broker_attempts + 1
                             AND NEW.state = 'PENDING'
-                            AND OLD.state IN ('PENDING','QUEUED','RUNNING','BROKER_FAILED','WORKER_FAILED'))
+                            AND OLD.state IN ('PENDING','QUEUED','RUNNING','RETRY_WAIT','BROKER_FAILED','WORKER_FAILED'))
                         OR (NEW.broker_attempts = OLD.broker_attempts AND (
                             (OLD.state = 'PENDING' AND NEW.state IN ('QUEUED','RUNNING','BROKER_FAILED','BROKER_EXHAUSTED','WORKER_FAILED'))
                             OR (OLD.state = 'QUEUED' AND NEW.state IN ('RUNNING','WORKER_FAILED'))
                             OR (OLD.state = 'BROKER_FAILED' AND NEW.state = 'RUNNING')
-                            OR (OLD.state = 'RUNNING' AND NEW.state IN ('PENDING','COMPLETED','WORKER_FAILED'))
-                            OR (OLD.state IN ('QUEUED','RUNNING','BROKER_FAILED','WORKER_FAILED') AND NEW.state = 'BROKER_EXHAUSTED')
+                            OR (OLD.state = 'RUNNING' AND NEW.state IN ('RETRY_WAIT','COMPLETED','WORKER_FAILED'))
+                            OR (OLD.state IN ('QUEUED','RUNNING','RETRY_WAIT','BROKER_FAILED','WORKER_FAILED') AND NEW.state = 'BROKER_EXHAUSTED')
                         ))
                     )
-                    OR (NEW.state IN ('PENDING','QUEUED','RUNNING','BROKER_FAILED','WORKER_FAILED') AND NEW.next_dispatch_at IS NULL)
+                    OR (NEW.state IN ('PENDING','QUEUED','RUNNING','RETRY_WAIT','BROKER_FAILED','WORKER_FAILED') AND NEW.next_dispatch_at IS NULL)
                     OR (NEW.state IN ('COMPLETED','BROKER_EXHAUSTED') AND NEW.next_dispatch_at IS NOT NULL)
                     OR (NEW.state = 'QUEUED' AND NEW.queued_at IS NULL)
                     OR (NEW.state = 'COMPLETED' AND NEW.completed_at IS NULL)
@@ -115,7 +115,7 @@ return new class extends Migration
                 END IF;
                 IF TG_OP = 'INSERT' THEN
                     IF NEW.state <> 'PENDING' OR NEW.broker_attempts <> 1
-                        OR NEW.next_dispatch_at IS NULL OR NEW.next_dispatch_at <= NEW.created_at
+                        OR NEW.next_dispatch_at IS NULL OR NEW.next_dispatch_at < NEW.created_at
                         OR NEW.queued_at IS NOT NULL OR NEW.completed_at IS NOT NULL OR NEW.last_failure_code IS NOT NULL
                     THEN RAISE EXCEPTION 'generic result callback schedule invariant violation'; END IF;
                     RETURN NEW;
@@ -124,21 +124,21 @@ return new class extends Migration
                     OR NEW.created_at IS DISTINCT FROM OLD.created_at
                     OR NEW.broker_attempts < OLD.broker_attempts OR NEW.broker_attempts > OLD.broker_attempts + 1
                     OR NEW.broker_attempts < 1 OR NEW.broker_attempts > 4
-                    OR NEW.state NOT IN ('PENDING','QUEUED','RUNNING','COMPLETED','BROKER_FAILED','WORKER_FAILED','BROKER_EXHAUSTED')
+                    OR NEW.state NOT IN ('PENDING','QUEUED','RUNNING','RETRY_WAIT','COMPLETED','BROKER_FAILED','WORKER_FAILED','BROKER_EXHAUSTED')
                     OR (NEW.state = 'BROKER_EXHAUSTED' AND NEW.broker_attempts <> 4)
                     OR NOT (
                         (NEW.broker_attempts = OLD.broker_attempts + 1
                             AND NEW.state = 'PENDING'
-                            AND OLD.state IN ('PENDING','QUEUED','RUNNING','BROKER_FAILED','WORKER_FAILED'))
+                            AND OLD.state IN ('PENDING','QUEUED','RUNNING','RETRY_WAIT','BROKER_FAILED','WORKER_FAILED'))
                         OR (NEW.broker_attempts = OLD.broker_attempts AND (
                             (OLD.state = 'PENDING' AND NEW.state IN ('QUEUED','RUNNING','BROKER_FAILED','BROKER_EXHAUSTED','WORKER_FAILED'))
                             OR (OLD.state = 'QUEUED' AND NEW.state IN ('RUNNING','WORKER_FAILED'))
                             OR (OLD.state = 'BROKER_FAILED' AND NEW.state = 'RUNNING')
-                            OR (OLD.state = 'RUNNING' AND NEW.state IN ('PENDING','COMPLETED','WORKER_FAILED'))
-                            OR (OLD.state IN ('QUEUED','RUNNING','BROKER_FAILED','WORKER_FAILED') AND NEW.state = 'BROKER_EXHAUSTED')
+                            OR (OLD.state = 'RUNNING' AND NEW.state IN ('RETRY_WAIT','COMPLETED','WORKER_FAILED'))
+                            OR (OLD.state IN ('QUEUED','RUNNING','RETRY_WAIT','BROKER_FAILED','WORKER_FAILED') AND NEW.state = 'BROKER_EXHAUSTED')
                         ))
                     )
-                    OR (NEW.state IN ('PENDING','QUEUED','RUNNING','BROKER_FAILED','WORKER_FAILED') AND NEW.next_dispatch_at IS NULL)
+                    OR (NEW.state IN ('PENDING','QUEUED','RUNNING','RETRY_WAIT','BROKER_FAILED','WORKER_FAILED') AND NEW.next_dispatch_at IS NULL)
                     OR (NEW.state IN ('COMPLETED','BROKER_EXHAUSTED') AND NEW.next_dispatch_at IS NOT NULL)
                     OR (NEW.state = 'QUEUED' AND NEW.queued_at IS NULL)
                     OR (NEW.state = 'COMPLETED' AND NEW.completed_at IS NULL)

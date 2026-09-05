@@ -12,6 +12,7 @@ use App\Models\IntegrationClient;
 use App\Models\Participant;
 use App\Models\TestPackage;
 use App\Services\Integrations\GenericAssessmentResultCallbackOrchestrator;
+use App\Services\Integrations\GenericAssessmentResultCallbackScheduleBinding;
 use App\Services\Integrations\GenericAssessmentResultDispatch;
 use App\Services\Integrations\GenericAssessmentResultOutbox;
 use App\Services\Integrations\GenericAssessmentResultStore;
@@ -26,6 +27,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
+use ReflectionMethod;
 use Tests\TestCase;
 
 final class GenericAssessmentResultCallbackOrchestrationTest extends TestCase
@@ -75,6 +77,56 @@ final class GenericAssessmentResultCallbackOrchestrationTest extends TestCase
                 $this->assertSame('ASSESSMENT_RESULT_CALLBACK_SCHEDULE_LIMIT_INVALID', $exception->getMessage());
             }
         }
+    }
+
+    public function test_sync_queue_executes_a_new_schedule_before_broker_acceptance_without_losing_the_job(): void
+    {
+        config()->set('queue.default', 'sync');
+        [, , $outboxId] = $this->outbox();
+        Http::fake(['https://seleksi.beasiswajepang.id/*' => Http::response([
+            'data' => ['status' => 'ACCEPTED'],
+        ], 202)]);
+
+        $result = app(GenericAssessmentResultCallbackOrchestrator::class)->schedule(1);
+
+        $this->assertSame(['selected' => 1, 'queued' => 1, 'brokerFailures' => 0], $result);
+        $this->assertDatabaseHas('generic_assessment_result_dispatch_attempts', [
+            'outbox_id' => $outboxId,
+            'attempt_number' => 1,
+            'outcome' => 'ACKNOWLEDGED',
+        ]);
+        $this->assertDatabaseHas('generic_assessment_result_callback_schedules', [
+            'outbox_id' => $outboxId,
+            'state' => 'COMPLETED',
+        ]);
+        $this->assertDatabaseMissing('generic_assessment_result_callback_schedules', [
+            'outbox_id' => $outboxId,
+            'state' => 'QUEUED',
+        ]);
+    }
+
+    public function test_sync_retryable_result_keeps_transport_backoff_instead_of_being_overwritten_by_broker_acceptance(): void
+    {
+        config()->set('queue.default', 'sync');
+        [, , $outboxId] = $this->outbox();
+        Http::fake(['https://seleksi.beasiswajepang.id/*' => Http::response([], 503)]);
+
+        $result = app(GenericAssessmentResultCallbackOrchestrator::class)->schedule(1);
+
+        $this->assertSame(['selected' => 1, 'queued' => 1, 'brokerFailures' => 0], $result);
+        $this->assertDatabaseHas('generic_assessment_result_dispatch_attempts', [
+            'outbox_id' => $outboxId,
+            'attempt_number' => 1,
+            'outcome' => 'RETRYABLE',
+            'next_attempt_at' => '2026-09-05 09:01:00',
+        ]);
+        $this->assertDatabaseHas('generic_assessment_result_callback_schedules', [
+            'outbox_id' => $outboxId,
+            'state' => 'RETRY_WAIT',
+            'broker_attempts' => 1,
+            'next_dispatch_at' => '2026-09-05 09:01:00',
+            'queued_at' => null,
+        ]);
     }
 
     public function test_selector_honors_attempt_state_latest_source_and_client_authorization(): void
@@ -128,6 +180,14 @@ final class GenericAssessmentResultCallbackOrchestrationTest extends TestCase
         ]);
 
         config()->set('queue.default', 'sync');
+        Http::fake(['https://seleksi.beasiswajepang.id/*' => Http::response([
+            'data' => ['status' => 'ACCEPTED'],
+        ], 202)]);
+        $this->assertSame(
+            ['action' => 'SKIPPED_SCHEDULE_STATE'],
+            app(GenericAssessmentResultCallbackOrchestrator::class)->execute((string) $schedule->id),
+        );
+        $this->assertDatabaseCount('generic_assessment_result_dispatch_attempts', 0);
         Queue::fake();
         Date::setTestNow('2026-09-05 09:04:59+00:00');
         $this->assertSame(0, app(GenericAssessmentResultCallbackOrchestrator::class)->schedule(1)['selected']);
@@ -137,6 +197,55 @@ final class GenericAssessmentResultCallbackOrchestrationTest extends TestCase
         Queue::assertPushed(DispatchGenericAssessmentResultCallback::class, 1);
         $this->assertDatabaseHas('generic_assessment_result_callback_schedules', [
             'outbox_id' => $outboxId, 'state' => 'QUEUED', 'broker_attempts' => 2,
+        ]);
+    }
+
+    public function test_an_in_flight_preparation_cannot_be_reprepared_by_concurrent_schedulers(): void
+    {
+        Queue::fake();
+        [$assessment, $source, $outboxId] = $this->outbox();
+        app(GenericAssessmentResultCallbackOrchestrator::class)->schedule(1);
+        $scheduleId = (string) DB::table('generic_assessment_result_callback_schedules')
+            ->where('outbox_id', $outboxId)->value('id');
+
+        DB::table('generic_assessment_result_callback_schedules')->where('id', $scheduleId)->update([
+            'state' => 'PENDING',
+            'broker_attempts' => 2,
+            'next_dispatch_at' => Date::now(),
+            'queued_at' => null,
+            'updated_at' => Date::now(),
+        ]);
+        Queue::fake();
+
+        $staleSelectedBinding = new GenericAssessmentResultCallbackScheduleBinding(
+            outboxId: $outboxId,
+            sourceId: $source->id,
+            resultVersion: $source->result_version,
+            resultChecksum: $source->result_checksum,
+            organizationId: $assessment->organization_id,
+        );
+        $prepare = new ReflectionMethod(GenericAssessmentResultCallbackOrchestrator::class, 'prepareSchedule');
+        $this->assertNull($prepare->invoke(
+            app(GenericAssessmentResultCallbackOrchestrator::class),
+            $staleSelectedBinding,
+        ));
+
+        $this->assertSame(0, app(GenericAssessmentResultCallbackOrchestrator::class)->schedule(1)['selected']);
+        Date::setTestNow(Date::now()->addSeconds(299));
+        $this->assertSame(0, app(GenericAssessmentResultCallbackOrchestrator::class)->schedule(1)['selected']);
+        $this->assertDatabaseHas('generic_assessment_result_callback_schedules', [
+            'id' => $scheduleId,
+            'state' => 'PENDING',
+            'broker_attempts' => 2,
+        ]);
+
+        Date::setTestNow(Date::now()->addSecond());
+        $this->assertSame(1, app(GenericAssessmentResultCallbackOrchestrator::class)->schedule(1)['selected']);
+        Queue::assertPushed(DispatchGenericAssessmentResultCallback::class, 1);
+        $this->assertDatabaseHas('generic_assessment_result_callback_schedules', [
+            'id' => $scheduleId,
+            'state' => 'QUEUED',
+            'broker_attempts' => 3,
         ]);
     }
 
@@ -186,7 +295,7 @@ final class GenericAssessmentResultCallbackOrchestrationTest extends TestCase
         Date::setTestNow('2026-09-05 09:00:59+00:00');
         $job->handle(app(GenericAssessmentResultCallbackOrchestrator::class));
         $this->assertDatabaseHas('generic_assessment_result_callback_schedules', [
-            'outbox_id' => $retryOutbox, 'state' => 'PENDING', 'broker_attempts' => 1,
+            'outbox_id' => $retryOutbox, 'state' => 'RETRY_WAIT', 'broker_attempts' => 1,
         ]);
         $this->assertDatabaseCount('generic_assessment_result_dispatch_attempts', 1);
         Http::assertSentCount(1);
@@ -220,6 +329,35 @@ final class GenericAssessmentResultCallbackOrchestrationTest extends TestCase
         ]);
         Date::setTestNow(Date::now()->addSeconds(300));
         $this->assertSame(0, app(GenericAssessmentResultCallbackOrchestrator::class)->schedule(1)['selected']);
+    }
+
+    public function test_retry_wait_at_the_fourth_broker_attempt_is_terminalized_when_due(): void
+    {
+        Queue::fake();
+        [, , $outboxId] = $this->outbox();
+        app(GenericAssessmentResultCallbackOrchestrator::class)->schedule(1);
+        for ($attempt = 2; $attempt <= 4; $attempt++) {
+            Date::setTestNow(Date::now()->addSeconds(300));
+            app(GenericAssessmentResultCallbackOrchestrator::class)->schedule(1);
+        }
+        /** @var DispatchGenericAssessmentResultCallback $fourthJob */
+        $fourthJob = Queue::pushed(DispatchGenericAssessmentResultCallback::class)->last();
+        Http::fake(['https://seleksi.beasiswajepang.id/*' => Http::response([], 503)]);
+
+        $fourthJob->handle(app(GenericAssessmentResultCallbackOrchestrator::class));
+
+        $this->assertDatabaseHas('generic_assessment_result_callback_schedules', [
+            'outbox_id' => $outboxId,
+            'state' => 'RETRY_WAIT',
+            'broker_attempts' => 4,
+        ]);
+        Date::setTestNow(Date::now()->addSeconds(60));
+        $this->assertSame(0, app(GenericAssessmentResultCallbackOrchestrator::class)->schedule(1)['selected']);
+        $this->assertDatabaseHas('generic_assessment_result_callback_schedules', [
+            'outbox_id' => $outboxId,
+            'state' => 'BROKER_EXHAUSTED',
+            'broker_attempts' => 4,
+        ]);
     }
 
     public function test_accepted_but_lost_jobs_are_terminalized_after_four_recovery_leases_without_starvation(): void
