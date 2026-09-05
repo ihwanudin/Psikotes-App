@@ -2,6 +2,23 @@
 
 ## P17a PostgreSQL GREEN — consent DASS privat tanpa regresi consent umum
 
+### Correction P1 — guard driver SQLite
+
+Review root atas commit `ec59c12` menemukan migration policy belum menutup
+driver non-PostgreSQL. SQL `DROP/CREATE POLICY` tersebut akan merusak
+`migrate:fresh` pada SQLite walaupun seluruh bukti RLS PostgreSQL sudah lulus.
+Correction menambahkan return dini `DB::getDriverName() !== 'pgsql'` pada awal
+`up()` dan `down()`; isi SQL policy dan source fresh-install tidak berubah.
+
+Test SQLite baru menjalankan kedua arah migration secara langsung pada harness
+`testing` dengan database `:memory:`. Snapshot `sqlite_master` dan row sentinel
+tetap identik: **1 tes / 3 assertions**, lulus. Rerun PostgreSQL disposable
+terfokus tetap lulus **2 tes / 72 assertions** dan cleanup container/network
+selesai. Pint, PHP lint, PHPStan level 7, serta diff-check lulus. SHA256 migration
+setelah guard `27F4C76E70FE364B5A13E9C1674A0A40BAE3D984656620003948DF59DCDB3DF5`;
+test SQLite
+`E6C342366474ED6BE7F750F80E1608F296244FF9F39324095CDDD42AC0A1BD21`.
+
 Tanggal 2026-09-05. Increment ini mempertahankan commit RED `a2b1971`, lalu
 menambah migration aditif `2026_09_05_000500_restrict_dass_consent_read_policy`.
 Historical migration tidak diedit. Definisi fresh-install di
@@ -75,7 +92,7 @@ policy source identik.
 
 Pint Laravel preset, PHP lint, dan PHPStan level 7 terfokus lulus. SHA256:
 
-- migration: `8E33846DEC1DBAC89F4C222E50E7D42E5EC0DC1585F75AFED66003598979CA78`;
+- migration setelah correction guard: `27F4C76E70FE364B5A13E9C1674A0A40BAE3D984656620003948DF59DCDB3DF5`;
 - fresh-install RLS: `D7BC8625A2227CC49CCED1A4E80ECF4C44591D6D2AF32011180DB081E1FF474B`;
 - test: `64979DD77D8A4F97C22F4B05576B3DC7EA8F7FDF1D2134352D8BA230B3A84F86`.
 

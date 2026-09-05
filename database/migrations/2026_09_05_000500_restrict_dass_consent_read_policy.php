@@ -9,6 +9,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (DB::getDriverName() !== 'pgsql') {
+            return;
+        }
+
         DB::unprepared(<<<'SQL'
             DROP POLICY IF EXISTS consent_records_read ON consent_records;
             DROP POLICY IF EXISTS consent_records_dass_privacy ON consent_records;
@@ -42,6 +46,10 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (DB::getDriverName() !== 'pgsql') {
+            return;
+        }
+
         DB::unprepared(<<<'SQL'
             DROP POLICY IF EXISTS consent_records_dass_privacy ON consent_records;
             DROP POLICY IF EXISTS consent_records_read ON consent_records;
