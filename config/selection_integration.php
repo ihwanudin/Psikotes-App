@@ -13,6 +13,7 @@ return [
         explode(',', (string) env('SELECTION_INTEGRATION_TEST_TYPES', 'ist')),
     ))),
     'signature_tolerance_seconds' => (int) env('SELECTION_INTEGRATION_SIGNATURE_TOLERANCE_SECONDS', 300),
+    'result_poll_enabled' => (bool) env('SELECTION_RESULT_POLL_ENABLED', false),
     'selection_base_url' => env('SELECTION_APP_BASE_URL'),
     'result_callback_enabled' => (bool) env('SELECTION_RESULT_CALLBACK_ENABLED', false),
     'result_callback_base_url' => env('SELECTION_RESULT_CALLBACK_BASE_URL'),

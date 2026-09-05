@@ -10,7 +10,9 @@ use App\Security\RlsContextRunner;
 use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -22,6 +24,8 @@ final readonly class AuthenticateSelectionResultPoll
     {
         $rateKey = 'selection-result-poll:'.hash('sha256', (string) $request->ip());
         if (RateLimiter::tooManyAttempts($rateKey, 120)) {
+            $this->signalRateLimit($request);
+
             return response()->json([
                 'error' => ['code' => 'RATE_LIMITED', 'message' => 'Terlalu banyak permintaan layanan.'],
             ], 429, ['Cache-Control' => 'no-store, private']);
@@ -30,15 +34,17 @@ final readonly class AuthenticateSelectionResultPoll
 
         $configuredClient = config('selection_integration.client_id');
         $secret = config('selection_integration.client_secret');
+        $tolerance = config('selection_integration.signature_tolerance_seconds');
         $clientHeader = $request->header('X-Client-Id');
         $timestamp = $request->header('X-Timestamp');
         $contract = $request->header('X-Integration-Contract');
         $signatureVersion = $request->header('X-Signature-Version');
         $signature = $request->header('X-Signature');
 
-        if (! (bool) config('selection_integration.enabled')
+        if (! (bool) config('selection_integration.result_poll_enabled')
             || ! is_string($configuredClient) || $configuredClient === ''
-            || ! is_string($secret) || strlen($secret) < 32) {
+            || ! is_string($secret) || strlen($secret) < 32
+            || ! is_int($tolerance) || $tolerance < 30 || $tolerance > 900) {
             return $this->deny($request, $clientHeader, 'CONFIG_UNAVAILABLE');
         }
         if (! is_string($clientHeader) || ! hash_equals($configuredClient, $clientHeader)) {
@@ -50,8 +56,7 @@ final readonly class AuthenticateSelectionResultPoll
             || ! is_string($signature) || preg_match('/^[a-f0-9]{64}$/', $signature) !== 1) {
             return $this->deny($request, $clientHeader, 'REQUEST_FORMAT_INVALID');
         }
-        if (abs(now()->getTimestamp() - (int) $timestamp)
-            > max(1, (int) config('selection_integration.signature_tolerance_seconds', 300))) {
+        if (abs(now()->getTimestamp() - (int) $timestamp) > $tolerance) {
             return $this->deny($request, $clientHeader, 'STALE_REQUEST');
         }
 
@@ -91,6 +96,25 @@ final readonly class AuthenticateSelectionResultPoll
 
             return $response;
         });
+    }
+
+    private function signalRateLimit(Request $request): void
+    {
+        $sourceReference = hash('sha256', (string) $request->ip());
+        $window = intdiv(now()->getTimestamp(), 60);
+        $signalKey = "selection-result-poll-limited:{$sourceReference}:{$window}";
+        RateLimiter::hit($signalKey, 70);
+
+        if (! Cache::add($signalKey.':logged', true, 70)) {
+            return;
+        }
+
+        Log::warning('Selection result poll rate limited.', [
+            'sourceReference' => $sourceReference,
+            'window' => $window,
+            'limit' => 120,
+            'deduplicated' => true,
+        ]);
     }
 
     private function canonicalQuery(Request $request): string

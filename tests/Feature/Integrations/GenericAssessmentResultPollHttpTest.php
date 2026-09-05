@@ -10,16 +10,19 @@ use App\Models\GenericAssessmentResultVersion;
 use App\Models\IntegrationClient;
 use App\Models\Participant;
 use App\Models\TestPackage;
+use App\Providers\AppServiceProvider;
 use App\Security\RlsContextRunner;
 use App\Services\Integrations\GenericAssessmentResultOutbox;
 use App\Services\Integrations\GenericAssessmentResultStore;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
+use ReflectionMethod;
 use Tests\TestCase;
 
 final class GenericAssessmentResultPollHttpTest extends TestCase
@@ -35,6 +38,7 @@ final class GenericAssessmentResultPollHttpTest extends TestCase
         parent::setUp();
         Date::setTestNow('2026-09-05 06:00:00+00:00');
         config()->set('selection_integration.enabled', true);
+        config()->set('selection_integration.result_poll_enabled', true);
         config()->set('selection_integration.client_secret', self::CLIENT_SECRET);
         config()->set('selection_integration.signature_tolerance_seconds', 300);
         config()->set('assessment_integration.credentials.callback-secret', self::CALLBACK_SECRET);
@@ -75,6 +79,56 @@ final class GenericAssessmentResultPollHttpTest extends TestCase
             'actor_id' => (string) $client->id,
             'action' => 'generic_assessment_result_poll.available',
         ]);
+    }
+
+    public function test_poll_uses_its_dedicated_feature_flag_instead_of_the_provisioning_flag(): void
+    {
+        [$assessment, $client] = $this->published();
+        config()->set('selection_integration.client_id', $client->client_id);
+        config()->set('selection_integration.enabled', false);
+
+        $this->signedPoll($assessment->assessment_attempt_id)
+            ->assertOk()
+            ->assertJsonPath('data.status', 'AVAILABLE');
+
+        config()->set('selection_integration.enabled', true);
+        config()->set('selection_integration.result_poll_enabled', false);
+        $this->signedPoll($assessment->assessment_attempt_id)
+            ->assertUnauthorized()
+            ->assertExactJson([
+                'error' => ['code' => 'AUTHENTICATION_FAILED', 'message' => 'Autentikasi layanan tidak valid.'],
+            ]);
+    }
+
+    public function test_poll_flag_is_documented_and_production_validation_is_fail_closed(): void
+    {
+        $example = file_get_contents(base_path('.env.example'));
+        $this->assertIsString($example);
+        $this->assertStringContainsString('SELECTION_RESULT_POLL_ENABLED=false', $example);
+
+        config([
+            'selection_integration.result_poll_enabled' => true,
+            'selection_integration.client_id' => null,
+            'selection_integration.client_secret' => 'short',
+            'selection_integration.signature_tolerance_seconds' => 0,
+        ]);
+        $method = new ReflectionMethod(AppServiceProvider::class, 'missingProductionConfiguration');
+        $missing = $method->invoke(new AppServiceProvider($this->app));
+        $this->assertIsArray($missing);
+        $this->assertContains('SELECTION_INTEGRATION_CLIENT_ID', $missing);
+        $this->assertContains('SELECTION_INTEGRATION_CLIENT_SECRET', $missing);
+        $this->assertContains('SELECTION_INTEGRATION_SIGNATURE_TOLERANCE_SECONDS', $missing);
+
+        config([
+            'selection_integration.client_id' => 'selection-app',
+            'selection_integration.client_secret' => self::CLIENT_SECRET,
+            'selection_integration.signature_tolerance_seconds' => 300,
+        ]);
+        $valid = $method->invoke(new AppServiceProvider($this->app));
+        $this->assertIsArray($valid);
+        $this->assertNotContains('SELECTION_INTEGRATION_CLIENT_ID', $valid);
+        $this->assertNotContains('SELECTION_INTEGRATION_CLIENT_SECRET', $valid);
+        $this->assertNotContains('SELECTION_INTEGRATION_SIGNATURE_TOLERANCE_SECONDS', $valid);
     }
 
     public function test_cursor_is_paired_and_the_signature_binds_path_and_query(): void
@@ -172,6 +226,7 @@ final class GenericAssessmentResultPollHttpTest extends TestCase
         for ($attempt = 0; $attempt < 120; $attempt++) {
             RateLimiter::hit($key, 60);
         }
+        Log::spy();
 
         $this->signedPoll($assessment->assessment_attempt_id, secret: 'wrong-secret-with-at-least-32-bytes')
             ->assertTooManyRequests()
@@ -179,9 +234,23 @@ final class GenericAssessmentResultPollHttpTest extends TestCase
             ->assertExactJson([
                 'error' => ['code' => 'RATE_LIMITED', 'message' => 'Terlalu banyak permintaan layanan.'],
             ]);
+        $this->signedPoll($assessment->assessment_attempt_id, secret: 'wrong-secret-with-at-least-32-bytes')
+            ->assertTooManyRequests();
 
         $this->assertDatabaseMissing('audit_logs', ['action' => 'selection_result_poll.authentication_denied']);
         $this->assertDatabaseMissing('audit_logs', ['action' => 'generic_assessment_result_poll.available']);
+        $sourceReference = hash('sha256', '127.0.0.1');
+        $signalKey = 'selection-result-poll-limited:'.$sourceReference.':'.intdiv(Date::now()->timestamp, 60);
+        $this->assertSame(2, RateLimiter::attempts($signalKey));
+        Log::shouldHaveReceived('warning')->with(
+            'Selection result poll rate limited.',
+            [
+                'sourceReference' => $sourceReference,
+                'window' => intdiv(Date::now()->timestamp, 60),
+                'limit' => 120,
+                'deduplicated' => true,
+            ],
+        )->once();
     }
 
     /** @return array{AssessmentParticipant, IntegrationClient, GenericAssessmentResultVersion} */

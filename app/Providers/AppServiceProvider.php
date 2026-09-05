@@ -153,6 +153,18 @@ class AppServiceProvider extends ServiceProvider
             $requirements += app(GenericAssessmentResultCallbackConfiguration::class)->requirements();
         }
 
+        if ((bool) config('selection_integration.result_poll_enabled')) {
+            $pollSecret = config('selection_integration.client_secret');
+            $pollTolerance = config('selection_integration.signature_tolerance_seconds');
+            $requirements += [
+                'SELECTION_INTEGRATION_CLIENT_ID' => filled(config('selection_integration.client_id')),
+                'SELECTION_INTEGRATION_CLIENT_SECRET' => is_string($pollSecret)
+                    && strlen($pollSecret) >= 32,
+                'SELECTION_INTEGRATION_SIGNATURE_TOLERANCE_SECONDS' => is_int($pollTolerance)
+                    && $pollTolerance >= 30 && $pollTolerance <= 900,
+            ];
+        }
+
         return array_keys(array_filter($requirements, static fn (bool $valid): bool => ! $valid));
     }
 
