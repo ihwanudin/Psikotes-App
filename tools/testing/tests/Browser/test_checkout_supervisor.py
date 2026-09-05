@@ -120,6 +120,84 @@ class SupervisorTests(unittest.TestCase):
         lines[-1] = f'{document["generation"]:08d} {document["integrity"]}'
         (run.run / m.JOURNAL).write_text("\n".join(lines) + "\n", encoding="ascii")
 
+    def test_browser_launch_args_require_exact_canonical_ordered_list(self):
+        approved = [
+            "--host-resolver-rules=MAP psikotes.oncam.id 127.0.0.1,MAP oncam.id 127.0.0.1,MAP * ~NOTFOUND",
+            "--no-proxy-server",
+            "--disable-background-networking",
+        ]
+        self.assertIsNone(m.WindowsRun._validate_browser_launch_args(approved))
+        invalid = (
+            tuple(approved),
+            approved[::-1],
+            approved + ["--incognito"],
+            approved + [approved[1]],
+            [approved[0], "--proxy-server=http://127.0.0.1:8080", approved[2]],
+            [approved[0].replace("127.0.0.1", "127.0.0.2", 1), *approved[1:]],
+            [approved[0], approved[1], True],
+            [approved[0], approved[1]],
+            None,
+        )
+        for args in invalid:
+            with self.subTest(args=args), self.assertRaisesRegex(m.Refused, "^browser_network_guard$"):
+                m.WindowsRun._validate_browser_launch_args(args)
+
+    def test_snapshot_schema_is_strict_before_relevance_filtering(self):
+        executable = str((Path.cwd() / "synthetic.exe").absolute())
+        valid = [
+            {"pid": 10, "parent": 1, "started": "100", "executable": executable},
+            {"pid": 11, "parent": 10, "started": "101", "executable": executable},
+            {"pid": 99, "parent": 1, "started": None, "executable": None},
+        ]
+        current = m.WindowsRun._validate_snapshot(valid, {10})
+        self.assertEqual(set(current), {10, 11, 99})
+        invalid = (
+            None,
+            {},
+            ["row"],
+            [{"pid": 10, "parent": 1, "started": "100"}],
+            [{"pid": 10, "parent": 1, "started": "100", "executable": executable, "extra": 1}],
+            [{"pid": True, "parent": 1, "started": "100", "executable": executable}],
+            [{"pid": 10, "parent": False, "started": "100", "executable": executable}],
+            [{"pid": 0, "parent": 1, "started": "100", "executable": executable}],
+            [{"pid": 10, "parent": -1, "started": "100", "executable": executable}],
+            [{"pid": 10, "parent": 1, "started": True, "executable": executable}],
+            [{"pid": 10, "parent": 1, "started": "", "executable": executable}],
+            [{"pid": 10, "parent": 1, "started": "0", "executable": executable}],
+            [{"pid": 10, "parent": 1, "started": "01", "executable": executable}],
+            [{"pid": 10, "parent": 1, "started": "100", "executable": "relative.exe"}],
+            [{"pid": 10, "parent": 1, "started": "100", "executable": executable + "\0hidden"}],
+            [{"pid": 10, "parent": 1, "started": None, "executable": executable}],
+            [{"pid": 10, "parent": 1, "started": "100", "executable": None}],
+            [valid[0], {**valid[0], "parent": 2}],
+            [{"pid": 10, "parent": 1, "started": None, "executable": None}],
+            [valid[0], {"pid": 11, "parent": 10, "started": None, "executable": None}],
+        )
+        for rows in invalid:
+            with self.subTest(rows=rows), self.assertRaisesRegex(m.Refused, "^snapshot_schema$"):
+                m.WindowsRun._validate_snapshot(rows, {10})
+
+    def test_snapshot_script_commits_identity_pair_and_resets_it_with_finally_dispose(self):
+        run = m.WindowsRun({"directory": "synthetic-unused"})
+        scripts = []
+        run._ps = lambda script: scripts.append(script) or "[]"
+        self.assertEqual(run._snapshot(), [])
+        script = scripts[0]
+        self.assertIn("$candidateTick=$p.StartTime.ToUniversalTime().Ticks.ToString()", script)
+        self.assertIn("$candidateExecutable=$p.MainModule.FileName", script)
+        self.assertIn("$t=$candidateTick; $x=$candidateExecutable", script)
+        self.assertLess(script.index("$candidateExecutable="), script.index("$t=$candidateTick"))
+        self.assertIn("catch {$t=$null; $x=$null}", script)
+        self.assertIn("finally {if($null -ne $p){$p.Dispose()}}", script)
+
+    def test_identity_rejects_zero_and_leading_zero_ticks(self):
+        run = m.WindowsRun({"directory": "synthetic-unused"})
+        for tick in ("0", "01"):
+            with self.subTest(tick=tick):
+                run._ps = lambda script, tick=tick: tick
+                with self.assertRaisesRegex(m.Refused, "^identity$"):
+                    run._identity(10)
+
     def test_claim_creates_integrity_bound_empty_journal_and_browser_intent_precedes_cli(self):
         with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
             run = self.journal_run(directory)
@@ -232,6 +310,55 @@ class SupervisorTests(unittest.TestCase):
             path.write_text(json.dumps(raw), encoding="utf-8")
             with self.assertRaisesRegex(m.Refused, "^journal_integrity$"):
                 run._read_journal()
+
+    def test_rechained_published_claim_rejects_noncanonical_owner_tick(self):
+        for tick in ("0", "01"):
+            with self.subTest(tick=tick), TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+                run = self.journal_run(directory)
+                run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+                run.session = "checkout-" + "c" * 32
+                run.claim(1)
+                claim_path = run.run / "supervisor.json"
+                claim = json.loads(claim_path.read_text(encoding="utf-8"))
+                claim["owner"]["started"] = tick
+                claim_path.write_text(json.dumps(claim, sort_keys=True, separators=(",", ":")), encoding="utf-8")
+                generation_path = sorted(run.run.glob(m.JOURNAL_PREFIX + "*.json"))[-1]
+                document = json.loads(generation_path.read_text(encoding="utf-8"))
+                document["claimDigest"] = run._journal_digest(claim)
+                document.pop("integrity")
+                document["integrity"] = run._journal_digest(document)
+                generation_path.write_text(json.dumps(document, sort_keys=True, separators=(",", ":")), encoding="utf-8")
+                (run.run / m.JOURNAL).write_text(
+                    f'{document["generation"]:08d} {document["integrity"]}\n', encoding="ascii"
+                )
+                anchor = {"generation": document["generation"], "digest": document["integrity"]}
+                run.anchor_publisher.latest = anchor
+                with self.assertRaisesRegex(m.Refused, "^journal_claim$"):
+                    self.journal_run(directory)._read_journal(anchor)
+
+    def test_rechained_published_journal_rejects_noncanonical_owned_or_parent_tick(self):
+        for field in ("owned", "parent"):
+            for tick in ("0", "01"):
+                with self.subTest(field=field, tick=tick), \
+                        TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+                    run = self.journal_run(directory)
+                    run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+                    run.session = "checkout-" + "c" * 32
+                    run.claim(1)
+                    run._register_owned({"pid": 10, "started": "110"}, "php", run.owner, run.c["php"])
+
+                    def mutate(document):
+                        target = document["owned"][0]
+                        if field == "parent":
+                            target = target["parent"]
+                        target["started"] = tick
+
+                    self.rewrite_journal(run, mutate)
+                    document = json.loads(sorted(run.run.glob(m.JOURNAL_PREFIX + "*.json"))[-1].read_text())
+                    anchor = {"generation": document["generation"], "digest": document["integrity"]}
+                    run.anchor_publisher.latest = anchor
+                    with self.assertRaisesRegex(m.Refused, "^journal_shape$"):
+                        self.journal_run(directory)._read_journal(anchor)
 
     def test_recovery_requires_exact_session_config_executable_tick_and_parent(self):
         with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
@@ -1243,10 +1370,11 @@ class SupervisorTests(unittest.TestCase):
     def test_descendants_and_pid_reuse(self):
         run = m.WindowsRun({"directory": "synthetic-unused"})
         run.owned = {10: "100"}
-        run._snapshot = lambda: [{"pid": 10, "parent": 1, "started": "100"}, {"pid": 11, "parent": 10, "started": "101"}, {"pid": 12, "parent": 11, "started": "102"}]
+        executable = str((Path.cwd() / "synthetic.exe").absolute())
+        run._snapshot = lambda: [{"pid": 10, "parent": 1, "started": "100", "executable": executable}, {"pid": 11, "parent": 10, "started": "101", "executable": executable}, {"pid": 12, "parent": 11, "started": "102", "executable": executable}]
         run._discover()
         self.assertEqual(run.owned, {10: "100", 11: "101", 12: "102"})
-        run._snapshot = lambda: [{"pid": 10, "parent": 1, "started": "900"}, {"pid": 13, "parent": 10, "started": "901"}]
+        run._snapshot = lambda: [{"pid": 10, "parent": 1, "started": "900", "executable": executable}, {"pid": 13, "parent": 10, "started": "901", "executable": executable}]
         run._discover()
         self.assertTrue(run.uncertain)
         self.assertEqual(run.uncertainty_categories, {"pid_reuse", "parent_identity_mismatch"})
@@ -1255,10 +1383,11 @@ class SupervisorTests(unittest.TestCase):
     def test_every_uncertainty_category_is_fixed_and_triggerable_without_payload(self):
         run = m.WindowsRun({"directory": "synthetic-unused"})
         run.owned = {10: "100", 12: "100"}
+        executable = str((Path.cwd() / "synthetic.exe").absolute())
         run._snapshot = lambda: [
-            {"pid": 10, "parent": 1, "started": "999"},
-            {"pid": 11, "parent": 12, "started": "101"},
-            {"pid": 12, "parent": 1, "started": "900"},
+            {"pid": 10, "parent": 1, "started": "999", "executable": executable},
+            {"pid": 11, "parent": 12, "started": "101", "executable": executable},
+            {"pid": 12, "parent": 1, "started": "900", "executable": executable},
         ]
         run._discover()
         self.assertEqual(run.uncertainty_categories, {"pid_reuse", "parent_identity_mismatch"})
@@ -1266,8 +1395,8 @@ class SupervisorTests(unittest.TestCase):
         invalid = m.WindowsRun({"directory": "synthetic-unused"})
         invalid.owned = {10: "100"}
         invalid._snapshot = lambda: [
-            {"pid": 10, "parent": 1, "started": "100"},
-            {"pid": 11, "parent": 10, "started": None},
+            {"pid": 10, "parent": 1, "started": "100", "executable": executable},
+            {"pid": 11, "parent": 10, "started": "99", "executable": executable},
         ]
         invalid._discover()
         self.assertEqual(invalid.uncertainty_categories, {"child_tick_invalid"})
@@ -1283,13 +1412,12 @@ class SupervisorTests(unittest.TestCase):
         with self.assertRaisesRegex(m.Refused, "^internal$"):
             run._mark_uncertain("PRIVATE_PAYLOAD")
 
-    def test_unknown_child_tick_is_not_adopted(self):
+    def test_unknown_relevant_child_identity_is_rejected_before_adoption(self):
         run = m.WindowsRun({"directory": "synthetic-unused"})
         run.owned = {10: "100"}
-        run._snapshot = lambda: [{"pid": 11, "parent": 10, "started": None}]
-        run._discover()
-        self.assertTrue(run.uncertain)
-        self.assertEqual(run.uncertainty_categories, {"parent_missing"})
+        run._snapshot = lambda: [{"pid": 11, "parent": 10, "started": None, "executable": None}]
+        with self.assertRaisesRegex(m.Refused, "^snapshot_schema$"):
+            run._discover()
         self.assertNotIn(11, run.owned)
 
     def test_full_mode_explicitly_releases_offline_after_abort_guard(self):
@@ -1345,6 +1473,26 @@ class SupervisorTests(unittest.TestCase):
         run._listeners = lambda: []
         self.assertFalse(run.cleanup(1))
 
+    def test_malformed_active_owner_snapshot_cannot_disappear_and_cleanup_is_uncertain(self):
+        executable = str((Path.cwd() / "synthetic.exe").absolute())
+        malformed = (
+            [{"pid": True, "parent": 1, "started": "100", "executable": executable}],
+            [{"pid": 10, "parent": 1, "started": None, "executable": None}],
+            [{"pid": 10, "parent": 1, "started": "100", "executable": "relative.exe"}],
+            [
+                {"pid": 10, "parent": 1, "started": "100", "executable": executable},
+                {"pid": 10, "parent": 1, "started": "100", "executable": executable},
+            ],
+        )
+        for rows in malformed:
+            with self.subTest(rows=rows):
+                run = m.WindowsRun({"directory": "synthetic-unused"})
+                run.owned = {10: "100"}
+                run._snapshot = lambda rows=rows: rows
+                run._listeners = lambda: []
+                self.assertFalse(run.cleanup(1))
+                self.assertEqual(run.uncertainty_categories, {"cleanup_exception"})
+
     def test_partial_spawn_handle_cleanup_even_when_inspection_fails(self):
         run = m.WindowsRun({"directory": "synthetic-unused"})
         class Handle:
@@ -1391,7 +1539,8 @@ class SupervisorTests(unittest.TestCase):
     def test_numeric_orphan_parent_is_not_ownership_proof(self):
         run = m.WindowsRun({"directory": "synthetic-unused"})
         run.owned = {10: "100"}
-        run._snapshot = lambda: [{"pid": 11, "parent": 10, "started": "101"}]
+        run._snapshot = lambda: [{"pid": 11, "parent": 10, "started": "101",
+                                  "executable": str((Path.cwd() / "synthetic.exe").absolute())}]
         run._discover()
         self.assertTrue(run.uncertain)
         self.assertNotIn(11, run.owned)

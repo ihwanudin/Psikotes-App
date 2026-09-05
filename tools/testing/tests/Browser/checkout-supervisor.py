@@ -21,6 +21,12 @@ JOURNAL_PREFIX = "ownership-journal-"
 JOURNAL_LIMIT = 1024
 CLI_SUFFIX = "31e32ef8478fbf80/node_modules/@playwright/cli/playwright-cli.js"
 BROWSER_SUFFIX = "ms-playwright/chromium-1234/chrome-win64/chrome.exe"
+BROWSER_LAUNCH_ARGS = (
+    "--host-resolver-rules=MAP psikotes.oncam.id 127.0.0.1,MAP oncam.id 127.0.0.1,MAP * ~NOTFOUND",
+    "--no-proxy-server",
+    "--disable-background-networking",
+)
+POSITIVE_TICK = re.compile(r"[1-9][0-9]{0,19}")
 JOURNAL_ROLES = frozenset({"php", "tls", "browser_launcher", "browser", "command", "descendant"})
 UNCERTAINTY_CATEGORIES = frozenset({"pid_reuse", "parent_missing", "parent_identity_mismatch",
                                    "child_tick_invalid", "identity_probe_failed",
@@ -29,6 +35,10 @@ UNCERTAINTY_CATEGORIES = frozenset({"pid_reuse", "parent_missing", "parent_ident
 
 class Refused(Exception):
     """Only fixed stage codes are returned, never subprocess output."""
+
+
+def canonical_tick(value):
+    return type(value) is str and POSITIVE_TICK.fullmatch(value) is not None
 
 
 def supervise(io, *, mode="smoke", requests=3, budget=180):
@@ -260,10 +270,7 @@ class WindowsRun:
             raise Refused("browser_config")
         if browser["contextOptions"].get("offline") is not True or browser["contextOptions"].get("serviceWorkers") != "block":
             raise Refused("browser_config")
-        args = browser["launchOptions"].get("args", [])
-        resolver = "--host-resolver-rules=MAP psikotes.oncam.id 127.0.0.1,MAP oncam.id 127.0.0.1,MAP * ~NOTFOUND"
-        if not all(arg in args for arg in (resolver, "--no-proxy-server", "--disable-background-networking")):
-            raise Refused("browser_network_guard")
+        self._validate_browser_launch_args(browser["launchOptions"].get("args"))
         # Process-local allowlist; do not copy the calling shell's application environment.
         self.env = {key: os.environ[key] for key in ("SystemRoot", "TEMP", "TMP")}
         runtime_home = self.run / "storage/framework/supervisor-home"
@@ -283,6 +290,51 @@ class WindowsRun:
         if not isinstance(value, str) or not Path(value).is_absolute() or "\0" in value:
             raise Refused("journal_shape")
         return os.path.normcase(str(Path(value).absolute())).replace("\\", "/")
+
+    @staticmethod
+    def _validate_browser_launch_args(args):
+        if type(args) is not list or args != list(BROWSER_LAUNCH_ARGS) \
+                or any(type(arg) is not str for arg in args) or len(set(args)) != len(args):
+            raise Refused("browser_network_guard")
+
+    @staticmethod
+    def _validate_snapshot(rows, relevant):
+        if type(rows) is not list or type(relevant) is not set \
+                or any(type(pid) is not int or pid <= 0 for pid in relevant):
+            raise Refused("snapshot_schema")
+        seen = set()
+        for row in rows:
+            if type(row) is not dict or set(row) != {"pid", "parent", "started", "executable"} \
+                    or type(row["pid"]) is not int or row["pid"] <= 0 \
+                    or type(row["parent"]) is not int or row["parent"] < 0 \
+                    or row["pid"] in seen:
+                raise Refused("snapshot_schema")
+            started, executable = row["started"], row["executable"]
+            inaccessible = started is None and executable is None
+            if not inaccessible:
+                if not canonical_tick(started) \
+                        or not isinstance(executable, str):
+                    raise Refused("snapshot_schema")
+                try:
+                    WindowsRun._normalized_path(executable)
+                except Refused:
+                    raise Refused("snapshot_schema") from None
+            elif started is not None or executable is not None:
+                raise Refused("snapshot_schema")
+            seen.add(row["pid"])
+        current = {row["pid"]: row for row in rows}
+        required = set(relevant)
+        changed = True
+        while changed:
+            changed = False
+            for row in rows:
+                if row["parent"] in required and row["pid"] not in required:
+                    required.add(row["pid"])
+                    changed = True
+        if any(pid in current and (current[pid]["started"] is None or current[pid]["executable"] is None)
+               for pid in required):
+            raise Refused("snapshot_schema")
+        return current
 
     def _config_binding(self, session):
         keys = ("php", "python", "node", "powershell", "cli", "browser", "ini", "browser_config", "cert", "key")
@@ -318,7 +370,7 @@ class WindowsRun:
         owner = claim["owner"]
         if not isinstance(owner, dict) or set(owner) != {"pid", "started", "nonce"} \
                 or type(owner["pid"]) is not int or owner["pid"] <= 0 \
-                or not isinstance(owner["started"], str) or not re.fullmatch(r"[0-9]{1,20}", owner["started"]) \
+                or not canonical_tick(owner["started"]) \
                 or not isinstance(owner["nonce"], str) or not re.fullmatch(r"[a-f0-9]{64}", owner["nonce"]):
             raise Refused("journal_claim")
         if not isinstance(claim["journalBinding"], str) or not re.fullmatch(r"[a-f0-9]{64}", claim["journalBinding"]):
@@ -469,10 +521,10 @@ class WindowsRun:
             parent = record.get("parent")
             if set(record) != {"pid", "started", "role", "parent", "executable"} \
                     or type(record["pid"]) is not int or record["pid"] <= 0 \
-                    or not isinstance(record["started"], str) or not re.fullmatch(r"[0-9]{1,20}", record["started"]) \
+                    or not canonical_tick(record["started"]) \
                     or record["role"] not in JOURNAL_ROLES or not isinstance(parent, dict) \
                     or set(parent) != {"pid", "started"} or type(parent["pid"]) is not int or parent["pid"] <= 0 \
-                    or not isinstance(parent["started"], str) or not re.fullmatch(r"[0-9]{1,20}", parent["started"]):
+                    or not canonical_tick(parent["started"]):
                 raise Refused("journal_shape")
             self._normalized_path(record["executable"])
             if record["pid"] in seen:
@@ -575,21 +627,10 @@ class WindowsRun:
         self.claimed = True
         self.lifecycle_phase = "recovery"
         current_rows = self._snapshot()
-        if not isinstance(current_rows, list):
-            raise Refused("recovery_identity")
-        current = {}
-        for row in current_rows:
-            if not isinstance(row, dict) or type(row.get("pid")) is not int or row["pid"] <= 0:
-                continue
-            if row["pid"] not in relevant:
-                continue
-            if set(row) != {"pid", "parent", "started", "executable"} \
-                    or type(row["parent"]) is not int or row["parent"] < 0 \
-                    or not isinstance(row["started"], str) or not re.fullmatch(r"[0-9]{1,20}", row["started"]) \
-                    or not isinstance(row["executable"], str) or not Path(row["executable"]).is_absolute() \
-                    or row["pid"] in current:
-                raise Refused("recovery_identity")
-            current[row["pid"]] = row
+        try:
+            current = self._validate_snapshot(current_rows, relevant)
+        except Refused:
+            raise Refused("recovery_identity") from None
         if current.get(owner["pid"], {}).get("started") == owner["started"]:
             raise Refused("recovery_owner_active")
         live = {}
@@ -695,17 +736,17 @@ class WindowsRun:
         if type(pid) is not int or pid <= 0:
             raise Refused("identity")
         ticks = self._ps(f"$ErrorActionPreference='Stop'; $p=[Diagnostics.Process]::GetProcessById({pid}); try {{$p.StartTime.ToUniversalTime().Ticks.ToString()}} finally {{$p.Dispose()}}").strip()
-        if not re.fullmatch(r"[0-9]{1,20}", ticks):
+        if not canonical_tick(ticks):
             raise Refused("identity")
         return {"pid": pid, "started": ticks}
 
     def _snapshot(self):
-        script = "$ErrorActionPreference='Stop'; $rows=@(Get-CimInstance Win32_Process | ForEach-Object { $t=$null; $x=$null; try {$p=[Diagnostics.Process]::GetProcessById([int]$_.ProcessId); $t=$p.StartTime.ToUniversalTime().Ticks.ToString(); $x=$p.MainModule.FileName; $p.Dispose()} catch {}; @{pid=[int]$_.ProcessId; parent=[int]$_.ParentProcessId; started=$t; executable=$x} }); ConvertTo-Json -InputObject $rows -Compress"
+        script = "$ErrorActionPreference='Stop'; $rows=@(Get-CimInstance Win32_Process | ForEach-Object { $p=$null; $t=$null; $x=$null; try {$p=[Diagnostics.Process]::GetProcessById([int]$_.ProcessId); $candidateTick=$p.StartTime.ToUniversalTime().Ticks.ToString(); $candidateExecutable=$p.MainModule.FileName; $t=$candidateTick; $x=$candidateExecutable} catch {$t=$null; $x=$null} finally {if($null -ne $p){$p.Dispose()}}; @{pid=[int]$_.ProcessId; parent=[int]$_.ParentProcessId; started=$t; executable=$x} }); ConvertTo-Json -InputObject $rows -Compress"
         return json.loads(self._ps(script))
 
     def _discover(self):
         rows = self._snapshot()
-        current = {r["pid"]: r for r in rows}
+        current = self._validate_snapshot(rows, set(self.owned))
         for pid, tick in list(self.owned.items()):
             if pid in current and current[pid]["started"] != tick:
                 self._mark_uncertain("pid_reuse")  # Never adopt/kill the new owner's children.
