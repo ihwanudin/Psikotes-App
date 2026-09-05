@@ -1,4 +1,3 @@
-const CHECKOUT_ORIGIN = 'https://psikotes.oncam.id';
 const PAYMENT_PATH = '/checkout/payment';
 const CSRF_PATTERN = /^ocsrf1_[0-9a-f]{64}$/;
 
@@ -112,8 +111,7 @@ export async function requestCheckoutPayment(consultationRequested, adapters) {
     }
 
     if (
-        !exactKeys(adapters, ['csrf', 'fetchImpl', 'origin']) ||
-        adapters.origin !== CHECKOUT_ORIGIN ||
+        !exactKeys(adapters, ['csrf', 'fetchImpl']) ||
         !CSRF_PATTERN.test(adapters.csrf) ||
         typeof adapters.fetchImpl !== 'function'
     ) {

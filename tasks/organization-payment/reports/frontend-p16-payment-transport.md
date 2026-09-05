@@ -10,17 +10,19 @@ controller, route, configuration, backend contract, payment provider, logging, o
 active feature. Existing worktree changes were retained without reset.
 
 `requestCheckoutPayment(consultationRequested, adapters)` accepts one product
-input, a strict boolean, and an exact adapter object containing only the browser
-origin, dedicated checkout CSRF, and fetch implementation. The origin is fixed to
-`https://psikotes.oncam.id`; the request path is fixed internally to
-`/checkout/payment`. A caller cannot supply payer, method, amount, currency, URL,
-ID, bill, participant, package, attempt, or idempotency data.
+input, a strict boolean, and an exact adapter object containing only the dedicated
+checkout CSRF and fetch implementation. The request path is fixed internally to
+the relative `/checkout/payment`; same-origin behavior follows the active browser
+environment without duplicating its hostname. A caller cannot supply origin,
+path, payer, method, amount, currency, URL, ID, bill, participant, package,
+attempt, or idempotency data.
 
 The request uses POST, `credentials: same-origin`, `redirect: manual`, JSON
 Content-Type/Accept, and `X-Checkout-CSRF`. Its body is exactly
-`{"consultationRequested":boolean}`. Nonboolean input, noncanonical/foreign origin,
-malformed CSRF, nonfunction fetch, or any extra adapter key is rejected before
-fetch.
+`{"consultationRequested":boolean}`. Nonboolean input, malformed CSRF, nonfunction
+fetch, or any extra adapter key is rejected before fetch. A review correction
+after `e49ebea` removed the redundant production-origin constant and now rejects
+caller-supplied `origin` instead.
 
 HTTP 200 is parsed as exact `data.paymentState` plus `data.paymentUrl`, with no
 extra top-level or nested key. Pending requires a valid HTTPS URL without username
@@ -36,8 +38,9 @@ details are discarded. The module never logs or reflects a response/error/CSRF.
   failed with `ERR_MODULE_NOT_FOUND` before the transport module existed.
 - GREEN: the same command passed **4 tests / 4 groups / 0 failures**. Coverage
   includes both boolean request bodies, exact fetch arguments and CSRF header,
-  all rejected inputs/adapters, exact success variants, malformed and extra-key
-  matrices, HTTPS/userinfo checks, redirect checks, all required status mappings,
+  all rejected inputs/adapters (including origin, URL, path, amount, and payer),
+  exact success variants, malformed and extra-key matrices, HTTPS/userinfo checks,
+  redirect checks, all required status mappings,
   network error, AbortError, no error-body read, and redaction.
 - `node --check public/js/checkout-payment-v1.js`: passed.
 - ESLint with `--no-ignore` on both lane files: passed after applying the repo's

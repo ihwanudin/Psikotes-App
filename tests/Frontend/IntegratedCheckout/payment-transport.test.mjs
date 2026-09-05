@@ -6,7 +6,6 @@ import {
     requestCheckoutPayment,
 } from '../../../public/js/checkout-payment-v1.js';
 
-const origin = 'https://psikotes.oncam.id';
 const csrf = `ocsrf1_${'a'.repeat(64)}`;
 
 function response(status, payload, overrides = {}) {
@@ -23,7 +22,6 @@ test('sends the exact fixed same-origin JSON request for either consultation cho
     for (const consultationRequested of [false, true]) {
         const calls = [];
         const result = await requestCheckoutPayment(consultationRequested, {
-            origin,
             csrf,
             fetchImpl: async (...args) => {
                 calls.push(args);
@@ -62,7 +60,7 @@ test('sends the exact fixed same-origin JSON request for either consultation cho
     }
 });
 
-test('rejects nonboolean product input, unsafe origin, and malformed CSRF before fetch', async () => {
+test('rejects nonboolean input, malformed CSRF, and caller-supplied authority before fetch', async () => {
     const invalid = [
         null,
         0,
@@ -78,7 +76,6 @@ test('rejects nonboolean product input, unsafe origin, and malformed CSRF before
         await assert.rejects(
             () =>
                 requestCheckoutPayment(value, {
-                    origin,
                     csrf,
                     fetchImpl: async () => {
                         calls++;
@@ -88,20 +85,21 @@ test('rejects nonboolean product input, unsafe origin, and malformed CSRF before
         );
     }
 
-    for (const unsafeOrigin of [
-        'http://psikotes.oncam.id',
-        'https://foreign.invalid',
-        'https://user:pass@psikotes.oncam.id',
-        'https://psikotes.oncam.id/path',
+    for (const extra of [
+        { origin: 'https://psikotes.oncam.id' },
+        { url: 'https://payments.example.invalid/private' },
+        { path: '/checkout/other' },
+        { amountIdr: 1 },
+        { payer: 'self' },
     ]) {
         await assert.rejects(
             () =>
                 requestCheckoutPayment(false, {
-                    origin: unsafeOrigin,
                     csrf,
                     fetchImpl: async () => {
                         calls++;
                     },
+                    ...extra,
                 }),
             /Invalid checkout payment adapter/,
         );
@@ -110,23 +108,10 @@ test('rejects nonboolean product input, unsafe origin, and malformed CSRF before
     await assert.rejects(
         () =>
             requestCheckoutPayment(false, {
-                origin,
                 csrf: 'PRIVATE_CSRF',
                 fetchImpl: async () => {
                     calls++;
                 },
-            }),
-        /Invalid checkout payment adapter/,
-    );
-    await assert.rejects(
-        () =>
-            requestCheckoutPayment(false, {
-                origin,
-                csrf,
-                fetchImpl: async () => {
-                    calls++;
-                },
-                amountIdr: 1,
             }),
         /Invalid checkout payment adapter/,
     );
@@ -241,7 +226,6 @@ test('maps HTTP, abort, and network failures without reading or reflecting sensi
         new DOMException('PRIVATE_ABORT_SECRET', 'AbortError'),
     ]) {
         const result = await requestCheckoutPayment(true, {
-            origin,
             csrf,
             fetchImpl: async () => {
                 throw error;
