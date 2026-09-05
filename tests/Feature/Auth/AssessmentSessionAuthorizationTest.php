@@ -100,7 +100,8 @@ final class AssessmentSessionAuthorizationTest extends OrganizationPaymentTestCa
         $token = $this->token();
         $this->withToken($token)->postJson(self::URL)->assertStatus(501);
         // Respect composite FK constraints while deleting this synthetic attempt's dependents.
-        DB::table('assessment_entitlements')->where('id', $this->f['entitlement'])->delete();
+        DB::table('assessment_entitlements')
+            ->where('assessment_participant_id', $this->f['attempt'])->delete();
         DB::table('assessment_bill_items')->where('id', $this->f['item'])->delete();
         DB::table('assessment_charges')->where('id', $this->f['charge'])->delete();
         DB::table('assessment_participants')->where('id', $this->f['attempt'])->delete();

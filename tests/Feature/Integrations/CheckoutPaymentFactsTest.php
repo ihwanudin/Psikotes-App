@@ -199,7 +199,8 @@ final class CheckoutPaymentFactsTest extends OrganizationPaymentTestCase
     {
         $other = AssessmentAccessFixture::create(identity: ['organization' => $this->fixture['organization'],
             'participant' => $this->fixture['participant']]);
-        DB::table('assessment_entitlements')->where('id', $this->fixture['entitlement'])->delete();
+        DB::table('assessment_entitlements')
+            ->where('assessment_participant_id', $this->fixture['attempt'])->delete();
         DB::table('assessment_bill_items')->where('id', $this->fixture['item'])->delete();
         DB::table('assessment_charges')->where('id', $this->fixture['charge'])->delete();
         $facts = $this->read();

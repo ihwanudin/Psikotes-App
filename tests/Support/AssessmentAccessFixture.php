@@ -31,6 +31,10 @@ final class AssessmentAccessFixture
         $item = DB::table('assessment_bill_items')->insertGetId([...AssessmentBillingFixture::item($f), 'settled_at' => now()]);
         $entitlement = DB::table('assessment_entitlements')->insertGetId([
             ...AssessmentBillingFixture::entitlement($f), 'test_type' => $type, 'status' => 'ready', 'ready_at' => now()]);
+        DB::table('assessment_entitlements')->insert([
+            ...AssessmentBillingFixture::entitlement($f), 'test_type' => $companionType,
+            'status' => 'ready', 'ready_at' => now(),
+        ]);
         if ($identity === null || ! isset($identity['participant'])) {
             foreach (['psychotest', 'dass'] as $consentType) {
                 $document = ConsentDocument::for($consentType);
