@@ -114,6 +114,23 @@ single-writer, dan lifecycle identity tetap blocker P17c. Tidak ada candidate,
 browser, service/aplikasi, database, environment aktif, network, deploy, atau
 aktivasi; P17c/P18 tetap terbuka dan seluruh gate tetap default OFF.
 
+### Binding konfigurasi kandidat exact — `23ed855`
+
+Supervisor kini menerima hanya key konfigurasi dan sepuluh pasangan path/hash
+exact keluaran builder. Path absolut wajib memakai ejaan canonical builder,
+file runtime wajib berada di direktori kandidat dengan nama tetap, dan review
+aset ikut dihitung bersama direktori, manifest, session, serta seluruh tool ke
+`configBinding`. Recovery menolak config rusak sebelum membaca anchor.
+Coordinator memetakan kegagalan nested menjadi `coordinator_config`; parity
+builder/supervisor diperiksa statis tanpa mengeksekusi source supervisor.
+
+Bukti root: coordinator+builder **34/34**, supervisor aman **98/98**, AST **5
+file**, dan diff-check lulus. Ini belum membuktikan ACL/single-writer,
+perlindungan penggantian direktori, lifecycle identity OS, atau TOCTOU terakhir
+saat CLI eksternal membuka path. Tidak ada candidate, browser, service, DB,
+environment aktif, network, deploy, atau aktivasi; P17c/P18 tetap terbuka dan
+seluruh gate/payment tetap default OFF.
+
 ## Checkpoint P16 consent subset dan privacy audit — 2026-09-06
 
 Commit `918eb93` menambah policy PostgreSQL restrictive yang membuat audit

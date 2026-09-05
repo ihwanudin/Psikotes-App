@@ -820,3 +820,17 @@ Penggantian direktori run/source dan TOCTOU akhir pembukaan path oleh CLI
 eksternal belum ditutup. ACL, single-writer, serta lifecycle identity tetap gate
 P17c. Tidak ada candidate/browser/service/DB/env/network/deploy atau aktivasi;
 checkbox P17c/P18 tidak berubah dan seluruh gate tetap default OFF.
+
+### Bukti binding konfigurasi kandidat accepted — checklist tetap terbuka
+
+- [x] Commit `23ed855` mewajibkan schema exact builder/supervisor, path canonical,
+  nama file runtime tetap, dan binding directory/manifest/session/tool/hash/review aset.
+- [x] Recovery menolak config sebelum anchor I/O; coordinator memetakan nested
+  refusal ke `coordinator_config`; parity AST tidak mengeksekusi source supervisor.
+- [x] Root lulus coordinator+builder **34/34**, supervisor aman **98/98**, AST
+  **5 file**, dan diff-check.
+- [ ] ACL/single-writer, directory replacement, lifecycle identity OS, final
+  external path-open TOCTOU, serta runtime browser P17c tetap belum dibuktikan.
+
+Tidak ada candidate/browser/service/DB/env/network/deploy atau aktivasi;
+checkbox P17c/P18 tetap terbuka dan seluruh gate/payment tetap default OFF.

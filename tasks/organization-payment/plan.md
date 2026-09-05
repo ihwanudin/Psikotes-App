@@ -521,3 +521,18 @@ TOCTOU akhir ketika CLI eksternal membuka ulang path. ACL, single-writer, dan
 lifecycle identity tetap blocker P17c. Tidak ada candidate, browser, service,
 DB, env aktif, network, deploy, atau aktivasi. P17c/P18 tetap terbuka dan semua
 gate/payment tetap default OFF.
+
+### Checkpoint binding konfigurasi kandidat exact
+
+Commit `23ed855` mengikat schema config builder ke supervisor/coordinator dan
+jurnal recovery. Key, path canonical, hash, directory, nama file runtime,
+manifest, session, dan review aset wajib exact; review aset tidak lagi dapat
+berubah tanpa mengubah `configBinding`. Recovery memvalidasi sebelum anchor I/O,
+coordinator meredaksi kegagalan nested, dan parity schema diverifikasi via AST
+allowlist tanpa mengeksekusi source supervisor. Bukti root: coordinator+builder
+**34/34**, supervisor aman **98/98**, AST **5 file**, dan diff-check lulus.
+
+Ini tetap preparation code-only. ACL/single-writer, replacement direktori,
+lifecycle identity OS, dan final external path-open TOCTOU belum ditutup. Tidak
+ada candidate/browser/service/DB/env/network/deploy atau aktivasi; P17c/P18
+tetap terbuka dan seluruh gate/payment tetap default OFF.

@@ -2428,3 +2428,17 @@ menutup TOCTOU akhir saat CLI eksternal membuka ulang path. ACL, single-writer,
 dan lifecycle identity tetap blocker P17c. Candidate/browser/service/DB/env/
 network/deploy tidak dijalankan; P17c/P18 dan semua checkbox tetap terbuka,
 payment serta seluruh gate tetap default OFF.
+
+### Checkpoint binding konfigurasi kandidat — accepted `23ed855`
+
+Kontrak kandidat sekarang exact lintas builder, supervisor, coordinator, jurnal,
+dan recovery. Seluruh key, path canonical, hash, direktori, nama file runtime,
+manifest, session, serta review aset terikat ke satu `configBinding`; config
+recovery divalidasi sebelum anchor I/O dan error nested ditutup pada vocabulary
+coordinator. Parity schema dibaca secara statis tanpa `exec` source supervisor.
+
+Bukti root: coordinator+builder **34/34**, supervisor aman **98/98**, AST **5
+file**, dan diff-check lulus. Candidate/browser/service/DB/env/network/deploy
+tidak dijalankan. ACL, single-writer, directory replacement, lifecycle identity,
+dan final external path-open TOCTOU tetap blocker P17c; P17c/P18 serta semua
+checkbox tetap terbuka dan seluruh gate/payment tetap default OFF.
