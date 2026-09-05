@@ -1,5 +1,25 @@
 # Koordinasi task paralel organization-payment
 
+## P16-pay-g/h accepted; persisted URL and HTTP boundary verified — 2026-09-05
+
+Backend `99fbe7c` was integrated as root `188c72e`. The self-payment writer now
+finishes by re-reading canonical persisted state: pending replay may expose only
+the same bill's persisted HTTPS URL, while paid returns a null URL. Existing
+bills, current catalog/policy snapshots, ownership, lifecycle, and corruption are
+revalidated before projection; no provider response becomes browser authority.
+Root's focused suite passed **65 tests / 361 assertions**.
+
+Portal `1420706` was integrated with the two shared-file add/add conflicts resolved
+manually as root `d0e0661`. Root preserved the current HTTP contract/config and
+added only the reviewed payment delta. The new strict boundary accepts exactly
+one boolean `consultationRequested`, same-origin JSON, canonical checkout CSRF,
+fetch metadata, named mutation throttling, and authenticated principal; invalid,
+disabled, throttled, and unexpected paths remain private and generic. Both
+payment switches remain literal `false`, and no production route or controller
+was added. Root passed **61 tests / 2,078 assertions**, syntax, Pint, PHPStan with
+zero errors, and diff-check. P16-pay-i (command/controller/default-off wiring) and
+server action/catalog projection must precede final UI binding and browser proof.
+
 ## P16-pay-f accepted after replay and clock correction — 2026-09-05
 
 Backend `99c700f` plus review correction `ca26657` were integrated as root

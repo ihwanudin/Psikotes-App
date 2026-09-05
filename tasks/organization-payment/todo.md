@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P13b, core privat P14/P15, dan P17a–P17b selesai lokal. P16-pay-a–f, transport frontend murni, dan penyelarasan DASS draft telah diterima: session authority, reservasi/Claim/issuance self serta settlement gratis atomik selesai lokal. Fresh PostgreSQL lulus 398/3.919. URL/HTTP/UI binding dan browser belum selesai. P17c serta P18 masih terbuka. Tidak deploy, tidak migrasi DB aktif, dan tidak menyalakan sumber/feature flag atau outbound nyata.**
+Status: **P1–P13b, core privat P14/P15, dan P17a–P17b selesai lokal. P16-pay-a–h, transport frontend murni, dan penyelarasan DASS draft telah diterima: session authority, reservasi/Claim/issuance self, settlement gratis atomik, proyeksi URL persisted, serta boundary HTTP privat selesai lokal dan default OFF. Fresh PostgreSQL lulus 398/3.919. Controller/wiring, capability katalog/UI, dan browser belum selesai. P17c serta P18 masih terbuka. Tidak deploy, tidak migrasi DB aktif, dan tidak menyalakan sumber/feature flag atau outbound nyata.**
 
 ## Gerbang revisi kolektif
 
@@ -646,9 +646,12 @@ browser/checkpoint.
 **Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Integrations/IntegratedCheckoutPageTest.php`
 
 **Bukti parsial lokal:** Blade branded/no-JS, form injected fail-closed, transport
-JSON same-origin, dan route canonical default-off sudah terintegrasi. Alur tindakan
-pembayaran mandiri/kolektif/gratis dan browser acceptance belum lengkap, sehingga
-checkbox P16 tetap terbuka.
+JSON same-origin, session-authorized writer self/gratis, proyeksi URL persisted,
+dan boundary HTTP pembayaran default-off sudah terintegrasi. Belum ada controller
+atau route produksi pembayaran, capability katalog/action server, binding UI, dan
+browser acceptance; checkbox P16 tetap terbuka. Payer organisasi positif tetap
+baca-saja tanpa URL/action, sedangkan organisasi berharga tepat nol hanya memakai
+pengecualian no-money yang sudah diterima ADR-014.
 
 ## P17a: Regresi alur dan privasi
 
