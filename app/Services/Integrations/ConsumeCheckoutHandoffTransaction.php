@@ -16,6 +16,7 @@ use App\Models\TestPackage;
 use App\Security\RlsContextRunner;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use DomainException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use LogicException;
@@ -85,7 +86,10 @@ final readonly class ConsumeCheckoutHandoffTransaction
         ) {
             throw new InvalidCheckoutHandoff;
         }
-        if ($package->items()->orderBy('id')->lockForUpdate()->pluck('id')->all() === []) {
+        $packageItems = $package->items()->orderBy('id')->lockForUpdate()->get(['id', 'test_type']);
+        try {
+            TestPackage::canonicalComposition($packageItems->pluck('test_type')->all());
+        } catch (DomainException) {
             throw new InvalidCheckoutHandoff;
         }
         $attempt = AssessmentParticipant::query()->where('organization_id', $organization->id)

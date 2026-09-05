@@ -292,6 +292,43 @@ final class CheckoutHandoffRecoveryTest extends OrganizationPaymentTestCase
         }
     }
 
+    public function test_non_canonical_historical_package_compositions_cannot_recover_or_repair_session_state(): void
+    {
+        foreach (['without dass21', 'dass21 only'] as $composition) {
+            $state = $this->recoverable();
+            $items = DB::table('package_items')->where('package_id', $state['attempt']->package_id);
+            if ($composition === 'without dass21') {
+                $items->where('test_type', 'dass21')->delete();
+                $expectedTypes = ['ist'];
+            } else {
+                $items->where('test_type', '!=', 'dass21')->delete();
+                $expectedTypes = ['dass21'];
+            }
+            $beforeHandoff = DB::table('checkout_handoffs')->where('id', $state['handoff']->id)->sole();
+            $beforeSession = DB::table('checkout_sessions')->where('id', $state['session']->id)->sole();
+
+            try {
+                $this->issue($state, 'ih1_'.bin2hex(random_bytes(16)), CheckoutHandoffIntent::Recovery);
+                $this->fail("{$composition} package recovered a checkout session.");
+            } catch (IntegrationContractViolation $exception) {
+                $this->assertSame('HANDOFF_NOT_ALLOWED', $exception->errorCode, $composition);
+            }
+
+            $this->assertEquals($beforeHandoff, DB::table('checkout_handoffs')
+                ->where('id', $state['handoff']->id)->sole(), $composition);
+            $this->assertEquals($beforeSession, DB::table('checkout_sessions')
+                ->where('id', $state['session']->id)->sole(), $composition);
+            $this->assertSame($expectedTypes, DB::table('package_items')
+                ->where('package_id', $state['attempt']->package_id)
+                ->orderBy('sort_order')->pluck('test_type')->all(), $composition);
+            $this->assertSame(1, DB::table('checkout_handoffs')
+                ->where('assessment_participant_id', $state['attempt']->id)->count(), $composition);
+            $this->assertSame(0, DB::table('audit_logs')
+                ->where('action', 'checkout_handoff.recovery_reissued')
+                ->where('subject_id', (string) $state['attempt']->id)->count(), $composition);
+        }
+    }
+
     public function test_recovery_audit_failure_rolls_back_session_handoff_and_unrelated_state(): void
     {
         $state = $this->recoverable();
@@ -416,7 +453,10 @@ final class CheckoutHandoffRecoveryTest extends OrganizationPaymentTestCase
             'code' => $packageCode, 'name' => 'Synthetic', 'amount' => 100,
             'currency' => 'IDR', 'is_active' => true,
         ]);
-        DB::table('package_items')->insert(['package_id' => $package, 'test_type' => 'ist', 'sort_order' => 1]);
+        DB::table('package_items')->insert([
+            ['package_id' => $package, 'test_type' => 'ist', 'sort_order' => 1],
+            ['package_id' => $package, 'test_type' => 'dass21', 'sort_order' => 2],
+        ]);
         $attempt = DB::table('assessment_participants')->insertGetId([
             'organization_id' => $organization, 'integration_client_id' => $clientId,
             'participant_id' => $participant, 'package_id' => $package,

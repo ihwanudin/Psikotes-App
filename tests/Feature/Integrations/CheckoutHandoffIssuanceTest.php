@@ -352,6 +352,40 @@ final class CheckoutHandoffIssuanceTest extends OrganizationPaymentTestCase
         $this->assertDatabaseCount('audit_logs', 0);
     }
 
+    public function test_non_canonical_historical_package_compositions_are_denied_without_repair_or_credential(): void
+    {
+        foreach (['without dass21', 'dass21 only'] as $composition) {
+            $fixture = $this->fixture();
+            $items = DB::table('package_items')->where('package_id', $fixture['attempt']->package_id);
+            if ($composition === 'without dass21') {
+                $items->where('test_type', 'dass21')->delete();
+                $expectedTypes = ['ist'];
+            } else {
+                $items->where('test_type', '!=', 'dass21')->delete();
+                $expectedTypes = ['dass21'];
+            }
+
+            try {
+                $this->issue(
+                    $fixture,
+                    'ih1_'.bin2hex(random_bytes(16)),
+                    CheckoutHandoffIntent::Issue,
+                );
+                $this->fail("{$composition} package issued a handoff credential.");
+            } catch (IntegrationContractViolation $exception) {
+                $this->assertSame('HANDOFF_NOT_ALLOWED', $exception->errorCode, $composition);
+            }
+
+            $this->assertSame($expectedTypes, DB::table('package_items')
+                ->where('package_id', $fixture['attempt']->package_id)
+                ->orderBy('sort_order')->pluck('test_type')->all(), $composition);
+            $this->assertSame(0, DB::table('checkout_handoffs')
+                ->where('assessment_participant_id', $fixture['attempt']->id)->count(), $composition);
+            $this->assertSame(0, DB::table('audit_logs')
+                ->where('subject_id', (string) $fixture['attempt']->id)->count(), $composition);
+        }
+    }
+
     public function test_same_key_with_different_intent_conflicts_and_issue_never_silently_revokes(): void
     {
         $fixture = $this->fixture();
@@ -554,7 +588,10 @@ final class CheckoutHandoffIssuanceTest extends OrganizationPaymentTestCase
         $package = DB::table('packages')->insertGetId([
             'code' => $packageCode, 'name' => 'Synthetic', 'amount' => 100, 'currency' => 'IDR', 'is_active' => true,
         ]);
-        DB::table('package_items')->insert(['package_id' => $package, 'test_type' => 'ist', 'sort_order' => 1]);
+        DB::table('package_items')->insert([
+            ['package_id' => $package, 'test_type' => 'ist', 'sort_order' => 1],
+            ['package_id' => $package, 'test_type' => 'dass21', 'sort_order' => 2],
+        ]);
         $attemptId = DB::table('assessment_participants')->insertGetId([
             'organization_id' => $organization, 'integration_client_id' => $clientId,
             'participant_id' => $participant, 'package_id' => $package,

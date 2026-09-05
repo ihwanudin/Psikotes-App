@@ -170,6 +170,40 @@ final class CheckoutHandoffConsumeTest extends OrganizationPaymentTestCase
         }
     }
 
+    public function test_non_canonical_historical_package_compositions_do_not_consume_or_repair_the_token(): void
+    {
+        foreach (['without dass21', 'dass21 only'] as $composition) {
+            $fixture = $this->fixture();
+            $raw = $this->issue($fixture);
+            $items = DB::table('package_items')->where('package_id', $fixture['attempt']->package_id);
+            if ($composition === 'without dass21') {
+                $items->where('test_type', 'dass21')->delete();
+                $expectedTypes = ['ist'];
+            } else {
+                $items->where('test_type', '!=', 'dass21')->delete();
+                $expectedTypes = ['dass21'];
+            }
+            $before = DB::table('checkout_handoffs')->where('token_digest', hash('sha256', $raw))->sole();
+
+            try {
+                app(ConsumeCheckoutHandoff::class)->execute(new CheckoutHandoffConsumeInput($raw));
+                $this->fail("{$composition} package consumed a handoff credential.");
+            } catch (InvalidCheckoutHandoff $exception) {
+                $this->assertSame('CHECKOUT_HANDOFF_INVALID', $exception->getMessage(), $composition);
+            }
+
+            $this->assertEquals($before, DB::table('checkout_handoffs')
+                ->where('token_digest', hash('sha256', $raw))->sole(), $composition);
+            $this->assertSame($expectedTypes, DB::table('package_items')
+                ->where('package_id', $fixture['attempt']->package_id)
+                ->orderBy('sort_order')->pluck('test_type')->all(), $composition);
+            $this->assertSame(0, DB::table('checkout_sessions')
+                ->where('assessment_participant_id', $fixture['attempt']->id)->count(), $composition);
+            $this->assertSame(0, DB::table('audit_logs')->where('action', 'checkout_handoff.consumed')
+                ->where('subject_id', (string) $fixture['attempt']->id)->count(), $composition);
+        }
+    }
+
     public function test_disabled_boundary_and_ambient_transactions_fail_before_consumption(): void
     {
         $fixture = $this->fixture();
@@ -271,7 +305,10 @@ final class CheckoutHandoffConsumeTest extends OrganizationPaymentTestCase
             'code' => $packageCode, 'name' => 'P13b Synthetic', 'amount' => 100,
             'currency' => 'IDR', 'is_active' => true,
         ]);
-        DB::table('package_items')->insert(['package_id' => $package, 'test_type' => 'ist', 'sort_order' => 1]);
+        DB::table('package_items')->insert([
+            ['package_id' => $package, 'test_type' => 'ist', 'sort_order' => 1],
+            ['package_id' => $package, 'test_type' => 'dass21', 'sort_order' => 2],
+        ]);
         $attemptId = DB::table('assessment_participants')->insertGetId([
             'organization_id' => $organization, 'integration_client_id' => $clientId,
             'participant_id' => $participant, 'package_id' => $package,

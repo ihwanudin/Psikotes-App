@@ -19,6 +19,7 @@ use App\Models\TestPackage;
 use App\Security\RlsContextRunner;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use DomainException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -92,8 +93,10 @@ final readonly class IssueCheckoutHandoff
             || ! in_array($package->code, $source->allowed_assessment_packages, true)) {
             throw new IntegrationContractViolation('HANDOFF_NOT_ALLOWED');
         }
-        $packageItemIds = $package->items()->orderBy('id')->lockForUpdate()->pluck('id')->all();
-        if ($packageItemIds === []) {
+        $packageItems = $package->items()->orderBy('id')->lockForUpdate()->get(['id', 'test_type']);
+        try {
+            TestPackage::canonicalComposition($packageItems->pluck('test_type')->all());
+        } catch (DomainException) {
             throw new IntegrationContractViolation('HANDOFF_NOT_ALLOWED');
         }
         $attempt = AssessmentParticipant::query()
