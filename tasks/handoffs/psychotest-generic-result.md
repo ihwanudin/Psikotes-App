@@ -9,7 +9,7 @@ Foundation ini menyediakan satu proyektor murni untuk payload hasil yang kelak d
 Kontrak fail-closed:
 
 - Attempt wajib ULID, versi awal wajib 1, dan hasil wajib literal `FINALIZED`.
-- IQ wajib finite; engine version wajib identifier aman dan terbatas; timestamp wajib RFC 3339 valid secara kalender.
+- IQ wajib numeric, finite, dan lebih besar dari nol tanpa hardcode batas atas; engine version wajib identifier aman dan terbatas; timestamp wajib RFC 3339 valid secara kalender.
 - Replay versi yang sama hanya sah bila checksum sama.
 - Koreksi/revokasi wajib memakai versi tepat berikutnya dan mengubah isi semantik.
 - Versi stale, lompatan versi, pergantian attempt, envelope sebelumnya korup, field hilang/asing, dan payload non-final ditolak dengan kode error stabil tanpa nilai mentah.

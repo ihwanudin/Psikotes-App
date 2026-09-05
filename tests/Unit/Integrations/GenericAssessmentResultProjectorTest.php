@@ -140,6 +140,8 @@ final class GenericAssessmentResultProjectorTest extends TestCase
         yield 'attempt exceeds ULID range' => [['assessmentAttemptId' => 'Z1K4CJ5HQ9M6A7W8ZXN2T3V4B4']];
         yield 'boolean IQ' => [['iq' => true]];
         yield 'non finite IQ' => [['iq' => INF]];
+        yield 'zero IQ' => [['iq' => 0]];
+        yield 'negative IQ' => [['iq' => -1.25]];
         yield 'blank engine version' => [['engineVersion' => '']];
         yield 'unsafe engine version' => [['engineVersion' => "engine\nsecret"]];
         yield 'invalid completed timestamp' => [['completedAt' => 'tomorrow']];
