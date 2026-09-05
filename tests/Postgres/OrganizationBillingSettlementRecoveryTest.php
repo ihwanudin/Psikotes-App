@@ -141,7 +141,7 @@ final class OrganizationBillingSettlementRecoveryTest extends TestCase
                     'checkout_initial_funding_mode' => 'INVOICED_TO_ORGANIZATION',
                 ], JSON_THROW_ON_ERROR),
             ]);
-            DB::table('assessment_entitlements')->where('id', $fixture['entitlement'])
+            DB::table('assessment_entitlements')->where('assessment_participant_id', $fixture['attempt'])
                 ->update(['status' => 'locked', 'ready_at' => null]);
             DB::table('assessment_bill_items')->where('id', $fixture['item'])->update(['settled_at' => null]);
             $method = (int) DB::table('assessment_bills')->where('id', $fixture['bill'])->value('payment_method_id');
@@ -234,7 +234,7 @@ final class OrganizationBillingSettlementRecoveryTest extends TestCase
                 ->whereNull('settled_at')->count());
             $this->assertSame($items, DB::table('assessment_participants')->whereIn('id', $this->attempts)
                 ->where('assessment_status', 'PROVISIONED')->count());
-            $this->assertSame($items, DB::table('assessment_entitlements')->whereIn('assessment_participant_id', $this->attempts)
+            $this->assertSame($items * 2, DB::table('assessment_entitlements')->whereIn('assessment_participant_id', $this->attempts)
                 ->where('status', 'locked')->count());
             $this->assertSame(0, DB::table('audit_logs')->where('branch_id', $this->bill['organization'])->count());
             $this->assertSame(0, DB::table('outbox_messages')->where('topic', 'assessment.activation')
@@ -264,9 +264,9 @@ final class OrganizationBillingSettlementRecoveryTest extends TestCase
                 ->where('assessment_status', 'READY')->count());
             $this->assertSame($items - $activated, DB::table('assessment_participants')->whereIn('id', $this->attempts)
                 ->where('assessment_status', 'PROVISIONED')->count());
-            $this->assertSame($activated, DB::table('assessment_entitlements')->whereIn('assessment_participant_id', $this->attempts)
+            $this->assertSame($activated * 2, DB::table('assessment_entitlements')->whereIn('assessment_participant_id', $this->attempts)
                 ->where('status', 'ready')->count());
-            $this->assertSame($items - $activated, DB::table('assessment_entitlements')
+            $this->assertSame(($items - $activated) * 2, DB::table('assessment_entitlements')
                 ->whereIn('assessment_participant_id', $this->attempts)->where('status', 'locked')->count());
             $this->assertSame(1, DB::table('audit_logs')->where('branch_id', $this->bill['organization'])
                 ->where('action', 'assessment_bill.paid')->where('actor_type', $actor)->count());

@@ -200,7 +200,10 @@ final class CollectiveBillPreviewTest extends TestCase
             DB::table('packages')->where('id', $this->own['package'])->update(['amount' => 999]);
             $billed = AssessmentBillingFixture::create('organization', ['organization' => $this->own['organization']]);
             DB::table('packages')->where('id', $billed['package'])->update(['is_active' => true]);
-            DB::table('package_items')->insert(['package_id' => $billed['package'], 'test_type' => 'ist', 'sort_order' => 1]);
+            DB::table('package_items')->insert([
+                ['package_id' => $billed['package'], 'test_type' => 'ist', 'sort_order' => 1],
+                ['package_id' => $billed['package'], 'test_type' => 'dass21', 'sort_order' => 2],
+            ]);
             AssessmentCharge::findOrFail($billed['charge'])->update(['price_snapshot' => $this->snapshot($billed['package'])]);
             DB::table('assessment_bill_items')->insert(AssessmentBillingFixture::item($billed));
             DB::table('assessment_entitlements')->insert(AssessmentBillingFixture::entitlement($billed));
@@ -290,6 +293,9 @@ final class CollectiveBillPreviewTest extends TestCase
     private function fixture(string $label, ?int $organization = null): array
     {
         $fixture = Fixture::create($organization === null ? null : ['organization' => $organization]);
+        DB::table('package_items')->insert([
+            'package_id' => $fixture['package'], 'test_type' => 'dass21', 'sort_order' => 2,
+        ]);
         DB::table('participants')->where('id', $fixture['participant'])->update(['full_name' => 'Peserta '.$label]);
         DB::table('assessment_participants')->where('id', $fixture['attempt'])->update([
             'external_candidate_id' => 'CANDIDATE-'.$fixture['attempt'], 'assessment_round_id' => 'Synthetic period',

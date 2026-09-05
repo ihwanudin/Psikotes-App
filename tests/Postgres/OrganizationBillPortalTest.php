@@ -259,7 +259,10 @@ final class OrganizationBillPortalTest extends TestCase
     {
         $fixture = Fixture::create($payer, $organization === null ? null : ['organization' => $organization]);
         DB::table('packages')->where('id', $fixture['package'])->update(['name' => 'Paket snapshot '.$label, 'is_active' => true]);
-        DB::table('package_items')->insert(['package_id' => $fixture['package'], 'test_type' => 'ist', 'sort_order' => 1]);
+        DB::table('package_items')->insert([
+            ['package_id' => $fixture['package'], 'test_type' => 'ist', 'sort_order' => 1],
+            ['package_id' => $fixture['package'], 'test_type' => 'dass21', 'sort_order' => 2],
+        ]);
         $snapshots = app(AssessmentPriceSnapshot::class);
         $snapshot = $snapshots->capture(TestPackage::with('items')->findOrFail($fixture['package']), false);
         AssessmentCharge::findOrFail($fixture['charge'])->update(['price_snapshot' => $snapshot]);
