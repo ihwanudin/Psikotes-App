@@ -1,5 +1,65 @@
 # P12a-prep — portal cabang baca-saja
 
+## P17a-prep — harga nol, konsultasi, dan isolasi payer
+
+Tanggal 2026-09-05. Increment ini hanya menambah
+`ZeroPriceDassPayerIsolationTest`; tidak ada perubahan app, shared fixture,
+catalog/registration, route, config, schema atau frontend. Source canonical yang
+dipakai adalah `PreviewAssessmentBill`, `ReserveAssessmentBill`,
+`AssessmentPriceSnapshot` dan `ResolvePayerPolicy` dari snapshot worker. Hash
+dua action worker sama dengan approved isolated copy: Preview
+`27088E41199F7B26CC72A62FB1C99E953A3A6177AC5BEF3165D70828303C67A1` dan
+Reserve `2D8F938FABCB4FE4239DA3FDF360DAFA7234B4DEAC47F754765B4835B2FD5F28`.
+
+Fixture sintetis membuat base package Rp0 dan menyimpan addon konsultasi
+Rp50.000 di catalog server. Setiap package berisi tepat `dass21` dan `ist`, jadi
+DASS-21 adalah komponen paket bersama instrumen utama; tes tidak membuat package
+DASS mandiri. Input action tetap hanya attempt ID dan boolean konsultasi. Tes
+tidak menjumlah harga sendiri: nominal dibandingkan dengan snapshot yang
+dihasilkan `AssessmentPriceSnapshot` dan persisted charge/bill canonical.
+
+Bukti perilaku:
+
+- tanpa konsultasi, preview memberi base/total Rp0, satu item `free`, nol item
+  payable dan `canReserve=false`; reservation canonical menolak dengan
+  `FREE_CHECKOUT_REQUIRED`, kemudian bill, charge, bill item, audit dan outbox
+  semuanya tetap nol;
+- dengan konsultasi, snapshot server memberi `consultationAmount=50000` dan
+  total Rp50.000; organization reservation menyimpan tepat nilai snapshot itu,
+  `payer_type=organization`, dan tidak memiliki `payer_participant_id`;
+- preview organization dan self untuk attempt yang sama mempunyai total sama,
+  tetapi policy payer dan selection hash berbeda. Self reservation menyimpan
+  participant sendiri sebagai payer pada bill dan item;
+- participant dari organisasi lain dan organization lain tidak dapat
+  memproyeksikan attempt tersebut. Keduanya hanya mendapat
+  `ASSESSMENT_NOT_AVAILABLE`, dengan snapshot, policy, total dan hash null.
+  Nama participant, nama package dan kode package sentinel tidak muncul pada
+  respons penolakan; tidak ada bill item yang masuk ke organisasi asing.
+
+Run final pada approved copy
+`C:/Users/ThinkPad/AppData/Local/Temp/oncam-collective-composition-fbdb40c7b9ad42419225b7e83a62ece1`
+dengan testing SQLite `:memory:`, cache/storage copy terisolasi, fake bindings
+dan HTTP stray denial: **2 tes / 44 assertions**, nol error/failure/skip.
+Pint Laravel preset, PHP lint dan PHPStan level 7 terfokus lulus. SHA256 test
+worker dan copy identik:
+`F4FFB60F77F4259574E8474F04AE9F12964908F0E53A66E873A5A1407F355CEA`.
+JUnit final tersimpan sebagai `storage/zero-price-dass-final2.xml` di copy.
+
+Percobaan awal pertama berhenti sebelum bootstrap karena path cache absolut
+Windows digabungkan dengan base path Laravel; percobaan command berikutnya
+ditolak policy sebelum dieksekusi. Keduanya bukan RED aplikasi. Run pertama yang
+mencapai PHPUnit lulus 2/42; dua assertion komposisi payer ditambahkan, lalu run
+final lulus 2/44. Percobaan PHPStan tanpa env testing berhenti pada production
+configuration guard, dan run berikutnya menemukan type annotation fixture yang
+kurang; setelah normalisasi identifier fixture dan signature list diperbaiki,
+run PHPStan final lulus tanpa error.
+
+Ini bukti preview/reservation SQLite, bukan implementasi free-settlement atau
+invoice provider. Tes membuktikan jalur gratis tidak membuat assessment bill;
+tidak memanggil claim/invoice/finalizer. Belum membuktikan PG RLS/race, browser,
+aktivasi entitlement, atau UI payer. Tidak ada `.env`, DB aktif, outbound,
+deploy, push atau aktivasi production. Berhenti untuk review.
+
 ## P17a-prep — DASS wajib, settlement independen, proyeksi privat
 
 Tanggal 2026-09-05. Increment test-only di atas `3ea0960`, tanpa perubahan app,
