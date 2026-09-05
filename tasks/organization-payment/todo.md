@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P13b, core privat P14/P15, dan P17a selesai lokal. P16 memiliki halaman, consent wajib DASS-21, transport JSON, adapter HTTP, dan route canonical default OFF. P17a stabil pada lima proses 1/277 dan gabungan 11/1.744; fresh PostgreSQL disposable lulus 392/3.799. P17b concurrency/recovery berikutnya; browser P16/P17c serta P18 masih terbuka. Tidak deploy, tidak migrasi DB aktif, dan tidak menyalakan sumber/feature flag atau outbound nyata.**
+Status: **P1–P13b, core privat P14/P15, dan P17a–P17b selesai lokal. P16 memiliki halaman/confirmation default OFF; ADR-014 menetapkan boundary pembayaran peserta dan seam transaksional sedang dikerjakan. P17a stabil pada lima proses 1/277 dan gabungan 11/1.744. P17b fresh PostgreSQL disposable lulus 394/3.865, termasuk crash alokasi kelima dan retry webhook/manual. P17c browser serta P18 masih terbuka. Tidak deploy, tidak migrasi DB aktif, dan tidak menyalakan sumber/feature flag atau outbound nyata.**
 
 ## Gerbang revisi kolektif
 
@@ -673,13 +673,21 @@ atau aktivasi publik.
 
 **Acceptance:**
 
-- [ ] Dua koneksi/proses runtime nyata dengan barrier: overlapping batch, self vs batch, parallel webhook/manual, crash setelah item kelima dan claim issuance, replay/reorder. Bukan sequential test yang disebut concurrency.
+- [x] Dua koneksi/proses runtime nyata dengan barrier: overlapping batch, self vs batch, parallel webhook/manual, crash setelah item kelima dan claim issuance, replay/reorder. Bukan sequential test yang disebut concurrency.
 
 **Dependencies:** P17a. **Scope:** M.
 
 **Files likely touched:** `tests/Postgres/OrganizationBillingConcurrencyTest.php`, `tools/testing/organization-billing-race-worker.php`, `tools/testing/run-org-postgres.ps1`, `docs/ORGANIZATION_CHECKOUT_VALIDATION.md`.
 
 **Verification:** `powershell -NoProfile -ExecutionPolicy Bypass -File tools/testing/run-org-postgres.ps1`
+
+**Bukti:** tes existing membuktikan race dua proses dengan barrier dan observed
+PostgreSQL lock untuk reservation, self-vs-batch, claim/issuance, finalizer,
+manual review, dan activation. `OrganizationBillingSettlementRecoveryTest`
+menambah crash tepat save allocation kelima dari sepuluh untuk webhook serta
+manual, seluruh state rollback, lalu retry exact berhasil sekali. Root disposable
+394/3.865 lulus; cleanup sukses. Replay/reorder terminal diuji sebagai urutan
+event, bukan diklaim concurrency.
 
 ### Checkpoint setelah P17b
 

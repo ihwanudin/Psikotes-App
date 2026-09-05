@@ -1,5 +1,20 @@
 # Koordinasi task paralel organization-payment
 
+## P17b accepted; PostgreSQL settlement recovery verified — 2026-09-05
+
+Backend report `f28a32a` was reviewed and integrated as root `59edf65`; existing
+two-process tests already prove reservation overlap, self-versus-organization,
+claim/issuance permits, durable crash boundaries, and reconciliation fencing.
+Creating another reservation race test would have duplicated observed-lock proof.
+
+Portal `6c2b33c` was reviewed and integrated as `a93249f`. Two new PostgreSQL
+tests inject failure exactly while saving allocation five of ten for webhook and
+manual settlement, prove full rollback, then prove canonical retry settles and
+activates all ten exactly once. Root's full disposable suite passes **394 tests /
+3,865 assertions** with cleanup confirmed; PHP syntax, Pint, PHPStan 0 errors,
+and diff-check pass. P17b is accepted. P17c browser remains gated by the prior
+host-process ownership limitation; no browser or active service was started.
+
 ## P16 payment boundary preflight accepted as ADR-014 — 2026-09-05
 
 Backend report-only `ab20c8d` was reviewed and integrated as root `eaec1f1`.

@@ -1,7 +1,7 @@
 # Rencana: pembayaran lembaga dan checkout terintegrasi
 
 Tanggal: 2026-08-31
-Status: **P1–P13b, core privat P14/P15, dan P17a selesai lokal. Presentasi dan transport konfirmasi P16 telah terhubung ke route produksi yang tetap default OFF. P17a stabil pada lima proses 1/277 dan gabungan 11/1.744; fresh PostgreSQL disposable lulus 392/3.799. DASS-21 wajib sebagai bagian psikotes dengan consent terpisah dan RLS privat. P17b concurrency/recovery berikutnya; browser P16/P17c belum dijalankan. Tidak ada deploy, migrasi DB aktif, invoice/notifikasi nyata, atau cutover sumber/feature flag.**
+Status: **P1–P13b, core privat P14/P15, dan P17a–P17b selesai lokal. Presentasi/confirmation P16 tetap default OFF; ADR-014 menerima kontrak pembayaran peserta untuk implementasi bertahap. P17a stabil pada lima proses 1/277 dan gabungan 11/1.744. P17b fresh PostgreSQL disposable lulus 394/3.865, termasuk crash alokasi kelima dan retry webhook/manual. DASS-21 wajib dengan consent terpisah dan RLS privat. P17c browser masih tertahan gerbang ownership proses; P16 payment seam sedang berjalan. Tidak ada deploy, migrasi DB aktif, invoice/notifikasi nyata, atau cutover sumber/feature flag.**
 
 ## Perubahan lingkup: pembayaran kolektif cabang
 
