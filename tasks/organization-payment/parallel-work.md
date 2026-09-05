@@ -1,5 +1,19 @@
 # Koordinasi task paralel organization-payment
 
+## Mandatory-DASS HTTP and zero-price payer proofs accepted — 2026-09-05
+
+Frontend `202be08` was integrated as root `063c3b2`; root reran the new,
+summary, and session HTTP suites **41/41 tests, 1,973 assertions**, plus Pint,
+PHP lint, and diff-check. Portal `e689f34` was integrated as root `a5cbada`; root
+reran **2/2 tests, 44 assertions**, Pint, PHP lint, PHPStan 0 errors, and
+diff-check. Both are test/evidence increments without production wiring.
+
+Frontend now owns one HTTP presentation-only slice for self/organization,
+free+consultation, and payment states. Portal owns one P17a test-only slice for
+two trusted sources and two independent attempts. Backend remains active on the
+bounded P15 JSON mutation security boundary. These file sets are disjoint; do
+not send duplicate prompts or start browser/active-service verification.
+
 ## P17a DASS privacy accepted; P15 JSON boundary authorized — 2026-09-05
 
 Portal `2a349e2` was reviewed and integrated as root `14307d3`, preserving only
