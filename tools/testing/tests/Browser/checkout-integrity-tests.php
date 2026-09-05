@@ -3,7 +3,13 @@
 declare(strict_types=1);
 
 if (($argv[1] ?? '') === '--asset-tests') {
-    checkoutAssetTests();
+    checkoutAssetTests(true);
+
+    return;
+}
+
+if (($argv[1] ?? '') === '--asset-pure-tests') {
+    checkoutAssetTests(false);
 
     return;
 }
@@ -478,7 +484,7 @@ function checkoutInspectorTests(): void
     echo json_encode(['inspectorChecks' => $checks, 'seconds' => $measurements, 'passed' => true], JSON_THROW_ON_ERROR)."\n";
 }
 
-function checkoutAssetTests(): void
+function checkoutAssetTests(bool $includeOsJunctions): void
 {
     $assertions = 0;
     $assert = static function (bool $condition) use (&$assertions): void {
@@ -492,8 +498,15 @@ function checkoutAssetTests(): void
         $f->put('source/public/css/checkout-summary-v1.css', 'body { color: #123456; }');
         // Distinct synthetic one-pixel fixture, never the root's brand asset.
         $f->put('source/public/brand/oncam-logo-full-color.png', base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jF1sAAAAASUVORK5CYII='));
-        $manifest = json_decode(file_get_contents($f->directory.'/source-manifest.json'), true);
-        foreach (['public/css/checkout-summary-v1.css', 'public/brand/oncam-logo-full-color.png'] as $relative) {
+        $f->put('source/public/js/checkout-confirmation-v1.js', 'export const confirmation = "synthetic";');
+        $f->put('source/public/js/checkout-payment-v1.js', 'export const payment = "synthetic";');
+        $manifest = json_decode(file_get_contents($f->directory.'/source-manifest.json'), true, 512, JSON_THROW_ON_ERROR);
+        foreach ([
+            'public/css/checkout-summary-v1.css',
+            'public/brand/oncam-logo-full-color.png',
+            'public/js/checkout-confirmation-v1.js',
+            'public/js/checkout-payment-v1.js',
+        ] as $relative) {
             $manifest[$relative] = hash_file('sha256', $f->directory.'/source/'.$relative);
         }
         ksort($manifest);
@@ -508,16 +521,23 @@ function checkoutAssetTests(): void
         $caught = false;
         try {
             $call();
-        } catch (RuntimeException) {
+        } catch (Throwable) {
             $caught = true;
         }
         $assert($caught);
     };
-    foreach (['/css/checkout-summary-v1.css' => 'text/css; charset=UTF-8', '/brand/oncam-logo-full-color.png' => 'image/png'] as $uri => $mime) {
+    $assets = [
+        '/css/checkout-summary-v1.css' => 'text/css; charset=UTF-8',
+        '/brand/oncam-logo-full-color.png' => 'image/png',
+        '/js/checkout-confirmation-v1.js' => 'text/javascript; charset=UTF-8',
+        '/js/checkout-payment-v1.js' => 'text/javascript; charset=UTF-8',
+    ];
+    foreach ($assets as $uri => $mime) {
         $f = $fixture();
         $response = $call($f, $uri);
         $assert($response['status'] === 200);
         $assert($response['headers']['Content-Type'] === $mime);
+        $assert($response['headers']['Content-Length'] === (string) strlen($response['body']));
         $assert($response['body'] === file_get_contents($f->directory.'/source/public'.$uri));
         $assert($response['headers']['Cache-Control'] === 'no-store, private');
         $assert($response['headers']['X-Content-Type-Options'] === 'nosniff');
@@ -530,24 +550,42 @@ function checkoutAssetTests(): void
             $assert($result['status'] === 404 && $result['headers']['Content-Type'] === 'text/plain; charset=UTF-8');
             $assert($result['headers']['Cache-Control'] === 'no-store, private');
         }
-        foreach ([$uri.'?x=1', $uri.'?', $uri.'#fragment', str_replace('/', '//', $uri), str_replace('/', '/%2e%2e/', $uri), rawurlencode($uri), '/%2563ss/checkout-summary-v1.css', '/css/../brand/oncam-logo-full-color.png', '/brand/unknown.png', '/css/unknown.css', strtoupper($uri)] as $bad) {
+        foreach ([$uri.'?x=1', $uri.'?', $uri.'#fragment', str_replace('/', '//', $uri), str_replace('/', '/%2e%2e/', $uri), rawurlencode($uri), '/%2563ss/checkout-summary-v1.css', '/%256as/checkout-payment-v1.js', '/css/../brand/oncam-logo-full-color.png', '/js/../css/checkout-summary-v1.css', '/brand/unknown.png', '/css/unknown.css', '/js/unknown.js', strtoupper($uri)] as $bad) {
             $assert($call($f, $bad)['status'] === 404);
         }
-        foreach (['hash', 'missing', 'manifest', 'digest', 'mime', 'oversize'] as $mutation) {
+        foreach (['hash', 'missing', 'digest', 'manifest-malformed', 'entry-missing', 'entry-shape', 'empty', 'nul', 'utf8', 'html', 'oversize'] as $mutation) {
             $f = $fixture();
             $path = 'source/public'.$uri;
             if ($mutation === 'missing') {
                 unlink($f->directory.'/'.$path);
             } elseif ($mutation === 'digest') {
                 $f->digest = str_repeat('0', 64);
-            } elseif ($mutation === 'manifest') {
-                $f->put('source-manifest.json', '{}');
+            } elseif ($mutation === 'manifest-malformed') {
+                $f->put('source-manifest.json', '{');
+                $f->digest = hash_file('sha256', $f->directory.'/source-manifest.json');
+            } elseif (in_array($mutation, ['entry-missing', 'entry-shape'], true)) {
+                $map = json_decode(file_get_contents($f->directory.'/source-manifest.json'), true, 512, JSON_THROW_ON_ERROR);
+                if ($mutation === 'entry-missing') {
+                    unset($map['public'.$uri]);
+                } else {
+                    $map['public'.$uri] = true;
+                }
+                $f->put('source-manifest.json', json_encode($map, JSON_THROW_ON_ERROR));
+                $f->digest = hash_file('sha256', $f->directory.'/source-manifest.json');
             } else {
-                $f->put($path, $mutation === 'oversize' ? str_repeat('x', 262145) : ($mutation === 'mime' ? '<html>not an asset</html>' : 'changed'));
-                if (in_array($mutation, ['mime', 'oversize'], true)) {
-                    $map = json_decode(file_get_contents($f->directory.'/source-manifest.json'), true);
+                $bytes = match ($mutation) {
+                    'empty' => '',
+                    'nul' => "safe\0unsafe",
+                    'utf8' => "\xC3\x28",
+                    'html' => '  <html>not an asset</html>',
+                    'oversize' => str_repeat('x', 262145),
+                    default => 'changed',
+                };
+                $f->put($path, $bytes);
+                if (in_array($mutation, ['empty', 'nul', 'utf8', 'html', 'oversize'], true)) {
+                    $map = json_decode(file_get_contents($f->directory.'/source-manifest.json'), true, 512, JSON_THROW_ON_ERROR);
                     $map['public'.$uri] = hash_file('sha256', $f->directory.'/'.$path);
-                    $f->put('source-manifest.json', json_encode($map));
+                    $f->put('source-manifest.json', json_encode($map, JSON_THROW_ON_ERROR));
                     $f->digest = hash_file('sha256', $f->directory.'/source-manifest.json');
                 }
             }
@@ -558,39 +596,55 @@ function checkoutAssetTests(): void
     foreach (['/checkout', '/checkout?normal=1', '/__browser/login', '/unrelated'] as $uri) {
         $assert($call($f, $uri) === null);
     }
-    foreach (['/css/checkout-summary-v1.css', '/brand/oncam-logo-full-color.png'] as $uri) {
+    foreach (array_keys($assets) as $uri) {
         $f = $fixture();
         $assert(is_array(checkoutBrowserIntegrityLight($f->directory, $f->digest)));
         $f->put('source/public'.$uri, 'tamper');
         $denied(fn () => checkoutBrowserIntegrityLight($f->directory, $f->digest));
     }
-    // Junction targets stay entirely inside a newly-created synthetic fixture.
-    foreach (['source', 'source/public', 'source/public/css', 'source/public/brand'] as $relative) {
-        $f = $fixture();
-        $path = $f->directory.'/'.$relative;
-        $target = $f->directory.'/asset-detached';
-        rename($path, $target);
-        $quote = static fn ($value) => "'".str_replace("'", "''", $value)."'";
-        checkoutBrowserInspectCommand([getenv('SystemRoot').'/System32/WindowsPowerShell/v1.0/powershell.exe',
-            '-NoProfile', '-NonInteractive', '-Command',
-            'New-Item -ItemType Junction -Path '.$quote($path).' -Target '.$quote($target).' -ErrorAction Stop | Out-Null']);
-        try {
-            clearstatcache(true);
-            $uri = $relative === 'source/public/brand' ? '/brand/oncam-logo-full-color.png' : '/css/checkout-summary-v1.css';
-            $denied(fn () => $call($f, $uri));
-            $denied(fn () => checkoutBrowserIntegrityLight($f->directory, $f->digest));
-        } finally {
-            rmdir($path); // Nonrecursive removal of this junction itself only.
-            rename($target, $path);
-            clearstatcache(true);
+    if ($includeOsJunctions) {
+        // Junction targets stay entirely inside a newly-created synthetic fixture.
+        foreach (['source', 'source/public', 'source/public/css', 'source/public/brand', 'source/public/js'] as $relative) {
+            $f = $fixture();
+            $path = $f->directory.'/'.$relative;
+            $target = $f->directory.'/asset-detached';
+            rename($path, $target);
+            $quote = static fn ($value) => "'".str_replace("'", "''", $value)."'";
+            checkoutBrowserInspectCommand([getenv('SystemRoot').'/System32/WindowsPowerShell/v1.0/powershell.exe',
+                '-NoProfile', '-NonInteractive', '-Command',
+                'New-Item -ItemType Junction -Path '.$quote($path).' -Target '.$quote($target).' -ErrorAction Stop | Out-Null']);
+            try {
+                clearstatcache(true);
+                $uri = match ($relative) {
+                    'source/public/brand' => '/brand/oncam-logo-full-color.png',
+                    'source/public/js' => '/js/checkout-confirmation-v1.js',
+                    default => '/css/checkout-summary-v1.css',
+                };
+                $denied(fn () => $call($f, $uri));
+                $denied(fn () => checkoutBrowserIntegrityLight($f->directory, $f->digest));
+            } finally {
+                rmdir($path); // Nonrecursive removal of this junction itself only.
+                rename($target, $path);
+                clearstatcache(true);
+            }
         }
     }
     $assert(checkoutBrowserAssetFailure(500)['headers'] === [
         'Content-Type' => 'text/plain; charset=UTF-8', 'Cache-Control' => 'no-store, private',
         'X-Content-Type-Options' => 'nosniff', 'Referrer-Policy' => 'no-referrer',
     ]);
-    $assert(count(checkoutBrowserIntegrityCriticalFiles()) === 71);
-    echo json_encode(['assetAssertions' => $assertions, 'passed' => true, 'httpOrDatabase' => false], JSON_THROW_ON_ERROR)."\n";
+    $assert(count(checkoutBrowserIntegrityCriticalFiles()) === 73);
+    $expectedAssertions = $includeOsJunctions ? 220 : 210;
+    if ($assertions !== $expectedAssertions) {
+        throw new RuntimeException('Asset synthetic assertion count changed');
+    }
+    echo json_encode([
+        'assetAssertions' => $assertions,
+        'osJunctionsIncluded' => $includeOsJunctions,
+        'childProcessFree' => ! $includeOsJunctions,
+        'passed' => true,
+        'httpOrDatabase' => false,
+    ], JSON_THROW_ON_ERROR)."\n";
 }
 
 /** Static harness contract checks only: no autoloader, application, database, service, child process, or browser. */

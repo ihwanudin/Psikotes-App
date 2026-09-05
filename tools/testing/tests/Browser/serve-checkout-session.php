@@ -124,7 +124,9 @@ if (PHP_SAPI === 'cli' && ($argv[1] ?? '') === '--self-test') {
     exit;
 }
 
-if (PHP_SAPI === 'cli' && in_array($argv[1] ?? '', ['--integrity-tests', '--inspector-tests', '--asset-tests'], true)) {
+if (PHP_SAPI === 'cli' && in_array($argv[1] ?? '', [
+    '--integrity-tests', '--inspector-tests', '--asset-tests', '--asset-pure-tests', '--contract-tests',
+], true)) {
     require __DIR__.'/checkout-integrity-tests.php';
     exit;
 }
@@ -639,6 +641,7 @@ function checkoutBrowserIntegrityCriticalFiles(): array
         'app/Http/Controllers/CheckoutSessionController.php', 'resources/views/checkout/summary.blade.php',
         'resources/views/checkout/private.blade.php',
         'public/css/checkout-summary-v1.css', 'public/brand/oncam-logo-full-color.png',
+        'public/js/checkout-confirmation-v1.js', 'public/js/checkout-payment-v1.js',
         'app/Http/Middleware/AuthenticateCheckoutSession.php',
         'app/Http/Middleware/VerifyCheckoutSessionMutation.php',
         'app/Http/Middleware/ProtectCheckoutSessionHttpBoundary.php',
@@ -681,6 +684,8 @@ function checkoutBrowserAssetResponse(string $directory, string $digest, array $
     $map = [
         '/css/checkout-summary-v1.css' => ['public/css/checkout-summary-v1.css', 'text/css; charset=UTF-8'],
         '/brand/oncam-logo-full-color.png' => ['public/brand/oncam-logo-full-color.png', 'image/png'],
+        '/js/checkout-confirmation-v1.js' => ['public/js/checkout-confirmation-v1.js', 'text/javascript; charset=UTF-8'],
+        '/js/checkout-payment-v1.js' => ['public/js/checkout-payment-v1.js', 'text/javascript; charset=UTF-8'],
     ];
     $uri = $server['REQUEST_URI'] ?? '';
     if (! is_string($uri)) {
@@ -692,7 +697,7 @@ function checkoutBrowserAssetResponse(string $directory, string $digest, array $
         $candidate = rawurldecode($candidate);
     }
     $candidate = str_replace('\\', '/', $candidate);
-    if (! isset($map[$uri]) && preg_match('~(?:^|/)(?:css|brand)(?:/|$)~i', $candidate) !== 1) {
+    if (! isset($map[$uri]) && preg_match('~(?:^|/)(?:css|brand|js)(?:/|$)~i', $candidate) !== 1) {
         return null; // Existing application routing remains responsible for other URLs.
     }
     if (! isset($map[$uri]) || ($server['REQUEST_METHOD'] ?? '') !== 'GET') {
