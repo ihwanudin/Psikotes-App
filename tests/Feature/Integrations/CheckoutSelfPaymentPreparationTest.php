@@ -8,18 +8,25 @@ use App\Actions\Integrations\CheckoutSessionLifecycle;
 use App\Actions\Integrations\CoordinateCheckoutSelfPayment;
 use App\Actions\Integrations\EstablishCheckoutSession;
 use App\Actions\Integrations\IssueCheckoutHandoff;
+use App\Actions\Integrations\IssueCheckoutSelfPayment;
 use App\Actions\Integrations\PrepareCheckoutSelfPayment;
+use App\Actions\Payments\IssueAssessmentBillInvoice;
+use App\Contracts\PaymentProvider;
 use App\Data\Integrations\CheckoutHandoffIssueInput;
 use App\Data\Integrations\CheckoutSelfPaymentClaimResult;
+use App\Data\Integrations\CheckoutSelfPaymentIssuanceResult;
 use App\Data\Integrations\CheckoutSelfPaymentPreparation;
 use App\Data\Integrations\CheckoutSessionExchangeInput;
 use App\Data\Integrations\CheckoutSessionMutationCredentials;
+use App\Data\Payments\CreateInvoiceRequest;
+use App\Data\Payments\PaymentInvoice;
 use App\Enums\CheckoutHandoffIntent;
 use App\Models\AssessmentBill;
 use App\Models\CheckoutSession;
 use App\Models\IntegrationClient;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
+use App\Services\Payments\Exceptions\PaymentProviderException;
 use DomainException;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
@@ -434,6 +441,175 @@ final class CheckoutSelfPaymentPreparationTest extends OrganizationPaymentTestCa
         $this->assertSame(0, DB::transactionLevel());
     }
 
+    public function test_issuance_runs_outside_context_once_and_returns_only_pending_state(): void
+    {
+        $fixture = $this->established();
+        $provider = $this->createMock(PaymentProvider::class);
+        $invoice = null;
+        $provider->expects($this->once())->method('createInvoice')
+            ->with($this->callback(function (CreateInvoiceRequest $request) use (&$invoice): bool {
+                $this->assertNull(app(RlsContextRunner::class)->current());
+                $this->assertSame(0, DB::transactionLevel());
+                $invoice = new PaymentInvoice('provider-p16', 'https://payments.example.test/p16',
+                    $request->amount, $request->currency, $request->expiresAt);
+
+                return true;
+            }))->willReturnCallback(fn (): PaymentInvoice => $invoice);
+        $provider->expects($this->once())->method('lookupInvoice')
+            ->willReturnCallback(function (string $reference, int $amount, string $currency) use (&$invoice): PaymentInvoice {
+                $this->assertNull(app(RlsContextRunner::class)->current());
+                $this->assertSame(0, DB::transactionLevel());
+                $this->assertSame((string) DB::table('assessment_bills')->value('public_reference'), $reference);
+                $this->assertSame(100, $amount);
+                $this->assertSame('IDR', $currency);
+
+                return $invoice;
+            });
+        app()->instance(PaymentProvider::class, $provider);
+
+        $result = $this->issue($fixture, false);
+        $this->assertInstanceOf(CheckoutSelfPaymentIssuanceResult::class, $result);
+        $this->assertSame('pending', $result->state);
+        $this->assertSame(['state'], array_keys(get_object_vars($result)));
+        $this->assertDatabaseHas('assessment_bills', ['status' => 'pending', 'gateway_ref' => 'provider-p16']);
+        $this->assertDatabaseHas('outbox_messages', ['status' => 'processed', 'attempts' => 1]);
+        $this->assertDatabaseCount('assessment_bills', 1);
+        $this->assertDatabaseCount('outbox_messages', 1);
+        $this->assertSame(1, DB::table('audit_logs')->where('action', 'assessment_bill.invoice_issued')->count());
+        $this->assertNull(app(RlsContextRunner::class)->current());
+        $this->assertSame(0, DB::transactionLevel());
+    }
+
+    public function test_exact_pending_replay_never_calls_provider_again(): void
+    {
+        $pending = $this->established();
+        app()->instance(PaymentProvider::class, $this->successfulProvider());
+        $this->assertSame('pending', $this->issue($pending, false)->state);
+        $never = $this->createMock(PaymentProvider::class);
+        $never->expects($this->never())->method('createInvoice');
+        $never->expects($this->never())->method('lookupInvoice');
+        app()->instance(PaymentProvider::class, $never);
+        $this->assertSame('pending', $this->issue($pending, false)->state);
+    }
+
+    public function test_paid_state_never_calls_provider(): void
+    {
+        $paid = $this->established();
+        $never = $this->createMock(PaymentProvider::class);
+        $never->expects($this->never())->method('createInvoice');
+        $never->expects($this->never())->method('lookupInvoice');
+        app()->instance(PaymentProvider::class, $never);
+        $prepared = $this->prepare($paid, false);
+        $bill = AssessmentBill::query()->findOrFail($prepared->billId);
+        $paidAt = now()->startOfSecond();
+        $bill->update([
+            'status' => 'paid', 'gateway_ref' => 'provider-paid',
+            'invoice_url' => 'https://payments.example.test/paid', 'expires_at' => now()->addDay(),
+            'paid_at' => $paidAt,
+        ]);
+        DB::table('assessment_bill_items')->where('bill_id', $bill->id)->update(['settled_at' => $paidAt]);
+        DB::table('audit_logs')->insert([
+            'branch_id' => $paid['organization'], 'actor_type' => 'system', 'actor_id' => 'payment-provider',
+            'action' => 'assessment_bill.paid', 'subject_type' => AssessmentBill::class,
+            'subject_id' => (string) $bill->id, 'context' => '{}', 'occurred_at' => $paidAt,
+            'expires_at' => $paidAt->copy()->addYears(2),
+        ]);
+        $this->assertSame('paid', $this->issue($paid, false)->state);
+        $this->assertDatabaseCount('outbox_messages', 0);
+    }
+
+    public function test_create_exception_with_exact_lookup_still_returns_pending(): void
+    {
+        $fixture = $this->established();
+        $provider = $this->createMock(PaymentProvider::class);
+        $provider->expects($this->once())->method('createInvoice')
+            ->willThrowException(new PaymentProviderException('synthetic create outcome unknown'));
+        $provider->expects($this->once())->method('lookupInvoice')
+            ->willReturnCallback(fn (string $reference, int $amount, string $currency): PaymentInvoice => new PaymentInvoice(
+                'provider-recovered', 'https://payments.example.test/recovered', $amount, $currency, now()->addDay(),
+            ));
+        app()->instance(PaymentProvider::class, $provider);
+
+        $this->assertSame('pending', $this->issue($fixture, false)->state);
+        $this->assertDatabaseHas('assessment_bills', ['status' => 'pending', 'gateway_ref' => 'provider-recovered']);
+    }
+
+    #[DataProvider('unknownProviderOutcomes')]
+    public function test_unknown_provider_outcome_is_generic_and_retry_never_creates_again(string $outcome): void
+    {
+        $fixture = $this->established();
+        $provider = $this->createMock(PaymentProvider::class);
+        $provider->expects($this->once())->method('createInvoice')
+            ->willReturnCallback(fn (CreateInvoiceRequest $request): PaymentInvoice => new PaymentInvoice(
+                'provider-created', 'https://payments.example.test/created',
+                $request->amount, $request->currency, $request->expiresAt,
+            ));
+        $lookup = $provider->expects($this->once())->method('lookupInvoice');
+        if ($outcome === 'mismatch') {
+            $lookup->willReturnCallback(fn (string $reference, int $amount, string $currency): PaymentInvoice => new PaymentInvoice(
+                'provider-mismatch', 'https://payments.example.test/mismatch', $amount, $currency, now()->addDay(),
+            ));
+        } else {
+            $lookup->willThrowException(new PaymentProviderException('synthetic lookup unknown'));
+        }
+        app()->instance(PaymentProvider::class, $provider);
+        $this->assertUnavailable(fn () => $this->issue($fixture, false));
+        $this->assertDatabaseHas('assessment_bills', ['status' => 'unknown']);
+        $this->assertDatabaseHas('outbox_messages', [
+            'status' => 'failed', 'attempts' => 1, 'last_error' => 'INVOICE_OUTCOME_UNKNOWN',
+        ]);
+
+        $never = $this->createMock(PaymentProvider::class);
+        $never->expects($this->never())->method('createInvoice');
+        $never->expects($this->never())->method('lookupInvoice');
+        app()->instance(PaymentProvider::class, $never);
+        $this->assertUnavailable(fn () => $this->issue($fixture, false));
+        $this->assertDatabaseCount('assessment_bills', 1);
+        $this->assertDatabaseCount('outbox_messages', 1);
+    }
+
+    public static function unknownProviderOutcomes(): iterable
+    {
+        yield ['mismatch'];
+        yield ['lookup-error'];
+    }
+
+    public function test_consumed_permit_and_stale_session_fail_before_any_provider_call(): void
+    {
+        $consumed = $this->established();
+        $claim = $this->coordinate($consumed, false);
+        $this->assertNotNull(app(IssueAssessmentBillInvoice::class)->consume($claim->messageId));
+        $never = $this->createMock(PaymentProvider::class);
+        $never->expects($this->never())->method('createInvoice');
+        $never->expects($this->never())->method('lookupInvoice');
+        app()->instance(PaymentProvider::class, $never);
+        $this->assertUnavailable(fn () => $this->issue($consumed, false));
+
+        $stale = $this->established();
+        app(CheckoutSessionLifecycle::class)->hydrateWithCsrfDelivery($this->credentials($stale));
+        $this->changeAuthority('session', $stale);
+        $this->assertUnavailable(fn () => $this->issue($stale, false));
+        $this->assertSame(1, DB::table('assessment_bills')->count());
+    }
+
+    public function test_issuance_orchestrator_rejects_ambient_context_or_transaction(): void
+    {
+        $fixture = $this->established();
+        foreach ([
+            fn () => app(RlsContextRunner::class)->runAsService(fn () => $this->issue($fixture, false)),
+            fn () => DB::transaction(fn () => $this->issue($fixture, false)),
+        ] as $operation) {
+            try {
+                $operation();
+                $this->fail('Ambient issuance orchestration was accepted.');
+            } catch (\LogicException $exception) {
+                $this->assertSame('Checkout payment issuance owns an empty context and transaction.', $exception->getMessage());
+            }
+        }
+        $this->assertDatabaseCount('assessment_bills', 0);
+        $this->assertDatabaseCount('outbox_messages', 0);
+    }
+
     /** @param array<string, mixed> $fixture */
     private function prepare(array $fixture, bool $consultation): CheckoutSelfPaymentPreparation
     {
@@ -444,6 +620,29 @@ final class CheckoutSelfPaymentPreparationTest extends OrganizationPaymentTestCa
     private function coordinate(array $fixture, bool $consultation): CheckoutSelfPaymentClaimResult
     {
         return app(CoordinateCheckoutSelfPayment::class)->execute($this->credentials($fixture), $consultation);
+    }
+
+    /** @param array<string, mixed> $fixture */
+    private function issue(array $fixture, bool $consultation): CheckoutSelfPaymentIssuanceResult
+    {
+        return app(IssueCheckoutSelfPayment::class)->execute($this->credentials($fixture), $consultation);
+    }
+
+    private function successfulProvider(): PaymentProvider
+    {
+        $provider = $this->createMock(PaymentProvider::class);
+        $invoice = null;
+        $provider->expects($this->once())->method('createInvoice')
+            ->willReturnCallback(function (CreateInvoiceRequest $request) use (&$invoice): PaymentInvoice {
+                return $invoice = new PaymentInvoice('provider-success', 'https://payments.example.test/success',
+                    $request->amount, $request->currency, $request->expiresAt);
+            });
+        $provider->expects($this->once())->method('lookupInvoice')
+            ->willReturnCallback(function () use (&$invoice): PaymentInvoice {
+                return $invoice;
+            });
+
+        return $provider;
     }
 
     private function assertUnavailable(callable $operation): void
