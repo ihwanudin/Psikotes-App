@@ -6,9 +6,9 @@ Status: code/test-only persistence primitive complete; supervisor integration an
 ## Delivered boundary
 
 `tools/testing/tests/Browser/checkout-anchor-store.py` provides an importable
-`CheckoutAnchorStore`. Its bound `publish` method is suitable for the supervisor's
-coordinator-owned publisher callback, but this increment does not wire or activate
-that callback.
+`CheckoutAnchorStore`; its persistence API is consumed through the separately
+reviewed coordinator adapter because a bound `publish` method alone does not satisfy
+the supervisor's callable-plus-raw-`load()` protocol.
 
 The caller must explicitly supply an existing coordinator directory, existing
 candidate run directory, canonical checkout session, and exact configuration
