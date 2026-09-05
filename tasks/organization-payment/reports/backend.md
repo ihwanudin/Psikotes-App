@@ -5217,3 +5217,77 @@ routes, UI and schema are unchanged. No browser or PostgreSQL run is claimed for
 this adapter-only increment; prior transaction and RLS evidence is not recounted.
 No active `.env`/DB, source/gate enablement, provider/notifier delivery, deploy or
 push occurred. STOP for coordinator review before production wiring or P17.
+
+## P14/P16 production routing, default OFF — 2026-09-05
+
+This increment registers the five reviewed canonical endpoints while keeping the
+entire boundary inert by committed configuration: POST `/checkout/session`, GET
+`/checkout`, POST `/checkout/logout`, GET `/checkout/unavailable`, and POST
+`/checkout/confirm`. Every route excludes Laravel's `web` group so encrypted
+session cookies, global CSRF, authenticated user state and Inertia cannot consume
+or authorize the dedicated raw checkout credentials. The first route middleware
+is `ProtectCheckoutSessionHttpBoundary`; the existing named IP limiter follows.
+Logout then uses canonical session authentication and the legacy form mutation
+boundary, while confirmation uses canonical authentication and the strict JSON
+mutation boundary. Summary retains its accepted single lifecycle read instead of
+performing a second authentication transaction.
+
+The named limiter is registered against `CheckoutSessionHttpContract::rateLimit`
+in the route file. Default configuration keeps `checkout_session.enabled`,
+`confirmation.enabled`, and `confirmation.writer_enabled` false; the confirmation
+body limit is the accepted 4,096 bytes. With those defaults, all five discoverable
+routes return the same private 404 at the outer boundary before a controller,
+validator, database read or writer can run. No environment toggle was introduced.
+
+`CheckoutConfirmationFormPresenter` receives only the already-authorized P14
+summary. It also requires the current enabled contract, bounded JSON setting,
+writer switch, exact summary version, legal-review false, both consent states
+`required`, and exact current server documents. It validates the complete ordered
+seven-field profile projection and emits descriptors only for missing required
+fields; optional email and locked values are excluded. Gender and intended-field
+options are fixed server allowlists matching P15. The view contract contains only
+the relative action, missing profile controls, and current consent version/hash.
+It carries no organization/client/participant/attempt/payer/amount/payment/
+identity/batch/clinical/entitlement fact.
+
+If one consent is already accepted while the other remains required, the presenter
+returns `null`. The accepted frontend view and P15 payload currently submit both
+consents as one confirmation; this explicit read-only result avoids inventing a
+new acceptance or widening the P15 writer. A fully accepted replay likewise gets
+no form after the successful confirmation. Legal review pending, malformed/stale
+summary fields or config also produce no form.
+
+TDD and actual isolated evidence:
+- RED: 4 production-wiring tests failed (16 assertions reached): all route names
+  were missing and enabled-memory requests returned 404.
+- Initial GREEN: 4 tests / 183 assertions. The first presenter run intentionally
+  remained read-only because the synthetic legal-review flag used its default;
+  setting only the in-memory test flag false exercised the current-document path.
+- Final focused: 5 tests / 211 assertions. It covers exact names/middleware and
+  `web` exclusion, five default-off private 404s, real exchange cookies, summary
+  injection, server option allowlists, frontend-compatible strict JSON POST,
+  exact replay, post-confirm form removal, logout, partial-consent read-only,
+  hostile origin, query, unrelated Laravel role, foreign session and no billing/
+  entitlement/outbox side effects.
+- Related P14/P15/P16 regression: 66 tests / 2,389 assertions across production
+  wiring, session HTTP, summary HTTP, confirmation HTTP and internal consent tests;
+  all passed. The three old test-only route suites now explicitly verify that the
+  production defaults exist before adding their isolated override routes.
+- PHP syntax passed for all affected PHP files. Focused Pint passed after import
+  cleanup. Full PHPStan level 7 reported 0 errors; diff-check is recorded at commit.
+
+This worker snapshot predates frontend root `c5bf2a4`, so the production GET test
+asserts the real controller's `confirmationForm` view data rather than claiming a
+new Blade/asset change. The accepted root view/module consumes that exact contract;
+no Blade, CSS or JavaScript is part of this lane. The shared config file is an
+untracked baseline file in this worker and is therefore not staged wholesale. Its
+post-patch SHA-256 is
+`4DD79D2A8B8B10440A98CAFC2AFE99F9725D1E840B1CBA453020BE4AAE4F5CC9`;
+the coordinator must apply only the additive `http.confirmation` block described
+above against root `3dea18e`.
+
+No P15 action/request/DTO, schema, portal, provider, notifier, active `.env` or
+database was changed or invoked. No browser or PostgreSQL run is claimed because
+the lane changes HTTP composition only. Feature flags and writer remain OFF; there
+was no deploy, push or source/gate activation. STOP for coordinator review before
+any feature enablement or P17 acceptance.

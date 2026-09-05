@@ -38,7 +38,7 @@ use Tests\OrganizationPaymentTestCase;
 
 final class CheckoutSessionHttpTest extends OrganizationPaymentTestCase
 {
-    private bool $routesWereAbsent;
+    private bool $routesWereRegistered;
 
     protected function setUp(): void
     {
@@ -64,10 +64,9 @@ final class CheckoutSessionHttpTest extends OrganizationPaymentTestCase
                 'exchange_per_minute' => 10, 'hydrate_per_minute' => 60, 'mutation_per_minute' => 10,
             ],
         ]);
-        $this->routesWereAbsent = collect(Route::getRoutes()->getRoutes())
-            ->every(fn ($route): bool => ! in_array($route->uri(), [
-                'checkout/session', 'checkout', 'checkout/logout', 'checkout/unavailable',
-            ], true));
+        $this->routesWereRegistered = collect(['checkout.session.exchange', 'checkout.summary',
+            'checkout.logout', 'checkout.unavailable', 'checkout.confirm'])
+            ->every(fn (string $name): bool => Route::getRoutes()->getByName($name) !== null);
         RateLimiter::for(CheckoutSessionHttpContract::LIMITER,
             fn (Request $request) => app(CheckoutSessionHttpContract::class)->rateLimit($request));
         Route::post('/checkout/session', [CheckoutSessionController::class, 'exchange'])
@@ -90,9 +89,9 @@ final class CheckoutSessionHttpTest extends OrganizationPaymentTestCase
         Route::getRoutes()->refreshActionLookups();
     }
 
-    public function test_routes_are_test_only_and_middleware_stack_excludes_global_web_authority(): void
+    public function test_isolated_adapter_routes_override_registered_defaults_without_global_web_authority(): void
     {
-        $this->assertTrue($this->routesWereAbsent, 'Checkout routes were already discoverable before test registration.');
+        $this->assertTrue($this->routesWereRegistered, 'Default-off production checkout routes must be registered.');
         $this->assertTrue(app(CheckoutSessionHttpContract::class)->enabled());
         $probe = Request::create('/checkout/session', 'POST', server: $this->server());
         $this->assertSame('https://psikotes.oncam.id', $probe->getSchemeAndHttpHost());

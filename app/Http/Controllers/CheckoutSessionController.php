@@ -12,11 +12,12 @@ use App\Data\Integrations\CheckoutSessionExchangeInput;
 use App\Data\Integrations\CheckoutSessionMutationCredentials;
 use App\Data\Integrations\CheckoutSessionPrincipal;
 use App\Http\Requests\ExchangeCheckoutSessionRequest;
+use App\Services\Integrations\CheckoutConfirmationFormPresenter;
 use App\Services\Integrations\CheckoutSessionHttpContract;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
-/** Real P14b1 adapter; deliberately not registered by production routes. */
+/** Private checkout adapter; production routes remain inert behind default-off configuration. */
 final class CheckoutSessionController extends Controller
 {
     public function exchange(ExchangeCheckoutSessionRequest $request, EstablishCheckoutSession $establish,
@@ -52,7 +53,7 @@ final class CheckoutSessionController extends Controller
     }
 
     public function summary(Request $request, CheckoutSessionLifecycle $lifecycle,
-        CheckoutSessionHttpContract $contract): Response
+        CheckoutSessionHttpContract $contract, CheckoutConfirmationFormPresenter $confirmation): Response
     {
         if ($request->query->all() !== []) {
             return $contract->clear(redirect('/checkout/unavailable', 303));
@@ -74,6 +75,7 @@ final class CheckoutSessionController extends Controller
 
         return response()->view('checkout.summary', [
             'summary' => $summary, 'summaryJson' => $summaryJson, 'checkoutCsrf' => $csrf,
+            'confirmationForm' => $confirmation->present($summary),
         ]);
     }
 

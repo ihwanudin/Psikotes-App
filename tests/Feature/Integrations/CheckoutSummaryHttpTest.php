@@ -62,7 +62,7 @@ final class CheckoutSummaryHttpTest extends OrganizationPaymentTestCase
             'terminal_retention_days' => 30, 'http' => ['destination_origin' => 'https://psikotes.oncam.id',
                 'trusted_exchange_origins' => ['https://seleksi.beasiswajepang.id', 'https://seleksi.serbaindo.com'],
                 'exchange_per_minute' => 10, 'hydrate_per_minute' => 60, 'mutation_per_minute' => 10]]);
-        $this->assertFalse(collect(Route::getRoutes())->contains(fn ($route) => $route->uri() === 'checkout'));
+        $this->assertNotNull(Route::getRoutes()->getByName('checkout.summary'));
         RateLimiter::for(Contract::LIMITER, fn (Request $request) => app(Contract::class)->rateLimit($request));
         $boundary = [ProtectCheckoutSessionHttpBoundary::class, 'throttle:'.Contract::LIMITER];
         Route::post('/checkout/session', [CheckoutSessionController::class, 'exchange'])->middleware($boundary);

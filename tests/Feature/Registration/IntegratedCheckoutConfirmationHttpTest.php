@@ -71,9 +71,9 @@ final class IntegratedCheckoutConfirmationHttpTest extends OrganizationPaymentTe
         RateLimiter::for(CheckoutSessionHttpContract::LIMITER,
             fn (Request $request) => app(CheckoutSessionHttpContract::class)->rateLimit($request));
 
-        $this->assertFalse(collect(Route::getRoutes())->contains(
+        $this->assertTrue(collect(Route::getRoutes())->contains(
             fn ($route): bool => $route->uri() === ltrim(self::PATH, '/') && in_array('POST', $route->methods(), true),
-        ), 'The confirmation route must remain absent from production routing.');
+        ), 'The default-off confirmation route must be present in production routing.');
         Route::post(self::PATH, IntegratedCheckoutConfirmationController::class)
             ->name('test.checkout.confirm')
             ->middleware([

@@ -6,8 +6,10 @@ use App\Http\Controllers\Admin\AssessmentParticipantExportController;
 use App\Http\Controllers\Admin\IdentityEvidenceAccessController;
 use App\Http\Controllers\Admin\ManualPaymentProofAccessController;
 use App\Http\Controllers\AssessmentInvitationController;
+use App\Http\Controllers\CheckoutSessionController;
 use App\Http\Controllers\HealthCheckController;
 use App\Http\Controllers\IdentityEvidenceUploadController;
+use App\Http\Controllers\IntegratedCheckoutConfirmationController;
 use App\Http\Controllers\ManualPaymentProofUploadController;
 use App\Http\Controllers\ParticipantRegistrationController;
 use App\Http\Controllers\ReferralController;
@@ -15,8 +17,35 @@ use App\Http\Controllers\RegistrationOrderStatusController;
 use App\Http\Controllers\SelectionLaunchController;
 use App\Http\Controllers\XenditWebhookController;
 use App\Http\Middleware\ApplyRlsContext;
+use App\Http\Middleware\AuthenticateCheckoutSession;
+use App\Http\Middleware\ProtectCheckoutSessionHttpBoundary;
+use App\Http\Middleware\VerifyCheckoutSessionJsonMutation;
+use App\Http\Middleware\VerifyCheckoutSessionMutation;
+use App\Services\Integrations\CheckoutSessionHttpContract;
 use Filament\Http\Middleware\Authenticate as AuthenticateFilament;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
+
+RateLimiter::for(CheckoutSessionHttpContract::LIMITER,
+    fn (Request $request) => app(CheckoutSessionHttpContract::class)->rateLimit($request));
+
+$checkoutBoundary = [
+    ProtectCheckoutSessionHttpBoundary::class,
+    'throttle:'.CheckoutSessionHttpContract::LIMITER,
+];
+Route::post('/checkout/session', [CheckoutSessionController::class, 'exchange'])
+    ->withoutMiddleware('web')->middleware($checkoutBoundary)->name('checkout.session.exchange');
+Route::get('/checkout', [CheckoutSessionController::class, 'summary'])
+    ->withoutMiddleware('web')->middleware($checkoutBoundary)->name('checkout.summary');
+Route::post('/checkout/logout', [CheckoutSessionController::class, 'logout'])
+    ->withoutMiddleware('web')->middleware([...$checkoutBoundary,
+        AuthenticateCheckoutSession::class, VerifyCheckoutSessionMutation::class])->name('checkout.logout');
+Route::get('/checkout/unavailable', [CheckoutSessionController::class, 'unavailable'])
+    ->withoutMiddleware('web')->middleware($checkoutBoundary)->name('checkout.unavailable');
+Route::post('/checkout/confirm', IntegratedCheckoutConfirmationController::class)
+    ->withoutMiddleware('web')->middleware([...$checkoutBoundary,
+        AuthenticateCheckoutSession::class, VerifyCheckoutSessionJsonMutation::class])->name('checkout.confirm');
 
 Route::get('/health', HealthCheckController::class)->name('health');
 
