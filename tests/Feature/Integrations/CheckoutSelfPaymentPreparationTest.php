@@ -643,7 +643,7 @@ final class CheckoutSelfPaymentPreparationTest extends OrganizationPaymentTestCa
             'catalog-price' => DB::table('packages')->where('id', $fixture['package'])->update(['amount' => 101]),
             'catalog-name' => DB::table('packages')->where('id', $fixture['package'])->update(['name' => 'Changed']),
             'catalog-items' => DB::table('package_items')->insert([
-                'package_id' => $fixture['package'], 'test_type' => 'papi', 'sort_order' => 2,
+                'package_id' => $fixture['package'], 'test_type' => 'papi', 'sort_order' => 3,
             ]),
             'policy-list' => $this->broadenPolicy($fixture),
             'policy-lock' => DB::table('integration_sources')->where('id', $fixture['source'])
@@ -948,7 +948,10 @@ final class CheckoutSelfPaymentPreparationTest extends OrganizationPaymentTestCa
             'code' => $packageCode, 'name' => 'Synthetic', 'amount' => $amount,
             'consultation_amount' => 30, 'currency' => 'IDR', 'is_active' => true,
         ]);
-        DB::table('package_items')->insert(['package_id' => $package, 'test_type' => 'ist', 'sort_order' => 1]);
+        DB::table('package_items')->insert([
+            ['package_id' => $package, 'test_type' => 'ist', 'sort_order' => 1],
+            ['package_id' => $package, 'test_type' => 'dass21', 'sort_order' => 2],
+        ]);
         $attemptPublicId = (string) Str::ulid();
         $attempt = DB::table('assessment_participants')->insertGetId([
             'organization_id' => $organization, 'integration_client_id' => $client,

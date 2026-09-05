@@ -31,7 +31,7 @@ final class AssessmentPriceSnapshot
         if ($base > PHP_INT_MAX - $addon) {
             throw new DomainException('PRICE_OVERFLOW');
         }
-        $types = $package->items->pluck('test_type')->sort()->values()->all();
+        $types = TestPackage::canonicalComposition($package->items->pluck('test_type')->values()->all());
         $snapshot = ['version' => 1, 'packageId' => $package->id, 'packageCode' => $package->code,
             'packageName' => $package->name, 'testTypes' => $types, 'baseAmount' => $base,
             'consultationRequested' => $consultation, 'consultationAmount' => $addon,
@@ -78,14 +78,12 @@ final class AssessmentPriceSnapshot
             || ! is_bool($snapshot['consultationRequested']) || ! is_array($types) || ! array_is_list($types) || $types === []) {
             throw new DomainException('PRICE_SNAPSHOT_INVALID');
         }
-        foreach ($types as $type) {
-            if (! in_array($type, ['ist', 'papi', 'rmib', 'kraepelin', 'dass21'], true)) {
-                throw new DomainException('PRICE_SNAPSHOT_INVALID');
-            }
+        try {
+            $canonicalTypes = TestPackage::canonicalComposition($types);
+        } catch (DomainException) {
+            throw new DomainException('PRICE_SNAPSHOT_INVALID');
         }
-        $sorted = array_values(array_unique($types));
-        sort($sorted);
-        if ($sorted !== $types || $snapshot['baseAmount'] > PHP_INT_MAX - $snapshot['consultationAmount']
+        if ($canonicalTypes !== $types || $snapshot['baseAmount'] > PHP_INT_MAX - $snapshot['consultationAmount']
             || $snapshot['amount'] !== $snapshot['baseAmount'] + $snapshot['consultationAmount']
             || ($snapshot['consultationRequested'] ? $snapshot['consultationAmount'] <= 0 : $snapshot['consultationAmount'] !== 0)) {
             throw new DomainException('PRICE_SNAPSHOT_INVALID');

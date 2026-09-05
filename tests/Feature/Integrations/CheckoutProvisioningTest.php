@@ -49,6 +49,7 @@ final class CheckoutProvisioningTest extends OrganizationPaymentTestCase
         $this->package = TestPackage::create(['code' => 'P9_PACKAGE', 'name' => 'P9', 'amount' => 1000,
             'currency' => 'IDR', 'is_active' => true]);
         $this->package->items()->create(['test_type' => 'ist', 'sort_order' => 1]);
+        $this->package->items()->create(['test_type' => 'dass21', 'sort_order' => 2]);
         config()->set('assessment_integration.checkout.enabled', true);
     }
 
@@ -264,6 +265,7 @@ final class CheckoutProvisioningTest extends OrganizationPaymentTestCase
         $package->code = 'SECOND';
         $package->save();
         $package->items()->create(['test_type' => 'ist', 'sort_order' => 1]);
+        $package->items()->create(['test_type' => 'dass21', 'sort_order' => 2]);
         $this->source->update(['allowed_assessment_packages' => ['P9_PACKAGE', 'SECOND']]);
         foreach ([['sourceSystem' => 'SECOND'], ['assessmentPackageCode' => 'SECOND']] as $override) {
             try {
@@ -507,6 +509,30 @@ final class CheckoutProvisioningTest extends OrganizationPaymentTestCase
             $this->assertDatabaseCount('participants', 0);
             $this->assertDatabaseCount('assessment_participants', 0);
         }
+    }
+
+    #[DataProvider('invalidPackageCompositions')]
+    public function test_invalid_package_composition_cannot_provision(array $types): void
+    {
+        $this->package->items()->delete();
+        foreach ($types as $index => $type) {
+            $this->package->items()->create(['test_type' => $type, 'sort_order' => $index + 1]);
+        }
+
+        try {
+            $this->provision();
+            $this->fail('Package composition rejection expected');
+        } catch (IntegrationContractViolation $exception) {
+            $this->assertSame('PACKAGE_NOT_ALLOWED', $exception->errorCode);
+            $this->assertDatabaseCount('participants', 0);
+            $this->assertDatabaseCount('assessment_participants', 0);
+        }
+    }
+
+    public static function invalidPackageCompositions(): iterable
+    {
+        yield 'missing DASS-21' => [['ist']];
+        yield 'DASS-21 only' => [['dass21']];
     }
 
     public static function badScopes(): iterable

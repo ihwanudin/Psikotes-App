@@ -7,17 +7,17 @@ namespace App\Actions\Integrations;
 use App\Models\Branch;
 use App\Models\Participant;
 use App\Models\SelectionParticipant;
+use App\Models\TestPackage;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
 use App\Services\Integrations\CheckoutContractAdapter;
 use App\Services\TestNumber\MonthlyTestNumberIssuer;
+use DomainException;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
 final readonly class ProvisionSelectionParticipant
 {
-    private const array SUPPORTED_TEST_TYPES = ['ist', 'papi', 'rmib', 'kraepelin', 'dass21'];
-
     private const array INTENDED_FIELDS = ['KAIGO', 'KENSETSU', 'NOUGYOU', 'SEIZOU', 'GAISHOKU', 'UMUM'];
 
     public function __construct(
@@ -85,12 +85,19 @@ final readonly class ProvisionSelectionParticipant
             ? Branch::query()->where('ref_code', $branchRef)->where('is_active', true)->sharedLock()->first()
             : null;
         $intendedField = strtoupper((string) config('selection_integration.intended_field', 'UMUM'));
-        $testTypes = array_values(array_unique((array) config('selection_integration.test_types', ['ist'])));
+        $configuredTestTypes = config('selection_integration.test_types', ['ist']);
 
         if ($branch === null
             || ! in_array($intendedField, self::INTENDED_FIELDS, true)
-            || $testTypes === []
-            || array_diff($testTypes, self::SUPPORTED_TEST_TYPES) !== []) {
+            || ! is_array($configuredTestTypes)
+            || ! array_is_list($configuredTestTypes)
+            || $configuredTestTypes === []
+            || in_array('dass21', $configuredTestTypes, true)) {
+            throw new SelectionIntegrationUnavailable;
+        }
+        try {
+            $testTypes = TestPackage::canonicalComposition([...$configuredTestTypes, 'dass21']);
+        } catch (DomainException) {
             throw new SelectionIntegrationUnavailable;
         }
 

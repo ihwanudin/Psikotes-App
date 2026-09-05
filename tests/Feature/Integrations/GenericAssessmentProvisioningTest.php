@@ -50,6 +50,7 @@ final class GenericAssessmentProvisioningTest extends TestCase
             'is_active' => true,
         ]);
         $package->items()->create(['test_type' => 'ist', 'sort_order' => 1]);
+        $package->items()->create(['test_type' => 'dass21', 'sort_order' => 2]);
 
         $client = IntegrationClient::query()->create([
             'organization_id' => $this->organization->id,
@@ -97,6 +98,8 @@ final class GenericAssessmentProvisioningTest extends TestCase
         ]);
         $event = json_decode((string) $this->getConnection()->table('outbox_messages')->value('payload'), true, flags: JSON_THROW_ON_ERROR);
         $this->assertSame('PSYCHOTEST_PARTICIPANT_PROVISIONED', $event['eventType']);
+        $this->assertDatabaseHas('entitlements', ['participant_id' => $participantId, 'test_type' => 'ist']);
+        $this->assertDatabaseHas('entitlements', ['participant_id' => $participantId, 'test_type' => 'dass21']);
     }
 
     public function test_unknown_fields_source_spoofing_package_and_funding_are_rejected(): void
@@ -141,7 +144,7 @@ final class GenericAssessmentProvisioningTest extends TestCase
         $this->assertSame($first->json('data.assessmentAttemptId'), $second->json('data.assessmentAttemptId'));
         $this->assertDatabaseCount('participants', 1);
         $this->assertDatabaseCount('assessment_participants', 1);
-        $this->assertDatabaseCount('entitlements', 1);
+        $this->assertDatabaseCount('entitlements', 2);
         $this->assertDatabaseCount('outbox_messages', 1);
     }
 
@@ -178,6 +181,20 @@ final class GenericAssessmentProvisioningTest extends TestCase
 
         $this->assertDatabaseCount('participants', 2);
         $this->assertDatabaseCount('assessment_participants', 2);
+    }
+
+    public function test_package_without_mandatory_dass_cannot_provision(): void
+    {
+        $package = TestPackage::query()->where('code', 'SELEKSI_KERJA_JEPANG_V1')->firstOrFail();
+        $package->items()->where('test_type', 'dass21')->delete();
+
+        $this->signedRequest($this->payload(), 'assessment:v1:invalid-composition')
+            ->assertForbidden()
+            ->assertJsonPath('error.code', 'PACKAGE_NOT_ALLOWED');
+
+        $this->assertDatabaseCount('participants', 0);
+        $this->assertDatabaseCount('assessment_participants', 0);
+        $this->assertDatabaseCount('entitlements', 0);
     }
 
     /** @return array<string, mixed> */

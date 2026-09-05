@@ -20,7 +20,11 @@ final class AssessmentPriceSnapshotTest extends TestCase
         $package = new TestPackage;
         $package->setRawAttributes(['id' => 1, 'code' => 'SYNTHETIC', 'name' => 'Synthetic', 'amount' => 123,
             'consultation_amount' => 45, 'currency' => 'IDR', 'is_active' => true]);
-        $package->setRelation('items', new Collection([new PackageItem(['test_type' => 'papi']), new PackageItem(['test_type' => 'ist'])]));
+        $package->setRelation('items', new Collection([
+            new PackageItem(['test_type' => 'papi']),
+            new PackageItem(['test_type' => 'dass21']),
+            new PackageItem(['test_type' => 'ist']),
+        ]));
 
         return $package;
     }
@@ -30,7 +34,7 @@ final class AssessmentPriceSnapshotTest extends TestCase
         $snapshot = (new AssessmentPriceSnapshot)->capture($this->package(), true);
         $this->assertSame(168, $snapshot['amount']);
         $this->assertSame(45, $snapshot['consultationAmount']);
-        $this->assertSame(['ist', 'papi'], $snapshot['testTypes']);
+        $this->assertSame(['dass21', 'ist', 'papi'], $snapshot['testTypes']);
         $this->assertSame('IDR', $snapshot['currency']);
     }
 
@@ -71,6 +75,27 @@ final class AssessmentPriceSnapshotTest extends TestCase
         (new AssessmentPriceSnapshot)->capture($package, false);
     }
 
+    #[DataProvider('invalidCompositions')]
+    public function test_package_composition_without_mandatory_dass_and_psychotest_is_rejected(array $types): void
+    {
+        $package = $this->package()->setRelation('items', new Collection(array_map(
+            static fn (mixed $type): PackageItem => new PackageItem(['test_type' => $type]),
+            $types,
+        )));
+
+        $this->expectException(DomainException::class);
+        (new AssessmentPriceSnapshot)->capture($package, false);
+    }
+
+    public static function invalidCompositions(): iterable
+    {
+        yield 'missing DASS-21' => [['ist']];
+        yield 'DASS-21 only' => [['dass21']];
+        yield 'duplicate type' => [['dass21', 'ist', 'ist']];
+        yield 'unsupported type' => [['dass21', 'unknown']];
+        yield 'non-string type' => [['dass21', 21]];
+    }
+
     public function test_existing_charge_snapshot_does_not_follow_catalog_changes(): void
     {
         $service = new AssessmentPriceSnapshot;
@@ -81,5 +106,16 @@ final class AssessmentPriceSnapshotTest extends TestCase
         $charge->amount = 999;
         $this->expectException(DomainException::class);
         $service->fromCharge($charge, true);
+    }
+
+    public function test_existing_charge_with_noncanonical_composition_is_rejected(): void
+    {
+        $snapshot = (new AssessmentPriceSnapshot)->capture($this->package(), false);
+        $snapshot['testTypes'] = ['ist'];
+        $charge = new AssessmentCharge(['package_id' => 1, 'base_amount' => 123, 'consultation_amount' => 0,
+            'consultation_requested' => false, 'amount' => 123, 'currency' => 'IDR', 'price_snapshot' => $snapshot]);
+
+        $this->expectException(DomainException::class);
+        (new AssessmentPriceSnapshot)->fromCharge($charge, false);
     }
 }

@@ -72,6 +72,12 @@ final class SelectionParticipantProvisioningTest extends TestCase
             'test_type' => 'ist',
             'status' => 'ready',
         ]);
+        $this->assertDatabaseHas('entitlements', [
+            'participant_id' => $participantId,
+            'order_id' => null,
+            'test_type' => 'dass21',
+            'status' => 'ready',
+        ]);
         $this->assertDatabaseCount('orders', 0);
         $this->assertDatabaseHas('selection_participants', [
             'client_id' => self::CLIENT_ID,
@@ -99,7 +105,7 @@ final class SelectionParticipantProvisioningTest extends TestCase
         $this->assertSame($first->json('data.participantId'), $second->json('data.participantId'));
         $this->assertDatabaseCount('participants', 1);
         $this->assertDatabaseCount('selection_participants', 1);
-        $this->assertDatabaseCount('entitlements', 1);
+        $this->assertDatabaseCount('entitlements', 2);
         $this->assertDatabaseCount('audit_logs', 1);
     }
 
@@ -163,6 +169,19 @@ final class SelectionParticipantProvisioningTest extends TestCase
             ->assertJsonPath('error.code', 'INTEGRATION_UNAVAILABLE');
 
         $this->assertDatabaseCount('participants', 0);
+    }
+
+    public function test_operator_cannot_configure_dass_as_optional_or_as_the_only_test(): void
+    {
+        foreach ([['dass21'], ['ist', 'dass21'], []] as $index => $types) {
+            config()->set('selection_integration.test_types', $types);
+            $this->signedRequest($this->payload(), 'psychotest-participant:v1:invalid-composition-'.$index)
+                ->assertServiceUnavailable()
+                ->assertJsonPath('error.code', 'INTEGRATION_UNAVAILABLE');
+        }
+
+        $this->assertDatabaseCount('participants', 0);
+        $this->assertDatabaseCount('entitlements', 0);
     }
 
     /** @return array<string, string> */

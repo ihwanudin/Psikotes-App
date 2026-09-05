@@ -14,6 +14,7 @@ use App\Security\RlsContextRunner;
 use App\Services\Integrations\CheckoutContractAdapter;
 use App\Services\TestNumber\MonthlyTestNumberIssuer;
 use Carbon\CarbonInterface;
+use DomainException;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -77,11 +78,16 @@ final readonly class ProvisionAssessmentParticipant
                     if ($package === null || $package->items->isEmpty()) {
                         throw new IntegrationContractViolation('PACKAGE_NOT_ALLOWED');
                     }
+                    try {
+                        $testTypes = TestPackage::canonicalComposition($package->items->pluck('test_type')->values()->all());
+                    } catch (DomainException) {
+                        throw new IntegrationContractViolation('PACKAGE_NOT_ALLOWED');
+                    }
 
                     $participant = $this->existingIdentity($client, $input) ?? $this->createParticipant($client, $package, $input);
                     $now = now();
-                    foreach ($package->items as $item) {
-                        $participant->entitlements()->firstOrCreate(['test_type' => $item->test_type], [
+                    foreach ($testTypes as $testType) {
+                        $participant->entitlements()->firstOrCreate(['test_type' => $testType], [
                             'order_id' => null, 'status' => 'ready', 'ready_at' => $now,
                         ]);
                     }

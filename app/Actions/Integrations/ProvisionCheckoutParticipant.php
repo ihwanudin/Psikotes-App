@@ -14,6 +14,7 @@ use App\Models\Participant;
 use App\Models\TestPackage;
 use App\Security\RlsContextRunner;
 use App\Services\Integrations\CheckoutContractAdapter;
+use DomainException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use LogicException;
@@ -55,7 +56,13 @@ final readonly class ProvisionCheckoutParticipant
                 throw new IntegrationContractViolation('SOURCE_NOT_ALLOWED');
             }
             $package = TestPackage::query()->where('code', $input['assessmentPackageCode'])->lockForUpdate()->first();
-            if ($package === null || $package->items()->lockForUpdate()->first() === null) {
+            if ($package === null) {
+                throw new IntegrationContractViolation('PACKAGE_NOT_ALLOWED');
+            }
+            $package->setRelation('items', $package->items()->lockForUpdate()->get());
+            try {
+                TestPackage::canonicalComposition($package->items->pluck('test_type')->values()->all());
+            } catch (DomainException) {
                 throw new IntegrationContractViolation('PACKAGE_NOT_ALLOWED');
             }
             $payer = $this->contract->resolve($client, $source, $package, $input);
