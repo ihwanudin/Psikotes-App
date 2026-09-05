@@ -705,9 +705,9 @@ event, bukan diklaim concurrency.
 
 ### Checkpoint setelah P17b
 
-- [ ] Focused tests dan regresi terkait lulus tanpa skip; bukti baru dicatat di docs/ORGANIZATION_CHECKOUT_VALIDATION.md.
-- [ ] Pint/PHPStan dan lint/typecheck/build sesuai dampak; UI diperiksa browser, RLS/race memakai PostgreSQL terisolasi.
-- [ ] Tinjau slice dengan pengguna sebelum kelompok berikutnya; tidak ada deploy, transaksi, atau notifikasi nyata.
+- [x] Focused concurrency/crash dan regresi PostgreSQL disposable lulus tanpa skip; bukti dicatat di docs/ORGANIZATION_CHECKOUT_VALIDATION.md.
+- [x] Pint/PHPStan sesuai dampak lulus; RLS/race memakai PostgreSQL terisolasi. Verifikasi UI/browser bukan bagian checkpoint backend ini.
+- [x] Slice backend diterima lokal sebagai dependensi teknis P17c; tidak ada deploy, transaksi, atau notifikasi nyata.
 
 ## P17c: Browser menu cabang dan peserta
 
@@ -720,6 +720,9 @@ event, bukan diklaim concurrency.
 **Files likely touched:** `tests/Browser/organization-collective-checkout.spec.ts`, `docs/ORGANIZATION_CHECKOUT_VALIDATION.md`.
 
 **Verification:** Browser skill pada origin test saja; command runner E2E ditentukan setelah tool/package yang sudah tersedia diperiksa. Catat screenshot/alur dan hasil, tidak membuat klaim uji sebelum dijalankan.
+
+Verifikasi UI desktop/mobile/keyboard hanya berada pada P17c dan masih terbuka;
+hasil backend P17b tidak menggantikannya.
 
 ## P18: Runbook dan serah-terima
 

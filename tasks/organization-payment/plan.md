@@ -3,6 +3,12 @@
 Tanggal: 2026-08-31
 Status: **P1–P13b, core privat P14/P15, dan P17a–P17b selesai lokal. P16-pay-a–i, binding Blade/UI summary-v2, subset consent current, serta privacy audit selesai lokal dan default OFF; DASS-21 wajib pada ingress/snapshot/handoff/session/form. Bukti terbaru: Blade 19+7, Node 4, HTTP/PHP 38/684, PostgreSQL fresh 400/3.950, beserta PHPStan/ESLint/Prettier/Pint/diff-check. Runtime browser/P17c belum dijalankan dan checkbox P15/P16 tetap terbuka. DASS consent tetap terpisah dan RLS privat. Tidak ada deploy, migrasi DB aktif, invoice/notifikasi nyata, provider/outbound, atau cutover sumber/feature flag.**
 
+Checkpoint backend P17b selesai lokal dengan bukti race dua proses, rollback
+crash, replay, serta PostgreSQL disposable **394 tes / 3.865 assertions**.
+Verifikasi UI desktop/mobile/keyboard bukan bagian checkpoint backend tersebut;
+seluruhnya tetap acceptance P17c yang belum dijalankan. P17c/P18 tidak ditutup
+dan status default OFF maupun larangan aktivasi/deploy tidak berubah.
+
 ## Checkpoint P16 consent subset dan privacy audit — 2026-09-06
 
 `918eb93` membuat audit konfirmasi/re-consent service-only melalui policy RLS
