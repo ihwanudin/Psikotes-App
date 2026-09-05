@@ -450,7 +450,7 @@ final class CheckoutSelfPaymentPreparationTest extends OrganizationPaymentTestCa
             ->with($this->callback(function (CreateInvoiceRequest $request) use (&$invoice): bool {
                 $this->assertNull(app(RlsContextRunner::class)->current());
                 $this->assertSame(0, DB::transactionLevel());
-                $invoice = new PaymentInvoice('provider-p16', 'https://payments.example.test/p16',
+                $invoice = new PaymentInvoice('provider-p16', 'https://provider-return.example.test/not-authority',
                     $request->amount, $request->currency, $request->expiresAt);
 
                 return true;
@@ -463,14 +463,16 @@ final class CheckoutSelfPaymentPreparationTest extends OrganizationPaymentTestCa
                 $this->assertSame(100, $amount);
                 $this->assertSame('IDR', $currency);
 
-                return $invoice;
+                return new PaymentInvoice($invoice->providerReference,
+                    'https://payments.example.test/persisted-p16', $amount, $currency, $invoice->expiresAt);
             });
         app()->instance(PaymentProvider::class, $provider);
 
         $result = $this->issue($fixture, false);
         $this->assertInstanceOf(CheckoutSelfPaymentIssuanceResult::class, $result);
         $this->assertSame('pending', $result->state);
-        $this->assertSame(['state'], array_keys(get_object_vars($result)));
+        $this->assertSame('https://payments.example.test/persisted-p16', $result->paymentUrl);
+        $this->assertSame(['state', 'paymentUrl'], array_keys(get_object_vars($result)));
         $this->assertDatabaseHas('assessment_bills', ['status' => 'pending', 'gateway_ref' => 'provider-p16']);
         $this->assertDatabaseHas('outbox_messages', ['status' => 'processed', 'attempts' => 1]);
         $this->assertDatabaseCount('assessment_bills', 1);
@@ -478,6 +480,45 @@ final class CheckoutSelfPaymentPreparationTest extends OrganizationPaymentTestCa
         $this->assertSame(1, DB::table('audit_logs')->where('action', 'assessment_bill.invoice_issued')->count());
         $this->assertNull(app(RlsContextRunner::class)->current());
         $this->assertSame(0, DB::transactionLevel());
+    }
+
+    #[DataProvider('finalReadAuthorityChanges')]
+    public function test_issue_revalidates_session_policy_and_catalog_after_provider_persistence(string $change): void
+    {
+        $fixture = $this->established();
+        $provider = $this->createMock(PaymentProvider::class);
+        $invoice = null;
+        $provider->expects($this->once())->method('createInvoice')
+            ->willReturnCallback(function (CreateInvoiceRequest $request) use (&$invoice): PaymentInvoice {
+                return $invoice = new PaymentInvoice('provider-final-read',
+                    'https://provider.example.test/final-read', $request->amount, $request->currency,
+                    $request->expiresAt);
+            });
+        $provider->expects($this->once())->method('lookupInvoice')
+            ->willReturnCallback(function () use (&$invoice, $change, $fixture): PaymentInvoice {
+                match ($change) {
+                    'session' => $this->changeAuthority('session', $fixture),
+                    'policy' => $this->changeAuthority('policy', $fixture),
+                    'catalog' => DB::table('packages')->where('id', $fixture['package'])
+                        ->update(['name' => 'Changed During Provider Gap']),
+                    default => throw new RuntimeException('Unknown final-read authority change.'),
+                };
+
+                return $invoice;
+            });
+        app()->instance(PaymentProvider::class, $provider);
+
+        $this->assertUnavailable(fn () => $this->issue($fixture, false));
+        $this->assertDatabaseHas('assessment_bills', [
+            'status' => 'pending', 'invoice_url' => 'https://provider.example.test/final-read',
+        ]);
+    }
+
+    public static function finalReadAuthorityChanges(): iterable
+    {
+        yield 'session revoked' => ['session'];
+        yield 'payer policy changed' => ['policy'];
+        yield 'catalog changed' => ['catalog'];
     }
 
     public function test_exact_pending_replay_never_calls_provider_again(): void
@@ -489,7 +530,9 @@ final class CheckoutSelfPaymentPreparationTest extends OrganizationPaymentTestCa
         $never->expects($this->never())->method('createInvoice');
         $never->expects($this->never())->method('lookupInvoice');
         app()->instance(PaymentProvider::class, $never);
-        $this->assertSame('pending', $this->issue($pending, false)->state);
+        $replay = $this->issue($pending, false);
+        $this->assertSame('pending', $replay->state);
+        $this->assertSame('https://payments.example.test/success', $replay->paymentUrl);
     }
 
     public function test_paid_state_never_calls_provider(): void
@@ -514,7 +557,9 @@ final class CheckoutSelfPaymentPreparationTest extends OrganizationPaymentTestCa
             'subject_id' => (string) $bill->id, 'context' => '{}', 'occurred_at' => $paidAt,
             'expires_at' => $paidAt->copy()->addYears(2),
         ]);
-        $this->assertSame('paid', $this->issue($paid, false)->state);
+        $result = $this->issue($paid, false);
+        $this->assertSame('paid', $result->state);
+        $this->assertNull($result->paymentUrl);
         $this->assertDatabaseCount('outbox_messages', 0);
     }
 
@@ -530,8 +575,150 @@ final class CheckoutSelfPaymentPreparationTest extends OrganizationPaymentTestCa
             ));
         app()->instance(PaymentProvider::class, $provider);
 
-        $this->assertSame('pending', $this->issue($fixture, false)->state);
+        $result = $this->issue($fixture, false);
+        $this->assertSame('pending', $result->state);
+        $this->assertSame('https://payments.example.test/recovered', $result->paymentUrl);
         $this->assertDatabaseHas('assessment_bills', ['status' => 'pending', 'gateway_ref' => 'provider-recovered']);
+    }
+
+    public function test_result_shape_requires_persisted_pending_https_or_paid_null(): void
+    {
+        $pending = new CheckoutSelfPaymentIssuanceResult('pending', 'https://payments.example.test/persisted');
+        $paid = new CheckoutSelfPaymentIssuanceResult('paid', null);
+        $this->assertSame(['state', 'paymentUrl'], array_keys(get_object_vars($pending)));
+        $this->assertSame('https://payments.example.test/persisted', $pending->paymentUrl);
+        $this->assertNull($paid->paymentUrl);
+
+        foreach ([
+            ['pending', null], ['paid', 'https://payments.example.test/leak'],
+            ['pending', 'http://payments.example.test/insecure'],
+            ['pending', 'https://user:secret@payments.example.test/private'], ['reserved', null],
+        ] as [$state, $url]) {
+            try {
+                new CheckoutSelfPaymentIssuanceResult($state, $url);
+                $this->fail('Invalid browser-safe payment result was accepted.');
+            } catch (\InvalidArgumentException) {
+                $this->addToAssertionCount(1);
+            }
+        }
+    }
+
+    public function test_persisted_read_requires_an_existing_intent_and_never_creates_or_calls_provider(): void
+    {
+        $fixture = $this->established();
+        $never = $this->createMock(PaymentProvider::class);
+        $never->expects($this->never())->method('createInvoice');
+        $never->expects($this->never())->method('lookupInvoice');
+        app()->instance(PaymentProvider::class, $never);
+
+        $this->assertUnavailable(fn () => $this->readPersisted($fixture, false));
+        $this->assertDatabaseCount('assessment_bills', 0);
+        $this->assertDatabaseCount('assessment_charges', 0);
+        $this->assertDatabaseCount('assessment_bill_items', 0);
+        $this->assertDatabaseCount('outbox_messages', 0);
+    }
+
+    public function test_persisted_read_returns_exact_database_url_and_isolates_other_organizations(): void
+    {
+        $fixture = $this->established();
+        $prepared = $this->prepare($fixture, false);
+        $this->markPending($prepared->billId, 'https://persisted.example.test/exact');
+        $other = $this->established();
+
+        $result = $this->readPersisted($fixture, false);
+        $this->assertSame('pending', $result->state);
+        $this->assertSame('https://persisted.example.test/exact', $result->paymentUrl);
+        $this->assertUnavailable(fn () => $this->readPersisted($other, false));
+    }
+
+    #[DataProvider('invalidPersistedProjectionChanges')]
+    public function test_persisted_read_rejects_stale_or_corrupt_state_without_leaking_url(string $change): void
+    {
+        $fixture = $this->established();
+        $prepared = $this->prepare($fixture, false);
+        $this->markPending($prepared->billId, 'https://private.example.test/do-not-leak');
+
+        match ($change) {
+            'session' => $this->changeAuthority('session', $fixture),
+            'catalog-price' => DB::table('packages')->where('id', $fixture['package'])->update(['amount' => 101]),
+            'catalog-name' => DB::table('packages')->where('id', $fixture['package'])->update(['name' => 'Changed']),
+            'catalog-items' => DB::table('package_items')->insert([
+                'package_id' => $fixture['package'], 'test_type' => 'papi', 'sort_order' => 2,
+            ]),
+            'policy-list' => $this->broadenPolicy($fixture),
+            'policy-lock' => DB::table('integration_sources')->where('id', $fixture['source'])
+                ->update(['locked_payer_type' => 'self']),
+            'request-hash' => DB::table('assessment_bills')->where('id', $prepared->billId)
+                ->update(['request_hash' => str_repeat('f', 64)]),
+            'wrong-graph' => DB::table('assessment_bills')->where('id', $prepared->billId)
+                ->update(['idempotency_key' => 'checkout-self-v1:'.Str::ulid()]),
+            'insecure-url' => DB::table('assessment_bills')->where('id', $prepared->billId)
+                ->update(['invoice_url' => 'http://private.example.test/leak']),
+            'userinfo-url' => DB::table('assessment_bills')->where('id', $prepared->billId)
+                ->update(['invoice_url' => 'https://user:secret@private.example.test/leak']),
+            'unknown', 'expired', 'rejected' => DB::table('assessment_bills')->where('id', $prepared->billId)
+                ->update(['status' => $change]),
+            'consultation' => null,
+            default => throw new RuntimeException('Unknown projection corruption.'),
+        };
+
+        $this->assertUnavailable(fn () => $this->readPersisted($fixture, $change === 'consultation'));
+        $this->assertDatabaseCount('assessment_bills', 1);
+        $this->assertSame(1, DB::table('audit_logs')->where('action', 'assessment_bill.reserved')->count());
+    }
+
+    public static function invalidPersistedProjectionChanges(): iterable
+    {
+        foreach (['session', 'catalog-price', 'catalog-name', 'catalog-items', 'policy-list', 'policy-lock',
+            'request-hash', 'wrong-graph', 'insecure-url', 'userinfo-url', 'unknown', 'expired', 'rejected',
+            'consultation'] as $change) {
+            yield $change => [$change];
+        }
+    }
+
+    public function test_issue_returns_persisted_lookup_url_and_observes_paid_transition_before_final_read(): void
+    {
+        $fixture = $this->established();
+        $provider = $this->createMock(PaymentProvider::class);
+        $provider->expects($this->once())->method('createInvoice')
+            ->willReturnCallback(fn (CreateInvoiceRequest $request): PaymentInvoice => new PaymentInvoice(
+                'provider-race', 'https://provider-return.example.test/not-authority',
+                $request->amount, $request->currency, $request->expiresAt,
+            ));
+        $provider->expects($this->once())->method('lookupInvoice')
+            ->willReturnCallback(fn (string $reference, int $amount, string $currency): PaymentInvoice => new PaymentInvoice(
+                'provider-race', 'https://persisted.example.test/authoritative', $amount, $currency, now()->addDay(),
+            ));
+        app()->instance(PaymentProvider::class, $provider);
+
+        $promote = true;
+        DB::listen(function (QueryExecuted $query) use (&$promote, $fixture): void {
+            if (! $promote || ! str_contains(strtolower($query->sql), 'update "assessment_bills"')
+                || ! in_array('pending', $query->bindings, true)) {
+                return;
+            }
+            $promote = false;
+            $bill = AssessmentBill::query()->where('organization_id', $fixture['organization'])->first();
+            if (! $bill instanceof AssessmentBill || $bill->status !== 'pending') {
+                return;
+            }
+            $at = now()->startOfSecond();
+            $bill->update(['status' => 'paid', 'paid_at' => $at]);
+            DB::table('assessment_bill_items')->where('bill_id', $bill->id)->update(['settled_at' => $at]);
+            DB::table('audit_logs')->insert([
+                'branch_id' => $fixture['organization'], 'actor_type' => 'system', 'actor_id' => 'payment-provider',
+                'action' => 'assessment_bill.paid', 'subject_type' => AssessmentBill::class,
+                'subject_id' => (string) $bill->id, 'context' => '{}', 'occurred_at' => $at,
+                'expires_at' => $at->copy()->addYears(2),
+            ]);
+        });
+
+        $result = $this->issue($fixture, false);
+        $this->assertSame('paid', $result->state);
+        $this->assertNull($result->paymentUrl);
+        $this->assertDatabaseHas('assessment_bills', [
+            'status' => 'paid', 'invoice_url' => 'https://persisted.example.test/authoritative',
+        ]);
     }
 
     #[DataProvider('unknownProviderOutcomes')]
@@ -626,6 +813,28 @@ final class CheckoutSelfPaymentPreparationTest extends OrganizationPaymentTestCa
     private function issue(array $fixture, bool $consultation): CheckoutSelfPaymentIssuanceResult
     {
         return app(IssueCheckoutSelfPayment::class)->execute($this->credentials($fixture), $consultation);
+    }
+
+    /** @param array<string, mixed> $fixture */
+    private function readPersisted(array $fixture, bool $consultation): CheckoutSelfPaymentIssuanceResult
+    {
+        return app(PrepareCheckoutSelfPayment::class)->readPersisted($this->credentials($fixture), $consultation);
+    }
+
+    private function markPending(int $billId, string $url): void
+    {
+        DB::table('assessment_bills')->where('id', $billId)->update([
+            'status' => 'pending', 'gateway_ref' => 'persisted-provider-ref',
+            'invoice_url' => $url, 'expires_at' => now()->addDay(),
+        ]);
+    }
+
+    /** @param array<string, mixed> $fixture */
+    private function broadenPolicy(array $fixture): void
+    {
+        $allowed = json_encode(['self', 'organization'], JSON_THROW_ON_ERROR);
+        DB::table('branches')->where('id', $fixture['organization'])->update(['allowed_payer_types' => $allowed]);
+        DB::table('integration_sources')->where('id', $fixture['source'])->update(['allowed_payer_types' => $allowed]);
     }
 
     private function successfulProvider(): PaymentProvider

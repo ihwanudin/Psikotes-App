@@ -20,6 +20,7 @@ final readonly class IssueCheckoutSelfPayment
     public function __construct(
         private CoordinateCheckoutSelfPayment $claims,
         private IssueAssessmentBillInvoice $issuance,
+        private PrepareCheckoutSelfPayment $preparations,
         private RlsContextRunner $contexts,
     ) {}
 
@@ -33,7 +34,7 @@ final readonly class IssueCheckoutSelfPayment
             $claim = $this->claims->execute($credentials, $consultationRequested);
             $this->assertOutsideTransaction();
             if (in_array($claim->state, ['pending', 'paid'], true)) {
-                return new CheckoutSelfPaymentIssuanceResult($claim->state);
+                return $this->preparations->readPersisted($credentials, $consultationRequested);
             }
             if ($claim->state !== 'issuance_required' || $claim->messageId === null) {
                 throw new DomainException('CHECKOUT_PAYMENT_ISSUANCE_INVALID');
@@ -44,7 +45,7 @@ final readonly class IssueCheckoutSelfPayment
                 throw new DomainException('CHECKOUT_PAYMENT_ISSUANCE_INVALID');
             }
 
-            return new CheckoutSelfPaymentIssuanceResult('pending');
+            return $this->preparations->readPersisted($credentials, $consultationRequested);
         } catch (DomainException|InvalidArgumentException|LogicException) {
             throw new DomainException('CHECKOUT_PAYMENT_UNAVAILABLE');
         }

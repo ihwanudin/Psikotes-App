@@ -6,17 +6,25 @@ namespace App\Actions\Integrations;
 
 use App\Actions\Payments\PreviewAssessmentBill;
 use App\Actions\Payments\ReserveAssessmentBill;
+use App\Data\Integrations\CheckoutSelfPaymentIssuanceResult;
 use App\Data\Integrations\CheckoutSelfPaymentPreparation;
 use App\Data\Integrations\CheckoutSessionMutationCredentials;
 use App\Data\Integrations\CheckoutSessionPrincipal;
+use App\Data\Payments\PayerDecision;
 use App\Enums\PayerType;
 use App\Models\AssessmentBill;
 use App\Models\AssessmentBillItem;
 use App\Models\AssessmentCharge;
+use App\Models\Branch;
+use App\Models\IntegrationClient;
+use App\Models\IntegrationSource;
 use App\Models\Participant;
 use App\Models\PaymentMethod;
+use App\Models\TestPackage;
 use App\Security\RlsContextRunner;
 use App\Services\Payments\AssessmentPriceSnapshot;
+use App\Services\Payments\ResolvePayerPolicy;
+use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Collection;
@@ -36,6 +44,7 @@ final readonly class PrepareCheckoutSelfPayment
         private PreviewAssessmentBill $preview,
         private ReserveAssessmentBill $reserve,
         private AssessmentPriceSnapshot $prices,
+        private ResolvePayerPolicy $payerPolicy,
     ) {}
 
     public function execute(
@@ -50,6 +59,41 @@ final readonly class PrepareCheckoutSelfPayment
             return $this->contexts->runAsService(
                 fn (): CheckoutSelfPaymentPreparation => $this->prepare($credentials, $consultationRequested),
             );
+        } catch (InvalidCheckoutSession|AuthorizationException|DomainException|InvalidArgumentException|LogicException) {
+            throw new DomainException('CHECKOUT_PAYMENT_UNAVAILABLE');
+        }
+    }
+
+    /** Final credential-bound projection. It never creates, claims, issues, or repairs payment state. */
+    public function readPersisted(
+        #[SensitiveParameter] CheckoutSessionMutationCredentials $credentials,
+        bool $consultationRequested,
+    ): CheckoutSelfPaymentIssuanceResult {
+        if ($this->contexts->current() !== null || DB::transactionLevel() !== 0) {
+            throw new LogicException('Checkout payment preparation owns its service transaction.');
+        }
+
+        try {
+            return $this->contexts->runAsService(function () use ($credentials, $consultationRequested): CheckoutSelfPaymentIssuanceResult {
+                $principal = $this->sessions->lockMutation($credentials)->principal();
+                if ($principal->fundingMode !== 'COMMERCIAL_SELF_PAY') {
+                    throw new DomainException('SELF_PAYMENT_REQUIRED');
+                }
+                $selection = [['assessmentParticipantId' => $principal->assessmentParticipantId,
+                    'consultationRequested' => $consultationRequested]];
+                $key = self::PURPOSE.$principal->assessmentAttemptId;
+                $bill = $this->existing($principal, $key);
+                if (! $bill instanceof AssessmentBill) {
+                    throw new DomainException('SELF_PAYMENT_BILL_MISSING');
+                }
+                $preparation = $this->validated($bill, $principal, $selection, $key, false, true);
+
+                return match ($preparation->status) {
+                    'pending' => new CheckoutSelfPaymentIssuanceResult('pending', $bill->invoice_url),
+                    'paid' => new CheckoutSelfPaymentIssuanceResult('paid', null),
+                    default => throw new DomainException('SELF_PAYMENT_NOT_ISSUED'),
+                };
+            });
         } catch (InvalidCheckoutSession|AuthorizationException|DomainException|InvalidArgumentException|LogicException) {
             throw new DomainException('CHECKOUT_PAYMENT_UNAVAILABLE');
         }
@@ -120,7 +164,7 @@ final readonly class PrepareCheckoutSelfPayment
 
     /** @param list<array{assessmentParticipantId:int,consultationRequested:bool}> $selection */
     private function validated(AssessmentBill $bill, CheckoutSessionPrincipal $principal,
-        array $selection, string $key, bool $created): CheckoutSelfPaymentPreparation
+        array $selection, string $key, bool $created, bool $requireCurrent = false): CheckoutSelfPaymentPreparation
     {
         $method = PaymentMethod::query()->lockForUpdate()->find($bill->payment_method_id);
         $items = AssessmentBillItem::query()->where('bill_id', $bill->id)->orderBy('id')->lockForUpdate()->get();
@@ -157,8 +201,11 @@ final readonly class PrepareCheckoutSelfPayment
             || $bill->verified_by_admin_id !== null || $bill->rejection_reason !== null) {
             throw new DomainException('SELF_PAYMENT_BILL_INVALID');
         }
-        $this->prices->fromCharge($charge, $consultation);
+        $snapshot = $this->prices->fromCharge($charge, $consultation);
         $this->assertPolicySnapshot($charge->policy_snapshot, $principal);
+        if ($requireCurrent) {
+            $this->assertCurrentCatalogAndPolicy($charge, $snapshot, $principal, $consultation);
+        }
         $requestHash = hash('sha256', json_encode([
             'organizationId' => $principal->organizationId, 'payerType' => 'self',
             'participantId' => $principal->participantId, 'selection' => $selection,
@@ -175,6 +222,50 @@ final readonly class PrepareCheckoutSelfPayment
             $bill->status,
             $created,
         );
+    }
+
+    /** @param array<string, mixed> $persistedSnapshot */
+    private function assertCurrentCatalogAndPolicy(AssessmentCharge $charge, array $persistedSnapshot,
+        CheckoutSessionPrincipal $principal, bool $consultation): void
+    {
+        $organization = Branch::query()->lockForUpdate()->find($principal->organizationId);
+        $client = IntegrationClient::query()->where('organization_id', $principal->organizationId)
+            ->lockForUpdate()->find($principal->integrationClientId);
+        $source = IntegrationSource::query()->where('integration_client_id', $principal->integrationClientId)
+            ->where('contract_version', 'checkout-v2')->lockForUpdate()->find($principal->integrationSourceId);
+        $package = TestPackage::query()->lockForUpdate()->find($principal->packageId);
+        if (! $organization instanceof Branch || ! $client instanceof IntegrationClient
+            || ! $source instanceof IntegrationSource || ! $package instanceof TestPackage) {
+            throw new DomainException('SELF_PAYMENT_SCOPE_INVALID');
+        }
+        $items = $package->items()->orderBy('id')->lockForUpdate()->get();
+        $package->setRelation('items', $items);
+        $decision = $this->payerPolicy->resolve($organization, $client, $source, $package,
+            $this->databaseNow(), PayerType::SelfPay->value);
+        if ($persistedSnapshot !== $this->prices->capture($package, $consultation)
+            || $charge->policy_snapshot !== $this->policySnapshot($decision, $principal)) {
+            throw new DomainException('SELF_PAYMENT_CURRENT_STATE_INVALID');
+        }
+    }
+
+    /** @return array{organizationId:int,integrationClientId:int,sourceId:int,contractVersion:string,allowedPayerTypes:list<string>,payerType:string,lockedPayerType:string|null} */
+    private function policySnapshot(PayerDecision $decision, CheckoutSessionPrincipal $principal): array
+    {
+        $allowed = array_map(static fn (PayerType $type): string => $type->value, $decision->allowedPayerTypes);
+        if ($decision->rejectionReason !== null || $decision->selectedPayerType !== PayerType::SelfPay
+            || ! in_array(PayerType::SelfPay->value, $allowed, true)) {
+            throw new DomainException('SELF_PAYMENT_CURRENT_POLICY_INVALID');
+        }
+
+        return [
+            'organizationId' => $principal->organizationId,
+            'integrationClientId' => $principal->integrationClientId,
+            'sourceId' => $principal->integrationSourceId,
+            'contractVersion' => 'checkout-v2',
+            'allowedPayerTypes' => $allowed,
+            'payerType' => PayerType::SelfPay->value,
+            'lockedPayerType' => $decision->lockedPayerType?->value,
+        ];
     }
 
     /** @param array<string, mixed> $snapshot */
@@ -236,5 +327,16 @@ final readonly class PrepareCheckoutSelfPayment
         return is_array($url) && ($url['scheme'] ?? null) === 'https'
             && is_string($url['host'] ?? null) && $url['host'] !== ''
             && ! isset($url['user']) && ! isset($url['pass']);
+    }
+
+    private function databaseNow(): CarbonImmutable
+    {
+        $row = DB::selectOne('SELECT CURRENT_TIMESTAMP AS current_time');
+        $value = $row->current_time ?? null;
+        if (! is_string($value)) {
+            throw new LogicException('Database clock unavailable.');
+        }
+
+        return CarbonImmutable::parse($value)->utc();
     }
 }
