@@ -6,16 +6,22 @@ namespace Tests\Feature\Registration;
 
 use App\Actions\Integrations\EstablishCheckoutSession;
 use App\Actions\Integrations\IssueCheckoutHandoff;
+use App\Actions\Registration\ConfirmIntegratedCheckout;
 use App\Data\Integrations\CheckoutHandoffIssueInput;
 use App\Data\Integrations\CheckoutSessionExchangeInput;
 use App\Enums\CheckoutHandoffIntent;
 use App\Http\Middleware\AuthenticateCheckoutSession;
 use App\Http\Middleware\ProtectCheckoutSessionHttpBoundary;
 use App\Http\Middleware\VerifyCheckoutSessionJsonMutation;
+use App\Http\Requests\ConfirmIntegratedCheckoutRequest;
 use App\Models\IntegrationClient;
+use App\Models\TestPackage;
+use App\Registration\ConsentDocument;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
 use App\Services\Integrations\CheckoutSessionHttpContract;
+use App\Services\Payments\AssessmentPriceSnapshot;
+use DomainException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
@@ -49,6 +55,12 @@ final class IntegratedCheckoutConsentTest extends OrganizationPaymentTestCase
                 'confirmation' => ['enabled' => true, 'max_body_bytes' => 4096],
             ],
         ]);
+        config()->set('assessment_integration.checkout_session.http.confirmation.writer_enabled', true);
+        config()->set('consent.documents.dass', [
+            'version' => 'draft-2026-09-05',
+            'title' => 'Persetujuan skrining DASS-21 sebagai bagian psikotes',
+            'text' => 'DASS-21 wajib dalam rangkaian, diproses terpisah, dan bukan diagnosis.',
+        ]);
 
         RateLimiter::for(CheckoutSessionHttpContract::LIMITER,
             fn (Request $request) => app(CheckoutSessionHttpContract::class)->rateLimit($request));
@@ -64,6 +76,25 @@ final class IntegratedCheckoutConsentTest extends OrganizationPaymentTestCase
         ]);
         Route::match(['GET', 'PUT'], '/checkout/_test/confirm-method', fn () => response('', 204))
             ->middleware([AuthenticateCheckoutSession::class, VerifyCheckoutSessionJsonMutation::class]);
+        Route::post('/checkout/_test/confirm-write', function (
+            ConfirmIntegratedCheckoutRequest $request,
+            ConfirmIntegratedCheckout $action,
+        ) {
+            $input = $request->toInput();
+            if ($request->headers->get('X-Test-After-Auth') === 'revoke-source') {
+                DB::table('integration_sources')->where('id', $input->principal->integrationSourceId)
+                    ->update(['status' => 'REVOKED']);
+            }
+            if ($request->headers->get('X-Test-After-Auth') === 'change-payer') {
+                DB::table('assessment_participants')->where('id', $input->principal->assessmentParticipantId)
+                    ->update(['funding_mode' => 'INVOICED_TO_ORGANIZATION']);
+            }
+            try {
+                return response()->json($action->execute($input));
+            } catch (DomainException) {
+                return response()->json(['error' => 'CHECKOUT_CONFIRMATION_CONFLICT'], 409);
+            }
+        })->middleware([AuthenticateCheckoutSession::class, VerifyCheckoutSessionJsonMutation::class]);
     }
 
     public function test_exact_authenticated_json_reaches_the_downstream_boundary(): void
@@ -174,8 +205,169 @@ final class IntegratedCheckoutConsentTest extends OrganizationPaymentTestCase
         );
     }
 
-    /** @return array{selector:string,csrf:string} */
-    private function established(): array
+    public function test_writer_completes_only_missing_required_profile_and_records_both_current_consents(): void
+    {
+        $fixture = $this->established();
+
+        $this->mutation($fixture, $this->writerPayload(), path: '/checkout/_test/confirm-write')
+            ->assertOk()->assertExactJson([
+                'replayed' => false,
+                'profileFieldsCompleted' => 5,
+                'consentsRecorded' => 2,
+                'activatedTestTypes' => [],
+            ]);
+        $this->assertDatabaseHas('participants', [
+            'full_name' => 'Synthetic Person', 'birth_date' => '2000-01-02 00:00:00', 'gender' => 'female',
+            'education_level' => 'SMA_SMK', 'intended_field' => 'KAIGO', 'phone' => '620000000000',
+        ]);
+        $this->assertSame(2, DB::table('consent_records')->where('participant_id', $fixture['participant'])
+            ->where('status', 'accepted')->whereNull('withdrawn_at')->count());
+    }
+
+    public function test_writer_exact_replay_is_idempotent_but_changed_or_prelocked_profile_conflicts(): void
+    {
+        $fixture = $this->established();
+        $payload = $this->writerPayload();
+        $this->mutation($fixture, $payload, path: '/checkout/_test/confirm-write')->assertOk();
+        $before = [DB::table('consent_records')->count(), DB::table('audit_logs')->count(),
+            DB::table('outbox_messages')->count(), DB::table('assessment_bills')->count()];
+
+        $this->mutation($fixture, $payload, path: '/checkout/_test/confirm-write')
+            ->assertOk()->assertJson(['replayed' => true, 'profileFieldsCompleted' => 0,
+                'consentsRecorded' => 0, 'activatedTestTypes' => []]);
+        $this->assertSame($before, [DB::table('consent_records')->count(), DB::table('audit_logs')->count(),
+            DB::table('outbox_messages')->count(), DB::table('assessment_bills')->count()]);
+
+        DB::table('consent_records')->where('participant_id', $fixture['participant'])
+            ->where('consent_type', 'dass')->update(['status' => 'withdrawn', 'withdrawn_at' => now()]);
+        $this->mutation($fixture, $payload, path: '/checkout/_test/confirm-write')->assertConflict();
+
+        $changed = json_decode($payload, true, flags: JSON_THROW_ON_ERROR);
+        $changed['profile']['fullName'] = 'Another Person';
+        $this->mutation($fixture, json_encode($changed, JSON_THROW_ON_ERROR), path: '/checkout/_test/confirm-write')
+            ->assertConflict();
+        $missing = json_decode($this->writerPayload(), true, flags: JSON_THROW_ON_ERROR);
+        unset($missing['profile']['intendedField']);
+        $fresh = $this->established();
+        $this->mutation($fresh, json_encode($missing, JSON_THROW_ON_ERROR), path: '/checkout/_test/confirm-write')
+            ->assertConflict();
+        $prelocked = $this->established(['full_name' => 'Already Locked']);
+        $this->mutation($prelocked, $payload, path: '/checkout/_test/confirm-write')->assertConflict();
+        $this->assertDatabaseHas('participants', ['id' => $prelocked['participant'], 'full_name' => 'Already Locked']);
+    }
+
+    public function test_request_rejects_authority_optional_identity_and_non_explicit_consent_fields(): void
+    {
+        $fixture = $this->established();
+        $valid = json_decode($this->writerPayload(), true, flags: JSON_THROW_ON_ERROR);
+        $cases = [
+            ['branchId' => $fixture['organization']], ['sourceSystem' => 'FORGED'], ['clientId' => 1],
+            ['participantId' => $fixture['participant']], ['assessmentAttemptId' => 'FORGED'],
+            ['packageId' => $fixture['package']], ['payerType' => 'self'], ['amount' => 0],
+            ['paymentStatus' => 'paid'], ['identityVerified' => true],
+        ];
+        foreach ($cases as $extra) {
+            $this->mutation($fixture, json_encode([...$valid, ...$extra], JSON_THROW_ON_ERROR),
+                path: '/checkout/_test/confirm-write')->assertUnprocessable();
+        }
+        foreach ([false, 1, 'yes', 'on'] as $notStrictTrue) {
+            $payload = $valid;
+            $payload['consents']['dass']['accepted'] = $notStrictTrue;
+            $this->mutation($fixture, json_encode($payload, JSON_THROW_ON_ERROR), path: '/checkout/_test/confirm-write')
+                ->assertUnprocessable();
+        }
+        $payload = $valid;
+        $payload['profile']['email'] = 'forged@example.test';
+        $this->mutation($fixture, json_encode($payload, JSON_THROW_ON_ERROR), path: '/checkout/_test/confirm-write')
+            ->assertUnprocessable();
+        unset($valid['consents']['psychotest']);
+        $this->mutation($fixture, json_encode($valid, JSON_THROW_ON_ERROR), path: '/checkout/_test/confirm-write')
+            ->assertUnprocessable();
+        $this->assertDatabaseCount('consent_records', 0);
+        $this->assertDatabaseHas('participants', ['id' => $fixture['participant'], 'full_name' => null]);
+    }
+
+    public function test_wrong_current_document_version_or_hash_rolls_back_all_writes(): void
+    {
+        foreach (['version', 'hash'] as $case) {
+            $fixture = $this->established();
+            $payload = json_decode($this->writerPayload(), true, flags: JSON_THROW_ON_ERROR);
+            $payload['consents'][$case === 'version' ? 'dass' : 'psychotest'][
+                $case === 'version' ? 'documentVersion' : 'documentHash'
+            ] = $case === 'version' ? 'obsolete' : str_repeat('0', 64);
+            $this->mutation($fixture, json_encode($payload, JSON_THROW_ON_ERROR), path: '/checkout/_test/confirm-write')
+                ->assertConflict();
+            $this->assertDatabaseHas('participants', ['id' => $fixture['participant'], 'full_name' => null]);
+            $this->assertSame(0, DB::table('consent_records')->where('participant_id', $fixture['participant'])->count());
+        }
+    }
+
+    public function test_settled_attempt_activates_both_tests_without_creating_another_bill(): void
+    {
+        $fixture = $this->established(settled: true, identity: true);
+        $beforeBills = DB::table('assessment_bills')->count();
+        $this->mutation($fixture, $this->writerPayload(), path: '/checkout/_test/confirm-write')
+            ->assertOk()->assertJson(['activatedTestTypes' => ['dass21', 'ist']]);
+        $this->assertSame($beforeBills, DB::table('assessment_bills')->count());
+        $this->assertDatabaseHas('assessment_participants', ['id' => $fixture['attempt'], 'assessment_status' => 'READY']);
+        $this->assertSame(['dass21', 'ist'], DB::table('assessment_entitlements')
+            ->where('assessment_participant_id', $fixture['attempt'])->orderBy('test_type')->pluck('test_type')->all());
+        $this->assertSame(1, DB::table('outbox_messages')->where('topic', 'assessment.activation')->count());
+        $before = [DB::table('audit_logs')->count(), DB::table('outbox_messages')->count(),
+            DB::table('assessment_entitlements')->count(), DB::table('assessment_bills')->count()];
+        $this->mutation($fixture, $this->writerPayload(), path: '/checkout/_test/confirm-write')
+            ->assertOk()->assertJson(['replayed' => true, 'activatedTestTypes' => []]);
+        $this->assertSame($before, [DB::table('audit_logs')->count(), DB::table('outbox_messages')->count(),
+            DB::table('assessment_entitlements')->count(), DB::table('assessment_bills')->count()]);
+    }
+
+    public function test_settled_without_identity_and_unpaid_both_remain_locked(): void
+    {
+        foreach ([['settled' => true, 'identity' => false], ['settled' => false, 'identity' => true]] as $case) {
+            $fixture = $this->established(settled: $case['settled'], identity: $case['identity']);
+            $this->mutation($fixture, $this->writerPayload(), path: '/checkout/_test/confirm-write')
+                ->assertOk()->assertJson(['activatedTestTypes' => []]);
+            $this->assertDatabaseHas('assessment_participants', [
+                'id' => $fixture['attempt'], 'assessment_status' => 'PROVISIONED',
+            ]);
+            $this->assertSame(0, DB::table('assessment_entitlements')
+                ->where('assessment_participant_id', $fixture['attempt'])->where('status', 'ready')->count());
+        }
+    }
+
+    public function test_writer_is_default_off_and_audit_failure_rolls_back_profile_and_consents(): void
+    {
+        $fixture = $this->established();
+        config()->set('assessment_integration.checkout_session.http.confirmation.writer_enabled', false);
+        $this->mutation($fixture, $this->writerPayload(), path: '/checkout/_test/confirm-write')->assertServerError();
+        config()->set('assessment_integration.checkout_session.http.confirmation.writer_enabled', true);
+        DB::unprepared("CREATE TRIGGER p15_audit_failure BEFORE INSERT ON audit_logs
+            WHEN NEW.action = 'checkout.confirmed' BEGIN SELECT RAISE(ABORT, 'synthetic p15 audit failure'); END");
+        try {
+            $this->mutation($fixture, $this->writerPayload(), path: '/checkout/_test/confirm-write')->assertServerError();
+        } finally {
+            DB::unprepared('DROP TRIGGER p15_audit_failure');
+        }
+        $this->assertDatabaseHas('participants', ['id' => $fixture['participant'], 'full_name' => null]);
+        $this->assertSame(0, DB::table('consent_records')->where('participant_id', $fixture['participant'])->count());
+        $this->assertSame(0, DB::table('audit_logs')->where('action', 'checkout.confirmed')->count());
+    }
+
+    public function test_writer_reloads_scope_after_authentication_before_any_write(): void
+    {
+        foreach (['revoke-source', 'change-payer'] as $mutation) {
+            $fixture = $this->established();
+            $this->mutation($fixture, $this->writerPayload(), path: '/checkout/_test/confirm-write', server: [
+                'HTTP_X_TEST_AFTER_AUTH' => $mutation,
+            ])->assertConflict();
+            $this->assertDatabaseHas('participants', ['id' => $fixture['participant'], 'full_name' => null]);
+        }
+        $this->assertDatabaseCount('consent_records', 0);
+        $this->assertSame(0, DB::table('audit_logs')->where('action', 'checkout.confirmed')->count());
+    }
+
+    /** @return array{organization:int,participant:int,client:int,source:int,package:int,attempt:int,selector:string,csrf:string} */
+    private function established(array $participantOverrides = [], bool $settled = false, bool $identity = false): array
     {
         $key = (string) Str::ulid();
         $sourceSystem = 'P15_'.$key;
@@ -184,11 +376,11 @@ final class IntegratedCheckoutConsentTest extends OrganizationPaymentTestCase
             'code' => $key, 'ref_code' => $key, 'name' => 'Synthetic', 'organization_code' => $key,
             'display_name' => 'Synthetic', 'status' => 'ACTIVE', 'is_active' => true,
         ]);
-        $participant = DB::table('participants')->insertGetId([
+        $participant = DB::table('participants')->insertGetId(array_replace([
             'branch_id' => $organization, 'referral_branch_id' => $organization,
             'referral_source' => 'manual', 'source_system' => $sourceSystem,
             'full_name' => null, 'phone' => '620000000000',
-        ]);
+        ], $participantOverrides));
         $client = DB::table('integration_clients')->insertGetId([
             'organization_id' => $organization, 'client_id' => $key,
             'credential_reference' => 'synthetic-only', 'enabled' => true,
@@ -202,12 +394,13 @@ final class IntegratedCheckoutConsentTest extends OrganizationPaymentTestCase
             'code' => $packageCode, 'name' => 'Synthetic', 'amount' => 100,
             'currency' => 'IDR', 'is_active' => true,
         ]);
+        DB::table('participants')->where('id', $participant)->update(['package_id' => $package]);
         DB::table('package_items')->insert([
             ['package_id' => $package, 'test_type' => 'ist', 'sort_order' => 1],
             ['package_id' => $package, 'test_type' => 'dass21', 'sort_order' => 2],
         ]);
         $attemptPublicId = (string) Str::ulid();
-        DB::table('assessment_participants')->insert([
+        $attempt = DB::table('assessment_participants')->insertGetId([
             'organization_id' => $organization, 'integration_client_id' => $client,
             'participant_id' => $participant, 'package_id' => $package,
             'assessment_attempt_id' => $attemptPublicId, 'source_system' => $sourceSystem,
@@ -217,12 +410,52 @@ final class IntegratedCheckoutConsentTest extends OrganizationPaymentTestCase
             'metadata' => json_encode(['checkout_contract_version' => 'checkout-v2',
                 'checkout_initial_funding_mode' => 'COMMERCIAL_SELF_PAY']),
         ]);
+        if ($settled) {
+            $method = DB::table('payment_methods')->insertGetId([
+                'code' => strtolower($key), 'display_name' => 'Synthetic', 'is_active' => true,
+            ]);
+            $snapshot = app(AssessmentPriceSnapshot::class)->capture(TestPackage::with('items')->findOrFail($package), false);
+            $charge = DB::table('assessment_charges')->insertGetId([
+                'assessment_participant_id' => $attempt, 'organization_id' => $organization,
+                'participant_id' => $participant, 'package_id' => $package, 'payer_type' => 'self',
+                'base_amount' => 100, 'consultation_amount' => 0, 'amount' => 100, 'currency' => 'IDR',
+                'price_snapshot' => json_encode($snapshot, JSON_THROW_ON_ERROR), 'policy_snapshot' => '{}',
+            ]);
+            $bill = DB::table('assessment_bills')->insertGetId([
+                'organization_id' => $organization, 'payer_type' => 'self', 'payer_participant_id' => $participant,
+                'public_reference' => 'AB_'.$key, 'status' => 'paid', 'amount' => 100, 'currency' => 'IDR',
+                'item_count' => 1, 'selection_hash' => hash('sha256', 'selection'.$key),
+                'idempotency_key' => $key, 'request_hash' => hash('sha256', 'bill'.$key),
+                'payment_method_id' => $method, 'paid_at' => now(),
+            ]);
+            DB::table('assessment_bill_items')->insert([
+                'bill_id' => $bill, 'charge_id' => $charge, 'organization_id' => $organization,
+                'participant_id' => $participant, 'payer_type' => 'self', 'payer_participant_id' => $participant,
+                'amount' => 100, 'currency' => 'IDR', 'settled_at' => now(),
+            ]);
+        }
+        if ($identity) {
+            foreach (['identity_document', 'initial_selfie'] as $type) {
+                $publicId = (string) Str::ulid();
+                DB::table('identity_evidence')->insert([
+                    'public_id' => $publicId, 'participant_id' => $participant, 'type' => $type,
+                    'disk' => 'local', 'object_key' => 'synthetic/'.$publicId, 'mime_type' => 'image/jpeg',
+                    'size_bytes' => 100, 'width' => 10, 'height' => 10,
+                    'checksum_sha256' => hash('sha256', $publicId), 'created_at' => now(), 'updated_at' => now(),
+                ]);
+            }
+            DB::table('identity_verifications')->insert([
+                'participant_id' => $participant, 'matcher' => 'synthetic', 'outcome' => 'match',
+                'manual_status' => 'pending', 'checked_at' => now(),
+            ]);
+        }
         $issued = app(RlsContextRunner::class)->run(new RlsContext('service'), fn () => app(IssueCheckoutHandoff::class)
             ->execute(new CheckoutHandoffIssueInput(IntegrationClient::findOrFail($client), $attemptPublicId,
                 $sourceSystem, 'ih1_'.bin2hex(random_bytes(16)), CheckoutHandoffIntent::Issue)));
         $established = app(EstablishCheckoutSession::class)->execute(new CheckoutSessionExchangeInput($issued->rawToken()));
 
-        return ['selector' => $established->rawSelector(), 'csrf' => $established->rawCsrfToken()];
+        return compact('organization', 'participant', 'client', 'source', 'package', 'attempt')
+            + ['selector' => $established->rawSelector(), 'csrf' => $established->rawCsrfToken()];
     }
 
     private function payload(): string
@@ -232,6 +465,25 @@ final class IntegratedCheckoutConsentTest extends OrganizationPaymentTestCase
             'consents' => [
                 'psychotest' => ['accepted' => true, 'documentVersion' => 'draft-2026-08-25.2'],
                 'dass' => ['accepted' => true, 'documentVersion' => 'draft-2026-09-05'],
+            ],
+        ], JSON_THROW_ON_ERROR);
+    }
+
+    private function writerPayload(): string
+    {
+        $psychotest = ConsentDocument::for('psychotest');
+        $dass = ConsentDocument::for('dass');
+
+        return json_encode([
+            'profile' => [
+                'fullName' => 'Synthetic Person', 'birthDate' => '2000-01-02', 'gender' => 'FEMALE',
+                'educationLevel' => 'SMA_SMK', 'intendedField' => 'KAIGO',
+            ],
+            'consents' => [
+                'psychotest' => ['accepted' => true, 'documentVersion' => $psychotest->version,
+                    'documentHash' => $psychotest->hash],
+                'dass' => ['accepted' => true, 'documentVersion' => $dass->version,
+                    'documentHash' => $dass->hash],
             ],
         ], JSON_THROW_ON_ERROR);
     }
@@ -248,7 +500,7 @@ final class IntegratedCheckoutConsentTest extends OrganizationPaymentTestCase
         ];
         $defaults = [
             'HTTPS' => 'on', 'HTTP_HOST' => 'psikotes.oncam.id', 'SERVER_NAME' => 'psikotes.oncam.id',
-            'SERVER_PORT' => '443', 'CONTENT_TYPE' => $contentType,
+            'SERVER_PORT' => '443', 'CONTENT_TYPE' => $contentType, 'HTTP_ACCEPT' => 'application/json',
             'HTTP_ORIGIN' => 'https://psikotes.oncam.id', 'HTTP_X_CHECKOUT_CSRF' => $fixture['csrf'],
             'HTTP_SEC_FETCH_SITE' => 'same-origin', 'HTTP_SEC_FETCH_MODE' => 'cors',
             'HTTP_SEC_FETCH_DEST' => 'empty',

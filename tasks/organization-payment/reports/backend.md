@@ -5106,3 +5106,65 @@ logout middleware, frontend, portal, canonical docs, schema and production route
 are unchanged. No P15 FormRequest/action/profile/consent writer exists yet; no
 source/gate activation, browser, active DB, `.env`, outbound service, deploy or push
 occurred. STOP for review before the P15 writer.
+
+## P15 internal profile and consent writer — 2026-09-05
+
+The approved core writer remains test-route-only and default-off unless
+`checkout_session.http.confirmation.writer_enabled` is exactly true. The strict
+`ConfirmIntegratedCheckoutRequest` accepts only `profile` and `consents`. Profile
+input is limited to the six required server fields; optional email and every
+branch/source/client/participant/attempt/package/payer/amount/payment/identity field
+are rejected. Both psychotest and mandatory DASS consent objects require literal
+JSON `true`, the exact current version and SHA-256 document hash. False, numeric or
+string truthy values, missing consent, stale version/hash and unknown nested/root
+keys fail closed. Consent text/title/version must also be nonblank server config.
+
+`IntegratedCheckoutConfirmationInput` is a sensitive typed DTO with its own runtime
+allowlist and canonical request hash, so a non-HTTP internal caller cannot bypass
+the FormRequest shape. `ConfirmIntegratedCheckout` rejects ambient RLS context or
+outer transactions, captures current consent documents, then owns one service
+transaction. Lock order is organization, client, source, package/items, attempt,
+participant, full handoff history, session, consent rows and confirmation audit.
+It reloads active/effective scope, exact checkout-v2 bindings, payer mode, mandatory
+DASS plus a primary test, current active session/expiry and canonical handoff history.
+
+For a first confirmation, submitted profile keys must exactly equal the participant's
+currently NULL required fields. Existing/locked values cannot be repeated or changed.
+All missing fields are written together, both current consent records are inserted,
+and one non-PII `checkout.confirmed` audit records the session, versions and canonical
+request hash. The session row lock serializes confirmations. An exact replay is
+recognized only through that persisted audit and also rechecks stored profile values
+and unwithdrawn current consent records; it writes no second consent/audit. Changed,
+missing, corrupt or withdrawn replay state conflicts. This resolves the otherwise
+ambiguous locked-field replay without schema changes.
+
+After the confirmation transaction commits, the action invokes the existing
+`ActivateSettledAssessment` in its own canonical service transaction. A settled
+attempt with valid identity becomes READY for both IST and DASS, creates the existing
+deduplicated activation intent and never creates a bill. Unpaid or identity-incomplete
+attempts remain PROVISIONED and locked. If activation is interrupted after the
+confirmation commit, an exact replay invokes the idempotent P8b primitive again.
+
+TDD and actual evidence:
+- Initial focused writer RED was attempted after the transport GREEN; the process
+  stalled during the synthetic migration/bootstrap and was interrupted without a
+  result claim. The first completed writer run reached the implementation and found
+  only SQLite's stored date representation mismatch (`Y-m-d 00:00:00` versus the
+  assertion's `Y-m-d`); the persisted value itself was correct and the assertion was
+  fixed without changing production behavior.
+- Final focused P15 transport+writer: 16 tests / 165 assertions, all passed with
+  `phpunit.organization-payment.xml`. Writer coverage includes exact missing fields,
+  unknown/authority fields, strict consent booleans/version/hash, omitted required
+  profile data, prelocked and changed values, exact replay, withdrawn replay,
+  post-auth source/payer race, default-off, audit rollback, settled activation,
+  identity-incomplete and unpaid locking, no duplicate bill/audit/outbox/entitlement.
+- Related P15/P8/P14 regression before the final payer-race assertion: 130 tests /
+  2,193 assertions passed. The final focused run covers the additive payer fence;
+  final Pint passed, full PHPStan reported 0 errors, PHP syntax passed for all three
+  production files, and `git diff --check` passed.
+
+Owned delta is `ConfirmIntegratedCheckoutRequest`,
+`IntegratedCheckoutConfirmationInput`, `ConfirmIntegratedCheckout`, the existing
+focused P15 test, and this report. No production route/controller, shared middleware,
+schema/config file, UI, canonical docs, browser, PostgreSQL claim, active DB, `.env`,
+outbound service, deploy or push is included. STOP for review before public wiring.
