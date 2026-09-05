@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P13b, core privat P14/P15, dan P17a–P17b selesai lokal. P16-pay-a–i serta binding Blade/UI summary-v2 selesai lokal dan default OFF; DASS-21 wajib pada ingress/snapshot/handoff/session/form. Bukti UI terbaru: Blade 17+5, Node 7, React SSR 28, HTTP 34/942, beserta TS/ESLint/Prettier/Pint/diff-check. Runtime browser/P17c dan P18 masih terbuka; checkbox P15/P16 belum ditutup. Fresh PostgreSQL historis lulus 398/3.919. Tidak deploy, tidak migrasi DB aktif, dan tidak menyalakan sumber/feature flag, provider, atau outbound nyata.**
+Status: **P1–P13b, core privat P14/P15, dan P17a–P17b selesai lokal. P16-pay-a–i, binding Blade/UI summary-v2, subset consent current, serta privacy audit selesai lokal dan default OFF; DASS-21 wajib pada ingress/snapshot/handoff/session/form. Bukti terbaru: Blade 19+7, Node 4, PHP/HTTP 38/684, PostgreSQL privacy 2/30, beserta PHPStan/ESLint/Prettier/Pint/diff-check. Runtime browser/P17c dan finalisasi P18 masih terbuka; checkbox P15/P16 belum ditutup. Fresh PostgreSQL historis lulus 398/3.919. Tidak deploy, tidak migrasi DB aktif, dan tidak menyalakan sumber/feature flag, provider, atau outbound nyata.**
 
 ## Gerbang revisi kolektif
 
@@ -624,8 +624,10 @@ tetap unchecked sampai browser dan checkpoint lintas tahap selesai.
 
 **Bukti core lokal:** request/DTO/action writer, HTTP adapter JSON, idempotensi,
 rollback, profil missing-only, serta consent psikotes dan DASS-21 wajib telah
-terintegrasi. Route writer tetap default OFF; acceptance tidak ditutup sebelum
-browser/checkpoint.
+terintegrasi. Subset requirement current, withdrawal/re-consent, rotasi dokumen,
+histori bergenerasi, actor sesi, interval waktu, rollback, dan privacy audit RLS
+telah dibuktikan pada `918eb93`/`ae54cd6`. Route writer tetap default OFF;
+acceptance tidak ditutup sebelum browser/checkpoint.
 
 ### Checkpoint setelah P15
 
@@ -654,8 +656,9 @@ bersama, evidence pembayaran canonical, dan proyeksi action server telah diterim
 melalui `cac65f1`, `04e1499`, `ce036bb`, `edebc7c`, dan `1547501`. Bukti terbaru:
 root **207/2.189**, handoff **29/385**, frontend **8/8** plus TS/lint/format.
 Binding Blade/UI summary-v2 telah selesai lokal melalui `4110213`, `cc69179`,
-`87cf221`, dan `0f46e29`. Buktinya Blade **17+5**, Node **7**, React SSR **28**,
-HTTP **34/942**, serta TS/ESLint/Prettier/Pint/diff-check. Runtime browser/P17c
+`87cf221`, `0f46e29`, dan hardening `918eb93`/`ae54cd6`. Bukti hardening terbaru:
+Blade **19+7**, Node **4**, PHP/HTTP **38/684**, PostgreSQL privacy **2/30**,
+serta PHPStan/ESLint/Prettier/Pint/diff-check. Runtime browser/P17c
 belum dijalankan; checkbox P15/P16 tetap terbuka dan payment tetap default OFF.
 Payer organisasi positif tetap
 baca-saja tanpa URL/action, sedangkan organisasi berharga tepat nol hanya memakai

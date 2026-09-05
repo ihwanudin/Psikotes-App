@@ -1,7 +1,19 @@
 # Rencana: pembayaran lembaga dan checkout terintegrasi
 
 Tanggal: 2026-08-31
-Status: **P1–P13b, core privat P14/P15, dan P17a–P17b selesai lokal. P16-pay-a–i serta binding Blade/UI summary-v2 selesai lokal dan default OFF; DASS-21 wajib pada ingress/snapshot/handoff/session/form. Bukti UI terbaru: Blade 17+5, Node 7, React SSR 28, HTTP 34/942, beserta TS/ESLint/Prettier/Pint/diff-check. Runtime browser/P17c belum dijalankan dan checkbox P15/P16 tetap terbuka. Fresh PostgreSQL historis lulus 398/3.919. DASS consent tetap terpisah dan RLS privat. Tidak ada deploy, migrasi DB aktif, invoice/notifikasi nyata, provider/outbound, atau cutover sumber/feature flag.**
+Status: **P1–P13b, core privat P14/P15, dan P17a–P17b selesai lokal. P16-pay-a–i, binding Blade/UI summary-v2, subset consent current, serta privacy audit selesai lokal dan default OFF; DASS-21 wajib pada ingress/snapshot/handoff/session/form. Bukti terbaru: Blade 19+7, Node 4, HTTP/PHP 38/684, PostgreSQL privacy 2/30, beserta PHPStan/ESLint/Prettier/Pint/diff-check. Runtime browser/P17c belum dijalankan dan checkbox P15/P16 tetap terbuka. Fresh PostgreSQL historis lulus 398/3.919. DASS consent tetap terpisah dan RLS privat. Tidak ada deploy, migrasi DB aktif, invoice/notifikasi nyata, provider/outbound, atau cutover sumber/feature flag.**
+
+## Checkpoint P16 consent subset dan privacy audit — 2026-09-06
+
+`918eb93` membuat audit konfirmasi/re-consent service-only melalui policy RLS
+restrictive. `ae54cd6` membuat presenter, request, writer, Blade, dan transport
+hanya menerima subset requirement current, mendukung histori konfirmasi
+bergenerasi untuk withdrawal/rotasi dokumen, serta mengunci endpoint dan
+provenance pembayaran secara literal/fail-closed.
+
+Root lulus Blade **19+7**, Node **4/4**, PHP/HTTP **38/684**, PostgreSQL
+disposable **2/30**, PHPStan 0 error, Pint, ESLint, Prettier, dan diff-check.
+Fitur tetap default OFF dan browser P17c belum dijalankan.
 
 ## Checkpoint P16 binding Blade/UI summary-v2 — 2026-09-05
 

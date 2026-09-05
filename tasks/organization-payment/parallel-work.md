@@ -1,5 +1,25 @@
 # Koordinasi task paralel organization-payment
 
+## P16 consent subset dan privasi audit diterima lokal — 2026-09-06
+
+Commit `918eb93` menambah policy PostgreSQL restrictive sehingga audit
+`checkout.confirmed` dan `checkout.consent_reaccepted` hanya dapat dibaca role
+service; audit non-sensitif tetap mengikuti policy sebelumnya. Commit `ae54cd6`
+kemudian mengikat form konfirmasi ke subset profil/consent yang benar-benar masih
+wajib, endpoint literal `/checkout/confirm`, provenance pembayaran summary-v2,
+dan histori konfirmasi bergenerasi yang mendukung withdrawal maupun rotasi
+dokumen tanpa menduplikasi replay.
+
+Histori fail closed terhadap actor asing, gap/duplikasi generasi, context atau
+waktu rusak, consent bertanggal masa depan, dan event di luar masa hidup sesi.
+Re-consent menyimpan audit append-only tanpa metadata tipe/version DASS; rollback
+profil, consent, dan audit dibuktikan atomik. Bukti root: Blade **19+7 kasus**,
+transport Node **4/4**, HTTP/PHP **38 tes / 684 assertions**, PHPStan 0 error,
+Pint, ESLint, Prettier, dan diff-check lulus. PostgreSQL disposable policy lulus
+**2 tes / 30 assertions** dan resource dibersihkan. Payment serta checkout tetap
+default **OFF**; tidak ada migrasi aktif, browser, deploy, provider, atau outbound.
+P15/P16 tetap belum ditutup sampai acceptance browser P17c.
+
 ## P16 Blade/UI summary-v2 diterima lokal — 2026-09-05
 
 Empat commit menyelesaikan binding presentasi lokal tanpa mengaktifkan payment.
