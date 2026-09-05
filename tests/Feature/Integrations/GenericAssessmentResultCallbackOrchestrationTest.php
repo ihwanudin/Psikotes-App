@@ -16,15 +16,20 @@ use App\Services\Integrations\GenericAssessmentResultCallbackScheduleBinding;
 use App\Services\Integrations\GenericAssessmentResultDispatch;
 use App\Services\Integrations\GenericAssessmentResultOutbox;
 use App\Services\Integrations\GenericAssessmentResultStore;
+use Illuminate\Console\Command;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Queue\ShouldBeEncrypted;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 use ReflectionMethod;
@@ -77,6 +82,132 @@ final class GenericAssessmentResultCallbackOrchestrationTest extends TestCase
                 $this->assertSame('ASSESSMENT_RESULT_CALLBACK_SCHEDULE_LIMIT_INVALID', $exception->getMessage());
             }
         }
+    }
+
+    public function test_command_uses_a_bounded_default_and_reports_only_broker_accepted_work(): void
+    {
+        Queue::fake();
+        $this->outbox();
+
+        $exitCode = Artisan::call('integrations:dispatch-generic-result-callbacks');
+
+        $this->assertSame(Command::SUCCESS, $exitCode);
+        $this->assertStringContainsString('Broker accepted 1 callback job(s) from 1 selected.', Artisan::output());
+        Queue::assertPushed(DispatchGenericAssessmentResultCallback::class, 1);
+    }
+
+    public function test_command_fails_closed_and_logs_safe_operational_reasons(): void
+    {
+        Log::spy();
+        config()->set('selection_integration.result_callback_enabled', false);
+
+        $this->assertSame(Command::INVALID, Artisan::call('integrations:dispatch-generic-result-callbacks'));
+        $this->assertStringNotContainsString('psychotest-to-selection-secret', Artisan::output());
+        Log::shouldHaveReceived('warning')->with(
+            'Generic assessment result callback invocation rejected.',
+            ['reasonCode' => 'CALLBACK_DISABLED'],
+        )->once();
+
+        config()->set('selection_integration.result_callback_enabled', true);
+        config()->set('selection_integration.result_callback_base_url', 'https://evil.example');
+        $this->assertSame(Command::INVALID, Artisan::call('integrations:dispatch-generic-result-callbacks'));
+        Log::shouldHaveReceived('warning')->with(
+            'Generic assessment result callback invocation rejected.',
+            ['reasonCode' => 'CALLBACK_CONFIGURATION_INVALID'],
+        )->once();
+
+        $this->assertSame(Command::INVALID, Artisan::call(
+            'integrations:dispatch-generic-result-callbacks',
+            ['--limit' => 101],
+        ));
+        Log::shouldHaveReceived('warning')->with(
+            'Generic assessment result callback invocation rejected.',
+            ['reasonCode' => 'CALLBACK_LIMIT_INVALID'],
+        )->once();
+    }
+
+    public function test_command_returns_failure_when_the_broker_rejects_dispatch(): void
+    {
+        $this->outbox();
+        config()->set('queue.default', 'missing-broker');
+
+        $exitCode = Artisan::call('integrations:dispatch-generic-result-callbacks', ['--limit' => 1]);
+
+        $this->assertSame(Command::FAILURE, $exitCode);
+        $this->assertStringContainsString('Broker accepted 0 callback job(s); 1 broker failure(s).', Artisan::output());
+        $this->assertStringNotContainsString('Broker accepted 1 callback job(s)', Artisan::output());
+    }
+
+    public function test_command_reports_planning_failure_without_logging_exception_or_result_data(): void
+    {
+        $this->outbox();
+        Schema::drop('generic_assessment_result_callback_schedules');
+        Log::spy();
+
+        $exitCode = Artisan::call('integrations:dispatch-generic-result-callbacks', ['--limit' => 1]);
+
+        $this->assertSame(Command::FAILURE, $exitCode);
+        $this->assertStringContainsString('delivery outcome may be partial', Artisan::output());
+        $this->assertStringNotContainsString('no such table', Artisan::output());
+        $this->assertStringNotContainsString('99.125', Artisan::output());
+        Log::shouldHaveReceived('error')->with(
+            'Generic assessment result callback invocation failed.',
+            [
+                'reasonCode' => 'CALLBACK_INVOCATION_FAILED',
+                'limit' => 1,
+                'deliveryOutcome' => 'MAY_BE_PARTIAL',
+            ],
+        )->once();
+    }
+
+    public function test_command_reports_partial_unknown_when_bookkeeping_fails_after_broker_acceptance(): void
+    {
+        Queue::fake();
+        [, , $firstOutbox] = $this->outbox();
+        [, , $secondOutbox] = $this->outbox();
+        DB::unprepared(<<<SQL
+            CREATE TRIGGER callback_schedule_second_update_failure
+            BEFORE UPDATE ON generic_assessment_result_callback_schedules
+            WHEN NEW.outbox_id = '{$secondOutbox}'
+            BEGIN
+                SELECT RAISE(ABORT, 'synthetic bookkeeping failure');
+            END
+        SQL);
+
+        $exitCode = Artisan::call('integrations:dispatch-generic-result-callbacks', ['--limit' => 2]);
+
+        $this->assertSame(Command::FAILURE, $exitCode);
+        $this->assertStringContainsString('delivery outcome may be partial', Artisan::output());
+        $this->assertStringNotContainsString('synthetic bookkeeping failure', Artisan::output());
+        Queue::assertPushed(DispatchGenericAssessmentResultCallback::class, 2);
+        $this->assertDatabaseHas('generic_assessment_result_callback_schedules', [
+            'outbox_id' => $firstOutbox,
+            'state' => 'QUEUED',
+        ]);
+        $this->assertDatabaseHas('generic_assessment_result_callback_schedules', [
+            'outbox_id' => $secondOutbox,
+            'state' => 'PENDING',
+        ]);
+    }
+
+    public function test_callback_command_is_scheduled_every_five_minutes_with_shared_overlap_guards(): void
+    {
+        $event = collect(app(Schedule::class)->events())
+            ->first(fn ($event): bool => str_contains(
+                $event->command ?? '',
+                'integrations:dispatch-generic-result-callbacks',
+            ));
+
+        $this->assertNotNull($event);
+        $this->assertSame('*/5 * * * *', $event->expression);
+        $this->assertStringContainsString('--limit=25', (string) $event->command);
+        $this->assertTrue($event->withoutOverlapping);
+        $this->assertTrue($event->onOneServer);
+        config()->set('selection_integration.result_callback_enabled', false);
+        $this->assertFalse($event->filtersPass(app()));
+
+        config()->set('selection_integration.result_callback_enabled', true);
+        $this->assertTrue($event->filtersPass(app()));
     }
 
     public function test_sync_queue_executes_a_new_schedule_before_broker_acceptance_without_losing_the_job(): void

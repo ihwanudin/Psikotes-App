@@ -10,6 +10,7 @@ use App\Contracts\PaymentProvider;
 use App\Contracts\RunsRlsContext;
 use App\Security\RlsContextRunner;
 use App\Services\Identity\ManualReviewIdentityMatcher;
+use App\Services\Integrations\GenericAssessmentResultCallbackConfiguration;
 use App\Services\Notifications\N8nNotifier;
 use App\Services\Payments\XenditProvider;
 use Carbon\CarbonImmutable;
@@ -149,21 +150,7 @@ class AppServiceProvider extends ServiceProvider
         }
 
         if ((bool) config('selection_integration.result_callback_enabled')) {
-            $callbackSecret = config('selection_integration.result_callback_secret');
-            $inboundSecret = config('selection_integration.client_secret');
-            $callbackTimeout = config('selection_integration.result_callback_timeout_seconds');
-            $requirements += [
-                'SELECTION_RESULT_CALLBACK_BASE_URL_HTTPS_EXACT' => $this->isValidSelectionCallbackBaseUrl(
-                    config('selection_integration.result_callback_base_url'),
-                ),
-                'SELECTION_RESULT_CALLBACK_SECRET' => is_string($callbackSecret)
-                    && strlen($callbackSecret) >= 32,
-                'SELECTION_RESULT_CALLBACK_SECRET_DIRECTIONAL' => ! is_string($inboundSecret)
-                    || ! is_string($callbackSecret)
-                    || ! hash_equals($inboundSecret, $callbackSecret),
-                'SELECTION_RESULT_CALLBACK_TIMEOUT' => is_int($callbackTimeout)
-                    && $callbackTimeout >= 2 && $callbackTimeout <= 30,
-            ];
+            $requirements += app(GenericAssessmentResultCallbackConfiguration::class)->requirements();
         }
 
         return array_keys(array_filter($requirements, static fn (bool $valid): bool => ! $valid));
@@ -185,24 +172,5 @@ class AppServiceProvider extends ServiceProvider
         return is_string($value)
             && filter_var($value, FILTER_VALIDATE_URL) !== false
             && parse_url($value, PHP_URL_SCHEME) === 'https';
-    }
-
-    private function isValidSelectionCallbackBaseUrl(mixed $value): bool
-    {
-        if (! is_string($value) || filter_var($value, FILTER_VALIDATE_URL) === false) {
-            return false;
-        }
-
-        $parts = parse_url($value);
-
-        return is_array($parts)
-            && ($parts['scheme'] ?? null) === 'https'
-            && strtolower((string) ($parts['host'] ?? '')) === 'seleksi.beasiswajepang.id'
-            && in_array($parts['path'] ?? '', ['', '/'], true)
-            && (! isset($parts['port']) || (int) $parts['port'] === 443)
-            && ! isset($parts['user'])
-            && ! isset($parts['pass'])
-            && ! isset($parts['query'])
-            && ! isset($parts['fragment']);
     }
 }

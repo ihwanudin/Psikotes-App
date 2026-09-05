@@ -32,3 +32,10 @@ Schedule::command('integrations:reconcile-callbacks')
     ->everyFiveMinutes()
     ->withoutOverlapping()
     ->onOneServer();
+
+Schedule::command('integrations:dispatch-generic-result-callbacks --limit=25')
+    ->everyFiveMinutes()
+    ->name('generic-assessment-result-callback-dispatch')
+    ->withoutOverlapping(10)
+    ->onOneServer()
+    ->when(static fn (): bool => (bool) config('selection_integration.result_callback_enabled'));
