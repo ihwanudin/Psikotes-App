@@ -8,6 +8,75 @@ import type {
 // Compile-only probes: v2 exposes server choices, never browser authority.
 declare const summary: CheckoutSummaryV2;
 
+export const kraepelinOnlyNonDass: CheckoutSummaryV2 = {
+    ...summary,
+    access: {
+        ...summary.access,
+        tests: [
+            { testType: 'dass21', state: 'locked' },
+            { testType: 'kraepelin', state: 'ready' },
+        ],
+    },
+};
+
+export const istAndPapi: CheckoutSummaryV2 = {
+    ...summary,
+    access: {
+        ...summary.access,
+        tests: [
+            { testType: 'dass21', state: 'locked' },
+            { testType: 'ist', state: 'locked' },
+            { testType: 'papi', state: 'ready' },
+        ],
+    },
+};
+
+export const rmibOnlyNonDass: CheckoutSummaryV2 = {
+    ...summary,
+    access: {
+        ...summary.access,
+        tests: [
+            { testType: 'dass21', state: 'locked' },
+            { testType: 'rmib', state: 'ready' },
+        ],
+    },
+};
+
+export const dassOnlySummary: CheckoutSummaryV2 = {
+    ...summary,
+    access: {
+        ...summary.access,
+        // @ts-expect-error A package requires DASS-21 and at least one non-DASS test.
+        tests: [{ testType: 'dass21', state: 'locked' }],
+    },
+};
+
+export const duplicatePackageTests: CheckoutSummaryV2 = {
+    ...summary,
+    access: {
+        ...summary.access,
+        tests: [
+            { testType: 'dass21', state: 'locked' },
+            { testType: 'ist', state: 'locked' },
+            // @ts-expect-error Canonical package test types cannot be duplicated.
+            { testType: 'ist', state: 'ready' },
+        ],
+    },
+};
+
+export const outOfOrderPackageTests: CheckoutSummaryV2 = {
+    ...summary,
+    access: {
+        ...summary.access,
+        tests: [
+            { testType: 'dass21', state: 'locked' },
+            { testType: 'rmib', state: 'locked' },
+            // @ts-expect-error Package test types must retain canonical order.
+            { testType: 'ist', state: 'ready' },
+        ],
+    },
+};
+
 export const unavailableAction: CheckoutSummaryV2Payment = {
     payer: 'self',
     state: 'unpaid',

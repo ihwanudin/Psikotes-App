@@ -323,7 +323,7 @@ test('rejects extra or missing keys and authority-bearing fields at every paymen
     }
 });
 
-test('requires mandatory DASS consent and a DASS-21 test in the package', () => {
+test('requires mandatory DASS consent and canonical mixed package tests', () => {
     rejects((value) => {
         value.consents.dass = { state: 'not_applicable' };
     });
@@ -332,6 +332,22 @@ test('requires mandatory DASS consent and a DASS-21 test in the package', () => 
     });
     rejects((value) => {
         value.access.tests = [{ testType: 'ist', state: 'locked' }];
+    });
+    rejects((value) => {
+        value.access.tests = [{ testType: 'dass21', state: 'locked' }];
+    });
+    rejects((value) => {
+        value.access.tests = [
+            { testType: 'ist', state: 'locked' },
+            { testType: 'dass21', state: 'locked' },
+        ];
+    });
+    rejects((value) => {
+        value.access.tests = [
+            { testType: 'dass21', state: 'locked' },
+            { testType: 'kraepelin', state: 'locked' },
+            { testType: 'ist', state: 'locked' },
+        ];
     });
 });
 

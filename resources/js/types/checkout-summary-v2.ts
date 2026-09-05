@@ -191,10 +191,35 @@ export type CheckoutSummaryV2Payment =
 export type CheckoutSummaryV2TestType =
     'dass21' | 'ist' | 'kraepelin' | 'papi' | 'rmib';
 
-export type CheckoutSummaryV2Test = Readonly<{
-    testType: CheckoutSummaryV2TestType;
+type CheckoutSummaryV2NonDassTestType = Exclude<
+    CheckoutSummaryV2TestType,
+    'dass21'
+>;
+
+export type CheckoutSummaryV2Test<
+    Type extends CheckoutSummaryV2TestType = CheckoutSummaryV2TestType,
+> = Readonly<{
+    testType: Type;
     state: 'locked' | 'ready';
 }>;
+
+type CanonicalTestSubset<
+    Remaining extends readonly CheckoutSummaryV2NonDassTestType[],
+> = Remaining extends readonly [
+    infer Head extends CheckoutSummaryV2NonDassTestType,
+    ...infer Tail extends readonly CheckoutSummaryV2NonDassTestType[],
+]
+    ? | CanonicalTestSubset<Tail>
+      | readonly [CheckoutSummaryV2Test<Head>, ...CanonicalTestSubset<Tail>]
+    : readonly [];
+
+type CheckoutSummaryV2PackageTests = readonly [
+    CheckoutSummaryV2Test<'dass21'>,
+    ...Exclude<
+        CanonicalTestSubset<readonly ['ist', 'kraepelin', 'papi', 'rmib']>,
+        readonly []
+    >,
+];
 
 export type CheckoutSummaryV2Consent =
     | Readonly<{ state: 'accepted'; version: string; document?: never }>
@@ -214,7 +239,7 @@ export type CheckoutSummaryV2 = Readonly<{
     identityMessage: string;
     access: Readonly<{
         state: 'locked' | 'partial' | 'ready';
-        tests: readonly [CheckoutSummaryV2Test, ...CheckoutSummaryV2Test[]];
+        tests: CheckoutSummaryV2PackageTests;
         startAvailable: false;
         message: string;
     }>;
@@ -514,23 +539,27 @@ function isAccess(value: unknown): value is CheckoutSummaryV2['access'] {
         return false;
     }
 
-    const types = new Set<unknown>();
+    const types = new Set<string>();
+    let previousType: string | null = null;
 
     for (const item of value.tests) {
         if (
             !isRecord(item) ||
             !hasExactKeys(item, ['testType', 'state']) ||
+            !isString(item.testType) ||
             !TEST_TYPES.has(item.testType) ||
             (item.state !== 'locked' && item.state !== 'ready') ||
-            types.has(item.testType)
+            types.has(item.testType) ||
+            (previousType !== null && item.testType <= previousType)
         ) {
             return false;
         }
 
         types.add(item.testType);
+        previousType = item.testType;
     }
 
-    return types.has('dass21');
+    return types.has('dass21') && types.size > 1;
 }
 
 function isConsents(value: unknown): value is CheckoutSummaryV2['consents'] {
