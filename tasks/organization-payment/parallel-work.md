@@ -1,5 +1,20 @@
 # Koordinasi task paralel organization-payment
 
+## P16 Blade/UI summary-v2 diterima lokal — 2026-09-05
+
+Empat commit menyelesaikan binding presentasi lokal tanpa mengaktifkan payment.
+`4110213` mewajibkan evidence DASS pada helper browser checkout; `cc69179`
+mengikat Blade ke payload `checkout-summary-v2` dan UI pembayaran server-derived;
+`87cf221` menyelaraskan audit HTTP presentation ke selector v2; `0f46e29`
+memastikan form checkout hanya dapat dikirim setelah consent DASS wajib diterima.
+
+Bukti root: Blade **17+5 tes**, transport Node **7**, React SSR **28**, dan HTTP
+gabungan **34 tes / 942 assertions**. TypeScript, ESLint, Prettier, Pint, serta
+diff-check juga lulus. Binding Blade/UI P16 kini selesai lokal dan tetap berada
+di balik payment default **OFF**. Runtime browser/P17c belum dijalankan, sehingga
+checkbox acceptance P15 dan P16 tetap terbuka. Checkpoint ini tidak mengklaim
+deploy, provider nyata, database aktif, outbound, atau aktivasi feature flag.
+
 ## P16 summary-v2 dan pertahanan DASS lifecycle diterima — 2026-09-05
 
 Checkpoint server/frontend lokal menerima lima commit yang tidak mengaktifkan
@@ -18,8 +33,8 @@ action sempit tanpa mengekspos ID, batch, reference, atau URL provider.
 Bukti root gabungan lulus **207 tes / 2.189 assertions**; suite handoff lulus
 **29 / 385**. Kontrak frontend lulus **8/8**, beserta TypeScript, lint, dan
 format. Payment tetap default **OFF**. Checkpoint ini menutup pekerjaan kontrak
-summary-v2 dan defense-in-depth DASS pada handoff/session, tetapi belum mengikat
-action ke Blade/UI produksi dan belum menjalankan acceptance browser. Tidak ada
+summary-v2 dan defense-in-depth DASS pada handoff/session. Binding Blade/UI
+diterima pada checkpoint setelahnya di atas; acceptance browser belum dijalankan. Tidak ada
 deploy, migrasi database aktif, provider/outbound nyata, atau feature flag yang
 dinyalakan.
 
@@ -49,7 +64,9 @@ active database, browser, deployment, or external notification was activated.
 
 Kontrak summary-v2 dan defense-in-depth legacy DASS-less handoff/session yang
 sebelumnya tersisa telah diterima pada checkpoint berikutnya di atas. Pekerjaan
-P16 yang tersisa adalah binding Blade/UI produksi dan bukti browser; payment tetap OFF.
+P16 yang tersisa pada checkpoint historis ini adalah binding Blade/UI dan bukti
+browser. Binding kemudian diterima lokal; runtime browser tetap terbuka dan
+payment tetap OFF.
 
 ## P16-pay-g/h accepted; persisted URL and HTTP boundary verified — 2026-09-05
 

@@ -1,7 +1,22 @@
 # Rencana: pembayaran lembaga dan checkout terintegrasi
 
 Tanggal: 2026-08-31
-Status: **P1–P13b, core privat P14/P15, dan P17a–P17b selesai lokal. P16-pay-a–i selesai lokal dan default OFF; DASS-21 wajib pada ingress/snapshot/handoff/session, kontrak strict TypeScript summary-v2 dan proyeksi action server sudah diterima. Fresh PostgreSQL historis lulus 398/3.919; checkpoint terbaru lulus root 207/2.189, handoff 29/385, dan frontend 8/8 beserta TS/lint/format. Binding Blade/UI serta browser belum selesai. DASS consent tetap terpisah dan RLS privat. P17c masih tertahan gerbang ownership proses. Tidak ada deploy, migrasi DB aktif, invoice/notifikasi nyata, atau cutover sumber/feature flag.**
+Status: **P1–P13b, core privat P14/P15, dan P17a–P17b selesai lokal. P16-pay-a–i serta binding Blade/UI summary-v2 selesai lokal dan default OFF; DASS-21 wajib pada ingress/snapshot/handoff/session/form. Bukti UI terbaru: Blade 17+5, Node 7, React SSR 28, HTTP 34/942, beserta TS/ESLint/Prettier/Pint/diff-check. Runtime browser/P17c belum dijalankan dan checkbox P15/P16 tetap terbuka. Fresh PostgreSQL historis lulus 398/3.919. DASS consent tetap terpisah dan RLS privat. Tidak ada deploy, migrasi DB aktif, invoice/notifikasi nyata, provider/outbound, atau cutover sumber/feature flag.**
+
+## Checkpoint P16 binding Blade/UI summary-v2 — 2026-09-05
+
+`4110213` memperketat helper browser agar hanya memakai fixture dengan DASS wajib.
+`cc69179` mengikat Blade pada payload `checkout-summary-v2` dan merender pilihan
+pembayaran dari action/harga server tanpa menjadikan client authority. `87cf221`
+menyelaraskan suite HTTP ke script v2, sedangkan `0f46e29` menjaga consent DASS
+required pada form checkout.
+
+Root membuktikan Blade **17+5 tes**, transport Node **7**, React SSR **28**, dan
+HTTP **34 tes / 942 assertions**. TypeScript, ESLint, Prettier, Pint, serta
+diff-check lulus. Binding Blade/UI selesai lokal, tetapi payment tetap default
+OFF. Runtime browser/P17c belum dijalankan, sehingga acceptance P15/P16 tidak
+ditutup. Tidak ada deploy, provider nyata, database aktif, outbound, migrasi
+aktif, atau feature flag yang dinyalakan.
 
 ## Checkpoint P16 summary-v2 dan DASS lifecycle — 2026-09-05
 
@@ -16,9 +31,10 @@ snapshot server tanpa ID, batch, reference, atau URL provider.
 Root gabungan lulus **207 tes / 2.189 assertions**, handoff **29/385**, dan
 frontend **8/8** plus TypeScript, lint, serta format. Ini menyelesaikan kontrak
 summary-v2 dan defense-in-depth DASS pada server, bukan P16 secara keseluruhan.
-Tahap berikut tetap binding Blade/UI produksi lalu acceptance browser. Payment
-masih literal default OFF; checkpoint tidak mencakup deploy, migrasi DB aktif,
-provider/outbound nyata, atau aktivasi sumber/feature flag.
+Binding Blade/UI diterima pada checkpoint berikutnya di atas. Tahap yang tersisa
+adalah runtime browser/P17c; payment masih literal default OFF. Checkpoint tidak
+mencakup deploy, migrasi DB aktif, provider/outbound nyata, atau aktivasi sumber/
+feature flag.
 
 ## Perubahan lingkup: pembayaran kolektif cabang
 

@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P13b, core privat P14/P15, dan P17a–P17b selesai lokal. P16-pay-a–i selesai lokal dan default OFF; DASS-21 wajib pada ingress/snapshot/handoff/session, kontrak strict TypeScript summary-v2 dan proyeksi action server sudah diterima. Fresh PostgreSQL historis lulus 398/3.919; checkpoint terbaru lulus root 207/2.189, handoff 29/385, dan frontend 8/8 beserta TS/lint/format. Binding Blade/UI serta browser belum selesai. P17c serta P18 masih terbuka. Tidak deploy, tidak migrasi DB aktif, dan tidak menyalakan sumber/feature flag atau outbound nyata.**
+Status: **P1–P13b, core privat P14/P15, dan P17a–P17b selesai lokal. P16-pay-a–i serta binding Blade/UI summary-v2 selesai lokal dan default OFF; DASS-21 wajib pada ingress/snapshot/handoff/session/form. Bukti UI terbaru: Blade 17+5, Node 7, React SSR 28, HTTP 34/942, beserta TS/ESLint/Prettier/Pint/diff-check. Runtime browser/P17c dan P18 masih terbuka; checkbox P15/P16 belum ditutup. Fresh PostgreSQL historis lulus 398/3.919. Tidak deploy, tidak migrasi DB aktif, dan tidak menyalakan sumber/feature flag, provider, atau outbound nyata.**
 
 ## Gerbang revisi kolektif
 
@@ -653,8 +653,11 @@ handoff, serta graph session. Kontrak strict TypeScript summary-v2, fixture DASS
 bersama, evidence pembayaran canonical, dan proyeksi action server telah diterima
 melalui `cac65f1`, `04e1499`, `ce036bb`, `edebc7c`, dan `1547501`. Bukti terbaru:
 root **207/2.189**, handoff **29/385**, frontend **8/8** plus TS/lint/format.
-Binding Blade/UI produksi dan browser acceptance belum lengkap; checkbox P16
-tetap terbuka dan payment tetap default OFF. Payer organisasi positif tetap
+Binding Blade/UI summary-v2 telah selesai lokal melalui `4110213`, `cc69179`,
+`87cf221`, dan `0f46e29`. Buktinya Blade **17+5**, Node **7**, React SSR **28**,
+HTTP **34/942**, serta TS/ESLint/Prettier/Pint/diff-check. Runtime browser/P17c
+belum dijalankan; checkbox P15/P16 tetap terbuka dan payment tetap default OFF.
+Payer organisasi positif tetap
 baca-saja tanpa URL/action, sedangkan organisasi berharga tepat nol hanya memakai
 pengecualian no-money yang sudah diterima ADR-014.
 
