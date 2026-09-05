@@ -1,5 +1,22 @@
 # Koordinasi task paralel organization-payment
 
+## P16 JSON transport accepted; default-off route wiring next — 2026-09-05
+
+Frontend `3477531` was reviewed and integrated as root `c5bf2a4`. Root reran
+the pure transport **4/4 tests**, real-Blade **6/6 cases**, and private summary
+HTTP **33/33 tests, 910 assertions**, plus ESLint, Prettier, Pint, PHP syntax,
+and diff-check. Native form encoding is now always prevented; submit is enabled
+only after the external same-origin module validates the DOM and constructs the
+strict P15 JSON payload with literal consent booleans.
+
+Backend `ffad875` was reviewed and integrated as root `3dea18e`. Root reran the
+P14/P15/P16 adapter regression **61/61 tests, 2,226 assertions**, Pint, PHPStan
+0 errors, and diff-check. The controller exposes only minimal success/replay facts
+and generic private errors; production routes remain absent. One next backend
+increment may wire the already-reviewed session/summary/logout/confirmation
+controllers behind committed default-OFF configuration and boundary middleware.
+Frontend must remain idle until the server presentation contract is reviewed.
+
 ## P16 presentation accepted; transport split active — 2026-09-05
 
 Frontend `337d22e` was reviewed and integrated as root `73eb56a`. Root reran the
