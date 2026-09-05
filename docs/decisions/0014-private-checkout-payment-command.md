@@ -61,11 +61,13 @@ unexpected failure tetap framework 500 terlapor dan tersanitasi.
 
 ### Authentication, transaction, and locks
 
-Route tetap di luar middleware `web` dan memakai urutan privacy boundary,
-feature gate, named mutation throttle, checkout-session authentication, lalu
-strict same-origin JSON+CSRF. Payment mempunyai `enabled`, `writer_enabled`, dan
-body limit typed sendiri; semuanya default false dan tidak ikut menyala ketika
-summary atau confirmation diaktifkan.
+Route tetap di luar middleware `web` dan memakai urutan privacy/cache boundary,
+named mutation throttle, gate pembayaran sekaligus validasi strict same-origin
+JSON+CSRF/fetch metadata, lalu checkout-session authentication tepat sebelum
+FormRequest/controller. Urutan ini membuat request malformed atau writer yang
+masih OFF ditolak tanpa menyentuh lifecycle sesi. Payment mempunyai `enabled`,
+`writer_enabled`, dan body limit typed sendiri; semuanya default false dan tidak
+ikut menyala ketika summary atau confirmation diaktifkan.
 
 Writer menerima credential/session selector internal dan memuat ulang serta
 mengunci graph canonical dalam service transaction:
