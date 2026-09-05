@@ -390,6 +390,161 @@ class CheckoutCoordinatorTests(unittest.TestCase):
             popen.assert_not_called()
             self.assertEqual(candidate.anchor_publisher.load(), anchor)
 
+    def test_supervise_fresh_assembles_bound_run_then_delegates_exact_options(self):
+        module = self.module()
+        with TemporaryDirectory(prefix="oncam-coordinator-test-") as root:
+            root = Path(root)
+            coordinator, run_directory = root / "coordinator", root / "candidate"
+            coordinator.mkdir()
+            run_directory.mkdir()
+            observed = {}
+
+            def supervise(run, *, mode, requests, budget):
+                run.anchor_publisher._validate_binding()
+                observed.update(
+                    run=run,
+                    mode=mode,
+                    requests=requests,
+                    budget=budget,
+                )
+                return {"state": "synthetic"}
+
+            with patch.object(module.supervisor_module, "supervise", side_effect=supervise) as lifecycle, \
+                    patch.object(module.os, "getenv", side_effect=AssertionError("no environment")), \
+                    patch.object(module.supervisor_module.subprocess, "Popen",
+                                 side_effect=AssertionError("no process")) as popen:
+                result = module.supervise_fresh(
+                    config=self.config(run_directory),
+                    coordinator_directory=coordinator,
+                    mode="full",
+                    requests=2,
+                    budget=321,
+                )
+
+            self.assertEqual(result, {"state": "synthetic"})
+            self.assertEqual(lifecycle.call_count, 1)
+            self.assertFalse(observed["run"].claimed)
+            self.assertEqual(observed["run"].lifecycle_phase, "new")
+            self.assertEqual(
+                (observed["mode"], observed["requests"], observed["budget"]),
+                ("full", 2, 321),
+            )
+            popen.assert_not_called()
+
+    def test_recover_existing_assembles_recovery_then_delegates_exact_anchor(self):
+        module = self.module()
+        with TemporaryDirectory(prefix="oncam-coordinator-test-") as root:
+            root = Path(root)
+            coordinator, run_directory = root / "coordinator", root / "candidate"
+            coordinator.mkdir()
+            run_directory.mkdir()
+            config = self.config(run_directory)
+            original = module.assemble_fresh(config=config, coordinator_directory=coordinator)
+            original.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            original.claim(1)
+            expected_anchor = original.journal_anchor()
+            observed = {}
+
+            def recover(run, *, session, anchor, budget):
+                run.anchor_publisher._validate_binding()
+                observed.update(
+                    run=run,
+                    session=session,
+                    anchor=anchor,
+                    budget=budget,
+                )
+                return {"state": "synthetic_recovery"}
+
+            with patch.object(module.supervisor_module, "recover", side_effect=recover) as lifecycle, \
+                    patch.object(module.os, "getenv", side_effect=AssertionError("no environment")), \
+                    patch.object(module.supervisor_module.subprocess, "Popen",
+                                 side_effect=AssertionError("no process")) as popen:
+                result = module.recover_existing(
+                    config=config,
+                    coordinator_directory=coordinator,
+                    session=original.session,
+                    budget=14,
+                )
+
+            self.assertEqual(result, {"state": "synthetic_recovery"})
+            self.assertEqual(lifecycle.call_count, 1)
+            self.assertEqual(observed["run"].lifecycle_phase, "recovery_ready")
+            self.assertEqual(observed["session"], original.session)
+            self.assertEqual(observed["anchor"], expected_anchor)
+            self.assertIsNot(observed["anchor"], expected_anchor)
+            self.assertEqual(observed["budget"], 14)
+            popen.assert_not_called()
+
+    def test_lifecycle_facade_stops_on_assembly_failure_before_delegation(self):
+        module = self.module()
+        with TemporaryDirectory(prefix="oncam-coordinator-test-") as root:
+            root = Path(root)
+            coordinator, run_directory = root / "coordinator", root / "candidate"
+            coordinator.mkdir()
+            run_directory.mkdir()
+            invalid = {**self.config(run_directory), "unexpected": "PRIVATE_VALUE"}
+
+            with patch.object(module.supervisor_module, "supervise") as supervise, \
+                    patch.object(module.supervisor_module, "recover") as recover, \
+                    patch.object(module.supervisor_module.subprocess, "Popen",
+                                 side_effect=AssertionError("no process")):
+                with self.assertRaisesRegex(module.CoordinatorRefused, "^coordinator_config$"):
+                    module.supervise_fresh(
+                        config=invalid,
+                        coordinator_directory=coordinator,
+                        mode="smoke",
+                        requests=1,
+                        budget=1,
+                    )
+                with self.assertRaisesRegex(module.CoordinatorRefused, "^coordinator_anchor$"):
+                    module.recover_existing(
+                        config=self.config(run_directory),
+                        coordinator_directory=coordinator,
+                        session=self.session,
+                        budget=1,
+                    )
+
+            supervise.assert_not_called()
+            recover.assert_not_called()
+
+    def test_lifecycle_facade_preserves_supervisor_and_base_exceptions(self):
+        module = self.module()
+        with TemporaryDirectory(prefix="oncam-coordinator-test-") as root:
+            root = Path(root)
+            coordinator, run_directory = root / "coordinator", root / "candidate"
+            coordinator.mkdir()
+            run_directory.mkdir()
+            config = self.config(run_directory)
+            original = module.assemble_fresh(config=config, coordinator_directory=coordinator)
+            original.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            original.claim(1)
+
+            calls = (
+                ("fresh", "supervise", lambda: module.supervise_fresh(
+                    config=config, coordinator_directory=coordinator,
+                    mode="smoke", requests=1, budget=1,
+                )),
+                ("recovery", "recover", lambda: module.recover_existing(
+                    config=config, coordinator_directory=coordinator,
+                    session=original.session, budget=1,
+                )),
+            )
+            errors = (
+                module.supervisor_module.Refused("invalid_options"),
+                KeyboardInterrupt("synthetic_interrupt"),
+                SystemExit("synthetic_exit"),
+            )
+            for operation, target, invoke in calls:
+                for error in errors:
+                    with self.subTest(operation=operation, error=type(error).__name__), \
+                            patch.object(module.supervisor_module, target, side_effect=error), \
+                            patch.object(module.supervisor_module.subprocess, "Popen",
+                                         side_effect=AssertionError("no process")) as popen, \
+                            self.assertRaises(type(error)) as caught:
+                        invoke()
+                    self.assertIs(caught.exception, error)
+                    popen.assert_not_called()
+
     def test_recovery_wrong_session_or_config_fails_without_popen(self):
         module = self.module()
         with TemporaryDirectory(prefix="oncam-coordinator-test-") as root:

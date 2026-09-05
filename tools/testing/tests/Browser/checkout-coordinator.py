@@ -217,3 +217,29 @@ def assemble_recovery(*, config, coordinator_directory, session):
     # supervisor recovery path explicitly hydrates and advances it to `recovery`.
     run.lifecycle_phase = "recovery_ready"
     return run, run.anchor_publisher.load()
+
+
+def supervise_fresh(*, config, coordinator_directory, mode, requests, budget):
+    """Run the supervisor only after fresh coordinator assembly and binding."""
+    run = assemble_fresh(config=config, coordinator_directory=coordinator_directory)
+    return supervisor_module.supervise(
+        run,
+        mode=mode,
+        requests=requests,
+        budget=budget,
+    )
+
+
+def recover_existing(*, config, coordinator_directory, session, budget):
+    """Run recovery only with the exact anchor loaded by coordinator assembly."""
+    run, anchor = assemble_recovery(
+        config=config,
+        coordinator_directory=coordinator_directory,
+        session=session,
+    )
+    return supervisor_module.recover(
+        run,
+        session=session,
+        anchor=anchor,
+        budget=budget,
+    )
