@@ -68,66 +68,56 @@ export function CheckoutConsents({
                     </p>
                 )}
             </div>
-            {consents.dass.state !== 'not_applicable' ? (
-                <div className="space-y-3 border-t pt-5">
-                    <h3 className="font-semibold">
-                        DASS-21 · pilihan terpisah
-                    </h3>
-                    <p className="text-sm leading-6 text-slate-600">
-                        DASS-21 opsional dan tidak menentukan kelayakan kerja.
-                        Menolak DASS tidak membatalkan psikotes utama. Data
-                        klinis tidak dibagikan kepada cabang pembayar.
-                    </p>
-                    {consents.dass.state === 'required' ? (
-                        <>
-                            <ConsentText document={consents.dass.document} />
-                            <fieldset className="space-y-2">
-                                <legend className="mb-2 text-sm font-medium">
-                                    Pilihan DASS-21
-                                </legend>
-                                {[
-                                    {
-                                        value: true,
-                                        label: 'Saya setuju mengikuti DASS-21.',
-                                    },
-                                    {
-                                        value: false,
-                                        label: 'Saya tidak ingin mengikuti DASS-21.',
-                                    },
-                                ].map((option) => (
-                                    <label
-                                        key={String(option.value)}
-                                        className="flex min-h-11 cursor-pointer items-center gap-3 text-sm"
-                                    >
-                                        <input
-                                            type="radio"
-                                            name="checkout-dass"
-                                            checked={dass === option.value}
-                                            onChange={() =>
-                                                onDass(option.value)
-                                            }
-                                            className="size-5 shrink-0 accent-brand-green focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-green"
-                                        />
-                                        {option.label}
-                                    </label>
-                                ))}
-                                <p className="text-sm text-slate-600">
-                                    Belum memilih tidak dianggap setuju; akses
-                                    DASS tetap memerlukan persetujuan terpisah.
-                                </p>
-                            </fieldset>
-                        </>
-                    ) : (
-                        <p className="text-sm text-slate-600">
-                            Pilihan tercatat:{' '}
-                            {consents.dass.state === 'accepted'
-                                ? 'setuju'
-                                : 'tidak setuju'}{' '}
-                            DASS-21 · versi {consents.dass.version}.
+            <div className="space-y-3 border-t pt-5">
+                <h3 className="font-semibold">
+                    DASS-21 · persetujuan wajib terpisah
+                </h3>
+                <p className="text-sm leading-6 text-slate-600">
+                    DASS-21 merupakan bagian wajib psikotes. Hasilnya tidak
+                    menentukan kelayakan kerja dan data klinis tidak dibagikan
+                    kepada cabang pembayar.
+                </p>
+                {consents.dass.state === 'required' ? (
+                    <>
+                        <ConsentText document={consents.dass.document} />
+                        <label className="flex min-h-11 cursor-pointer items-start gap-3 py-2">
+                            <input
+                                type="checkbox"
+                                name="checkout-dass"
+                                checked={dass === true}
+                                onChange={(event) =>
+                                    onDass(event.target.checked)
+                                }
+                                required
+                                aria-describedby="checkout-dass-help"
+                                className="mt-1 size-5 shrink-0 accent-brand-green focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-green"
+                            />
+                            <span className="text-sm leading-6">
+                                Saya telah membaca dan menyetujui persetujuan
+                                DASS-21. *
+                            </span>
+                        </label>
+                        <p
+                            id="checkout-dass-help"
+                            className="text-sm text-slate-600"
+                        >
+                            Persetujuan DASS-21 dicatat terpisah dari
+                            persetujuan psikotes utama dan wajib diberikan
+                            secara eksplisit.
                         </p>
-                    )}
-                </div>
-            ) : null}
+                    </>
+                ) : consents.dass.state === 'accepted' ? (
+                    <p className="text-sm text-slate-600">
+                        Persetujuan DASS-21 versi {consents.dass.version} sudah
+                        tercatat.
+                    </p>
+                ) : (
+                    <p className="text-sm text-slate-600" role="alert">
+                        Persetujuan DASS-21 wajib belum tersedia untuk
+                        dikonfirmasi. Muat ulang halaman atau hubungi petugas.
+                    </p>
+                )}
+            </div>
         </section>
     );
 }

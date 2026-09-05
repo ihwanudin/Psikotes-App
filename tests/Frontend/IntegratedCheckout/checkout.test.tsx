@@ -97,11 +97,55 @@ test('optional email does not hide required consent confirmation', () => {
     assert.match(html, /persetujuan psikotes utama/);
 });
 
-test('consent starts unchecked and DASS is separate and optional', () => {
+test('DASS is a separate mandatory acceptance with no reject control or optional copy', () => {
     const html = render();
+    const consent = html.match(
+        /<section aria-labelledby="checkout-consent-title"[\s\S]*?<\/section>/,
+    )?.[0];
+    assert.ok(consent);
     assert.doesNotMatch(html, /checked=""/);
-    assert.match(html, /Saya tidak ingin mengikuti DASS-21/);
-    assert.match(html, /tidak menentukan kelayakan kerja/);
+    assert.match(consent, /DASS-21 · persetujuan wajib terpisah/);
+    assert.match(
+        consent,
+        /Saya telah membaca dan menyetujui persetujuan DASS-21/,
+    );
+    const dassInput = consent.match(
+        /<input[^>]*name="checkout-dass"[^>]*>/,
+    )?.[0];
+    assert.ok(dassInput);
+    assert.match(dassInput, /type="checkbox"/);
+    assert.match(dassInput, /required=""/);
+    assert.doesNotMatch(
+        consent,
+        /type="radio"|opsional|menolak|tidak ingin|tidak setuju/i,
+    );
+});
+
+test('legacy nonaccepted DASS props stay visibly mandatory and cannot disable the section', () => {
+    for (const dass of [
+        { state: 'declined' as const, version: 'legacy-v1' },
+        { state: 'not_applicable' as const },
+    ]) {
+        const html = render({
+            screen: {
+                state: 'ready',
+                summary: {
+                    ...summary,
+                    consents: { ...summary.consents, dass },
+                },
+            },
+        });
+        const consent = html.match(
+            /<section aria-labelledby="checkout-consent-title"[\s\S]*?<\/section>/,
+        )?.[0];
+        assert.ok(consent);
+        assert.match(consent, /DASS-21 · persetujuan wajib terpisah/);
+        assert.match(consent, /Persetujuan DASS-21 wajib belum tersedia/);
+        assert.doesNotMatch(
+            consent,
+            /opsional|menolak|tidak ingin|tidak setuju/i,
+        );
+    }
 });
 
 test('organization ignores an injected payment callback and never renders extra batch props', () => {
