@@ -97,11 +97,6 @@ return new class extends Migration
                     OR length(NEW.result_checksum) <> 64
                     OR NEW.result_checksum GLOB '*[^0-9a-f]*'
                     OR (NEW.revoked_at IS NOT NULL AND NEW.revoked_at < NEW.completed_at)
-                    OR NOT EXISTS (
-                        SELECT 1 FROM assessment_participants p
-                        WHERE p.id = NEW.assessment_participant_id
-                          AND p.assessment_attempt_id = NEW.assessment_attempt_id
-                    )
                     OR (
                         NEW.result_version = 1
                         AND (NEW.supersedes_id IS NOT NULL OR NEW.revoked_at IS NOT NULL)

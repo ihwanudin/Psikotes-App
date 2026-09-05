@@ -273,6 +273,14 @@ final class GenericAssessmentResultPersistenceTest extends TestCase
                 ...$row,
                 'id' => (string) Str::ulid(),
                 'assessment_participant_id' => $otherAssessment->id,
+                'result_version' => 1,
+                'supersedes_id' => null,
+                'result_checksum' => str_repeat('a', 64),
+            ]),
+            fn () => DB::table('generic_assessment_result_versions')->insert([
+                ...$row,
+                'id' => (string) Str::ulid(),
+                'assessment_participant_id' => $otherAssessment->id,
                 'result_version' => 2,
                 'supersedes_id' => $row['id'],
                 'result_checksum' => str_repeat('c', 64),
@@ -315,6 +323,7 @@ final class GenericAssessmentResultPersistenceTest extends TestCase
         }
 
         $this->assertDatabaseCount('generic_assessment_result_versions', 1);
+        $this->assertSame([], DB::select('PRAGMA foreign_key_check'));
     }
 
     /** @return array<string, mixed> */
