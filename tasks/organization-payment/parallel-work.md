@@ -1,5 +1,19 @@
 # Koordinasi task paralel organization-payment
 
+## PostgreSQL baseline DASS/v2 kembali hijau — 2026-09-06
+
+Tiga commit test-only menyelaraskan fixture PostgreSQL lama dengan kontrak yang
+sudah diterima: `e2d3cdc` untuk billing inti, `cfa0308` untuk handoff/session
+lifecycle, dan `cf1780b` untuk preview/portal/settlement kolektif. Paket sintetis
+kini selalu memuat tes non-DASS + DASS-21; summary lifecycle memakai v2/current
+consent; settlement menghitung dua entitlement per attempt tanpa mengubah jumlah
+attempt, item, audit, atau outbox.
+
+Root menjalankan fresh migration dan seluruh suite pada PostgreSQL disposable:
+**400 tes / 3.950 assertions**, tanpa error/failure. Resource test dibersihkan;
+tidak ada production code, schema aktif, config, browser, provider, atau outbound
+yang diubah oleh tiga commit ini.
+
 ## P16 consent subset dan privasi audit diterima lokal — 2026-09-06
 
 Commit `918eb93` menambah policy PostgreSQL restrictive sehingga audit

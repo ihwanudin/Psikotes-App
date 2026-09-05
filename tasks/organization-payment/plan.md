@@ -1,7 +1,7 @@
 # Rencana: pembayaran lembaga dan checkout terintegrasi
 
 Tanggal: 2026-08-31
-Status: **P1–P13b, core privat P14/P15, dan P17a–P17b selesai lokal. P16-pay-a–i, binding Blade/UI summary-v2, subset consent current, serta privacy audit selesai lokal dan default OFF; DASS-21 wajib pada ingress/snapshot/handoff/session/form. Bukti terbaru: Blade 19+7, Node 4, HTTP/PHP 38/684, PostgreSQL privacy 2/30, beserta PHPStan/ESLint/Prettier/Pint/diff-check. Runtime browser/P17c belum dijalankan dan checkbox P15/P16 tetap terbuka. Fresh PostgreSQL historis lulus 398/3.919. DASS consent tetap terpisah dan RLS privat. Tidak ada deploy, migrasi DB aktif, invoice/notifikasi nyata, provider/outbound, atau cutover sumber/feature flag.**
+Status: **P1–P13b, core privat P14/P15, dan P17a–P17b selesai lokal. P16-pay-a–i, binding Blade/UI summary-v2, subset consent current, serta privacy audit selesai lokal dan default OFF; DASS-21 wajib pada ingress/snapshot/handoff/session/form. Bukti terbaru: Blade 19+7, Node 4, HTTP/PHP 38/684, PostgreSQL fresh 400/3.950, beserta PHPStan/ESLint/Prettier/Pint/diff-check. Runtime browser/P17c belum dijalankan dan checkbox P15/P16 tetap terbuka. DASS consent tetap terpisah dan RLS privat. Tidak ada deploy, migrasi DB aktif, invoice/notifikasi nyata, provider/outbound, atau cutover sumber/feature flag.**
 
 ## Checkpoint P16 consent subset dan privacy audit — 2026-09-06
 

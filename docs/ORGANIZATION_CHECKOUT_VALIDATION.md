@@ -18,6 +18,7 @@ Bukti root lokal:
 - PHP/HTTP gabungan **38 tes / 684 assertions**;
 - retensi establishment **7 tes / 117 assertions**;
 - PostgreSQL privacy disposable **2 tes / 30 assertions**;
+- fresh PostgreSQL setelah penyelarasan fixture DASS/v2 **400 tes / 3.950 assertions**;
 - PHPStan 0 error, Pint, ESLint, Prettier, dan `git diff --check` lulus.
 
 Audit history menolak actor asing, generation gap/duplikat, context atau waktu
@@ -26,6 +27,10 @@ consent bertanggal masa depan. Re-consent menyimpan histori append-only dan
 rollback profil/consent/audit diuji atomik. Seluruh feature/writer tetap default
 OFF. Tidak ada browser P17c, migrasi database aktif, provider/outbound nyata,
 deploy, push, atau aktivasi sumber; acceptance P15/P16 tetap terbuka.
+
+Penyelarasan fresh PostgreSQL bersifat test-only pada `e2d3cdc`, `cfa0308`, dan
+`cf1780b`; tidak mengubah aplikasi atau schema. Runner memakai jaringan internal
+tanpa port publik dan membersihkan seluruh container/network disposable.
 
 ## Checkpoint P5 — 2026-08-31
 

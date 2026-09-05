@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P13b, core privat P14/P15, dan P17a–P17b selesai lokal. P16-pay-a–i, binding Blade/UI summary-v2, subset consent current, serta privacy audit selesai lokal dan default OFF; DASS-21 wajib pada ingress/snapshot/handoff/session/form. Bukti terbaru: Blade 19+7, Node 4, PHP/HTTP 38/684, PostgreSQL privacy 2/30, beserta PHPStan/ESLint/Prettier/Pint/diff-check. Runtime browser/P17c dan finalisasi P18 masih terbuka; checkbox P15/P16 belum ditutup. Fresh PostgreSQL historis lulus 398/3.919. Tidak deploy, tidak migrasi DB aktif, dan tidak menyalakan sumber/feature flag, provider, atau outbound nyata.**
+Status: **P1–P13b, core privat P14/P15, dan P17a–P17b selesai lokal. P16-pay-a–i, binding Blade/UI summary-v2, subset consent current, serta privacy audit selesai lokal dan default OFF; DASS-21 wajib pada ingress/snapshot/handoff/session/form. Bukti terbaru: Blade 19+7, Node 4, PHP/HTTP 38/684, PostgreSQL fresh 400/3.950, beserta PHPStan/ESLint/Prettier/Pint/diff-check. Runtime browser/P17c dan finalisasi P18 masih terbuka; checkbox P15/P16 belum ditutup. Tidak deploy, tidak migrasi DB aktif, dan tidak menyalakan sumber/feature flag, provider, atau outbound nyata.**
 
 ## Gerbang revisi kolektif
 
