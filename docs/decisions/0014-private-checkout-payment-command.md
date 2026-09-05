@@ -91,9 +91,11 @@ terminal tidak pernah menghasilkan bill kedua.
 
 ### Organization and free paths
 
-Funding `INVOICED_TO_ORGANIZATION` tetap read-only pada checkout peserta:
-`actionAvailable=false`, tanpa command, reference, batch total, member, proof,
-atau payment URL.
+Funding `INVOICED_TO_ORGANIZATION` dengan total positif tetap read-only pada
+checkout peserta: `actionAvailable=false`, tanpa command pembayaran, reference,
+batch total, member, proof, atau payment URL. Pengecualian sempit hanya untuk
+total server-authoritative nol: command boleh mencatat settlement gratis setelah
+kedua consent current, tanpa bill, URL, provider, atau mengubah payer tersimpan.
 
 Harga total nol tidak membuat bill dan tidak memanggil provider. Tambahkan primitive
 internal `SettleZeroPriceCheckout` yang hanya dipanggil command pembayaran setelah

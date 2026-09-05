@@ -1,7 +1,7 @@
 # Rencana: pembayaran lembaga dan checkout terintegrasi
 
 Tanggal: 2026-08-31
-Status: **P1–P13b, core privat P14/P15, dan P17a–P17b selesai lokal. P16-pay-a–d, transport frontend murni, dan penyelarasan DASS draft telah diterima: session authority, reservasi self, Claim, serta issuance provider-fake selesai lokal. Regresi issuance 155/1.294, frontend 4/4 dan 28/28, fresh PostgreSQL terakhir 395/3.877. Gratis, URL/HTTP/UI binding, dan browser belum selesai. DASS-21 wajib dengan consent terpisah dan RLS privat. P17c masih tertahan gerbang ownership proses. Tidak ada deploy, migrasi DB aktif, invoice/notifikasi nyata, atau cutover sumber/feature flag.**
+Status: **P1–P13b, core privat P14/P15, dan P17a–P17b selesai lokal. P16-pay-a–f, transport frontend murni, dan penyelarasan DASS draft telah diterima: session authority, reservasi/Claim/issuance self serta settlement gratis atomik selesai lokal. Fresh PostgreSQL lulus 398/3.919. URL/HTTP/UI binding dan browser belum selesai. DASS-21 wajib dengan consent terpisah dan RLS privat. P17c masih tertahan gerbang ownership proses. Tidak ada deploy, migrasi DB aktif, invoice/notifikasi nyata, atau cutover sumber/feature flag.**
 
 ## Perubahan lingkup: pembayaran kolektif cabang
 

@@ -1,5 +1,23 @@
 # Koordinasi task paralel organization-payment
 
+## P16-pay-f accepted after replay and clock correction — 2026-09-05
+
+Backend `99c700f` plus review correction `ca26657` were integrated as root
+`c974cb3` and `75f4eba`. The zero writer uses transaction-bound session authority,
+both current consents, current server price/policy snapshots, one attempt-unique
+zero charge/marker/audit, and nested canonical activation inside one outer
+transaction. Replay rejects catalog/policy/choice/corruption drift without repair.
+The database instant is now passed into activation, eliminating PHP/database clock
+skew while preserving old caller behavior.
+
+Organization-funded zero is documented as a strict no-money exception: positive
+organization funding remains read-only; zero creates no bill, URL, or provider
+effect. Root passed focused suites **42/292**, **44/285**, and **40/257** in clean
+processes. A forced mixed-harness process exposed teardown ordering only; all
+isolated owners passed. Fresh root PostgreSQL disposable passed **398 tests /
+3,919 assertions**, including observed lock/concurrency and rollback, with cleanup
+confirmed. Syntax, Pint, PHPStan 0 errors, and diff-check passed.
+
 ## P16-pay-e design accepted; zero-price caller corrected — 2026-09-05
 
 Backend report `967ec2b` was reviewed and integrated as root `276e173`. It found
