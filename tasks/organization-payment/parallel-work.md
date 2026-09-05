@@ -1,5 +1,23 @@
 # Koordinasi task paralel organization-payment
 
+## P16-pay-c and pure frontend transport accepted — 2026-09-05
+
+Backend `276603a` was reviewed and integrated as root `fcadc8e`. The coordinator
+finishes session-authorized reservation first, then invokes the canonical Claim
+primitive in a fresh service transaction. Paid/pending bypass Claim; reserved and
+safe issuing replay yield only an internal issuance-routing ULID. Recovery,
+terminal, stale, or corrupt state fails generically. No permit is consumed and no
+provider or HTTP endpoint is invoked. Root's related suite passes **204 tests /
+1,452 assertions**, with syntax, Pint, PHPStan 0 errors, and diff-check clean.
+
+Frontend `e49ebea` plus requested portability correction `fdf594c` were integrated
+as root `e854c2b` and `f4dcfd7`. The transport owns a fixed relative payment path,
+strict boolean JSON, same-origin credentials, manual redirect handling, CSRF, exact
+success parsing, and redacted failures. It does not hardcode the production host,
+so the required test-only browser origin remains possible. Root reran **4/4 Node
+tests**, syntax, ESLint, Prettier, and diff-check successfully. UI binding remains
+closed until the server-side provider and HTTP presentation contracts are reviewed.
+
 ## P16-pay-b accepted; canonical self reservation prepared — 2026-09-05
 
 Backend `cc7d0ee` was reviewed and integrated as root `63eeee9`. The internal
