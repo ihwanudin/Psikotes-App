@@ -2359,14 +2359,17 @@ Tidak ada instruksi atau hasil ini yang menutup P15/P16/P17c/P18 maupun checkpoi
 ### Konsolidasi lanjutan ownership/anchor
 
 Rangkaian preparation sebelumnya kini dikonsolidasikan oleh commit accepted
-`94e294d`, `d41844a`, dan `e15f55e`. Input proses/browser diperketat dan lulus
-**79/79** tes; supervisor mem-pin publisher/callable serta lifecycle spawn/recovery
-dan lulus **88/88** pure/mock; adapter coordinator mengikat config, provenance,
-identitas operasional store, dan anchor mentah dengan **12/12** tes. Primitive
-anchor store tetap lulus **14/14** tes. Census host nyata sengaja dikecualikan.
+`94e294d`, `d41844a`, `e15f55e`, `12ce0bb`, `231d64d`, dan `8c73391`. Input
+proses/browser tetap terbukti **79/79**; supervisor dengan path tool
+component-bound lulus **89/89** pure/mock; adapter coordinator **12/12** dan
+anchor store **14/14**. Candidate builder immutable lulus **17/17** tes, sedangkan
+verifier arsitektur/runbook P18 lulus **7/7 tes, 190 assertions**. Census host
+nyata sengaja dikecualikan.
 
 Store lokal hanya mendeteksi korupsi/rollback, bukan mengautentikasi pihak yang
-dapat menulis kedua lokasi. Wiring coordinator, ACL/single-writer, durability dan
-TOCTOU Windows nyata, lineage/helper/cleanup OS, manifest/tool hash disposable,
-serta browser/service runtime tetap gate. Runner masih absent/disabled dan payment
-tetap default OFF; P15/P16/P17c/P18 serta checkpoint terkait tidak ditutup.
+dapat menulis kedua lokasi. Adapter coordinator dan builder baru tersedia sebagai
+bukti code-only; builder belum dijalankan terhadap source nyata. ACL/single-writer,
+durability/TOCTOU Windows nyata, lineage/helper/cleanup OS, validasi semantik
+X.509, inventory vendor dan delivery candidate nyata, serta browser/service
+runtime tetap gate. Runner masih absent/disabled dan payment tetap default OFF;
+P15/P16/P17c/P18 serta checkpoint terkait tidak ditutup.

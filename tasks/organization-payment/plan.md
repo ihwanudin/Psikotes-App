@@ -449,13 +449,16 @@ tetap menjadi gate P17c. Verifier dokumentasi operasi pada `a2aa851` hanya
 preparation P18. Bagian ini tidak menutup P15, P16, P17c, P18, atau checkpoint
 lintas tahap mana pun.
 
-Preparation final `94e294d` → `d41844a` → `e15f55e` menerima strict input/browser,
-pin publisher/callable dan lifecycle supervisor, serta adapter coordinator yang
-mengikat provenance dan identitas operasional store. Bukti code-only: input
-**79/79**, supervisor **88/88 pure/mock**, coordinator **12/12**, dan anchor store
-**14/14**; tidak ada census/process/browser/service/DB nyata.
-Anchor lokal mendeteksi korupsi/rollback tetapi bukan autentikasi. Wiring runner,
-ACL/single-writer, durability/TOCTOU Windows, lineage/helper/cleanup OS,
-manifest/tool hash disposable, dan runtime acceptance tetap tertunda. Runner
-masih absent/disabled, payment tetap default OFF dan status P15/P16/P17c/P18
-tidak berubah.
+Preparation final `94e294d` → `d41844a` → `e15f55e` → `12ce0bb` → `231d64d` →
+`8c73391` menerima strict input/browser, pin publisher/callable dan lifecycle
+supervisor, adapter coordinator, candidate builder immutable, serta pengikatan
+runbook pada state dan gate exact. Bukti code-only: input **79/79**, supervisor
+**89/89 pure/mock**, coordinator **12/12**, anchor store **14/14**, builder
+**17/17**, dan arsitektur/runbook **7/7 tes, 190 assertions**; tidak ada census,
+process, browser, service, atau DB nyata.
+Anchor lokal mendeteksi korupsi/rollback tetapi bukan autentikasi. Builder belum
+dijalankan terhadap source nyata. Wiring runner, ACL/single-writer,
+durability/TOCTOU Windows, lineage/helper/cleanup OS, validasi semantik X.509,
+inventory vendor/delivery candidate, dan runtime acceptance tetap tertunda.
+Runner masih absent/disabled, payment tetap default OFF dan status
+P15/P16/P17c/P18 tidak berubah.

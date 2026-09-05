@@ -2,8 +2,8 @@
 
 ## Checkpoint bukti statis P17c/P18 — 2026-09-06
 
-Empat commit lokal telah diterima sebagai bukti persiapan statis, bukan sebagai
-bukti runtime atau izin aktivasi:
+Rangkaian commit lokal berikut telah diterima sebagai bukti persiapan statis,
+bukan sebagai bukti runtime atau izin aktivasi:
 
 - `3f0acc2` menyelaraskan kontrak TypeScript `checkout-summary-v2` sehingga
   komposisi paket harus canonical, unik, memuat DASS-21, dan memuat sedikitnya
@@ -15,10 +15,11 @@ bukti runtime atau izin aktivasi:
 - `70c174b` menambah ownership journal dengan **50 pure/mock tests**. Journal
   tetap memerlukan external ownership anchor; hasil mock tidak membuktikan
   standalone crash recovery dan runtime tetap gated.
-- `a2aa851` menambah verifier statis runbook P18 dengan **5 tes / 65 assertions**
-  untuk link lokal, keberadaan action/coordinator, status provisional, larangan
-  auto-release/reinvoice, rollback yang mempertahankan histori/privacy, cutover
-  opt-in tanpa fallback, default-OFF, serta command/job/scheduler yang belum wired.
+- `a2aa851` menambah verifier statis runbook P18; hardening accepted `8c73391`
+  mengikat state, audit action, dan lima kelompok/tujuh key gate exact pada config
+  strict default-false. Bukti terbaru **7 tes / 190 assertions** juga menjaga link
+  lokal, action/coordinator, status provisional, larangan auto-release/reinvoice,
+  rollback histori/privacy, opt-in tanpa fallback, serta wiring yang belum ada.
 
 Seluruh bukti di atas bersifat lokal dan statis. Browser P17c belum dijalankan;
 standalone crash recovery belum dibuktikan; database, aplikasi, service,
@@ -28,27 +29,32 @@ default OFF.
 
 ### Preparation ownership dan anchor coordinator
 
-Rangkaian accepted `94e294d`, `d41844a`, dan `e15f55e` mengonsolidasikan
-preparation tanpa menyalakan runner. Input snapshot dan argumen browser kini
-strict; supervisor mem-pin publisher beserta callable-nya dan menjaga lifecycle
-spawn/recovery; adapter coordinator mengikat config, provenance, identitas
-operasional store, serta raw anchor. Verifikasi code-only terakhir mencatat:
+Rangkaian accepted `94e294d`, `d41844a`, `e15f55e`, `12ce0bb`, dan `231d64d`
+mengonsolidasikan preparation tanpa menyalakan runner. Input snapshot dan argumen
+browser kini strict; supervisor mem-pin publisher/callable, menjaga lifecycle
+spawn/recovery, dan membatasi suffix tool pada komponen path exact. Adapter
+coordinator mengikat config, provenance, identitas operasional store, serta raw
+anchor; candidate builder menyiapkan copy immutable dengan final marker.
+Verifikasi code-only terakhir mencatat:
 
 - input hardening: **79/79 tes**;
-- supervisor: **88/88 pure/mock tests**, dengan census host nyata sengaja tidak
+- supervisor: **89/89 pure/mock tests**, dengan census host nyata sengaja tidak
   dijalankan;
 - coordinator: **12/12 tes**;
 - anchor store: **14/14 tes**;
+- candidate builder: **17/17 tes**;
+- verifier arsitektur/runbook P18 (`8c73391`): **7/7 tes, 190 assertions**;
 
 Primitive penyimpanan lokal adalah deteksi korupsi/rollback, bukan autentikasi
-terhadap pihak yang dapat menulis journal dan anchor. Runtime runner masih absent/
-disabled; ACL dan exclusive single-writer coordinator, opened-handle/
-reparse/TOCTOU serta flush/replace/crash durability Windows nyata, historical
-process lineage, helper dan cleanup OS, manifest/tool hash disposable, standalone
-recovery, browser, dan service runtime belum diterima. Tidak ada process census,
-browser, service, database aktif, provider, outbound, deploy, atau aktivasi gate
-dalam bukti ini. Payment tetap default OFF dan checkbox P15/P16/P17c/P18 tetap
-terbuka.
+terhadap pihak yang dapat menulis journal dan anchor. Candidate builder belum
+dijalankan terhadap source nyata. Runtime runner masih absent/disabled; ACL dan
+exclusive single-writer coordinator, opened-handle/reparse/TOCTOU serta
+flush/replace/crash durability Windows nyata, historical process lineage, helper
+dan cleanup OS, validasi semantik X.509, inventory vendor dan delivery candidate
+nyata, standalone recovery, browser, dan service runtime belum diterima. Tidak
+ada process census, browser, service, database aktif, provider, outbound, deploy,
+atau aktivasi gate dalam bukti ini. Payment tetap default OFF dan checkbox
+P15/P16/P17c/P18 tetap terbuka.
 
 ## Checkpoint P16 consent subset dan privacy audit — 2026-09-06
 
