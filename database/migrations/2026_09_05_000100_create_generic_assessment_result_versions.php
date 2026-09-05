@@ -40,14 +40,17 @@ return new class extends Migration
                 ->references(['id', 'assessment_attempt_id'])
                 ->on('assessment_participants')
                 ->restrictOnDelete();
-            $table->foreign('supersedes_id', 'generic_result_supersedes_fk')
-                ->references('id')
-                ->on('generic_assessment_result_versions')
-                ->restrictOnDelete();
             $table->index(
                 ['assessment_attempt_id', 'result_version'],
                 'generic_result_latest_idx',
             );
+        });
+
+        Schema::table('generic_assessment_result_versions', function (Blueprint $table): void {
+            $table->foreign('supersedes_id', 'generic_result_supersedes_fk')
+                ->references('id')
+                ->on('generic_assessment_result_versions')
+                ->restrictOnDelete();
         });
 
         if (DB::getDriverName() === 'pgsql') {
