@@ -738,3 +738,19 @@ event, bukan diklaim concurrency.
 - [ ] Focused tests dan regresi terkait lulus tanpa skip; bukti baru dicatat di docs/ORGANIZATION_CHECKOUT_VALIDATION.md.
 - [ ] Pint/PHPStan dan lint/typecheck/build sesuai dampak; UI diperiksa browser, RLS/race memakai PostgreSQL terisolasi.
 - [ ] Tinjau slice dengan pengguna sebelum kelompok berikutnya; tidak ada deploy, transaksi, atau notifikasi nyata.
+
+### Catatan bukti accepted 2026-09-06 — status checklist tidak berubah
+
+Commit `3f0acc2` menerima strict TypeScript mixed-package DASS-21 + minimal satu
+non-DASS; `0ecb5f1` menerima refresh static harness checkout-summary-v2;
+`70c174b` menerima hardening ownership journal; `a2aa851` menerima verifier
+struktur runbook; dan `e8fdad8` menandai klaim P8 DASS historis sebagai
+disupersede perilaku checkout-v2 saat ini. Tipe dan fixture sintetis sekarang
+selaras dengan invariant runtime DASS current wajib, tanpa mengubah scoring atau
+hasil tes utama.
+
+Harness tersebut belum dijalankan sebagai browser runtime. Recovery journal
+memerlukan latest anchor independen yang belum dipublikasikan runner disabled;
+helper `_ps` dan pembuktian ownership/cleanup OS nyata juga tetap gate. Verifier
+P18 hanya preparation, bukan bukti runbook atau serah-terima lengkap. Karena itu
+P15, P16, P17c, P18, serta seluruh checkpoint terkait tetap unchecked.

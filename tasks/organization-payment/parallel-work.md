@@ -2340,3 +2340,18 @@ seluruh Integration **225/225 tes, 2.173 assertions**, Pint, dan PHPStan 0 error
 PostgreSQL disposable penuh tetap lulus **364/364 tes, 3.124 assertions** dan
 cleanup sukses. Route hanya diregistrasikan oleh tes; produksi, browser nyata,
 source activation, database aktif, outbound, deploy, dan push tetap tidak ada.
+
+## Konsolidasi lane bukti 2026-09-06
+
+Lima commit telah diterima tanpa memperluas status acceptance: `3f0acc2`
+(kontrak/type strict mixed DASS), `0ecb5f1` (static browser harness v2),
+`70c174b` (ownership journal), `a2aa851` (guard/verifier dokumen operasi), dan
+`e8fdad8` (koreksi histori DASS P8). Kontrak TypeScript, fixture sintetis, dan
+invariant runtime kini searah: DASS-21 bersama minimal satu non-DASS, consent
+DASS current wajib, tetapi DASS tidak memengaruhi scoring/hasil psikotes utama.
+
+Lane browser baru menyiapkan harness statis; tidak ada klaim browser runtime.
+Lane ownership membutuhkan latest anchor yang dipertahankan independen, sedangkan
+runner disabled belum memublikasikannya. Helper `_ps`, lineage/cleanup OS nyata,
+dan runtime browser/service tetap gate P17c. Commit verifier P18 hanya preparation.
+Tidak ada instruksi atau hasil ini yang menutup P15/P16/P17c/P18 maupun checkpoint.

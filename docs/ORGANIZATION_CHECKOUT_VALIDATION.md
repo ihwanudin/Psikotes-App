@@ -1,5 +1,31 @@
 # Verifikasi checkout organisasi
 
+## Checkpoint bukti statis P17c/P18 — 2026-09-06
+
+Empat commit lokal telah diterima sebagai bukti persiapan statis, bukan sebagai
+bukti runtime atau izin aktivasi:
+
+- `3f0acc2` menyelaraskan kontrak TypeScript `checkout-summary-v2` sehingga
+  komposisi paket harus canonical, unik, memuat DASS-21, dan memuat sedikitnya
+  satu tes non-DASS. Kontrak runtime dan type-level menolak DASS-only, duplikat,
+  serta urutan noncanonical tanpa menghitung ulang komposisi di browser.
+- `0ecb5f1` memperbarui browser harness statis untuk summary v2. Probe Node murni
+  mencatat **17 positive / 59 negative probes**, dan verifier PHP mencatat
+  **15 static assertions**. Bukti ini tidak menjalankan browser atau service.
+- `70c174b` menambah ownership journal dengan **50 pure/mock tests**. Journal
+  tetap memerlukan external ownership anchor; hasil mock tidak membuktikan
+  standalone crash recovery dan runtime tetap gated.
+- `a2aa851` menambah verifier statis runbook P18 dengan **5 tes / 65 assertions**
+  untuk link lokal, keberadaan action/coordinator, status provisional, larangan
+  auto-release/reinvoice, rollback yang mempertahankan histori/privacy, cutover
+  opt-in tanpa fallback, default-OFF, serta command/job/scheduler yang belum wired.
+
+Seluruh bukti di atas bersifat lokal dan statis. Browser P17c belum dijalankan;
+standalone crash recovery belum dibuktikan; database, aplikasi, service,
+scheduler, provider, dan outbound aktif tidak dijalankan atau diaktifkan.
+Acceptance P15, P16, P17c, dan P18 tetap terbuka, dan seluruh gate/writer tetap
+default OFF.
+
 ## Checkpoint P16 consent subset dan privacy audit — 2026-09-06
 
 Commit `918eb93` menambah policy PostgreSQL restrictive yang membuat audit

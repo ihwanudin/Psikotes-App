@@ -1,7 +1,7 @@
 # P17c browser harness summary-v2 refresh
 
-Date: 2026-09-06  
-Baseline observed: `5c3abd6`  
+Date: 2026-09-06
+Baseline observed: `5c3abd6`
 Status: static harness refresh complete; runtime browser acceptance remains open.
 
 ## Scope and safety

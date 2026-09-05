@@ -432,3 +432,19 @@ dibaca ulang setelah seluruh lock agar effective window dan timestamps tidak
 stale; paket tetap aktif, source-allowed, IDR, nominal non-negatif, dan memiliki
 item. Root related suite lulus 139 tes/979 assertions, Pint/PHPStan lulus. Race
 dua proses dan expiry saat menunggu lock tetap P13a3; route/P13b/P14 belum ada.
+
+## Konsolidasi bukti checkout-v2 dan preparation gate (2026-09-06)
+
+Commit accepted `3f0acc2`, `0ecb5f1`, `70c174b`, `a2aa851`, dan `e8fdad8`
+menyelaraskan kontrak strict TypeScript dengan invariant runtime paket campuran:
+setiap paket memuat DASS-21 dan minimal satu tes non-DASS, dengan consent DASS
+current tetap wajib namun tidak mengubah scoring/hasil psikotes utama. Static
+browser harness telah diperbarui untuk kontrak checkout-summary-v2, tetapi ini
+hanya preparation dan bukan bukti browser runtime.
+
+Ownership journal kini memiliki chain lokal dan mewajibkan latest anchor yang
+disimpan independen saat recovery. Runner disabled belum memublikasikan anchor
+tersebut; helper `_ps`, validasi lineage OS nyata, serta browser/service runtime
+tetap menjadi gate P17c. Verifier dokumentasi operasi pada `a2aa851` hanya
+preparation P18. Bagian ini tidak menutup P15, P16, P17c, P18, atau checkpoint
+lintas tahap mana pun.
