@@ -1,5 +1,20 @@
 # Koordinasi task paralel organization-payment
 
+## P17a accepted after clock-flake correction; P17b next — 2026-09-05
+
+Portal `f28d7c1` was integrated as root `cd0cb5b`. Root accepted its functional
+coverage but rejected the first stability claim after reproducing an intermittent
+PROVISIONED-versus-READY failure. The acceptance fixture froze Laravel time while
+confirmation intentionally read SQLite `CURRENT_TIMESTAMP`; a second-boundary
+crossing made the new consent appear future to activation.
+
+Portal correction `77883b6` was reviewed and integrated as `4c6a92a`. Production
+clock behavior was not changed. Root reran the corrected matrix in five separate
+processes, each **1 test / 277 assertions**, and the combined matrix, production
+wiring, and collective lifecycle suite **11 tests / 1,744 assertions**. Together
+with the fresh PostgreSQL disposable **392 / 3,799** RLS/schema run, P17a is
+accepted. P17b concurrency/recovery is next; browser P17c remains closed.
+
 ## PostgreSQL fresh-migration blocker resolved; P17a remains active — 2026-09-05
 
 Backend test commits `cbd133f` and correction `8f6352e` were reviewed and

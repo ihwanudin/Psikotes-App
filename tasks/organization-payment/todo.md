@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P13b serta core privat P14/P15 selesai lokal. P16 memiliki halaman, form consent wajib DASS-21, transport JSON, adapter HTTP, dan route canonical default OFF; focused gabungan terakhir 66 tes/2.437 assertions, Node 4/4, dan Blade 6/6 lulus. Self-FK generic result sudah diperbaiki; fresh PostgreSQL disposable lulus 392 tes/3.799 assertions. P17a aktif; browser P16/P17c serta acceptance end-to-end P17–P18 masih terbuka. Tidak deploy, tidak migrasi DB aktif, dan tidak menyalakan sumber/feature flag atau outbound nyata.**
+Status: **P1–P13b, core privat P14/P15, dan P17a selesai lokal. P16 memiliki halaman, consent wajib DASS-21, transport JSON, adapter HTTP, dan route canonical default OFF. P17a stabil pada lima proses 1/277 dan gabungan 11/1.744; fresh PostgreSQL disposable lulus 392/3.799. P17b concurrency/recovery berikutnya; browser P16/P17c serta P18 masih terbuka. Tidak deploy, tidak migrasi DB aktif, dan tidak menyalakan sumber/feature flag atau outbound nyata.**
 
 ## Gerbang revisi kolektif
 
@@ -654,13 +654,20 @@ checkbox P16 tetap terbuka.
 
 **Acceptance:**
 
-- [ ] Kedua sumber seleksi fake, profil lengkap/parsial, sepuluh peserta mixed package, free+konsultasi, lintas cabang, dua attempt, unpaid/paid tanpa consent. Proyeksi peserta dan panel tidak bocor klinis/batch.
+- [x] Kedua sumber seleksi fake, profil lengkap/parsial, sepuluh peserta mixed package, free+konsultasi, lintas cabang, dua attempt, unpaid/paid tanpa consent. Proyeksi peserta dan panel tidak bocor klinis/batch.
 
 **Dependencies:** P16. **Scope:** M.
 
 **Files likely touched:** `tests/Feature/Integrations/OrganizationCheckoutAcceptanceTest.php`, `tests/Postgres/OrganizationCheckoutRlsTest.php`, `docs/ORGANIZATION_CHECKOUT_VALIDATION.md`.
 
 **Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Integrations/OrganizationCheckoutAcceptanceTest.php` Jalankan juga runner PostgreSQL disposable.
+
+**Bukti:** implementasi memakai `CheckoutAcceptanceMatrixTest`. Root membuktikan
+lima proses terpisah masing-masing 1/277 dan gabungan production wiring serta
+collective lifecycle 11/1.744. Fresh PostgreSQL disposable 392/3.799 mencakup
+RLS billing, lintas tenant, DASS consent privacy, serta schema/lifecycle terkait.
+Provider/notifier fake, SQLite memory, dan feature config-memory; tidak ada browser
+atau aktivasi publik.
 
 ## P17b: Uji konkurensi dan pemulihan crash
 
