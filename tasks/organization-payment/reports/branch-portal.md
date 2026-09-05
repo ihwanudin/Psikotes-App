@@ -1,5 +1,77 @@
 # P12a-prep — portal cabang baca-saja
 
+## P17a PostgreSQL blocker — detail consent DASS terbaca branch admin
+
+Tanggal 2026-09-05. Increment berhenti sebagai blocker test-only; tidak ada
+perubahan policy, schema, migration, runner, app, backend/frontend, route atau
+config. Test baru `DassConsentBranchPrivacyTest` memakai runtime
+`psikotes_runtime` non-owner, non-superuser, `NOBYPASSRLS` pada runner PostgreSQL
+disposable existing. Hash `database/schema/rls_policies.sql` worker dan root
+identik:
+`710B62B07A2376BB39585744A7768AC65F012A26EA3226338E1EE598DDB388AE`.
+
+Fixture service membuat satu participant sintetis dengan dua attempt/package
+berbeda; kedua package memuat IST+DASS-21. Fixture juga membuat satu organisasi
+asing dan satu assessment, response, result, serta consent DASS sintetis. Tidak
+ada data klinis atau identitas nyata.
+
+### Reproduksi
+
+Di bawah context branch asing, direct SQL melihat nol row pada
+`dass.assessments`, `dass.responses`, `dass.results`, dan `consent_records`.
+Di bawah branch pemilik, direct SQL juga melihat nol assessment/response/result
+DASS. Namun query berikut mengembalikan satu row:
+
+```sql
+select status, document_version, document_hash, consented_at, withdrawn_at
+from consent_records
+where participant_id = :participant and consent_type = 'dass'
+```
+
+Tes mengharapkan nol karena instruksi P17a melarang detail consent DASS pada
+branch admin, lalu gagal spesifik:
+
+```text
+Branch admin can read DASS consent status/version/hash/timestamps; P17a requires this detail hidden.
+Failed asserting that actual size 1 matches expected size 0.
+```
+
+Penyebab ada pada policy existing `consent_records_read`: branch admin/staff
+diizinkan membaca semua consent milik participant cabangnya tanpa pengecualian
+`consent_type = 'dass'`. Ini berbeda dari tiga policy tabel DASS yang hanya
+memberi baca ke service, psychologist, atau participant pemilik. Test SHA256:
+`3CCE3BCFD24C631273C75A43FD73D0D036877C94A502E6B2DD8A26C5392082E7`.
+
+### Hasil runner dan batas
+
+Run disposable worker menghasilkan **166 tes / 1.110 assertions**, dengan
+**1 failure P17a** di atas dan 8 error baseline snapshot lama terkait migrasi
+proof/fixture portal. Failure P17a terjadi setelah assertion runtime non-owner,
+NOBYPASSRLS, dua attempt berbeda, foreign denial, dan tiga tabel DASS tersembunyi
+lulus. Runner mencetak `Disposable test resources cleaned up; application
+containers were not targeted.`
+
+Untuk memisahkan error snapshot lama, dibuat archive bersih root commit
+`7aa41b3` tanpa `.env`; vendor disalin secara fisik setelah `composer.lock`
+cocok. Runner kedua berhenti pada bootstrap sebelum PHPUnit karena migration
+`2026_09_05_000100_create_generic_assessment_result_versions.php` memasang FK
+self-reference PostgreSQL tanpa unique constraint yang dapat dirujuk. Root HEAD
+saat pemeriksaan masih memakai isi migration identik. Runner kedua juga mencetak
+cleanup disposable yang sama. Tidak ada migration yang diubah dalam lane ini.
+
+Karena privacy contract sudah gagal, pembuktian canonical app action untuk
+foreign service scope serta lifecycle paid/unpaid dua attempt tidak dilanjutkan
+atau diklaim. Perbaikannya memerlukan keputusan policy: sembunyikan row DASS
+dari branch admin/staff, atau sediakan proyeksi derived minimum bila cabang
+memang perlu mengetahui pemenuhan consent tanpa hash/version/timestamp mentah.
+Itu memerlukan review ownership schema/security sebelum implementasi.
+
+Pint, PHP lint, dan PHPStan level 7 untuk test blocker lulus. Tidak ada `.env`,
+DB aktif, browser, outbound, deploy, push atau aktivasi production. Archive temp
+yang tersisa hanya berisi source/dependency sintetis:
+`C:/Users/ThinkPad/AppData/Local/Temp/oncam-p17-pg-blocker-047a8babf69b4faaa3a58b7cd9a77c3c`.
+Berhenti untuk review.
+
 ## P17a-prep — dua trusted source, satu participant, lifecycle per attempt
 
 Tanggal 2026-09-05. Increment test-only ini menambah satu method pada
