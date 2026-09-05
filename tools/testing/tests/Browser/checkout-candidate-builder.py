@@ -35,6 +35,7 @@ BROWSER_TOOLS = frozenset({
     "tools/testing/tests/Browser/checkout-anchor-store.py",
     "tools/testing/tests/Browser/checkout-candidate-builder.py",
     "tools/testing/tests/Browser/checkout-coordinator.py",
+    "tools/testing/tests/Browser/checkout-coordinator-lease.py",
     "tools/testing/tests/Browser/checkout-integrity-tests.php",
     "tools/testing/tests/Browser/checkout-session.browser.mjs",
     "tools/testing/tests/Browser/checkout-supervisor.py",
@@ -43,6 +44,7 @@ BROWSER_TOOLS = frozenset({
     "tools/testing/tests/Browser/test_checkout_anchor_store.py",
     "tools/testing/tests/Browser/test_checkout_candidate_builder.py",
     "tools/testing/tests/Browser/test_checkout_coordinator.py",
+    "tools/testing/tests/Browser/test_checkout_coordinator_lease.py",
     "tools/testing/tests/Browser/test_checkout_supervisor.py",
 })
 REQUIRED_SOURCE = frozenset({

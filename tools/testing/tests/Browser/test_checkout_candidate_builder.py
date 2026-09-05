@@ -220,6 +220,10 @@ class CandidateBuilderTests(unittest.TestCase):
             self.assertIsNot(result, config)
             self.assertEqual(config["manifest"], digest(manifest_bytes))
             self.assertEqual(json.loads(manifest_bytes), args["expected_manifest"])
+            self.assertTrue({
+                "tools/testing/tests/Browser/checkout-coordinator-lease.py",
+                "tools/testing/tests/Browser/test_checkout_coordinator_lease.py",
+            } <= set(args["expected_manifest"]))
             self.assertEqual(config["asset_delivery_review"], args["asset_delivery_review"])
             self.assertEqual(
                 set(config["asset_delivery_review"]), set(m.ASSET_REVIEW_FILES)

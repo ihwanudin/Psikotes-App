@@ -86,6 +86,19 @@ class StaticPublisher:
         return self.value
 
 
+class LifecycleLease:
+    def __init__(self, run):
+        normalized = os.path.normcase(str(Path(run).absolute())).replace("\\", "/")
+        self.run = normalized
+        self.binding = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+        self.descriptor_identity = (1, 2)
+        self.calls = 0
+
+    def validate(self):
+        self.calls += 1
+        return {"version": 1, "run": self.run, "leaseBinding": self.binding}
+
+
 class SupervisorTests(unittest.TestCase):
     def setUp(self):
         self.anchor_stores = {}
@@ -98,7 +111,12 @@ class SupervisorTests(unittest.TestCase):
         self.anchor_stores[str(Path(directory))] = store
         return store
 
-    def journal_run(self, directory):
+    def admit(self, run):
+        lease = LifecycleLease(run.run)
+        run.bind_lifecycle_lease(lease)
+        return run, lease
+
+    def journal_run(self, directory, *, admitted=True):
         filenames = {
             "php": "php", "python": "python", "node": "node", "powershell": "powershell",
             "cli": "cli", "browser": "browser", "ini": "runtime.ini",
@@ -112,12 +130,15 @@ class SupervisorTests(unittest.TestCase):
             json.dumps(self.browser_config(paths["browser"])), encoding="utf-8"
         )
         store = self.anchor_stores.setdefault(str(Path(directory)), AnchorStore())
-        return m.WindowsRun({
+        run = m.WindowsRun({
             "directory": directory, "manifest": "a" * 64, **paths,
             "tool_hashes": {name: hashlib.sha256(Path(path).read_bytes()).hexdigest()
                             for name, path in paths.items()},
             "asset_delivery_review": {name: "b" * 64 for name in m.ASSET_REVIEW_FILES},
         }, anchor_publisher=store)
+        if admitted:
+            self.admit(run)
+        return run
 
     def rewrite_journal(self, run, mutate):
         path = sorted(run.run.glob(m.JOURNAL_PREFIX + "*.json"))[-1]
@@ -289,6 +310,7 @@ class SupervisorTests(unittest.TestCase):
     def test_candidate_config_shape_guards_binding_and_recovery_before_anchor_load(self):
         valid = self.candidate_config()
         run = m.WindowsRun(valid, anchor_publisher=AnchorStore())
+        self.admit(run)
         session = "checkout-" + "c" * 32
         original_binding = run._config_binding(session)
         run.c["asset_delivery_review"][m.ASSET_REVIEW_FILES[0]] = "d" * 64
@@ -589,6 +611,7 @@ class SupervisorTests(unittest.TestCase):
         with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
             baseline = self.journal_run(directory)
             run = m.WindowsRun(baseline.c)
+            self.admit(run)
             run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
             run.session = "checkout-" + "c" * 32
             with patch.object(m.subprocess, "Popen") as popen:
@@ -603,6 +626,7 @@ class SupervisorTests(unittest.TestCase):
         with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
             baseline = self.journal_run(directory)
             run = m.WindowsRun(baseline.c)
+            self.admit(run)
             publisher = self.publisher(directory)
             self.assertIsNone(run.bind_anchor_publisher(publisher))
             self.assertIs(run.anchor_publisher, publisher)
@@ -612,6 +636,54 @@ class SupervisorTests(unittest.TestCase):
             run.session = "checkout-" + "c" * 32
             run.claim(1)
             self.assertEqual(publisher.load(), run.journal_anchor())
+
+    def test_bare_claim_and_recovery_refuse_lease_before_artifact_or_anchor_io(self):
+        with TemporaryDirectory(prefix="oncam-supervisor-test-") as directory:
+            run = self.journal_run(directory, admitted=False)
+            publisher = run.anchor_publisher
+            with self.assertRaisesRegex(m.Refused, "^lifecycle_lease$"):
+                run.claim(1)
+            self.assertFalse((run.run / "supervisor.json").exists())
+            self.assertEqual(publisher.calls if hasattr(publisher, "calls") else [], [])
+
+            with self.assertRaisesRegex(m.Refused, "^lifecycle_lease$"):
+                run.recover_ownership(run.session, {"generation": 1, "digest": "a" * 64})
+            self.assertFalse(run.recovery_hydrated)
+
+    def test_pinned_lifecycle_lease_is_required_before_claim_and_each_recovery(self):
+        with TemporaryDirectory(prefix="oncam-supervisor-test-") as directory:
+            run = self.journal_run(directory, admitted=False)
+            run, lease = self.admit(run)
+            run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            run.session = "checkout-" + "c" * 32
+            run.claim(1)
+            self.assertGreaterEqual(lease.calls, 2)
+            anchor = run.journal_anchor()
+
+            recovered = self.journal_run(directory, admitted=False)
+            recovered.anchor_publisher.latest = dict(anchor)
+            recovered, recovery_lease = self.admit(recovered)
+            with patch.object(recovered, "_read_claim", side_effect=m.Refused("stop_after_admission")), \
+                    self.assertRaisesRegex(m.Refused, "^stop_after_admission$"):
+                recovered.recover_ownership(run.session, anchor)
+            self.assertGreaterEqual(recovery_lease.calls, 2)
+
+    def test_lifecycle_lease_alias_method_and_binding_drift_fail_closed(self):
+        mutations = (
+            lambda run, lease: setattr(run, "lifecycle_lease", LifecycleLease(run.run)),
+            lambda run, lease: setattr(lease, "binding", "f" * 64),
+            lambda run, lease: setattr(lease, "descriptor_identity", (9, 9)),
+            lambda run, lease: setattr(lease, "validate", lambda: {}),
+        )
+        for mutate in mutations:
+            with self.subTest(mutation=mutate), \
+                    TemporaryDirectory(prefix="oncam-supervisor-test-") as directory:
+                run = self.journal_run(directory, admitted=False)
+                run, lease = self.admit(run)
+                mutate(run, lease)
+                with self.assertRaisesRegex(m.Refused, "^lifecycle_lease_identity$"):
+                    run.claim(1)
+                self.assertFalse((run.run / "supervisor.json").exists())
 
     def test_anchor_publisher_bind_rejects_wrong_type_or_phase(self):
         for publisher in (None, object(), lambda anchor: None):
@@ -629,6 +701,7 @@ class SupervisorTests(unittest.TestCase):
             with self.subTest(replacement=replacement), TemporaryDirectory(prefix="oncam-journal-test-") as directory:
                 baseline = self.journal_run(directory)
                 run = m.WindowsRun(baseline.c, anchor_publisher=self.publisher(directory))
+                self.admit(run)
                 run.anchor_publisher = replacement
                 run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
                 run.session = "checkout-" + "c" * 32
@@ -648,6 +721,7 @@ class SupervisorTests(unittest.TestCase):
 
                 publisher = Publisher()
                 run = m.WindowsRun(baseline.c, anchor_publisher=publisher)
+                self.admit(run)
                 if drift == "instance_load":
                     publisher.load = lambda: None
                 else:
@@ -688,6 +762,7 @@ class SupervisorTests(unittest.TestCase):
 
                 publisher = Publisher()
                 run = m.WindowsRun(baseline.c, anchor_publisher=publisher)
+                self.admit(run)
                 run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
                 run.session = "checkout-" + "c" * 32
                 run.claim(1)
@@ -712,6 +787,7 @@ class SupervisorTests(unittest.TestCase):
                     TemporaryDirectory(prefix="oncam-journal-test-") as directory:
                 baseline = self.journal_run(directory)
                 run = m.WindowsRun(baseline.c, anchor_publisher=publisher)
+                self.admit(run)
                 run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
                 run.session = "checkout-" + "c" * 32
                 with patch.object(m.subprocess, "Popen") as popen:
@@ -767,6 +843,7 @@ class SupervisorTests(unittest.TestCase):
 
                 publisher = DriftingPublisher()
                 run = m.WindowsRun(baseline.c, anchor_publisher=publisher)
+                self.admit(run)
                 publisher.run = run
                 run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
                 run.session = "checkout-" + "c" * 32
@@ -962,6 +1039,7 @@ class SupervisorTests(unittest.TestCase):
             run.session = "checkout-" + "c" * 32
             run.claim(1)
             candidate = m.WindowsRun(run.c)
+            self.admit(candidate)
             with patch.object(m.subprocess, "Popen") as popen:
                 with self.assertRaisesRegex(m.Refused, "^anchor_publisher$"):
                     candidate.recover_ownership(run.session, run.journal_anchor())
@@ -977,6 +1055,7 @@ class SupervisorTests(unittest.TestCase):
                 run.session = "checkout-" + "c" * 32
                 run.claim(1)
                 candidate = m.WindowsRun(run.c, anchor_publisher=run.anchor_publisher)
+                self.admit(candidate)
                 candidate.anchor_publisher = replacement
                 candidate._snapshot = lambda: self.fail("snapshot must not run")
                 with patch.object(m.subprocess, "Popen") as popen:
@@ -992,6 +1071,7 @@ class SupervisorTests(unittest.TestCase):
             run.session = "checkout-" + "c" * 32
             run.claim(1)
             candidate = m.WindowsRun(run.c, anchor_publisher=run.anchor_publisher)
+            self.admit(candidate)
             candidate.anchor_publisher.load = lambda: run.journal_anchor()
             candidate._snapshot = lambda: self.fail("snapshot must not run")
             with patch.object(m.subprocess, "Popen") as popen:
@@ -1013,6 +1093,7 @@ class SupervisorTests(unittest.TestCase):
                 observed.append(reader._read_journal(anchor)["launchIntents"])
 
             candidate = m.WindowsRun(run.c, anchor_publisher=self.publisher(directory, publish))
+            self.admit(candidate)
 
             class Process:
                 pid = 10
@@ -1044,6 +1125,7 @@ class SupervisorTests(unittest.TestCase):
             candidate = m.WindowsRun(
                 run.c, anchor_publisher=store
             )
+            self.admit(candidate)
 
             class Process:
                 pid = 10
@@ -1080,6 +1162,7 @@ class SupervisorTests(unittest.TestCase):
             candidate = m.WindowsRun(
                 run.c, anchor_publisher=store
             )
+            self.admit(candidate)
 
             class Process:
                 pid = 10
@@ -1105,6 +1188,7 @@ class SupervisorTests(unittest.TestCase):
                 popen.assert_not_called()
 
             retry = m.WindowsRun(run.c, anchor_publisher=store)
+            self.admit(retry)
             def clean(*args, **kwargs):
                 kwargs["stdout"].write(b"[]")
                 return Process()
@@ -1218,6 +1302,7 @@ class SupervisorTests(unittest.TestCase):
 
             baseline = self.journal_run(directory)
             run = m.WindowsRun(baseline.c, anchor_publisher=self.publisher(directory, publish))
+            self.admit(run)
             run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
             run.session = "checkout-" + "c" * 32
             run.claim(1)
@@ -1243,6 +1328,7 @@ class SupervisorTests(unittest.TestCase):
                 lambda anchor: (_ for _ in ()).throw(RuntimeError("offline"))
                 if anchor["generation"] == 2 else None,
             ))
+            self.admit(run)
             run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
             run.session = "checkout-" + "c" * 32
             run.claim(1)
@@ -1264,6 +1350,7 @@ class SupervisorTests(unittest.TestCase):
                     baseline.c,
                     anchor_publisher=store,
                 )
+                self.admit(run)
                 run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
                 run.session = "checkout-" + "c" * 32
                 run.claim(1)
@@ -1305,6 +1392,7 @@ class SupervisorTests(unittest.TestCase):
             with self.subTest(outcome=outcome), TemporaryDirectory(prefix="oncam-journal-test-") as directory:
                 baseline = self.journal_run(directory)
                 run = m.WindowsRun(baseline.c, anchor_publisher=self.publisher(directory))
+                self.admit(run)
                 run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
                 run.session = "checkout-" + "c" * 32
                 run.claim(1)
@@ -1427,6 +1515,7 @@ class SupervisorTests(unittest.TestCase):
 
             baseline = self.journal_run(directory)
             run = m.WindowsRun(baseline.c, anchor_publisher=self.publisher(directory, publish))
+            self.admit(run)
             run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
             run.session = "checkout-" + "c" * 32
             run.claim(1)
@@ -1445,6 +1534,7 @@ class SupervisorTests(unittest.TestCase):
 
             baseline = self.journal_run(directory)
             run = m.WindowsRun(baseline.c, anchor_publisher=self.publisher(directory, publish))
+            self.admit(run)
             run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
             run.session = "checkout-" + "c" * 32
             run.claim(1)
@@ -1463,6 +1553,7 @@ class SupervisorTests(unittest.TestCase):
             baseline = self.journal_run(directory)
             store = self.publisher(directory)
             run = m.WindowsRun(baseline.c, anchor_publisher=store)
+            self.admit(run)
             run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
             run.session = "checkout-" + "c" * 32
             run.claim(1)
@@ -1497,6 +1588,7 @@ class SupervisorTests(unittest.TestCase):
 
                 baseline = self.journal_run(directory)
                 run = m.WindowsRun(baseline.c, anchor_publisher=self.publisher(directory, publish))
+                self.admit(run)
                 run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
                 run.session = "checkout-" + "c" * 32
                 run.claim(1)
@@ -1549,6 +1641,7 @@ class SupervisorTests(unittest.TestCase):
                 baseline.c,
                 anchor_publisher=store,
             )
+            self.admit(run)
             run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
             run.session = "checkout-" + "c" * 32
             run.claim(1)

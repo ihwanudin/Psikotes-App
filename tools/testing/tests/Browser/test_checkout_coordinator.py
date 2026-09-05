@@ -30,6 +30,21 @@ class CheckoutCoordinatorTests(unittest.TestCase):
     def module(self):
         return load_module("checkout_coordinator", "checkout-coordinator.py")
 
+    def leased_run(self, module, config, coordinator):
+        lease = module.lease_module.CheckoutCoordinatorLease.acquire(
+            coordinator_directory=coordinator,
+            run_directory=config["directory"],
+        )
+        return module._assemble_fresh(config, coordinator, lease), lease
+
+    def claimed_history(self, module, config, coordinator):
+        run, lease = self.leased_run(module, config, coordinator)
+        run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+        run.claim(1)
+        anchor = run.journal_anchor()
+        lease.release("lifecycle_finished")  # Simulates the former owner process exiting.
+        return run, anchor
+
     @staticmethod
     def config(run: Path):
         names = {
@@ -60,6 +75,9 @@ class CheckoutCoordinatorTests(unittest.TestCase):
         class Run:
             run = Path("c:/candidate")
             session = self.session
+
+            def _required_lifecycle_lease(self):
+                return object()
 
             def _config_binding(self, session):
                 self.binding_sessions = getattr(self, "binding_sessions", []) + [session]
@@ -133,6 +151,9 @@ class CheckoutCoordinatorTests(unittest.TestCase):
             run = Path("c:/candidate")
             session = self.session
 
+            def _required_lifecycle_lease(self):
+                return object()
+
             def _config_binding(self, session):
                 return "b" * 64
 
@@ -205,7 +226,7 @@ class CheckoutCoordinatorTests(unittest.TestCase):
             expected_manifest = config["manifest"]
             expected_php_hash = config["tool_hashes"]["php"]
 
-            run = module.assemble_fresh(config=config, coordinator_directory=coordinator)
+            run, lease = self.leased_run(module, config, coordinator)
             config["manifest"] = "f" * 64
             config["tool_hashes"]["php"] = "e" * 64
             config["directory"] = "PRIVATE_MUTATION"
@@ -217,6 +238,7 @@ class CheckoutCoordinatorTests(unittest.TestCase):
                 run.anchor_publisher({"generation": 1, "digest": "c" * 64}),
                 {"generation": 1, "digest": "c" * 64},
             )
+            lease.release("lifecycle_finished")
 
     def test_adapter_refuses_sequential_operational_identity_mutation_before_anchor_io(self):
         module = self.module()
@@ -296,6 +318,9 @@ class CheckoutCoordinatorTests(unittest.TestCase):
             run = Path("c:/candidate")
             session = self.session
 
+            def _required_lifecycle_lease(self):
+                return object()
+
             def _config_binding(self, session):
                 return "b" * 64
 
@@ -348,7 +373,7 @@ class CheckoutCoordinatorTests(unittest.TestCase):
             run_directory.mkdir()
             config = self.config(run_directory)
 
-            run = module.assemble_fresh(config=config, coordinator_directory=coordinator)
+            run, lease = self.leased_run(module, config, coordinator)
             self.assertEqual(
                 run.anchor_publisher.store.config_binding,
                 run._config_binding(run.session),
@@ -358,8 +383,26 @@ class CheckoutCoordinatorTests(unittest.TestCase):
                 run.claim(1)
                 popen.assert_not_called()
             self.assertEqual(run.anchor_publisher.load(), run.journal_anchor())
+            lease.release("lifecycle_finished")
 
-    def test_recovery_assembly_returns_loaded_raw_anchor_without_recover_or_popen(self):
+    def test_public_fresh_assembly_is_inspection_only_without_lease_capability(self):
+        module = self.module()
+        with TemporaryDirectory(prefix="oncam-coordinator-test-") as root:
+            root = Path(root)
+            coordinator, run_directory = root / "coordinator", root / "candidate"
+            coordinator.mkdir()
+            run_directory.mkdir()
+            run = module.assemble_fresh(
+                config=self.config(run_directory), coordinator_directory=coordinator,
+            )
+            with self.assertRaisesRegex(module.CoordinatorRefused, "^coordinator_binding$"):
+                run.anchor_publisher({"generation": 1, "digest": "c" * 64})
+            with self.assertRaisesRegex(module.supervisor_module.Refused, "^lifecycle_lease$"):
+                run.claim(1)
+            self.assertFalse((run_directory / "supervisor.json").exists())
+            self.assertFalse(any(coordinator.glob("checkout-anchor-*.json")))
+
+    def test_bare_recovery_assembly_refuses_before_anchor_io_or_popen(self):
         module = self.module()
         with TemporaryDirectory(prefix="oncam-coordinator-test-") as root:
             root = Path(root)
@@ -367,28 +410,18 @@ class CheckoutCoordinatorTests(unittest.TestCase):
             coordinator.mkdir()
             run_directory.mkdir()
             config = self.config(run_directory)
-            original = module.assemble_fresh(config=config, coordinator_directory=coordinator)
-            original.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
-            original.claim(1)
-
             with patch.object(module.supervisor_module.WindowsRun, "recover_ownership") as recover, \
+                    patch.object(module.anchor_store_module.CheckoutAnchorStore, "load") as load, \
                     patch.object(module.supervisor_module.subprocess, "Popen") as popen:
-                candidate, anchor = module.assemble_recovery(
-                    config=config,
-                    coordinator_directory=coordinator,
-                    session=original.session,
-                )
+                with self.assertRaisesRegex(module.CoordinatorRefused, "^coordinator_lease$"):
+                    module.assemble_recovery(
+                        config=config,
+                        coordinator_directory=coordinator,
+                        session=self.session,
+                    )
                 recover.assert_not_called()
+                load.assert_not_called()
                 popen.assert_not_called()
-            self.assertEqual(anchor, original.journal_anchor())
-            self.assertEqual(candidate.anchor_publisher.load(), anchor)
-            self.assertEqual(candidate.session, original.session)
-            self.assertEqual(candidate.lifecycle_phase, "recovery_ready")
-            with patch.object(module.supervisor_module.subprocess, "Popen") as popen, \
-                    self.assertRaisesRegex(module.supervisor_module.Refused, "^lifecycle_phase$"):
-                candidate.claim(1)
-            popen.assert_not_called()
-            self.assertEqual(candidate.anchor_publisher.load(), anchor)
 
     def test_supervise_fresh_assembles_bound_run_then_delegates_exact_options(self):
         module = self.module()
@@ -431,6 +464,160 @@ class CheckoutCoordinatorTests(unittest.TestCase):
             )
             popen.assert_not_called()
 
+    def test_facade_holds_run_keyed_lease_before_assembly_and_releases_after_safe_return(self):
+        module = self.module()
+        with TemporaryDirectory(prefix="oncam-coordinator-test-") as root:
+            root = Path(root)
+            coordinator, run_directory = root / "coordinator", root / "candidate"
+            coordinator.mkdir()
+            run_directory.mkdir()
+            config = self.config(run_directory)
+            original_builder = module._run_from_config
+
+            def observed_builder(value):
+                with self.assertRaisesRegex(module.lease_module.LeaseRefused, "^lease_held$"):
+                    module.lease_module.CheckoutCoordinatorLease.acquire(
+                        coordinator_directory=coordinator, run_directory=run_directory,
+                    )
+                return original_builder(value)
+
+            with patch.object(module, "_run_from_config", side_effect=observed_builder), \
+                    patch.object(module.supervisor_module, "supervise", return_value={"state": "synthetic"}):
+                self.assertEqual(
+                    module.supervise_fresh(
+                        config=config, coordinator_directory=coordinator,
+                        mode="smoke", requests=1, budget=1,
+                    ),
+                    {"state": "synthetic"},
+                )
+            replacement = module.lease_module.CheckoutCoordinatorLease.acquire(
+                coordinator_directory=coordinator, run_directory=run_directory,
+            )
+            replacement.release("lifecycle_finished")
+
+            interruption = KeyboardInterrupt("synthetic_primary")
+
+            def unsafe_raise(run, **_options):
+                run.claimed = True
+                run.lifecycle_phase = "normal"
+                raise interruption
+
+            with patch.object(module.supervisor_module, "supervise", side_effect=unsafe_raise), \
+                    self.assertRaises(KeyboardInterrupt) as caught:
+                module.supervise_fresh(
+                    config=config, coordinator_directory=coordinator,
+                    mode="smoke", requests=1, budget=1,
+                )
+            self.assertIs(caught.exception, interruption)
+            replacement = module.lease_module.CheckoutCoordinatorLease.acquire(
+                coordinator_directory=coordinator, run_directory=run_directory,
+            )
+            replacement.release("lifecycle_finished")
+
+    def test_nonterminal_return_refuses_but_always_releases_and_primary_wins(self):
+        module = self.module()
+        with TemporaryDirectory(prefix="oncam-coordinator-test-") as root:
+            root = Path(root)
+            coordinator, run_directory = root / "coordinator", root / "candidate"
+            coordinator.mkdir()
+            run_directory.mkdir()
+            config = self.config(run_directory)
+
+            def unsafe_return(run, **_options):
+                run.claimed = True
+                run.lifecycle_phase = "normal"
+                return {"state": "unsafe"}
+
+            with patch.object(module.supervisor_module, "supervise", side_effect=unsafe_return), \
+                    self.assertRaisesRegex(module.CoordinatorRefused, "^coordinator_lease_terminal$"):
+                module.supervise_fresh(
+                    config=config, coordinator_directory=coordinator,
+                    mode="smoke", requests=1, budget=1,
+                )
+            replacement = module.lease_module.CheckoutCoordinatorLease.acquire(
+                coordinator_directory=coordinator, run_directory=run_directory,
+            )
+            replacement.release("lifecycle_finished")
+
+    def test_terminal_inspection_failure_cannot_strand_the_lease(self):
+        module = self.module()
+        with TemporaryDirectory(prefix="oncam-coordinator-test-") as root:
+            root = Path(root)
+            coordinator, run_directory = root / "coordinator", root / "candidate"
+            coordinator.mkdir()
+            run_directory.mkdir()
+            lease = module.lease_module.CheckoutCoordinatorLease.acquire(
+                coordinator_directory=coordinator, run_directory=run_directory,
+            )
+
+            class CorruptRun:
+                @property
+                def claimed(self):
+                    raise RuntimeError("PRIVATE")
+
+            with self.assertRaisesRegex(module.CoordinatorRefused, "^coordinator_lease_terminal$"):
+                module._release_lease(lease, CorruptRun(), None)
+            replacement = module.lease_module.CheckoutCoordinatorLease.acquire(
+                coordinator_directory=coordinator, run_directory=run_directory,
+            )
+            replacement.release("lifecycle_finished")
+
+    def test_facade_uses_one_config_snapshot_for_lease_and_assembly(self):
+        module = self.module()
+        with TemporaryDirectory(prefix="oncam-coordinator-test-") as root:
+            root = Path(root)
+            coordinator, first, second = root / "coordinator", root / "first", root / "second"
+            coordinator.mkdir()
+            first.mkdir()
+            second.mkdir()
+            config = self.config(first)
+            real_acquire = module._acquire_lease
+            observed = {}
+
+            def acquire_then_mutate(snapshot, coordinator_directory):
+                lease = real_acquire(snapshot, coordinator_directory)
+                config["directory"] = str(second.absolute())
+                return lease
+
+            def supervise(run, **_options):
+                observed["run"] = run.run
+                return {"state": "synthetic"}
+
+            with patch.object(module, "_acquire_lease", side_effect=acquire_then_mutate), \
+                    patch.object(module.supervisor_module, "supervise", side_effect=supervise):
+                module.supervise_fresh(
+                    config=config, coordinator_directory=coordinator,
+                    mode="smoke", requests=1, budget=1,
+                )
+            self.assertEqual(observed["run"], first)
+
+    def test_facade_resolves_coordinator_pathlike_once(self):
+        module = self.module()
+        with TemporaryDirectory(prefix="oncam-coordinator-test-") as root:
+            root = Path(root)
+            first, second, run_directory = root / "first", root / "second", root / "candidate"
+            first.mkdir()
+            second.mkdir()
+            run_directory.mkdir()
+
+            class TogglingPath:
+                def __init__(self):
+                    self.calls = 0
+
+                def __fspath__(self):
+                    self.calls += 1
+                    return str(first if self.calls == 1 else second)
+
+            pathlike = TogglingPath()
+            with patch.object(module.supervisor_module, "supervise", return_value={"state": "synthetic"}):
+                module.supervise_fresh(
+                    config=self.config(run_directory), coordinator_directory=pathlike,
+                    mode="smoke", requests=1, budget=1,
+                )
+            self.assertEqual(pathlike.calls, 1)
+            self.assertTrue((run_directory / ".checkout-coordinator.lease").is_file())
+            self.assertFalse(any(second.iterdir()))
+
     def test_recover_existing_assembles_recovery_then_delegates_exact_anchor(self):
         module = self.module()
         with TemporaryDirectory(prefix="oncam-coordinator-test-") as root:
@@ -439,10 +626,7 @@ class CheckoutCoordinatorTests(unittest.TestCase):
             coordinator.mkdir()
             run_directory.mkdir()
             config = self.config(run_directory)
-            original = module.assemble_fresh(config=config, coordinator_directory=coordinator)
-            original.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
-            original.claim(1)
-            expected_anchor = original.journal_anchor()
+            original, expected_anchor = self.claimed_history(module, config, coordinator)
             observed = {}
 
             def recover(run, *, session, anchor, budget):
@@ -515,9 +699,7 @@ class CheckoutCoordinatorTests(unittest.TestCase):
             coordinator.mkdir()
             run_directory.mkdir()
             config = self.config(run_directory)
-            original = module.assemble_fresh(config=config, coordinator_directory=coordinator)
-            original.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
-            original.claim(1)
+            original, _ = self.claimed_history(module, config, coordinator)
 
             calls = (
                 ("fresh", "supervise", lambda: module.supervise_fresh(
@@ -553,9 +735,7 @@ class CheckoutCoordinatorTests(unittest.TestCase):
             coordinator.mkdir()
             run_directory.mkdir()
             config = self.config(run_directory)
-            original = module.assemble_fresh(config=config, coordinator_directory=coordinator)
-            original.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
-            original.claim(1)
+            original, _ = self.claimed_history(module, config, coordinator)
 
             changed = {**config, "manifest": "f" * 64}
             cases = (("checkout-" + "f" * 32, config), (original.session, changed))
@@ -563,10 +743,11 @@ class CheckoutCoordinatorTests(unittest.TestCase):
                 with self.subTest(session=session, changed=candidate_config is changed), \
                         patch.object(module.supervisor_module.subprocess, "Popen") as popen, \
                         self.assertRaisesRegex(module.CoordinatorRefused, "^coordinator_anchor$"):
-                    module.assemble_recovery(
+                    module.recover_existing(
                         config=candidate_config,
                         coordinator_directory=coordinator,
                         session=session,
+                        budget=1,
                     )
                 popen.assert_not_called()
 
@@ -579,8 +760,8 @@ class CheckoutCoordinatorTests(unittest.TestCase):
             first_run.mkdir()
             second_run.mkdir()
 
-            locked = module.assemble_fresh(
-                config=self.config(first_run), coordinator_directory=coordinator,
+            locked, locked_lease = self.leased_run(
+                module, self.config(first_run), coordinator,
             )
             locked.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
             locked.anchor_publisher.store.lock_path.write_text("LOCK\n", encoding="ascii")
@@ -588,19 +769,17 @@ class CheckoutCoordinatorTests(unittest.TestCase):
                     self.assertRaisesRegex(module.supervisor_module.Refused, "^anchor_publish$"):
                 locked.claim(1)
             popen.assert_not_called()
+            locked_lease.release("lifecycle_finished")
 
-            original = module.assemble_fresh(
-                config=self.config(second_run), coordinator_directory=coordinator,
-            )
-            original.owner = {"pid": 8, "started": "101", "nonce": "d" * 64}
-            original.claim(1)
+            original, _ = self.claimed_history(module, self.config(second_run), coordinator)
             original.anchor_publisher.store.path.write_text('{"truncated":', encoding="ascii")
             with patch.object(module.supervisor_module.subprocess, "Popen") as popen, \
                     self.assertRaisesRegex(module.CoordinatorRefused, "^coordinator_anchor$"):
-                module.assemble_recovery(
+                module.recover_existing(
                     config=self.config(second_run),
                     coordinator_directory=coordinator,
                     session=original.session,
+                    budget=1,
                 )
             popen.assert_not_called()
 

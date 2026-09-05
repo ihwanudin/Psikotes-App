@@ -366,6 +366,13 @@ class WindowsRun:
         self.__anchor_publish_fingerprint = None
         self.__anchor_load = None
         self.__anchor_load_fingerprint = None
+        self.lifecycle_lease = None
+        self.__expected_lifecycle_lease = None
+        self.__expected_lifecycle_lease_type = None
+        self.__lease_validate = None
+        self.__lease_validate_fingerprint = None
+        self.__lease_binding = None
+        self.__lease_descriptor_identity = None
         if anchor_publisher is not None:
             self._pin_anchor_publisher(anchor_publisher)
         self.run = Path(config["directory"])
@@ -400,6 +407,62 @@ class WindowsRun:
             raise Refused("anchor_publisher_bind")
         self.anchor_publisher = publisher
         self._pin_anchor_publisher(publisher)
+
+    def bind_lifecycle_lease(self, lease):
+        if self.lifecycle_phase != "new" or self.claimed is not False \
+                or self.lifecycle_lease is not None or self.__expected_lifecycle_lease is not None:
+            raise Refused("lifecycle_lease_bind")
+        try:
+            validate = lease.validate
+            normalized_run = self._normalized_path(str(self.run.absolute()))
+            expected_binding = hashlib.sha256(normalized_run.encode("utf-8")).hexdigest()
+            descriptor_identity = lease.descriptor_identity
+            if not callable(validate) or getattr(validate, "__self__", None) is not lease \
+                    or not callable(getattr(validate, "__func__", None)) \
+                    or lease.run != normalized_run or lease.binding != expected_binding \
+                    or type(descriptor_identity) is not tuple or len(descriptor_identity) != 2 \
+                    or any(type(value) is not int or value < 0 for value in descriptor_identity):
+                raise Refused("lifecycle_lease_bind")
+            document = validate()
+            if document != {"version": 1, "run": normalized_run,
+                            "leaseBinding": expected_binding}:
+                raise Refused("lifecycle_lease_bind")
+            self.lifecycle_lease = lease
+            self.__expected_lifecycle_lease = lease
+            self.__expected_lifecycle_lease_type = type(lease)
+            self.__lease_validate = validate
+            self.__lease_validate_fingerprint = self._callable_fingerprint(validate)
+            self.__lease_binding = expected_binding
+            self.__lease_descriptor_identity = descriptor_identity
+        except Refused:
+            raise
+        except Exception:
+            raise Refused("lifecycle_lease_bind") from None
+
+    def _required_lifecycle_lease(self):
+        lease = self.__expected_lifecycle_lease
+        if lease is None:
+            raise Refused("lifecycle_lease")
+        try:
+            current_validate = lease.validate
+            normalized_run = self._normalized_path(str(self.run.absolute()))
+            if self.lifecycle_lease is not lease \
+                    or type(lease) is not self.__expected_lifecycle_lease_type \
+                    or not self._callable_matches(current_validate,
+                                                  self.__lease_validate_fingerprint) \
+                    or lease.run != normalized_run \
+                    or lease.binding != self.__lease_binding \
+                    or lease.descriptor_identity != self.__lease_descriptor_identity:
+                raise Refused("lifecycle_lease_identity")
+            document = self.__lease_validate()
+            if document != {"version": 1, "run": normalized_run,
+                            "leaseBinding": self.__lease_binding}:
+                raise Refused("lifecycle_lease_identity")
+            return lease
+        except Refused:
+            raise
+        except Exception:
+            raise Refused("lifecycle_lease_identity") from None
 
     @staticmethod
     def _callable_fingerprint(value):
@@ -437,6 +500,7 @@ class WindowsRun:
         self.__anchor_load_fingerprint = self._callable_fingerprint(load)
 
     def _bound_anchor_publisher(self):
+        self._required_lifecycle_lease()
         expected = self.__expected_anchor_publisher
         if expected is None:
             raise Refused("anchor_publisher")
@@ -887,6 +951,7 @@ class WindowsRun:
         return {self._normalized_path(self.c[key]) for key in keys}
 
     def recover_ownership(self, session, anchor):
+        self._required_lifecycle_lease()
         try:
             return self._recover_ownership(session, anchor)
         except BaseException:
@@ -1113,6 +1178,7 @@ class WindowsRun:
             raise Refused("occupied_port")
 
     def claim(self, remaining):
+        self._required_lifecycle_lease()
         if self.lifecycle_phase != "new":
             raise Refused("lifecycle_phase")
         self._bound_anchor_publisher()

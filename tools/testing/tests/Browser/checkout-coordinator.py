@@ -35,6 +35,7 @@ def _load_module(name: str, filename: str):
 
 supervisor_module = _load_module("checkout_supervisor_coordinated", "checkout-supervisor.py")
 anchor_store_module = _load_module("checkout_anchor_store_coordinated", "checkout-anchor-store.py")
+lease_module = _load_module("checkout_coordinator_lease_coordinated", "checkout-coordinator-lease.py")
 
 
 class SupervisorAnchorPublisher:
@@ -85,6 +86,11 @@ class SupervisorAnchorPublisher:
 
     def _validate_binding(self, *, require_attached=True):
         try:
+            require_lease = getattr(self._run, "_required_lifecycle_lease", None)
+            if require_attached:
+                if not callable(require_lease):
+                    raise CoordinatorRefused("coordinator_binding")
+                require_lease()
             current_publish = self._store.publish
             current_load = self._store.load
             current_run = supervisor_module.WindowsRun._normalized_path(
@@ -160,10 +166,12 @@ def _explicit_inputs(config, coordinator_directory):
         raise CoordinatorRefused("coordinator_directory")
 
 
-def _attach(run, *, coordinator_directory, session):
+def _attach(run, *, coordinator_directory, session, lifecycle_lease=None):
     # This is deliberate same-tool coupling. The parity tests pin the supervisor's
     # own binding implementation rather than duplicating its security contract.
     binding = run._config_binding(session)
+    if lifecycle_lease is not None:
+        run.bind_lifecycle_lease(lifecycle_lease)
     store = anchor_store_module.CheckoutAnchorStore(
         coordinator_directory=coordinator_directory,
         run_directory=run.run,
@@ -178,7 +186,7 @@ def _attach(run, *, coordinator_directory, session):
         expected_config_binding=binding,
     )
     run.bind_anchor_publisher(publisher)
-    publisher._validate_binding()
+    publisher._validate_binding(require_attached=lifecycle_lease is not None)
     return run
 
 
@@ -199,47 +207,143 @@ def _run_from_config(config):
 
 
 def assemble_fresh(*, config, coordinator_directory):
-    """Create an unclaimed run with a publisher attached; never calls claim or Popen."""
+    """Create an inspection-only run; lifecycle operations require the façade lease."""
     _explicit_inputs(config, coordinator_directory)
     run = _run_from_config(config)
     return _attach(run, coordinator_directory=coordinator_directory, session=run.session)
 
 
 def assemble_recovery(*, config, coordinator_directory, session):
-    """Create a recovery candidate and return its persisted raw anchor without recovering."""
+    """Bare recovery assembly cannot read an anchor without a held lease."""
     _explicit_inputs(config, coordinator_directory)
+    raise CoordinatorRefused("coordinator_lease")
+
+
+def _candidate_directory(config):
+    try:
+        if type(config) is not dict or not isinstance(config.get("directory"), (str, os.PathLike)):
+            raise CoordinatorRefused("coordinator_config")
+        return config["directory"]
+    except CoordinatorRefused:
+        raise
+    except Exception:
+        raise CoordinatorRefused("coordinator_config") from None
+
+
+def _acquire_lease(config, coordinator_directory):
+    _explicit_inputs(config, coordinator_directory)
+    try:
+        return lease_module.CheckoutCoordinatorLease.acquire(
+            coordinator_directory=coordinator_directory,
+            run_directory=_candidate_directory(config),
+        )
+    except CoordinatorRefused:
+        raise
+    except Exception:
+        raise CoordinatorRefused("coordinator_lease") from None
+
+
+def _assemble_fresh(config, coordinator_directory, lease):
+    run = _run_from_config(config)
+    return _attach(
+        run, coordinator_directory=coordinator_directory, session=run.session,
+        lifecycle_lease=lease,
+    )
+
+
+def _assemble_recovery(config, coordinator_directory, session, lease):
     if not isinstance(session, str) or _SESSION.fullmatch(session) is None:
         raise CoordinatorRefused("coordinator_session")
     run = _run_from_config(config)
     run.session = session
-    _attach(run, coordinator_directory=coordinator_directory, session=session)
-    # Prevent this old-run assembly from being mistaken for a fresh claim. The
-    # supervisor recovery path explicitly hydrates and advances it to `recovery`.
+    _attach(
+        run, coordinator_directory=coordinator_directory, session=session,
+        lifecycle_lease=lease,
+    )
     run.lifecycle_phase = "recovery_ready"
     return run, run.anchor_publisher.load()
 
 
+def _safe_to_release(run):
+    if run is None:
+        return True
+    if run.claimed is True:
+        return run.lifecycle_phase in {"closed", "invalidated"}
+    return run.lifecycle_phase in {"new", "recovery_ready"} \
+        and not run.handles and not run.roles and not run.owned \
+        and not run.recovery_hydrated
+
+
+def _release_lease(lease, run, primary):
+    try:
+        terminal_safe = _safe_to_release(run)
+        terminal_error = None
+    except BaseException as error:
+        terminal_safe = False
+        terminal_error = error
+    try:
+        lease.release("lifecycle_finished")
+        release_error = None
+    except BaseException as error:
+        release_error = error
+    if primary is not None:
+        raise primary
+    if terminal_error is not None and isinstance(terminal_error, (KeyboardInterrupt, SystemExit)):
+        raise terminal_error
+    if release_error is not None:
+        if isinstance(release_error, (KeyboardInterrupt, SystemExit)):
+            raise release_error
+        raise CoordinatorRefused("coordinator_lease_release") from None
+    if not terminal_safe:
+        raise CoordinatorRefused("coordinator_lease_terminal") from None
+
+
+def _execute_with_lease(config, coordinator_directory, operation):
+    _explicit_inputs(config, coordinator_directory)
+    try:
+        config_snapshot = copy.deepcopy(config)
+    except Exception:
+        raise CoordinatorRefused("coordinator_config") from None
+    try:
+        coordinator_snapshot = os.fspath(coordinator_directory)
+        if type(coordinator_snapshot) is not str or not coordinator_snapshot \
+                or "\0" in coordinator_snapshot:
+            raise ValueError("coordinator")
+    except Exception:
+        raise CoordinatorRefused("coordinator_directory") from None
+    lease = _acquire_lease(config_snapshot, coordinator_snapshot)
+    context = {"run": None}
+    primary = None
+    result = None
+    try:
+        result = operation(lease, context, config_snapshot, coordinator_snapshot)
+    except BaseException as error:
+        primary = error
+    _release_lease(lease, context["run"], primary)
+    return result
+
+
 def supervise_fresh(*, config, coordinator_directory, mode, requests, budget):
     """Run the supervisor only after fresh coordinator assembly and binding."""
-    run = assemble_fresh(config=config, coordinator_directory=coordinator_directory)
-    return supervisor_module.supervise(
-        run,
-        mode=mode,
-        requests=requests,
-        budget=budget,
-    )
+    def execute(lease, context, config_snapshot, coordinator_snapshot):
+        run = _assemble_fresh(config_snapshot, coordinator_snapshot, lease)
+        context["run"] = run
+        return supervisor_module.supervise(
+            run, mode=mode, requests=requests, budget=budget,
+        )
+
+    return _execute_with_lease(config, coordinator_directory, execute)
 
 
 def recover_existing(*, config, coordinator_directory, session, budget):
     """Run recovery only with the exact anchor loaded by coordinator assembly."""
-    run, anchor = assemble_recovery(
-        config=config,
-        coordinator_directory=coordinator_directory,
-        session=session,
-    )
-    return supervisor_module.recover(
-        run,
-        session=session,
-        anchor=anchor,
-        budget=budget,
-    )
+    def execute(lease, context, config_snapshot, coordinator_snapshot):
+        run, anchor = _assemble_recovery(
+            config_snapshot, coordinator_snapshot, session, lease,
+        )
+        context["run"] = run
+        return supervisor_module.recover(
+            run, session=session, anchor=anchor, budget=budget,
+        )
+
+    return _execute_with_lease(config, coordinator_directory, execute)
