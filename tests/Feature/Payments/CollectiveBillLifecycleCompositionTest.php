@@ -4,22 +4,28 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Payments;
 
+use App\Actions\Integrations\IntegrationContractViolation;
+use App\Actions\Integrations\IssueCheckoutHandoff;
+use App\Actions\Payments\ActivateSettledAssessment;
 use App\Actions\Payments\ClaimAssessmentBillInvoice;
 use App\Actions\Payments\FinalizeAssessmentBill;
 use App\Actions\Payments\IssueAssessmentBillInvoice;
 use App\Actions\Payments\PreviewAssessmentBill;
 use App\Actions\Payments\ReserveAssessmentBill;
 use App\Contracts\PaymentProvider;
+use App\Data\Integrations\CheckoutHandoffIssueInput;
 use App\Data\Payments\CreateInvoiceRequest;
 use App\Data\Payments\PaymentEvent;
 use App\Data\Payments\PaymentInvoice;
 use App\Enums\AdminRole;
+use App\Enums\CheckoutHandoffIntent;
 use App\Enums\PayerType;
 use App\Enums\PaymentStatus;
 use App\Filament\Resources\OrganizationBills\OrganizationBillResource;
 use App\Models\Admin;
 use App\Models\AssessmentBill;
 use App\Models\AssessmentCharge;
+use App\Models\IntegrationClient;
 use App\Models\OutboxMessage;
 use App\Models\TestPackage;
 use App\Registration\ConsentDocument;
@@ -299,6 +305,151 @@ final class CollectiveBillLifecycleCompositionTest extends OrganizationPaymentTe
         $this->assertSame($settledState, $this->durableState(), 'Reading owner/foreign projections must not write payment state.');
     }
 
+    public function test_same_participant_attempts_from_two_trusted_sources_keep_lookup_payment_and_access_scoped(): void
+    {
+        config()->set('assessment_integration.checkout_handoff.enabled', true);
+        config()->set('assessment_integration.checkout_handoff.ttl_seconds', 600);
+        $first = AssessmentPreviewFixture::create(null, 111);
+        $second = AssessmentPreviewFixture::create([
+            'organization' => $first['organization'], 'participant' => $first['participant'],
+        ], 222);
+        $foreign = AssessmentPreviewFixture::create(null, 333);
+        $secondSource = 'P17A_SECOND_'.$second['attempt'];
+        DB::table('assessment_participants')->where('id', $second['attempt'])->update(['source_system' => $secondSource]);
+        DB::table('integration_sources')->where('id', $second['source'])->update(['source_system' => $secondSource]);
+        DB::table('assessment_participants')->whereIn('id', [$first['attempt'], $second['attempt']])->update([
+            'funding_mode' => 'INVOICED_TO_ORGANIZATION',
+            'metadata' => json_encode([
+                'checkout_contract_version' => 'checkout-v2', 'checkout_initial_funding_mode' => null,
+            ], JSON_THROW_ON_ERROR),
+        ]);
+        DB::table('participants')->where('id', $first['participant'])->update(['full_name' => 'PRIVATE SHARED PROFILE']);
+        foreach ([$first, $second, $foreign] as $index => $fixture) {
+            DB::table('packages')->where('id', $fixture['package'])->update([
+                'name' => 'PRIVATE SOURCE '.($index + 1).' PACKAGE',
+            ]);
+            DB::table('package_items')->insert([
+                'package_id' => $fixture['package'], 'test_type' => 'dass21', 'sort_order' => 2,
+            ]);
+        }
+        $this->assertNotSame($first['attempt'], $second['attempt']);
+        $this->assertNotSame($first['client'], $second['client']);
+        $this->assertNotSame($first['source'], $second['source']);
+        $this->assertNotSame($first['package'], $second['package']);
+        $this->assertSame(2, DB::table('assessment_participants')
+            ->where('organization_id', $first['organization'])->where('participant_id', $first['participant'])->count());
+        $this->prerequisites($first['participant'], false);
+
+        $firstAttemptReference = DB::table('assessment_participants')->where('id', $first['attempt'])->value('assessment_attempt_id');
+        $secondAttemptReference = DB::table('assessment_participants')->where('id', $second['attempt'])->value('assessment_attempt_id');
+        $firstSource = DB::table('assessment_participants')->where('id', $first['attempt'])->value('source_system');
+        if (! is_string($firstAttemptReference) || ! is_string($secondAttemptReference) || ! is_string($firstSource)) {
+            throw new \LogicException('Synthetic attempt source identity is unavailable.');
+        }
+        $firstClient = IntegrationClient::query()->whereKey($first['client'])->sole();
+        $secondClient = IntegrationClient::query()->whereKey($second['client'])->sole();
+        $foreignClient = IntegrationClient::query()->whereKey($foreign['client'])->sole();
+        $this->assertMatchesRegularExpression(
+            '/^och1_[0-9a-f]{64}$/D', $this->issueHandoff($firstClient, $firstAttemptReference, $firstSource, 'first-valid'),
+        );
+        $this->assertMatchesRegularExpression(
+            '/^och1_[0-9a-f]{64}$/D', $this->issueHandoff($secondClient, $secondAttemptReference, $secondSource, 'second-valid'),
+        );
+
+        foreach ([
+            [$firstClient, $secondAttemptReference, $firstSource, 'cross-client-a'],
+            [$secondClient, $firstAttemptReference, $secondSource, 'cross-client-b'],
+            [$firstClient, $firstAttemptReference, $secondSource, 'cross-source'],
+            [$foreignClient, $firstAttemptReference, $firstSource, 'cross-organization'],
+        ] as [$client, $attemptReference, $source, $key]) {
+            try {
+                $this->issueHandoff($client, $attemptReference, $source, $key);
+                $this->fail('A mismatched trusted-source lookup returned a handoff.');
+            } catch (IntegrationContractViolation $exception) {
+                $this->assertSame('HANDOFF_NOT_ALLOWED', $exception->getMessage());
+                foreach (['PRIVATE SHARED PROFILE', 'PRIVATE SOURCE 1 PACKAGE', 'organization', 'dass21'] as $privateValue) {
+                    $this->assertStringNotContainsString($privateValue, $exception->getMessage());
+                }
+            }
+        }
+
+        $foreignProjection = app(RlsContextRunner::class)->runAsService(fn (): array => app(PreviewAssessmentBill::class)->execute(
+            $foreign['organization'], [['assessmentParticipantId' => $first['attempt'], 'consultationRequested' => false]],
+            PayerType::Organization,
+        ));
+        $this->assertSame('ASSESSMENT_NOT_AVAILABLE', $foreignProjection['items'][0]['reason']);
+        foreach (['snapshot', 'policySnapshot'] as $field) {
+            $this->assertNull($foreignProjection['items'][0][$field]);
+        }
+        $this->assertNull($foreignProjection['totalAmount']);
+        $this->assertNull($foreignProjection['selectionHash']);
+        foreach (['PRIVATE SHARED PROFILE', 'PRIVATE SOURCE 1 PACKAGE', 'dass21'] as $privateValue) {
+            $this->assertStringNotContainsString($privateValue, json_encode($foreignProjection, JSON_THROW_ON_ERROR));
+        }
+
+        $admin = $this->admin($first['organization'], 'two-source');
+        $method = DB::table('payment_methods')->insertGetId([
+            'code' => 'xendit', 'display_name' => 'Synthetic source invoice', 'is_active' => true,
+        ]);
+        $selection = [['assessmentParticipantId' => $first['attempt'], 'consultationRequested' => false]];
+        $bill = app(RlsContextRunner::class)->runAsService(function () use ($first, $selection, $admin, $method): AssessmentBill {
+            $preview = app(PreviewAssessmentBill::class)->execute($first['organization'], $selection, PayerType::Organization);
+            $this->assertSame(['dass21', 'ist'], $preview['items'][0]['snapshot']['testTypes']);
+            $bill = app(ReserveAssessmentBill::class)->execute(
+                $admin, $selection, $method, $preview['selectionHash'], 'first-source-only',
+            );
+            app(ClaimAssessmentBillInvoice::class)->execute($first['organization'], $bill->id);
+
+            return $bill;
+        });
+        $invoice = new PaymentInvoice(
+            'two-source-invoice', 'https://invoice.xendit.co/two-source-invoice', $bill->amount,
+            'IDR', now()->addDay(),
+        );
+        $provider = $this->createMock(PaymentProvider::class);
+        $provider->expects($this->once())->method('createInvoice')->willReturn($invoice);
+        $provider->expects($this->once())->method('lookupInvoice')->willReturn($invoice);
+        foreach (['checkStatus', 'normalizeWebhook', 'expireInvoice'] as $unused) {
+            $provider->expects($this->never())->method($unused);
+        }
+        app()->instance(PaymentProvider::class, $provider);
+        $intent = OutboxMessage::query()->where('aggregate_id', (string) $bill->id)->sole();
+        app(IssueAssessmentBillInvoice::class)->execute($intent->message_id);
+        $settled = app(FinalizeAssessmentBill::class)->execute(new PaymentEvent(
+            eventId: 'two-source-paid', providerReference: $invoice->providerReference,
+            merchantReference: $bill->public_reference, status: PaymentStatus::Paid,
+            occurredAt: now(), amount: $bill->amount, currency: 'IDR',
+        ));
+        $this->assertSame(['decision' => 'settled', 'allocationCount' => 1, 'activatedAttemptCount' => 0], $settled);
+        $this->assertDatabaseHas('assessment_bills', ['id' => $bill->id, 'status' => 'paid']);
+        foreach ([$first['attempt'], $second['attempt']] as $attempt) {
+            $this->assertDatabaseHas('assessment_participants', ['id' => $attempt, 'assessment_status' => 'PROVISIONED']);
+            $this->assertDatabaseMissing('assessment_entitlements', ['assessment_participant_id' => $attempt]);
+        }
+        $this->assertDatabaseMissing('assessment_charges', ['assessment_participant_id' => $second['attempt']]);
+        $this->assertSame($first['attempt'], AssessmentCharge::query()
+            ->whereKey(DB::table('assessment_bill_items')->where('bill_id', $bill->id)->value('charge_id'))
+            ->sole()->assessment_participant_id);
+        foreach ([$first['attempt'], $second['attempt']] as $attempt) {
+            $this->assertAttemptLocked($first['participant'], $first['organization'], $attempt);
+        }
+
+        $this->acceptConsents($first['participant']);
+        $activated = app(RlsContextRunner::class)->runAsService(fn (): array => app(ActivateSettledAssessment::class)->execute(
+            new AssessmentPrincipal($first['participant'], $first['organization'], $first['attempt']),
+        ));
+        $this->assertSame(['dass21', 'ist'], $activated);
+        $this->assertDatabaseHas('assessment_participants', ['id' => $first['attempt'], 'assessment_status' => 'READY']);
+        $this->assertSame(2, DB::table('assessment_entitlements')->where('assessment_participant_id', $first['attempt'])->count());
+        $this->assertDatabaseHas('assessment_participants', ['id' => $second['attempt'], 'assessment_status' => 'PROVISIONED']);
+        $this->assertDatabaseMissing('assessment_entitlements', ['assessment_participant_id' => $second['attempt']]);
+        $this->assertDatabaseMissing('assessment_charges', ['assessment_participant_id' => $second['attempt']]);
+        $this->assertAttemptLocked($first['participant'], $first['organization'], $second['attempt']);
+        $this->assertSame(1, DB::table('assessment_bills')->count());
+        $this->assertSame(1, DB::table('assessment_bill_items')->count());
+        $this->assertSame(2, DB::table('consent_records')->where('participant_id', $first['participant'])->count());
+    }
+
     /** @return array<string, array{bool, string|null}> */
     public static function consentCases(): array
     {
@@ -349,6 +500,45 @@ final class CollectiveBillLifecycleCompositionTest extends OrganizationPaymentTe
     {
         return Admin::create(['branch_id' => $organization, 'name' => 'Synthetic '.$suffix,
             'email' => 'composition-'.$suffix.'@example.test', 'password' => 'synthetic-only', 'role' => AdminRole::BranchAdmin]);
+    }
+
+    private function issueHandoff(IntegrationClient $client, string $attemptReference, string $source, string $key): string
+    {
+        $result = app(RlsContextRunner::class)->runAsService(fn () => app(IssueCheckoutHandoff::class)->execute(
+            new CheckoutHandoffIssueInput(
+                $client, $attemptReference, $source, 'ih1_'.substr(hash('sha256', $key), 0, 32), CheckoutHandoffIntent::Issue,
+            ),
+        ));
+        $raw = $result->rawToken();
+        if (! is_string($raw)) {
+            throw new \LogicException('Synthetic handoff did not return its one-time bearer.');
+        }
+
+        return $raw;
+    }
+
+    private function acceptConsents(int $participant): void
+    {
+        foreach (['psychotest', 'dass'] as $consentType) {
+            $document = ConsentDocument::for($consentType);
+            DB::table('consent_records')->insert([
+                'participant_id' => $participant, 'consent_type' => $consentType,
+                'status' => 'accepted', 'document_version' => $document->version,
+                'document_hash' => $document->hash, 'consented_at' => now(),
+            ]);
+        }
+    }
+
+    private function assertAttemptLocked(int $participant, int $organization, int $attempt): void
+    {
+        try {
+            app(RlsContextRunner::class)->runAsService(fn () => app(AssessmentEntitlementGate::class)->assertReady(
+                new AssessmentPrincipal($participant, $organization, $attempt), 'ist',
+            ));
+            $this->fail('An attempt inherited access from another payment or consent transition.');
+        } catch (EntitlementLocked) {
+            $this->addToAssertionCount(1);
+        }
     }
 
     private function prerequisites(int $participant, bool $consentAccepted): void

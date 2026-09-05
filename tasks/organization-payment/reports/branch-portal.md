@@ -1,5 +1,79 @@
 # P12a-prep — portal cabang baca-saja
 
+## P17a-prep — dua trusted source, satu participant, lifecycle per attempt
+
+Tanggal 2026-09-05. Increment test-only ini menambah satu method pada
+`CollectiveBillLifecycleCompositionTest`; tidak ada perubahan app, shared
+fixture, backend/frontend, route, config, schema atau dokumen kanonik. Tujuh
+action yang dipakai (`IssueCheckoutHandoff`, preview/reserve/claim/issue/finalize
+bill, dan `ActivateSettledAssessment`) identik SHA256 antara approved isolated
+copy dan root read-only saat verifikasi.
+
+Fixture membuat satu participant sintetis dengan dua attempt berbeda. Masing-
+masing attempt memiliki client, trusted source, package, dan public attempt ID
+sendiri. Kedua package berisi tepat `dass21` dan `ist`; nama participant/package
+memakai sentinel privat. Attempt ketiga di organisasi asing hanya menjadi
+adversarial scope. Semua status paid dan READY berasal dari action canonical;
+tes tidak pernah menulis status itu langsung.
+
+### Lookup dan proyeksi
+
+Dua kombinasi client/source yang benar berhasil menerbitkan bearer handoff
+masing-masing. Empat kombinasi salah — client A untuk attempt B, client B untuk
+attempt A, source B untuk attempt A, dan client organisasi asing untuk attempt
+A — seluruhnya gagal dengan pesan generic `HANDOFF_NOT_ALLOWED`. Pesan tidak
+memuat profil, package, payer, DASS, atau nominal.
+
+Preview bill menggunakan organization asing untuk attempt A juga hanya memberi
+`ASSESSMENT_NOT_AVAILABLE`; snapshot, policy, total, dan selection hash null.
+Serialisasi denial tidak memuat sentinel profil/package maupun `dass21`.
+
+### Payment, consent, dan entitlement
+
+Hanya attempt A dipreview, direserve, diklaim, diberi invoice sintetis, lalu
+disettle melalui finalizer. Tepat satu bill, charge, dan bill item terbentuk dan
+relasi charge membuktikan item menunjuk attempt A. Attempt B tidak memiliki
+charge atau bill item.
+
+Consent canonical saat ini participant-scoped, bukan attempt-scoped. Karena itu
+tes tidak mengarang dua status consent simultan untuk participant yang sama.
+Bukti dilakukan dalam dua fase:
+
+- sebelum consent dimasukkan, settlement A menghasilkan bill paid tetapi
+  `activatedAttemptCount=0`; A dan B sama-sama PROVISIONED, tanpa entitlement,
+  dan gate keduanya locked;
+- setelah dua consent current participant (`psychotest` dan `dass`) dimasukkan,
+  pemanggilan canonical activation untuk A menghasilkan entitlement DASS+IST
+  dan A menjadi READY. B tetap unpaid, PROVISIONED, tanpa charge/entitlement,
+  dan gate tetap locked.
+
+Dengan demikian consent participant tidak menduplikasi row per attempt dan
+tidak membuat settlement, bill, atau entitlement attempt B mewarisi attempt A.
+Tes tidak mengklaim adanya consent attempt-local karena kontrak/schema tersebut
+memang tidak tersedia.
+
+### Bukti aktual dan batas
+
+Run focused setelah fixture benar lulus **1 tes / 57 assertions**. Run final
+seluruh file composition pada approved copy
+`C:/Users/ThinkPad/AppData/Local/Temp/oncam-collective-composition-fbdb40c7b9ad42419225b7e83a62ece1`
+dengan SQLite `:memory:`, cache/storage copy terisolasi, provider sintetis dan
+HTTP stray denial lulus **5 tes / 1.256 assertions**, nol
+error/failure/skip. Pint Laravel preset, PHP lint dan PHPStan level 7 lulus.
+SHA256 test worker/copy identik:
+`65FC03186952CE5D021F1159C13916520B2342A20D1A9A2153D51E99872F9AEE`.
+JUnit final: `storage/p17-multisource-final3.xml` pada copy.
+
+Dua kegagalan awal adalah koreksi fixture test: key handoff terlalu panjang
+(1 tes/7 assertions, `HANDOFF_REQUEST_INVALID`) dan funding mode masih self-pay
+(1 tes/38 assertions, `INVOICE_FUNDING_INVALID`). Keduanya tidak menunjukkan
+defect aplikasi. PHPStan lalu menemukan dua assertion not-null tautologis;
+assertion diganti dengan pemeriksaan format bearer dan run final bersih.
+
+Ini bukti SQLite sequential, bukan PG RLS/race, browser, webhook-auth, atau
+consent per-attempt. Tidak ada `.env`, DB aktif, outbound nyata, deploy, push,
+atau aktivasi production. Berhenti untuk review.
+
 ## P17a-prep — harga nol, konsultasi, dan isolasi payer
 
 Tanggal 2026-09-05. Increment ini hanya menambah
