@@ -1,5 +1,23 @@
 # Koordinasi task paralel organization-payment
 
+## Pending work resumed: P15 writer and P17a PostgreSQL — 2026-09-05
+
+Backend security boundary `a39bd8b` was reviewed and integrated as root
+`d182bb5`. Root reran P15 plus P14/session/summary **49/49 tests, 2,065
+assertions**, Pint, PHP lint, PHPStan 0 errors, and diff-check. Portal multi-source
+composition `2353253` was integrated as root `7aa41b3`; root reran **5/5 tests,
+1,256 assertions**, Pint, PHP lint, PHPStan 0 errors, and diff-check. Frontend
+payment matrix `bd7ba6f` was integrated as root `f7cd21e`; root reran its HTTP
+matrix with summary regression **32/32 tests, 882 assertions**, Pint, PHP lint,
+and diff-check.
+
+Backend is now active on the P15 internal request/DTO/action writer without a
+production route. Portal is active on P17a PostgreSQL disposable RLS/isolation
+proof. Frontend is intentionally idle until the backend writer contract is
+reviewed; starting the form earlier would duplicate authority and violate the
+dependency graph. No browser run is authorized while the historical host-process
+ownership blocker remains unresolved.
+
 ## Mandatory-DASS HTTP and zero-price payer proofs accepted — 2026-09-05
 
 Frontend `202be08` was integrated as root `063c3b2`; root reran the new,
