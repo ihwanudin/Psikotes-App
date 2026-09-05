@@ -5291,3 +5291,54 @@ database was changed or invoked. No browser or PostgreSQL run is claimed because
 the lane changes HTTP composition only. Feature flags and writer remain OFF; there
 was no deploy, push or source/gate activation. STOP for coordinator review before
 any feature enablement or P17 acceptance.
+
+## PostgreSQL generic-result self-FK migration correction — 2026-09-05
+
+Root's fresh PostgreSQL failure was reproduced unchanged in a disposable runner:
+`SQLSTATE[42830]` on `generic_result_supersedes_fk`, stating that referenced table
+`generic_assessment_result_versions` had no matching visible unique constraint.
+The failing SQL was the generated `ALTER TABLE ... ADD CONSTRAINT ... FOREIGN KEY
+(supersedes_id) REFERENCES generic_assessment_result_versions (id) ON DELETE
+RESTRICT`. The failed migration transaction left no catalog state, and the runner
+removed its labeled database container and internal network.
+
+Laravel's PostgreSQL grammar emits the table `CREATE`, then blueprint constraints
+as separate statements. For this blueprint, the self-FK command was emitted before
+the ULID primary-key command had established `id` as a referenceable key. External
+FKs were unaffected because their target keys pre-existed. The minimal correction
+removes only `generic_result_supersedes_fk` from the create callback and adds the
+same named FK, same column/target and `restrictOnDelete`, in a second
+`Schema::table` callback immediately after the create callback. Primary key,
+`generic_result_supersedes_unique`, attempt/version unique, composite owner FK,
+latest index, PostgreSQL function/trigger and SQLite guards are unchanged.
+
+Actual verification:
+- PostgreSQL RED: bootstrap failed before tests with `42830`; cleanup completed.
+- A second command accidentally invoked the runner by its root path, so it mounted
+  the unchanged root and repeated the same expected failure. Cleanup completed;
+  this is not counted as GREEN evidence.
+- SQLite focused up/down/up: 1 test / 31 assertions passed. It checks the ULID PK,
+  self-FK with RESTRICT, two-column owner FK, both unique indexes, parent composite
+  unique removal after down, full recreation after up, a valid two-version chain,
+  duplicate supersedes rejection, owner-reference rejection, append-only update
+  rejection, and deletion blocked by the self-reference.
+- PostgreSQL disposable full worktree runner: 369 tests / 3,126 assertions passed
+  in 92.813 seconds. The new catalog test sees a valid primary key, unique
+  supersedes constraint, composite owner FK and self-FK referencing the same table
+  with `confdeltype = r`. The labeled containers and internal network were removed;
+  a final label query found none.
+- PHP syntax passed for the migration and both tests. Focused Pint passed, full
+  PHPStan level 7 reported 0 errors, and migration patch diff-check passed.
+
+The worker snapshot did not contain root's existing migration or generic-result
+implementation. The migration was copied from root only to reproduce and verify
+the one-hunk correction; it must not be staged as a new full baseline file. Root
+source SHA-256 was
+`56AFDA15031C43E92EDBB4B9E6F3531A7AF8A0FDE617A5B5E362F4198F213365`;
+corrected full-file SHA-256 is
+`0F6EFA96102E8D0F3C700FB435696D90BEF62B7C6DE11CE3FB6B31A3A6C3A3B8`.
+The coordinator should apply only the self-FK relocation hunk recorded above.
+
+Owned commit delta is the new SQLite migration test, PostgreSQL catalog test and
+this report. No other generic-result invariant, P17 portal, checkout route/config,
+frontend, consent RLS, active database, deploy or push changed. STOP for review.
