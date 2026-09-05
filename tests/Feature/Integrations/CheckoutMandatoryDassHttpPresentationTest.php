@@ -24,11 +24,14 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Testing\TestResponse;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\OrganizationPaymentTestCase;
 use Tests\Support\AssessmentAccessFixture as Fixture;
 
 final class CheckoutMandatoryDassHttpPresentationTest extends OrganizationPaymentTestCase
 {
+    private array $fixture;
+
     private array $cookies;
 
     protected function setUp(): void
@@ -54,6 +57,7 @@ final class CheckoutMandatoryDassHttpPresentationTest extends OrganizationPaymen
         Route::getRoutes()->refreshNameLookups();
 
         $fixture = Fixture::create();
+        $this->fixture = $fixture;
         DB::table('branches')->update(['status' => 'ACTIVE', 'is_active' => true]);
         DB::table('integration_clients')->update(['enabled' => true]);
         DB::table('assessment_participants')->update(['assessment_status' => 'PROVISIONED', 'funding_mode' => 'INVOICED_TO_ORGANIZATION',
@@ -134,6 +138,118 @@ final class CheckoutMandatoryDassHttpPresentationTest extends OrganizationPaymen
         $this->assertSame('REVOKED', DB::table('checkout_sessions')->value('status'));
         $this->assertSame('LOGOUT', DB::table('checkout_sessions')->value('revocation_reason'));
         $this->page()->assertStatus(303)->assertRedirect('/checkout/unavailable');
+    }
+
+    #[DataProvider('paymentPresentations')]
+    public function test_server_projected_payment_states_remain_readonly_and_private(
+        string $payer,
+        string $state,
+        int $baseAmount,
+        bool $consultation,
+        int $amount,
+        string $payerLabel,
+        string $stateLabel,
+    ): void {
+        if ($payer === 'self') {
+            $this->useSelfPayer();
+        }
+        if ($baseAmount === 0 && ! $consultation) {
+            $this->useFreeCharge();
+        } elseif ($consultation) {
+            $this->useConsultationCharge($baseAmount, $amount);
+        }
+        if (in_array($state, ['pending', 'rejected', 'expired'], true)) {
+            DB::table('assessment_bill_items')->update(['settled_at' => null]);
+            DB::table('assessment_bills')->update(['status' => $state, 'paid_at' => null]);
+        }
+        DB::table('assessment_bills')->update([
+            'invoice_url' => 'https://provider.invalid/PRIVATE_INVOICE', 'gateway_ref' => 'PRIVATE_PROVIDER_REFERENCE',
+            'proof_object_key' => 'PRIVATE_PROOF_KEY']);
+
+        $response = $this->page()->assertOk();
+        $xpath = $this->dom($response);
+        $payload = json_decode($xpath->query('//script[@id="checkout-summary-v1"]')->item(0)->textContent, true, flags: JSON_THROW_ON_ERROR);
+        $payment = $payload['payment'];
+        $section = trim($xpath->query('//section[@aria-labelledby="payment-heading"]')->item(0)->textContent);
+
+        $this->assertSame($payer, $payment['payer']);
+        $this->assertSame($state, $payment['state']);
+        $this->assertSame($amount, $payment['amountIdr']);
+        $this->assertSame($consultation, $payment['consultationRequested']);
+        $this->assertFalse($payment['actionAvailable']);
+        $this->assertSame($payerLabel, trim($xpath->query('//dt[text()="Pembayar"]/following-sibling::dd[1]')->item(0)->textContent));
+        $this->assertSame($stateLabel, trim($xpath->query('//dt[text()="Status"]/following-sibling::dd[1]')->item(0)->textContent));
+        $this->assertSame('Rp '.number_format($amount, 0, ',', '.'), trim($xpath->query('//dt[text()="Nominal Anda"]/following-sibling::dd[1]')->item(0)->textContent));
+        $this->assertSame($consultation ? 'Ya' : 'Tidak', trim($xpath->query('//dt[text()="Konsultasi diminta"]/following-sibling::dd[1]')->item(0)->textContent));
+        $this->assertSame(['payer', 'state', 'amountIdr', 'amountSource', 'consultationRequested', 'actionAvailable', ...($payer === 'organization' ? ['organizationName'] : [])], array_keys($payment));
+        foreach (['PRIVATE_INVOICE', 'PRIVATE_PROVIDER_REFERENCE', 'PRIVATE_PROOF_KEY', 'provider.invalid'] as $private) {
+            $this->assertStringNotContainsString($private, $response->getContent());
+        }
+        $this->assertStringContainsString('DASS-21 (wajib untuk paket ini)', $response->getContent());
+        $this->assertStringContainsString('Hasil DASS-21 tidak memengaruhi kelayakan', $response->getContent());
+        $this->assertSame('required', $payload['consents']['dass']['state']);
+        $this->assertSame('locked', $payload['access']['state']);
+        $this->assertFalse($payload['access']['startAvailable']);
+        $this->assertSame(0, $xpath->query('//input[@type="checkbox" or @type="radio"] | //a')->length);
+        $this->assertSame(1, $xpath->query('//button')->length);
+        $this->assertSame('Keluar', trim($xpath->query('//button')->item(0)->textContent));
+        $this->assertStringNotContainsString('Total batch', $section);
+        $this->assertStringNotContainsString('Invoice', $section);
+    }
+
+    public static function paymentPresentations(): iterable
+    {
+        yield 'organization pending' => ['organization', 'pending', 100, false, 100, 'Dibayar lembaga', 'Menunggu pembayaran'];
+        yield 'self paid' => ['self', 'paid', 100, false, 100, 'Bayar sendiri', 'Pembayaran lunas'];
+        yield 'organization rejected' => ['organization', 'rejected', 100, false, 100, 'Dibayar lembaga', 'Pembayaran ditolak'];
+        yield 'self expired' => ['self', 'expired', 100, false, 100, 'Bayar sendiri', 'Pembayaran kedaluwarsa'];
+        yield 'zero without consultation' => ['organization', 'free', 0, false, 0, 'Dibayar lembaga', 'Gratis — tercatat oleh server'];
+        yield 'zero package with consultation' => ['self', 'pending', 0, true, 50000, 'Bayar sendiri', 'Menunggu pembayaran'];
+    }
+
+    private function useSelfPayer(): void
+    {
+        DB::table('assessment_bill_items')->delete();
+        DB::table('assessment_participants')->update(['funding_mode' => 'COMMERCIAL_SELF_PAY']);
+        DB::table('assessment_charges')->update(['payer_type' => 'self']);
+        DB::table('assessment_bills')->update(['payer_type' => 'self', 'payer_participant_id' => $this->fixture['participant']]);
+        DB::table('assessment_bill_items')->insert([
+            'bill_id' => $this->fixture['bill'], 'charge_id' => $this->fixture['charge'],
+            'organization_id' => $this->fixture['organization'], 'participant_id' => $this->fixture['participant'],
+            'payer_type' => 'self', 'payer_participant_id' => $this->fixture['participant'],
+            'amount' => 100, 'currency' => 'IDR', 'settled_at' => now(),
+        ]);
+    }
+
+    private function useFreeCharge(): void
+    {
+        DB::table('assessment_bill_items')->delete();
+        $charge = AssessmentCharge::findOrFail($this->fixture['charge']);
+        $snapshot = $charge->price_snapshot;
+        $snapshot['baseAmount'] = $snapshot['amount'] = 0;
+        $snapshot['consultationRequested'] = false;
+        $charge->update(['base_amount' => 0, 'amount' => 0, 'consultation_requested' => false,
+            'price_snapshot' => $snapshot, 'free_settled_at' => now()]);
+    }
+
+    private function useConsultationCharge(int $baseAmount, int $amount): void
+    {
+        DB::table('assessment_bill_items')->delete();
+        $charge = AssessmentCharge::findOrFail($this->fixture['charge']);
+        $snapshot = $charge->price_snapshot;
+        $snapshot['baseAmount'] = $baseAmount;
+        $snapshot['consultationRequested'] = true;
+        $snapshot['consultationAmount'] = $amount - $baseAmount;
+        $snapshot['amount'] = $amount;
+        $charge->update(['base_amount' => $baseAmount, 'amount' => $amount, 'consultation_requested' => true,
+            'consultation_amount' => $amount - $baseAmount, 'price_snapshot' => $snapshot, 'free_settled_at' => null]);
+        DB::table('assessment_bills')->update(['amount' => $amount, 'status' => 'pending', 'paid_at' => null]);
+        DB::table('assessment_bill_items')->insert([
+            'bill_id' => $this->fixture['bill'], 'charge_id' => $this->fixture['charge'],
+            'organization_id' => $this->fixture['organization'], 'participant_id' => $this->fixture['participant'],
+            'payer_type' => 'self', 'payer_participant_id' => $this->fixture['participant'],
+            'amount' => $amount, 'currency' => 'IDR', 'settled_at' => null,
+        ]);
     }
 
     private function page(): TestResponse
