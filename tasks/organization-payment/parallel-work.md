@@ -1,5 +1,29 @@
 # Koordinasi task paralel organization-payment
 
+## P16-pay-d accepted; provider issuance remains canonically fenced — 2026-09-05
+
+Backend `c864424` was reviewed and integrated as root `a23cf2a`. The internal
+orchestrator accepts only checkout credentials and the consultation boolean,
+delegates preparation/Claim, then invokes the existing P10 issuance action only
+with an empty RLS context and transaction. Pending/paid replay bypasses provider;
+verified issuance maps to pending, while unknown/recovery states fail generically
+and cannot authorize another create. Its typed result exposes only pending/paid.
+
+Root reran the focused P16/P10 issuance and reconciliation regression at **155
+tests / 1,294 assertions**. All provider interactions were mocks; syntax, Pint,
+PHPStan 0 errors, and diff-check passed. No HTTP, URL presentation, zero-price
+writer, active provider, configuration, or deployment was introduced.
+
+## P16 DASS draft presentation aligned — 2026-09-05
+
+Frontend `c74940e` was reviewed and integrated as root `143d331`. The dormant
+React checkout draft no longer describes DASS-21 as optional or offers a reject
+radio. It now keeps psychotest and DASS consent separate while rendering DASS as
+one explicit required checkbox; legacy non-accepted states fail closed visibly.
+Production Blade and payment transport were not changed. Root rebuilt the focused
+SSR fixture and passed **28/28 tests**, focused TypeScript, ESLint, Prettier, and
+diff-check. Browser interaction remains unclaimed and gated.
+
 ## P16-pay-c and pure frontend transport accepted — 2026-09-05
 
 Backend `276603a` was reviewed and integrated as root `fcadc8e`. The coordinator
