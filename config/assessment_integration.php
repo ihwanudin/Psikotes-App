@@ -31,6 +31,12 @@ return [
             'exchange_per_minute' => 10,
             'hydrate_per_minute' => 60,
             'mutation_per_minute' => 10,
+            // Production routes are registered but remain inert until both switches are reviewed.
+            'confirmation' => [
+                'enabled' => false,
+                'writer_enabled' => false,
+                'max_body_bytes' => 4096,
+            ],
         ],
     ],
     'invitation_ttl_hours' => (int) env('ASSESSMENT_INVITATION_TTL_HOURS', 168),
