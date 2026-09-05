@@ -147,6 +147,23 @@ oleh PHP/Node/Playwright/CreateProcess. Tidak ada candidate, lifecycle nyata,
 browser, service, DB, env aktif, network, deploy, atau aktivasi; P17c/P18 tetap
 terbuka dan seluruh gate/payment tetap default OFF.
 
+### Lease lifecycle kandidat — `fe45bb2`, `cec171c`
+
+Satu provenance file run-local yang stabil dan tidak pernah dihapus kini menjadi
+namespace lease untuk tiap kandidat, independen dari pilihan direktori anchor.
+Kernel/advisory lock nonblocking ditahan pada handle non-inheritable; same-process
+dan coordinator A/B untuk run yang sama saling menolak. Config di-snapshot sekali
+dan lease diperoleh sebelum assembly maupun anchor I/O. Supervisor menolak bare
+claim/recovery tanpa capability yang dipin, sedangkan publisher memvalidasinya
+sebelum/sesudah anchor I/O. Cleanup selalu unlock/close tanpa menutupi exception.
+
+Bukti root: lease+coordinator+builder **58/58**, supervisor aman **101/101**, AST
+**8 file**, dan diff-check lulus. Bukti ini masih pure/sintetis: kernel lock/crash,
+run rename/reparse, NTFS durability, ACL/effective access, dedicated-process
+ownership, dan browser acceptance Windows nyata tetap terbuka. Tidak ada runtime,
+browser, service, DB, env aktif, network, deploy, atau aktivasi; P17c/P18 dan
+seluruh gate/payment tetap default OFF.
+
 ## Checkpoint P16 consent subset dan privacy audit — 2026-09-06
 
 Commit `918eb93` menambah policy PostgreSQL restrictive yang membuat audit

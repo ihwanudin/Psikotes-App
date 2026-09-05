@@ -550,3 +550,16 @@ Checkpoint ini tidak menutup candidate-global lifecycle lease, Windows ACL,
 identity lintas-crash, final rename/swap namespace race, atau path yang dibuka
 ulang oleh proses eksternal. Tidak ada runtime/deploy/aktivasi; P17c/P18 tetap
 terbuka dan seluruh gate/payment tetap default OFF.
+
+### Checkpoint lease lifecycle kandidat
+
+ADR-016 diimplementasikan melalui `fe45bb2` dan `cec171c`: provenance lease
+run-local deterministik, stabil/no-unlink, descriptor non-inheritable, dan lock
+kernel/advisory nonblocking. Coordinator snapshot tunggal memperoleh lease sebelum
+assembly/anchor I/O; supervisor memerlukan capability terpin pada claim/recovery;
+publisher memvalidasi pre/post; cleanup selalu melepas handle tanpa menutupi error.
+Root lulus **58/58 + 101/101 tes aman**, AST **8 file**, dan diff-check.
+
+Runtime Windows masih harus membuktikan cross-process/crash lock, rename/reparse,
+ACL/effective access, durability, serta dedicated single-use process. Tidak ada
+browser/service/DB/env/network/deploy/aktivasi; P17c/P18 dan gate/payment tetap OFF.

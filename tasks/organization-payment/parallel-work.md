@@ -2456,3 +2456,18 @@ identity lintas-crash, ACL Windows, final namespace/path-open TOCTOU, serta runt
 browser/OS tetap residual. Tidak ada candidate/lifecycle nyata/browser/service/
 DB/env/network/deploy; P17c/P18 dan checkbox tetap terbuka, seluruh gate/payment
 tetap default OFF.
+
+### Checkpoint candidate-global lifecycle lease — accepted `fe45bb2`, `cec171c`
+
+Lease memakai provenance `.checkout-coordinator.lease` run-local yang stabil,
+tidak pernah di-unlink, serta kernel/advisory lock pada descriptor non-inheritable.
+Lokasi deterministik membuat dua coordinator directory untuk kandidat yang sama
+tetap berkontensi. Coordinator men-snapshot input sekali dan memperoleh lease
+sebelum assembly/anchor; supervisor admission serta publisher pre/post validation
+menutup bypass direct claim/recovery. Cleanup unconditional mempertahankan error
+utama dan interruption.
+
+Root lulus lease+coordinator+builder **58/58**, supervisor aman **101/101**, AST
+**8 file**, dan diff-check. Cross-process/crash locking, whole-run rename/reparse,
+Windows ACL/durability, dedicated process, dan browser matrix tetap runtime gate.
+Tidak ada runtime/deploy/aktivasi; P17c/P18 tetap terbuka dan payment/gate OFF.

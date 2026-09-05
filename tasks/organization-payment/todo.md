@@ -847,3 +847,17 @@ checkbox P17c/P18 tetap terbuka dan seluruh gate/payment tetap default OFF.
 
 Tidak ada candidate/lifecycle nyata/browser/service/DB/env/network/deploy atau
 aktivasi; checkbox P17c/P18 tetap terbuka dan gate/payment tetap default OFF.
+
+### Bukti lifecycle lease accepted — runtime gate tetap terbuka
+
+- [x] `fe45bb2` menambah lease run-local stabil/no-unlink, lock nonblocking,
+  descriptor non-inheritable, identity/content pin, dan cleanup exception-safe.
+- [x] `cec171c` memperoleh lease sebelum assembly/anchor, menutup race snapshot
+  config, serta mewajibkan supervisor admission dan publisher pre/post check.
+- [x] Dua coordinator directory untuk run yang sama berkontensi; bare claim dan
+  recovery ditolak. Root lulus **58/58 + 101/101**, AST **8**, dan diff-check.
+- [ ] Cross-process/crash lock Windows, whole-run rename/reparse, NTFS durability,
+  ACL/effective access, dedicated process, dan browser acceptance belum dibuktikan.
+
+Tidak ada runtime/browser/service/DB/env/network/deploy atau aktivasi;
+checkbox P17c/P18 tetap terbuka dan seluruh gate/payment tetap default OFF.

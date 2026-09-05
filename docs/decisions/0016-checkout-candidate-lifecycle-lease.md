@@ -23,8 +23,10 @@ dan pemanggilan `WindowsRun` langsung dapat melewati coordinator.
 
 ## Decision
 
-Gunakan satu file provenance stabil dan tidak pernah dihapus untuk setiap path
-kandidat canonical. File dibuat `O_EXCL` hanya saat pertama kali dan selanjutnya
+Gunakan satu file provenance stabil bernama `.checkout-coordinator.lease` di
+root kandidat canonical dan jangan pernah menghapusnya. Lokasi run-local yang
+deterministik memastikan dua `coordinator_directory` berbeda tetap berebut lease
+yang sama. File dibuat `O_EXCL` hanya saat pertama kali dan selanjutnya
 dibuka ulang dengan schema/content serta identity path/descriptor/parent exact.
 Kepemilikan lifecycle berasal dari kernel/advisory lock nonblocking pada handle
 non-inheritable, bukan dari keberadaan file. OS melepas lock saat proses mati;
