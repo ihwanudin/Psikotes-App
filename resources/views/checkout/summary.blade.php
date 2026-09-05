@@ -218,8 +218,11 @@
                     </label>
                 @endforeach
             </fieldset>
-            <button type="submit">Simpan dan konfirmasi</button>
+            <p class="transport-status" data-confirmation-status role="status" aria-live="polite" tabindex="-1">Formulir sedang disiapkan.</p>
+            <noscript><p class="transport-warning">JavaScript diperlukan untuk mengirim konfirmasi sebagai JSON yang aman. Ringkasan tetap dapat dibaca.</p></noscript>
+            <button type="submit" disabled aria-disabled="true">Simpan dan konfirmasi</button>
         </form>
+        <script type="module" src="/js/checkout-confirmation-v1.js"></script>
     @endif
     <form method="post" action="/checkout/logout">
         <input type="hidden" name="_checkout_csrf" value="{{ $checkoutCsrf }}">

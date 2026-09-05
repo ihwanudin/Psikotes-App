@@ -73,3 +73,57 @@ was attempted only after resolving and checking that it was under the OS temp
 directory, but the execution policy rejected recursive deletion. The inactive
 copy contains synthetic/in-memory test artifacts and no `.env`; it is retained as
 an explicit cleanup limitation.
+
+## Progressive JSON transport increment
+
+Date: 2026-09-05
+
+Follow-up to lane checkpoint `337d22e` adds one local external module,
+`/js/checkout-confirmation-v1.js`. The server-rendered submit button now starts
+disabled and the page includes an explicit `noscript` explanation. The module
+enables submission only after it validates the same-origin relative action, exact
+dedicated CSRF format, allowlisted missing-profile controls, two complete consent
+version/hash groups, required initially-unchecked consent checkboxes, and absence
+of unknown/duplicate form names.
+
+The submit listener always prevents native encoding. It uses `FormData` only as a
+DOM value reader, rejects unknown, duplicate, empty, optional-email, and readonly
+entries, then constructs the exact JSON top level `profile` + `consents` with both
+`accepted` values as literal booleans. Fetch uses the injected relative action,
+`credentials: same-origin`, `redirect: manual`, `Content-Type: application/json`,
+`Accept: application/json`, and `X-Checkout-CSRF` copied from the validated hidden
+field. It does not read or display response bodies.
+
+The form and button expose a pending state and suppress a second submit. Status
+200 keeps submission disabled and asks for a reload. Conflict 409 and expiry 419
+also stay disabled and require a reload. Validation 422, throttle 429, unexpected
+status, and network failure show fixed nonsensitive messages and permit retry;
+all non-success outcomes focus the polite live status. The client does not alter
+payment, access, profile-lock, or consent authority.
+
+Verification actually run after the transport increment:
+
+- TDD RED: Node could not resolve the not-yet-created module and the real-Blade
+  test failed its disabled-submit assertion.
+- `node --test tests/Frontend/IntegratedCheckout/confirmation-transport.test.mjs`:
+  **4 tests passed**. Covered DOM-shape allowlist, exact JSON/literal booleans,
+  same-origin fetch options, all requested statuses, network sanitization,
+  enable-after-validation, native-submit prevention, pending/double-submit,
+  retry and error focus.
+- `php tests/Frontend/IntegratedCheckout/summary-mandatory-dass-render.test.php`:
+  **6 cases, 0 failures** using real Blade and synthetic props.
+- Detached isolated baseline `c1bbc6d`, no `.env`, SQLite `:memory:`:
+  `CheckoutMandatoryDassHttpPresentationTest` **8 tests / 247 assertions passed**.
+- `eslint --no-ignore` on the module and Node test, Prettier check on both,
+  `node --check` on the module, focused Pint on both PHP tests, and
+  `git diff --check`: passed.
+
+No real browser was run because the assigned host blocker remains. Consequently
+native browser FormData/constraint UI, keyboard focus rendering, mobile geometry,
+actual cookie/Origin delivery, CSP enforcement, and a real P15 response are not
+claimed. The prior synthetic PHP callback remains a presentation-only proof; the
+new Node fetch seam proves the requested JSON request contract without registering
+a route. Final controller wiring, response schema, reload/navigation behavior,
+and end-to-end P16 acceptance remain review dependencies. No lane process is left
+running; the previously retained inactive temp checkout remains the same cleanup
+limitation described above.

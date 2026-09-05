@@ -115,6 +115,10 @@ $cases['injected confirmation form submits only missing profile and mandatory co
     mandatoryDassCheck($xpath->query('//form[@data-checkout-confirmation]//input[@type="checkbox" and @required and not(@checked)]')->length === 2, 'Both mandatory consents are explicit and unselected');
     mandatoryDassCheck($xpath->query('//form[@data-checkout-confirmation]//*[@name="consents[dass][declined]"] | //form[@data-checkout-confirmation]//input[@type="radio"]')->length === 0, 'DASS decline is unavailable');
     mandatoryDassCheck($xpath->query('//form[@data-checkout-confirmation]//button[@type="submit"]')->length === 1, 'Native submit is available');
+    mandatoryDassCheck($xpath->query('//form[@data-checkout-confirmation]//button[@type="submit" and @disabled]')->length === 1, 'Submit is fail-closed until JavaScript validates the form');
+    mandatoryDassCheck($xpath->query('//form[@data-checkout-confirmation]//*[@role="status" and @aria-live="polite"]')->length === 1, 'Accessible transport status is present');
+    mandatoryDassCheck($xpath->query('//script[@type="module" and @src="/js/checkout-confirmation-v1.js"]')->length === 1, 'Local external module is used without inline script');
+    mandatoryDassCheck(str_contains(mandatoryDassText($xpath, '//noscript'), 'JavaScript diperlukan'), 'No-JavaScript limitation is explicit');
 };
 $cases['confirmation form fails closed when fixture contract is absent or stale'] = function (): void {
     $summary = mandatoryDassFixture();
