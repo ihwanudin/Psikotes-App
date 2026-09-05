@@ -14,6 +14,10 @@ return [
     ))),
     'signature_tolerance_seconds' => (int) env('SELECTION_INTEGRATION_SIGNATURE_TOLERANCE_SECONDS', 300),
     'selection_base_url' => env('SELECTION_APP_BASE_URL'),
+    'result_callback_enabled' => (bool) env('SELECTION_RESULT_CALLBACK_ENABLED', false),
+    'result_callback_base_url' => env('SELECTION_RESULT_CALLBACK_BASE_URL'),
+    'result_callback_secret' => env('SELECTION_RESULT_CALLBACK_SECRET'),
+    'result_callback_timeout_seconds' => (int) env('SELECTION_RESULT_CALLBACK_TIMEOUT_SECONDS', 10),
     'timeout_seconds' => (int) env('SELECTION_APP_TIMEOUT_SECONDS', 10),
     'allow_insecure_local_http' => (bool) env('SELECTION_APP_ALLOW_INSECURE_LOCAL_HTTP', false),
 ];
