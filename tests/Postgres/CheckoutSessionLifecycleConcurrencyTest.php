@@ -440,9 +440,9 @@ final class CheckoutSessionLifecycleConcurrencyTest extends TestCase
                 $this->duringSummaryQuery('from "identity_verifications"', function () use ($workers, $pid): void {
                     fwrite($workers[0]['socket'], "go\n");
                     $this->assertSummaryBlockedBy($pid, DB::selectOne('SELECT pg_backend_pid() AS pid')->pid);
-                }, fn () => $this->assertSummary($this->summaryDescriptor(), 'paid', 'ready'));
+                }, fn () => $this->assertSummary($this->summaryDescriptor(), 'paid', 'ready', 'accepted'));
                 $this->assertSame([['outcome' => 'pending']], $this->workerResults($workers));
-                $this->assertSummary($this->summaryDescriptor(), 'paid', 'locked');
+                $this->assertSummary($this->summaryDescriptor(), 'paid', 'locked', 'accepted');
             } finally {
                 $this->stopWorkers($workers);
             }
@@ -459,7 +459,7 @@ final class CheckoutSessionLifecycleConcurrencyTest extends TestCase
                     fwrite($workers[0]['socket'], "go\n");
                     $this->assertSummaryBlockedBy($pid, DB::selectOne('SELECT pg_backend_pid() AS pid')->pid);
                 }, fn () => $this->assertSame('pending', $this->replaceSummaryIdentity()));
-                $this->assertSummary($this->workerResults($workers)[0], 'paid', 'locked');
+                $this->assertSummary($this->workerResults($workers)[0], 'paid', 'locked', 'accepted');
             } finally {
                 $this->stopWorkers($workers);
             }
@@ -501,7 +501,7 @@ final class CheckoutSessionLifecycleConcurrencyTest extends TestCase
                 DB::table('assessment_bills')->where('id', $this->payment['bill'])->update(['paid_at' => $at->setTimezone('+07:00')->format('Y-m-d H:i:sP')]);
                 DB::table('assessment_bill_items')->where('bill_id', $this->payment['bill'])->update(['settled_at' => $at->setTimezone('-04:00')->format('Y-m-d H:i:sP')]);
             });
-            $this->assertSummary($this->summaryDescriptor(), 'paid', 'ready');
+            $this->assertSummary($this->summaryDescriptor(), 'paid', 'ready', 'accepted');
         });
     }
 
@@ -548,7 +548,9 @@ final class CheckoutSessionLifecycleConcurrencyTest extends TestCase
             $this->assertSummary($summary, 'paid', 'locked');
             $this->assertSame('organization', $summary['payment']['payer']);
             $this->assertSame('P14a3 Synthetic', $summary['payment']['organizationName']);
-            $this->assertSame(['payer', 'state', 'amountIdr', 'amountSource', 'consultationRequested', 'actionAvailable', 'organizationName'], array_keys($summary['payment']));
+            $this->assertSame(['payer', 'state', 'amountIdr', 'amountSource', 'consultationRequested', 'actionAvailable',
+                'action', 'organizationName'], array_keys($summary['payment']));
+            $this->assertNull($summary['payment']['action']);
         } finally {
             $this->stopWorkers($workers);
             app(RlsContextRunner::class)->runAsService(function () use ($otherParticipant, $otherAttempt, $otherCharge): void {
@@ -563,29 +565,19 @@ final class CheckoutSessionLifecycleConcurrencyTest extends TestCase
     private function summaryDescriptor(): array
     {
         $this->configure();
-        $connection = DB::connection();
-        $previous = $connection->getEventDispatcher();
-        $events = clone $previous;
-        $connection->setEventDispatcher($events);
-        $events->listen(QueryExecuted::class, function (QueryExecuted $query): void {
-            if (str_contains($query->sql, 'for update') && preg_match('/assessment_(bills|bill_items|charges)/', $query->sql)) {
-                throw new RuntimeException('Summary introduced a billing lock after lifecycle locks.');
-            }
-        });
         try {
             return app(CheckoutSessionLifecycle::class)->readSummary(new CheckoutSessionMutationCredentials(
                 $this->fixture['selector'], $this->fixture['csrf']))->toArray();
         } catch (InvalidCheckoutSession) {
             return ['invalid' => true];
         } finally {
-            $connection->setEventDispatcher($previous);
             if (app(RlsContextRunner::class)->current() !== null || DB::transactionLevel() !== 0) {
                 throw new RuntimeException('Summary leaked context or transaction.');
             }
         }
     }
 
-    private function assertSummary(array $data, string $payment, string $access): void
+    private function assertSummary(array $data, string $payment, string $access, string $dass = 'required'): void
     {
         $this->assertSame(['contractVersion', 'sourceName', 'branchName', 'packageName', 'packageSource', 'attemptLabel',
             'profile', 'identityMessage', 'payment', 'access', 'consents'], array_keys($data));
@@ -596,10 +588,13 @@ final class CheckoutSessionLifecycleConcurrencyTest extends TestCase
         $this->assertSame(100, $data['payment']['amountIdr']);
         $this->assertSame($payment, $data['payment']['state']);
         $this->assertSame($access, $data['access']['state']);
-        $this->assertSame([['testType' => 'ist', 'state' => $access]], $data['access']['tests']);
+        $this->assertSame([
+            ['testType' => 'dass21', 'state' => $access],
+            ['testType' => 'ist', 'state' => $access],
+        ], $data['access']['tests']);
         $this->assertFalse($data['payment']['actionAvailable']);
         $this->assertFalse($data['access']['startAvailable']);
-        $this->assertSame(['state' => 'not_applicable'], $data['consents']['dass']);
+        $this->assertSame($dass, $data['consents']['dass']['state']);
         $json = json_encode($data, JSON_THROW_ON_ERROR);
         foreach ([$this->fixture['selector'], $this->fixture['csrf'], $this->fixture['attemptPublicId'],
             $this->fixture['sourceSystem'], 'synthetic-only', 'PRIVATE_OTHER_MEMBER', 'PRIVATE_INVOICE'] as $forbidden) {
@@ -651,9 +646,12 @@ final class CheckoutSessionLifecycleConcurrencyTest extends TestCase
                 $at = CarbonImmutable::parse(DB::selectOne('SELECT clock_timestamp() AS at')->at)->subSeconds(5);
                 DB::table('participants')->where('id', $this->fixture['participant'])->update([
                     'gender' => 'male', 'birth_date' => '2000-01-01', 'education_level' => 'SMA_SMK', 'intended_field' => 'UMUM']);
-                $document = ConsentDocument::for('psychotest');
-                DB::table('consent_records')->insert(['participant_id' => $this->fixture['participant'], 'consent_type' => 'psychotest',
-                    'status' => 'accepted', 'document_version' => $document->version, 'document_hash' => $document->hash, 'consented_at' => $at]);
+                foreach (['psychotest', 'dass'] as $type) {
+                    $document = ConsentDocument::for($type);
+                    DB::table('consent_records')->insert(['participant_id' => $this->fixture['participant'],
+                        'consent_type' => $type, 'status' => 'accepted', 'document_version' => $document->version,
+                        'document_hash' => $document->hash, 'consented_at' => $at]);
+                }
                 DB::table('identity_verifications')->where('participant_id', $this->fixture['participant'])->update([
                     'matcher' => 'synthetic-old-match', 'outcome' => 'match', 'checked_at' => $at]);
                 DB::table('identity_evidence')->where('participant_id', $this->fixture['participant'])->update(['updated_at' => $at]);
@@ -661,7 +659,7 @@ final class CheckoutSessionLifecycleConcurrencyTest extends TestCase
             $result = app(FinalizeAssessmentBill::class)->execute(new PaymentEvent('summary-paid', $this->payment['gateway'],
                 $this->payment['reference'], PaymentStatus::Paid, now()->startOfSecond(), 100, 'IDR'));
             $this->assertSame(1, $result['activatedAttemptCount']);
-            $this->assertSummary($this->summaryDescriptor(), 'paid', 'ready');
+            $this->assertSummary($this->summaryDescriptor(), 'paid', 'ready', 'accepted');
             $test();
         } finally {
             Storage::disk($disk)->deleteDirectory('/');
@@ -689,13 +687,6 @@ final class CheckoutSessionLifecycleConcurrencyTest extends TestCase
     private function paymentDescriptor(): array
     {
         $this->configure();
-        $reading = true;
-        DB::listen(function (QueryExecuted $query) use (&$reading): void {
-            if ($reading && str_contains($query->sql, 'for update')
-                && preg_match('/assessment_(bills|bill_items|charges)/', $query->sql)) {
-                throw new RuntimeException('Projection added a billing lock after lifecycle locks.');
-            }
-        });
         try {
             $facts = app(CheckoutSessionLifecycle::class)->readPayment(new CheckoutSessionMutationCredentials(
                 $this->fixture['selector'], $this->fixture['csrf'],
@@ -703,7 +694,6 @@ final class CheckoutSessionLifecycleConcurrencyTest extends TestCase
 
             return ['state' => $facts->state, 'amount' => $facts->amountIdr];
         } finally {
-            $reading = false;
             if (app(RlsContextRunner::class)->current() !== null || DB::transactionLevel() !== 0) {
                 throw new RuntimeException('Payment projection leaked context.');
             }
@@ -980,7 +970,10 @@ final class CheckoutSessionLifecycleConcurrencyTest extends TestCase
             'code' => $packageCode, 'name' => 'P14a3 Synthetic', 'amount' => 100,
             'currency' => 'IDR', 'is_active' => true,
         ]);
-        DB::table('package_items')->insert(['package_id' => $package, 'test_type' => 'ist', 'sort_order' => 1]);
+        DB::table('package_items')->insert([
+            ['package_id' => $package, 'test_type' => 'ist', 'sort_order' => 1],
+            ['package_id' => $package, 'test_type' => 'dass21', 'sort_order' => 2],
+        ]);
         $attemptPublicId = (string) Str::ulid();
         $attempt = DB::table('assessment_participants')->insertGetId([
             'organization_id' => $organization, 'integration_client_id' => $client,

@@ -352,7 +352,10 @@ final class CheckoutHandoffReplayTest extends TestCase
             'code' => $packageCode, 'name' => 'P13b Synthetic', 'amount' => 100,
             'currency' => 'IDR', 'is_active' => true,
         ]);
-        DB::table('package_items')->insert(['package_id' => $package, 'test_type' => 'ist', 'sort_order' => 1]);
+        DB::table('package_items')->insert([
+            ['package_id' => $package, 'test_type' => 'ist', 'sort_order' => 1],
+            ['package_id' => $package, 'test_type' => 'dass21', 'sort_order' => 2],
+        ]);
         $attemptPublicId = (string) Str::ulid();
         $attempt = DB::table('assessment_participants')->insertGetId([
             'organization_id' => $organization, 'integration_client_id' => $client,

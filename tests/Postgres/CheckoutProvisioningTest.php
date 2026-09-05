@@ -50,6 +50,7 @@ final class CheckoutProvisioningTest extends TestCase
             $package = TestPackage::create(['code' => $this->code, 'name' => 'P9 PG', 'amount' => 1000,
                 'currency' => 'IDR', 'is_active' => true]);
             $package->items()->create(['test_type' => 'ist', 'sort_order' => 1]);
+            $package->items()->create(['test_type' => 'dass21', 'sort_order' => 2]);
 
             return ['organization' => $org->id, 'package' => $package->id, 'source' => $source->id];
         });
