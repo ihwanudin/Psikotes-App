@@ -144,6 +144,19 @@ class SupervisorTests(unittest.TestCase):
             with self.subTest(args=args), self.assertRaisesRegex(m.Refused, "^browser_network_guard$"):
                 m.WindowsRun._validate_browser_launch_args(args)
 
+    def test_tool_suffix_requires_a_path_component_boundary(self):
+        cases = (
+            ("C:\\approved\\" + m.CLI_SUFFIX.replace("/", "\\"), m.CLI_SUFFIX, True),
+            ("/approved/" + m.BROWSER_SUFFIX, m.BROWSER_SUFFIX, True),
+            ("C:\\evil" + m.CLI_SUFFIX.replace("/", "\\"), m.CLI_SUFFIX, False),
+            ("/evil" + m.BROWSER_SUFFIX, m.BROWSER_SUFFIX, False),
+            (m.CLI_SUFFIX, m.CLI_SUFFIX, False),
+            (m.BROWSER_SUFFIX, m.BROWSER_SUFFIX, False),
+        )
+        for path, suffix, expected in cases:
+            with self.subTest(path=path):
+                self.assertEqual(m._approved_tool_path(path, suffix), expected)
+
     def test_snapshot_schema_is_strict_before_relevance_filtering(self):
         executable = str((Path.cwd() / "synthetic.exe").absolute())
         valid = [

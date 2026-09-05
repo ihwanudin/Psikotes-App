@@ -41,6 +41,10 @@ def canonical_tick(value):
     return type(value) is str and POSITIVE_TICK.fullmatch(value) is not None
 
 
+def _approved_tool_path(value, suffix):
+    return str(value).replace("\\", "/").endswith("/" + suffix)
+
+
 def supervise(io, *, mode="smoke", requests=3, budget=180):
     """Sequencing core: the OS adapter owns handles even when launch raises."""
     if mode not in ("smoke", "full") or type(requests) is not int or not 1 <= requests <= 3:
@@ -322,14 +326,14 @@ class WindowsRun:
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
             if digest != manifest.get(name) or digest != review[name]:
                 raise Refused("asset_overlay_mismatch")
-        if not str(self.c["cli"]).replace("\\", "/").endswith(CLI_SUFFIX):
-            raise Refused("cli")
-        if not str(self.c["browser"]).replace("\\", "/").endswith(BROWSER_SUFFIX):
-            raise Refused("browser")
         # Reviewed executable/config hashes are supplied by root, never auto-refreshed here.
         for key in ("php", "python", "node", "powershell", "cli", "browser", "ini", "browser_config", "cert", "key"):
             path = Path(self.c[key])
             self._canonical(path)
+            if key == "cli" and not _approved_tool_path(path.absolute(), CLI_SUFFIX):
+                raise Refused("cli")
+            if key == "browser" and not _approved_tool_path(path.absolute(), BROWSER_SUFFIX):
+                raise Refused("browser")
             if key in ("ini", "browser_config", "cert", "key") and path.parent.resolve() != self.run.resolve():
                 raise Refused("runtime_file_scope")
             if hashlib.sha256(path.read_bytes()).hexdigest() != self.c["tool_hashes"][key]:
