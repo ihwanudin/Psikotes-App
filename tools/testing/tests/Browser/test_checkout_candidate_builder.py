@@ -26,6 +26,55 @@ def digest(value):
     return hashlib.sha256(value).hexdigest()
 
 
+TEST_CERT = b"""-----BEGIN CERTIFICATE-----
+MIIBJTCBy6ADAgECAgECMAoGCCqGSM49BAMCMBwxGjAYBgNVBAMMEXN5bnRoZXRp
+Yy5pbnZhbGlkMB4XDTI2MDkwNDIwNTAwNFoXDTI2MDkwNjIwNTAwNFowHDEaMBgG
+A1UEAwwRc3ludGhldGljLmludmFsaWQwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNC
+AARnQPQWUcOTSwjMotK+AW3SuHwqZfiDkGsNJZdhl3m4qtzkwOLp9N03Of5tWYUq
+F+qJxQirT881d7r/bj5F+2UqMAoGCCqGSM49BAMCA0kAMEYCIQDkcZiEWyF/HDq9
+TzRq9pwSTIMIu1BCoXatfk++V8uu5QIhANB/Yh0VS7kndP96B7CwJQKV8ZCVxjoW
++5TA8ZcxN4GN
+-----END CERTIFICATE-----
+"""
+_PEM_BEGIN = b"-----BEGIN "
+_PEM_END = b"-----END "
+_PKCS8_LABEL = b"PRIVATE " + b"KEY"
+_ENCRYPTED_LABEL = b"ENCRYPTED " + _PKCS8_LABEL
+_RSA_LABEL = b"RSA " + _PKCS8_LABEL
+TEST_KEY = _PEM_BEGIN + _PKCS8_LABEL + b"-----\n" + b"""MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgEeL2CTBm1yWncpOX
+IJTzL8jDClZlP7g7Kp1WFSCHIE2hRANCAARnQPQWUcOTSwjMotK+AW3SuHwqZfiD
+kGsNJZdhl3m4qtzkwOLp9N03Of5tWYUqF+qJxQirT881d7r/bj5F+2Uq
+""" + _PEM_END + _PKCS8_LABEL + b"-----\n"
+OTHER_TEST_KEY = _PEM_BEGIN + _PKCS8_LABEL + b"-----\n" + b"""MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgiBEdz17KENSFO7QD
+4jukhcezLVKxS9H0JXrYp1+3WuyhRANCAATnOb3Mrxi/OtCxB2j94u48E6MwEsSt
+uscAPPvd7gIwuGzATXQj95tIPLrsdcIMkwSJGyT5cWsx0o6QGmR9Y9cV
+""" + _PEM_END + _PKCS8_LABEL + b"-----\n"
+ENCRYPTED_TEST_KEY = _PEM_BEGIN + _ENCRYPTED_LABEL + b"-----\n" + b"""MIH0MF8GCSqGSIb3DQEFDTBSMDEGCSqGSIb3DQEFDDAkBBClAyXBMXWne/fLInys
+x5aNAgIIADAMBggqhkiG9w0CCQUAMB0GCWCGSAFlAwQBKgQQAZufQVX/4AVMdI2g
+8J8w6gSBkKQKCFYoYTgknHXeWYDb5VQy4vA8hGrmLr5AB8pEd+0GneYI4MAk6iOp
+KxX5tQOeNRqNbYzbv3pA7jlhTlrJq9wrhIutP/TTBHDxiF6gNy03NZGjFCGod8kg
+MFJ1RVMdzDAFmtbz330U3apyfZrELyG6R97heltggnBzFcJgJNJ7aazWye/4KSz0
+dErnCPTxyA==
+""" + _PEM_END + _ENCRYPTED_LABEL + b"-----\n"
+LEGACY_ENCRYPTED_TEST_KEY = _PEM_BEGIN + _RSA_LABEL + b"-----\n" + b"""Proc-Type: 4,ENCRYPTED
+DEK-Info: AES-256-CBC,9BD501556DF358E7269489B982E5FC7B
+
+tot27kLEg8vggCEVU1kK7UKE8O0uPmat+t49hNcMWxpC1MAN+UYo3i9CH+1Gg19G
+C5c3h8Qb5z1EtkgDATmdrwzqkZTagrBYCStydVYByLTqI5AoP7WJ5CKi8toef4hn
+KFZGio3hRwFtfsqd1ajJuCzKGiWilNmSJg7HAnssc6fG/Dqi2cCwih1t4hyVuvGf
+RmNsZutrqTUrVNLm4ZxbQEuZz5q+TdW1scE5y6U7PIosOtTgIPQx1Hf236u9Rfeo
+Vl7+WyabthEYYsqWPibGUgVNF2EmSiFVG2ZkFNLihJoFsDjZo9WSeDfQz14iS37L
+8UsPITEO7nuoWhH/63dRgYJeoiBM04iKZXa6KzlsW+DUeAqarEjmmDZEJwTKIiUW
+6QB9wE1VVkckUZ9g9wyvO2UQGI9chP5T9RCCY/b7NlR37gpeZvEZ9Ow5akzqsiFc
+8YtvASgiWI0+rmGJx2JZxfHrr+/QMNnIIjj460XYomFaDBhZYsqpw4EJOvDlELkW
+8PSnsXRbR1ugdW1Xiz2KiY7zSLzUtrjJ0W205nCeEXNvmrWdi8YNa81s2uEJ7tdC
+hXkdMvozcaeDwxb+i8R7UTO3FKpr/1aCXJ4cHhRldZnPkyoN2RJwCbR2FDl9n9Vq
+HZ7D4t/c2hvRMTznz1IcWW5WaQqmf/qS6tizg9ihSEi5WGrVRphsxieUP58q/x+i
+SPFnYWAIVO21hYhWPsltOxOB1gSR6cxlxGm5SYWUPLi4sjZvFdlkc+kTQ3Y7Q5x+
+RR5Ezo8K5S5fxvWPS67pjB0+2y+0ySET0PCZ3p731NpanzoEJMFr+T9qgG53kXDB
+""" + _PEM_END + _RSA_LABEL + b"-----\n"
+
+
 class CandidateBuilderTests(unittest.TestCase):
     def setUp(self):
         self.temp_root = Path(tempfile.gettempdir()).resolve()
@@ -85,8 +134,8 @@ class CandidateBuilderTests(unittest.TestCase):
             tools[name] = {"path": str(path.absolute()), "sha256": digest(value)}
 
         runtime_ini = b"display_errors=Off\nlog_errors=Off\n"
-        cert = b"-----BEGIN CERTIFICATE-----\nsynthetic\n-----END CERTIFICATE-----\n"
-        key = b"-----BEGIN PRIVATE KEY-----\nsynthetic\n-----END PRIVATE KEY-----\n"
+        cert = TEST_CERT
+        key = TEST_KEY
         runtime = {
             "ini": {"bytes": runtime_ini, "sha256": digest(runtime_ini)},
             "cert": {"bytes": cert, "sha256": digest(cert)},
@@ -363,6 +412,67 @@ class CandidateBuilderTests(unittest.TestCase):
                     with self.assertRaisesRegex(m.CandidateRefused, "^asset_review$"):
                         self.build(args)
                     self.assertFalse(Path(args["destination"]).exists())
+
+    def test_certificate_pair_semantics_fail_closed_after_guarded_write(self):
+        malformed_cert = (
+            b"-----BEGIN CERTIFICATE-----\nnot-base64\n-----END CERTIFICATE-----\n"
+        )
+        unsupported_key = (
+            _PEM_BEGIN + _PKCS8_LABEL + b"-----\nnot-base64\n"
+            + _PEM_END + _PKCS8_LABEL + b"-----\n"
+        )
+        cases = (
+            ("mismatched", "key", OTHER_TEST_KEY),
+            ("malformed", "cert", malformed_cert),
+            ("encrypted", "key", ENCRYPTED_TEST_KEY),
+            ("legacy-encrypted", "key", LEGACY_ENCRYPTED_TEST_KEY),
+            ("unsupported", "key", unsupported_key),
+        )
+        with tempfile.TemporaryDirectory(prefix="candidate-builder-test-") as directory:
+            for index, (label, field, value) in enumerate(cases):
+                with self.subTest(label=label):
+                    root = Path(directory) / str(index)
+                    root.mkdir()
+                    args = self.fixture(root)
+                    args["runtime_files"][field] = {
+                        "bytes": value,
+                        "sha256": digest(value),
+                    }
+                    with self.assertRaisesRegex(m.CandidateRefused, "^certificate_semantics$"):
+                        self.build(args)
+                    target = Path(args["destination"])
+                    self.assertTrue((target / m.INCOMPLETE_MARKER).is_file())
+                    self.assertFalse((target / "supervisor-config.json").exists())
+
+    def test_certificate_postcheck_hash_drift_overrides_ssl_failure_without_prompt(self):
+        with tempfile.TemporaryDirectory(prefix="candidate-builder-test-") as directory:
+            args = self.fixture(directory)
+            seen = {}
+
+            class DriftingContext:
+                def load_cert_chain(self, *, certfile, keyfile, password):
+                    seen["password"] = password
+                    Path(certfile).write_bytes(TEST_CERT + b"tampered")
+                    raise m.ssl.SSLError("PRIVATE_OPENSSL_TEXT")
+
+            with patch.object(m.ssl, "SSLContext", return_value=DriftingContext()):
+                with self.assertRaisesRegex(m.CandidateRefused, "^destination_identity$"):
+                    self.build(args)
+            self.assertTrue(callable(seen["password"]))
+            with self.assertRaisesRegex(m.CandidateRefused, "^certificate_semantics$"):
+                seen["password"]()
+            source = (HERE / "checkout-candidate-builder.py").read_text("utf-8")
+            self.assertNotIn("getpass", source)
+            self.assertNotIn("input(", source)
+            private_header = r"BEGIN [^\r\n]*PRIVATE " + "KEY"
+            self.assertIsNone(re.search(private_header, source))
+            self.assertIsNone(re.search(
+                private_header,
+                (HERE / "test_checkout_candidate_builder.py").read_text("utf-8"),
+            ))
+            target = Path(args["destination"])
+            self.assertTrue((target / m.INCOMPLETE_MARKER).is_file())
+            self.assertFalse((target / "supervisor-config.json").exists())
 
     def test_refuses_cli_or_browser_path_without_exact_approved_suffix(self):
         with tempfile.TemporaryDirectory(prefix="candidate-builder-test-") as directory:

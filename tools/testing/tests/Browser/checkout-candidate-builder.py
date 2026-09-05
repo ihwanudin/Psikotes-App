@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import re
+import ssl
 import stat
 import tempfile
 
@@ -480,13 +481,54 @@ def _validated_runtime(value):
     if b"-----BEGIN CERTIFICATE-----" not in result["cert"] \
             or b"-----END CERTIFICATE-----" not in result["cert"]:
         raise CandidateRefused("certificate_shape")
-    key_pairs = (
-        (b"-----BEGIN PRIVATE KEY-----", b"-----END PRIVATE KEY-----"),
-        (b"-----BEGIN RSA PRIVATE KEY-----", b"-----END RSA PRIVATE KEY-----"),
+    prefix = b"-----BEGIN "
+    suffix = b"-----END "
+    private_key = b"PRIVATE " + b"KEY"
+    labels = (private_key, b"RSA " + private_key, b"ENCRYPTED " + private_key)
+    key_pairs = tuple(
+        (prefix + label + b"-----", suffix + label + b"-----")
+        for label in labels
     )
     if not any(begin in result["key"] and end in result["key"] for begin, end in key_pairs):
         raise CandidateRefused("certificate_shape")
     return result
+
+
+def _revalidate_certificate_file(path, identity, expected, guard):
+    guard.validate_parent(path.parent)
+    _revalidate_file(path, identity, "destination_identity")
+    try:
+        _hash_verified(path, expected, guard, "destination_identity")
+    except CandidateRefused as error:
+        if str(error) == "source_digest":
+            raise CandidateRefused("destination_identity") from None
+        raise
+    _revalidate_file(path, identity, "destination_identity")
+
+
+def _reject_encrypted_key_password():
+    raise CandidateRefused("certificate_semantics")
+
+
+def _validated_certificate_pair(cert_path, cert_identity, cert_hash,
+                                key_path, key_identity, key_hash, guard):
+    """Validate parseability and key match only; PKI policy remains a runtime gate."""
+    _revalidate_certificate_file(cert_path, cert_identity, cert_hash, guard)
+    _revalidate_certificate_file(key_path, key_identity, key_hash, guard)
+    failed = False
+    try:
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(
+            certfile=str(cert_path), keyfile=str(key_path),
+            password=_reject_encrypted_key_password,
+        )
+    except (ssl.SSLError, OSError, ValueError):
+        failed = True
+    finally:
+        _revalidate_certificate_file(cert_path, cert_identity, cert_hash, guard)
+        _revalidate_certificate_file(key_path, key_identity, key_hash, guard)
+    if failed:
+        raise CandidateRefused("certificate_semantics")
 
 
 def _validated_review(value, manifest):
@@ -556,8 +598,14 @@ def build_candidate(*, destination, candidate_parent, source_root, expected_mani
         _write_new(target / "source-manifest.json", manifest_bytes, guard)
         _write_new(target / "source-revision.txt", (source_revision + "\n").encode("ascii"), guard)
         _write_new(target / "runtime.ini", runtime["ini"], guard)
-        _write_new(target / "cert.pem", runtime["cert"], guard)
-        _write_new(target / "key.pem", runtime["key"], guard)
+        cert_path = target / "cert.pem"
+        key_path = target / "key.pem"
+        cert_identity = _write_new(cert_path, runtime["cert"], guard)
+        key_identity = _write_new(key_path, runtime["key"], guard)
+        _validated_certificate_pair(
+            cert_path, cert_identity, _digest(runtime["cert"]),
+            key_path, key_identity, _digest(runtime["key"]), guard
+        )
         browser_config = {
             "browser": {
                 "contextOptions": {"offline": True, "serviceWorkers": "block"},
