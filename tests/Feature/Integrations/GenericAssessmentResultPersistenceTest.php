@@ -78,6 +78,23 @@ final class GenericAssessmentResultPersistenceTest extends TestCase
         );
     }
 
+    public function test_lowercase_attempt_input_resolves_and_persists_the_canonical_uppercase_owner(): void
+    {
+        $assessment = $this->assessment();
+        $lowercaseAttempt = strtolower($assessment->assessment_attempt_id);
+
+        $result = app(GenericAssessmentResultStore::class)->persistAuthorizedSnapshot(
+            $this->snapshot($lowercaseAttempt),
+        );
+
+        $this->assertSame($assessment->assessment_attempt_id, $result['envelope']['assessmentAttemptId']);
+        $this->assertDatabaseHas('generic_assessment_result_versions', [
+            'assessment_participant_id' => $assessment->id,
+            'assessment_attempt_id' => $assessment->assessment_attempt_id,
+            'result_checksum' => $result['envelope']['resultChecksum'],
+        ]);
+    }
+
     public function test_correction_and_revocation_append_a_linear_immutable_history(): void
     {
         $assessment = $this->assessment();

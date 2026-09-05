@@ -29,6 +29,7 @@ final readonly class GenericAssessmentResultStore
         if (! is_string($attemptId) || ! Str::isUlid($attemptId)) {
             throw new DomainException('ASSESSMENT_RESULT_ATTEMPT_NOT_FOUND');
         }
+        $attemptId = strtoupper($attemptId);
 
         return DB::transaction(function () use ($attemptId, $authorizedSnapshot): array {
             $assessment = AssessmentParticipant::query()

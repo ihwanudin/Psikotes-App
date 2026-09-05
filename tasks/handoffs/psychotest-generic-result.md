@@ -6,6 +6,8 @@ Foundation ini menyediakan satu proyektor murni untuk payload hasil yang kelak d
 
 `GenericAssessmentResultProjector` hanya menerima snapshot hasil terotorisasi dengan field exact berikut: `assessmentAttemptId`, `iq`, `engineVersion`, `completedAt`, `finality`, `revokedAt`, dan `resultVersion`. Output menambahkan `resultChecksum` SHA-256 dari representasi kanonik berversi. Timestamp dinormalisasi ke UTC mikrodetik. IQ integer atau pecahan dipertahankan sebagai angka tanpa pembulatan.
 
+`assessmentAttemptId` dinormalisasi ke ULID uppercase sebelum checksum dan audit reference dihitung. Input ULID lowercase dan uppercase karena itu menghasilkan envelope/checksum yang identik, dan replay lowercase terhadap envelope uppercase tetap idempoten. Persistence juga mengubah attempt lookup menjadi uppercase sebelum ownership query agar normalisasi proyektor tidak terputus pada boundary database. Ini menyelaraskan kontrak dengan registry Selection tanpa mengubah identitas attempt.
+
 Kontrak fail-closed:
 
 - Attempt wajib ULID, versi awal wajib 1, dan hasil wajib literal `FINALIZED`.

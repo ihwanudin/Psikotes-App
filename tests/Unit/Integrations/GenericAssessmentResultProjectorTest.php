@@ -46,6 +46,27 @@ final class GenericAssessmentResultProjectorTest extends TestCase
         $this->assertSame($first, $projector->project($this->source(), $first));
     }
 
+    public function test_lowercase_attempt_is_canonicalized_before_checksum_and_replays_as_uppercase(): void
+    {
+        $projector = new GenericAssessmentResultProjector;
+        $uppercase = '01K4CJ5HQ9M6A7W8ZXN2T3V4B4';
+        $lowercase = strtolower($uppercase);
+
+        $fromLowercase = $projector->project($this->source(assessmentAttemptId: $lowercase));
+        $fromUppercase = $projector->project($this->source(assessmentAttemptId: $uppercase));
+
+        $this->assertSame($uppercase, $fromLowercase['assessmentAttemptId']);
+        $this->assertSame($fromUppercase, $fromLowercase);
+        $this->assertSame($fromUppercase, $projector->project(
+            $this->source(assessmentAttemptId: $lowercase),
+            $fromUppercase,
+        ));
+        $this->assertSame(
+            hash('sha256', $uppercase),
+            $projector->safeAuditContext($fromLowercase)['assessmentAttemptReference'],
+        );
+    }
+
     public function test_correction_requires_the_next_version_and_a_changed_checksum(): void
     {
         $projector = new GenericAssessmentResultProjector;

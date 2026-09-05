@@ -139,7 +139,7 @@ final class GenericAssessmentResultProjector
         }
 
         return [
-            'assessmentAttemptId' => $attemptId,
+            'assessmentAttemptId' => strtoupper($attemptId),
             'iq' => $iq,
             'engineVersion' => $engineVersion,
             'completedAt' => $completedAtUtc,
