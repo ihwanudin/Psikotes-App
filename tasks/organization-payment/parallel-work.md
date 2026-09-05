@@ -1,5 +1,24 @@
 # Koordinasi task paralel organization-payment
 
+## P17a DASS privacy accepted; P15 JSON boundary authorized — 2026-09-05
+
+Portal `2a349e2` was reviewed and integrated as root `14307d3`, preserving only
+the new report section over canonical history. Root reran **4/4 tests, 1,192
+assertions**, Pint, PHP lint, PHPStan 0 errors, and diff-check; all passed. This
+proves mandatory DASS package composition and no clinical/consent leakage through
+the collective bill projection, but not all P17 acceptance. Portal received one
+next test-only slice for free+consultation and self versus organization payer.
+
+Backend `837a3bf` correctly demonstrated that the P14 mutation middleware rejects
+nonempty JSON before P15 can validate it: empty authenticated header-channel body
+reaches downstream, the same session with profile/consent JSON receives 419. The
+RED commit was reviewed but not integrated because it would leave root tests red.
+One bounded GREEN increment was authorized: a P15-only JSON mutation middleware
+after canonical session authentication, exact same-origin/CSRF checks, strict
+content type/body/query/form/duplicate-key bounds and generic denials. Existing
+P14 logout middleware must remain byte-identical; route stays test-only and all
+features remain default OFF. No P15 writer is authorized in this increment.
+
 ## Frontend mandatory-DASS summary accepted; HTTP proof next — 2026-09-05
 
 Frontend `b5bfb04` was reviewed and integrated as root `910e5c6`. Root reran
