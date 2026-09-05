@@ -7,10 +7,12 @@ namespace App\Actions\Integrations;
 use App\Data\Integrations\CheckoutPaymentFacts;
 use App\Data\Integrations\CheckoutProfile;
 use App\Data\Integrations\CheckoutSessionMutationCredentials;
+use App\Data\Integrations\CheckoutSessionMutationScope;
 use App\Data\Integrations\CheckoutSessionPrincipal;
 use App\Data\Integrations\CheckoutSessionSelector;
 use App\Data\Integrations\CheckoutSummary;
 use App\Enums\CheckoutSessionOperation;
+use App\Enums\PayerType;
 use App\Models\AssessmentParticipant;
 use App\Models\Branch;
 use App\Models\CheckoutHandoff;
@@ -25,6 +27,7 @@ use App\Services\Integrations\CheckoutHandoffHistoryValidator;
 use App\Services\Integrations\CheckoutPaymentFactsReader;
 use App\Services\Integrations\CheckoutProfileMapper;
 use App\Services\Integrations\CheckoutSummaryComposer;
+use App\Services\Payments\ResolvePayerPolicy;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Collection;
@@ -47,6 +50,7 @@ final readonly class CheckoutSessionLifecycle
         private CheckoutProfileMapper $profiles,
         private CheckoutPaymentFactsReader $payments,
         private CheckoutSummaryComposer $summaries,
+        private ResolvePayerPolicy $payerPolicy,
     ) {}
 
     public function hydrate(#[SensitiveParameter] CheckoutSessionSelector $input): CheckoutSessionPrincipal
@@ -170,9 +174,31 @@ final readonly class CheckoutSessionLifecycle
         }
     }
 
+    /** Caller owns the service transaction and must consume the returned capability before it ends. */
+    public function lockMutation(
+        #[SensitiveParameter] CheckoutSessionMutationCredentials $input,
+    ): CheckoutSessionMutationScope {
+        if ($this->contexts->current()?->role !== 'service' || DB::transactionLevel() === 0) {
+            throw new LogicException('Checkout session mutation requires an active service transaction.');
+        }
+        $idle = $this->idleMinutes();
+        $result = $this->operate(
+            $this->selectorDigest($input->rawSelector()),
+            $this->csrfDigest($input->rawCsrfToken()),
+            CheckoutSessionOperation::HydrateWithCsrfDelivery,
+            $idle,
+            true,
+        );
+        if (! $result instanceof CheckoutSessionMutationScope) {
+            throw new InvalidCheckoutSession;
+        }
+
+        return $result;
+    }
+
     private function operate(#[SensitiveParameter] string $selectorDigest,
         #[SensitiveParameter] ?string $csrfDigest, CheckoutSessionOperation $operation,
-        int $idleMinutes): CheckoutPaymentFacts|CheckoutProfile|CheckoutSessionPrincipal|CheckoutSummary|bool|null
+        int $idleMinutes, bool $mutation = false): CheckoutPaymentFacts|CheckoutProfile|CheckoutSessionMutationScope|CheckoutSessionPrincipal|CheckoutSummary|bool|null
     {
         $hints = CheckoutSession::query()->where('selector_digest', $selectorDigest)->limit(2)
             ->get(['id', 'organization_id', 'assessment_participant_id', 'integration_client_id',
@@ -305,7 +331,7 @@ final readonly class CheckoutSessionLifecycle
             return $this->summaries->compose($attempt, $participant, $organization, $now);
         }
 
-        return new CheckoutSessionPrincipal(
+        $principal = new CheckoutSessionPrincipal(
             $target->public_id,
             $latestHandoff->public_id,
             $attempt->id,
@@ -323,6 +349,23 @@ final readonly class CheckoutSessionLifecycle
             $idleExpiresAt,
             $absolute,
         );
+        if (! $mutation) {
+            return $principal;
+        }
+        if ($attempt->finalized_at !== null) {
+            throw new InvalidCheckoutSession;
+        }
+        $payer = match ($attempt->funding_mode) {
+            'COMMERCIAL_SELF_PAY' => PayerType::SelfPay,
+            'INVOICED_TO_ORGANIZATION' => PayerType::Organization,
+            default => throw new InvalidCheckoutSession,
+        };
+        $decision = $this->payerPolicy->resolve($organization, $client, $source, $package, $now, $payer->value);
+        if ($decision->rejectionReason !== null || $decision->selectedPayerType !== $payer) {
+            throw new InvalidCheckoutSession;
+        }
+
+        return new CheckoutSessionMutationScope($principal, $this->contexts, DB::transactionLevel());
     }
 
     private function preflight(): int
@@ -330,6 +373,12 @@ final readonly class CheckoutSessionLifecycle
         if ($this->contexts->current() !== null || DB::transactionLevel() !== 0) {
             throw new LogicException('Checkout session lifecycle owns its service transaction.');
         }
+
+        return $this->idleMinutes();
+    }
+
+    private function idleMinutes(): int
+    {
         $enabled = config('assessment_integration.checkout_session.enabled');
         $idle = config('assessment_integration.checkout_session.idle_minutes');
         $absolute = config('assessment_integration.checkout_session.absolute_minutes');
