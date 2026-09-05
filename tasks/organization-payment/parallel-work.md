@@ -2358,16 +2358,15 @@ Tidak ada instruksi atau hasil ini yang menutup P15/P16/P17c/P18 maupun checkpoi
 
 ### Konsolidasi lanjutan ownership/anchor
 
-Commit accepted `77aa2bc`, `446e881`, dan `da1daeb` membentuk satu rangkaian
-preparation P17c: supervisor mewajibkan publisher anchor yang dapat dibaca ulang;
-coordinator anchor store menyimpan anchor monotonic beserta provenance run/session/
-config di luar candidate; lalu lifecycle supervisor membatasi phase dan policy
-spawn, memublikasikan intent sebelum proses, serta membuat recovery dan cleanup
-fail-closed. Bukti murni terakhir adalah **14/14** tes anchor store dan **72/72**
-tes pure/mock supervisor (census host nyata sengaja dikecualikan).
+Rangkaian preparation sebelumnya kini dikonsolidasikan oleh commit accepted
+`94e294d`, `d41844a`, dan `e15f55e`. Input proses/browser diperketat dan lulus
+**79/79** tes; supervisor mem-pin publisher/callable serta lifecycle spawn/recovery
+dan lulus **88/88** pure/mock; adapter coordinator mengikat config, provenance,
+identitas operasional store, dan anchor mentah dengan **12/12** tes. Primitive
+anchor store tetap lulus **14/14** tes. Census host nyata sengaja dikecualikan.
 
 Store lokal hanya mendeteksi korupsi/rollback, bukan mengautentikasi pihak yang
 dapat menulis kedua lokasi. Wiring coordinator, ACL/single-writer, durability dan
 TOCTOU Windows nyata, lineage/helper/cleanup OS, manifest/tool hash disposable,
-serta browser/service runtime tetap gate. Runner tetap disabled dan payment tetap
-default OFF; P15/P16/P17c/P18 serta checkpoint terkait tidak ditutup.
+serta browser/service runtime tetap gate. Runner masih absent/disabled dan payment
+tetap default OFF; P15/P16/P17c/P18 serta checkpoint terkait tidak ditutup.

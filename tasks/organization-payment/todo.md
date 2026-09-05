@@ -755,12 +755,12 @@ helper `_ps` dan pembuktian ownership/cleanup OS nyata juga tetap gate. Verifier
 P18 hanya preparation, bukan bukti runbook atau serah-terima lengkap. Karena itu
 P15, P16, P17c, P18, serta seluruh checkpoint terkait tetap unchecked.
 
-Preparation ownership berikutnya diterima berurutan pada `77aa2bc`, `446e881`,
-dan `da1daeb`: publisher reloadable menjadi wajib, anchor store coordinator
-monotonic/provenance-bound tersedia tetapi belum di-wire, dan supervisor menutup
-phase/policy spawn serta recovery/cleanup secara fail-closed. Bukti code-only:
-anchor store **14/14** dan supervisor **72/72 pure/mock**; census host nyata tidak
-dijalankan. Local anchor bukan bukti autentisitas, dan ACL/single-writer,
+Preparation ownership kini dikonsolidasikan pada `94e294d`, `d41844a`, dan
+`e15f55e`: strict input/browser **79/79**, supervisor publisher/lifecycle
+**88/88 pure/mock**, adapter coordinator **12/12**, dan anchor store **14/14**.
+Semua bukti code-only; census host nyata tidak dijalankan. Local anchor bukan
+bukti autentisitas, dan ACL/single-writer,
 durability/TOCTOU Windows, lineage/helper/cleanup OS, manifest/tool hashes,
-standalone recovery, serta browser/service runtime masih gate. Payment tetap
-default OFF dan tidak ada checkbox acceptance yang berubah.
+standalone recovery, serta browser/service runtime masih gate. Runner masih
+absent/disabled, payment tetap default OFF dan tidak ada checkbox acceptance
+yang berubah.

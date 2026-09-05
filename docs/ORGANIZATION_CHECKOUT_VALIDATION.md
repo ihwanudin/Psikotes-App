@@ -28,20 +28,21 @@ default OFF.
 
 ### Preparation ownership dan anchor coordinator
 
-Rangkaian accepted `77aa2bc`, `446e881`, dan `da1daeb` memperketat preparation
-tanpa menyalakan runner. Supervisor kini mensyaratkan publisher anchor reloadable;
-primitive coordinator menyimpan anchor monotonic yang terikat exact run, session,
-dan config di luar candidate; lifecycle berikutnya membatasi phase/policy spawn,
-memastikan intent dipublikasikan sebelum `Popen`, serta menolak recovery/cleanup
-yang tidak memiliki bukti kanonik. Verifikasi code-only terakhir mencatat:
+Rangkaian accepted `94e294d`, `d41844a`, dan `e15f55e` mengonsolidasikan
+preparation tanpa menyalakan runner. Input snapshot dan argumen browser kini
+strict; supervisor mem-pin publisher beserta callable-nya dan menjaga lifecycle
+spawn/recovery; adapter coordinator mengikat config, provenance, identitas
+operasional store, serta raw anchor. Verifikasi code-only terakhir mencatat:
 
+- input hardening: **79/79 tes**;
+- supervisor: **88/88 pure/mock tests**, dengan census host nyata sengaja tidak
+  dijalankan;
+- coordinator: **12/12 tes**;
 - anchor store: **14/14 tes**;
-- supervisor: **72/72 pure/mock tests**, dengan census host nyata sengaja tidak
-  dijalankan.
 
 Primitive penyimpanan lokal adalah deteksi korupsi/rollback, bukan autentikasi
-terhadap pihak yang dapat menulis journal dan anchor. Publisher belum di-wire ke
-runner disabled; ACL dan exclusive single-writer coordinator, opened-handle/
+terhadap pihak yang dapat menulis journal dan anchor. Runtime runner masih absent/
+disabled; ACL dan exclusive single-writer coordinator, opened-handle/
 reparse/TOCTOU serta flush/replace/crash durability Windows nyata, historical
 process lineage, helper dan cleanup OS, manifest/tool hash disposable, standalone
 recovery, browser, dan service runtime belum diterima. Tidak ada process census,

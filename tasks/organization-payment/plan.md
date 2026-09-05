@@ -449,11 +449,13 @@ tetap menjadi gate P17c. Verifier dokumentasi operasi pada `a2aa851` hanya
 preparation P18. Bagian ini tidak menutup P15, P16, P17c, P18, atau checkpoint
 lintas tahap mana pun.
 
-Preparation lanjut `77aa2bc` → `446e881` → `da1daeb` menerima kontrak publisher
-reloadable wajib, primitive anchor coordinator di luar candidate, dan lifecycle
-supervisor fail-closed. Bukti terbatas pada **14/14** tes anchor store serta
-**72/72 pure/mock** supervisor; tidak ada census/process/browser/service/DB nyata.
+Preparation final `94e294d` → `d41844a` → `e15f55e` menerima strict input/browser,
+pin publisher/callable dan lifecycle supervisor, serta adapter coordinator yang
+mengikat provenance dan identitas operasional store. Bukti code-only: input
+**79/79**, supervisor **88/88 pure/mock**, coordinator **12/12**, dan anchor store
+**14/14**; tidak ada census/process/browser/service/DB nyata.
 Anchor lokal mendeteksi korupsi/rollback tetapi bukan autentikasi. Wiring runner,
 ACL/single-writer, durability/TOCTOU Windows, lineage/helper/cleanup OS,
-manifest/tool hash disposable, dan runtime acceptance tetap tertunda. Payment
-tetap default OFF dan status P15/P16/P17c/P18 tidak berubah.
+manifest/tool hash disposable, dan runtime acceptance tetap tertunda. Runner
+masih absent/disabled, payment tetap default OFF dan status P15/P16/P17c/P18
+tidak berubah.
