@@ -2389,3 +2389,14 @@ Percobaan parity Composer tetap ditolak dan tidak diterima: korelasi
 runtime Composer, semantik penuh X.509, delivery candidate nyata, serta seluruh
 gate browser/service/OS tetap residual. Runner masih absent/disabled, payment
 tetap default OFF, dan tidak ada checkbox P15/P16/P17c/P18 yang berubah.
+
+### Checkpoint pasangan sertifikat lokal — accepted `7025c83`
+
+Candidate builder kini membuktikan parse lokal sertifikat dan kecocokan
+cert/key, menolak key terenkripsi secara eksplisit tanpa prompt, serta memeriksa
+ulang identity dan hash kedua file sebelum dan sesudah pemuatan. Bukti root:
+builder **20/20**, parity AST **2/2**, dan scan header private-key fixture bersih.
+
+Bukti ini tidak mencakup SAN, masa berlaku, EKU, CA/chain/trust, kekuatan key,
+browser, atau ACL Windows. Candidate nyata tidak dibangun; tidak ada deploy atau
+runtime aktif. P17c/P18 tetap terbuka dan semua gate tetap default OFF.

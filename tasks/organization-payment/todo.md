@@ -779,3 +779,14 @@ Percobaan Composer parity tidak diterima dan tetap uncommitted/rejected karena
 parity metadata runtime Composer belum lengkap. Semantik penuh X.509, runtime
 Composer, candidate nyata, browser/service/OS, dan seluruh gate sebelumnya tetap
 terbuka; payment default OFF dan checkbox P15/P16/P17c/P18 tidak ditutup.
+
+### Bukti cert/key builder accepted — checklist tetap terbuka
+
+Commit `7025c83` menerima pemeriksaan lokal parseability dan kecocokan cert/key,
+penolakan noninteraktif seluruh key terenkripsi, serta revalidasi identity+hash
+sebelum/sesudah load. Root lulus builder **20/20**, parity AST **2/2**, dan scan
+header private-key fixture bersih.
+
+Belum ada bukti SAN/validity/EKU/CA/chain/trust/key strength, browser, atau ACL.
+Tidak ada candidate build, deploy, maupun runtime aktif; checkbox P17c/P18 tidak
+ditutup dan gate tetap default OFF.

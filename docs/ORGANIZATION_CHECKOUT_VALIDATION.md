@@ -72,6 +72,17 @@ semantik penuh X.509, delivery candidate nyata, browser/service/OS, dan gate
 runtime lain tetap residual. Runner absent/disabled, payment default OFF, dan
 checkbox P15/P16/P17c/P18 tidak berubah.
 
+### Validasi lokal pasangan sertifikat — `7025c83`
+
+Candidate builder sekarang memvalidasi parseability sertifikat dan kecocokan
+cert/key secara lokal. Key terenkripsi ditolak dengan callback noninteraktif;
+identity dan hash cert/key diperiksa sebelum serta sesudah pemuatan. Root mencatat
+builder **20/20**, parity AST **2/2**, dan scan header private-key fixture bersih.
+
+Scope ini tidak membuktikan SAN, validity, EKU, CA/chain/trust, key strength,
+perilaku browser, atau ACL Windows. Candidate nyata belum dibangun dan tidak ada
+deploy maupun runtime aktif. P17c/P18 tetap terbuka dan gate tetap default OFF.
+
 ## Checkpoint P16 consent subset dan privacy audit — 2026-09-06
 
 Commit `918eb93` menambah policy PostgreSQL restrictive yang membuat audit

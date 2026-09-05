@@ -476,3 +476,14 @@ Percobaan Composer parity tidak diintegrasikan. Parity runtime Composer dan
 semantik penuh X.509 tetap harus ditutup bersama gate candidate nyata,
 browser/service/OS. Payment tetap default OFF; P15/P16/P17c/P18 serta rencana
 runtime tidak berubah.
+
+### Checkpoint validasi pasangan TLS lokal
+
+`7025c83` diterima sebagai preparation builder: parse sertifikat dan kecocokan
+cert/key diperiksa lokal, key terenkripsi ditolak tanpa interaksi, dan identity
+serta hash divalidasi sebelum/sesudah load. Evidence root adalah builder
+**20/20**, parity AST **2/2**, dan scan header private-key fixture bersih.
+
+Acceptance ini bukan validasi SAN, validity, EKU, CA/chain/trust, key strength,
+browser, atau ACL. Candidate belum dibangun dan tidak ada deploy/runtime aktif;
+P17c/P18 serta semua gate default-OFF tidak berubah.
