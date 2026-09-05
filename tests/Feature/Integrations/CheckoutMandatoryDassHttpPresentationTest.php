@@ -14,6 +14,7 @@ use App\Http\Middleware\VerifyCheckoutSessionMutation;
 use App\Models\AssessmentCharge;
 use App\Models\AssessmentParticipant;
 use App\Models\IntegrationClient;
+use App\Registration\ConsentDocument;
 use App\Security\RlsContextRunner;
 use App\Services\Integrations\CheckoutSessionHttpContract as Contract;
 use DOMDocument;
@@ -23,6 +24,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Facades\View;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\OrganizationPaymentTestCase;
@@ -138,6 +140,68 @@ final class CheckoutMandatoryDassHttpPresentationTest extends OrganizationPaymen
         $this->assertSame('REVOKED', DB::table('checkout_sessions')->value('status'));
         $this->assertSame('LOGOUT', DB::table('checkout_sessions')->value('revocation_reason'));
         $this->page()->assertStatus(303)->assertRedirect('/checkout/unavailable');
+    }
+
+    public function test_injected_native_form_posts_only_missing_profile_and_current_mandatory_consents_to_test_callback(): void
+    {
+        config()->set('consent.legal_review_pending', false);
+        DB::table('consent_records')->where('consent_type', 'psychotest')->update(['status' => 'declined']);
+        $captured = null;
+        Route::post('/checkout/test-confirm', function (Request $request) use (&$captured) {
+            $captured = $request->request->all();
+
+            return response('Synthetic presentation callback', 204);
+        });
+        Route::getRoutes()->refreshNameLookups();
+        View::composer('checkout.summary', function ($view): void {
+            $profile = [
+                'fullName' => ['control' => 'text', 'autocomplete' => 'name'],
+                'phone' => ['control' => 'tel', 'autocomplete' => 'tel'],
+            ];
+            $consents = [];
+            foreach (['psychotest', 'dass'] as $type) {
+                $document = ConsentDocument::for($type);
+                $consents[$type] = ['documentVersion' => $document->version, 'documentHash' => $document->hash];
+            }
+            $view->with('confirmationForm', ['action' => '/checkout/test-confirm', 'profile' => $profile,
+                'consents' => $consents]);
+        });
+
+        $page = $this->page()->assertOk();
+        $this->assertPrivate($page);
+        $xpath = $this->dom($page);
+        $form = $xpath->query('//form[@data-checkout-confirmation]')->item(0);
+        $this->assertNotNull($form);
+        $this->assertSame('/checkout/test-confirm', $form->getAttribute('action'));
+        $this->assertSame(['profile[fullName]', 'profile[phone]'], array_values(array_map(
+            static fn ($node): string => $node->getAttribute('name'),
+            iterator_to_array($xpath->query('.//*[starts-with(@name, "profile[")]', $form)),
+        )));
+        $this->assertSame(0, $xpath->query('.//*[@name="profile[email]" or @name="branchName" or @name="packageName" or @name="payer" or @name="amountIdr" or @name="access"]', $form)->length);
+        $this->assertSame(2, $xpath->query('.//input[@type="checkbox" and @required and not(@checked)]', $form)->length);
+        $this->assertSame(0, $xpath->query('.//input[@type="radio"] | .//*[@name="consents[dass][declined]"]', $form)->length);
+
+        $psychotest = ConsentDocument::for('psychotest');
+        $dass = ConsentDocument::for('dass');
+        $payload = [
+            '_checkout_csrf' => $this->cookies[Contract::CSRF_COOKIE],
+            'profile' => ['fullName' => 'Peserta Sintetis', 'phone' => '+62 812 3456 7890'],
+            'consents' => [
+                'psychotest' => ['accepted' => 'true', 'documentVersion' => $psychotest->version,
+                    'documentHash' => $psychotest->hash],
+                'dass' => ['accepted' => 'true', 'documentVersion' => $dass->version, 'documentHash' => $dass->hash],
+            ],
+        ];
+        $this->call('POST', '/checkout/test-confirm', $payload, $this->cookies, [], $this->server('https://psikotes.oncam.id'))
+            ->assertNoContent();
+
+        $this->assertSame($payload, $captured);
+        $this->assertArrayNotHasKey('email', $captured['profile']);
+        foreach (['branchName', 'packageName', 'payer', 'amountIdr', 'paid', 'access'] as $forbidden) {
+            $this->assertArrayNotHasKey($forbidden, $captured);
+        }
+        $this->assertSame('READY', DB::table('assessment_participants')->value('assessment_status'));
+        $this->assertSame('declined', DB::table('consent_records')->where('consent_type', 'dass')->value('status'));
     }
 
     #[DataProvider('paymentPresentations')]

@@ -54,13 +54,37 @@ function mandatoryDassFixture(): array
         ]];
 }
 
+/** @return array<string, mixed> */
+function mandatoryDassConfirmationFixture(): array
+{
+    return [
+        'action' => '/checkout/test-confirm',
+        'profile' => [
+            'fullName' => ['control' => 'text', 'autocomplete' => 'name'],
+            'birthDate' => ['control' => 'date'],
+            'gender' => ['control' => 'select', 'options' => [
+                ['value' => 'FEMALE', 'label' => 'Perempuan'], ['value' => 'MALE', 'label' => 'Laki-laki'],
+            ]],
+            'educationLevel' => ['control' => 'text', 'autocomplete' => 'education-level'],
+            'intendedField' => ['control' => 'select', 'options' => [
+                ['value' => 'KAIGO', 'label' => 'Kaigo'], ['value' => 'UMUM', 'label' => 'Umum'],
+            ]],
+            'phone' => ['control' => 'tel', 'autocomplete' => 'tel'],
+        ],
+        'consents' => [
+            'psychotest' => ['documentVersion' => 'synthetic-psychotest-v1', 'documentHash' => str_repeat('a', 64)],
+            'dass' => ['documentVersion' => 'synthetic-dass-v1', 'documentHash' => str_repeat('b', 64)],
+        ],
+    ];
+}
+
 /** @return array{DOMXPath, string} */
-function renderMandatoryDass(array $summary): array
+function renderMandatoryDass(array $summary, ?array $confirmationForm = null): array
 {
     global $views;
     $json = json_encode($summary, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
     $html = $views->make('checkout.summary', ['summary' => $summary, 'summaryJson' => $json,
-        'checkoutCsrf' => 'synthetic-csrf-only'])->render();
+        'checkoutCsrf' => 'synthetic-csrf-only', 'confirmationForm' => $confirmationForm])->render();
     $dom = new DOMDocument;
     $previous = libxml_use_internal_errors(true);
     $dom->loadHTML('<?xml encoding="UTF-8">'.$html);
@@ -76,6 +100,45 @@ function mandatoryDassText(DOMXPath $xpath, string $query): string
 }
 
 $cases = [];
+$cases['injected confirmation form submits only missing profile and mandatory consents'] = function (): void {
+    $summary = mandatoryDassFixture();
+    $summary['consents']['psychotest'] = ['state' => 'required', 'document' => [
+        'version' => 'synthetic-psychotest-v1', 'title' => 'Persetujuan psikotes sintetis',
+        'text' => 'Fixture sintetis, bukan teks legal.',
+    ]];
+    [$xpath] = renderMandatoryDass($summary, mandatoryDassConfirmationFixture());
+    mandatoryDassCheck($xpath->query('//form[@data-checkout-confirmation]')->length === 1, 'Injected same-origin form is rendered');
+    mandatoryDassCheck($xpath->query('//form[@data-checkout-confirmation]/input[@name="_checkout_csrf"]')->length === 1, 'Dedicated CSRF is retained');
+    mandatoryDassCheck($xpath->query('//form[@data-checkout-confirmation]//*[@name="profile[fullName]"]')->length === 1, 'Missing full name is editable');
+    mandatoryDassCheck($xpath->query('//form[@data-checkout-confirmation]//*[@name="profile[email]"]')->length === 0, 'Optional email is not submitted');
+    mandatoryDassCheck($xpath->query('//form[@data-checkout-confirmation]//*[@name="branchName" or @name="packageName" or @name="payer" or @name="amountIdr" or @name="access"]')->length === 0, 'Readonly facts are not submitted');
+    mandatoryDassCheck($xpath->query('//form[@data-checkout-confirmation]//input[@type="checkbox" and @required and not(@checked)]')->length === 2, 'Both mandatory consents are explicit and unselected');
+    mandatoryDassCheck($xpath->query('//form[@data-checkout-confirmation]//*[@name="consents[dass][declined]"] | //form[@data-checkout-confirmation]//input[@type="radio"]')->length === 0, 'DASS decline is unavailable');
+    mandatoryDassCheck($xpath->query('//form[@data-checkout-confirmation]//button[@type="submit"]')->length === 1, 'Native submit is available');
+};
+$cases['confirmation form fails closed when fixture contract is absent or stale'] = function (): void {
+    $summary = mandatoryDassFixture();
+    [$without] = renderMandatoryDass($summary);
+    mandatoryDassCheck($without->query('//form[@data-checkout-confirmation]')->length === 0, 'No injected contract means readonly page');
+
+    $stale = ['action' => 'https://foreign.invalid/collect', 'profile' => [], 'consents' => []];
+    [$foreign] = renderMandatoryDass($summary, $stale);
+    mandatoryDassCheck($foreign->query('//form[@data-checkout-confirmation]')->length === 0, 'Foreign or incomplete contract is rejected');
+
+    $summary['consents']['psychotest'] = ['state' => 'required', 'document' => [
+        'version' => 'synthetic-psychotest-v1', 'title' => 'Persetujuan psikotes sintetis',
+        'text' => 'Fixture sintetis, bukan teks legal.',
+    ]];
+    $summary['consents']['legalReviewPending'] = true;
+    [$legalPending] = renderMandatoryDass($summary, mandatoryDassConfirmationFixture());
+    mandatoryDassCheck($legalPending->query('//form[@data-checkout-confirmation]')->length === 0, 'Legal review pending blocks confirmation');
+
+    $summary['consents']['legalReviewPending'] = false;
+    $staleDocument = mandatoryDassConfirmationFixture();
+    $staleDocument['consents']['dass']['documentVersion'] = 'stale-dass-version';
+    [$staleVersion] = renderMandatoryDass($summary, $staleDocument);
+    mandatoryDassCheck($staleVersion->query('//form[@data-checkout-confirmation]')->length === 0, 'Stale consent version blocks confirmation');
+};
 $cases['missing required profile and required DASS are explicit'] = function (): void {
     [$xpath] = renderMandatoryDass(mandatoryDassFixture());
     $steps = mandatoryDassText($xpath, '//section[@aria-labelledby="requirements-heading"]');
