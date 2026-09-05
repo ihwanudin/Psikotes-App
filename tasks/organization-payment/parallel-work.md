@@ -1,5 +1,17 @@
 # Koordinasi task paralel organization-payment
 
+## P17b evidence audit split without shared files — 2026-09-05
+
+After P17a acceptance, root inspected the current PostgreSQL suite and found
+existing two-process coverage across reservation, invoice claim/issuance,
+finalization, manual review, and activation. P17b therefore starts as two
+evidence/gap audits rather than duplicate test creation. Backend owns reservation
+and issuance and may add only `OrganizationBillingReservationRecoveryTest.php`;
+portal owns settlement/manual/crash and may add only
+`OrganizationBillingSettlementRecoveryTest.php`. Each has a separate new report.
+Neither lane may edit existing tests, the runner, application/schema/config/routes,
+or canonical plan/todo. Any genuine production defect must return for review.
+
 ## P17a accepted after clock-flake correction; P17b next — 2026-09-05
 
 Portal `f28d7c1` was integrated as root `cd0cb5b`. Root accepted its functional
