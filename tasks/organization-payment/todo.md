@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P8a, P9a/b/c, P10a, core P10b, P10c-a/b, P11a, P11b, P11c1a–P11c3c reviewer, P12a portal cabang, dan core P12b kolektif default-off selesai lokal. Browser acceptance P11c/P12a lulus; route/discovery produksi belum aktif. Root synthetic default terakhir 1346/8352, focused reviewer 36/234, focused P12a 14/210, focused P12b 19/61, dan PostgreSQL disposable terakhir 293/2519 lulus. Command/scheduler tetap tertutup. Browser acceptance P12b berikutnya; frontend menunggu kontrak P14/P15. P8b–P18 keseluruhan belum end-to-end; tidak deploy atau migrasi DB aktif.**
+Status: **P1–P13b serta core privat P14/P15 selesai lokal. P16 memiliki halaman, form consent wajib DASS-21, transport JSON, adapter HTTP, dan route canonical default OFF; focused gabungan terakhir 66 tes/2.437 assertions, Node 4/4, dan Blade 6/6 lulus. P17a aktif. Full PostgreSQL fresh tertahan SQLSTATE 42830 pada self-FK migrasi generic result dan sedang diperbaiki; browser P16/P17c serta acceptance end-to-end P17–P18 masih terbuka. Tidak deploy, tidak migrasi DB aktif, dan tidak menyalakan sumber/feature flag atau outbound nyata.**
 
 ## Gerbang revisi kolektif
 
@@ -606,6 +606,10 @@ provider atau menjadi authority sampai acquisition/validator berikutnya direview
 
 **Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Integrations/CheckoutSummaryTest.php`
 
+**Bukti core lokal:** sesi/cookie/CSRF, proyeksi ringkasan milik attempt, privacy
+headers, lifecycle, dan route canonical default-off sudah terintegrasi. Acceptance
+tetap unchecked sampai browser dan checkpoint lintas tahap selesai.
+
 ## P15: Profil kurang dan consent
 
 **Acceptance:**
@@ -617,6 +621,11 @@ provider atau menjadi authority sampai acquisition/validator berikutnya direview
 **Files likely touched:** `app/Http/Requests/ConfirmIntegratedCheckoutRequest.php`, `app/Actions/Registration/ConfirmIntegratedCheckout.php`, `tests/Feature/Registration/IntegratedCheckoutConsentTest.php`.
 
 **Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Registration/IntegratedCheckoutConsentTest.php`
+
+**Bukti core lokal:** request/DTO/action writer, HTTP adapter JSON, idempotensi,
+rollback, profil missing-only, serta consent psikotes dan DASS-21 wajib telah
+terintegrasi. Route writer tetap default OFF; acceptance tidak ditutup sebelum
+browser/checkpoint.
 
 ### Checkpoint setelah P15
 
@@ -635,6 +644,11 @@ provider atau menjadi authority sampai acquisition/validator berikutnya direview
 **Files likely touched:** `resources/js/pages/integrated-checkout.tsx`, `resources/js/types/integrated-checkout.ts`, `app/Http/Controllers/IntegratedCheckoutController.php`, `tests/Feature/Integrations/IntegratedCheckoutPageTest.php`.
 
 **Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Integrations/IntegratedCheckoutPageTest.php`
+
+**Bukti parsial lokal:** Blade branded/no-JS, form injected fail-closed, transport
+JSON same-origin, dan route canonical default-off sudah terintegrasi. Alur tindakan
+pembayaran mandiri/kolektif/gratis dan browser acceptance belum lengkap, sehingga
+checkbox P16 tetap terbuka.
 
 ## P17a: Regresi alur dan privasi
 
