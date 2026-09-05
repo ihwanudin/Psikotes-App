@@ -14,6 +14,12 @@ if (($argv[1] ?? '') === '--inspector-tests') {
     return;
 }
 
+if (($argv[1] ?? '') === '--contract-tests') {
+    checkoutContractTests();
+
+    return;
+}
+
 // Only new synthetic text fixtures; no autoloader/application/database.
 final class CheckoutIntegrityFixture
 {
@@ -585,4 +591,46 @@ function checkoutAssetTests(): void
     ]);
     $assert(count(checkoutBrowserIntegrityCriticalFiles()) === 71);
     echo json_encode(['assetAssertions' => $assertions, 'passed' => true, 'httpOrDatabase' => false], JSON_THROW_ON_ERROR)."\n";
+}
+
+/** Static harness contract checks only: no autoloader, application, database, service, child process, or browser. */
+function checkoutContractTests(): void
+{
+    $source = file_get_contents(__DIR__.'/checkout-session.browser.mjs');
+    if (! is_string($source)) {
+        throw new RuntimeException('Browser harness source unavailable.');
+    }
+
+    $required = [
+        "contractVersion: 'checkout-summary-v2'",
+        'script#checkout-summary-v2',
+        "['payer', 'state', 'amountIdr', 'amountSource', 'consultationRequested', 'actionAvailable', 'action'",
+        'summary.payment.actionAvailable === (summary.payment.action !== null)',
+        "action.path === '/checkout/payment'",
+        "action.currency === 'IDR'",
+        "types.includes('dass21') && types.some((type) => type !== 'dass21')",
+        "['accepted', 'required'].includes(consent.state)",
+        "'dass-not-applicable'",
+        "'dass-only-package'",
+        'summary.payment.actionAvailable === false && summary.payment.action === null',
+        'paymentPosts === 0',
+        'PRIVATE_OTHER_PROFILE|PRIVATE_GATEWAY|PRIVATE_INVOICE',
+        "page.keyboard.press('Tab')",
+    ];
+    foreach ($required as $needle) {
+        if (! str_contains($source, $needle)) {
+            throw new RuntimeException('Browser harness contract marker missing.');
+        }
+    }
+    if (str_contains($source, 'checkout-summary-v1')) {
+        throw new RuntimeException('Stale summary-v1 browser contract remains.');
+    }
+
+    echo json_encode([
+        'contractAssertions' => count($required) + 1,
+        'passed' => true,
+        'browserStarted' => false,
+        'serviceStarted' => false,
+        'childProcessStarted' => false,
+    ], JSON_THROW_ON_ERROR)."\n";
 }

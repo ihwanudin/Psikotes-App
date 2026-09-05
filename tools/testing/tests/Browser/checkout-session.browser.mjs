@@ -23,6 +23,7 @@ async (page) => {
     const historyObservations = []
     let checkoutDocumentResponses = 0
     let exchangePosts = 0
+    let paymentPosts = 0
     const listenerTasks = new Set()
     const observe = (work) => {
         const task = work().catch(() => violations.push('browser observation failed'))
@@ -95,6 +96,9 @@ async (page) => {
                 if (url.search !== '') {
                     violations.push('exchange URL contained a query')
                 }
+            }
+            if (url.origin === appOrigin && url.pathname === '/checkout/payment' && request.method() === 'POST') {
+                paymentPosts++
             }
         }))
         context.on('response', (response) => observe(async () => {
@@ -200,8 +204,29 @@ async (page) => {
             'profile', 'identityMessage', 'payment', 'access', 'consents'], 'summary')
         exact(summary.access, ['state', 'tests', 'startAvailable', 'message'], 'access')
         exact(summary.consents, ['psychotest', 'dass', 'legalReviewPending'], 'consents')
-        exact(summary.payment, ['payer', 'state', 'amountIdr', 'amountSource', 'consultationRequested', 'actionAvailable',
+        exact(summary.payment, ['payer', 'state', 'amountIdr', 'amountSource', 'consultationRequested', 'actionAvailable', 'action',
             ...(summary.payment.payer === 'organization' ? ['organizationName'] : [])], 'payment')
+        const safeAmount = (value) => Number.isSafeInteger(value) && value >= 0
+        const validateChoice = (choice) => {
+            exact(choice, ['consultationRequested', 'baseAmountIdr', 'consultationAmountIdr', 'amountIdr'], 'payment choice')
+            assert(typeof choice.consultationRequested === 'boolean' && safeAmount(choice.baseAmountIdr)
+                && safeAmount(choice.consultationAmountIdr) && safeAmount(choice.amountIdr)
+                && choice.baseAmountIdr <= Number.MAX_SAFE_INTEGER - choice.consultationAmountIdr
+                && choice.amountIdr === choice.baseAmountIdr + choice.consultationAmountIdr
+                && (choice.consultationRequested ? choice.consultationAmountIdr > 0 : choice.consultationAmountIdr === 0),
+            'Payment choice differs')
+        }
+        const validateAction = (action) => {
+            exact(action, ['path', 'mode', 'currency', 'choices'], 'payment action')
+            assert(action.path === '/checkout/payment' && ['select', 'continue'].includes(action.mode)
+                && action.currency === 'IDR' && Array.isArray(action.choices)
+                && action.choices.length >= 1 && action.choices.length <= 2
+                && (action.mode !== 'continue' || action.choices.length === 1), 'Payment action differs')
+            action.choices.forEach(validateChoice)
+            const flags = action.choices.map((choice) => choice.consultationRequested)
+            assert(new Set(flags).size === flags.length && !(flags[0] === true && flags[1] === false),
+                'Payment choice order differs')
+        }
         for (const key of ['sourceName', 'branchName', 'packageName', 'attemptLabel', 'identityMessage']) {
             assert(text(summary[key]), 'Summary label type differs')
         }
@@ -216,8 +241,30 @@ async (page) => {
             assert(summary.payment.amountSource === 'unavailable' && summary.payment.amountIdr === null
                 && summary.payment.consultationRequested === null, 'Unavailable amount correlation differs')
         } else {
-            assert(summary.payment.amountSource === 'charge_snapshot' && Number.isSafeInteger(summary.payment.amountIdr)
-                && summary.payment.amountIdr >= 0 && typeof summary.payment.consultationRequested === 'boolean', 'Snapshot amount correlation differs')
+            assert(summary.payment.amountSource === 'charge_snapshot' && safeAmount(summary.payment.amountIdr)
+                && typeof summary.payment.consultationRequested === 'boolean', 'Snapshot amount correlation differs')
+        }
+        assert(summary.payment.actionAvailable === (summary.payment.action !== null), 'Payment capability correlation differs')
+        if (summary.payment.actionAvailable) {
+            validateAction(summary.payment.action)
+            const action = summary.payment.action
+            if (summary.payment.payer === 'self' && action.mode === 'select') {
+                assert(summary.payment.state === 'unpaid' && summary.payment.amountSource === 'unavailable',
+                    'Self selection capability differs')
+            } else if (summary.payment.payer === 'self' && action.mode === 'continue') {
+                const choice = action.choices[0]
+                assert(summary.payment.state === 'pending' && summary.payment.amountSource === 'charge_snapshot'
+                    && summary.payment.amountIdr === choice.amountIdr
+                    && summary.payment.consultationRequested === choice.consultationRequested,
+                'Self continuation capability differs')
+            } else {
+                const choice = action.choices[0]
+                assert(summary.payment.payer === 'organization' && summary.payment.state === 'unbilled'
+                    && summary.payment.amountSource === 'unavailable' && action.mode === 'select'
+                    && action.choices.length === 1 && choice.consultationRequested === false
+                    && choice.baseAmountIdr === 0 && choice.consultationAmountIdr === 0 && choice.amountIdr === 0,
+                'Organization zero-price capability differs')
+            }
         }
         assert(Array.isArray(summary.profile) && summary.profile.length === 7, 'Profile collection differs')
         const profileKeys = ['fullName', 'birthDate', 'gender', 'educationLevel', 'intendedField', 'email', 'phone']
@@ -230,6 +277,8 @@ async (page) => {
         assert(Array.isArray(summary.access.tests) && summary.access.tests.length >= 1 && summary.access.tests.length <= 5, 'Test collection differs')
         const types = summary.access.tests.map((test) => test.testType)
         assert(new Set(types).size === types.length && JSON.stringify([...types].sort()) === JSON.stringify(types), 'Test canonical order differs')
+        assert(types.includes('dass21') && types.some((type) => type !== 'dass21'),
+            'Mandatory DASS-21 plus psychotest composition missing')
         for (const test of summary.access.tests) {
             exact(test, ['testType', 'state'], 'test')
             assert(['dass21', 'ist', 'kraepelin', 'papi', 'rmib'].includes(test.testType)
@@ -243,8 +292,7 @@ async (page) => {
             const consent = summary.consents[key]
             exact(consent, consent.state === 'accepted' ? ['state', 'version']
                 : consent.state === 'required' ? ['state', 'document'] : ['state'], 'consent')
-            assert((key === 'psychotest' ? ['accepted', 'required'] : ['accepted', 'required', 'not_applicable']).includes(consent.state), 'Consent state differs')
-            if (key === 'dass') assert((consent.state !== 'not_applicable') === types.includes('dass21'), 'DASS applicability differs')
+            assert(['accepted', 'required'].includes(consent.state), 'Consent state differs')
             if (consent.state === 'accepted') assert(text(consent.version), 'Accepted version differs')
             if (consent.state === 'required') {
                 exact(consent.document, ['version', 'title', 'text'], 'consent document')
@@ -254,8 +302,8 @@ async (page) => {
         assert(typeof summary.consents.legalReviewPending === 'boolean', 'Legal state type differs')
         const encoded = JSON.stringify(summary)
         assert(!/och1_|ocs1_|ocsrf1_|PRIVATE_OTHER_PROFILE|PRIVATE_GATEWAY|PRIVATE_INVOICE/.test(encoded), 'Summary JSON leaks forbidden data')
-        assert(summary.contractVersion === 'checkout-summary-v1' && summary.sourceName === 'Integrasi seleksi', 'Summary version/source mismatch')
-        assert(summary.payment.actionAvailable === false && summary.access.startAvailable === false, 'Summary invented an action')
+        assert(summary.contractVersion === 'checkout-summary-v2' && summary.sourceName === 'Integrasi seleksi', 'Summary version/source mismatch')
+        assert(summary.access.startAvailable === false, 'Summary invented assessment start authority')
         assert(Array.isArray(summary.profile) && summary.profile.length === 7 && Array.isArray(summary.access.tests), 'Summary collections mismatch')
     }
     const assertCheckoutPage = async (targetPage) => {
@@ -270,10 +318,12 @@ async (page) => {
         assert(await scripts.count() === 1, 'Summary must contain one inert script only')
         const script = scripts.first()
         assert(await script.getAttribute('type') === 'application/json'
-            && await script.getAttribute('id') === 'checkout-summary-v1'
+            && await script.getAttribute('id') === 'checkout-summary-v2'
             && await script.getAttribute('src') === null, 'Summary JSON is not inert')
         const summary = JSON.parse(await script.textContent())
         validateSummary(summary)
+        assert(summary.payment.actionAvailable === false && summary.payment.action === null,
+            'Default-off synthetic fixture exposed payment authority')
         assert(await targetPage.locator('script:not([type="application/json"]), script[src], [onerror], img').count() === 0,
             'Summary created executable content')
         const body = await targetPage.locator('body').innerText()
@@ -300,14 +350,14 @@ async (page) => {
     // Called with null by the no-browser Node probe; no page/context/request API is touched.
     if (page === null) {
         const sample = () => ({
-            contractVersion: 'checkout-summary-v1', sourceName: 'Integrasi seleksi', branchName: 'Synthetic',
+            contractVersion: 'checkout-summary-v2', sourceName: 'Integrasi seleksi', branchName: 'Synthetic',
             packageName: 'Synthetic', packageSource: 'catalog', attemptLabel: 'Assessment Anda',
             profile: ['fullName', 'birthDate', 'gender', 'educationLevel', 'intendedField', 'email', 'phone']
                 .map((key) => ({ key, label: key, state: 'missing', required: key !== 'email' })),
             identityMessage: 'Kelengkapan profil tidak menggantikan verifikasi identitas.',
-            payment: { payer: 'unselected', state: 'unselected', amountIdr: null, amountSource: 'unavailable', consultationRequested: null, actionAvailable: false },
-            access: { state: 'locked', tests: [{ testType: 'ist', state: 'locked' }], startAvailable: false, message: 'Akses tes belum siap.' },
-            consents: { psychotest: { state: 'accepted', version: 'synthetic-v1' }, dass: { state: 'not_applicable' }, legalReviewPending: true },
+            payment: { payer: 'unselected', state: 'unselected', amountIdr: null, amountSource: 'unavailable', consultationRequested: null, actionAvailable: false, action: null },
+            access: { state: 'locked', tests: [{ testType: 'dass21', state: 'locked' }, { testType: 'ist', state: 'locked' }], startAvailable: false, message: 'Akses tes belum siap.' },
+            consents: { psychotest: { state: 'accepted', version: 'synthetic-v1' }, dass: { state: 'accepted', version: 'synthetic-v1' }, legalReviewPending: true },
         })
         const snapshot = (s, amount = 100) => {
             s.packageSource = 'charge_snapshot'
@@ -317,11 +367,29 @@ async (page) => {
             s.payment.amountSource = 'charge_snapshot'
             s.payment.consultationRequested = false
         }
+        const selfSelectPayment = () => ({ payer: 'self', state: 'unpaid', amountIdr: null, amountSource: 'unavailable',
+            consultationRequested: null, actionAvailable: true, action: { path: '/checkout/payment', mode: 'select', currency: 'IDR', choices: [
+                { consultationRequested: false, baseAmountIdr: 99000, consultationAmountIdr: 0, amountIdr: 99000 },
+                { consultationRequested: true, baseAmountIdr: 99000, consultationAmountIdr: 50000, amountIdr: 149000 },
+            ] } })
+        const selfContinuePayment = () => ({ payer: 'self', state: 'pending', amountIdr: 149000, amountSource: 'charge_snapshot',
+            consultationRequested: true, actionAvailable: true, action: { path: '/checkout/payment', mode: 'continue', currency: 'IDR', choices: [
+                { consultationRequested: true, baseAmountIdr: 99000, consultationAmountIdr: 50000, amountIdr: 149000 },
+            ] } })
+        const organizationZeroPayment = () => ({ payer: 'organization', state: 'unbilled', amountIdr: null, amountSource: 'unavailable',
+            consultationRequested: null, actionAvailable: true, action: { path: '/checkout/payment', mode: 'select', currency: 'IDR', choices: [
+                { consultationRequested: false, baseAmountIdr: 0, consultationAmountIdr: 0, amountIdr: 0 },
+            ] }, organizationName: 'Synthetic' })
+        const terminalOrRecoveryActionCases = ['recovery_required', 'expired', 'rejected', 'paid', 'free']
+            .flatMap((state) => [
+                [`self-select-${state}`, (s) => { s.payment = selfSelectPayment(); s.payment.state = state }],
+                [`self-continue-${state}`, (s) => { s.packageSource = 'charge_snapshot'; s.payment = selfContinuePayment(); s.payment.state = state }],
+            ])
         const malformed = [
             ['unknown-test', (s) => { s.access.tests[0].testType = 'unknown' }],
             ['empty-tests', (s) => { s.access.tests = [] }],
             ['duplicate-tests', (s) => { s.access.tests.push({ ...s.access.tests[0] }) }],
-            ['unsorted-tests', (s) => { s.access.tests.push({ testType: 'dass21', state: 'locked' }); s.consents.dass = { state: 'accepted', version: 'v1' } }],
+            ['unsorted-tests', (s) => { s.access.tests.unshift({ testType: 'ist', state: 'locked' }) }],
             ['unknown-access', (s) => { s.access.state = 'unknown' }],
             ['access-count', (s) => { s.access.state = 'ready' }],
             ['unknown-payer', (s) => { s.payment.payer = 'other' }],
@@ -339,7 +407,20 @@ async (page) => {
             ['psychotest-not-applicable', (s) => { s.consents.psychotest = { state: 'not_applicable' } }],
             ['accepted-version-type', (s) => { s.consents.psychotest.version = 1 }],
             ['accepted-version-empty', (s) => { s.consents.psychotest.version = '' }],
-            ['dass-applicability', (s) => { s.consents.dass = { state: 'accepted', version: 'v1' } }],
+            ['dass-not-applicable', (s) => { s.consents.dass = { state: 'not_applicable' } }],
+            ['mandatory-dass-missing', (s) => { s.access.tests = [{ testType: 'ist', state: 'locked' }] }],
+            ['dass-only-package', (s) => { s.access.tests = [{ testType: 'dass21', state: 'locked' }] }],
+            ['action-missing', (s) => { delete s.payment.action }],
+            ['action-capability-mismatch', (s) => { s.payment.actionAvailable = true }],
+            ['action-path', (s) => { s.payment = selfSelectPayment(); s.payment.action.path = '/checkout/logout' }],
+            ['action-currency', (s) => { s.payment = selfSelectPayment(); s.payment.action.currency = 'USD' }],
+            ['action-choice-arithmetic', (s) => { s.payment = selfSelectPayment(); s.payment.action.choices[1].amountIdr = 1 }],
+            ['action-choice-order', (s) => { s.payment = selfSelectPayment(); s.payment.action.choices.reverse() }],
+            ['action-continue-snapshot', (s) => { s.packageSource = 'charge_snapshot'; s.payment = selfContinuePayment(); s.payment.amountIdr = 99000 }],
+            ['action-select-snapshot', (s) => { s.packageSource = 'charge_snapshot'; s.payment = selfSelectPayment(); s.payment.amountSource = 'charge_snapshot'; s.payment.amountIdr = 99000; s.payment.consultationRequested = false }],
+            ['organization-zero-snapshot', (s) => { s.packageSource = 'charge_snapshot'; s.payment = organizationZeroPayment(); s.payment.amountSource = 'charge_snapshot'; s.payment.amountIdr = 0; s.payment.consultationRequested = false }],
+            ['organization-positive-snapshot', (s) => { s.packageSource = 'charge_snapshot'; s.payment = organizationZeroPayment(); s.payment.amountSource = 'charge_snapshot'; s.payment.amountIdr = 100; s.payment.consultationRequested = false }],
+            ...terminalOrRecoveryActionCases,
             ['required-profile', (s) => { s.profile[0].required = false }],
             ['optional-email', (s) => { s.profile[5].required = true }],
             ['label-type', (s) => { s.branchName = 7 }],
@@ -378,6 +459,19 @@ async (page) => {
             validateSummary(value)
             positiveProbes++
         }
+        const selfSelect = sample()
+        selfSelect.payment = selfSelectPayment()
+        validateSummary(selfSelect)
+        positiveProbes++
+        const selfContinue = structuredClone(selfSelect)
+        selfContinue.packageSource = 'charge_snapshot'
+        selfContinue.payment = selfContinuePayment()
+        validateSummary(selfContinue)
+        positiveProbes++
+        const organizationZero = sample()
+        organizationZero.payment = organizationZeroPayment()
+        validateSummary(organizationZero)
+        positiveProbes++
         const accepted = []
         for (const [name, mutate] of malformed) {
             const candidate = sample()
@@ -461,8 +555,8 @@ async (page) => {
     await submit(switchTab, sources[1], await issue('same-person'))
     const switched = await assertCheckoutPage(switchTab)
     assert(switched.packageName === 'Package same-person', 'Shared cookie did not select the newly exchanged attempt')
-    assert((await page.locator('script#checkout-summary-v1').count()) === 1
-        && (await page.locator('script#checkout-summary-v1').textContent()).includes(staleName), 'Already delivered DOM was unexpectedly rewritten')
+    assert((await page.locator('script#checkout-summary-v2').count()) === 1
+        && (await page.locator('script#checkout-summary-v2').textContent()).includes(staleName), 'Already delivered DOM was unexpectedly rewritten')
     const staleResponse = await mutation(page, { 'Content-Type': 'application/x-www-form-urlencoded' }, `_checkout_csrf=${staleCsrf}`)
     assert(staleResponse.status() === 419, 'Stale-tab CSRF mutated the new shared attempt')
     await page.reload()
@@ -490,8 +584,8 @@ async (page) => {
     const secondTab = await page.context().newPage()
     await secondTab.goto(`${appOrigin}/checkout`)
     await assertCheckoutPage(secondTab)
-    const firstSummary = JSON.parse(await page.locator('script#checkout-summary-v1').textContent())
-    const secondSummary = JSON.parse(await secondTab.locator('script#checkout-summary-v1').textContent())
+    const firstSummary = JSON.parse(await page.locator('script#checkout-summary-v2').textContent())
+    const secondSummary = JSON.parse(await secondTab.locator('script#checkout-summary-v2').textContent())
     assert(JSON.stringify(firstSummary) === JSON.stringify(secondSummary), 'Tabs did not share the same authorized summary')
     await secondTab.close()
     for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 }, { width: 320, height: 720 }]) {
@@ -533,10 +627,10 @@ async (page) => {
     assertSafeLocation(page)
     await drainObservations()
     historyObservations.push({ phase: 'after-logout-back', documentResponseObserved: checkoutDocumentResponses > documentsBefore,
-        summaryDOMVisible: await page.locator('script#checkout-summary-v1').count() === 1 })
+        summaryDOMVisible: await page.locator('script#checkout-summary-v2').count() === 1 })
     await page.goto(`${appOrigin}/checkout`)
     await page.waitForURL(`${appOrigin}/checkout/unavailable`)
-    assert(await page.locator('script#checkout-summary-v1').count() === 0, 'Logged-out server read returned summary')
+    assert(await page.locator('script#checkout-summary-v2').count() === 0, 'Logged-out server read returned summary')
 
     // Natural expiry and persisted scope revocation clear both credentials.
     const expiryToken = await issue('expiry')
@@ -607,7 +701,7 @@ async (page) => {
     assertSafeLocation(page)
     await drainObservations()
     historyObservations.push({ phase: 'after-recovery-back', documentResponseObserved: checkoutDocumentResponses > documentsBefore,
-        summaryDOMVisible: await page.locator('script#checkout-summary-v1').count() === 1 })
+        summaryDOMVisible: await page.locator('script#checkout-summary-v2').count() === 1 })
     await page.goto(`${appOrigin}/checkout`)
     await assertCheckoutPage(page)
 
@@ -738,6 +832,7 @@ async (page) => {
     await drainObservations()
     assert(exchangePosts === 11, 'Browser did not exercise all canonical exchanges')
     assert(hostileForms === 6, 'Browser did not complete the hostile native forms')
+    assert(paymentPosts === 0, 'Default-off synthetic fixture attempted payment/provider transport')
     assert(violations.length === 0, `Browser boundary violations: ${JSON.stringify(violations)}`)
     assert(consoleMessages.length === 0, `Browser console was not clean: ${JSON.stringify(consoleMessages)}`)
     assert(expectedHttpConsole.every((status) => rejectedHttpStatuses.has(status)), 'Unexplained HTTP console error')
@@ -749,7 +844,7 @@ async (page) => {
             'two controlled cross-site origins and exact body-only exchange',
             'real Laravel Lax login cookie omitted on POST and authority preserved',
             'exact host-only Secure HttpOnly Lax checkout cookies and private headers',
-            'exact inert checkout-summary-v1, escaped DOM and CSP without executable application script',
+            'exact inert checkout-summary-v2, mandatory DASS-21, escaped DOM and CSP without executable application script',
             'own frozen amount and partial access without parent/peer/invoice disclosure',
             'fixation/replay/history/refresh/shared-tab stale-CSRF/recovery fenced',
             'CSRF projection, invalid channels, progressive and no-JS logout',
