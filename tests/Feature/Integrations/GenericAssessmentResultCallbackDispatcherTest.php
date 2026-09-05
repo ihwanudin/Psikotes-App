@@ -101,7 +101,9 @@ final class GenericAssessmentResultCallbackDispatcherTest extends TestCase
     {
         $statuses = [200, 429, 503, 422, 408];
         Http::fake(static function () use (&$statuses) {
-            return Http::response([], (int) array_shift($statuses));
+            $status = (int) array_shift($statuses);
+
+            return Http::response($status === 200 ? ['data' => ['status' => 'REPLAYED']] : [], $status);
         });
         foreach ([
             200 => ['ACKNOWLEDGED', null],
@@ -124,6 +126,60 @@ final class GenericAssessmentResultCallbackDispatcherTest extends TestCase
                 'outbox_id' => $outboxId, 'outcome' => $expectedOutcome, 'reason_code' => $expectedReason,
             ]);
         }
+    }
+
+    public function test_only_the_exact_bounded_json_acknowledgement_contract_is_acknowledged(): void
+    {
+        $responses = [
+            Http::response(['data' => ['status' => 'REPLAYED']], 200, ['Content-Type' => 'application/json; charset=UTF-8']),
+            Http::response(['data' => ['status' => 'ACCEPTED']], 200),
+            Http::response(['data' => ['status' => 'REPLAYED']], 202),
+            Http::response(['data' => ['status' => 'ACCEPTED'], 'extra' => true], 202),
+            Http::response(['data' => ['status' => 'ACCEPTED', 'extra' => true]], 202),
+            Http::response('{"data":{"status":"ACCEPTED"}}', 202, ['Content-Type' => 'text/plain']),
+            Http::response('{not-json', 202, ['Content-Type' => 'application/json']),
+            Http::response(str_repeat(' ', 4097), 202, ['Content-Type' => 'application/json']),
+        ];
+        Http::fake(static function () use (&$responses) {
+            return array_shift($responses);
+        });
+
+        foreach ([
+            'ACKNOWLEDGED',
+            'UNKNOWN',
+            'UNKNOWN',
+            'UNKNOWN',
+            'UNKNOWN',
+            'UNKNOWN',
+            'UNKNOWN',
+            'UNKNOWN',
+        ] as $index => $expectedOutcome) {
+            [, $source, $outboxId] = $this->outbox();
+            $result = app(GenericAssessmentResultCallbackDispatcher::class)->dispatchExact(
+                $outboxId,
+                $source->id,
+                1,
+                $source->result_checksum,
+                str_repeat('ack-contract-'.$index.'-', 3),
+            );
+
+            $this->assertSame($expectedOutcome, $result['outcome'], 'ACK response case '.$index.' was misclassified.');
+            $this->assertDatabaseHas('generic_assessment_result_dispatch_attempts', [
+                'outbox_id' => $outboxId,
+                'outcome' => $expectedOutcome,
+                'reason_code' => $expectedOutcome === 'UNKNOWN' ? 'OUTCOME_UNCERTAIN' : null,
+            ]);
+        }
+
+        $retry = app(GenericAssessmentResultCallbackDispatcher::class)->dispatchExact(
+            $outboxId,
+            $source->id,
+            1,
+            $source->result_checksum,
+            str_repeat('malformed-ack-retry-', 2),
+        );
+        $this->assertSame('SKIPPED_TERMINAL', $retry['action']);
+        Http::assertSentCount(8);
     }
 
     public function test_connection_ambiguity_is_unknown_terminal_and_is_not_automatically_resent(): void

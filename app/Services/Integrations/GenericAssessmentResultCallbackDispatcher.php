@@ -9,8 +9,10 @@ use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use JsonException;
 use LogicException;
 
 final readonly class GenericAssessmentResultCallbackDispatcher
@@ -77,7 +79,7 @@ final readonly class GenericAssessmentResultCallbackDispatcher
                 ->timeout($timeout)
                 ->withBody($body, 'application/json')
                 ->post($url);
-            [$outcome, $reason] = $this->classify($response->status());
+            [$outcome, $reason] = $this->classify($response);
         } catch (ConnectionException) {
             [$outcome, $reason] = ['UNKNOWN', 'OUTCOME_UNCERTAIN'];
         }
@@ -213,14 +215,43 @@ final readonly class GenericAssessmentResultCallbackDispatcher
     }
 
     /** @return array{string,?string} */
-    private function classify(int $status): array
+    private function classify(Response $response): array
     {
+        $status = $response->status();
+
         return match (true) {
-            in_array($status, [200, 202], true) => ['ACKNOWLEDGED', null],
+            in_array($status, [200, 202], true) => $this->classifyAcknowledgement($response),
             $status === 408 => ['UNKNOWN', 'OUTCOME_UNCERTAIN'],
             $status === 429 => ['RETRYABLE', 'RATE_LIMITED'],
             $status >= 500 && $status <= 599 => ['RETRYABLE', 'TRANSIENT_UNAVAILABLE'],
             default => ['PERMANENT', 'REMOTE_REJECTED'],
         };
+    }
+
+    /** @return array{string,?string} */
+    private function classifyAcknowledgement(Response $response): array
+    {
+        $contentType = strtolower(trim(explode(';', $response->header('Content-Type'), 2)[0]));
+        $body = $response->body();
+        if ($contentType !== 'application/json' || $body === '' || strlen($body) > 4096) {
+            return ['UNKNOWN', 'OUTCOME_UNCERTAIN'];
+        }
+
+        try {
+            $decoded = json_decode($body, true, 4, JSON_THROW_ON_ERROR);
+        } catch (JsonException) {
+            return ['UNKNOWN', 'OUTCOME_UNCERTAIN'];
+        }
+
+        $expectedStatus = $response->status() === 202 ? 'ACCEPTED' : 'REPLAYED';
+        if (! is_array($decoded)
+            || array_keys($decoded) !== ['data']
+            || ! is_array($decoded['data'])
+            || array_keys($decoded['data']) !== ['status']
+            || $decoded['data']['status'] !== $expectedStatus) {
+            return ['UNKNOWN', 'OUTCOME_UNCERTAIN'];
+        }
+
+        return ['ACKNOWLEDGED', null];
     }
 }
