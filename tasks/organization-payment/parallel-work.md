@@ -2442,3 +2442,17 @@ file**, dan diff-check lulus. Candidate/browser/service/DB/env/network/deploy
 tidak dijalankan. ACL, single-writer, directory replacement, lifecycle identity,
 dan final external path-open TOCTOU tetap blocker P17c; P17c/P18 serta semua
 checkbox tetap terbuka dan seluruh gate/payment tetap default OFF.
+
+### Checkpoint source identity dan lifecycle façade — accepted `30c78ee`, `bfda8c4`
+
+Builder mem-pin source root/ancestor selama inventory, descriptor open, hash,
+copy, dan final config publication; clone/swap/reparse gagal dengan kandidat
+incomplete. Cleanup descriptor mempertahankan error/interruption utama sambil
+tetap mencoba seluruh close. Façade coordinator import-only mewajibkan assembly
+dan binding sebelum delegasi fresh/recovery ke supervisor module yang sama.
+
+Root lulus **42/42 tes**, AST **4 file**, dan diff-check. Candidate-global lease,
+identity lintas-crash, ACL Windows, final namespace/path-open TOCTOU, serta runtime
+browser/OS tetap residual. Tidak ada candidate/lifecycle nyata/browser/service/
+DB/env/network/deploy; P17c/P18 dan checkbox tetap terbuka, seluruh gate/payment
+tetap default OFF.

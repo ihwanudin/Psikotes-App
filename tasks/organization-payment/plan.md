@@ -536,3 +536,17 @@ Ini tetap preparation code-only. ACL/single-writer, replacement direktori,
 lifecycle identity OS, dan final external path-open TOCTOU belum ditutup. Tidak
 ada candidate/browser/service/DB/env/network/deploy atau aktivasi; P17c/P18
 tetap terbuka dan seluruh gate/payment tetap default OFF.
+
+### Checkpoint source identity dan façade lifecycle
+
+Commit `30c78ee` menahan identity source root dan seluruh ancestor selama fase
+build, termasuk inventory, descriptor open, hash, copy, dan batas publikasi
+config. Commit `bfda8c4` menambahkan façade import-only yang mengharuskan
+coordinator assembly/binding sebelum fresh supervise atau recovery. Cleanup
+descriptor tidak menutupi `KeyboardInterrupt`/`SystemExit`. Bukti root gabungan:
+**42/42 tes**, AST **4 file**, dan diff-check lulus.
+
+Checkpoint ini tidak menutup candidate-global lifecycle lease, Windows ACL,
+identity lintas-crash, final rename/swap namespace race, atau path yang dibuka
+ulang oleh proses eksternal. Tidak ada runtime/deploy/aktivasi; P17c/P18 tetap
+terbuka dan seluruh gate/payment tetap default OFF.

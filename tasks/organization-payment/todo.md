@@ -834,3 +834,16 @@ checkbox P17c/P18 tidak berubah dan seluruh gate tetap default OFF.
 
 Tidak ada candidate/browser/service/DB/env/network/deploy atau aktivasi;
 checkbox P17c/P18 tetap terbuka dan seluruh gate/payment tetap default OFF.
+
+### Bukti source identity/façade accepted — checklist tetap terbuka
+
+- [x] `30c78ee` mem-pin source root/ancestor selama inventory, open/hash/copy,
+  dan sebelum config final; swap/reparse gagal dengan candidate incomplete.
+- [x] Cleanup semua descriptor mempertahankan error atau interruption utama.
+- [x] `bfda8c4` mewajibkan coordinator assembly/binding sebelum delegasi
+  fresh/recovery; root lulus **42/42 tes**, AST **4 file**, dan diff-check.
+- [ ] Candidate-global lifecycle lease, ACL Windows, identity lintas-crash,
+  final namespace/path-open TOCTOU, dan runtime browser masih belum dibuktikan.
+
+Tidak ada candidate/lifecycle nyata/browser/service/DB/env/network/deploy atau
+aktivasi; checkbox P17c/P18 tetap terbuka dan gate/payment tetap default OFF.

@@ -131,6 +131,22 @@ saat CLI eksternal membuka path. Tidak ada candidate, browser, service, DB,
 environment aktif, network, deploy, atau aktivasi; P17c/P18 tetap terbuka dan
 seluruh gate/payment tetap default OFF.
 
+### Source identity dan lifecycle façade — `30c78ee`, `bfda8c4`
+
+Builder kini mem-pin identity source root beserta setiap directory ancestor yang
+dilalui, lalu memvalidasinya sepanjang inventory, open/hash/copy, dan sebelum
+publikasi config final. Clone/swap/reparse gagal tertutup dengan marker
+incomplete; cleanup selalu mencoba semua descriptor tanpa menutupi interruption.
+Coordinator menyediakan façade import-only yang selalu melakukan assembly dan
+binding sebelum mendelegasikan fresh/recovery ke instance supervisor yang sama.
+
+Bukti root gabungan: **42/42 tes** dan AST **4 file**, serta diff-check lulus.
+Ini menutup kontrak code-only fase build/delegasi, bukan race namespace terakhir,
+identity lintas-crash, lifecycle lease, ACL Windows, atau pembukaan ulang path
+oleh PHP/Node/Playwright/CreateProcess. Tidak ada candidate, lifecycle nyata,
+browser, service, DB, env aktif, network, deploy, atau aktivasi; P17c/P18 tetap
+terbuka dan seluruh gate/payment tetap default OFF.
+
 ## Checkpoint P16 consent subset dan privacy audit — 2026-09-06
 
 Commit `918eb93` menambah policy PostgreSQL restrictive yang membuat audit
