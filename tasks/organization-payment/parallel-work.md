@@ -1,5 +1,22 @@
 # Koordinasi task paralel organization-payment
 
+## Default-off checkout routes accepted; P17 prerequisites split — 2026-09-05
+
+Backend `921869e` was reviewed and integrated as root `63558c0`; the route import
+conflict was resolved by preserving newer invitation/export routes. Root added the
+omitted tracked-config defaults as `1e9ea58`: checkout confirmation transport and
+writer are both false, with a 4,096-byte JSON cap. No environment toggle changed.
+Root reran the combined production-route/P14/P15/P16 regression **66/66 tests,
+2,437 assertions**, frontend transport **4/4 tests**, real-Blade **6/6 cases**,
+Pint, PHPStan 0 errors, and diff-check.
+
+The canonical exchange, summary, logout, unavailable, and confirmation routes are
+now registered but return a private 404 while checkout is disabled. Enabled-memory
+tests prove the full synthetic flow without active data or external effects. P16
+browser acceptance remains blocked by the historical host-process ownership issue.
+Parallel work may proceed on a test-only P17a acceptance matrix and the separate
+generic-result PostgreSQL fresh-migration blocker; their files must not overlap.
+
 ## P16 JSON transport accepted; default-off route wiring next — 2026-09-05
 
 Frontend `3477531` was reviewed and integrated as root `c5bf2a4`. Root reran
