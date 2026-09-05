@@ -499,3 +499,19 @@ secara eksplisit hanya berlaku pada state checkout default-OFF.
 Ini evidence statis/pure: tidak ada browser, service/aplikasi, DB, env aktif,
 network, atau candidate; hanya proses tes Python/Node lokal. P17c/P18 dan semua
 gate default-OFF tetap tidak berubah.
+
+### Checkpoint kontrak browser-config strict
+
+Commit `a391612` membatasi browser-config pada schema semantic exact keluaran
+builder: root/key nested exact, offline/service-worker block, isolated/headless,
+executable dan launch args berurutan exact, serta timeout integer exact. JSON
+bounded menolak UTF-8 invalid, duplicate, nonfinite, trailing, tipe salah, dan
+key tambahan. Hash, parse, dan recheck memakai descriptor yang sama; pemeriksaan
+terjadi saat preflight dan segera sebelum browser launch intent. Bukti root:
+supervisor **96/96** dan parity AST **2/2**.
+
+Increment ini bukan bukti terhadap penggantian direktori run/source maupun
+TOCTOU akhir ketika CLI eksternal membuka ulang path. ACL, single-writer, dan
+lifecycle identity tetap blocker P17c. Tidak ada candidate, browser, service,
+DB, env aktif, network, deploy, atau aktivasi. P17c/P18 tetap terbuka dan semua
+gate/payment tetap default OFF.

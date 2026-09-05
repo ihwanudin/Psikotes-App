@@ -2412,3 +2412,19 @@ dan check Node lulus; wording executable-script dibatasi pada state default-OFF.
 Tidak ada browser, service/aplikasi, DB, env aktif, network, atau candidate yang
 dijalankan; hanya proses tes Python/Node lokal. P17c/P18 tetap terbuka dan
 seluruh gate tetap default OFF.
+
+### Checkpoint browser-config strict — accepted `a391612`
+
+Supervisor kini mengikat schema browser-config exact keluaran builder: root dan
+seluruh key nested exact, offline/service-worker block, isolated/headless,
+executable dan launch args berurutan exact, serta timeout integer exact. Parser
+JSON bounded menolak UTF-8 invalid, duplicate, nonfinite, trailing, tipe salah,
+dan key tambahan. Hash, parse, serta recheck membaca descriptor yang sama;
+validasi dilakukan saat preflight dan tepat sebelum browser launch intent.
+Bukti root aman: supervisor **96/96** dan parity AST **2/2**.
+
+Scope ini tidak membuktikan perlindungan penggantian direktori run/source atau
+menutup TOCTOU akhir saat CLI eksternal membuka ulang path. ACL, single-writer,
+dan lifecycle identity tetap blocker P17c. Candidate/browser/service/DB/env/
+network/deploy tidak dijalankan; P17c/P18 dan semua checkbox tetap terbuka,
+payment serta seluruh gate tetap default OFF.

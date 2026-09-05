@@ -96,6 +96,24 @@ Tidak ada browser, service/aplikasi, database, environment aktif, network, atau
 candidate yang dijalankan; hanya proses tes Python/Node lokal. P17c/P18 tetap
 terbuka dan gate tetap default OFF.
 
+### Kontrak browser-config strict — `a391612`
+
+Supervisor sekarang menerima hanya schema browser-config exact yang diterbitkan
+candidate builder: root `browser`, context offline/service-worker block,
+isolasi, launch headless dengan executable dan argumen berurutan exact, serta
+timeout action/navigation integer exact. JSON dibatasi ukurannya dan menolak
+UTF-8 invalid, duplicate key, nonfinite, trailing payload, tipe salah, serta key
+tambahan. Hash, parse, dan pembacaan ulang menggunakan descriptor yang sama
+dengan pemeriksaan identity sebelum/sesudah. Validasi berjalan pada preflight
+dan segera sebelum browser launch intent. Bukti root aman: supervisor **96/96**
+dan parity AST **2/2**.
+
+Evidence ini tidak menutup penggantian direktori run/source maupun TOCTOU akhir
+antara penutupan descriptor dan pembukaan path oleh CLI eksternal. ACL,
+single-writer, dan lifecycle identity tetap blocker P17c. Tidak ada candidate,
+browser, service/aplikasi, database, environment aktif, network, deploy, atau
+aktivasi; P17c/P18 tetap terbuka dan seluruh gate tetap default OFF.
+
 ## Checkpoint P16 consent subset dan privacy audit — 2026-09-06
 
 Commit `918eb93` menambah policy PostgreSQL restrictive yang membuat audit

@@ -802,3 +802,18 @@ checkout default-OFF.
 Tidak ada browser, service/aplikasi, DB, env aktif, network, atau candidate;
 hanya proses tes Python/Node lokal. P17c/P18 tidak dicentang dan semua gate
 tetap default OFF.
+
+### Bukti browser-config strict accepted — checklist tetap terbuka
+
+`a391612` menerima schema browser-config exact dari candidate builder, termasuk
+offline/service-worker block, isolated/headless, executable dan launch args
+berurutan exact, serta timeout integer exact. JSON bounded menolak UTF-8 invalid,
+duplicate, nonfinite, trailing, tipe salah, dan key tambahan. Hash, parse, serta
+recheck menggunakan descriptor yang sama; validasi dilakukan pada preflight dan
+segera sebelum browser launch intent. Root lulus supervisor **96/96** dan parity
+AST **2/2**.
+
+Penggantian direktori run/source dan TOCTOU akhir pembukaan path oleh CLI
+eksternal belum ditutup. ACL, single-writer, serta lifecycle identity tetap gate
+P17c. Tidak ada candidate/browser/service/DB/env/network/deploy atau aktivasi;
+checkbox P17c/P18 tidak berubah dan seluruh gate tetap default OFF.
