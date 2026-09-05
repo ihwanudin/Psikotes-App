@@ -22,10 +22,11 @@ Jangan menyalin secret ke dokumentasi atau menampilkan seluruh Compose config.
 Session tetap Redis, cookie host-only, HttpOnly, dan SameSite=Lax. Cookie XSRF
 memang dapat dibaca JavaScript; jangan menyamakannya dengan cookie autentikasi.
 
-Terapkan ke app, queue, dan scheduler memakai image yang sudah diverifikasi:
+Terapkan ke app, queue notifikasi/default, queue integrasi, dan scheduler memakai
+image yang sudah diverifikasi:
 
 ```powershell
-docker compose -f compose.yaml -f compose.tunnel.yaml up -d --no-deps --no-build --pull never --wait --wait-timeout 60 app queue scheduler
+docker compose -f compose.yaml -f compose.tunnel.yaml up -d --no-deps --no-build --pull never --wait --wait-timeout 60 app queue integrations-queue scheduler
 ```
 
 Perintah merekreasi layanan terkait dan bisa menyebabkan putus akses singkat.

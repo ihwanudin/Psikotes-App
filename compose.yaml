@@ -35,6 +35,11 @@ x-app-service: &app-service
     SELECTION_INTEGRATION_INTENDED_FIELD: ${SELECTION_INTEGRATION_INTENDED_FIELD:-UMUM}
     SELECTION_INTEGRATION_TEST_TYPES: ${SELECTION_INTEGRATION_TEST_TYPES:-ist}
     SELECTION_INTEGRATION_SIGNATURE_TOLERANCE_SECONDS: ${SELECTION_INTEGRATION_SIGNATURE_TOLERANCE_SECONDS:-300}
+    SELECTION_RESULT_POLL_ENABLED: ${SELECTION_RESULT_POLL_ENABLED:-false}
+    SELECTION_RESULT_CALLBACK_ENABLED: ${SELECTION_RESULT_CALLBACK_ENABLED:-false}
+    SELECTION_RESULT_CALLBACK_BASE_URL: ${SELECTION_RESULT_CALLBACK_BASE_URL:-https://seleksi.beasiswajepang.id}
+    SELECTION_RESULT_CALLBACK_SECRET: ${SELECTION_RESULT_CALLBACK_SECRET:-}
+    SELECTION_RESULT_CALLBACK_TIMEOUT_SECONDS: ${SELECTION_RESULT_CALLBACK_TIMEOUT_SECONDS:-10}
     SELECTION_APP_BASE_URL: ${SELECTION_APP_BASE_URL:-https://seleksi.beasiswajepang.id}
     SELECTION_APP_TIMEOUT_SECONDS: ${SELECTION_APP_TIMEOUT_SECONDS:-10}
     SELECTION_APP_ALLOW_INSECURE_LOCAL_HTTP: ${SELECTION_APP_ALLOW_INSECURE_LOCAL_HTTP:-false}
@@ -87,11 +92,32 @@ services:
       - --max-time=3600
     stop_grace_period: 30s
 
+  integrations-queue:
+    <<: *app-service
+    healthcheck:
+      disable: true
+    networks:
+      - edge
+      - backend
+    command:
+      - php
+      - artisan
+      - queue:work
+      - redis
+      - --queue=integrations
+      - --sleep=3
+      - --tries=5
+      - --timeout=120
+      - --memory=256
+      - --max-time=3600
+    stop_grace_period: 30s
+
   scheduler:
     <<: *app-service
     healthcheck:
       disable: true
     command: ["php", "artisan", "schedule:work"]
+    stop_grace_period: 30s
 
   migrate:
     <<: *app-service

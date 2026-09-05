@@ -24,14 +24,14 @@ final class ComposeTopologyTest extends TestCase
     {
         $services = $this->compose['services'];
 
-        foreach (['app', 'queue', 'scheduler', 'postgres', 'redis'] as $service) {
+        foreach (['app', 'queue', 'integrations-queue', 'scheduler', 'postgres', 'redis'] as $service) {
             $this->assertArrayHasKey($service, $services);
         }
 
-        $this->assertSame($services['app']['image'], $services['queue']['image']);
-        $this->assertSame($services['app']['image'], $services['scheduler']['image']);
-        $this->assertSame($services['app']['build'], $services['queue']['build']);
-        $this->assertSame($services['app']['build'], $services['scheduler']['build']);
+        foreach (['queue', 'integrations-queue', 'scheduler'] as $service) {
+            $this->assertSame($services['app']['image'], $services[$service]['image']);
+            $this->assertSame($services['app']['build'], $services[$service]['build']);
+        }
     }
 
     public function test_image_build_uses_a_non_production_environment_for_artisan_discovery(): void
@@ -82,16 +82,75 @@ final class ComposeTopologyTest extends TestCase
         $this->assertSame('${REDIS_QUEUE_RETRY_AFTER:-150}', $environment['REDIS_QUEUE_RETRY_AFTER']);
     }
 
+    public function test_integration_queue_is_dedicated_bounded_and_has_no_published_port(): void
+    {
+        $worker = $this->compose['services']['integrations-queue'];
+        $command = $worker['command'];
+
+        $this->assertContains('--queue=integrations', $command);
+        $this->assertNotContains('--queue=notifications,default', $command);
+        $this->assertContains('--tries=5', $command);
+        $this->assertContains('--timeout=120', $command);
+        $this->assertContains('--memory=256', $command);
+        $this->assertContains('--max-time=3600', $command);
+        $this->assertSame('unless-stopped', $worker['restart']);
+        $this->assertSame('30s', $worker['stop_grace_period']);
+        $this->assertTrue($worker['healthcheck']['disable']);
+        $this->assertArrayNotHasKey('ports', $worker);
+        $this->assertSame(['edge', 'backend'], $worker['networks']);
+    }
+
+    public function test_scheduler_is_singleton_ready_and_uses_the_shared_redis_mutex(): void
+    {
+        $scheduleWorkers = array_filter(
+            $this->compose['services'],
+            static fn (array $service): bool => in_array('schedule:work', $service['command'] ?? [], true),
+        );
+
+        $this->assertCount(1, $scheduleWorkers);
+        $scheduler = $this->compose['services']['scheduler'];
+        $this->assertSame('unless-stopped', $scheduler['restart']);
+        $this->assertSame('30s', $scheduler['stop_grace_period']);
+        $this->assertTrue($scheduler['healthcheck']['disable']);
+        $this->assertArrayNotHasKey('ports', $scheduler);
+        $this->assertSame('redis', $scheduler['environment']['CACHE_STORE']);
+        $this->assertSame('redis', $scheduler['environment']['QUEUE_CONNECTION']);
+    }
+
+    public function test_generic_result_boundaries_are_forwarded_but_default_to_disabled(): void
+    {
+        foreach (['app', 'queue', 'integrations-queue', 'scheduler'] as $service) {
+            $environment = $this->compose['services'][$service]['environment'];
+
+            $this->assertSame('${SELECTION_RESULT_POLL_ENABLED:-false}', $environment['SELECTION_RESULT_POLL_ENABLED'] ?? null);
+            $this->assertSame('${SELECTION_RESULT_CALLBACK_ENABLED:-false}', $environment['SELECTION_RESULT_CALLBACK_ENABLED'] ?? null);
+            $this->assertSame('${SELECTION_RESULT_CALLBACK_BASE_URL:-https://seleksi.beasiswajepang.id}', $environment['SELECTION_RESULT_CALLBACK_BASE_URL'] ?? null);
+            $this->assertSame('${SELECTION_RESULT_CALLBACK_SECRET:-}', $environment['SELECTION_RESULT_CALLBACK_SECRET'] ?? null);
+            $this->assertSame('${SELECTION_RESULT_CALLBACK_TIMEOUT_SECONDS:-10}', $environment['SELECTION_RESULT_CALLBACK_TIMEOUT_SECONDS'] ?? null);
+        }
+    }
+
+    public function test_local_https_runbook_starts_the_dedicated_integration_worker(): void
+    {
+        $runbook = file_get_contents(dirname(__DIR__, 3).'/docs/LOCAL_HTTPS_RUNBOOK.md');
+
+        $this->assertIsString($runbook);
+        $this->assertStringContainsString(
+            'app queue integrations-queue scheduler',
+            $runbook,
+        );
+    }
+
     public function test_cli_services_disable_the_web_server_healthcheck(): void
     {
-        foreach (['queue', 'scheduler', 'migrate'] as $service) {
+        foreach (['queue', 'integrations-queue', 'scheduler', 'migrate'] as $service) {
             $this->assertTrue($this->compose['services'][$service]['healthcheck']['disable']);
         }
     }
 
     public function test_session_cookie_security_setting_reaches_the_application_containers(): void
     {
-        foreach (['app', 'queue', 'scheduler'] as $service) {
+        foreach (['app', 'queue', 'integrations-queue', 'scheduler'] as $service) {
             $this->assertSame(
                 '${SESSION_SECURE_COOKIE:-true}',
                 $this->compose['services'][$service]['environment']['SESSION_SECURE_COOKIE'],

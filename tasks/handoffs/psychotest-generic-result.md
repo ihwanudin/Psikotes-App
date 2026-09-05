@@ -125,3 +125,32 @@ Job `DispatchGenericAssessmentResultCallback` membawa hanya schedule ULID, mener
 Audit orchestration hanya memuat result version/checksum, jumlah broker attempt, serta reason/action/outcome allowlisted. Tidak ada IQ, raw assessment attempt, nama/PII, body, URL, token, secret, atau exception. Audit claim/replay/skip/outcome/exhaustion transport tetap dimiliki `GenericAssessmentResultDispatch`; orchestration tidak menduplikasikan atau mengubah kebenaran tersebut.
 
 Irisan ini belum memasang scheduler/command/route, tidak mengaktifkan queue produksi, dan seluruh HTTP test memakai fake. Runtime broker Redis, recovery worker yang benar-benar mati, delivery lintas proses, konkurensi serta trigger PostgreSQL, dan alert/manual recovery untuk `BROKER_EXHAUSTED` belum diuji. Selector harus dipanggil oleh entry point terjadwal yang direview pada irisan terpisah; jangan menjalankannya dari request kandidat.
+
+## Irisan kesiapan runtime lokal callback
+
+Compose kini mempunyai worker `integrations-queue` terpisah dari worker
+`notifications,default`. Worker baru hanya mendengarkan queue `integrations`,
+memakai Redis yang sama, timeout 120 detik dengan `retry_after` default 150 detik,
+recycle memori Laravel 256 MiB, maksimum hidup satu jam, restart
+`unless-stopped`, grace period 30 detik, dan tidak menerbitkan port. Jaringan
+`edge` hanya dibutuhkan untuk callback HTTPS keluar; jaringan `backend` tetap
+menjadi jalur privat ke Redis/PostgreSQL. Health check web dinonaktifkan karena
+proses CLI tidak menyediakan HTTP readiness endpoint.
+
+Satu service `scheduler` menjalankan `php artisan schedule:work`, memakai cache
+Redis bersama untuk mutex `onOneServer`/`withoutOverlapping` yang telah
+didefinisikan pada jadwal aplikasi, serta memperoleh grace period 30 detik.
+Konfigurasi Compose meneruskan flag poll dan callback beserta konfigurasi
+callback runtime karena file ini memakai environment map eksplisit, bukan
+`env_file`. Kedua feature flag tetap default `false`; tidak ada credential yang
+ditanam ke image atau nilai secret yang dicatat di repository.
+
+Runbook HTTPS lokal telah menyertakan worker integrasi pada perintah recreate.
+`docker compose config --quiet` lulus menggunakan nilai sintetis tanpa memulai
+container atau mencetak konfigurasi terurai. Test statis mengunci pemisahan
+queue, batas worker, tidak adanya port CLI, satu scheduler, cache Redis, serta
+default-off. Runtime Redis broker, shutdown proses nyata, konsumsi memori,
+egress HTTPS, health operasional berbasis metrics/log, dan multi-host scheduler
+belum diuji. Scoring IQ authoritative tetap belum tersedia, sehingga menyalakan
+worker tidak membuat outbox hasil dengan sendirinya dan flag callback tetap
+harus dipertahankan nonaktif sampai kontrak lintas aplikasi siap.
