@@ -1,5 +1,33 @@
 # Koordinasi task paralel organization-payment
 
+## P16-pay-i and mandatory DASS ingress accepted — 2026-09-05
+
+Root accepted three non-overlapping local increments. `7891bee` makes DASS-21 a
+server-mandatory component of every valid psychotest composition: selection
+operators configure only non-DASS tests and the server adds DASS; checkout,
+generic provisioning, and canonical price snapshots reject missing, duplicate,
+unsupported, or DASS-only composition without mutating historical data. Root
+passed **109 tests / 567 assertions** for the focused ingress matrix.
+
+`a65d882` adds an internal, query-free typed payment-action projector. It keeps
+checkout-summary-v1 and historical payment facts inert, derives ordered IDR
+choices from authoritative price snapshots, hides positive organization billing,
+and permits the exact zero exception only with both current consents. Its focused
+suite passed **4 / 13**; it is not yet serialized to the browser.
+
+`8159a32` wires the fixed private `POST /checkout/payment` command behind both
+literal-false payment switches. The credential-bound dispatcher preserves self
+pending/paid replay by trying the self writer first, falls back to the exact-zero
+writer only after a domain rejection, and exposes only pending+persisted HTTPS URL
+or paid+null. Organization-positive and invalid/recovery paths are generic; no
+`Throwable` is swallowed. Root's final cross-lane run passed **159 tests / 2,673
+assertions**. Pint, PHPStan 0 errors, and diff-check passed. No flag, provider,
+active database, browser, deployment, or external notification was activated.
+
+Remaining P16 work is a versioned summary capability contract, production Blade
+binding, browser proof, and defense-in-depth rejection of legacy DASS-less
+handoff/session state.
+
 ## P16-pay-g/h accepted; persisted URL and HTTP boundary verified — 2026-09-05
 
 Backend `99fbe7c` was integrated as root `188c72e`. The self-payment writer now
