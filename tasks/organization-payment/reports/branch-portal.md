@@ -2,6 +2,35 @@
 
 ## P17a acceptance — checkout route, pembayaran, dan isolasi attempt
 
+### Correction flake — clock aplikasi beku versus clock database nyata
+
+Review root setelah integrasi `cd0cb5b` mereproduksi flake: focused dapat lulus
+1/241, tetapi run gabungan dan pengulangan focused lain meninggalkan attempt
+target PROVISIONED setelah confirmation. Akar terdapat pada fixture test,
+bukan production action. `setUp()` memanggil `freezeTime()` tanpa nilai tetap,
+sedangkan `ConfirmIntegratedCheckout::databaseNow()` sengaja memakai SQLite
+`CURRENT_TIMESTAMP`. Consent disimpan memakai clock database nyata, kemudian
+`AssessmentAccessPrerequisites` mengevaluasinya terhadap `now()` Laravel yang
+masih beku. Jika eksekusi melewati detik awal, consent tampak berada di masa
+depan dan activation canonical benar melakukan no-op.
+
+Correction menghapus freeze clock dari acceptance test; semantics clock
+production tidak diubah. Diagnostic assertion baru membuktikan sebelum
+confirmation bahwa bill target sudah paid, bill item settled, charge snapshot
+berisi DASS-21+IST, nominal positif, dua evidence tepat dan mendahului
+verification `match/pending`, serta verification tidak future. Form harus membawa
+version/hash kedua `ConsentDocument` current. Sesudah confirmation, kedua consent
+harus accepted, version/hash tepat, `consented_at` tidak future, prerequisite
+DASS canonical lulus, dan replay activation tetap kosong karena attempt sudah
+diaktifkan oleh confirmation. Ekspektasi status READY tidak dilonggarkan.
+
+Lima proses PHPUnit terpisah atas hash final masing-masing lulus **1 tes / 277
+assertions**. Run gabungan dalam satu proses bersama
+`CheckoutProductionWiringTest` dan `CollectiveBillLifecycleCompositionTest`
+lulus **11 tes / 1.744 assertions**. Pint, PHP lint, PHPStan level 7 dan
+diff-check lulus. SHA256 test correction:
+`ECCE102ECF114B50404FAD89E20683E59B5C8C4009312E0B4FD4367A5ADE61AA`.
+
 Tanggal 2026-09-05. Increment ini test-only terhadap root immutable
 `de27cd1`; tidak ada perubahan production app, config, route, schema, backend,
 frontend, atau feature default. Route production checkout diaktifkan hanya pada
@@ -51,7 +80,7 @@ dibuktikan pada summary dan confirmation.
 
 ### Bukti dan batas
 
-Test final terfokus lulus **1 tes / 241 assertions**. Regresi terkait dijalankan
+Test awal sebelum correction terfokus lulus **1 tes / 241 assertions**. Regresi terkait dijalankan
 terpisah agar lifecycle database tiap suite tidak saling memengaruhi:
 
 - `CheckoutProvisioningTest`: **76 tes / 452 assertions**;
@@ -59,7 +88,8 @@ terpisah agar lifecycle database tiap suite tidak saling memengaruhi:
 - `CollectiveBillLifecycleCompositionTest`: **5 tes / 1.256 assertions**.
 
 Pint Laravel preset, PHP lint, PHPStan level 7, dan diff-check lulus. SHA256 test
-final `A5EF3DE29E2A2EDFD8DFDAD7A423C01C0B15EBB5BA8FC6C5922913830386E4E3`.
+awal `A5EF3DE29E2A2EDFD8DFDAD7A423C01C0B15EBB5BA8FC6C5922913830386E4E3`;
+hash correction final dicatat di atas.
 Copy test dan worker identik. Copy root berada di
 `C:/Users/ThinkPad/AppData/Local/Temp/oncam-p17-acceptance-12124051dfea40229c0b9f78e9031c7e`;
 hash `composer.lock` copy/root identik

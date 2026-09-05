@@ -31,10 +31,12 @@ use App\Models\TestPackage;
 use App\Registration\ConsentDocument;
 use App\Security\RlsContextRunner;
 use App\Services\Integrations\CheckoutSessionHttpContract;
+use App\Services\ParticipantAuth\AssessmentAccessPrerequisites;
 use App\Services\ParticipantAuth\AssessmentEntitlementGate;
 use App\Services\ParticipantAuth\AssessmentPrincipal;
 use App\Services\ParticipantAuth\Exceptions\EntitlementLocked;
 use App\Services\Payments\FakePaymentProvider;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
@@ -52,7 +54,6 @@ final class CheckoutAcceptanceMatrixTest extends OrganizationPaymentTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->freezeTime();
         config()->set('app.url', 'https://psikotes.oncam.id');
         URL::forceRootUrl('https://psikotes.oncam.id');
         URL::forceScheme('https');
@@ -111,7 +112,7 @@ final class CheckoutAcceptanceMatrixTest extends OrganizationPaymentTestCase
         $this->assertCount(10, array_unique(array_column($attempts, 'participant')));
         $this->assertSame(5, collect($attempts)->where('source', 'SOURCE_ALPHA')->count());
         $this->assertSame(5, collect($attempts)->where('source', 'SOURCE_BETA')->count());
-        $this->assertNull(Participant::findOrFail($attempts[0]['participant'])->full_name);
+        $this->assertNull(Participant::findOrFail($attempts[0]['participant'])->getAttribute('full_name'));
         $this->assertSame('Acceptance Participant 2', Participant::findOrFail($attempts[1]['participant'])->full_name);
 
         $self = $this->provision(
@@ -219,7 +220,13 @@ final class CheckoutAcceptanceMatrixTest extends OrganizationPaymentTestCase
         $this->assertSame('paid', $alphaSummary->viewData('summary')['payment']['state']);
         $this->assertSame('paid', $betaSummary->viewData('summary')['payment']['state']);
         $this->assertSame('preparing', $selfSummary->viewData('summary')['payment']['state']);
-        $this->assertIsArray($alphaSummary->viewData('confirmationForm'));
+        $confirmationForm = $alphaSummary->viewData('confirmationForm');
+        $this->assertIsArray($confirmationForm);
+        foreach (['psychotest', 'dass'] as $type) {
+            $document = ConsentDocument::for($type);
+            $this->assertSame($document->version, $confirmationForm['consents'][$type]['documentVersion']);
+            $this->assertSame($document->hash, $confirmationForm['consents'][$type]['documentHash']);
+        }
 
         $this->clinicalSentinel($attempts[1]['participant']);
         $privateValues = [...array_column($attempts, 'externalCandidate'),
@@ -233,6 +240,10 @@ final class CheckoutAcceptanceMatrixTest extends OrganizationPaymentTestCase
         $this->summary($betaCredentials, '?attempt='.$attempts[0]['attempt'])->assertStatus(303)
             ->assertRedirect('/checkout/unavailable');
 
+        $this->assertSettlementPrerequisites($attempts[0]['attempt'], $collective->id);
+        $this->assertIdentityPrerequisites($attempts[0]['participant']);
+        $this->assertSame(0, DB::table('consent_records')
+            ->where('participant_id', $attempts[0]['participant'])->count());
         $confirmed = $this->confirm($alphaCredentials)->assertOk()->assertExactJson([
             'data' => ['confirmed' => true, 'replayed' => false],
         ]);
@@ -240,6 +251,22 @@ final class CheckoutAcceptanceMatrixTest extends OrganizationPaymentTestCase
         $this->assertDatabaseHas('participants', [
             'id' => $attempts[0]['participant'], 'full_name' => 'Acceptance Completed Profile',
         ]);
+        foreach (['psychotest', 'dass'] as $type) {
+            $document = ConsentDocument::for($type);
+            $consent = DB::table('consent_records')->where('participant_id', $attempts[0]['participant'])
+                ->where('consent_type', $type)->sole();
+            $this->assertSame('accepted', $consent->status);
+            $this->assertSame($document->version, $consent->document_version);
+            $this->assertSame($document->hash, $consent->document_hash);
+            $this->assertNotNull($consent->consented_at);
+            $this->assertLessThanOrEqual(now()->getTimestamp(), CarbonImmutable::parse($consent->consented_at)->getTimestamp());
+        }
+        app(RlsContextRunner::class)->runAsService(function () use ($attempts): void {
+            app(AssessmentAccessPrerequisites::class)->assertSatisfied(
+                Participant::findOrFail($attempts[0]['participant']), 'dass21',
+            );
+            $this->addToAssertionCount(1);
+        });
         $activationReplay = app(RlsContextRunner::class)->runAsService(
             fn (): array => app(ActivateSettledAssessment::class)->execute(
                 new AssessmentPrincipal($attempts[0]['participant'], $organization->id, $attempts[0]['attempt']),
@@ -368,6 +395,44 @@ final class CheckoutAcceptanceMatrixTest extends OrganizationPaymentTestCase
             'participant_id' => $participant, 'matcher' => 'synthetic', 'outcome' => 'match',
             'manual_status' => 'pending', 'checked_at' => now(),
         ]);
+    }
+
+    private function assertSettlementPrerequisites(int $attempt, int $bill): void
+    {
+        $charge = DB::table('assessment_charges')->where('assessment_participant_id', $attempt)->sole();
+        $item = DB::table('assessment_bill_items')->where('charge_id', $charge->id)->sole();
+        $persistedBill = DB::table('assessment_bills')->where('id', $bill)->sole();
+        $snapshot = json_decode((string) $charge->price_snapshot, true, 32, JSON_THROW_ON_ERROR);
+
+        $this->assertSame($bill, (int) $item->bill_id);
+        $this->assertSame('paid', $persistedBill->status);
+        $this->assertNotNull($persistedBill->paid_at);
+        $this->assertNotNull($item->settled_at);
+        $this->assertSame(['dass21', 'ist'], $snapshot['testTypes']);
+        $this->assertGreaterThan(0, (int) $charge->amount);
+    }
+
+    private function assertIdentityPrerequisites(int $participant): void
+    {
+        $evidence = DB::table('identity_evidence')->where('participant_id', $participant)
+            ->whereIn('type', ['identity_document', 'initial_selfie'])->orderBy('id')->get();
+        $verification = DB::table('identity_verifications')->where('participant_id', $participant)->sole();
+
+        $this->assertCount(2, $evidence);
+        $this->assertSame(['identity_document', 'initial_selfie'], $evidence->pluck('type')->all());
+        $this->assertSame('match', $verification->outcome);
+        $this->assertSame('pending', $verification->manual_status);
+        foreach ($evidence as $row) {
+            $this->assertNotNull($row->updated_at);
+            $this->assertLessThanOrEqual(
+                CarbonImmutable::parse($verification->checked_at)->getTimestamp(),
+                CarbonImmutable::parse($row->updated_at)->getTimestamp(),
+            );
+        }
+        $this->assertLessThanOrEqual(
+            now()->getTimestamp(),
+            CarbonImmutable::parse($verification->checked_at)->getTimestamp(),
+        );
     }
 
     private function clinicalSentinel(int $participant): void
