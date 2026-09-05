@@ -55,18 +55,59 @@ class Fake:
     def invalidate(self): self.call("invalid")
 
 
+class AnchorStore:
+    def __init__(self, hook=None):
+        self.latest = None
+        self.hook = hook
+
+    def __call__(self, anchor):
+        if self.hook is not None:
+            self.hook(anchor)
+        self.latest = dict(anchor)
+
+    def load(self):
+        return None if self.latest is None else dict(self.latest)
+
+
+class StaticPublisher:
+    def __init__(self, value=None, error=None):
+        self.value = value
+        self.error = error
+        self.calls = []
+
+    def __call__(self, anchor):
+        self.calls.append(dict(anchor))
+
+    def load(self):
+        if self.error is not None:
+            raise self.error("load failed")
+        return self.value
+
+
 class SupervisorTests(unittest.TestCase):
+    def setUp(self):
+        self.anchor_stores = {}
+
+    def publisher(self, directory, hook=None):
+        previous = self.anchor_stores.get(str(Path(directory)))
+        store = AnchorStore(hook)
+        if previous is not None:
+            store.latest = previous.load()
+        self.anchor_stores[str(Path(directory))] = store
+        return store
+
     def journal_run(self, directory):
         paths = {name: str(Path(directory) / name) for name in
                  ("php", "python", "node", "powershell", "cli", "browser", "ini", "browser_config", "cert", "key")}
         for index, path in enumerate(paths.values(), 1):
             if not Path(path).exists():
                 Path(path).write_bytes(f"synthetic-{index}".encode())
+        store = self.anchor_stores.setdefault(str(Path(directory)), AnchorStore())
         return m.WindowsRun({
             "directory": directory, "manifest": "a" * 64, **paths,
             "tool_hashes": {name: hashlib.sha256(Path(path).read_bytes()).hexdigest()
                             for name, path in paths.items()},
-        }, anchor_publisher=lambda anchor: None)
+        }, anchor_publisher=store)
 
     def rewrite_journal(self, run, mutate):
         path = sorted(run.run.glob(m.JOURNAL_PREFIX + "*.json"))[-1]
@@ -109,6 +150,68 @@ class SupervisorTests(unittest.TestCase):
             self.assertFalse((Path(directory) / "supervisor.json").exists())
             self.assertFalse((Path(directory) / m.JOURNAL).exists())
             self.assertEqual(list(Path(directory).glob(m.JOURNAL_PREFIX + "*.json")), [])
+
+    def test_claim_rejects_noop_stale_malformed_or_failing_publisher_acknowledgement(self):
+        cases = (
+            StaticPublisher(None),
+            StaticPublisher({"generation": 1, "digest": "b" * 64}),
+            StaticPublisher("malformed"),
+            StaticPublisher(error=RuntimeError),
+        )
+        for publisher in cases:
+            with self.subTest(value=publisher.value, error=publisher.error), \
+                    TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+                baseline = self.journal_run(directory)
+                run = m.WindowsRun(baseline.c, anchor_publisher=publisher)
+                run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+                run.session = "checkout-" + "c" * 32
+                with patch.object(m.subprocess, "Popen") as popen:
+                    with self.assertRaisesRegex(m.Refused, "^anchor_publish$"):
+                        run.claim(1)
+                    popen.assert_not_called()
+                self.assertEqual(run.lifecycle_phase, "claiming")
+                self.assertEqual(len(publisher.calls), 1)
+
+    def test_stale_publisher_ack_blocks_command_and_direct_launch_before_popen(self):
+        for operation in ("command", "launch"):
+            with self.subTest(operation=operation), TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+                run = self.journal_run(directory)
+                run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+                run.session = "checkout-" + "c" * 32
+                run.claim(1)
+                run.anchor_publisher = StaticPublisher(run.anchor_publisher.load())
+                with patch.object(m.subprocess, "Popen") as popen:
+                    with self.assertRaisesRegex(m.Refused, "^anchor_publish$"):
+                        if operation == "command":
+                            run._command([run.c["php"], "synthetic"], 1, policy="owned")
+                        else:
+                            run.launch("php", 1)
+                    popen.assert_not_called()
+                self.assertEqual(run._read_journal()["launchIntents"], [{
+                    "role": "command" if operation == "command" else "php",
+                    "executable": run.c["php"],
+                }])
+
+    def test_reopened_publisher_ack_allows_normal_claim_and_owned_command(self):
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            run = self.journal_run(directory)
+            run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            run.session = "checkout-" + "c" * 32
+            run.claim(1)
+
+            class Process:
+                pid = 10
+                returncode = 0
+
+                def poll(self): return 0
+
+            run._identity = lambda pid: {"pid": pid, "started": "110"}
+            run._discover = lambda: {}
+            with patch.object(m.subprocess, "Popen", return_value=Process()) as popen:
+                self.assertEqual(run._command([run.c["php"], "synthetic"], 1, policy="owned"), "")
+                popen.assert_called_once()
+            self.assertEqual(run.anchor_publisher.load(), run.journal_anchor())
+            self.assertEqual(run.launch_intents, [])
 
     def test_journal_persists_exact_lineage_and_rejects_tampering(self):
         with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
@@ -202,6 +305,132 @@ class SupervisorTests(unittest.TestCase):
             with self.assertRaisesRegex(m.Refused, "^recovery_incomplete$"):
                 candidate.recover_ownership(run.session, run.journal_anchor())
 
+    def test_recovery_requires_publisher_before_hydration_or_popen(self):
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            run = self.journal_run(directory)
+            run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            run.session = "checkout-" + "c" * 32
+            run.claim(1)
+            candidate = m.WindowsRun(run.c)
+            with patch.object(m.subprocess, "Popen") as popen:
+                with self.assertRaisesRegex(m.Refused, "^anchor_publisher$"):
+                    candidate.recover_ownership(run.session, run.journal_anchor())
+                popen.assert_not_called()
+            self.assertFalse(candidate.claimed)
+            self.assertFalse(candidate.recovery_hydrated)
+
+    def test_recovery_hydrates_before_census_and_publishes_helper_intent(self):
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            run = self.journal_run(directory)
+            run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            run.session = "checkout-" + "c" * 32
+            run.claim(1)
+            observed = []
+
+            def publish(anchor):
+                reader = self.journal_run(directory)
+                observed.append(reader._read_journal(anchor)["launchIntents"])
+
+            candidate = m.WindowsRun(run.c, anchor_publisher=self.publisher(directory, publish))
+
+            class Process:
+                pid = 10
+                returncode = 0
+
+                def poll(self): return 0
+
+            def popen(*args, **kwargs):
+                kwargs["stdout"].write(b"[]")
+                return Process()
+
+            with patch.object(m.subprocess, "Popen", side_effect=popen):
+                candidate.recover_ownership(run.session, run.journal_anchor())
+            self.assertTrue(candidate.recovery_hydrated)
+            self.assertTrue(candidate.recovery_validated)
+            self.assertEqual(observed[-2:], [
+                [{"role": "helper", "executable": run.c["powershell"]}],
+                [],
+            ])
+
+    def test_recovery_census_interrupt_retains_helper_intent_and_blocks_new_instance(self):
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            run = self.journal_run(directory)
+            run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            run.session = "checkout-" + "c" * 32
+            run.claim(1)
+            published = []
+            store = self.publisher(directory, lambda anchor: published.append(dict(anchor)))
+            candidate = m.WindowsRun(
+                run.c, anchor_publisher=store
+            )
+
+            class Process:
+                pid = 10
+                returncode = 0
+
+                def poll(self): raise KeyboardInterrupt()
+
+            process = Process()
+            with patch.object(m.subprocess, "Popen", return_value=process):
+                with self.assertRaises(KeyboardInterrupt):
+                    candidate.recover_ownership(run.session, run.journal_anchor())
+            self.assertTrue(candidate.recovery_hydrated)
+            self.assertFalse(candidate.recovery_validated)
+            self.assertIn(process, candidate.handles)
+            self.assertEqual(candidate.launch_intents, [
+                {"role": "helper", "executable": run.c["powershell"]},
+            ])
+            self.assertTrue((Path(directory) / "integrity-invalid").is_file())
+            retry = self.journal_run(directory)
+            with patch.object(m.subprocess, "Popen") as popen:
+                with self.assertRaisesRegex(m.Refused, "^recovery_incomplete$"):
+                    retry.recover_ownership(run.session, store.load())
+                popen.assert_not_called()
+
+    def test_recovery_retry_requires_newest_anchor_after_completed_census(self):
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            run = self.journal_run(directory)
+            run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            run.session = "checkout-" + "c" * 32
+            run.claim(1)
+            original_anchor = run.journal_anchor()
+            published = []
+            store = self.publisher(directory, lambda anchor: published.append(dict(anchor)))
+            candidate = m.WindowsRun(
+                run.c, anchor_publisher=store
+            )
+
+            class Process:
+                pid = 10
+                returncode = 0
+
+                def poll(self): return 0
+
+            def active_owner(*args, **kwargs):
+                kwargs["stdout"].write(json.dumps([{
+                    "pid": 7, "parent": 1, "started": "100",
+                    "executable": str(Path(directory) / "owner.exe"),
+                }]).encode())
+                return Process()
+
+            with patch.object(m.subprocess, "Popen", side_effect=active_owner):
+                with self.assertRaisesRegex(m.Refused, "^recovery_owner_active$"):
+                    candidate.recover_ownership(run.session, original_anchor)
+            latest_anchor = store.load()
+            stale = self.journal_run(directory)
+            with patch.object(m.subprocess, "Popen") as popen:
+                with self.assertRaisesRegex(m.Refused, "^journal_anchor$"):
+                    stale.recover_ownership(run.session, original_anchor)
+                popen.assert_not_called()
+
+            retry = m.WindowsRun(run.c, anchor_publisher=store)
+            def clean(*args, **kwargs):
+                kwargs["stdout"].write(b"[]")
+                return Process()
+            with patch.object(m.subprocess, "Popen", side_effect=clean):
+                retry.recover_ownership(run.session, latest_anchor)
+            self.assertTrue(retry.recovery_validated)
+
     def test_every_tracked_popen_persists_intent_before_identity_registration(self):
         with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
             run = self.journal_run(directory)
@@ -218,7 +447,7 @@ class SupervisorTests(unittest.TestCase):
             with patch.object(m.subprocess, "Popen", return_value=Process()), \
                     patch.object(run, "_identity", side_effect=RuntimeError("crash-before-identity")):
                 with self.assertRaisesRegex(RuntimeError, "crash-before-identity"):
-                    run._command([run.c["php"], "synthetic"], 1, track=True, role="command")
+                    run._command([run.c["php"], "synthetic"], 1, policy="owned", role="command")
             self.assertEqual(run._read_journal()["launchIntents"], [
                 {"role": "command", "executable": run.c["php"]},
             ])
@@ -228,15 +457,201 @@ class SupervisorTests(unittest.TestCase):
             with self.assertRaisesRegex(m.Refused, "^recovery_incomplete$"):
                 candidate.recover_ownership(run.session, run.journal_anchor())
 
-    def test_close_cli_is_tracked_while_recursive_snapshot_helper_is_explicitly_untracked(self):
+    def test_close_cli_is_owned_while_ps_routes_by_claim_state(self):
         run = m.WindowsRun({"directory": "synthetic-unused", "node": "node.exe",
                             "cli": "playwright-cli.js", "powershell": "powershell.exe"})
         calls = []
         run._command = lambda args, timeout, **kwargs: calls.append((args, kwargs)) or ""
         run._cli(["close"], 1)
         run._ps("synthetic", timeout=1)
-        self.assertEqual(calls[0][1], {"track": True, "role": "command"})
-        self.assertEqual(calls[1][1], {"track": False})
+        run.claimed = True
+        run._ps("synthetic", timeout=1)
+        self.assertEqual(calls[0][1], {"policy": "owned", "role": "command"})
+        self.assertEqual(calls[1][1], {"policy": "untracked", "role": "helper"})
+        self.assertEqual(calls[2][1], {"policy": "intent_only", "role": "helper"})
+
+    def test_tracking_policy_matrix_refuses_every_invalid_pair_before_intent_or_popen(self):
+        invalid = (
+            (False, "untracked", "command"),
+            (False, "intent_only", "helper"),
+            (False, "intent_only", "command"),
+            (False, "owned", "command"),
+            (False, "owned", "browser_launcher"),
+            (False, "owned", "helper"),
+            (True, "untracked", "helper"),
+            (True, "untracked", "command"),
+            (True, "intent_only", "command"),
+            (True, "intent_only", "browser_launcher"),
+            (True, "owned", "helper"),
+            (True, "owned", "php"),
+            (True, "unknown", "helper"),
+            (True, None, "helper"),
+        )
+        for claimed, policy, role in invalid:
+            with self.subTest(claimed=claimed, policy=policy, role=role):
+                run = m.WindowsRun({"directory": "synthetic-unused"})
+                run.claimed = claimed
+                with patch.object(m.subprocess, "Popen") as popen:
+                    with self.assertRaisesRegex(m.Refused, "^tracking_policy$"):
+                        run._command(["unused"], 1, policy=policy, role=role)
+                    popen.assert_not_called()
+                self.assertEqual(run.launch_intents, [])
+
+    def test_direct_launch_and_public_run_paths_refuse_preclaim_or_recovery_phase_before_popen(self):
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            preclaim = self.journal_run(directory)
+            operations = (
+                lambda run: run.launch("php", 1),
+                lambda run: run.harness("integrity-pre", 1),
+                lambda run: run.assert_owned(1),
+                lambda run: run._run_code("async()=>({})", 1),
+            )
+            for operation in operations:
+                with self.subTest(phase="preclaim", operation=operation):
+                    with patch.object(m.subprocess, "Popen") as popen:
+                        with self.assertRaisesRegex(m.Refused, "^lifecycle_phase$"):
+                            operation(preclaim)
+                        popen.assert_not_called()
+
+            preclaim.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            preclaim.session = "checkout-" + "c" * 32
+            preclaim.claim(1)
+            recovered = self.journal_run(directory)
+            recovered._snapshot = lambda: []
+            recovered.recover_ownership(preclaim.session, preclaim.journal_anchor())
+            for operation in operations:
+                with self.subTest(phase="recovery", operation=operation):
+                    with patch.object(m.subprocess, "Popen") as popen:
+                        with self.assertRaisesRegex(m.Refused, "^lifecycle_phase$"):
+                            operation(recovered)
+                        popen.assert_not_called()
+
+    def test_postclaim_ps_success_publishes_intent_then_clears_without_recursive_discovery(self):
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            observed = []
+
+            def publish(anchor):
+                candidate = self.journal_run(directory)
+                candidate._read_journal(anchor)
+                observed.append(candidate._read_journal()["launchIntents"])
+
+            baseline = self.journal_run(directory)
+            run = m.WindowsRun(baseline.c, anchor_publisher=self.publisher(directory, publish))
+            run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            run.session = "checkout-" + "c" * 32
+            run.claim(1)
+
+            class Process:
+                pid = 10
+                returncode = 0
+
+                def poll(self): return 0
+
+            run._identity = lambda pid: (_ for _ in ()).throw(AssertionError("recursive identity"))
+            run._discover = lambda: (_ for _ in ()).throw(AssertionError("recursive discovery"))
+            with patch.object(m.subprocess, "Popen", return_value=Process()):
+                self.assertEqual(run._ps("synthetic", timeout=1), "")
+            self.assertEqual(observed[-2:], [[{"role": "helper", "executable": run.c["powershell"]}], []])
+            self.assertEqual(run._read_journal()["launchIntents"], [])
+
+    def test_postclaim_ps_publisher_failure_prevents_helper_popen(self):
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            baseline = self.journal_run(directory)
+            run = m.WindowsRun(baseline.c, anchor_publisher=self.publisher(
+                directory,
+                lambda anchor: (_ for _ in ()).throw(RuntimeError("offline"))
+                if anchor["generation"] == 2 else None,
+            ))
+            run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            run.session = "checkout-" + "c" * 32
+            run.claim(1)
+            with patch.object(m.subprocess, "Popen") as popen:
+                with self.assertRaisesRegex(m.Refused, "^anchor_publish$"):
+                    run._ps("synthetic", timeout=1)
+                popen.assert_not_called()
+            self.assertEqual(run._read_journal()["launchIntents"], [
+                {"role": "helper", "executable": run.c["powershell"]},
+            ])
+
+    def test_postclaim_ps_failure_or_interrupt_retains_intent_handle_and_blocks_recovery(self):
+        for outcome in ("exit", "timeout", "exception", "interrupt", "system_exit"):
+            with self.subTest(outcome=outcome), TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+                published = []
+                baseline = self.journal_run(directory)
+                store = self.publisher(directory, lambda anchor: published.append(dict(anchor)))
+                run = m.WindowsRun(
+                    baseline.c,
+                    anchor_publisher=store,
+                )
+                run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+                run.session = "checkout-" + "c" * 32
+                run.claim(1)
+
+                class Process:
+                    pid = 10
+                    returncode = 1 if outcome == "exit" else 0
+
+                    def __init__(self): self.calls = 0
+                    def poll(self):
+                        self.calls += 1
+                        if outcome == "timeout": return None
+                        if outcome == "exception": raise RuntimeError("poll")
+                        if outcome == "interrupt": raise KeyboardInterrupt()
+                        if outcome == "system_exit": raise SystemExit(3)
+                        return 0
+                    def kill(self): pass
+                    def wait(self, timeout): return 0
+
+                process = Process()
+                if outcome == "timeout":
+                    ticks = iter((0.0, 0.1, 0.2, 2.0, 2.1))
+                    run.clock = lambda: next(ticks, 2.1)
+                expected = {"interrupt": KeyboardInterrupt, "system_exit": SystemExit}.get(outcome, Exception)
+                with patch.object(m.subprocess, "Popen", return_value=process):
+                    with self.assertRaises(expected):
+                        run._ps("synthetic", timeout=1)
+                self.assertIn(process, run.handles)
+                self.assertEqual(run._read_journal()["launchIntents"], [
+                    {"role": "helper", "executable": run.c["powershell"]},
+                ])
+                candidate = self.journal_run(directory)
+                candidate._snapshot = lambda: []
+                with self.assertRaisesRegex(m.Refused, "^recovery_incomplete$"):
+                    candidate.recover_ownership(run.session, store.load())
+
+    def test_postclaim_ps_keeps_intent_until_output_is_validated(self):
+        for outcome in ("stderr", "oversized", "malformed_utf8"):
+            with self.subTest(outcome=outcome), TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+                baseline = self.journal_run(directory)
+                run = m.WindowsRun(baseline.c, anchor_publisher=self.publisher(directory))
+                run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+                run.session = "checkout-" + "c" * 32
+                run.claim(1)
+
+                class Process:
+                    pid = 10
+                    returncode = 0
+
+                    def poll(self): return 0
+
+                process = Process()
+
+                def popen(*args, **kwargs):
+                    if outcome == "stderr":
+                        kwargs["stderr"].write(b"refused")
+                    elif outcome == "oversized":
+                        kwargs["stdout"].write(b"x" * 262145)
+                    else:
+                        kwargs["stdout"].write(b"\xff")
+                    return process
+
+                with patch.object(m.subprocess, "Popen", side_effect=popen):
+                    with self.assertRaises((m.Refused, UnicodeDecodeError)):
+                        run._ps("synthetic", timeout=1)
+                self.assertIn(process, run.handles)
+                self.assertEqual(run._read_journal()["launchIntents"], [
+                    {"role": "helper", "executable": run.c["powershell"]},
+                ])
 
     def test_nested_browser_launcher_intent_does_not_overwrite_outer_browser_intent(self):
         with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
@@ -251,6 +666,24 @@ class SupervisorTests(unittest.TestCase):
             self.assertEqual(run._read_journal()["launchIntents"], [outer])
             run._clear_launch_intent(outer)
             self.assertEqual(run._read_journal()["launchIntents"], [])
+
+    def test_clear_intent_restores_memory_after_persist_failure_and_next_generation_remains_incomplete(self):
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            run = self.journal_run(directory)
+            run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            run.session = "checkout-" + "c" * 32
+            run.claim(1)
+            intent = run._push_launch_intent("helper", run.c["powershell"])
+            persist = run._persist_journal
+            with patch.object(run, "_persist_journal", side_effect=m.Refused("journal_write")):
+                with self.assertRaisesRegex(m.Refused, "^journal_write$"):
+                    run._clear_launch_intent(intent)
+            self.assertEqual(run.launch_intents, [intent])
+            persist()
+            self.assertEqual(run._read_journal(run.journal_anchor())["launchIntents"], [intent])
+            retry = self.journal_run(directory)
+            with self.assertRaisesRegex(m.Refused, "^recovery_incomplete$"):
+                retry.recover_ownership(run.session, run.journal_anchor())
 
     def test_stale_valid_generation_cannot_replace_current_journal(self):
         with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
@@ -306,10 +739,13 @@ class SupervisorTests(unittest.TestCase):
                 self.assertEqual(len(list(Path(directory).glob(m.JOURNAL_PREFIX + "*.json"))),
                                  anchor["generation"])
                 published.append(dict(anchor))
+                original = dict(anchor)
                 anchor["generation"] = 999  # Callback cannot mutate supervisor state.
+                anchor.clear()
+                anchor.update(original)
 
             baseline = self.journal_run(directory)
-            run = m.WindowsRun(baseline.c, anchor_publisher=publish)
+            run = m.WindowsRun(baseline.c, anchor_publisher=self.publisher(directory, publish))
             run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
             run.session = "checkout-" + "c" * 32
             run.claim(1)
@@ -327,19 +763,46 @@ class SupervisorTests(unittest.TestCase):
                 delivered.append(dict(anchor))
 
             baseline = self.journal_run(directory)
-            run = m.WindowsRun(baseline.c, anchor_publisher=publish)
+            run = m.WindowsRun(baseline.c, anchor_publisher=self.publisher(directory, publish))
             run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
             run.session = "checkout-" + "c" * 32
             run.claim(1)
             with patch.object(m.subprocess, "Popen") as popen:
                 with self.assertRaisesRegex(m.Refused, "^anchor_publish$"):
-                    run._command([run.c["php"], "synthetic"], 1, track=True)
+                    run._command([run.c["php"], "synthetic"], 1, policy="owned")
                 popen.assert_not_called()
             self.assertEqual(run._read_journal()["launchIntents"], [
                 {"role": "command", "executable": run.c["php"]},
             ])
             self.assertEqual(len(list(run.run.glob(m.JOURNAL_PREFIX + "*.json"))), 2)
             self.assertEqual(delivered, [{"generation": 1, "digest": delivered[0]["digest"]}])
+
+    def test_reopened_publisher_reconciles_write_then_raise_to_new_anchor(self):
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            baseline = self.journal_run(directory)
+            store = self.publisher(directory)
+            run = m.WindowsRun(baseline.c, anchor_publisher=store)
+            run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+            run.session = "checkout-" + "c" * 32
+            run.claim(1)
+            old_anchor = store.load()
+
+            def write_then_raise(anchor):
+                store.latest = dict(anchor)
+                raise RuntimeError("post-write lock failure")
+
+            store.hook = write_then_raise
+            with self.assertRaisesRegex(m.Refused, "^anchor_publish$"):
+                run._push_launch_intent("helper", run.c["powershell"])
+            self.assertEqual(store.load(), run.journal_anchor())
+
+            reopened = self.journal_run(directory)
+            with patch.object(m.subprocess, "Popen") as popen:
+                with self.assertRaisesRegex(m.Refused, "^journal_anchor$"):
+                    reopened.recover_ownership(run.session, old_anchor)
+                with self.assertRaisesRegex(m.Refused, "^recovery_incomplete$"):
+                    reopened.recover_ownership(run.session, store.load())
+                popen.assert_not_called()
 
     def test_publisher_failure_after_popen_retains_handle_and_never_yields_success(self):
         for error_type in (RuntimeError, KeyboardInterrupt, SystemExit):
@@ -352,7 +815,7 @@ class SupervisorTests(unittest.TestCase):
                     delivered.append(dict(anchor))
 
                 baseline = self.journal_run(directory)
-                run = m.WindowsRun(baseline.c, anchor_publisher=publish)
+                run = m.WindowsRun(baseline.c, anchor_publisher=self.publisher(directory, publish))
                 run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
                 run.session = "checkout-" + "c" * 32
                 run.claim(1)
@@ -368,7 +831,7 @@ class SupervisorTests(unittest.TestCase):
                 expected = m.Refused if error_type is RuntimeError else error_type
                 with patch.object(m.subprocess, "Popen", return_value=process):
                     with self.assertRaises(expected):
-                        run._command([run.c["php"], "synthetic"], 1, track=True)
+                        run._command([run.c["php"], "synthetic"], 1, policy="owned")
                 self.assertIn(process, run.handles)
                 self.assertEqual(run.journal_anchor()["generation"], 3)
                 self.assertEqual(delivered[-1]["generation"], 2)
@@ -400,7 +863,11 @@ class SupervisorTests(unittest.TestCase):
         with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
             published = []
             baseline = self.journal_run(directory)
-            run = m.WindowsRun(baseline.c, anchor_publisher=lambda anchor: published.append(dict(anchor)))
+            store = self.publisher(directory, lambda anchor: published.append(dict(anchor)))
+            run = m.WindowsRun(
+                baseline.c,
+                anchor_publisher=store,
+            )
             run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
             run.session = "checkout-" + "c" * 32
             run.claim(1)
@@ -410,7 +877,7 @@ class SupervisorTests(unittest.TestCase):
             candidate._snapshot = lambda: [
                 {"pid": 10, "parent": 7, "started": "110", "executable": run.c["php"]},
             ]
-            candidate.recover_ownership(run.session, published[-1])
+            candidate.recover_ownership(run.session, store.load())
             self.assertEqual(candidate.owned, {10: "110"})
 
     def test_recovery_rejects_malformed_or_incomplete_claim_journal_pairs(self):
@@ -566,6 +1033,29 @@ class SupervisorTests(unittest.TestCase):
         self.assertEqual(result, {"state": "recovered_cleanup", "accepted": False})
         self.assertEqual(io.calls, [("recover", "checkout-" + "c" * 32, anchor),
                                     ("cleanup", 12), ("invalidate",)])
+
+    def test_recover_invalidates_hydrated_failure_without_premature_cleanup(self):
+        class Recovery:
+            uncertain = False
+            recovery_hydrated = False
+
+            def __init__(self): self.calls = []
+            def clock(self): return 10
+            def recover_ownership(self, session, anchor):
+                self.calls.append(("recover", session, anchor))
+                self.recovery_hydrated = True
+                raise KeyboardInterrupt()
+            def cleanup(self, budget): self.calls.append(("cleanup", budget)); return True
+            def invalidate(self): self.calls.append(("invalidate",))
+
+        io = Recovery()
+        anchor = {"generation": 3, "digest": "a" * 64}
+        with self.assertRaises(KeyboardInterrupt):
+            m.recover(io, session="checkout-" + "c" * 32, anchor=anchor, budget=12)
+        self.assertEqual(io.calls, [
+            ("recover", "checkout-" + "c" * 32, anchor),
+            ("invalidate",),
+        ])
 
     def test_primary_reason_and_cleanup_status_matrix_are_independent(self):
         cases = [
@@ -887,7 +1377,7 @@ class SupervisorTests(unittest.TestCase):
         run.io_deadline = 0
         with patch.object(m.subprocess, "Popen", side_effect=AssertionError("must not spawn")):
             with self.assertRaisesRegex(m.Refused, "budget"):
-                run._command(["unused"], 1)
+                run._command(["unused"], 1, policy="untracked", role="helper")
 
     def test_smoke_offline_only_released_after_exact_one_request_route(self):
         run = m.WindowsRun({"directory": "synthetic-unused"})

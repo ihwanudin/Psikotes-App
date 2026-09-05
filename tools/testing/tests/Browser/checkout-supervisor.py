@@ -146,8 +146,10 @@ def recover(io, *, session, anchor, budget=15):
         raise Refused("invalid_budget")
     deadline = io.clock() + budget
     io.io_deadline = deadline
-    io.recover_ownership(session, anchor)
+    ownership_validated = False
     try:
+        io.recover_ownership(session, anchor)
+        ownership_validated = True
         remaining = deadline - io.clock()
         if remaining <= 0:
             raise Refused("recovery_budget")
@@ -155,7 +157,8 @@ def recover(io, *, session, anchor, budget=15):
             raise Refused("recovery_cleanup")
         return {"state": "recovered_cleanup", "accepted": False}
     finally:
-        io.invalidate()
+        if ownership_validated or getattr(io, "recovery_hydrated", False):
+            io.invalidate()
 
 
 class WindowsRun:
@@ -182,6 +185,9 @@ class WindowsRun:
         self.launch_intents = []
         self.journal_generation = 0
         self.journal_digest = None
+        self.recovery_hydrated = False
+        self.recovery_validated = False
+        self.lifecycle_phase = "new"
         self.io_deadline = float("inf")
 
     @property
@@ -359,9 +365,27 @@ class WindowsRun:
             self._validate_anchor(anchor)
             try:
                 self.anchor_publisher(dict(anchor))
+                reopened = self.anchor_publisher.load()
+                self._validate_anchor(reopened)
+                if reopened != anchor:
+                    raise Refused("anchor_publish")
+            except Refused:
+                raise Refused("anchor_publish") from None
             except Exception:
                 # The durable generation remains authoritative; managed spawn must stop.
                 raise Refused("anchor_publish") from None
+
+    def _publisher_anchor(self):
+        if not callable(self.anchor_publisher) or not callable(getattr(self.anchor_publisher, "load", None)):
+            raise Refused("anchor_publisher")
+        try:
+            anchor = self.anchor_publisher.load()
+            self._validate_anchor(anchor)
+            return anchor
+        except Refused:
+            raise
+        except Exception:
+            raise Refused("anchor_publisher") from None
 
     def journal_anchor(self):
         if type(self.journal_generation) is not int or self.journal_generation <= 0 \
@@ -430,7 +454,7 @@ class WindowsRun:
             raise Refused("journal_shape")
         for intent in intents:
             if not isinstance(intent, dict) or set(intent) != {"role", "executable"} \
-                    or intent["role"] not in {"php", "tls", "browser", "browser_launcher", "command"}:
+                    or intent["role"] not in {"php", "tls", "browser", "browser_launcher", "command", "helper"}:
                 raise Refused("journal_shape")
             if self._normalized_path(intent["executable"]) not in self._expected_executables(
                 intent["role"]
@@ -462,7 +486,7 @@ class WindowsRun:
             raise Refused("journal_shape")
 
     def _push_launch_intent(self, role, executable):
-        if role not in {"php", "tls", "browser", "browser_launcher", "command"}:
+        if role not in {"php", "tls", "browser", "browser_launcher", "command", "helper"}:
             raise Refused("journal_shape")
         intent = {"role": role, "executable": executable}
         self.launch_intents.append(intent)
@@ -472,8 +496,14 @@ class WindowsRun:
     def _clear_launch_intent(self, intent):
         if not self.launch_intents or self.launch_intents[-1] != intent:
             raise Refused("journal_shape")
-        self.launch_intents.pop()
-        self._persist_journal()
+        popped = self.launch_intents.pop()
+        try:
+            self._persist_journal()
+        except BaseException:
+            # Conservatively retain uncertainty even if the durable clear reached disk
+            # but publishing it failed. A later generation must re-state this intent.
+            self.launch_intents.append(popped)
+            raise
 
     def _register_owned(self, identity, role, parent, executable):
         if role not in JOURNAL_ROLES or not isinstance(identity, dict) or set(identity) != {"pid", "started"} \
@@ -493,11 +523,22 @@ class WindowsRun:
     def _expected_executables(self, role):
         keys = {"php": ("php",), "tls": ("python",), "browser_launcher": ("node",),
                 "browser": ("browser",), "command": ("php", "node"),
+                "helper": ("powershell",),
                 "descendant": ("php", "python", "node", "browser")}[role]
         return {self._normalized_path(self.c[key]) for key in keys}
 
     def recover_ownership(self, session, anchor):
+        try:
+            return self._recover_ownership(session, anchor)
+        except BaseException:
+            if self.recovery_hydrated:
+                self.invalidate()
+            raise
+
+    def _recover_ownership(self, session, anchor):
         self._validate_anchor(anchor)
+        if self._publisher_anchor() != anchor:
+            raise Refused("journal_anchor")
         claim = self._read_claim()
         if session != claim["session"]:
             raise Refused("recovery_session")
@@ -522,6 +563,17 @@ class WindowsRun:
         records = {record["pid"]: record for record in journal["owned"]}
         owner = claim["owner"]
         relevant = {owner["pid"], *records, *(record["parent"]["pid"] for record in records.values())}
+        # Hydrate the exact persisted graph before the first recovery census. This
+        # makes its PowerShell helper intent-only and preserves all records in the
+        # journal generations it appends; it does not authorize cleanup yet.
+        self.session = session
+        self.owner = owner
+        self.owned_records = records
+        self.owned = {pid: record["started"] for pid, record in records.items()}
+        self.roles = {}
+        self.recovery_hydrated = True
+        self.claimed = True
+        self.lifecycle_phase = "recovery"
         current_rows = self._snapshot()
         if not isinstance(current_rows, list):
             raise Refused("recovery_identity")
@@ -566,13 +618,11 @@ class WindowsRun:
                 raise Refused("recovery_parent")
             if parent["pid"] not in records:
                 raise Refused("recovery_parent")
-        self.session = session
-        self.owner = owner
-        self.claimed = True
         self.owned = {pid: record["started"] for pid, record in live.items()}
         self.owned_records = records
         self.roles = {record["role"]: {"pid": pid, "started": record["started"]}
                       for pid, record in live.items() if record["role"] in {"php", "tls", "browser"}}
+        self.recovery_validated = True
 
     def _clear_journal(self):
         expected_anchor = self.journal_anchor()
@@ -585,18 +635,28 @@ class WindowsRun:
         self._canonical(head)
         head.unlink()
 
-    def _command(self, args, timeout, *, track=True, role="command"):
+    def _command(self, args, timeout, *, policy="owned", role="command"):
+        valid_policy = type(policy) is str and type(role) is str and (
+            (policy == "untracked" and self.claimed is False and self.lifecycle_phase == "new" and role == "helper")
+            or (policy == "intent_only" and self.claimed is True
+                and self.lifecycle_phase in {"normal", "recovery"} and role == "helper")
+            or (policy == "owned" and self.claimed is True and self.lifecycle_phase == "normal"
+                and role in {"command", "browser_launcher"})
+        )
+        if not valid_policy:
+            raise Refused("tracking_policy")
         end = min(self.clock() + timeout, self.io_deadline)
         if self.clock() >= end:
             raise Refused("budget")
-        intent = self._push_launch_intent(role, str(Path(args[0]).absolute())) if track else None
+        tracked = policy != "untracked"
+        intent = self._push_launch_intent(role, str(Path(args[0]).absolute())) if tracked else None
         # Real files avoid Windows pipe-read hangs. Output is bounded on capture/poll.
         with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as errors:
             process = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=output, stderr=errors,
                                        cwd=self.run, env=self.env, creationflags=subprocess.CREATE_NO_WINDOW)
             self.handles.append(process)  # retain even if registration/timeout fails
             try:
-                if track:
+                if policy == "owned":
                     try:
                         identity = self._identity(process.pid)
                         self._register_owned(identity, role, self.owner, str(Path(args[0]).absolute()))
@@ -607,24 +667,29 @@ class WindowsRun:
                 while process.poll() is None:
                     if self.clock() >= end or os.fstat(output.fileno()).st_size > 262144 or os.fstat(errors.fileno()).st_size > 4096:
                         raise Refused("command")
-                    if track:
+                    if policy == "owned":
                         self._discover()
                     time.sleep(.02)
-                if track:
+                if policy == "owned":
                     self._discover()
                 output.seek(0)
                 errors.seek(0)
                 data = output.read(262145)
                 if process.returncode != 0 or len(data) > 262144 or errors.read(4097):
                     raise Refused("command")
-                return data.decode("utf-8-sig")
+                text = data.decode("utf-8-sig")
+                if policy == "intent_only":
+                    self._clear_launch_intent(intent)
+                return text
             finally:
                 if process.poll() is None:
                     process.kill()  # Popen handle only, not a searched PID.
                     process.wait(timeout=2)
 
     def _ps(self, script, timeout=3):
-        return self._command([self.c["powershell"], "-NoProfile", "-NonInteractive", "-Command", script], timeout, track=False)
+        policy = "intent_only" if self.claimed else "untracked"
+        return self._command([self.c["powershell"], "-NoProfile", "-NonInteractive", "-Command", script],
+                             timeout, policy=policy, role="helper")
 
     def _identity(self, pid):
         if type(pid) is not int or pid <= 0:
@@ -696,7 +761,9 @@ class WindowsRun:
             raise Refused("occupied_port")
 
     def claim(self, remaining):
-        if self.anchor_publisher is None:
+        if self.lifecycle_phase != "new":
+            raise Refused("lifecycle_phase")
+        if not callable(self.anchor_publisher) or not callable(getattr(self.anchor_publisher, "load", None)):
             raise Refused("anchor_publisher")
         binding = self._config_binding(self.session)
         with (self.run / "supervisor.json").open("x") as file:
@@ -705,9 +772,16 @@ class WindowsRun:
                        "configBinding": binding, "journalBinding": secrets.token_hex(32),
                        "accepted": False}, file, sort_keys=True, separators=(",", ":"))
         self.claimed = True
+        self.lifecycle_phase = "claiming"
         self._persist_journal()
+        self.lifecycle_phase = "normal"
+
+    def _require_normal_run(self):
+        if self.claimed is not True or self.lifecycle_phase != "normal" or self.recovery_hydrated:
+            raise Refused("lifecycle_phase")
 
     def harness(self, mode, remaining, assertions=False):
+        self._require_normal_run()
         self.io_deadline = self.clock() + remaining
         if assertions:
             self.env["ONCAM_CHECKOUT_BROWSER_ASSERTIONS_PASSED"] = "1"
@@ -730,9 +804,10 @@ class WindowsRun:
 
     def _cli(self, args, remaining):
         return self._command([self.c["node"], self.c["cli"], "-s=" + self.session, *args], remaining,
-                             track=True, role="browser_launcher" if args[0] == "open" else "command")
+                             policy="owned", role="browser_launcher" if args[0] == "open" else "command")
 
     def launch(self, role, remaining):
+        self._require_normal_run()
         expected = self.c[{"php": "php", "tls": "python", "browser": "browser"}[role]]
         intent = self._push_launch_intent(role, expected)
         if role == "browser":
@@ -765,6 +840,7 @@ class WindowsRun:
         self._clear_launch_intent(intent)
 
     def assert_owned(self, remaining):
+        self._require_normal_run()
         current = self._discover()
         if self.uncertain or set(self.roles) != {"php", "tls", "browser"}:
             raise Refused("ownership")
@@ -777,6 +853,7 @@ class WindowsRun:
             raise Refused("listeners")
 
     def _run_code(self, code, remaining):
+        self._require_normal_run()
         # CLI --filename is documented; the temporary code has no credential values.
         path = self.run / ("supervisor-code-" + secrets.token_hex(8) + ".mjs")
         with path.open("x") as file:
@@ -848,6 +925,7 @@ class WindowsRun:
         if clean and not self.uncertain and self.__journal_postchecked:
             try:
                 self._clear_journal()
+                self.lifecycle_phase = "closed"
             except Exception:
                 self._mark_uncertain("cleanup_exception")
                 clean = False
@@ -860,6 +938,7 @@ class WindowsRun:
                     file.write("INVALID\n")
             except FileExistsError:
                 pass
+        self.lifecycle_phase = "invalidated"
 
 
 if __name__ == "__main__":
