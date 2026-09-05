@@ -57,6 +57,55 @@
             }
         }
     }
+    $exactKeys = static function (array $value, array $expected): bool {
+        $keys = array_keys($value);
+        sort($keys);
+        sort($expected);
+
+        return $keys === $expected;
+    };
+    $safeAmount = static fn ($value): bool => is_int($value) && $value >= 0 && $value <= 9007199254740991;
+    $paymentAction = $summary['payment']['action'] ?? null;
+    $paymentChoices = is_array($paymentAction['choices'] ?? null) ? $paymentAction['choices'] : [];
+    $paymentActionReady = ($summary['contractVersion'] ?? null) === 'checkout-summary-v2'
+        && ($summary['payment']['actionAvailable'] ?? false) === true
+        && is_array($paymentAction)
+        && $exactKeys($paymentAction, ['path', 'mode', 'currency', 'choices'])
+        && $paymentAction['path'] === '/checkout/payment'
+        && in_array($paymentAction['mode'], ['select', 'continue'], true)
+        && $paymentAction['currency'] === 'IDR'
+        && array_is_list($paymentChoices)
+        && count($paymentChoices) >= 1 && count($paymentChoices) <= 2
+        && ($paymentAction['mode'] !== 'continue' || count($paymentChoices) === 1);
+    $previousConsultation = null;
+    foreach ($paymentChoices as $choice) {
+        $choiceValid = is_array($choice)
+            && $exactKeys($choice, ['consultationRequested', 'baseAmountIdr', 'consultationAmountIdr', 'amountIdr'])
+            && is_bool($choice['consultationRequested'] ?? null)
+            && $safeAmount($choice['baseAmountIdr'] ?? null)
+            && $safeAmount($choice['consultationAmountIdr'] ?? null)
+            && $safeAmount($choice['amountIdr'] ?? null)
+            && $choice['baseAmountIdr'] <= 9007199254740991 - $choice['consultationAmountIdr']
+            && $choice['amountIdr'] === $choice['baseAmountIdr'] + $choice['consultationAmountIdr']
+            && ($choice['consultationRequested']
+                ? $choice['consultationAmountIdr'] > 0
+                : $choice['consultationAmountIdr'] === 0)
+            && $choice['consultationRequested'] !== $previousConsultation;
+        if ($previousConsultation === true && ($choice['consultationRequested'] ?? null) === false) {
+            $choiceValid = false;
+        }
+        $paymentActionReady = $paymentActionReady && $choiceValid;
+        $previousConsultation = $choice['consultationRequested'] ?? null;
+    }
+    if (($summary['payment']['payer'] ?? null) === 'organization' && $paymentActionReady) {
+        $organizationChoice = count($paymentChoices) === 1 ? $paymentChoices[0] : null;
+        $paymentActionReady = is_array($organizationChoice)
+            && $paymentAction['mode'] === 'select'
+            && $organizationChoice['consultationRequested'] === false
+            && $organizationChoice['baseAmountIdr'] === 0
+            && $organizationChoice['consultationAmountIdr'] === 0
+            && $organizationChoice['amountIdr'] === 0;
+    }
 @endphp
 <!DOCTYPE html>
 <html lang="id">
@@ -137,6 +186,44 @@
             <dt>Konsultasi diminta</dt><dd>{{ $summary['payment']['consultationRequested'] === null ? 'Belum tersedia' : ($summary['payment']['consultationRequested'] ? 'Ya' : 'Tidak') }}</dd>
         </dl>
     </section>
+    @if ($paymentActionReady)
+        <form class="payment-form" data-checkout-payment data-payment-mode="{{ $paymentAction['mode'] }}" method="post" action="/checkout/payment">
+            <h2>Langkah pembayaran</h2>
+            @if ($paymentAction['mode'] === 'select')
+                <fieldset>
+                    <legend>Pilih layanan pembayaran</legend>
+                    <p>Pilih salah satu nominal yang telah ditetapkan server.</p>
+                    <div class="payment-choices">
+                        @foreach ($paymentChoices as $index => $choice)
+                            <label class="payment-choice" for="checkout-payment-choice-{{ $index }}">
+                                <input id="checkout-payment-choice-{{ $index }}" type="radio" name="consultationRequested"
+                                    value="{{ $choice['consultationRequested'] ? 'true' : 'false' }}" required disabled>
+                                <span>
+                                    <strong>{{ $choice['consultationRequested'] ? 'Tes dengan konsultasi psikolog' : 'Tes tanpa konsultasi psikolog' }}</strong>
+                                    <span>Total: Rp {{ number_format($choice['amountIdr'], 0, ',', '.') }}</span>
+                                    <small>Biaya tes: Rp {{ number_format($choice['baseAmountIdr'], 0, ',', '.') }}@if ($choice['consultationRequested']) · Konsultasi: Rp {{ number_format($choice['consultationAmountIdr'], 0, ',', '.') }}@endif</small>
+                                </span>
+                            </label>
+                        @endforeach
+                    </div>
+                </fieldset>
+            @else
+                @php($choice = $paymentChoices[0])
+                <input type="hidden" name="consultationRequested" value="{{ $choice['consultationRequested'] ? 'true' : 'false' }}" disabled>
+                <div class="payment-choice payment-choice-fixed" aria-label="Pilihan pembayaran yang sudah tersimpan">
+                    <span>
+                        <strong>{{ $choice['consultationRequested'] ? 'Tes dengan konsultasi psikolog' : 'Tes tanpa konsultasi psikolog' }}</strong>
+                        <span>Total tersimpan: Rp {{ number_format($choice['amountIdr'], 0, ',', '.') }}</span>
+                        <small>Pilihan ini sudah tersimpan dan tidak dapat diubah di halaman ini.</small>
+                    </span>
+                </div>
+            @endif
+            <p class="transport-status" data-payment-status role="status" aria-live="polite" tabindex="-1">Kontrol pembayaran sedang divalidasi.</p>
+            <noscript><p class="transport-warning">JavaScript diperlukan untuk melanjutkan pembayaran. Ringkasan dan nominal dari server tetap dapat dibaca.</p></noscript>
+            <button type="submit" disabled aria-disabled="true">{{ $paymentAction['mode'] === 'continue' ? 'Lanjutkan pembayaran' : 'Buat pembayaran' }}</button>
+        </form>
+        <script type="module" src="/js/checkout-payment-v1.js"></script>
+    @endif
     <section class="access" aria-labelledby="access-heading">
         <h2 id="access-heading">Akses tes</h2>
         <p>{{ $summary['access']['message'] }}</p>
@@ -154,11 +241,7 @@
             <p class="notice">Dokumen persetujuan masih menunggu tinjauan legal.</p>
         @endif
         @foreach (['psychotest', 'dass'] as $key)
-            @php
-                $label = $key === 'psychotest'
-                    ? 'Psikotes'
-                    : ($summary['consents']['dass']['state'] === 'not_applicable' ? 'DASS-21' : 'DASS-21 (wajib untuk paket ini)');
-            @endphp
+            @php($label = $key === 'psychotest' ? 'Psikotes' : 'DASS-21 (wajib untuk paket ini)')
             <h3>{{ $label }}</h3>
             @if ($summary['consents'][$key]['state'] === 'accepted')
                 <p>Persetujuan tercatat. Versi: {{ $summary['consents'][$key]['version'] }}</p>
@@ -170,8 +253,6 @@
                 <h4>{{ $summary['consents'][$key]['document']['title'] }}</h4>
                 <p>Versi: {{ $summary['consents'][$key]['document']['version'] }}</p>
                 <p class="document-text">{{ $summary['consents'][$key]['document']['text'] }}</p>
-            @else
-                <p>Tidak berlaku untuk paket ini.</p>
             @endif
         @endforeach
     </section>
@@ -229,6 +310,6 @@
         <button type="submit">Keluar</button>
     </form>
 </main>
-<script type="application/json" id="checkout-summary-v1">{!! $summaryJson !!}</script>
+<script type="application/json" id="checkout-summary-v2">{!! $summaryJson !!}</script>
 </body>
 </html>

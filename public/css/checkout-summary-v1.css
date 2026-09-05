@@ -158,6 +158,61 @@ button {
     border-radius: 0.625rem;
     background: #fff;
 }
+.payment-form {
+    display: grid;
+    gap: 1.25rem;
+    min-width: 0;
+    padding: 1.25rem;
+    border: 1px solid #dce5df;
+    border-left: 4px solid #d4af37;
+    border-radius: 0.625rem;
+    background: #fff;
+}
+.payment-choices {
+    display: grid;
+    gap: 0.75rem;
+}
+.payment-choice {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    gap: 0.75rem;
+    min-width: 0;
+    padding: 1rem;
+    border: 1px solid #76867d;
+    border-radius: 0.375rem;
+    background: #fff;
+}
+.payment-choice:has(input:checked) {
+    border-color: #005f41;
+    outline: 2px solid #005f41;
+    outline-offset: 1px;
+}
+.payment-choice > span,
+.payment-choice > span > span,
+.payment-choice > span > small {
+    display: block;
+}
+.payment-choice > span > span {
+    margin-top: 0.25rem;
+    color: #004530;
+    font-size: 1.125rem;
+}
+.payment-choice > span > small {
+    margin-top: 0.25rem;
+    color: #506358;
+    font-weight: 400;
+}
+.payment-choice input {
+    width: 1.25rem;
+    min-height: 1.25rem;
+    margin-top: 0.2rem;
+}
+.payment-choice-fixed {
+    grid-template-columns: minmax(0, 1fr);
+    border-color: #d4af37;
+    background: #fffcf2;
+}
 .confirmation-form > :last-child,
 fieldset > :last-child {
     margin-bottom: 0;
@@ -182,7 +237,7 @@ label {
     gap: 0.375rem;
     min-width: 0;
 }
-input:not([type="hidden"]),
+input:not([type='hidden']),
 select {
     width: 100%;
     min-height: 44px;
@@ -216,20 +271,22 @@ select:focus-visible {
     border-radius: 0.375rem;
     background: #f1f5f2;
 }
-.transport-status[data-state="pending"] {
+.transport-status[data-state='pending'] {
     color: #3c351d;
     background: #f7edcc;
 }
-.transport-status[data-state="success"] {
+.transport-status[data-state='success'] {
     color: #004530;
     background: #e8f4ed;
 }
-.transport-status[data-state="conflict"],
-.transport-status[data-state="expired"],
-.transport-status[data-state="validation"],
-.transport-status[data-state="throttled"],
-.transport-status[data-state="unexpected"],
-.transport-status[data-state="network"],
+.transport-status[data-state='malformed'],
+.transport-status[data-state='unavailable'],
+.transport-status[data-state='conflict'],
+.transport-status[data-state='expired'],
+.transport-status[data-state='validation'],
+.transport-status[data-state='throttled'],
+.transport-status[data-state='unexpected'],
+.transport-status[data-state='network'],
 .transport-warning {
     color: #692a22;
     background: #fff1ef;
@@ -257,6 +314,7 @@ button:focus-visible {
     .access,
     .consents,
     .confirmation-form,
+    .payment-form,
     main > form {
         grid-column: 1 / -1;
     }
@@ -264,6 +322,9 @@ button:focus-visible {
         padding: 1.75rem;
     }
     .confirmation-form {
+        padding: 1.75rem;
+    }
+    .payment-form {
         padding: 1.75rem;
     }
     .form-grid {

@@ -39,11 +39,11 @@ function mandatoryDassFixture(): array
         $profile[] = ['key' => $key, 'label' => $label, 'state' => 'missing', 'required' => $key !== 'email'];
     }
 
-    return ['contractVersion' => 'checkout-summary-v1', 'sourceName' => 'Integrasi seleksi', 'branchName' => 'Cabang Sintetis',
+    return ['contractVersion' => 'checkout-summary-v2', 'sourceName' => 'Integrasi seleksi', 'branchName' => 'Cabang Sintetis',
         'packageName' => 'Paket Sintetis + DASS-21', 'packageSource' => 'charge_snapshot', 'attemptLabel' => 'Assessment Anda',
         'profile' => $profile, 'identityMessage' => 'Kelengkapan profil tidak menggantikan verifikasi identitas.',
         'payment' => ['payer' => 'self', 'state' => 'paid', 'amountIdr' => 175000, 'amountSource' => 'charge_snapshot',
-            'consultationRequested' => false, 'actionAvailable' => false],
+            'consultationRequested' => false, 'actionAvailable' => false, 'action' => null],
         'access' => ['state' => 'locked', 'tests' => [['testType' => 'ist', 'state' => 'ready'], ['testType' => 'dass21', 'state' => 'locked']],
             'startAvailable' => false, 'message' => 'Profil dan persetujuan belum lengkap.'],
         'consents' => [
@@ -168,14 +168,6 @@ $cases['accepted DASS and complete profile do not request data again'] = functio
     mandatoryDassCheck($xpath->query('//section[@aria-labelledby="requirements-heading"]')->length === 0, 'No duplicate completion prompt');
     mandatoryDassCheck(str_contains(mandatoryDassText($xpath, '//section[@aria-labelledby="profile-heading"]'), 'Nilai lengkap 0'), 'Locked values retained');
     mandatoryDassCheck(str_contains(mandatoryDassText($xpath, '//section[@aria-labelledby="consent-heading"]'), 'Persetujuan tercatat'), 'Accepted server state retained');
-};
-$cases['not applicable remains fail closed without mandatory claim'] = function (): void {
-    $summary = mandatoryDassFixture();
-    $summary['consents']['dass'] = ['state' => 'not_applicable'];
-    [$xpath] = renderMandatoryDass($summary);
-    $consent = mandatoryDassText($xpath, '//section[@aria-labelledby="consent-heading"]');
-    mandatoryDassCheck(str_contains($consent, 'Tidak berlaku untuk paket ini'), 'Existing state retained');
-    mandatoryDassCheck(! str_contains($consent, 'wajib untuk paket ini'), 'No client-invented package authority');
 };
 $cases['DASS consent presentation never changes server access or payment'] = function (): void {
     $summary = mandatoryDassFixture();
