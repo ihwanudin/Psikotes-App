@@ -188,6 +188,11 @@ WITH CHECK (app_private.app_role() IN ('service', 'super_admin'));
 
 CREATE POLICY audit_logs_read ON audit_logs FOR SELECT TO psikotes_runtime
 USING (app_private.app_role() IN ('service', 'super_admin'));
+CREATE POLICY audit_logs_checkout_consent_privacy ON audit_logs AS RESTRICTIVE FOR SELECT TO psikotes_runtime
+USING (
+  action NOT IN ('checkout.confirmed', 'checkout.consent_reaccepted')
+  OR app_private.app_role() = 'service'
+);
 CREATE POLICY audit_logs_write ON audit_logs FOR ALL TO psikotes_runtime
 USING (app_private.app_role() = 'service')
 WITH CHECK (app_private.app_role() = 'service');

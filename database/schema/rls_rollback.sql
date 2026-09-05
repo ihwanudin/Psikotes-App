@@ -5,6 +5,7 @@ DROP POLICY IF EXISTS dass_responses_read ON dass.responses;
 DROP POLICY IF EXISTS dass_assessments_write ON dass.assessments;
 DROP POLICY IF EXISTS dass_assessments_read ON dass.assessments;
 DROP POLICY IF EXISTS outbox_messages_service ON outbox_messages;
+DROP POLICY IF EXISTS audit_logs_checkout_consent_privacy ON audit_logs;
 DROP POLICY IF EXISTS audit_logs_write ON audit_logs;
 DROP POLICY IF EXISTS audit_logs_read ON audit_logs;
 DROP POLICY IF EXISTS entitlements_write ON entitlements;
