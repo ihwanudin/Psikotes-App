@@ -269,7 +269,7 @@ final class CheckoutSummaryHttpTest extends OrganizationPaymentTestCase
         $this->assertPrivate($response);
         $this->assertNotEmpty($reported, 'Real framework report callback was not invoked.');
         $this->assertSame([], $response->headers->getCookies());
-        foreach (['checkout-summary-v1', 'Synthetic', 'PRIVATE_RENDER', 'pii@example.test', 'SELECT', ...array_values($this->cookies)] as $secret) {
+        foreach (['checkout-summary-v2', 'Synthetic', 'PRIVATE_RENDER', 'pii@example.test', 'SELECT', ...array_values($this->cookies)] as $secret) {
             $this->assertStringNotContainsString($secret, $response->getContent());
         }
         if ($kind === 'component') {
@@ -298,7 +298,7 @@ final class CheckoutSummaryHttpTest extends OrganizationPaymentTestCase
         $this->page()->assertOk();
         $response = $this->page()->assertStatus(429);
         $this->assertPrivate($response);
-        $this->assertStringNotContainsString('checkout-summary-v1', $response->getContent());
+        $this->assertStringNotContainsString('checkout-summary-v2', $response->getContent());
     }
 
     public function test_summary_native_logout_and_real_encrypted_login_cookie_remain_independent(): void
@@ -449,7 +449,7 @@ final class CheckoutSummaryHttpTest extends OrganizationPaymentTestCase
 
     private function payload(TestResponse $response): array
     {
-        $nodes = $this->dom($response)->query('//script[@id="checkout-summary-v1" and @type="application/json"]');
+        $nodes = $this->dom($response)->query('//script[@id="checkout-summary-v2" and @type="application/json"]');
         $this->assertSame(1, $nodes->length);
 
         return json_decode($nodes->item(0)->textContent, true, flags: JSON_THROW_ON_ERROR);
@@ -484,6 +484,6 @@ final class CheckoutSummaryHttpTest extends OrganizationPaymentTestCase
             $this->assertSame('lax', $cookie->getSameSite());
             $this->assertLessThan(time(), $cookie->getExpiresTime());
         }
-        $this->assertStringNotContainsString('checkout-summary-v1', $response->getContent());
+        $this->assertStringNotContainsString('checkout-summary-v2', $response->getContent());
     }
 }

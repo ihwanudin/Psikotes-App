@@ -100,7 +100,7 @@ final class CheckoutMandatoryDassHttpPresentationTest extends OrganizationPaymen
         $this->assertPrivate($response);
         $this->assertSame([], $response->headers->getCookies());
         $xpath = $this->dom($response);
-        $payload = json_decode($xpath->query('//script[@id="checkout-summary-v1"]')->item(0)->textContent, true, flags: JSON_THROW_ON_ERROR);
+        $payload = json_decode($xpath->query('//script[@id="checkout-summary-v2"]')->item(0)->textContent, true, flags: JSON_THROW_ON_ERROR);
 
         $this->assertSame('required', $payload['consents']['dass']['state']);
         $this->assertSame($hostile, $payload['consents']['dass']['document']['title']);
@@ -232,7 +232,7 @@ final class CheckoutMandatoryDassHttpPresentationTest extends OrganizationPaymen
 
         $response = $this->page()->assertOk();
         $xpath = $this->dom($response);
-        $payload = json_decode($xpath->query('//script[@id="checkout-summary-v1"]')->item(0)->textContent, true, flags: JSON_THROW_ON_ERROR);
+        $payload = json_decode($xpath->query('//script[@id="checkout-summary-v2"]')->item(0)->textContent, true, flags: JSON_THROW_ON_ERROR);
         $payment = $payload['payment'];
         $section = trim($xpath->query('//section[@aria-labelledby="payment-heading"]')->item(0)->textContent);
 
