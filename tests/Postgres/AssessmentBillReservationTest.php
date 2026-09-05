@@ -37,10 +37,14 @@ final class AssessmentBillReservationTest extends TestCase
         $this->assertTrue(function_exists('pcntl_fork'), 'Concurrency proof requires pcntl; do not skip.');
         $this->assertSame(0, DB::transactionLevel());
         app(RlsContextRunner::class)->runAsService(function (): void {
-            $this->fixtures[] = Fixture::create();
+            $fixture = Fixture::create();
+            $this->addMandatoryDass($fixture['package']);
+            $this->fixtures[] = $fixture;
             $org = $this->fixtures[0]['organization'];
             for ($i = 0; $i < 2; $i++) {
-                $this->fixtures[] = Fixture::create(['organization' => $org]);
+                $fixture = Fixture::create(['organization' => $org]);
+                $this->addMandatoryDass($fixture['package']);
+                $this->fixtures[] = $fixture;
             }
             foreach ([AdminRole::BranchAdmin, AdminRole::BranchAdmin, AdminRole::SuperAdmin] as $role) {
                 $this->admins[] = Admin::create(['branch_id' => $org, 'name' => 'Synthetic concurrency',
@@ -90,6 +94,13 @@ final class AssessmentBillReservationTest extends TestCase
 
             return ['bill' => $bill->id, 'amount' => $bill->amount, 'count' => $bill->item_count];
         });
+    }
+
+    private function addMandatoryDass(int $packageId): void
+    {
+        DB::table('package_items')->insert([
+            'package_id' => $packageId, 'test_type' => 'dass21', 'sort_order' => 2,
+        ]);
     }
 
     public function test_two_admins_retry_same_intent_get_the_same_single_bill(): void

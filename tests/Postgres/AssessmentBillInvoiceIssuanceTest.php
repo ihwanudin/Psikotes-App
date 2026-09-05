@@ -352,6 +352,9 @@ final class AssessmentBillInvoiceIssuanceTest extends TestCase
     private function createFixture(?array $identity = null): array
     {
         $fixture = Fixture::create($identity);
+        DB::table('package_items')->insert([
+            'package_id' => $fixture['package'], 'test_type' => 'dass21', 'sort_order' => 2,
+        ]);
         foreach (['organization', 'participant', 'package', 'attempt', 'charge', 'bill', 'source', 'client'] as $key) {
             if (! is_int($fixture[$key] ?? null)) {
                 throw new RuntimeException('Synthetic billing fixture is invalid.');
