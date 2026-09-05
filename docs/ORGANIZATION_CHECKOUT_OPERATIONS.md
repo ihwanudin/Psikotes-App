@@ -73,6 +73,12 @@ Respons API/UI yang generik tidak cukup untuk menentukan state. Operator harus
 menggunakan public reference bill sebagai korelasi aman dan mengecek state
 persisted melalui permukaan read-only yang disetujui.
 
+Bill `expired` atau `rejected` tetap terminal dan claimed. Implementasi sekarang
+menolak event `paid` baru pada kedua state tersebut, kecuali replay terminal yang
+persis sama. Klaim pembayaran terlambat hanya membuka kasus eskalasi; belum ada
+recovery, release, atau reinvoice canonical dan operator tidak boleh menjanjikan
+aktivasi sampai prosedur tersebut dirancang serta ditinjau.
+
 ## Claim dan penerbitan invoice
 
 Implementasi canonical memisahkan tiga fase:
@@ -184,6 +190,13 @@ Dashboard/alert minimal harus menampilkan agregat tanpa PII:
   mismatch item count/total, dan attempt paid yang masih menunggu consent; serta
 - backlog/failure audit dan outbox.
 
+Audit `checkout.confirmed` dapat memiliki beberapa generation yang sah setelah
+withdrawal/re-consent atau rotasi dokumen. Jangan menghapus atau menyatukannya
+sebagai duplikat. Audit tersebut dan `checkout.consent_reaccepted` hanya dapat
+dibaca role service; dashboard dan eskalasi SuperAdmin harus memakai metrik
+agregat/redacted dari service tanpa tipe, versi, timestamp consent, atau metadata
+DASS pada tiket maupun respons operator.
+
 | Tingkat | Contoh | Respons |
 | --- | --- | --- |
 | SEV-1 | Cross-tenant exposure, double settlement, pembayaran sah hilang, atau banyak bill paid tidak konsisten. | Pause seluruh writer checkout, pertahankan marker/history, panggil incident commander, security bila relevan, payment owner, dan engineer segera. |
@@ -210,11 +223,13 @@ berikut bersifat fail-closed:
    deployment yang disetujui; jangan membuat marker sumber dulu.
 4. Jalankan smoke/read-only dan tes sintetis. Pastikan legacy source yang belum
    opt-in tetap tidak berubah.
-5. Aktifkan komponen internal paling dalam secara bertahap: consumer/audit dan
-   reconciliation yang sudah mempunyai wiring resmi, kemudian confirmation dan
-   payment transport. Untuk masing-masing HTTP writer, enable pembacaan/route
-   lebih dahulu dan `writer_enabled` terakhir. Hentikan bila observability tidak
-   sehat.
+5. Route HTTP sudah terdaftar tetapi inert selama gate/writer OFF. Aktifkan
+   komponen internal paling dalam secara bertahap: audit dan reconciliation yang
+   sudah mempunyai wiring resmi, kemudian confirmation transport. Jangan
+   menyalakan payment writer sebelum fake/sandbox provider, outbound control,
+   credential isolation, dan hold point operator terbukti; writer payment dapat
+   memanggil provider secara sinkron. Nyalakan `writer_enabled` terakhir dan
+   hentikan bila observability tidak sehat.
 6. Aktifkan `checkout_handoff` dan `checkout_session` hanya setelah consumer
    hilir siap; aktifkan gate checkout utama setelah seluruh jalur tertutup telah
    diverifikasi.
@@ -241,6 +256,8 @@ Rollback yang aman adalah rollback **aplikasi/traffic**, bukan penghapusan state
 4. Rollback hanya ke versi aplikasi yang terbukti kompatibel dengan skema dan
    mampu fail closed terhadap marker v2. Jika tidak ada versi kompatibel, tetap
    dalam containment OFF dan perbaiki maju.
+   Jangan menyalakan confirmation writer pada versi sebelum dukungan generation
+   audit v2, dan jangan rollback migration/policy privacy audit consent.
 5. Verifikasi source ber-marker v2 mengembalikan unavailable/tertutup, bukan
    memasuki endpoint v1. Sumber yang belum opt-in tidak boleh terpengaruh.
 6. Setelah rollback, ulangi pemeriksaan allocation, audit/outbox, provider lookup,
@@ -254,8 +271,9 @@ fallback legacy yang dapat menggandakan attempt atau tagihan.
 
 Dokumen ini tetap provisional sampai seluruh kondisi berikut dipenuhi:
 
-- P17c browser desktop/mobile/keyboard selesai dengan data sintetis dan bukti
-  dicatat tanpa token;
+- P17c browser desktop/mobile/keyboard selesai pada database disposable dan
+  origin test-only, dengan fake `PaymentProvider`, outbound-deny, tanpa credential
+  nyata, serta bukti sintetis dicatat tanpa token;
 - hasil P17c cocok dengan state matrix, consent lock, expiry, reload, IDOR, dan
   settlement kolektif dalam runbook ini;
 - pemilik operasi, pembayaran, aplikasi, dan produk menyetujui jalur eskalasi,

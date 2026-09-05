@@ -1,5 +1,32 @@
 # Verifikasi checkout organisasi
 
+## Checkpoint P16 consent subset dan privacy audit — 2026-09-06
+
+Commit `918eb93` menambah policy PostgreSQL restrictive yang membuat audit
+`checkout.confirmed` dan `checkout.consent_reaccepted` hanya terbaca role
+service, tanpa mengubah akses audit non-sensitif. Commit `ae54cd6` membuat
+presenter/request/writer/Blade/transport menerima hanya subset profil dan consent
+yang masih wajib, endpoint literal `/checkout/confirm`, serta histori konfirmasi
+bergenerasi untuk withdrawal/re-consent dan rotasi dokumen. Commit `0ea1924`
+memperpanjang retensi audit establishment sampai dua tahun setelah absolute
+session expiry agar bukti actor tetap tersedia selama audit konfirmasi.
+
+Bukti root lokal:
+
+- Blade summary **19 kasus** dan mandatory DASS **7 kasus**;
+- transport Node **4/4**;
+- PHP/HTTP gabungan **38 tes / 684 assertions**;
+- retensi establishment **7 tes / 117 assertions**;
+- PostgreSQL privacy disposable **2 tes / 30 assertions**;
+- PHPStan 0 error, Pint, ESLint, Prettier, dan `git diff --check` lulus.
+
+Audit history menolak actor asing, generation gap/duplikat, context atau waktu
+rusak, event di luar interval sesi, profil replay yang kembali kurang, serta
+consent bertanggal masa depan. Re-consent menyimpan histori append-only dan
+rollback profil/consent/audit diuji atomik. Seluruh feature/writer tetap default
+OFF. Tidak ada browser P17c, migrasi database aktif, provider/outbound nyata,
+deploy, push, atau aktivasi sumber; acceptance P15/P16 tetap terbuka.
+
 ## Checkpoint P5 — 2026-08-31
 
 Status historis checkpoint: P1–P5 selesai lokal; tinjauan pengguna sebelum kelompok P6. Pembayaran
