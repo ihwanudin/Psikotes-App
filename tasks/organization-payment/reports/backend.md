@@ -5168,3 +5168,52 @@ Owned delta is `ConfirmIntegratedCheckoutRequest`,
 focused P15 test, and this report. No production route/controller, shared middleware,
 schema/config file, UI, canonical docs, browser, PostgreSQL claim, active DB, `.env`,
 outbound service, deploy or push is included. STOP for review before public wiring.
+
+## P16 internal checkout confirmation HTTP adapter — 2026-09-05
+
+The approved increment adds `IntegratedCheckoutConfirmationController` as a thin
+adapter over the accepted P15 request and writer. Production routing remains
+unchanged. A synthetic route proves the required order: the existing private
+boundary, canonical checkout-session authentication, strict JSON mutation
+boundary, existing named mutation limiter, then the real FormRequest/controller.
+The adapter catches only expected domain conflict and writer-unavailable logic
+failures; unexpected exceptions continue through Laravel's real report/render
+path.
+
+Successful first write and exact replay both return HTTP 200 with only
+`data.confirmed` and `data.replayed`. They expose no participant, attempt, profile,
+consent, payment, invoice, credential or entitlement details. A domain conflict is
+the fixed generic `CHECKOUT_CONFIRMATION_CONFLICT` 409 response; a disabled writer
+is the fixed generic `CHECKOUT_CONFIRMATION_UNAVAILABLE` 503 response. FormRequest
+validation remains the framework 422 response. The outer boundary applies the
+same no-store/private, Pragma, Referrer-Policy, frame, content-type and CSP headers
+to success, validation, conflict, unavailable, authentication redirect, CSRF 419,
+strict-JSON 422, throttle 429 and unexpected 500 responses.
+
+TDD and actual evidence with the isolated SQLite-memory
+`phpunit.organization-payment.xml` configuration:
+- RED: the five new HTTP tests all errored at route registration because
+  `IntegratedCheckoutConfirmationController` did not exist.
+- Focused GREEN: 5 tests / 145 assertions. It covers the exact middleware stack,
+  absence of a production POST route before synthetic registration, first success,
+  exact replay, validation, stale consent conflict, default-off writer, foreign
+  selector, mismatched CSRF, duplicate JSON keys, throttle, and a database-triggered
+  unexpected exception with framework reporting and transaction rollback.
+- P14/P15 related regression: 61 tests / 2,178 assertions across the new HTTP test,
+  `IntegratedCheckoutConsentTest`, `CheckoutSessionHttpTest`, and
+  `CheckoutSummaryHttpTest`, all passed.
+- PHP syntax passed for both new files. Focused Pint `--test`, full application
+  PHPStan level 7 (0 errors), and `git diff --check` passed.
+
+The settled/identity-complete case still delegates to P8b and produces its single
+durable activation intent for both test entitlements; the fake notifier delivers
+nothing and no invoice is created. The unpaid case creates no bill, entitlement or
+outbox. The synthetic unexpected failure exposes neither PII, SQL marker nor stack
+details and leaves profile, consents and confirmation audit rolled back.
+
+Owned delta is the new controller, the focused route-only HTTP test, and this
+report. P15 action/request/DTO, shared middleware/contract/config, production
+routes, UI and schema are unchanged. No browser or PostgreSQL run is claimed for
+this adapter-only increment; prior transaction and RLS evidence is not recounted.
+No active `.env`/DB, source/gate enablement, provider/notifier delivery, deploy or
+push occurred. STOP for coordinator review before production wiring or P17.
