@@ -462,3 +462,17 @@ durability/TOCTOU Windows, lineage/helper/cleanup OS, validasi semantik X.509,
 inventory vendor/delivery candidate, dan runtime acceptance tetap tertunda.
 Runner masih absent/disabled, payment tetap default OFF dan status
 P15/P16/P17c/P18 tidak berubah.
+
+### Checkpoint delivery JavaScript test-only
+
+Commit accepted `5b03674` dan `3229f82` menambahkan delivery literal dua aset
+JavaScript dan memasukkannya ke review closure builder/supervisor tanpa aktivasi
+runner. Bukti statis/pure yang diterima adalah asset-pure lane **210 assertions**,
+root contract **15 assertions**, self-test **64 checks**, builder **18/18**, dan
+supervisor **90/90 pure/mock**. Full junction OS belum dijalankan dan timeout
+asset-pure root bukan evidence.
+
+Percobaan Composer parity tidak diintegrasikan. Parity runtime Composer dan
+semantik penuh X.509 tetap harus ditutup bersama gate candidate nyata,
+browser/service/OS. Payment tetap default OFF; P15/P16/P17c/P18 serta rencana
+runtime tidak berubah.

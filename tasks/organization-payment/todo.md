@@ -765,3 +765,17 @@ ACL/single-writer, durability/TOCTOU Windows, lineage/helper/cleanup OS, X.509
 semantik, inventory vendor/delivery candidate, standalone recovery, serta
 browser/service runtime masih gate. Runner masih absent/disabled, payment tetap
 default OFF dan tidak ada checkbox acceptance yang berubah.
+
+### Bukti delivery JavaScript accepted — status checklist tidak berubah
+
+`5b03674` menerima delivery test-only dua JavaScript melalui route literal yang
+fail closed; `3229f82` menerima review closure yang sama persis pada builder dan
+supervisor. Bukti yang boleh dipakai: asset-pure lane **210 assertions**, root
+contract **15 assertions**, self-test **64 checks**, builder **18/18**, dan
+supervisor **90/90 pure/mock**. Full junction OS tidak dijalankan, sedangkan
+asset-pure root yang timeout tidak dihitung sebagai bukti.
+
+Percobaan Composer parity tidak diterima dan tetap uncommitted/rejected karena
+parity metadata runtime Composer belum lengkap. Semantik penuh X.509, runtime
+Composer, candidate nyata, browser/service/OS, dan seluruh gate sebelumnya tetap
+terbuka; payment default OFF dan checkbox P15/P16/P17c/P18 tidak ditutup.

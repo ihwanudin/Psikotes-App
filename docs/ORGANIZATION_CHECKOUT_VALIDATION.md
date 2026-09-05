@@ -56,6 +56,22 @@ ada process census, browser, service, database aktif, provider, outbound, deploy
 atau aktivasi gate dalam bukti ini. Payment tetap default OFF dan checkbox
 P15/P16/P17c/P18 tetap terbuka.
 
+### Delivery aset JavaScript test-only
+
+Commit accepted `5b03674` memberikan dua JavaScript melalui route test-only
+literal yang fail closed; `3229f82` memperluas review closure builder dan
+supervisor ke aset yang sama. Evidence yang diterima terbatas pada asset-pure
+lane **210 assertions**, root contract **15 assertions**, self-test **64 checks**,
+candidate builder **18/18**, dan supervisor **90/90 pure/mock**. Full mode dengan
+junction OS belum dijalankan. Percobaan asset-pure root berakhir timeout dan
+tidak dipakai sebagai bukti.
+
+Percobaan Composer parity tidak diterima dan tetap rejected/uncommitted karena
+belum mengikat keseluruhan metadata runtime Composer. Parity runtime Composer,
+semantik penuh X.509, delivery candidate nyata, browser/service/OS, dan gate
+runtime lain tetap residual. Runner absent/disabled, payment default OFF, dan
+checkbox P15/P16/P17c/P18 tidak berubah.
+
 ## Checkpoint P16 consent subset dan privacy audit — 2026-09-06
 
 Commit `918eb93` menambah policy PostgreSQL restrictive yang membuat audit

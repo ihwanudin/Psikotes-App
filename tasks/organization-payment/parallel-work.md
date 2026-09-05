@@ -2373,3 +2373,19 @@ durability/TOCTOU Windows nyata, lineage/helper/cleanup OS, validasi semantik
 X.509, inventory vendor dan delivery candidate nyata, serta browser/service
 runtime tetap gate. Runner masih absent/disabled dan payment tetap default OFF;
 P15/P16/P17c/P18 serta checkpoint terkait tidak ditutup.
+
+### Checkpoint delivery aset JavaScript — accepted 2026-09-06
+
+Commit `5b03674` menerima router test-only untuk dua aset JavaScript dengan path
+literal, MIME dan header privat, validasi hash/manifest, serta refusal namespace;
+commit `3229f82` mengikat kedua aset itu ke review closure builder dan supervisor.
+Bukti aman yang diterima: lane asset-pure **210 assertions**, root contract
+**15 assertions**, self-test **64 checks**, candidate builder **18/18**, dan
+supervisor **90/90 pure/mock**. Full mode dengan junction OS tidak dijalankan;
+percobaan asset-pure root yang timeout juga bukan bukti acceptance.
+
+Percobaan parity Composer tetap ditolak dan tidak diterima: korelasi
+`composer.json`/lock dengan metadata runtime Composer belum tertutup. Parity
+runtime Composer, semantik penuh X.509, delivery candidate nyata, serta seluruh
+gate browser/service/OS tetap residual. Runner masih absent/disabled, payment
+tetap default OFF, dan tidak ada checkbox P15/P16/P17c/P18 yang berubah.
