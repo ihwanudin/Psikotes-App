@@ -72,13 +72,19 @@ final readonly class IntegratedCheckoutConfirmationInput
     private function validatedConsents(array $consents): array
     {
         $consentKeys = array_keys($consents);
-        sort($consentKeys);
-        if ($consentKeys !== ['dass', 'psychotest']) {
+        if (array_diff($consentKeys, ['psychotest', 'dass']) !== []
+            || count($consentKeys) !== count(array_unique($consentKeys))) {
             throw new InvalidArgumentException('Invalid checkout consent confirmation.');
         }
 
-        return ['psychotest' => $this->validatedConsent($consents['psychotest']),
-            'dass' => $this->validatedConsent($consents['dass'])];
+        $validated = [];
+        foreach (['psychotest', 'dass'] as $type) {
+            if (array_key_exists($type, $consents)) {
+                $validated[$type] = $this->validatedConsent($consents[$type]);
+            }
+        }
+
+        return $validated;
     }
 
     /** @return array{accepted: true, documentVersion: string, documentHash: string} */

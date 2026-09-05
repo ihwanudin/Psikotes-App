@@ -14,6 +14,7 @@ use App\Http\Middleware\AuthenticateCheckoutSession;
 use App\Http\Middleware\ProtectCheckoutSessionHttpBoundary;
 use App\Http\Middleware\VerifyCheckoutSessionJsonMutation;
 use App\Http\Requests\ConfirmIntegratedCheckoutRequest;
+use App\Models\ConsentRecord;
 use App\Models\IntegrationClient;
 use App\Models\TestPackage;
 use App\Registration\ConsentDocument;
@@ -224,6 +225,332 @@ final class IntegratedCheckoutConsentTest extends OrganizationPaymentTestCase
             ->where('status', 'accepted')->whereNull('withdrawn_at')->count());
     }
 
+    public function test_writer_accepts_exact_missing_consent_subset_and_exact_replay_is_idempotent(): void
+    {
+        $fixture = $this->established();
+        $this->acceptCurrentConsents($fixture['participant'], ['psychotest']);
+        $payload = $this->writerPayload(['dass']);
+
+        $this->mutation($fixture, $payload, path: '/checkout/_test/confirm-write')
+            ->assertOk()->assertExactJson([
+                'replayed' => false,
+                'profileFieldsCompleted' => 5,
+                'consentsRecorded' => 1,
+                'activatedTestTypes' => [],
+            ]);
+        $audit = DB::table('audit_logs')->where('action', 'checkout.confirmed')->sole();
+        $context = json_decode((string) $audit->context, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame(['version', 'generation', 'sessionPublicId', 'requestHash'], array_keys($context));
+        $this->assertSame(2, $context['version']);
+        $this->assertSame(1, $context['generation']);
+        $this->assertStringNotContainsString('dass', strtolower((string) $audit->context));
+        $this->assertStringNotContainsString('psychotest', strtolower((string) $audit->context));
+        $this->assertStringNotContainsString(ConsentDocument::for('dass')->version, (string) $audit->context);
+
+        $before = [DB::table('consent_records')->count(), DB::table('audit_logs')->count()];
+        $this->mutation($fixture, $payload, path: '/checkout/_test/confirm-write')
+            ->assertOk()->assertJson(['replayed' => true, 'consentsRecorded' => 0]);
+        $this->assertSame($before, [DB::table('consent_records')->count(), DB::table('audit_logs')->count()]);
+    }
+
+    public function test_writer_accepts_profile_only_but_rejects_an_empty_completed_submission(): void
+    {
+        $fixture = $this->established();
+        $this->acceptCurrentConsents($fixture['participant'], ['psychotest', 'dass']);
+
+        $this->mutation($fixture, $this->writerPayload([]), path: '/checkout/_test/confirm-write')
+            ->assertOk()->assertJson([
+                'replayed' => false,
+                'profileFieldsCompleted' => 5,
+                'consentsRecorded' => 0,
+            ]);
+
+        $complete = $this->established([
+            'full_name' => 'Already Complete', 'birth_date' => '2000-01-02', 'gender' => 'female',
+            'education_level' => 'SMA_SMK', 'intended_field' => 'KAIGO',
+        ]);
+        $this->acceptCurrentConsents($complete['participant'], ['psychotest', 'dass']);
+        $this->mutation($complete, $this->writerPayload([], []), path: '/checkout/_test/confirm-write')
+            ->assertConflict();
+        $this->assertSame(0, DB::table('audit_logs')->where('subject_id', (string) $complete['attempt'])
+            ->where('action', 'checkout.confirmed')->count());
+    }
+
+    public function test_writer_rejects_omitted_extra_and_noncanonical_current_consent_without_partial_writes(): void
+    {
+        $omitted = $this->established();
+        $this->mutation($omitted, $this->writerPayload(['dass']), path: '/checkout/_test/confirm-write')
+            ->assertConflict();
+
+        $extra = $this->established();
+        $this->acceptCurrentConsents($extra['participant'], ['psychotest']);
+        $this->mutation($extra, $this->writerPayload(), path: '/checkout/_test/confirm-write')
+            ->assertConflict();
+
+        $noncanonical = $this->established();
+        $this->acceptCurrentConsents($noncanonical['participant'], ['psychotest']);
+        DB::table('consent_records')->where('participant_id', $noncanonical['participant'])
+            ->where('consent_type', 'psychotest')->update(['document_hash' => str_repeat('0', 64)]);
+        $this->mutation($noncanonical, $this->writerPayload(['dass']), path: '/checkout/_test/confirm-write')
+            ->assertConflict();
+
+        foreach ([$omitted, $extra, $noncanonical] as $fixture) {
+            $this->assertDatabaseHas('participants', ['id' => $fixture['participant'], 'full_name' => null]);
+            $this->assertSame(0, DB::table('audit_logs')->where('action', 'checkout.confirmed')
+                ->where('subject_id', (string) $fixture['attempt'])->count());
+        }
+    }
+
+    public function test_declined_and_withdrawn_current_consent_are_reaccepted_with_append_only_history(): void
+    {
+        foreach (['declined', 'withdrawn'] as $status) {
+            $fixture = $this->established();
+            $this->acceptCurrentConsents($fixture['participant'], ['psychotest']);
+            $document = ConsentDocument::for('dass');
+            $previousConsentedAt = $status === 'withdrawn' ? now()->subDays(2)->startOfSecond() : null;
+            $previousWithdrawnAt = $status === 'withdrawn' ? now()->subDay()->startOfSecond() : null;
+            $recordId = DB::table('consent_records')->insertGetId([
+                'participant_id' => $fixture['participant'], 'consent_type' => 'dass', 'status' => $status,
+                'document_version' => $document->version, 'document_hash' => $document->hash,
+                'consented_at' => $previousConsentedAt, 'withdrawn_at' => $previousWithdrawnAt,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+            $payload = $this->writerPayload(['dass']);
+
+            $this->mutation($fixture, $payload, path: '/checkout/_test/confirm-write')
+                ->assertOk()->assertJson(['replayed' => false, 'consentsRecorded' => 1]);
+            $record = ConsentRecord::findOrFail($recordId);
+            $this->assertSame('accepted', $record->status);
+            $this->assertNotNull($record->consented_at);
+            $this->assertTrue($record->consented_at->lessThanOrEqualTo(now()));
+            $this->assertNull($record->withdrawn_at);
+
+            $audit = DB::table('audit_logs')->where('action', 'checkout.consent_reaccepted')
+                ->where('subject_type', ConsentRecord::class)->where('subject_id', (string) $recordId)->sole();
+            $this->assertSame('checkout_session', $audit->actor_type);
+            $this->assertSame([
+                'version' => 1,
+                'previousStatus' => $status,
+                'previousConsentedAt' => $previousConsentedAt?->format('Y-m-d\TH:i:s\Z'),
+                'previousWithdrawnAt' => $previousWithdrawnAt?->format('Y-m-d\TH:i:s\Z'),
+            ], json_decode((string) $audit->context, true, flags: JSON_THROW_ON_ERROR));
+
+            $before = DB::table('audit_logs')->count();
+            $this->mutation($fixture, $payload, path: '/checkout/_test/confirm-write')
+                ->assertOk()->assertJson(['replayed' => true, 'consentsRecorded' => 0]);
+            $this->assertSame($before, DB::table('audit_logs')->count());
+        }
+    }
+
+    public function test_repeated_withdrawal_allows_the_same_payload_as_new_generations_but_older_hash_does_not_replay(): void
+    {
+        $fixture = $this->established();
+        $first = $this->writerPayload();
+        $this->mutation($fixture, $first, path: '/checkout/_test/confirm-write')->assertOk();
+        DB::table('consent_records')->where('participant_id', $fixture['participant'])
+            ->where('consent_type', 'dass')->update(['status' => 'withdrawn', 'withdrawn_at' => now()]);
+        $second = $this->writerPayload(['dass'], []);
+
+        $this->mutation($fixture, $second, path: '/checkout/_test/confirm-write')
+            ->assertOk()->assertJson(['replayed' => false, 'profileFieldsCompleted' => 0, 'consentsRecorded' => 1]);
+        $this->assertSame(2, DB::table('audit_logs')->where('action', 'checkout.confirmed')->count());
+        $this->assertSame(1, DB::table('audit_logs')->where('action', 'checkout.consent_reaccepted')->count());
+
+        DB::table('consent_records')->where('participant_id', $fixture['participant'])
+            ->where('consent_type', 'dass')->update(['status' => 'withdrawn', 'withdrawn_at' => now()]);
+        $this->mutation($fixture, $second, path: '/checkout/_test/confirm-write')
+            ->assertOk()->assertJson(['replayed' => false, 'profileFieldsCompleted' => 0, 'consentsRecorded' => 1]);
+        $this->assertSame([1, 2, 3], DB::table('audit_logs')->where('action', 'checkout.confirmed')
+            ->orderBy('id')->pluck('context')->map(static fn (string $context): int => json_decode($context, true, flags: JSON_THROW_ON_ERROR)['generation'])->all());
+        $this->assertSame(2, DB::table('audit_logs')->where('action', 'checkout.consent_reaccepted')->count());
+
+        $before = DB::table('audit_logs')->count();
+        $this->mutation($fixture, $second, path: '/checkout/_test/confirm-write')
+            ->assertOk()->assertJson(['replayed' => true, 'consentsRecorded' => 0]);
+        $this->mutation($fixture, $first, path: '/checkout/_test/confirm-write')->assertConflict();
+        $this->assertSame($before, DB::table('audit_logs')->count());
+    }
+
+    public function test_document_rotation_after_confirmation_creates_a_new_consent_and_confirmation_generation(): void
+    {
+        $fixture = $this->established();
+        $this->mutation($fixture, $this->writerPayload(), path: '/checkout/_test/confirm-write')->assertOk();
+        config()->set('consent.documents.dass', [
+            'version' => 'draft-2026-09-06-rotated',
+            'title' => 'Persetujuan skrining DASS-21 rotasi sintetis',
+            'text' => 'Dokumen sintetis baru untuk membuktikan rotasi current consent.',
+        ]);
+        $rotated = $this->writerPayload(['dass'], []);
+
+        $this->mutation($fixture, $rotated, path: '/checkout/_test/confirm-write')
+            ->assertOk()->assertJson(['replayed' => false, 'profileFieldsCompleted' => 0, 'consentsRecorded' => 1]);
+        $this->assertSame(2, DB::table('consent_records')->where('participant_id', $fixture['participant'])
+            ->where('consent_type', 'dass')->count());
+        $this->assertSame(2, DB::table('audit_logs')->where('action', 'checkout.confirmed')->count());
+
+        $before = DB::table('audit_logs')->count();
+        $this->mutation($fixture, $rotated, path: '/checkout/_test/confirm-write')
+            ->assertOk()->assertJson(['replayed' => true]);
+        $this->assertSame($before, DB::table('audit_logs')->count());
+    }
+
+    public function test_invalid_confirmation_history_and_actor_session_intervals_fail_closed(): void
+    {
+        $duplicate = $this->established();
+        $payload = $this->writerPayload();
+        $this->mutation($duplicate, $payload, path: '/checkout/_test/confirm-write')->assertOk();
+        $audit = (array) DB::table('audit_logs')->where('action', 'checkout.confirmed')
+            ->where('subject_id', (string) $duplicate['attempt'])->sole();
+        unset($audit['id']);
+        DB::table('audit_logs')->insert($audit);
+        $this->mutation($duplicate, $payload, path: '/checkout/_test/confirm-write')->assertConflict();
+
+        foreach (['gap', 'malformed', 'wrong-actor', 'wrong-actor-id', 'actor-mismatch',
+            'foreign-actor', 'nonexistent-actor', 'invalid-time', 'future',
+            'before-established', 'at-absolute-expiry', 'after-absolute-expiry'] as $case) {
+            $corrupt = $this->established();
+            $body = $this->writerPayload();
+            $this->mutation($corrupt, $body, path: '/checkout/_test/confirm-write')->assertOk();
+            $query = DB::table('audit_logs')->where('action', 'checkout.confirmed')
+                ->where('subject_id', (string) $corrupt['attempt']);
+            $row = $query->sole();
+            if ($case === 'gap') {
+                $context = json_decode((string) $row->context, true, flags: JSON_THROW_ON_ERROR);
+                $context['generation'] = 2;
+                $query->update(['context' => json_encode($context, JSON_THROW_ON_ERROR)]);
+            } elseif ($case === 'malformed') {
+                $query->update(['context' => '{"version":2}']);
+            } elseif ($case === 'wrong-actor') {
+                $query->update(['actor_type' => 'admin']);
+            } elseif ($case === 'wrong-actor-id') {
+                $query->update(['actor_id' => 'not-a-session-ulid']);
+            } elseif ($case === 'actor-mismatch') {
+                $context = json_decode((string) $row->context, true, flags: JSON_THROW_ON_ERROR);
+                $context['sessionPublicId'] = (string) Str::ulid();
+                $query->update(['context' => json_encode($context, JSON_THROW_ON_ERROR)]);
+            } elseif (in_array($case, ['foreign-actor', 'nonexistent-actor'], true)) {
+                $actorId = (string) Str::ulid();
+                if ($case === 'foreign-actor') {
+                    $foreign = $this->established();
+                    $actorId = (string) DB::table('audit_logs')->where('branch_id', $foreign['organization'])
+                        ->where('action', 'checkout_session.established')->value('actor_id');
+                }
+                $context = json_decode((string) $row->context, true, flags: JSON_THROW_ON_ERROR);
+                $context['sessionPublicId'] = $actorId;
+                $query->update(['actor_id' => $actorId, 'context' => json_encode($context, JSON_THROW_ON_ERROR)]);
+            } elseif ($case === 'invalid-time') {
+                $query->update(['occurred_at' => 'not-a-timestamp']);
+            } elseif ($case === 'future') {
+                $query->update(['occurred_at' => now()->addDay()]);
+            } else {
+                $establishedAt = now()->subHours(3)->startOfSecond();
+                $idleExpiresAt = $establishedAt->copy()->addHour();
+                $absoluteExpiresAt = $establishedAt->copy()->addHours(2);
+                $establishedQuery = DB::table('audit_logs')->where('action', 'checkout_session.established')
+                    ->where('subject_id', (string) $corrupt['attempt']);
+                $establishedContext = json_decode(
+                    (string) $establishedQuery->value('context'), true, flags: JSON_THROW_ON_ERROR);
+                $establishedContext['establishedAt'] = $establishedAt->toISOString();
+                $establishedContext['idleExpiresAt'] = $idleExpiresAt->toISOString();
+                $establishedContext['absoluteExpiresAt'] = $absoluteExpiresAt->toISOString();
+                $establishedQuery->update([
+                    'occurred_at' => $establishedAt,
+                    'context' => json_encode($establishedContext, JSON_THROW_ON_ERROR),
+                ]);
+                $confirmationAt = match ($case) {
+                    'before-established' => $establishedAt->copy()->subSecond(),
+                    'at-absolute-expiry' => $absoluteExpiresAt,
+                    'after-absolute-expiry' => $absoluteExpiresAt->copy()->addSecond(),
+                };
+                $query->update(['occurred_at' => $confirmationAt]);
+            }
+            DB::table('consent_records')->where('participant_id', $corrupt['participant'])
+                ->where('consent_type', 'dass')->update(['status' => 'withdrawn', 'withdrawn_at' => now()]);
+            $before = DB::table('audit_logs')->count();
+            $this->mutation($corrupt, $this->writerPayload(['dass'], []), path: '/checkout/_test/confirm-write')
+                ->assertConflict();
+            $this->assertSame($before, DB::table('audit_logs')->count());
+        }
+    }
+
+    public function test_second_generation_failure_rolls_back_reaccept_and_new_history_only(): void
+    {
+        $fixture = $this->established();
+        $this->mutation($fixture, $this->writerPayload(), path: '/checkout/_test/confirm-write')->assertOk();
+        $record = ConsentRecord::query()->where('participant_id', $fixture['participant'])
+            ->where('consent_type', 'dass')->firstOrFail();
+        $originalConsentedAt = $record->consented_at;
+        $withdrawnAt = now()->startOfSecond();
+        $record->forceFill(['status' => 'withdrawn', 'withdrawn_at' => $withdrawnAt])->save();
+        DB::unprepared("CREATE TRIGGER p15_generation_audit_failure BEFORE INSERT ON audit_logs
+            WHEN NEW.action = 'checkout.confirmed' BEGIN SELECT RAISE(ABORT, 'synthetic generation rollback'); END");
+        try {
+            $this->mutation($fixture, $this->writerPayload(['dass'], []), path: '/checkout/_test/confirm-write')
+                ->assertServerError();
+        } finally {
+            DB::unprepared('DROP TRIGGER p15_generation_audit_failure');
+        }
+
+        $record->refresh();
+        $this->assertSame('withdrawn', $record->status);
+        $this->assertTrue($record->consented_at->equalTo($originalConsentedAt));
+        $this->assertTrue($record->withdrawn_at->equalTo($withdrawnAt));
+        $this->assertSame(1, DB::table('audit_logs')->where('action', 'checkout.confirmed')->count());
+        $this->assertSame(0, DB::table('audit_logs')->where('action', 'checkout.consent_reaccepted')->count());
+    }
+
+    public function test_future_accepted_consent_conflicts_before_profile_or_audit_write(): void
+    {
+        $fixture = $this->established();
+        $this->acceptCurrentConsents($fixture['participant'], ['psychotest', 'dass']);
+        DB::table('consent_records')->where('participant_id', $fixture['participant'])
+            ->where('consent_type', 'dass')->update(['consented_at' => now()->addDay()]);
+
+        $this->mutation($fixture, $this->writerPayload([]), path: '/checkout/_test/confirm-write')
+            ->assertConflict();
+        $this->assertDatabaseHas('participants', ['id' => $fixture['participant'], 'full_name' => null]);
+        $this->assertSame(0, DB::table('audit_logs')->whereIn('action', [
+            'checkout.confirmed', 'checkout.consent_reaccepted',
+        ])->count());
+
+        $replay = $this->established();
+        $payload = $this->writerPayload();
+        $this->mutation($replay, $payload, path: '/checkout/_test/confirm-write')->assertOk();
+        DB::table('consent_records')->where('participant_id', $replay['participant'])
+            ->where('consent_type', 'dass')->update(['consented_at' => now()->addDay()]);
+        $before = DB::table('audit_logs')->count();
+        $this->mutation($replay, $payload, path: '/checkout/_test/confirm-write')->assertConflict();
+        $this->assertSame($before, DB::table('audit_logs')->count());
+    }
+
+    public function test_reaccept_history_and_record_transition_roll_back_with_confirmation_audit_failure(): void
+    {
+        $fixture = $this->established();
+        $this->acceptCurrentConsents($fixture['participant'], ['psychotest']);
+        $document = ConsentDocument::for('dass');
+        $recordId = DB::table('consent_records')->insertGetId([
+            'participant_id' => $fixture['participant'], 'consent_type' => 'dass', 'status' => 'declined',
+            'document_version' => $document->version, 'document_hash' => $document->hash,
+            'consented_at' => null, 'withdrawn_at' => null, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::unprepared("CREATE TRIGGER p15_reaccept_audit_failure BEFORE INSERT ON audit_logs
+            WHEN NEW.action = 'checkout.confirmed' BEGIN SELECT RAISE(ABORT, 'synthetic reaccept rollback'); END");
+        try {
+            $this->mutation($fixture, $this->writerPayload(['dass']), path: '/checkout/_test/confirm-write')
+                ->assertServerError();
+        } finally {
+            DB::unprepared('DROP TRIGGER p15_reaccept_audit_failure');
+        }
+
+        $this->assertDatabaseHas('consent_records', [
+            'id' => $recordId, 'status' => 'declined', 'consented_at' => null, 'withdrawn_at' => null,
+        ]);
+        $this->assertDatabaseHas('participants', ['id' => $fixture['participant'], 'full_name' => null]);
+        $this->assertSame(0, DB::table('audit_logs')->whereIn('action', [
+            'checkout.confirmed', 'checkout.consent_reaccepted',
+        ])->count());
+    }
+
     public function test_writer_exact_replay_is_idempotent_but_changed_or_prelocked_profile_conflicts(): void
     {
         $fixture = $this->established();
@@ -256,6 +583,28 @@ final class IntegratedCheckoutConsentTest extends OrganizationPaymentTestCase
         $this->assertDatabaseHas('participants', ['id' => $prelocked['participant'], 'full_name' => 'Already Locked']);
     }
 
+    public function test_replay_rejects_a_required_locked_profile_field_that_became_missing(): void
+    {
+        $fixture = $this->established(['full_name' => 'Initially Locked']);
+        $payload = $this->writerPayload(profile: [
+            'birthDate' => '2000-01-02', 'gender' => 'FEMALE',
+            'educationLevel' => 'SMA_SMK', 'intendedField' => 'KAIGO',
+        ]);
+        $this->mutation($fixture, $payload, path: '/checkout/_test/confirm-write')->assertOk();
+        DB::table('participants')->where('id', $fixture['participant'])->update(['full_name' => null]);
+        $before = [
+            DB::table('audit_logs')->count(), DB::table('consent_records')->count(),
+            DB::table('assessment_entitlements')->count(), DB::table('outbox_messages')->count(),
+        ];
+
+        $this->mutation($fixture, $payload, path: '/checkout/_test/confirm-write')->assertConflict();
+        $this->assertSame($before, [
+            DB::table('audit_logs')->count(), DB::table('consent_records')->count(),
+            DB::table('assessment_entitlements')->count(), DB::table('outbox_messages')->count(),
+        ]);
+        $this->assertDatabaseHas('participants', ['id' => $fixture['participant'], 'full_name' => null]);
+    }
+
     public function test_request_rejects_authority_optional_identity_and_non_explicit_consent_fields(): void
     {
         $fixture = $this->established();
@@ -282,7 +631,7 @@ final class IntegratedCheckoutConsentTest extends OrganizationPaymentTestCase
             ->assertUnprocessable();
         unset($valid['consents']['psychotest']);
         $this->mutation($fixture, json_encode($valid, JSON_THROW_ON_ERROR), path: '/checkout/_test/confirm-write')
-            ->assertUnprocessable();
+            ->assertConflict();
         $this->assertDatabaseCount('consent_records', 0);
         $this->assertDatabaseHas('participants', ['id' => $fixture['participant'], 'full_name' => null]);
     }
@@ -469,23 +818,41 @@ final class IntegratedCheckoutConsentTest extends OrganizationPaymentTestCase
         ], JSON_THROW_ON_ERROR);
     }
 
-    private function writerPayload(): string
+    /** @param list<string> $consentTypes
+     * @param  array<string, string>|null  $profile
+     */
+    private function writerPayload(array $consentTypes = ['psychotest', 'dass'], ?array $profile = null): string
     {
         $psychotest = ConsentDocument::for('psychotest');
         $dass = ConsentDocument::for('dass');
 
+        $consents = [
+            'psychotest' => ['accepted' => true, 'documentVersion' => $psychotest->version,
+                'documentHash' => $psychotest->hash],
+            'dass' => ['accepted' => true, 'documentVersion' => $dass->version,
+                'documentHash' => $dass->hash],
+        ];
+
         return json_encode([
-            'profile' => [
+            'profile' => $profile ?? [
                 'fullName' => 'Synthetic Person', 'birthDate' => '2000-01-02', 'gender' => 'FEMALE',
                 'educationLevel' => 'SMA_SMK', 'intendedField' => 'KAIGO',
             ],
-            'consents' => [
-                'psychotest' => ['accepted' => true, 'documentVersion' => $psychotest->version,
-                    'documentHash' => $psychotest->hash],
-                'dass' => ['accepted' => true, 'documentVersion' => $dass->version,
-                    'documentHash' => $dass->hash],
-            ],
+            'consents' => array_intersect_key($consents, array_flip($consentTypes)),
         ], JSON_THROW_ON_ERROR);
+    }
+
+    /** @param list<string> $types */
+    private function acceptCurrentConsents(int $participantId, array $types): void
+    {
+        foreach ($types as $type) {
+            $document = ConsentDocument::for($type);
+            DB::table('consent_records')->insert([
+                'participant_id' => $participantId, 'consent_type' => $type, 'status' => 'accepted',
+                'document_version' => $document->version, 'document_hash' => $document->hash,
+                'consented_at' => now(), 'withdrawn_at' => null, 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
     }
 
     /** @param array<string, string>|null $cookies

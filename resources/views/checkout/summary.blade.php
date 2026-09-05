@@ -14,6 +14,8 @@
     $optionalMissing = count(array_filter($summary['profile'], fn ($field) => $field['state'] === 'missing' && ! $field['required'])) > 0;
     $psychotestConsentRequired = $summary['consents']['psychotest']['state'] === 'required';
     $dassConsentRequired = $summary['consents']['dass']['state'] === 'required';
+    $requiredConsentTypes = array_values(array_filter(['psychotest', 'dass'], fn ($type) =>
+        $summary['consents'][$type]['state'] === 'required'));
     $confirmation = is_array($confirmationForm ?? null) ? $confirmationForm : null;
     $profileByKey = [];
     foreach ($summary['profile'] as $field) {
@@ -25,13 +27,15 @@
     sort($missingProfileKeys);
     $confirmationProfileKeys = is_array($confirmation['profile'] ?? null) ? array_keys($confirmation['profile']) : [];
     sort($confirmationProfileKeys);
-    $confirmationReady = $confirmation !== null
-        && is_string($confirmation['action'] ?? null)
-        && preg_match('#^/checkout/[a-z0-9-]+$#D', $confirmation['action']) === 1
+    $confirmationConsentTypes = is_array($confirmation['consents'] ?? null) ? array_keys($confirmation['consents']) : [];
+    $confirmationReady = is_array($confirmation)
+        && array_keys($confirmation) === ['action', 'profile', 'consents']
+        && ($confirmation['action'] ?? null) === '/checkout/confirm'
         && $confirmationProfileKeys === $missingProfileKeys
-        && $psychotestConsentRequired && $dassConsentRequired
+        && $confirmationConsentTypes === $requiredConsentTypes
+        && ($missingProfileKeys !== [] || $requiredConsentTypes !== [])
         && ! $summary['consents']['legalReviewPending'];
-    foreach (['psychotest', 'dass'] as $type) {
+    foreach ($requiredConsentTypes as $type) {
         $consent = $confirmation['consents'][$type] ?? null;
         $consentKeys = is_array($consent) ? array_keys($consent) : [];
         sort($consentKeys);
@@ -69,6 +73,10 @@
     $paymentChoices = is_array($paymentAction['choices'] ?? null) ? $paymentAction['choices'] : [];
     $paymentActionReady = ($summary['contractVersion'] ?? null) === 'checkout-summary-v2'
         && ($summary['payment']['actionAvailable'] ?? false) === true
+        && ((($summary['packageSource'] ?? null) === 'catalog'
+            && ($summary['payment']['amountSource'] ?? null) === 'unavailable')
+            || (($summary['packageSource'] ?? null) === 'charge_snapshot'
+                && ($summary['payment']['amountSource'] ?? null) === 'charge_snapshot'))
         && is_array($paymentAction)
         && $exactKeys($paymentAction, ['path', 'mode', 'currency', 'choices'])
         && $paymentAction['path'] === '/checkout/payment'
@@ -106,6 +114,29 @@
             && $organizationChoice['consultationAmountIdr'] === 0
             && $organizationChoice['amountIdr'] === 0;
     }
+    if ($paymentActionReady) {
+        $payment = $summary['payment'];
+        if (($payment['payer'] ?? null) === 'self' && $paymentAction['mode'] === 'select') {
+            $paymentActionReady = ($payment['state'] ?? null) === 'unpaid'
+                && ($payment['amountSource'] ?? null) === 'unavailable'
+                && ($payment['amountIdr'] ?? null) === null
+                && ($payment['consultationRequested'] ?? null) === null;
+        } elseif (($payment['payer'] ?? null) === 'self' && $paymentAction['mode'] === 'continue') {
+            $continueChoice = $paymentChoices[0] ?? null;
+            $paymentActionReady = ($payment['state'] ?? null) === 'pending'
+                && ($payment['amountSource'] ?? null) === 'charge_snapshot'
+                && is_array($continueChoice)
+                && ($payment['amountIdr'] ?? null) === $continueChoice['amountIdr']
+                && ($payment['consultationRequested'] ?? null) === $continueChoice['consultationRequested'];
+        } elseif (($payment['payer'] ?? null) === 'organization') {
+            $paymentActionReady = ($payment['state'] ?? null) === 'unbilled'
+                && ($payment['amountSource'] ?? null) === 'unavailable'
+                && ($payment['amountIdr'] ?? null) === null
+                && ($payment['consultationRequested'] ?? null) === null;
+        } else {
+            $paymentActionReady = false;
+        }
+    }
 @endphp
 <!DOCTYPE html>
 <html lang="id">
@@ -136,7 +167,7 @@
     @if ($requiredMissing || $psychotestConsentRequired || $dassConsentRequired)
         <section class="requirements" aria-labelledby="requirements-heading">
             <h2 id="requirements-heading">Yang perlu dilengkapi</h2>
-            <p>Status ini berasal dari data checkout Anda. {{ $confirmationReady ? 'Lengkapi hanya data yang masih kosong dan kedua persetujuan di bawah.' : 'Pengisian dan persetujuan belum tersedia di halaman ringkasan ini.' }}</p>
+            <p>Status ini berasal dari data checkout Anda. {{ $confirmationReady ? 'Lengkapi hanya data dan persetujuan yang masih diperlukan di bawah.' : 'Pengisian dan persetujuan belum tersedia di halaman ringkasan ini.' }}</p>
             <ul class="requirements-list">
                 @if ($requiredMissing)
                     <li>
@@ -261,10 +292,11 @@
             <input type="hidden" name="_checkout_csrf" value="{{ $checkoutCsrf }}">
             <h2>Lengkapi dan konfirmasi</h2>
             <p>Kolom berikut hanya memuat data profil wajib yang belum tersedia. Data ringkasan lainnya tidak akan dikirim oleh formulir ini.</p>
-            <fieldset>
-                <legend>Data profil yang belum lengkap</legend>
-                <div class="form-grid">
-                    @foreach ($missingProfileKeys as $key)
+            @if ($missingProfileKeys !== [])
+                <fieldset>
+                    <legend>Data profil yang belum lengkap</legend>
+                    <div class="form-grid">
+                        @foreach ($missingProfileKeys as $key)
                         @php($descriptor = $confirmation['profile'][$key])
                         <div class="form-field">
                             <label for="checkout-profile-{{ $key }}">{{ $profileByKey[$key]['label'] }}</label>
@@ -284,21 +316,26 @@
                                     @if ($key === 'phone') maxlength="32" inputmode="tel" pattern="\+?[0-9][0-9 ()-]{7,30}" @endif>
                             @endif
                         </div>
-                    @endforeach
-                </div>
-            </fieldset>
-            <fieldset>
-                <legend>Persetujuan wajib</legend>
-                @foreach (['psychotest' => 'Saya menyetujui pelaksanaan psikotes sesuai dokumen di atas.',
-                    'dass' => 'Saya menyetujui DASS-21 sebagai bagian wajib paket sesuai dokumen di atas.'] as $type => $label)
+                        @endforeach
+                    </div>
+                </fieldset>
+            @endif
+            @if ($requiredConsentTypes !== [])
+                <fieldset>
+                    <legend>Persetujuan wajib</legend>
+                    @foreach ($requiredConsentTypes as $type)
+                        @php($label = $type === 'psychotest'
+                            ? 'Saya menyetujui pelaksanaan psikotes sesuai dokumen di atas.'
+                            : 'Saya menyetujui DASS-21 sebagai bagian wajib paket sesuai dokumen di atas.')
                     <input type="hidden" name="consents[{{ $type }}][documentVersion]" value="{{ $confirmation['consents'][$type]['documentVersion'] }}">
                     <input type="hidden" name="consents[{{ $type }}][documentHash]" value="{{ $confirmation['consents'][$type]['documentHash'] }}">
                     <label class="consent-choice" for="checkout-consent-{{ $type }}">
                         <input id="checkout-consent-{{ $type }}" type="checkbox" name="consents[{{ $type }}][accepted]" value="true" required>
                         <span>{{ $label }}</span>
                     </label>
-                @endforeach
-            </fieldset>
+                    @endforeach
+                </fieldset>
+            @endif
             <p class="transport-status" data-confirmation-status role="status" aria-live="polite" tabindex="-1">Formulir sedang disiapkan.</p>
             <noscript><p class="transport-warning">JavaScript diperlukan untuk mengirim konfirmasi sebagai JSON yang aman. Ringkasan tetap dapat dibaca.</p></noscript>
             <button type="submit" disabled aria-disabled="true">Simpan dan konfirmasi</button>

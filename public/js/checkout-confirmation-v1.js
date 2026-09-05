@@ -14,10 +14,7 @@ const CONSENT_NAME_PATTERN =
     /^consents\[(psychotest|dass)]\[(accepted|documentVersion|documentHash)]$/;
 
 function safeAction(action, origin) {
-    if (
-        typeof action !== 'string' ||
-        !/^\/checkout\/[a-z0-9-]+$/.test(action)
-    ) {
+    if (action !== '/checkout/confirm') {
         return false;
     }
 
@@ -31,7 +28,7 @@ function safeAction(action, origin) {
 export function inspectConfirmationElements(elements, requireUnchecked = true) {
     const seen = new Set();
     const profiles = [];
-    const consents = { psychotest: new Set(), dass: new Set() };
+    const consents = { psychotest: new Map(), dass: new Map() };
     let csrf = null;
 
     for (const element of Array.from(elements)) {
@@ -101,7 +98,7 @@ export function inspectConfirmationElements(elements, requireUnchecked = true) {
             return null;
         }
 
-        consents[type].add(field);
+        consents[type].set(field, element.value);
     }
 
     profiles.sort();
@@ -110,16 +107,55 @@ export function inspectConfirmationElements(elements, requireUnchecked = true) {
         return null;
     }
 
+    const consentTypes = [];
+
     for (const type of CONSENT_TYPES) {
+        if (consents[type].size === 0) {
+            continue;
+        }
+
         if (consents[type].size !== 3) {
             return null;
         }
+
+        consentTypes.push(type);
     }
 
-    return { csrf, profileNames: profiles };
+    if (profiles.length === 0 && consentTypes.length === 0) {
+        return null;
+    }
+
+    return {
+        csrf,
+        profileNames: profiles,
+        consentTypes,
+        consentSignature: consentSignature(consents, consentTypes),
+    };
 }
 
-export function buildConfirmationPayload(entries, expectedProfileNames) {
+function consentSignature(consents, consentTypes) {
+    return JSON.stringify(
+        consentTypes.map((type) => [
+            type,
+            consents[type].get('documentVersion'),
+            consents[type].get('documentHash'),
+        ]),
+    );
+}
+
+export function buildConfirmationPayload(
+    entries,
+    expectedProfileNames,
+    expectedConsentTypes,
+    expectedConsentSignature,
+) {
+    if (
+        !Array.isArray(expectedProfileNames) ||
+        !Array.isArray(expectedConsentTypes)
+    ) {
+        throw new Error('Invalid confirmation form.');
+    }
+
     const values = new Map();
 
     for (const [name, value] of entries) {
@@ -135,6 +171,18 @@ export function buildConfirmationPayload(entries, expectedProfileNames) {
     }
 
     const expected = [...expectedProfileNames].sort();
+    const expectedTypes = CONSENT_TYPES.filter((type) =>
+        expectedConsentTypes.includes(type),
+    );
+
+    if (
+        expectedTypes.length !== expectedConsentTypes.length ||
+        new Set(expectedConsentTypes).size !== expectedConsentTypes.length ||
+        typeof expectedConsentSignature !== 'string'
+    ) {
+        throw new Error('Invalid confirmation form.');
+    }
+
     const profile = {};
     const suppliedProfiles = [];
     const consents = {};
@@ -183,7 +231,14 @@ export function buildConfirmationPayload(entries, expectedProfileNames) {
         throw new Error('Invalid confirmation form.');
     }
 
-    for (const type of CONSENT_TYPES) {
+    if (
+        Object.keys(consents).length !== expectedTypes.length ||
+        expectedTypes.some((type) => !(type in consents))
+    ) {
+        throw new Error('Invalid confirmation form.');
+    }
+
+    for (const type of expectedTypes) {
         const consent = consents[type];
 
         if (
@@ -200,9 +255,28 @@ export function buildConfirmationPayload(entries, expectedProfileNames) {
         }
     }
 
+    const signatureMaps = { psychotest: new Map(), dass: new Map() };
+
+    for (const type of expectedTypes) {
+        signatureMaps[type].set(
+            'documentVersion',
+            consents[type].documentVersion,
+        );
+        signatureMaps[type].set('documentHash', consents[type].documentHash);
+    }
+
+    if (
+        consentSignature(signatureMaps, expectedTypes) !==
+        expectedConsentSignature
+    ) {
+        throw new Error('Invalid confirmation form.');
+    }
+
     return {
         profile,
-        consents: { psychotest: consents.psychotest, dass: consents.dass },
+        consents: Object.fromEntries(
+            expectedTypes.map((type) => [type, consents[type]]),
+        ),
     };
 }
 
@@ -233,7 +307,7 @@ function resultForStatus(status) {
             return {
                 kind: 'validation',
                 retryable: true,
-                message: 'Periksa kembali data wajib dan kedua persetujuan.',
+                message: 'Periksa kembali data dan persetujuan wajib.',
             };
         case 429:
             return {
@@ -331,7 +405,10 @@ export function enhanceCheckoutConfirmation(
 
         if (
             !current ||
-            current.profileNames.join(',') !== initial.profileNames.join(',')
+            current.csrf !== initial.csrf ||
+            current.profileNames.join(',') !== initial.profileNames.join(',') ||
+            current.consentTypes.join(',') !== initial.consentTypes.join(',') ||
+            current.consentSignature !== initial.consentSignature
         ) {
             setStatus(status, {
                 kind: 'unexpected',
@@ -348,12 +425,14 @@ export function enhanceCheckoutConfirmation(
         try {
             payload = buildConfirmationPayload(
                 formDataFactory(form).entries(),
-                current.profileNames,
+                initial.profileNames,
+                initial.consentTypes,
+                initial.consentSignature,
             );
         } catch {
             setStatus(status, {
                 kind: 'validation',
-                message: 'Periksa kembali data wajib dan kedua persetujuan.',
+                message: 'Periksa kembali data dan persetujuan wajib.',
             });
 
             return;

@@ -122,7 +122,7 @@ final class CheckoutProductionWiringTest extends OrganizationPaymentTestCase
         $this->assertPrivate($logout);
     }
 
-    public function test_partial_consent_is_explicitly_read_only_instead_of_inventing_acceptance(): void
+    public function test_partial_consent_presents_only_the_still_required_dass_consent(): void
     {
         $this->enableCheckout();
         $fixture = $this->issued();
@@ -135,9 +135,16 @@ final class CheckoutProductionWiringTest extends OrganizationPaymentTestCase
         $credentials = $this->credentials($this->exchange($fixture['raw'])->assertStatus(303));
 
         $response = $this->getWithCookies('/checkout', $credentials)->assertOk()
-            ->assertViewHas('confirmationForm', null);
+            ->assertViewHas('confirmationForm', function (mixed $form): bool {
+                return is_array($form)
+                    && array_keys($form['profile']) === ['fullName']
+                    && array_keys($form['consents']) === ['dass'];
+            });
 
         $this->assertPrivate($response);
+        $xpath = $this->dom($response);
+        $this->assertSame(1, $xpath->query('//form[@data-checkout-confirmation]//input[@name="consents[dass][accepted]"]')->length);
+        $this->assertSame(0, $xpath->query('//form[@data-checkout-confirmation]//*[@name="consents[psychotest][accepted]"]')->length);
         $this->assertDatabaseCount('consent_records', 1);
         $this->assertSame(0, DB::table('audit_logs')->where('action', 'checkout.confirmed')->count());
     }
@@ -273,6 +280,20 @@ final class CheckoutProductionWiringTest extends OrganizationPaymentTestCase
     private function getWithCookies(string $path, array $credentials): TestResponse
     {
         return $this->call('GET', $path, [], $this->cookieMap($credentials), [], $this->server(origin: null));
+    }
+
+    private function dom(TestResponse $response): \DOMXPath
+    {
+        $document = new \DOMDocument;
+        $previous = libxml_use_internal_errors(true);
+        try {
+            $document->loadHTML($response->getContent());
+
+            return new \DOMXPath($document);
+        } finally {
+            libxml_clear_errors();
+            libxml_use_internal_errors($previous);
+        }
     }
 
     /** @param array{selector:string,csrf:string} $credentials */

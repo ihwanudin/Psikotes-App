@@ -23,6 +23,7 @@ use App\Services\ParticipantAuth\AssessmentPrincipal;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use DomainException;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use LogicException;
 
@@ -46,10 +47,10 @@ final readonly class ConfirmIntegratedCheckout
         }
         $documents = ['psychotest' => ConsentDocument::for('psychotest'), 'dass' => ConsentDocument::for('dass')];
         foreach ($documents as $type => $document) {
-            $supplied = $input->consents[$type];
+            $supplied = $input->consents[$type] ?? null;
             if (trim($document->version) === '' || trim($document->title) === '' || trim($document->text) === ''
-                || ! hash_equals($document->version, $supplied['documentVersion'])
-                || ! hash_equals($document->hash, $supplied['documentHash'])) {
+                || ($supplied !== null && (! hash_equals($document->version, $supplied['documentVersion'])
+                    || ! hash_equals($document->hash, $supplied['documentHash'])))) {
                 throw new DomainException('CHECKOUT_CONFIRMATION_CONFLICT');
             }
         }
@@ -92,25 +93,38 @@ final readonly class ConfirmIntegratedCheckout
                 throw new DomainException('CHECKOUT_CONFIRMATION_CONFLICT');
             }
 
-            DB::table('consent_records')->where('participant_id', $participant->id)
+            $consentRecords = ConsentRecord::query()->where('participant_id', $participant->id)
                 ->whereIn('consent_type', array_keys($documents))->orderBy('id')->lockForUpdate()->get();
-            $audits = DB::table('audit_logs')->where('branch_id', $organization->id)
-                ->where('actor_type', 'checkout_session')->where('actor_id', $session->public_id)
-                ->where('action', 'checkout.confirmed')->where('subject_type', AssessmentParticipant::class)
+            $auditHistory = DB::table('audit_logs')->where('branch_id', $organization->id)
+                ->whereIn('action', ['checkout_session.established', 'checkout.confirmed'])
+                ->where('subject_type', AssessmentParticipant::class)
                 ->where('subject_id', (string) $attempt->id)->orderBy('id')->lockForUpdate()->get();
-            if ($audits->isNotEmpty()) {
-                if ($audits->count() !== 1 || ! $this->validReplayAudit((string) $audits->sole()->context, $input)
-                    || ! $this->replayProfileMatches($participant, $input)) {
-                    throw new DomainException('CHECKOUT_CONFIRMATION_CONFLICT');
-                }
+            $establishedActors = $this->establishedSessionActors(
+                $auditHistory->where('action', 'checkout_session.established')->values(),
+                $handoffs->map(
+                    static fn (CheckoutHandoff $checkoutHandoff): string => $checkoutHandoff->public_id,
+                )->values()->all(),
+                $source->source_system,
+                $now,
+            );
+            $requestHash = $input->requestHash();
+            $history = $this->confirmationHistory(
+                $auditHistory->where('action', 'checkout.confirmed')->values(), $establishedActors, $now);
+            if ($history['latestRequestHash'] !== null
+                && hash_equals($history['latestRequestHash'], $requestHash)
+                && $this->missingProfile($participant) === []
+                && $this->replayProfileMatches($participant, $input)) {
+                $canonical = true;
                 foreach ($documents as $type => $document) {
-                    if (! $this->acceptedConsentRecord($participant->id, $type, $document)) {
-                        throw new DomainException('CHECKOUT_CONFIRMATION_CONFLICT');
+                    if (! $this->acceptedConsentRecord($consentRecords, $type, $document, $now)) {
+                        $canonical = false;
+                        break;
                     }
                 }
-
-                return ['replayed' => true, 'profileFieldsCompleted' => 0, 'consentsRecorded' => 0,
-                    'principal' => new AssessmentPrincipal($participant->id, $organization->id, $attempt->id)];
+                if ($canonical) {
+                    return ['replayed' => true, 'profileFieldsCompleted' => 0, 'consentsRecorded' => 0,
+                        'principal' => new AssessmentPrincipal($participant->id, $organization->id, $attempt->id)];
+                }
             }
 
             $missing = $this->missingProfile($participant);
@@ -119,29 +133,48 @@ final readonly class ConfirmIntegratedCheckout
             if ($supplied !== $missing) {
                 throw new DomainException('CHECKOUT_CONFIRMATION_CONFLICT');
             }
+            $missingConsentTypes = [];
+            foreach ($documents as $type => $document) {
+                if (! $this->acceptedConsentRecord($consentRecords, $type, $document, $now)) {
+                    $missingConsentTypes[] = $type;
+                }
+            }
+            $suppliedConsentTypes = array_keys($input->consents);
+            sort($missingConsentTypes);
+            sort($suppliedConsentTypes);
+            if ($suppliedConsentTypes !== $missingConsentTypes
+                || ($missing === [] && $missingConsentTypes === [])) {
+                throw new DomainException('CHECKOUT_CONFIRMATION_CONFLICT');
+            }
             $attributes = $this->profileAttributes($input->profile);
             if ($attributes !== []) {
                 $participant->fill($attributes);
                 $participant->save();
             }
             $recorded = 0;
-            foreach ($documents as $type => $document) {
-                $record = ConsentRecord::query()->where('participant_id', $participant->id)
-                    ->where('consent_type', $type)->where('document_version', $document->version)->first();
+            foreach ($input->consents as $type => $_consent) {
+                $document = $documents[$type];
+                $record = $consentRecords->first(fn (ConsentRecord $candidate): bool => $candidate->consent_type === $type
+                    && $candidate->document_version === $document->version);
                 if ($record === null) {
                     ConsentRecord::query()->create(['participant_id' => $participant->id, 'consent_type' => $type,
                         'status' => 'accepted', 'document_version' => $document->version,
                         'document_hash' => $document->hash, 'consented_at' => $now, 'withdrawn_at' => null]);
                     $recorded++;
-                } elseif ($record->status !== 'accepted' || ! hash_equals($document->hash, $record->document_hash)
-                    || $record->consented_at === null || $record->withdrawn_at !== null) {
+                } elseif (! $this->reacceptableConsentRecord($record, $document, $now)) {
                     throw new DomainException('CHECKOUT_CONFIRMATION_CONFLICT');
+                } else {
+                    $this->auditConsentReaccepted($organization->id, $session->public_id, $record, $now);
+                    $record->forceFill([
+                        'status' => 'accepted', 'consented_at' => $now, 'withdrawn_at' => null,
+                    ])->save();
+                    $recorded++;
                 }
             }
             DB::table('audit_logs')->insert(['branch_id' => $organization->id, 'actor_type' => 'checkout_session',
                 'actor_id' => $session->public_id, 'action' => 'checkout.confirmed',
                 'subject_type' => AssessmentParticipant::class, 'subject_id' => (string) $attempt->id,
-                'context' => json_encode($this->auditContext($input), JSON_THROW_ON_ERROR),
+                'context' => json_encode($this->auditContext($input, $history['nextGeneration']), JSON_THROW_ON_ERROR),
                 'occurred_at' => $now, 'expires_at' => $now->addYearsNoOverflow(2)]);
 
             return ['replayed' => false, 'profileFieldsCompleted' => count($missing), 'consentsRecorded' => $recorded,
@@ -230,25 +263,125 @@ final readonly class ConfirmIntegratedCheckout
         return $mapped;
     }
 
-    /** @return array{version:int,sessionPublicId:string,requestHash:string,consentVersions:array{psychotest:string,dass:string}} */
-    private function auditContext(IntegratedCheckoutConfirmationInput $input): array
+    /** @return array{version:int,generation:int,sessionPublicId:string,requestHash:string} */
+    private function auditContext(IntegratedCheckoutConfirmationInput $input, int $generation): array
     {
-        return ['version' => 1, 'sessionPublicId' => $input->principal->sessionPublicId,
-            'requestHash' => $input->requestHash(), 'consentVersions' => [
-                'psychotest' => $input->consents['psychotest']['documentVersion'],
-                'dass' => $input->consents['dass']['documentVersion'],
-            ]];
+        return ['version' => 2, 'generation' => $generation, 'sessionPublicId' => $input->principal->sessionPublicId,
+            'requestHash' => $input->requestHash()];
     }
 
-    private function validReplayAudit(string $json, IntegratedCheckoutConfirmationInput $input): bool
+    /** @param Collection<int, \stdClass> $audits
+     * @param  array<string, array{establishedAt: CarbonImmutable, absoluteExpiresAt: CarbonImmutable}>  $establishedActors
+     * @return array{nextGeneration:int,latestRequestHash:?string}
+     */
+    private function confirmationHistory(Collection $audits, array $establishedActors, CarbonImmutable $now): array
     {
-        try {
-            $context = json_decode($json, true, 16, JSON_THROW_ON_ERROR);
-        } catch (\JsonException) {
-            return false;
+        $generation = 0;
+        $latestHash = null;
+        $previousAt = null;
+        foreach ($audits as $audit) {
+            $generation++;
+            $row = (array) $audit;
+            $actorId = $row['actor_id'] ?? null;
+            $sessionInterval = is_string($actorId) ? ($establishedActors[$actorId] ?? null) : null;
+            $occurredAt = $this->auditTimestamp($row['occurred_at'] ?? null);
+            try {
+                $context = json_decode((string) ($row['context'] ?? ''), true, 16, JSON_THROW_ON_ERROR);
+            } catch (\JsonException) {
+                throw new DomainException('CHECKOUT_CONFIRMATION_CONFLICT');
+            }
+            if (($row['actor_type'] ?? null) !== 'checkout_session' || ! is_string($actorId)
+                || preg_match('/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/D', $actorId) !== 1
+                || $sessionInterval === null
+                || ! is_array($context)
+                || array_keys($context) !== ['version', 'generation', 'sessionPublicId', 'requestHash']
+                || ($context['version'] ?? null) !== 2 || ($context['generation'] ?? null) !== $generation
+                || ($context['sessionPublicId'] ?? null) !== $actorId
+                || ! is_string($context['requestHash'] ?? null)
+                || preg_match('/^[0-9a-f]{64}$/D', $context['requestHash']) !== 1
+                || $occurredAt === null || $occurredAt->greaterThan($now)
+                || $occurredAt->lessThan($sessionInterval['establishedAt'])
+                || $occurredAt->greaterThanOrEqualTo($sessionInterval['absoluteExpiresAt'])
+                || ($previousAt !== null && $occurredAt->lessThan($previousAt))) {
+                throw new DomainException('CHECKOUT_CONFIRMATION_CONFLICT');
+            }
+            $previousAt = $occurredAt;
+            $latestHash = $context['requestHash'];
         }
 
-        return is_array($context) && $context === $this->auditContext($input);
+        return ['nextGeneration' => $generation + 1, 'latestRequestHash' => $latestHash];
+    }
+
+    /** @param Collection<int, \stdClass> $audits
+     * @param  array<int, string>  $handoffPublicIds
+     * @return array<string, array{establishedAt: CarbonImmutable, absoluteExpiresAt: CarbonImmutable}>
+     */
+    private function establishedSessionActors(Collection $audits, array $handoffPublicIds, string $sourceSystem,
+        CarbonImmutable $now): array
+    {
+        $actors = [];
+        $handoffs = [];
+        foreach ($audits as $audit) {
+            $row = (array) $audit;
+            $actorId = $row['actor_id'] ?? null;
+            $occurredAt = $this->auditTimestamp($row['occurred_at'] ?? null);
+            try {
+                $context = json_decode((string) ($row['context'] ?? ''), true, 16, JSON_THROW_ON_ERROR);
+            } catch (\JsonException) {
+                throw new DomainException('CHECKOUT_CONFIRMATION_CONFLICT');
+            }
+            $handoffPublicId = is_array($context) ? ($context['handoffPublicId'] ?? null) : null;
+            $establishedAt = is_array($context) ? $this->auditTimestamp($context['establishedAt'] ?? null) : null;
+            $idleExpiresAt = is_array($context) ? $this->auditTimestamp($context['idleExpiresAt'] ?? null) : null;
+            $absoluteExpiresAt = is_array($context) ? $this->auditTimestamp($context['absoluteExpiresAt'] ?? null) : null;
+            if (($row['actor_type'] ?? null) !== 'checkout_session' || ! is_string($actorId)
+                || preg_match('/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/D', $actorId) !== 1
+                || isset($actors[$actorId]) || ! is_array($context)
+                || array_keys($context) !== ['version', 'sessionPublicId', 'handoffPublicId', 'sourceSystem',
+                    'establishedAt', 'idleExpiresAt', 'absoluteExpiresAt']
+                || ($context['version'] ?? null) !== 1 || ($context['sessionPublicId'] ?? null) !== $actorId
+                || ! is_string($handoffPublicId)
+                || preg_match('/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/D', $handoffPublicId) !== 1
+                || ! in_array($handoffPublicId, $handoffPublicIds, true) || isset($handoffs[$handoffPublicId])
+                || ($context['sourceSystem'] ?? null) !== $sourceSystem
+                || $occurredAt === null || $establishedAt === null || ! $occurredAt->equalTo($establishedAt)
+                || $establishedAt->greaterThan($now) || $idleExpiresAt === null || $absoluteExpiresAt === null
+                || ! $idleExpiresAt->greaterThan($establishedAt)
+                || $absoluteExpiresAt->lessThan($idleExpiresAt)) {
+                throw new DomainException('CHECKOUT_CONFIRMATION_CONFLICT');
+            }
+            $actors[$actorId] = [
+                'establishedAt' => $establishedAt,
+                'absoluteExpiresAt' => $absoluteExpiresAt,
+            ];
+            $handoffs[$handoffPublicId] = true;
+        }
+
+        return $actors;
+    }
+
+    private function auditTimestamp(mixed $value): ?CarbonImmutable
+    {
+        if (! is_string($value) && ! $value instanceof \DateTimeInterface) {
+            return null;
+        }
+        if (is_string($value)) {
+            if (preg_match(
+                '/^(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})[ T](?<hour>\d{2}):(?<minute>\d{2}):(?<second>\d{2})(?:\.\d{1,6})?(?:Z|[+-]\d{2}(?::?\d{2})?)?$/D',
+                $value,
+                $parts,
+            ) !== 1
+                || ! checkdate((int) $parts['month'], (int) $parts['day'], (int) $parts['year'])
+                || (int) $parts['hour'] > 23 || (int) $parts['minute'] > 59 || (int) $parts['second'] > 59) {
+                return null;
+            }
+        }
+
+        try {
+            return CarbonImmutable::parse($value)->utc();
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     private function replayProfileMatches(Participant $participant, IntegratedCheckoutConfirmationInput $input): bool
@@ -264,14 +397,81 @@ final readonly class ConfirmIntegratedCheckout
         return true;
     }
 
-    private function acceptedConsentRecord(int $participantId, string $type, ConsentDocument $document): bool
+    /** @param Collection<int, ConsentRecord> $records */
+    private function acceptedConsentRecord(Collection $records, string $type, ConsentDocument $document,
+        CarbonInterface $now): bool
     {
-        $record = ConsentRecord::query()->where('participant_id', $participantId)
-            ->where('consent_type', $type)->where('document_version', $document->version)->first();
+        $record = $records->first(fn (ConsentRecord $candidate): bool => $candidate->consent_type === $type
+            && $candidate->document_version === $document->version);
+        $consentedAt = $record === null ? null : $this->consentRecordTimestamp($record, 'consented_at');
 
         return $record !== null && $record->status === 'accepted'
             && hash_equals($document->hash, $record->document_hash)
-            && $record->consented_at !== null && $record->withdrawn_at === null;
+            && $consentedAt !== null && $consentedAt->lessThanOrEqualTo($now)
+            && $record->getAttribute('withdrawn_at') === null;
+    }
+
+    private function reacceptableConsentRecord(ConsentRecord $record, ConsentDocument $document,
+        CarbonInterface $now): bool
+    {
+        if (! hash_equals($document->hash, $record->document_hash)) {
+            return false;
+        }
+        if ($record->status === 'declined') {
+            return $record->getAttribute('consented_at') === null && $record->getAttribute('withdrawn_at') === null;
+        }
+
+        $consentedAt = $this->consentRecordTimestamp($record, 'consented_at');
+        $withdrawnAt = $this->consentRecordTimestamp($record, 'withdrawn_at');
+
+        return $record->status === 'withdrawn' && $consentedAt !== null && $withdrawnAt !== null
+            && $consentedAt->lessThanOrEqualTo($withdrawnAt)
+            && $withdrawnAt->lessThanOrEqualTo($now);
+    }
+
+    private function auditConsentReaccepted(int $organizationId, string $sessionPublicId, ConsentRecord $record,
+        CarbonImmutable $now): void
+    {
+        DB::table('audit_logs')->insert([
+            'branch_id' => $organizationId,
+            'actor_type' => 'checkout_session',
+            'actor_id' => $sessionPublicId,
+            'action' => 'checkout.consent_reaccepted',
+            'subject_type' => ConsentRecord::class,
+            'subject_id' => (string) $record->id,
+            'context' => json_encode([
+                'version' => 1,
+                'previousStatus' => $record->status,
+                'previousConsentedAt' => $this->consentTimestamp(
+                    $this->consentRecordTimestamp($record, 'consented_at')),
+                'previousWithdrawnAt' => $this->consentTimestamp(
+                    $this->consentRecordTimestamp($record, 'withdrawn_at')),
+            ], JSON_THROW_ON_ERROR),
+            'occurred_at' => $now,
+            'expires_at' => $now->addYearsNoOverflow(2),
+        ]);
+    }
+
+    private function consentTimestamp(?CarbonInterface $timestamp): ?string
+    {
+        return $timestamp?->toImmutable()->utc()->format('Y-m-d\TH:i:s\Z');
+    }
+
+    private function consentRecordTimestamp(ConsentRecord $record, string $attribute): ?CarbonImmutable
+    {
+        $value = $record->getAttribute($attribute);
+        if ($value === null) {
+            return null;
+        }
+        if (! is_string($value) && ! $value instanceof \DateTimeInterface) {
+            return null;
+        }
+
+        try {
+            return CarbonImmutable::parse($value)->utc();
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     private function effective(?CarbonInterface $from, ?CarbonInterface $until, CarbonInterface $now): bool

@@ -234,6 +234,66 @@ $cases['associative payment choices fail closed'] = function (): void {
     [$xpath] = renderSummary($data);
     check($xpath->query('//form[@data-checkout-payment] | //script[@src="/js/checkout-payment-v1.js"]')->length === 0, 'Choices must be a JSON-style list');
 };
+$cases['payment action state and snapshot inconsistencies fail closed'] = function (): void {
+    $select = fixture();
+    $select['payment'] = ['payer' => 'self', 'state' => 'unpaid', 'amountIdr' => null, 'amountSource' => 'unavailable',
+        'consultationRequested' => null, 'actionAvailable' => true, 'action' => ['path' => '/checkout/payment', 'mode' => 'select', 'currency' => 'IDR', 'choices' => [
+            ['consultationRequested' => false, 'baseAmountIdr' => 99000, 'consultationAmountIdr' => 0, 'amountIdr' => 99000],
+        ]]];
+    foreach (['unselected', 'preparing', 'pending', 'recovery_required', 'expired', 'rejected', 'paid', 'free'] as $state) {
+        $select['payment']['state'] = $state;
+        [$terminal] = renderSummary($select);
+        check($terminal->query('//form[@data-checkout-payment]')->length === 0, "{$state} state cannot expose a select action");
+    }
+
+    $organization = fixture();
+    $organization['packageSource'] = 'charge_snapshot';
+    $organization['payment'] = ['payer' => 'organization', 'organizationName' => 'Cabang Sintetis', 'state' => 'unbilled',
+        'amountIdr' => 99000, 'amountSource' => 'charge_snapshot', 'consultationRequested' => false,
+        'actionAvailable' => true, 'action' => ['path' => '/checkout/payment', 'mode' => 'select', 'currency' => 'IDR', 'choices' => [
+            ['consultationRequested' => false, 'baseAmountIdr' => 0, 'consultationAmountIdr' => 0, 'amountIdr' => 0],
+        ]]];
+    [$positiveOrganization] = renderSummary($organization);
+    check($positiveOrganization->query('//form[@data-checkout-payment]')->length === 0, 'Positive organization snapshot cannot expose a zero action');
+
+    $organization['packageSource'] = 'catalog';
+    $organization['payment']['amountIdr'] = null;
+    $organization['payment']['amountSource'] = 'unavailable';
+    $organization['payment']['consultationRequested'] = null;
+    [$zeroOrganization] = renderSummaryWithAction($organization);
+    check($zeroOrganization->query('//form[@data-checkout-payment and @data-payment-mode="select"]')->length === 1, 'Proven zero organization action remains available');
+
+    $continue = fixture();
+    $continue['packageSource'] = 'charge_snapshot';
+    $continue['payment'] = ['payer' => 'self', 'state' => 'pending', 'amountIdr' => 149000, 'amountSource' => 'charge_snapshot',
+        'consultationRequested' => true, 'actionAvailable' => true, 'action' => ['path' => '/checkout/payment', 'mode' => 'continue', 'currency' => 'IDR', 'choices' => [
+            ['consultationRequested' => false, 'baseAmountIdr' => 99000, 'consultationAmountIdr' => 0, 'amountIdr' => 99000],
+        ]]];
+    [$mismatch] = renderSummary($continue);
+    check($mismatch->query('//form[@data-checkout-payment]')->length === 0, 'Continue choice must match the charge snapshot');
+};
+$cases['payment action provenance mismatches fail closed in both directions'] = function (): void {
+    $catalogWithSnapshot = fixture();
+    $catalogWithSnapshot['payment'] = ['payer' => 'self', 'state' => 'pending', 'amountIdr' => 99000,
+        'amountSource' => 'charge_snapshot', 'consultationRequested' => false, 'actionAvailable' => true,
+        'action' => ['path' => '/checkout/payment', 'mode' => 'continue', 'currency' => 'IDR', 'choices' => [
+            ['consultationRequested' => false, 'baseAmountIdr' => 99000, 'consultationAmountIdr' => 0, 'amountIdr' => 99000],
+        ]]];
+    [$catalogMismatch] = renderSummary($catalogWithSnapshot);
+    check($catalogMismatch->query('//form[@data-checkout-payment] | //script[@src="/js/checkout-payment-v1.js"]')->length === 0,
+        'Catalog provenance cannot expose charge-snapshot payment action');
+
+    $snapshotWithoutPaymentEvidence = fixture();
+    $snapshotWithoutPaymentEvidence['packageSource'] = 'charge_snapshot';
+    $snapshotWithoutPaymentEvidence['payment'] = ['payer' => 'self', 'state' => 'unpaid', 'amountIdr' => null,
+        'amountSource' => 'unavailable', 'consultationRequested' => null, 'actionAvailable' => true,
+        'action' => ['path' => '/checkout/payment', 'mode' => 'select', 'currency' => 'IDR', 'choices' => [
+            ['consultationRequested' => false, 'baseAmountIdr' => 99000, 'consultationAmountIdr' => 0, 'amountIdr' => 99000],
+        ]]];
+    [$snapshotMismatch] = renderSummary($snapshotWithoutPaymentEvidence);
+    check($snapshotMismatch->query('//form[@data-checkout-payment] | //script[@src="/js/checkout-payment-v1.js"]')->length === 0,
+        'Charge-snapshot provenance cannot expose unavailable payment action');
+};
 
 $failed = 0;
 foreach ($cases as $name => $case) {

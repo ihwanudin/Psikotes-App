@@ -32,15 +32,15 @@ final class ConfirmIntegratedCheckoutRequest extends FormRequest
                 'KAIGO', 'KENSETSU', 'NOUGYOU', 'SEIZOU', 'GAISHOKU', 'UMUM',
             ])],
             'profile.phone' => ['sometimes', 'required', 'string', 'max:32', 'regex:/^\+?[0-9][0-9 ()-]{7,30}$/'],
-            'consents' => ['required', 'array:psychotest,dass'],
-            'consents.psychotest' => ['required', 'array:accepted,documentVersion,documentHash'],
-            'consents.dass' => ['required', 'array:accepted,documentVersion,documentHash'],
-            'consents.psychotest.accepted' => ['required', 'boolean'],
-            'consents.dass.accepted' => ['required', 'boolean'],
-            'consents.psychotest.documentVersion' => ['required', 'string', 'max:64'],
-            'consents.dass.documentVersion' => ['required', 'string', 'max:64'],
-            'consents.psychotest.documentHash' => ['required', 'string', 'regex:/^[0-9a-f]{64}$/D'],
-            'consents.dass.documentHash' => ['required', 'string', 'regex:/^[0-9a-f]{64}$/D'],
+            'consents' => ['present', 'array:psychotest,dass'],
+            'consents.psychotest' => ['sometimes', 'required', 'array:accepted,documentVersion,documentHash'],
+            'consents.dass' => ['sometimes', 'required', 'array:accepted,documentVersion,documentHash'],
+            'consents.psychotest.accepted' => ['required_with:consents.psychotest', 'boolean'],
+            'consents.dass.accepted' => ['required_with:consents.dass', 'boolean'],
+            'consents.psychotest.documentVersion' => ['required_with:consents.psychotest', 'string', 'max:64'],
+            'consents.dass.documentVersion' => ['required_with:consents.dass', 'string', 'max:64'],
+            'consents.psychotest.documentHash' => ['required_with:consents.psychotest', 'string', 'regex:/^[0-9a-f]{64}$/D'],
+            'consents.dass.documentHash' => ['required_with:consents.dass', 'string', 'regex:/^[0-9a-f]{64}$/D'],
         ];
     }
 
@@ -50,8 +50,10 @@ final class ConfirmIntegratedCheckoutRequest extends FormRequest
             if (array_diff(array_keys($this->all()), ['profile', 'consents']) !== []) {
                 $validator->errors()->add('_schema', 'Payload memuat field yang tidak didukung.');
             }
+            $consents = $this->input('consents');
             foreach (['psychotest', 'dass'] as $type) {
-                if ($this->input("consents.{$type}.accepted") !== true) {
+                if (is_array($consents) && array_key_exists($type, $consents)
+                    && $this->input("consents.{$type}.accepted") !== true) {
                     $validator->errors()->add("consents.{$type}.accepted", 'Persetujuan wajib diberikan secara eksplisit.');
                 }
             }

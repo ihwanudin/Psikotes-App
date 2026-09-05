@@ -43,22 +43,31 @@ final readonly class CheckoutConfirmationFormPresenter
     {
         if (! $this->contract->enabled() || $this->contract->confirmationJsonBodyLimit() === null
             || config('assessment_integration.checkout_session.http.confirmation.writer_enabled') !== true
-            || ($summary['contractVersion'] ?? null) !== 'checkout-summary-v1') {
+            || ($summary['contractVersion'] ?? null) !== 'checkout-summary-v2') {
             return null;
         }
         $consents = $summary['consents'] ?? null;
-        if (! is_array($consents) || ($consents['legalReviewPending'] ?? null) !== false) {
+        if (! is_array($consents) || array_keys($consents) !== ['psychotest', 'dass', 'legalReviewPending']
+            || ($consents['legalReviewPending'] ?? null) !== false) {
             return null;
         }
         $presentedConsents = [];
         foreach (['psychotest', 'dass'] as $type) {
             $fact = $consents[$type] ?? null;
             $document = ConsentDocument::for($type);
-            if (! is_array($fact) || ($fact['state'] ?? null) !== 'required'
-                || ($fact['document'] ?? null) !== $document->toPublicArray()
-                || trim($document->version) === '' || trim($document->title) === ''
+            if (! is_array($fact) || trim($document->version) === '' || trim($document->title) === ''
                 || trim($document->text) === '') {
-                // The current frontend/P15 contract submits both consents together.
+                return null;
+            }
+            if (($fact['state'] ?? null) === 'accepted') {
+                if (array_keys($fact) !== ['state', 'version'] || ($fact['version'] ?? null) !== $document->version) {
+                    return null;
+                }
+
+                continue;
+            }
+            if (array_keys($fact) !== ['state', 'document'] || ($fact['state'] ?? null) !== 'required'
+                || ($fact['document'] ?? null) !== $document->toPublicArray()) {
                 return null;
             }
             $presentedConsents[$type] = [
@@ -98,6 +107,10 @@ final readonly class CheckoutConfirmationFormPresenter
             }
         }
         if (array_keys($seen) !== self::PROFILE_KEYS) {
+            return null;
+        }
+
+        if ($presentedProfile === [] && $presentedConsents === []) {
             return null;
         }
 

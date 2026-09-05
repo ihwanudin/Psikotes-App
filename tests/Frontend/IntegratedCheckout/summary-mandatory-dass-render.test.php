@@ -58,7 +58,7 @@ function mandatoryDassFixture(): array
 function mandatoryDassConfirmationFixture(): array
 {
     return [
-        'action' => '/checkout/test-confirm',
+        'action' => '/checkout/confirm',
         'profile' => [
             'fullName' => ['control' => 'text', 'autocomplete' => 'name'],
             'birthDate' => ['control' => 'date'],
@@ -142,6 +142,32 @@ $cases['confirmation form fails closed when fixture contract is absent or stale'
     $staleDocument['consents']['dass']['documentVersion'] = 'stale-dass-version';
     [$staleVersion] = renderMandatoryDass($summary, $staleDocument);
     mandatoryDassCheck($staleVersion->query('//form[@data-checkout-confirmation]')->length === 0, 'Stale consent version blocks confirmation');
+};
+$cases['confirmation form accepts only the fixed confirmation endpoint'] = function (): void {
+    $summary = mandatoryDassFixture();
+    $summary['consents']['psychotest'] = ['state' => 'required', 'document' => [
+        'version' => 'synthetic-psychotest-v1', 'title' => 'Persetujuan psikotes sintetis',
+        'text' => 'Fixture sintetis, bukan teks legal.',
+    ]];
+
+    foreach (['/checkout/payment', '/checkout/logout', '/checkout/other'] as $path) {
+        $descriptor = mandatoryDassConfirmationFixture();
+        $descriptor['action'] = $path;
+        [$xpath] = renderMandatoryDass($summary, $descriptor);
+        mandatoryDassCheck(
+            $xpath->query('//form[@data-checkout-confirmation] | //script[@src="/js/checkout-confirmation-v1.js"]')->length === 0,
+            "Non-confirmation endpoint {$path} must fail closed",
+        );
+    }
+};
+$cases['accepted psychotest consent permits a DASS-only confirmation descriptor'] = function (): void {
+    $summary = mandatoryDassFixture();
+    $descriptor = mandatoryDassConfirmationFixture();
+    unset($descriptor['consents']['psychotest']);
+    [$xpath] = renderMandatoryDass($summary, $descriptor);
+    mandatoryDassCheck($xpath->query('//form[@data-checkout-confirmation]')->length === 1, 'Partial current consent state remains actionable');
+    mandatoryDassCheck($xpath->query('//form[@data-checkout-confirmation]//input[@type="checkbox" and @name="consents[dass][accepted]"]')->length === 1, 'Only required DASS consent is submitted');
+    mandatoryDassCheck($xpath->query('//form[@data-checkout-confirmation]//*[@name="consents[psychotest][accepted]"]')->length === 0, 'Accepted psychotest consent is not requested again');
 };
 $cases['missing required profile and required DASS are explicit'] = function (): void {
     [$xpath] = renderMandatoryDass(mandatoryDassFixture());

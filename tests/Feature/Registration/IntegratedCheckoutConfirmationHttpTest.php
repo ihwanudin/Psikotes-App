@@ -136,6 +136,23 @@ final class IntegratedCheckoutConfirmationHttpTest extends OrganizationPaymentTe
         $this->assertSame([], $notifier->delivered());
     }
 
+    public function test_http_accepts_dass_only_when_psychotest_is_current_and_profile_only_when_all_consents_are_current(): void
+    {
+        $dassOnly = $this->established();
+        $this->acceptCurrentConsents($dassOnly['participant'], ['psychotest']);
+        $this->assertPrivate($this->mutation($dassOnly, $this->payload(['dass']))
+            ->assertOk()->assertExactJson(['data' => ['confirmed' => true, 'replayed' => false]]));
+        $this->assertSame(2, DB::table('consent_records')
+            ->where('participant_id', $dassOnly['participant'])->count());
+
+        $profileOnly = $this->established();
+        $this->acceptCurrentConsents($profileOnly['participant'], ['psychotest', 'dass']);
+        $this->assertPrivate($this->mutation($profileOnly, $this->payload([]))
+            ->assertOk()->assertExactJson(['data' => ['confirmed' => true, 'replayed' => false]]));
+        $this->assertSame(2, DB::table('consent_records')
+            ->where('participant_id', $profileOnly['participant'])->count());
+    }
+
     public function test_validation_conflict_and_disabled_writer_are_generic_private_and_leave_no_partial_write(): void
     {
         $validationFixture = $this->established();
@@ -315,23 +332,39 @@ final class IntegratedCheckoutConfirmationHttpTest extends OrganizationPaymentTe
             + ['selector' => $established->rawSelector(), 'csrf' => $established->rawCsrfToken()];
     }
 
-    private function payload(): string
+    /** @param list<string> $consentTypes */
+    private function payload(array $consentTypes = ['psychotest', 'dass']): string
     {
         $psychotest = ConsentDocument::for('psychotest');
         $dass = ConsentDocument::for('dass');
+
+        $consents = [
+            'psychotest' => ['accepted' => true, 'documentVersion' => $psychotest->version,
+                'documentHash' => $psychotest->hash],
+            'dass' => ['accepted' => true, 'documentVersion' => $dass->version,
+                'documentHash' => $dass->hash],
+        ];
 
         return json_encode([
             'profile' => [
                 'fullName' => 'Synthetic Person', 'birthDate' => '2000-01-02', 'gender' => 'FEMALE',
                 'educationLevel' => 'SMA_SMK', 'intendedField' => 'KAIGO',
             ],
-            'consents' => [
-                'psychotest' => ['accepted' => true, 'documentVersion' => $psychotest->version,
-                    'documentHash' => $psychotest->hash],
-                'dass' => ['accepted' => true, 'documentVersion' => $dass->version,
-                    'documentHash' => $dass->hash],
-            ],
+            'consents' => array_intersect_key($consents, array_flip($consentTypes)),
         ], JSON_THROW_ON_ERROR);
+    }
+
+    /** @param list<string> $types */
+    private function acceptCurrentConsents(int $participantId, array $types): void
+    {
+        foreach ($types as $type) {
+            $document = ConsentDocument::for($type);
+            DB::table('consent_records')->insert([
+                'participant_id' => $participantId, 'consent_type' => $type, 'status' => 'accepted',
+                'document_version' => $document->version, 'document_hash' => $document->hash,
+                'consented_at' => now(), 'withdrawn_at' => null, 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
     }
 
     /** @param array<string, string>|null $cookies

@@ -24,26 +24,47 @@ const element = (
     checked,
 });
 
-function validElements() {
+function validElements(consentTypes = ['psychotest', 'dass']) {
+    const consents = [
+        ...(consentTypes.includes('psychotest')
+            ? [
+                  element(
+                      'consents[psychotest][documentVersion]',
+                      'psychotest-v1',
+                  ),
+                  element('consents[psychotest][documentHash]', hash('b')),
+                  element(
+                      'consents[psychotest][accepted]',
+                      'true',
+                      'checkbox',
+                      true,
+                  ),
+              ]
+            : []),
+        ...(consentTypes.includes('dass')
+            ? [
+                  element('consents[dass][documentVersion]', 'dass-v1'),
+                  element('consents[dass][documentHash]', hash('c')),
+                  element('consents[dass][accepted]', 'true', 'checkbox', true),
+              ]
+            : []),
+    ];
+
     return [
         element('_checkout_csrf', csrf),
         element('profile[fullName]', '', 'text', true),
         element('profile[birthDate]', '', 'date', true),
         element('profile[gender]', '', 'select-one', true),
-        element('consents[psychotest][documentVersion]', 'psychotest-v1'),
-        element('consents[psychotest][documentHash]', hash('b')),
-        element('consents[psychotest][accepted]', 'true', 'checkbox', true),
-        element('consents[dass][documentVersion]', 'dass-v1'),
-        element('consents[dass][documentHash]', hash('c')),
-        element('consents[dass][accepted]', 'true', 'checkbox', true),
+        ...consents,
     ];
 }
 
-test('validates a fail-closed missing-profile and consent DOM shape', () => {
-    assert.deepEqual(inspectConfirmationElements(validElements()), {
-        csrf,
-        profileNames: ['birthDate', 'fullName', 'gender'],
-    });
+test('validates an exact fail-closed profile and current-consent subset DOM shape', () => {
+    const all = inspectConfirmationElements(validElements());
+    assert.equal(all.csrf, csrf);
+    assert.deepEqual(all.profileNames, ['birthDate', 'fullName', 'gender']);
+    assert.deepEqual(all.consentTypes, ['psychotest', 'dass']);
+    assert.equal(typeof all.consentSignature, 'string');
     assert.equal(
         inspectConfirmationElements([
             ...validElements(),
@@ -68,11 +89,22 @@ test('validates a fail-closed missing-profile and consent DOM shape', () => {
         ),
         null,
     );
-    assert.deepEqual(
-        inspectConfirmationElements(
-            validElements().filter((item) => !item.name.startsWith('profile[')),
+    const consentOnly = inspectConfirmationElements(
+        validElements(['dass']).filter(
+            (item) => !item.name.startsWith('profile['),
         ),
-        { csrf, profileNames: [] },
+    );
+    assert.deepEqual(consentOnly.profileNames, []);
+    assert.deepEqual(consentOnly.consentTypes, ['dass']);
+    const profileOnly = inspectConfirmationElements(validElements([]));
+    assert.deepEqual(profileOnly.consentTypes, []);
+    assert.equal(
+        inspectConfirmationElements(
+            validElements([]).filter(
+                (item) => !item.name.startsWith('profile['),
+            ),
+        ),
+        null,
     );
     assert.equal(
         inspectConfirmationElements(
@@ -99,8 +131,14 @@ test('builds exact JSON with literal true and no readonly or optional fields', (
         ['consents[dass][documentHash]', hash('c')],
         ['consents[dass][accepted]', 'true'],
     ];
+    const inspected = inspectConfirmationElements(validElements());
     assert.deepEqual(
-        buildConfirmationPayload(entries, ['birthDate', 'fullName', 'gender']),
+        buildConfirmationPayload(
+            entries,
+            inspected.profileNames,
+            inspected.consentTypes,
+            inspected.consentSignature,
+        ),
         {
             profile: {
                 fullName: 'Peserta Sintetis',
@@ -125,22 +163,98 @@ test('builds exact JSON with literal true and no readonly or optional fields', (
         buildConfirmationPayload(
             [...entries, ['payer', 'self']],
             ['birthDate', 'fullName', 'gender'],
+            inspected.consentTypes,
+            inspected.consentSignature,
         ),
     );
     assert.throws(() =>
         buildConfirmationPayload(
             entries.filter(([name]) => name !== 'consents[dass][accepted]'),
             ['birthDate', 'fullName', 'gender'],
+            inspected.consentTypes,
+            inspected.consentSignature,
+        ),
+    );
+    assert.throws(() =>
+        buildConfirmationPayload(
+            entries.filter(([name]) => !name.startsWith('consents[dass]')),
+            ['birthDate', 'fullName', 'gender'],
+            inspected.consentTypes,
+            inspected.consentSignature,
+        ),
+    );
+    const dassElements = validElements(['dass']);
+    const dassInspected = inspectConfirmationElements(dassElements);
+    const dassEntries = entries.filter(
+        ([name]) => !name.startsWith('consents[psychotest]'),
+    );
+    assert.deepEqual(
+        buildConfirmationPayload(
+            dassEntries,
+            dassInspected.profileNames,
+            dassInspected.consentTypes,
+            dassInspected.consentSignature,
+        ).consents,
+        { dass: entriesToConsent(dassEntries, 'dass') },
+    );
+    assert.throws(() =>
+        buildConfirmationPayload(
+            entries,
+            dassInspected.profileNames,
+            dassInspected.consentTypes,
+            dassInspected.consentSignature,
+        ),
+    );
+    assert.throws(() =>
+        buildConfirmationPayload(
+            dassEntries.map(([name, value]) => [
+                name,
+                name === 'consents[dass][documentVersion]'
+                    ? 'mutated-v2'
+                    : value,
+            ]),
+            dassInspected.profileNames,
+            dassInspected.consentTypes,
+            dassInspected.consentSignature,
         ),
     );
     assert.deepEqual(
         buildConfirmationPayload(
-            entries.filter(([name]) => !name.startsWith('profile[')),
+            entries.filter(([name]) => !name.startsWith('consents[')),
+            inspected.profileNames,
             [],
-        ).profile,
+            '[]',
+        ).consents,
         {},
     );
+    assert.throws(() =>
+        buildConfirmationPayload(
+            entries.filter(([name]) => name === '_checkout_csrf'),
+            inspected.profileNames,
+            [],
+            '[]',
+        ),
+    );
 });
+
+function entriesToConsent(entries, type) {
+    const consent = {};
+
+    for (const [name, value] of entries) {
+        const match = name.match(
+            new RegExp(
+                `^consents\\[${type}]\\[(accepted|documentVersion|documentHash)]$`,
+            ),
+        );
+
+        if (match) {
+            consent[match[1]] =
+                match[1] === 'accepted' ? value === 'true' : value;
+        }
+    }
+
+    return consent;
+}
 
 test('posts same-origin JSON with dedicated CSRF and maps safe response states', async () => {
     const calls = [];
@@ -199,6 +313,7 @@ test('posts same-origin JSON with dedicated CSRF and maps safe response states',
         assert.equal(result.kind, kind);
         assert.equal(result.retryable, retryable);
         assert.equal(result.message.includes('PRIVATE'), false);
+        assert.equal(result.message.includes('kedua'), false);
     }
 
     await assert.rejects(() =>
@@ -210,6 +325,24 @@ test('posts same-origin JSON with dedicated CSRF and maps safe response states',
             fetchImpl,
         }),
     );
+
+    for (const action of [
+        '/checkout/payment',
+        '/checkout/logout',
+        '/checkout/other',
+    ]) {
+        await assert.rejects(() =>
+            postConfirmation({
+                action,
+                origin: 'https://psikotes.oncam.id',
+                csrf,
+                payload,
+                fetchImpl,
+            }),
+        );
+    }
+
+    assert.equal(calls.length, 1);
     assert.deepEqual(
         await postConfirmation({
             action: '/checkout/confirm',
@@ -304,6 +437,19 @@ test('enhances valid DOM, prevents native submit, blocks duplicates, and focuses
     );
     assert.equal(submit.disabled, false);
 
+    const dassHash = elements.find(
+        (item) => item.name === 'consents[dass][documentHash]',
+    );
+    const initialDassHash = dassHash.value;
+    dassHash.value = hash('d');
+    let prevented = 0;
+    await handler({ preventDefault: () => prevented++ });
+    assert.equal(fetchCount, 0);
+    assert.equal(submit.disabled, true);
+    assert.equal(status.dataset.state, 'unexpected');
+    dassHash.value = initialDassHash;
+    submit.disabled = false;
+
     for (const item of elements) {
         if (item.type === 'checkbox') {
             item.checked = true;
@@ -322,11 +468,10 @@ test('enhances valid DOM, prevents native submit, blocks duplicates, and focuses
         }
     }
 
-    let prevented = 0;
     const first = handler({ preventDefault: () => prevented++ });
     const duplicate = handler({ preventDefault: () => prevented++ });
     assert.equal(fetchCount, 1);
-    assert.equal(prevented, 2);
+    assert.equal(prevented, 3);
     assert.equal(submit.disabled, true);
     assert.equal(attributes.get('aria-busy'), 'true');
     release({ status: 422 });
