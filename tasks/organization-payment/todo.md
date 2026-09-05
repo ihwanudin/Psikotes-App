@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P13b, core privat P14/P15, dan P17a–P17b selesai lokal. P16 memiliki halaman/confirmation default OFF; ADR-014 menetapkan boundary pembayaran peserta dan seam transaksional sedang dikerjakan. P17a stabil pada lima proses 1/277 dan gabungan 11/1.744. P17b fresh PostgreSQL disposable lulus 394/3.865, termasuk crash alokasi kelima dan retry webhook/manual. P17c browser serta P18 masih terbuka. Tidak deploy, tidak migrasi DB aktif, dan tidak menyalakan sumber/feature flag atau outbound nyata.**
+Status: **P1–P13b, core privat P14/P15, dan P17a–P17b selesai lokal. P16 memiliki halaman/confirmation default OFF; ADR-014 menetapkan boundary pembayaran peserta dan P16-pay-a transaction-bound mutation scope telah diterima dengan fresh PostgreSQL disposable 395/3.877. Penulisan pembayaran peserta belum selesai. P17c browser serta P18 masih terbuka. Tidak deploy, tidak migrasi DB aktif, dan tidak menyalakan sumber/feature flag atau outbound nyata.**
 
 ## Gerbang revisi kolektif
 

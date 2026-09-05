@@ -1,5 +1,23 @@
 # Koordinasi task paralel organization-payment
 
+## P16-pay-a accepted; transaction-bound mutation scope verified — 2026-09-05
+
+Backend `86e4c4d` was reviewed and integrated as root `d575f60`. The internal
+checkout mutation seam accepts only selector/CSRF credentials, reloads and locks
+the canonical tenant/session/attempt graph plus current payer policy, rejects a
+finalized attempt, and exposes its principal only during the exact service
+transaction. It creates no bill, charge, provider request, outbox message, route,
+or active configuration.
+
+Root reran the focused regression at **66 tests / 1,760 assertions** and the full
+fresh disposable PostgreSQL suite at **395 tests / 3,877 assertions**. The latter
+includes an independently forked runtime non-owner worker observed waiting on a
+PostgreSQL lock before it reloads committed policy and rejects stale authority.
+Disposable cleanup, PHP syntax, Pint, PHPStan 0 errors, and diff-check passed.
+The next non-overlapping backend increment is P16-pay-b: an internal self-payment
+preparation action only; frontend and portal remain idle pending its reviewed
+server contract and the existing browser ownership gate.
+
 ## P17b accepted; PostgreSQL settlement recovery verified — 2026-09-05
 
 Backend report `f28a32a` was reviewed and integrated as root `59edf65`; existing
