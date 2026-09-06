@@ -20,6 +20,16 @@ class CheckoutAclSourceTreeTests(unittest.TestCase):
     DIGEST_B = "b" * 64
     SID = "S-1-5-21-1"
 
+    def root_identity(self, volume="9", file_id="10"):
+        return {"volumeSerial": volume, "fileId": file_id}
+
+    def summarize(self, manifest, records, root_identity=None):
+        return m.summarize(
+            manifest,
+            records,
+            self.root_identity() if root_identity is None else root_identity,
+        )
+
     def record(self, path, kind, identity, dacl=None):
         return {
             "relativePath": path,
@@ -46,7 +56,7 @@ class CheckoutAclSourceTreeTests(unittest.TestCase):
 
     def test_summary_is_exact_canonical_ordered_records_with_one_lf(self):
         manifest, records = self.valid()
-        summary = m.summarize(manifest, records)
+        summary = self.summarize(manifest, records)
         ordered = sorted(records, key=lambda item: (
             tuple(part.casefold() for part in item["relativePath"].split("/")),
             item["relativePath"],
@@ -59,25 +69,32 @@ class CheckoutAclSourceTreeTests(unittest.TestCase):
         ]
         raw = (json.dumps(
             {
-                "algorithm": "sha256-canonical-json-v1",
-                "domain": "oncam.checkout.acl-source-tree.v1",
+                "algorithm": "sha256-canonical-json-v2",
+                "domain": "oncam.checkout.acl-source-tree.v2",
                 "manifest": ordered_manifest,
                 "records": ordered,
-                "version": 1,
+                "sourceRootIdentity": self.root_identity(),
+                "version": 2,
             },
             sort_keys=True, separators=(",", ":"),
             ensure_ascii=True, allow_nan=False,
         ) + "\n").encode("ascii")
         self.assertEqual(summary, {
-            "algorithm": "sha256-canonical-json-v1",
+            "algorithm": "sha256-canonical-json-v2",
             "descendantCount": 5,
-            "digest": "0045dc308d326b2ae77bb0b75479e653ee59e210e96bbe62e8dbe49d03724b6d",
+            "digest": "cd85b1310c011aebcb552d123c34605a257d48a94da27e0176079e36daaf3c59",
         })
         self.assertEqual(summary["digest"], hashlib.sha256(raw).hexdigest())
-        self.assertEqual(m.summarize(dict(reversed(list(manifest.items()))),
-                                     list(reversed(records))), summary)
+        self.assertEqual(self.summarize(
+            dict(reversed(list(manifest.items()))), list(reversed(records)),
+        ), summary)
         changed_content_digests = {path: self.DIGEST_B for path in manifest}
-        self.assertNotEqual(m.summarize(changed_content_digests, records), summary)
+        self.assertNotEqual(self.summarize(changed_content_digests, records), summary)
+        changed_root = self.root_identity(file_id="11")
+        changed_root_summary = self.summarize(manifest, records, changed_root)
+        self.assertNotEqual(changed_root_summary, summary)
+        with self.assertRaisesRegex(m.SourceTreeRefused, "^acl_source_tree$"):
+            m.compare_boundaries(summary, changed_root_summary)
         self.assertEqual(m.validate_summary(summary), summary)
         self.assertIsNot(m.validate_summary(summary), summary)
         self.assertTrue(m.compare_boundaries(summary, dict(summary)))
@@ -97,7 +114,7 @@ class CheckoutAclSourceTreeTests(unittest.TestCase):
         for candidate_manifest, candidate_records in cases:
             with self.subTest(manifest=candidate_manifest, records=candidate_records):
                 with self.assertRaisesRegex(m.SourceTreeRefused, "^acl_source_tree$"):
-                    m.summarize(candidate_manifest, candidate_records)
+                    self.summarize(candidate_manifest, candidate_records)
 
     def test_directory_set_must_equal_all_and_only_implied_parents(self):
         manifest, records = self.valid()
@@ -113,7 +130,7 @@ class CheckoutAclSourceTreeTests(unittest.TestCase):
         for candidate in cases:
             with self.subTest(records=candidate):
                 with self.assertRaisesRegex(m.SourceTreeRefused, "^acl_source_tree$"):
-                    m.summarize(manifest, candidate)
+                    self.summarize(manifest, candidate)
 
     def test_paths_are_relative_printable_ascii_posix_bounded_and_windows_safe(self):
         bad = (
@@ -127,15 +144,19 @@ class CheckoutAclSourceTreeTests(unittest.TestCase):
         for path in bad:
             with self.subTest(path=path), \
                     self.assertRaisesRegex(m.SourceTreeRefused, "^acl_source_tree$"):
-                m.summarize({path: self.DIGEST_A}, [self.record(path, "file", (1, 1))])
+                self.summarize(
+                    {path: self.DIGEST_A}, [self.record(path, "file", (1, 1))],
+                )
 
         for path in ("caf\u00e9.php", "a" * 256 + ".php"):
             with self.subTest(path=path), \
                     self.assertRaisesRegex(m.SourceTreeRefused, "^acl_source_tree$"):
-                m.summarize({path: self.DIGEST_A}, [self.record(path, "file", (1, 1))])
+                self.summarize(
+                    {path: self.DIGEST_A}, [self.record(path, "file", (1, 1))],
+                )
 
         longest_component = "a" * 251 + ".php"
-        self.assertEqual(m.summarize(
+        self.assertEqual(self.summarize(
             {longest_component: self.DIGEST_A},
             [self.record(longest_component, "file", (1, 1))],
         )["descendantCount"], 1)
@@ -163,7 +184,7 @@ class CheckoutAclSourceTreeTests(unittest.TestCase):
         ):
             with self.subTest(records=candidate_records), \
                     self.assertRaisesRegex(m.SourceTreeRefused, "^acl_source_tree$"):
-                m.summarize(candidate_manifest, candidate_records)
+                self.summarize(candidate_manifest, candidate_records)
 
     def test_record_schema_identity_sid_and_digest_are_strict(self):
         manifest = {"a.php": self.DIGEST_A}
@@ -185,11 +206,11 @@ class CheckoutAclSourceTreeTests(unittest.TestCase):
         for record in mutations:
             with self.subTest(record=record), \
                     self.assertRaisesRegex(m.SourceTreeRefused, "^acl_source_tree$"):
-                m.summarize(manifest, [record])
-        self.assertEqual(m.summarize(manifest, [baseline])["descendantCount"], 1)
+                self.summarize(manifest, [record])
+        self.assertEqual(self.summarize(manifest, [baseline])["descendantCount"], 1)
 
     def test_summary_and_boundary_comparison_are_exact_and_bool_safe(self):
-        summary = {"algorithm": "sha256-canonical-json-v1",
+        summary = {"algorithm": "sha256-canonical-json-v2",
                    "descendantCount": 1, "digest": self.DIGEST_A}
         mutations = (
             {**summary, "extra": None},
@@ -212,14 +233,14 @@ class CheckoutAclSourceTreeTests(unittest.TestCase):
         manifest = {f"f{index:04}.php": self.DIGEST_A for index in range(8193)}
         records = [self.record(path, "file", (1, index + 1)) for index, path in enumerate(manifest)]
         with self.assertRaisesRegex(m.SourceTreeRefused, "^acl_source_tree$"):
-            m.summarize(manifest, records)
+            self.summarize(manifest, records)
 
         original_records = m.MAX_RECORDS
         try:
             m.MAX_RECORDS = 4
             shallow_records = [self.record("a/b/c.php", "file", (1, 1))]
             with self.assertRaisesRegex(m.SourceTreeRefused, "^acl_source_tree$"):
-                m.summarize({
+                self.summarize({
                     "a/b/c.php": self.DIGEST_A,
                     "d/e/f.php": self.DIGEST_B,
                 }, shallow_records)
@@ -231,9 +252,69 @@ class CheckoutAclSourceTreeTests(unittest.TestCase):
             m.MAX_CANONICAL_RECORD_BYTES = 64
             manifest = {"a.php": self.DIGEST_A}
             with self.assertRaisesRegex(m.SourceTreeRefused, "^acl_source_tree$"):
-                m.summarize(manifest, [self.record("a.php", "file", (1, 1))])
+                self.summarize(
+                    manifest, [self.record("a.php", "file", (1, 1))],
+                )
         finally:
             m.MAX_CANONICAL_RECORD_BYTES = original
+
+    def test_source_root_identity_is_exact_bounded_and_mandatory(self):
+        manifest, records = self.valid()
+        invalid = (
+            None,
+            {},
+            [],
+            {"volumeSerial": "9"},
+            {"volumeSerial": "9", "fileId": "10", "extra": "PRIVATE"},
+            {"volumeSerial": True, "fileId": "10"},
+            {"volumeSerial": "9", "fileId": True},
+            {"volumeSerial": 9, "fileId": "10"},
+            {"volumeSerial": "9", "fileId": 10},
+            {"volumeSerial": "09", "fileId": "10"},
+            {"volumeSerial": "9", "fileId": str(1 << 128)},
+        )
+        for root_identity in invalid:
+            with self.subTest(root_identity=root_identity), \
+                    self.assertRaisesRegex(m.SourceTreeRefused, "^acl_source_tree$"):
+                m.summarize(manifest, records, root_identity)
+        with self.assertRaisesRegex(m.SourceTreeRefused, "^acl_source_tree$"):
+            m.summarize(manifest, records)
+        self.assertEqual(self.summarize(
+            manifest, records,
+            {"volumeSerial": str((1 << 128) - 1),
+             "fileId": str((1 << 128) - 1)},
+        )["descendantCount"], len(records))
+
+    def test_descendant_must_not_reuse_source_root_identity(self):
+        manifest, records = self.valid()
+        root_identity = self.root_identity()
+        aliased = [dict(record) for record in records]
+        aliased[0]["volumeSerial"] = root_identity["volumeSerial"]
+        aliased[0]["fileId"] = root_identity["fileId"]
+        with self.assertRaisesRegex(m.SourceTreeRefused, "^acl_source_tree$"):
+            self.summarize(manifest, aliased, root_identity)
+
+    def test_source_root_refusal_is_redacted_and_baseexceptions_are_preserved(self):
+        manifest, records = self.valid()
+        with self.assertRaisesRegex(m.SourceTreeRefused, "^acl_source_tree$") as caught:
+            self.summarize(
+                manifest, records,
+                {"volumeSerial": "PRIVATE", "fileId": "10"},
+            )
+        self.assertNotIn("PRIVATE", str(caught.exception))
+
+        original = m._validated_root_identity
+        for primary in (KeyboardInterrupt(), SystemExit(73)):
+            def interrupt(_value, primary=primary):
+                raise primary
+
+            m._validated_root_identity = interrupt
+            try:
+                with self.assertRaises(type(primary)) as raised:
+                    self.summarize(manifest, records)
+                self.assertIs(raised.exception, primary)
+            finally:
+                m._validated_root_identity = original
 
 
 if __name__ == "__main__":

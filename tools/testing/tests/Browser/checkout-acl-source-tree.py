@@ -17,8 +17,8 @@ MAX_DEPTH = 64
 MAX_PATH_BYTES = 1024
 MAX_CANONICAL_RECORD_BYTES = 8 * 1024 * 1024
 MAX_IDENTITY = (1 << 128) - 1
-ALGORITHM = "sha256-canonical-json-v1"
-DOMAIN = "oncam.checkout.acl-source-tree.v1"
+ALGORITHM = "sha256-canonical-json-v2"
+DOMAIN = "oncam.checkout.acl-source-tree.v2"
 
 _DIGEST = re.compile(r"[a-f0-9]{64}")
 _DECIMAL = re.compile(r"0|[1-9][0-9]{0,38}")
@@ -44,6 +44,17 @@ def _digest(value):
 def _decimal(value):
     return type(value) is str and _DECIMAL.fullmatch(value) is not None \
         and int(value) <= MAX_IDENTITY
+
+
+def _validated_root_identity(value):
+    if type(value) is not dict or set(value) != {"volumeSerial", "fileId"} \
+            or not _decimal(value["volumeSerial"]) \
+            or not _decimal(value["fileId"]):
+        raise ValueError("root identity")
+    return {
+        "volumeSerial": value["volumeSerial"],
+        "fileId": value["fileId"],
+    }
 
 
 def _sid(value):
@@ -117,13 +128,15 @@ def _validated_manifest(manifest):
     ))
 
 
-def _validated_records(records, files, directories):
+def _validated_records(records, files, directories, root_identity):
     if type(records) is not list or not records or len(records) > MAX_RECORDS:
         raise ValueError("records")
     paths = set()
     file_paths = set()
     directory_paths = set()
-    identities = set()
+    identities = {
+        (root_identity["volumeSerial"], root_identity["fileId"]),
+    }
     spellings = {}
     copied = []
     for record in records:
@@ -157,14 +170,15 @@ def _validated_records(records, files, directories):
     ))
 
 
-def _canonical_payload(manifest, records):
+def _canonical_payload(manifest, records, root_identity):
     raw = (json.dumps(
         {
             "algorithm": ALGORITHM,
             "domain": DOMAIN,
             "manifest": manifest,
             "records": records,
-            "version": 1,
+            "sourceRootIdentity": root_identity,
+            "version": 2,
         },
         # Domain and algorithm are part of the preimage, not metadata beside it.
         # Keep this exact shape synchronized with the fixed known-vector test.
@@ -176,11 +190,14 @@ def _canonical_payload(manifest, records):
     return raw
 
 
-def summarize(manifest, records):
+def summarize(manifest, records, source_root_identity=None):
     try:
+        root_identity = _validated_root_identity(source_root_identity)
         files, directories, manifest_entries = _validated_manifest(manifest)
-        ordered = _validated_records(records, files, directories)
-        raw = _canonical_payload(manifest_entries, ordered)
+        ordered = _validated_records(
+            records, files, directories, root_identity,
+        )
+        raw = _canonical_payload(manifest_entries, ordered, root_identity)
         return {
             "algorithm": ALGORITHM,
             "descendantCount": len(ordered),
