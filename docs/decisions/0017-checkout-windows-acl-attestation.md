@@ -449,3 +449,19 @@ canonical target order/path/identity serta double descriptor/token stability.
 Belum ada usable attestor, native/runtime implementation, atau provider.
 P15/P16/P17c/P18, checklist/progress, active gates, dan payment tetap
 terbuka/default OFF; tidak ada config/env/deploy/activation.
+
+## Implementation Checkpoint — `ab442d0`
+
+Pure ordered target-policy bundle kini menerima exact tuple tiga snapshot dalam
+internal pinned order coordinator/run/source. Setiap snapshot menjalani full
+role-policy validation; seluruh field `processToken*` wajib exact-equal, dan
+authority tuples juga dipin. Hasil yang diekspos terbatas serta deeply
+immutable.
+
+Bukti root accepted: **65/65 tests**, `py_compile`, dan independent review
+**PASS** tanpa P1/P2 setelah root memperkeras P2 rebind. Primitive ini belum
+mengikat path/filesystem identity, capture/double stability,
+`policySatisfied`/evidence, atau source-tree completeness. Belum ada usable
+attestor, native/runtime implementation, maupun provider. P15/P16/P17c/P18,
+checklist/progress, active gates, dan payment tetap terbuka/default OFF; tidak
+ada config/env/deploy/activation.

@@ -1250,3 +1250,19 @@ gates, dan payment tetap terbuka/default OFF.
 
 Tidak ada status/checklist/progress/gate yang berubah. P15/P16/P17c/P18, active
 gates, dan payment tetap terbuka/default OFF.
+
+### Bukti pure ordered ACL target-policy bundle accepted — binding tetap terbuka
+
+- Commit `ab442d0` menerima exact tuple tiga snapshot pada internal pinned
+  coordinator/run/source order.
+- Setiap snapshot wajib lolos full role-policy validation; seluruh field
+  `processToken*` exact-equal dan authority tuples dipin.
+- Output hanya deeply immutable limited result.
+- Evidence root: **65/65 tests**, `py_compile`, dan independent review **PASS**
+  tanpa P1/P2 setelah root P2 rebind hardening.
+- Path/filesystem identity binding, capture/double stability,
+  `policySatisfied`/evidence, source-tree completeness, usable attestor,
+  native/runtime implementation, serta provider tetap belum ada.
+
+Tidak ada status/checklist/progress/gate yang berubah. P15/P16/P17c/P18, active
+gates, dan payment tetap terbuka/default OFF tanpa config/env/deploy/activation.

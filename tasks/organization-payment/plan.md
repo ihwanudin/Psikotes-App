@@ -912,3 +912,17 @@ order/path/identity serta double descriptor/token stability. Belum ada usable
 attestor, native/runtime implementation, atau provider. Plan/checklist/progress,
 P15/P16/P17c/P18, active gates, dan payment tidak berubah serta tetap
 terbuka/default OFF tanpa config/env/deploy/activation.
+
+### Checkpoint pure ordered ACL target-policy bundle
+
+Commit `ab442d0` menerima exact tuple tiga snapshot dalam internal pinned order
+coordinator/run/source. Setiap snapshot menjalani full role-policy validation;
+semua field `processToken*` exact-equal, authority tuples dipin, dan limited
+result deeply immutable.
+
+Bukti root: **65/65 tests**, `py_compile`, dan independent review **PASS** tanpa
+P1/P2 setelah P2 rebind hardening. Belum ada binding path/filesystem identity,
+capture/double stability, `policySatisfied`/evidence, source-tree completeness,
+usable attestor, native/runtime implementation, atau provider. Plan/checklist/
+progress, P15/P16/P17c/P18, active gates, dan payment tidak berubah serta tetap
+terbuka/default OFF tanpa config/env/deploy/activation.
