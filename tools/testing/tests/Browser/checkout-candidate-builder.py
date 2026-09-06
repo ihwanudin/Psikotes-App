@@ -68,6 +68,7 @@ BROWSER_TOOLS = frozenset({
     "tools/testing/tests/Browser/checkout-coordinator-lease.py",
     "tools/testing/tests/Browser/checkout-integrity-tests.php",
     "tools/testing/tests/Browser/checkout-ordinary-access-request.py",
+    "tools/testing/tests/Browser/checkout-ordinary-privilege-authority.py",
     "tools/testing/tests/Browser/checkout-session.browser.mjs",
     "tools/testing/tests/Browser/checkout-supervisor.py",
     "tools/testing/tests/Browser/checkout-windows-acl-attestor.py",
@@ -83,6 +84,7 @@ BROWSER_TOOLS = frozenset({
     "tools/testing/tests/Browser/test_checkout_coordinator.py",
     "tools/testing/tests/Browser/test_checkout_coordinator_lease.py",
     "tools/testing/tests/Browser/test_checkout_ordinary_access_request.py",
+    "tools/testing/tests/Browser/test_checkout_ordinary_privilege_authority.py",
     "tools/testing/tests/Browser/test_checkout_supervisor.py",
     "tools/testing/tests/Browser/test_checkout_windows_acl_attestor.py",
 })

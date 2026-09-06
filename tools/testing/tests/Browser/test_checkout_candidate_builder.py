@@ -238,6 +238,18 @@ class CandidateBuilderTests(unittest.TestCase):
             )
             self.assertEqual(set(config), m.CONFIG_KEYS)
             self.assertEqual(set(config["tool_hashes"]), set(m.ALL_TOOL_KEYS))
+            for relative in (
+                "tools/testing/tests/Browser/checkout-ordinary-privilege-authority.py",
+                "tools/testing/tests/Browser/test_checkout_ordinary_privilege_authority.py",
+            ):
+                source_bytes = (
+                    Path(args["source_root"]) / Path(*relative.split("/"))
+                ).read_bytes()
+                copied_bytes = (
+                    destination / "source" / Path(*relative.split("/"))
+                ).read_bytes()
+                self.assertEqual(copied_bytes, source_bytes)
+                self.assertEqual(args["expected_manifest"][relative], digest(source_bytes))
             self.assertEqual((destination / "source-revision.txt").read_text("ascii"), "b" * 40 + "\n")
             self.assertFalse(any((destination / name).exists() for name in (
                 "browser.sqlite", "baseline.json", "fixtures.json", "storage", "supervisor.json"
@@ -579,10 +591,15 @@ class CandidateBuilderTests(unittest.TestCase):
             "tools/testing/tests/Browser/test_checkout_windows_acl_attestor.py",
             "tools/testing/tests/Browser/checkout-ordinary-access-request.py",
             "tools/testing/tests/Browser/test_checkout_ordinary_access_request.py",
+            "tools/testing/tests/Browser/checkout-ordinary-privilege-authority.py",
+            "tools/testing/tests/Browser/test_checkout_ordinary_privilege_authority.py",
         })
         self.assertTrue(accepted <= m.BROWSER_TOOLS)
         self.assertTrue(accepted <= m.REQUIRED_SOURCE)
         self.assertTrue(all(m._allowed_source(relative) for relative in accepted))
+        self.assertFalse(m._allowed_source(
+            "tools/testing/tests/Browser/checkout-ordinary-privilege-authority.py.bak"
+        ))
 
         class Guard:
             def validate(self):
@@ -609,6 +626,16 @@ class CandidateBuilderTests(unittest.TestCase):
                         m._validated_manifest(
                             omitted, Path("C:/reviewed-source"), Guard(),
                         )
+
+        collision = {
+            **manifest,
+            "tools/testing/tests/Browser/Checkout-Ordinary-Privilege-Authority.py":
+                "b" * 64,
+        }
+        with self.assertRaisesRegex(m.CandidateRefused, "^manifest_shape$"):
+            m._validated_manifest(
+                collision, Path("C:/reviewed-source"), Guard(),
+            )
 
         extra = {
             **manifest,
