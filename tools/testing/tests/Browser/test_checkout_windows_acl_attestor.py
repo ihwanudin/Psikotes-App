@@ -179,12 +179,20 @@ class NativeDirectoryHarness:
         self.header_acl_revision = 2
         self.header_sbz1 = 0
         self.header_sbz2 = 0
-        self.acl_bytes_in_use = 12
+        self.acl_bytes_in_use = 28
         self.acl_bytes_free = 4
-        self.acl_size = 16
-        self.header_acl_size = 16
+        self.acl_size = 32
+        self.header_acl_size = 32
         self.ace_count = 1
         self.header_ace_count = 1
+        self.ace_type = 0
+        self.ace_flags = 3
+        self.ace_size = 20
+        self.access_mask = 2032127
+        self.trustee_length_override = None
+        self.get_ace_result = 1
+        self.get_ace_null = False
+        self.ace_pointer_delta = 8
         self.owner_pointer_override = None
         self.group_pointer_override = None
         self.dacl_pointer_override = None
@@ -192,6 +200,7 @@ class NativeDirectoryHarness:
         self.group_length_override = None
         self.owner_sid = bytes.fromhex("010100000000000520000000")
         self.group_sid = bytes.fromhex("010100000000000512000000")
+        self.trustee_sid = self.owner_sid
         self.owner_offset = 20
         self.group_offset = 40
         self.dacl_offset = 64
@@ -282,12 +291,17 @@ class NativeDirectoryHarness:
         header.Sbz2 = self.header_sbz2
         header_bytes = bytes(header)
         raw[dacl_offset:dacl_offset + len(header_bytes)] = header_bytes
-        payload_length = max(
-            0, min(self.acl_bytes_in_use - 8, len(raw) - dacl_offset - 8),
+        ace_offset = dacl_offset + 8
+        ace_header = self.module.ACE_HEADER()
+        ace_header.AceType = self.ace_type
+        ace_header.AceFlags = self.ace_flags
+        ace_header.AceSize = self.ace_size
+        raw[ace_offset:ace_offset + 4] = bytes(ace_header)
+        raw[ace_offset + 4:ace_offset + 8] = int(self.access_mask).to_bytes(
+            4, "little", signed=False,
         )
-        raw[dacl_offset + 8:dacl_offset + 8 + payload_length] = (
-            b"A" * payload_length
-        )
+        trustee_end = min(len(raw), ace_offset + 8 + len(self.trustee_sid))
+        raw[ace_offset + 8:trustee_end] = self.trustee_sid[:trustee_end - ace_offset - 8]
         if self.security_mutator is not None:
             self.security_mutator(index, raw)
         buffer = ctypes.create_string_buffer(bytes(raw), len(raw))
@@ -298,8 +312,11 @@ class NativeDirectoryHarness:
             "owner": base + owner_offset,
             "group": base + group_offset,
             "dacl": base + dacl_offset,
+            "ace": base + ace_offset,
+            "trustee": base + ace_offset + 8,
             "ownerLength": len(self.owner_sid),
             "groupLength": len(self.group_sid),
+            "trusteeLength": len(self.trustee_sid),
         }
         self.security_buffers.append(buffer)
         self.security_records[base] = record
@@ -383,7 +400,19 @@ class NativeDirectoryHarness:
         if sid.value == record["group"]:
             return (record["groupLength"] if self.group_length_override is None
                     else self.group_length_override)
+        if sid.value == record["trustee"]:
+            return (record["trusteeLength"]
+                    if self.trustee_length_override is None
+                    else self.trustee_length_override)
         raise AssertionError("unknown fake SID")
+
+    def call_GetAce(self, dacl, ace_index, output):
+        if ace_index != 0:
+            raise AssertionError("wrong ACE index")
+        record = self._record_for_pointer(dacl)
+        if self.get_ace_result and not self.get_ace_null:
+            output._obj.value = record["dacl"] + self.ace_pointer_delta
+        return self.get_ace_result
 
     def call_GetAclInformation(self, _dacl, output, output_size, info_class):
         if info_class == 2:
@@ -689,7 +718,9 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
         with opened:
             snapshot = opened._security_snapshot()
             values = snapshot.values()
-            expected_dacl = bytes.fromhex("0200100001000000") + b"AAAA"
+            expected_dacl = (bytes.fromhex("0200200001000000")
+                             + bytes.fromhex("00031400ff011f00")
+                             + harness.owner_sid)
             self.assertEqual(dict(values), {
                 "ownerSidBytes": harness.owner_sid,
                 "groupSidBytes": harness.group_sid,
@@ -701,8 +732,14 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
                 "descriptorRevision": 1,
                 "daclRevision": 2,
                 "aceCount": 1,
-                "daclBytesInUse": 12,
-                "daclSize": 16,
+                "daclBytesInUse": 28,
+                "daclSize": 32,
+                "ownerSid": "S-1-5-32",
+                "trusteeSid": "S-1-5-32",
+                "aceType": 0,
+                "aceFlags": 3,
+                "accessMask": 2032127,
+                "aceSize": 20,
             })
             with self.assertRaises(TypeError):
                 values["control"] = 0
@@ -726,7 +763,7 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
             "GetSecurityDescriptorLength", "GetSecurityDescriptorOwner",
             "GetSecurityDescriptorGroup", "GetSecurityDescriptorDacl",
             "GetSecurityDescriptorControl", "IsValidSid", "GetLengthSid",
-            "IsValidAcl", "GetAclInformation", "LocalFree",
+            "IsValidAcl", "GetAclInformation", "GetAce", "LocalFree",
         }
         one_snapshot_order = [
             "GetSecurityInfo", "IsValidSecurityDescriptor",
@@ -734,7 +771,8 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
             "GetSecurityDescriptorGroup", "GetSecurityDescriptorDacl",
             "GetSecurityDescriptorControl", "IsValidSid", "GetLengthSid",
             "IsValidSid", "GetLengthSid", "IsValidAcl", "GetAclInformation",
-            "GetAclInformation", "LocalFree",
+            "GetAclInformation", "GetAce", "IsValidSid", "GetLengthSid",
+            "LocalFree",
         ]
         self.assertEqual(
             [name for name in self.call_names(harness) if name in security_names],
@@ -749,7 +787,7 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
             for key in ("owner", "group", "dacl")
         }
         self.assertFalse(interiors.intersection(freed))
-        forbidden = {"GetAce", "OpenProcessToken", "GetTokenInformation",
+        forbidden = {"OpenProcessToken", "GetTokenInformation",
                      "DuplicateTokenEx", "AccessCheck",
                      "ConvertSidToStringSidW"}
         self.assertFalse(forbidden.intersection(self.call_names(harness)))
@@ -808,6 +846,16 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
             with self.subTest(case=name), opened:
                 self.assert_refused(module, opened._security_snapshot)
             self.assertEqual(self.call_names(harness).count("LocalFree"), 1)
+            if name in {"owner_span", "group_span"}:
+                expected_prior_sids = 0 if name == "owner_span" else 1
+                self.assertEqual(
+                    self.call_names(harness).count("IsValidSid"),
+                    expected_prior_sids,
+                )
+                self.assertEqual(
+                    self.call_names(harness).count("GetLengthSid"),
+                    expected_prior_sids,
+                )
             self.assertEqual(self.call_names(harness).count("CloseHandle"), 1)
 
     def test_sid_and_acl_bounds_header_revision_and_free_math_fail_closed(self):
@@ -822,7 +870,7 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
             ("sbz1", lambda h: setattr(h, "header_sbz1", 1)),
             ("sbz2", lambda h: setattr(h, "header_sbz2", 1)),
             ("used_short", lambda h: setattr(h, "acl_bytes_in_use", 7)),
-            ("used_over_size", lambda h: setattr(h, "acl_bytes_in_use", 17)),
+            ("used_over_size", lambda h: setattr(h, "acl_bytes_in_use", 33)),
             ("free_math", lambda h: setattr(h, "acl_bytes_free", 5)),
             ("header_size", lambda h: setattr(h, "header_acl_size", 17)),
             ("ace_count", lambda h: setattr(h, "header_ace_count", 2)),
@@ -841,6 +889,94 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
             if name == "span":
                 self.assertNotIn("IsValidAcl", self.call_names(harness))
                 self.assertNotIn("GetAclInformation", self.call_names(harness))
+
+    def test_single_allowed_ace_oracle_and_copied_parser_fail_closed(self):
+        module = load_module()
+        cases = (
+            ("count_zero", lambda h: (
+                setattr(h, "ace_count", 0), setattr(h, "header_ace_count", 0),
+            )),
+            ("count_two", lambda h: (
+                setattr(h, "ace_count", 2), setattr(h, "header_ace_count", 2),
+            )),
+            ("get_ace_failure", lambda h: setattr(h, "get_ace_result", 0)),
+            ("get_ace_null", lambda h: setattr(h, "get_ace_null", True)),
+            ("get_ace_wrong_start", lambda h: setattr(h, "ace_pointer_delta", 12)),
+            ("get_ace_misaligned", lambda h: setattr(h, "ace_pointer_delta", 9)),
+            ("get_ace_outside", lambda h: setattr(h, "ace_pointer_delta", 200)),
+            ("wrong_type", lambda h: setattr(h, "ace_type", 1)),
+            ("missing_inheritance", lambda h: setattr(h, "ace_flags", 1)),
+            ("inherited", lambda h: setattr(h, "ace_flags", 0x13)),
+            ("ace_size_under", lambda h: setattr(h, "ace_size", 12)),
+            ("ace_size_over", lambda h: setattr(h, "ace_size", 24)),
+            ("ace_size_unaligned", lambda h: setattr(h, "ace_size", 18)),
+            ("trailing_used_bytes", lambda h: (
+                setattr(h, "acl_bytes_in_use", 32), setattr(h, "acl_bytes_free", 0),
+            )),
+            ("trustee_revision", lambda h: setattr(
+                h, "trustee_sid", b"\x02" + h.trustee_sid[1:],
+            )),
+            ("trustee_zero_subauth", lambda h: setattr(
+                h, "trustee_sid", b"\x01\x00" + h.trustee_sid[2:8],
+            )),
+            ("trustee_count_mismatch", lambda h: setattr(
+                h, "trustee_sid", b"\x01\x02" + h.trustee_sid[2:],
+            )),
+            ("trustee_length_mismatch", lambda h: setattr(
+                h, "trustee_length_override", 8,
+            )),
+            ("trustee_owner_mismatch", lambda h: setattr(
+                h, "trustee_sid", bytes.fromhex("010100000000000521000000"),
+            )),
+        )
+        for name, mutate in cases:
+            harness = NativeDirectoryHarness(module)
+            mutate(harness)
+            opened = self.opened(module, harness)
+            with self.subTest(case=name), opened:
+                self.assert_refused(module, opened._security_snapshot)
+            self.assertEqual(self.call_names(harness).count("LocalFree"), 1)
+            self.assertEqual(self.call_names(harness).count("CloseHandle"), 1)
+
+    def test_sid_canonicalization_locks_authority_and_subauthority_byte_order(self):
+        module = load_module()
+        harness = NativeDirectoryHarness(module)
+        sid = bytes.fromhex("0102010203040506040302010d0c0b0a")
+        harness.owner_sid = sid
+        harness.trustee_sid = sid
+        harness.ace_size = 24
+        harness.acl_bytes_in_use = 32
+        harness.acl_size = 36
+        harness.header_acl_size = 36
+        harness.acl_bytes_free = 4
+        opened = self.opened(module, harness)
+        with opened:
+            values = opened._security_snapshot().values()
+        expected = "S-1-1108152157446-16909060-168496141"
+        self.assertEqual(values["ownerSid"], expected)
+        self.assertEqual(values["trusteeSid"], expected)
+
+        get_ace_calls = [args for name, args in harness.calls if name == "GetAce"]
+        self.assertEqual([args[1] for args in get_ace_calls], [0, 0])
+        self.assertFalse({"OpenProcessToken", "GetTokenInformation",
+                          "DuplicateTokenEx", "AccessCheck",
+                          "ConvertSidToStringSidW"}.intersection(
+                              self.call_names(harness)))
+
+    def test_second_snapshot_rejects_ace_semantic_drift(self):
+        module = load_module()
+        harness = NativeDirectoryHarness(module)
+
+        def mutate_second(index, raw):
+            if index == 1:
+                raw[harness.dacl_offset + 12] ^= 1
+
+        harness.security_mutator = mutate_second
+        opened = self.opened(module, harness)
+        with opened:
+            self.assert_refused(module, opened._security_snapshot)
+        self.assertEqual(self.call_names(harness).count("GetAce"), 2)
+        self.assertEqual(self.call_names(harness).count("LocalFree"), 2)
 
     def test_get_security_error_with_buffer_and_ordinary_errors_clean_up(self):
         module = load_module()

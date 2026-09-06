@@ -403,7 +403,7 @@ def _resolve_security_functions(bundle):
             "GetSecurityDescriptorLength", "GetSecurityDescriptorOwner",
             "GetSecurityDescriptorGroup", "GetSecurityDescriptorDacl",
             "GetSecurityDescriptorControl", "IsValidSid", "GetLengthSid",
-            "IsValidAcl", "GetAclInformation",
+            "IsValidAcl", "GetAclInformation", "GetAce",
         )
         return {name: bundle.resolve(name) for name in names}
     except WindowsAclRefused:
@@ -512,7 +512,8 @@ class _SecuritySnapshot:
         "ownerSidBytes", "groupSidBytes", "daclDigest", "control",
         "ownerDefaulted", "groupDefaulted", "daclDefaulted",
         "descriptorRevision", "daclRevision", "aceCount",
-        "daclBytesInUse", "daclSize",
+        "daclBytesInUse", "daclSize", "ownerSid", "trusteeSid",
+        "aceType", "aceFlags", "accessMask", "aceSize",
     )
 
     def __init__(self, values):
@@ -529,6 +530,25 @@ class _SecuritySnapshot:
 
     def values(self):
         return MappingProxyType(dict(zip(self._KEYS, self.__values, strict=True)))
+
+
+def _canonical_sid(value):
+    if type(value) is not bytes or not MIN_SID_BYTES <= len(value) <= MAX_SID_BYTES:
+        raise WindowsAclRefused("acl_attestation")
+    revision = value[0]
+    subauthority_count = value[1]
+    expected_length = 8 + 4 * subauthority_count
+    if revision != 1 or not 1 <= subauthority_count <= 15 \
+            or len(value) != expected_length:
+        raise WindowsAclRefused("acl_attestation")
+    authority = int.from_bytes(value[2:8], "big", signed=False)
+    subauthorities = [
+        int.from_bytes(value[index:index + 4], "little", signed=False)
+        for index in range(8, expected_length, 4)
+    ]
+    return "S-1-" + str(authority) + "-" + "-".join(
+        str(part) for part in subauthorities
+    )
 
 
 def _security_descriptor_parts(functions, descriptor, owner, group, dacl):
@@ -591,15 +611,25 @@ def _security_descriptor_parts(functions, descriptor, owner, group, dacl):
 
     sid_values = []
     for sid, address in ((owner, owner_address), (group, group_address)):
-        if not _contained(base, descriptor_length, address, 1) \
-                or not _successful(functions["IsValidSid"](sid)):
+        if not _contained(base, descriptor_length, address, MIN_SID_BYTES):
+            raise WindowsAclRefused("acl_attestation")
+        sid_prefix = ctypes.string_at(address, MIN_SID_BYTES)
+        claimed_sid_length = 8 + 4 * sid_prefix[1]
+        if sid_prefix[0] != 1 or not 1 <= sid_prefix[1] <= 15 \
+                or not MIN_SID_BYTES <= claimed_sid_length <= MAX_SID_BYTES \
+                or not _contained(base, descriptor_length, address,
+                                  claimed_sid_length):
+            raise WindowsAclRefused("acl_attestation")
+        if not _successful(functions["IsValidSid"](sid)):
             raise WindowsAclRefused("acl_attestation")
         sid_length = functions["GetLengthSid"](sid)
         if not _exact_unsigned(sid_length, MAX_SID_BYTES) \
-                or sid_length < MIN_SID_BYTES \
-                or not _contained(base, descriptor_length, address, sid_length):
+                or sid_length != claimed_sid_length:
             raise WindowsAclRefused("acl_attestation")
-        sid_values.append(ctypes.string_at(address, sid_length))
+        sid_bytes = ctypes.string_at(address, sid_length)
+        if sid_bytes[:MIN_SID_BYTES] != sid_prefix:
+            raise WindowsAclRefused("acl_attestation")
+        sid_values.append(sid_bytes)
 
     if not _contained(base, descriptor_length, dacl_address, ctypes.sizeof(ACL)):
         raise WindowsAclRefused("acl_attestation")
@@ -628,17 +658,85 @@ def _security_descriptor_parts(functions, descriptor, owner, group, dacl):
     bytes_free = size_information.AclBytesFree
     if revision_information.AclRevision != ACL_REVISION \
             or header.AceCount != size_information.AceCount \
+            or size_information.AceCount != 1 \
             or not 8 <= bytes_in_use <= dacl_size <= MAX_SECURITY_DESCRIPTOR_BYTES \
             or size_information.AceCount > (bytes_in_use - 8) // 4 \
             or bytes_in_use + bytes_free != dacl_size:
         raise WindowsAclRefused("acl_attestation")
+
+    ace = LPVOID()
+    if not _successful(functions["GetAce"](dacl, 0, ctypes.byref(ace))):
+        raise WindowsAclRefused("acl_attestation")
+    ace_address = _pointer(ace)
+    expected_ace_address = dacl_address + ctypes.sizeof(ACL)
+    if ace_address != expected_ace_address \
+            or ace_address % ctypes.alignment(DWORD) != 0 \
+            or not _contained(base, descriptor_length, ace_address,
+                              ctypes.sizeof(ACE_HEADER)) \
+            or not _contained(dacl_address, bytes_in_use, ace_address,
+                              ctypes.sizeof(ACE_HEADER)):
+        raise WindowsAclRefused("acl_attestation")
     dacl_bytes = ctypes.string_at(dacl_address, bytes_in_use)
+    if dacl_bytes[:ctypes.sizeof(ACL)] != header_bytes:
+        raise WindowsAclRefused("acl_attestation")
+    ace_header = ACE_HEADER.from_buffer_copy(
+        dacl_bytes[ctypes.sizeof(ACL):
+                   ctypes.sizeof(ACL) + ctypes.sizeof(ACE_HEADER)],
+    )
+    ace_size = ace_header.AceSize
+    if ace_header.AceType != ACCESS_ALLOWED_ACE_TYPE \
+            or ace_header.AceFlags != OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE \
+            or ace_size % ctypes.alignment(DWORD) != 0 \
+            or ace_size < 8 + MIN_SID_BYTES \
+            or 8 + ace_size != bytes_in_use \
+            or not _contained(base, descriptor_length, ace_address, ace_size) \
+            or not _contained(dacl_address, bytes_in_use, ace_address, ace_size):
+        raise WindowsAclRefused("acl_attestation")
+
+    trustee_address = ace_address + ACCESS_ALLOWED_ACE.SidStart.offset
+    if not _contained(base, descriptor_length, trustee_address, MIN_SID_BYTES) \
+            or not _contained(dacl_address, bytes_in_use, trustee_address,
+                              MIN_SID_BYTES):
+        raise WindowsAclRefused("acl_attestation")
+    trustee_offset = ctypes.sizeof(ACL) + ACCESS_ALLOWED_ACE.SidStart.offset
+    trustee_prefix = dacl_bytes[trustee_offset:
+                                trustee_offset + MIN_SID_BYTES]
+    claimed_trustee_length = 8 + 4 * trustee_prefix[1]
+    if trustee_prefix[0] != 1 or not 1 <= trustee_prefix[1] <= 15 \
+            or not MIN_SID_BYTES <= claimed_trustee_length <= MAX_SID_BYTES \
+            or not _contained(base, descriptor_length, trustee_address,
+                              claimed_trustee_length) \
+            or not _contained(dacl_address, bytes_in_use, trustee_address,
+                              claimed_trustee_length):
+        raise WindowsAclRefused("acl_attestation")
+    trustee = PSID(trustee_address)
+    if not _successful(functions["IsValidSid"](trustee)):
+        raise WindowsAclRefused("acl_attestation")
+    trustee_length = functions["GetLengthSid"](trustee)
+    if not _exact_unsigned(trustee_length, MAX_SID_BYTES) \
+            or trustee_length != claimed_trustee_length \
+            or ace_size != ACCESS_ALLOWED_ACE.SidStart.offset + trustee_length:
+        raise WindowsAclRefused("acl_attestation")
+    trustee_bytes = dacl_bytes[trustee_offset:trustee_offset + trustee_length]
+    if ctypes.string_at(trustee_address, trustee_length) != trustee_bytes:
+        raise WindowsAclRefused("acl_attestation")
+    owner_sid = _canonical_sid(sid_values[0])
+    trustee_sid = _canonical_sid(trustee_bytes)
+    if trustee_bytes != sid_values[0] or trustee_sid != owner_sid:
+        raise WindowsAclRefused("acl_attestation")
+
+    access_mask = int.from_bytes(
+        dacl_bytes[ctypes.sizeof(ACL) + ACCESS_ALLOWED_ACE.Mask.offset:
+                   ctypes.sizeof(ACL) + ACCESS_ALLOWED_ACE.Mask.offset + 4],
+        "little", signed=False,
+    )
     return _SecuritySnapshot((
         sid_values[0], sid_values[1], hashlib.sha256(dacl_bytes).hexdigest(),
         control.value, bool(owner_defaulted.value), bool(group_defaulted.value),
         bool(dacl_defaulted.value), descriptor_revision.value,
         revision_information.AclRevision, size_information.AceCount,
-        bytes_in_use, dacl_size,
+        bytes_in_use, dacl_size, owner_sid, trustee_sid,
+        ace_header.AceType, ace_header.AceFlags, access_mask, ace_size,
     ))
 
 
