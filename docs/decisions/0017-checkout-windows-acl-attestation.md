@@ -171,3 +171,24 @@ Bukti accepted: **7/7 tes**, `py_compile`, diff-check, dan cross-review **PASS**
 Ini belum merupakan real attestor, scanner, cache, atau composition wiring dan
 tidak membuktikan efektivitas native/ACL Windows. P17c/P18 tetap terbuka, tidak
 ada native/runtime/deploy/aktivasi, dan seluruh gate/payment tetap default OFF.
+
+## Implementation Checkpoint — `038cbdd`
+
+Private directory-handle primitive kini membuka handle dengan akses/share/flag
+exact, memastikan handle non-inheritable, dan memverifikasi target adalah
+directory serta bukan reparse point. Final path canonical dan identity dibaca
+dua kali dan wajib identik. `FILE_ID_128` diperlakukan sebagai 16 byte opaque,
+bukan integer native; serialisasi contract mengubah byte sequence tersebut ke
+string desimal canonical dengan interpretasi big-endian. Handle ditutup tepat
+sekali pada semua jalur, sementara kegagalan close tidak menutupi exception atau
+`KeyboardInterrupt`/`SystemExit` utama.
+
+Bukti root accepted: **16/16 tes**, `py_compile`, diff-check, dan final
+cross-review **PASS**. Tes memakai fake ABI; tidak ada native call atau filesystem
+Windows nyata. Primitive ini belum menjadi public attestor/scanner/cache, belum
+terintegrasi dengan codec, policy, source-tree summary, coordinator, atau
+candidate closure, dan belum memanggil `GetSecurityInfo`, memvalidasi owner/DACL
+atau token, maupun menjalankan `AccessCheck`. Kelengkapan descendant, empty dirs,
+root binding, native ACL efficacy, race/reparse/rename/TOCTOU, crash, dan browser
+runtime tetap terbuka. P15/P16/P17c/P18 tidak berubah; seluruh gate/payment tetap
+default OFF dan tidak ada deploy/aktivasi.

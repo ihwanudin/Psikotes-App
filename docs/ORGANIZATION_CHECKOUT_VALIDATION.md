@@ -913,3 +913,22 @@ Ini hanya boundary ABI, bukan real attestor, scanner, cache, atau composition
 wiring, serta bukan bukti native efficacy/ACL Windows. Tidak ada native call,
 runtime, browser, service, database, network, deploy, atau aktivasi. P17c/P18
 tetap terbuka dan seluruh gate/payment tetap default OFF.
+
+## Checkpoint private Windows ACL directory handle — 2026-09-06
+
+Commit `038cbdd` menambah primitive private untuk membuka directory handle dengan
+akses/share/flag exact, menonaktifkan inheritance handle, serta menolak
+non-directory dan reparse point. Final path canonical dan identity harus stabil
+pada dua pembacaan. `FILE_ID_128` tetap byte sequence opaque 16-byte dan hanya
+diserialisasi menjadi desimal canonical melalui interpretasi big-endian. Cleanup
+menutup handle tepat sekali tanpa menutupi exception atau
+`KeyboardInterrupt`/`SystemExit` utama.
+
+Bukti root accepted: **16/16 tes**, `py_compile`, diff-check, dan final
+cross-review **PASS**. Semua pengujian memakai fake ABI; tidak ada native call
+atau filesystem Windows nyata. Belum ada usable attestor/scanner/cache,
+composition atau candidate closure, wiring codec/policy/source-tree, pemeriksaan
+owner/DACL/token/`AccessCheck`, recursive completeness, empty-dir/root binding,
+native ACL efficacy, race/reparse/rename/TOCTOU, crash, maupun browser runtime.
+Tidak ada runtime, service, database, network, deploy, atau aktivasi.
+P15/P16/P17c/P18 tetap terbuka dan seluruh gate/payment tetap default OFF.

@@ -650,3 +650,20 @@ Bukti accepted: **7/7 tes**, `py_compile`, diff-check, dan cross-review **PASS**
 Real attestor/scanner/cache/composition serta native efficacy belum ada. Tidak
 ada native/runtime/deploy/aktivasi; P17c/P18 tetap terbuka dan seluruh
 gate/payment default OFF.
+
+### Checkpoint private Windows ACL directory handle
+
+Commit `038cbdd` menambah primitive private dengan handle access/share/flags
+exact, noninheritance, verifikasi directory/non-reparse, dan double-read final
+path canonical serta identity. `FILE_ID_128` dipertahankan sebagai 16 byte opaque
+dan diserialisasi ke desimal canonical memakai interpretasi big-endian. Handle
+selalu ditutup tepat sekali tanpa menutupi exception atau
+`KeyboardInterrupt`/`SystemExit` utama. Bukti root accepted: **16/16 tes**,
+`py_compile`, diff-check, dan final cross-review **PASS**.
+
+Bukti hanya fake ABI, bukan native runtime. Belum ada usable attestor, scanner,
+cache, composition/candidate closure, wiring codec/policy/source-tree, validasi
+owner/DACL/token/`AccessCheck`, recursive completeness, empty-dir/root binding,
+ACL efficacy, race/reparse/rename/TOCTOU, crash, atau browser runtime. Tidak ada
+runtime/deploy/aktivasi; P15/P16/P17c/P18 tetap terbuka dan seluruh gate/payment
+default OFF.

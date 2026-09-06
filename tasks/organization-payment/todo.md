@@ -957,3 +957,21 @@ runtime/deploy/aktivasi dan seluruh gate/payment tetap default OFF.
 
 Tidak ada checkbox acceptance yang diubah. P17c/P18 tetap terbuka; tidak ada
 native/runtime/deploy/aktivasi dan seluruh gate/payment tetap default OFF.
+
+### Bukti private Windows ACL directory handle accepted — runtime tetap terbuka
+
+- `038cbdd` membuka directory handle dengan access/share/flags exact, menjaganya
+  non-inheritable, dan menolak non-directory atau reparse point.
+- Final path canonical serta identity harus stabil pada dua pembacaan;
+  `FILE_ID_128` adalah 16 byte opaque yang diserialisasi menjadi desimal
+  canonical dengan interpretasi big-endian.
+- Handle ditutup tepat sekali tanpa menutupi exception atau
+  `KeyboardInterrupt`/`SystemExit` utama. Bukti root accepted **16/16 tes**,
+  `py_compile`, diff-check, dan final cross-review **PASS**.
+- Pengujian hanya memakai fake ABI. Belum ada real attestor/scanner/cache,
+  composition/candidate closure, wiring codec/policy/source-tree,
+  owner/DACL/token/`AccessCheck`, recursive completeness, empty-dir/root binding,
+  native ACL efficacy, race/reparse/rename/TOCTOU, crash, atau browser runtime.
+
+Tidak ada checkbox acceptance yang diubah. P15/P16/P17c/P18 tetap terbuka;
+tidak ada native/runtime/deploy/aktivasi dan seluruh gate/payment default OFF.
