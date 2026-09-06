@@ -503,6 +503,8 @@ class WindowsRun:
         self.__acl_state = "unbound"
         self.__acl_phase = None
         self.__acl_anchor = None
+        self.__acl_execution = None
+        self.__acl_execution_token = None
         if anchor_publisher is not None:
             self._pin_anchor_publisher(anchor_publisher)
         self.run = Path(config["directory"])
@@ -531,12 +533,47 @@ class WindowsRun:
         return bool(self.uncertainty_categories)
 
     def bind_anchor_publisher(self, publisher):
+        acl_bound = self.__expected_acl_attestor is not None
         if self.lifecycle_phase != "new" or self.claimed is not False \
                 or self.anchor_publisher is not None or self.__expected_anchor_publisher is not None \
-                or not callable(publisher) or not callable(getattr(publisher, "load", None)):
+                or not callable(publisher) \
+                or acl_bound and self.__acl_state != "anchor_ready":
             raise Refused("anchor_publisher_bind")
-        self.anchor_publisher = publisher
-        self._pin_anchor_publisher(publisher)
+        if not acl_bound:
+            if not callable(getattr(publisher, "load", None)):
+                raise Refused("anchor_publisher_bind")
+            self.anchor_publisher = publisher
+            self._pin_anchor_publisher(publisher)
+            return
+        try:
+            if not callable(getattr(publisher, "load", None)):
+                raise Refused("anchor_publisher_bind")
+            self.anchor_publisher = publisher
+            self._pin_anchor_publisher(publisher)
+        except BaseException as error:
+            self._clear_anchor_publisher_binding()
+            if isinstance(error, Refused):
+                raise
+            if isinstance(error, Exception):
+                raise Refused("anchor_publisher_bind") from None
+            raise
+        try:
+            self._validated_acl_anchor()
+            self._bound_anchor_publisher()
+            self.__acl_state = "anchor_consumed"
+        except BaseException as error:
+            self._clear_anchor_publisher_binding()
+            self._acl_fail(error)
+
+    def _clear_anchor_publisher_binding(self):
+        self.anchor_publisher = None
+        self.__expected_anchor_publisher = None
+        self.__expected_anchor_publisher_type = None
+        self.__expected_anchor_publish_implementation = None
+        self.__anchor_publish = None
+        self.__anchor_publish_fingerprint = None
+        self.__anchor_load = None
+        self.__anchor_load_fingerprint = None
 
     def bind_lifecycle_lease(self, lease):
         if self.lifecycle_phase != "new" or self.claimed is not False \
@@ -638,7 +675,8 @@ class WindowsRun:
         if self.__acl_state != "unbound" or self.lifecycle_phase != "new" \
                 or self.claimed is not False or self.recovery_hydrated \
                 or self.owner is not None or self.handles or self.owned or self.owned_records \
-                or self.roles or self.launch_intents:
+                or self.roles or self.launch_intents or self.anchor_publisher is not None \
+                or self.__expected_anchor_publisher is not None:
             raise Refused("acl_admission")
         lease = self._required_lifecycle_lease()
         try:
@@ -744,9 +782,54 @@ class WindowsRun:
             self._discard_acl(digest)
         self.__acl_state = "exhausted"
         self.__acl_anchor = None
+        self.__acl_execution = None
+        self.__acl_execution_token = None
         if isinstance(error, Exception):
             raise Refused("acl_attestation") from None
         raise error
+
+    def _validated_acl_anchor(self):
+        codec = self._required_acl_codec()
+        self._bound_acl_attestor()
+        self._acl_lease_context(self._required_lifecycle_lease())
+        if type(self.__acl_anchor) is not tuple or len(self.__acl_anchor) != 3:
+            raise Refused("acl_attestation")
+        request, evidence, raw = self.__acl_anchor
+        self._validate_current_acl_request(request, "anchor")
+        if codec["canonical_evidence"](evidence, request) != raw:
+            raise Refused("acl_attestation")
+        return codec, request, evidence, raw
+
+    def _validate_current_acl_request(self, request, boundary):
+        if type(request) is not dict or type(boundary) is not str \
+                or boundary not in ("anchor", "execution"):
+            raise Refused("acl_attestation")
+        lease = self._required_lifecycle_lease()
+        context = self._acl_lease_context(lease)
+        expected = {
+            "version": 1,
+            "boundary": boundary,
+            "phase": self.__acl_phase,
+            "session": self.session,
+            "configBinding": self._config_binding(self.session),
+            "leaseBinding": self.__lease_binding,
+            "leaseIdentity": {
+                "path": context["leasePath"],
+                "coordinator": dict(context["coordinator"]),
+                "descriptor": dict(context["descriptor"]),
+                "run": dict(context["run"]),
+            },
+            "policyDigest": ACL_POLICY_DIGEST,
+            "challenge": request.get("challenge"),
+            "targets": [
+                {"role": "coordinator", "path": context["coordinatorPath"]},
+                {"role": "run", "path": context["runPath"]},
+                {"role": "source", "path": context["sourcePath"]},
+            ],
+        }
+        if request != expected:
+            raise Refused("acl_attestation")
+        self._required_acl_codec()["canonical_request"](request)
 
     def _build_acl_request(self, boundary, phase):
         codec = self._required_acl_codec()
@@ -782,13 +865,18 @@ class WindowsRun:
         return request
 
     def prepare_acl_admission(self, boundary, phase):
-        if type(boundary) is not str or boundary != "anchor" \
+        expected = "bound" if boundary == "anchor" else "anchor_consumed"
+        if type(boundary) is not str or boundary not in ("anchor", "execution") \
                 or type(phase) is not str or phase not in ("fresh", "recovery") \
-                or self.__acl_state != "bound":
+                or self.__acl_state != expected \
+                or boundary == "execution" and phase != self.__acl_phase:
             raise Refused("acl_admission")
         digest = None
         try:
             codec = self._required_acl_codec()
+            if boundary == "execution":
+                self._validated_acl_anchor()
+                self._bound_anchor_publisher()
             request = self._build_acl_request(boundary, phase)
             digest = codec["request_digest"](request)
             raw = self._acl_callback("attest", json.loads(json.dumps(request)))
@@ -802,13 +890,72 @@ class WindowsRun:
             if self._acl_callback("load", digest) is not None:
                 raise Refused("acl_attestation")
             loaded_evidence = codec["decode_evidence"](loaded, request)
-            self.__acl_anchor = (json.loads(json.dumps(request)),
-                                 json.loads(json.dumps(loaded_evidence)), bytes(loaded))
-            self.__acl_phase = phase
-            self.__acl_state = "anchor_ready"
+            if boundary == "anchor":
+                self.__acl_anchor = (json.loads(json.dumps(request)),
+                                     json.loads(json.dumps(loaded_evidence)), bytes(loaded))
+                self.__acl_phase = phase
+                self.__acl_state = "anchor_ready"
+            else:
+                anchor_request, anchor_evidence, _ = self.__acl_anchor
+                codec["validate_boundary_pair"](
+                    anchor_request, anchor_evidence, request, loaded_evidence,
+                )
+                self.__acl_execution = (json.loads(json.dumps(request)),
+                                         json.loads(json.dumps(loaded_evidence)), bytes(loaded))
+                self.__acl_state = "execution_ready"
             return None
         except BaseException as error:
             self._acl_fail(error, digest)
+
+    def begin_acl_execution(self, phase):
+        if type(phase) is not str or phase != self.__acl_phase \
+                or self.__acl_state != "execution_ready":
+            raise Refused("acl_admission")
+        try:
+            codec, anchor_request, anchor_evidence, anchor_raw = \
+                self._validated_acl_anchor()
+            self._bound_anchor_publisher()
+            execution_request, execution_evidence, execution_raw = self.__acl_execution
+            self._validate_current_acl_request(execution_request, "execution")
+            if codec["canonical_evidence"](execution_evidence, execution_request) \
+                    != execution_raw:
+                raise Refused("acl_attestation")
+            codec["validate_boundary_pair"](
+                anchor_request, anchor_evidence, execution_request, execution_evidence,
+            )
+            token = object()
+            self.__acl_execution_token = token
+            self.__acl_state = "active"
+            return token
+        except BaseException as error:
+            self._acl_fail(error)
+
+    def finish_acl_execution(self, token):
+        if self.__acl_state != "active" or token is not self.__acl_execution_token:
+            raise Refused("acl_admission")
+        primary = None
+        try:
+            codec, anchor_request, anchor_evidence, anchor_raw = \
+                self._validated_acl_anchor()
+            self._bound_anchor_publisher()
+            execution_request, execution_evidence, execution_raw = self.__acl_execution
+            self._validate_current_acl_request(execution_request, "execution")
+            if codec["canonical_evidence"](execution_evidence, execution_request) \
+                    != execution_raw:
+                raise Refused("acl_attestation")
+            codec["validate_boundary_pair"](
+                anchor_request, anchor_evidence, execution_request, execution_evidence,
+            )
+        except BaseException as error:
+            primary = error
+        self.__acl_execution_token = None
+        self.__acl_anchor = None
+        self.__acl_execution = None
+        self.__acl_state = "exhausted"
+        if primary is not None:
+            if isinstance(primary, Exception):
+                raise Refused("acl_attestation") from None
+            raise primary
 
     def _required_lifecycle_lease(self):
         lease = self.__expected_lifecycle_lease

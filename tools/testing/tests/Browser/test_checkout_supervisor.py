@@ -180,7 +180,7 @@ class SupervisorTests(unittest.TestCase):
         run.bind_lifecycle_lease(lease)
         return run, lease
 
-    def journal_run(self, directory, *, admitted=True):
+    def journal_run(self, directory, *, admitted=True, publisher=True):
         filenames = {
             "php": "php", "python": "python", "node": "node", "powershell": "powershell",
             "cli": "cli", "browser": "browser", "ini": "runtime.ini",
@@ -194,19 +194,20 @@ class SupervisorTests(unittest.TestCase):
             json.dumps(self.browser_config(paths["browser"])), encoding="utf-8"
         )
         store = self.anchor_stores.setdefault(str(Path(directory)), AnchorStore())
-        run = m.WindowsRun({
+        config = {
             "directory": directory, "manifest": "a" * 64, **paths,
             "acl_policy_digest": m.ACL_POLICY_DIGEST,
             "tool_hashes": {name: hashlib.sha256(Path(path).read_bytes()).hexdigest()
                             for name, path in paths.items()},
             "asset_delivery_review": {name: "b" * 64 for name in m.ASSET_REVIEW_FILES},
-        }, anchor_publisher=store)
+        }
+        run = m.WindowsRun(config, anchor_publisher=store if publisher else None)
         if admitted:
             self.admit(run)
         return run
 
     def acl_run(self, directory, attestor=None):
-        run = self.journal_run(directory)
+        run = self.journal_run(directory, publisher=False)
         attestor = attestor or StrictAclAttestor()
         run.bind_acl_attestor(attestor)
         return run, attestor
@@ -785,6 +786,12 @@ class SupervisorTests(unittest.TestCase):
             run.session = "checkout-" + "c" * 32
             run.claim(1)
             self.assertEqual(publisher.load(), run.journal_anchor())
+
+    def test_legacy_anchor_publisher_bind_without_acl_does_not_require_lease(self):
+        run = m.WindowsRun({"directory": "synthetic-unused"})
+        publisher = AnchorStore()
+        self.assertIsNone(run.bind_anchor_publisher(publisher))
+        self.assertIs(run.anchor_publisher, publisher)
 
     def test_bare_claim_and_recovery_refuse_lease_before_artifact_or_anchor_io(self):
         with TemporaryDirectory(prefix="oncam-supervisor-test-") as directory:
@@ -2635,12 +2642,12 @@ class SupervisorTests(unittest.TestCase):
         self.assertEqual(result["state"], "invalid")
         self.assertIn("invalid", f.calls)
 
-    def test_acl_anchor_admission_is_one_way_and_load_is_one_shot(self):
+    def test_acl_admission_transitions_are_exact_and_loads_are_one_shot(self):
         with TemporaryDirectory() as directory:
             run, attestor = self.acl_run(directory)
             self.assertIsNone(run.prepare_acl_admission("anchor", "fresh"))
-            digest = m.acl_attestation_module.request_digest(attestor.requests[0])
-            self.assertEqual(attestor.loads, [digest, digest])
+            anchor_digest = m.acl_attestation_module.request_digest(attestor.requests[0])
+            self.assertEqual(attestor.loads, [anchor_digest, anchor_digest])
             request = attestor.requests[0]
             self.assertEqual(request["targets"], [
                 {"role": "coordinator", "path": run.lifecycle_lease.run.rsplit("/", 1)[0]},
@@ -2649,12 +2656,26 @@ class SupervisorTests(unittest.TestCase):
             ])
             self.assertEqual(request["leaseIdentity"]["run"],
                              {"volumeSerial": "13", "fileId": "14"})
+            publisher = self.publisher(directory)
+            self.assertIsNone(run.bind_anchor_publisher(publisher))
+            self.assertIsNone(run.prepare_acl_admission("execution", "fresh"))
+            execution_digest = m.acl_attestation_module.request_digest(attestor.requests[1])
+            self.assertEqual(attestor.loads,
+                             [anchor_digest, anchor_digest, execution_digest, execution_digest])
+            self.assertNotEqual(attestor.requests[0]["challenge"],
+                                attestor.requests[1]["challenge"])
+            token = run.begin_acl_execution("fresh")
+            with self.assertRaisesRegex(m.Refused, "^acl_admission$"):
+                run.finish_acl_execution(object())
+            self.assertIsNone(run.finish_acl_execution(token))
             with self.assertRaisesRegex(m.Refused, "^acl_admission$"):
                 run.prepare_acl_admission("anchor", "fresh")
+            with self.assertRaisesRegex(m.Refused, "^acl_admission$"):
+                run.finish_acl_execution(token)
 
     def test_acl_attestor_binding_requires_lease_pristine_bound_methods_and_is_once(self):
         with TemporaryDirectory() as directory:
-            run = self.journal_run(directory, admitted=False)
+            run = self.journal_run(directory, admitted=False, publisher=False)
             with self.assertRaisesRegex(m.Refused, "^lifecycle_lease$"):
                 run.bind_acl_attestor(StrictAclAttestor())
             self.admit(run)
@@ -2688,6 +2709,191 @@ class SupervisorTests(unittest.TestCase):
             self.assertIsNone(run.prepare_acl_admission("anchor", "recovery"))
             self.assertNotEqual(attestor.requests[0]["targets"][2]["path"], "/attacker")
             self.assertNotEqual(attestor.requests[0]["challenge"], "0" * 64)
+            run.bind_anchor_publisher(self.publisher(directory))
+            self.assertIsNone(run.prepare_acl_admission("execution", "recovery"))
+            token = run.begin_acl_execution("recovery")
+            self.assertIsNone(run.finish_acl_execution(token))
+
+    def test_acl_bound_path_requires_publisher_between_boundaries(self):
+        with TemporaryDirectory() as directory:
+            run, _attestor = self.acl_run(directory)
+            publisher = self.publisher(directory)
+            with self.assertRaisesRegex(m.Refused, "^anchor_publisher_bind$"):
+                run.bind_anchor_publisher(publisher)
+            run.prepare_acl_admission("anchor", "fresh")
+            with self.assertRaisesRegex(m.Refused, "^acl_admission$"):
+                run.prepare_acl_admission("execution", "fresh")
+            run.bind_anchor_publisher(publisher)
+            with self.assertRaisesRegex(m.Refused, "^anchor_publisher_bind$"):
+                run.bind_anchor_publisher(publisher)
+            run.prepare_acl_admission("execution", "fresh")
+
+    def test_acl_publisher_pin_failure_rolls_back_for_valid_retry(self):
+        class FailingPinPublisher:
+            def __init__(self):
+                self.reads = 0
+
+            def __call__(self, _anchor):
+                pass
+
+            @property
+            def load(self):
+                self.reads += 1
+                if self.reads > 1:
+                    raise RuntimeError("PRIVATE_PIN_FAILURE")
+                return lambda: None
+
+        with TemporaryDirectory() as directory:
+            run, _attestor = self.acl_run(directory)
+            run.prepare_acl_admission("anchor", "fresh")
+            with self.assertRaisesRegex(m.Refused, "^anchor_publisher_bind$") as caught:
+                run.bind_anchor_publisher(FailingPinPublisher())
+            self.assertNotIn("PRIVATE", str(caught.exception))
+            publisher = self.publisher(directory)
+            self.assertIsNone(run.bind_anchor_publisher(publisher))
+            self.assertIsNone(run.prepare_acl_admission("execution", "fresh"))
+
+    def test_acl_publisher_first_load_discovery_failure_is_fixed_and_retryable(self):
+        class FirstAccessFailure:
+            def __call__(self, _anchor):
+                pass
+
+            @property
+            def load(self):
+                raise RuntimeError("PRIVATE_FIRST_LOAD")
+
+        with TemporaryDirectory() as directory:
+            run, _attestor = self.acl_run(directory)
+            run.prepare_acl_admission("anchor", "fresh")
+            with self.assertRaisesRegex(m.Refused, "^anchor_publisher_bind$") as caught:
+                run.bind_anchor_publisher(FirstAccessFailure())
+            self.assertNotIn("PRIVATE", str(caught.exception))
+            publisher = self.publisher(directory)
+            self.assertIsNone(run.bind_anchor_publisher(publisher))
+            self.assertIsNone(run.prepare_acl_admission("execution", "fresh"))
+
+    def test_acl_publisher_first_load_interrupt_or_exit_is_exact_and_retryable(self):
+        for error in (KeyboardInterrupt(), SystemExit(9)):
+            class FirstAccessInterruption:
+                def __call__(self, _anchor):
+                    pass
+
+                @property
+                def load(self):
+                    raise error
+
+            with self.subTest(kind=type(error).__name__), TemporaryDirectory() as directory:
+                run, _attestor = self.acl_run(directory)
+                run.prepare_acl_admission("anchor", "fresh")
+                with self.assertRaises(type(error)) as caught:
+                    run.bind_anchor_publisher(FirstAccessInterruption())
+                self.assertIs(caught.exception, error)
+                self.assertIsNone(run.bind_anchor_publisher(self.publisher(directory)))
+
+    def test_acl_authority_drift_after_publisher_pin_exhausts_anchor(self):
+        mutations = (
+            lambda run, attestor: setattr(run.lifecycle_lease, "run_identity", (13, 99)),
+            lambda run, attestor: setattr(attestor, "load", lambda _digest: None),
+        )
+        for mutate in mutations:
+            with self.subTest(mutation=mutate), TemporaryDirectory() as directory:
+                run, attestor = self.acl_run(directory)
+                run.prepare_acl_admission("anchor", "fresh")
+                mutate(run, attestor)
+                with self.assertRaisesRegex(m.Refused, "^acl_attestation$"):
+                    run.bind_anchor_publisher(self.publisher(directory))
+                run.lifecycle_lease.run_identity = (13, 14)
+                if "load" in attestor.__dict__:
+                    del attestor.load
+                with self.assertRaisesRegex(m.Refused, "^anchor_publisher_bind$"):
+                    run.bind_anchor_publisher(self.publisher(directory))
+
+    def test_acl_execution_rejects_phase_and_source_identity_mismatch(self):
+        with TemporaryDirectory() as directory:
+            run, attestor = self.acl_run(directory)
+            run.prepare_acl_admission("anchor", "recovery")
+            run.bind_anchor_publisher(self.publisher(directory))
+            with self.assertRaisesRegex(m.Refused, "^acl_admission$"):
+                run.prepare_acl_admission("execution", "fresh")
+            attestor.source_identity = ("31", "99")
+            with self.assertRaisesRegex(m.Refused, "^acl_attestation$"):
+                run.prepare_acl_admission("execution", "recovery")
+            self.assertEqual(len(attestor.discards), 1)
+
+    def test_acl_execution_replayable_load_and_publisher_drift_fail_closed(self):
+        class ExecutionReplayAttestor(StrictAclAttestor):
+            def load(self, digest):
+                self.loads.append(digest)
+                if len(self.requests) == 2:
+                    return self.cache.get(digest)
+                return self.cache.pop(digest, None)
+
+        with TemporaryDirectory() as directory:
+            run, attestor = self.acl_run(directory, ExecutionReplayAttestor())
+            run.prepare_acl_admission("anchor", "fresh")
+            run.bind_anchor_publisher(self.publisher(directory))
+            with self.assertRaisesRegex(m.Refused, "^acl_attestation$"):
+                run.prepare_acl_admission("execution", "fresh")
+            self.assertEqual(len(attestor.discards), 1)
+
+        with TemporaryDirectory() as directory:
+            run, attestor = self.acl_run(directory)
+            run.prepare_acl_admission("anchor", "fresh")
+            run.bind_anchor_publisher(self.publisher(directory))
+            run.anchor_publisher = AnchorStore()
+            with self.assertRaisesRegex(m.Refused, "^acl_attestation$"):
+                run.prepare_acl_admission("execution", "fresh")
+            self.assertEqual(len(attestor.requests), 1)
+
+    def test_acl_execution_interrupt_is_preserved_and_discards(self):
+        error = KeyboardInterrupt()
+
+        def interrupt(_attestor, request, _raw):
+            if request["boundary"] == "execution":
+                raise error
+
+        with TemporaryDirectory() as directory:
+            run, attestor = self.acl_run(directory, StrictAclAttestor(hook=interrupt))
+            run.prepare_acl_admission("anchor", "fresh")
+            run.bind_anchor_publisher(self.publisher(directory))
+            with self.assertRaises(KeyboardInterrupt) as caught:
+                run.prepare_acl_admission("execution", "fresh")
+            self.assertIs(caught.exception, error)
+            self.assertEqual(len(attestor.discards), 1)
+
+    def test_acl_begin_rejects_current_session_or_config_drift_and_exhausts(self):
+        mutations = (
+            lambda run: setattr(run, "session", "checkout-" + "f" * 32),
+            lambda run: run.c.__setitem__("manifest", "f" * 64),
+        )
+        for mutate in mutations:
+            with self.subTest(mutation=mutate), TemporaryDirectory() as directory:
+                run, _attestor = self.acl_run(directory)
+                run.prepare_acl_admission("anchor", "fresh")
+                run.bind_anchor_publisher(self.publisher(directory))
+                run.prepare_acl_admission("execution", "fresh")
+                mutate(run)
+                with self.assertRaisesRegex(m.Refused, "^acl_attestation$"):
+                    run.begin_acl_execution("fresh")
+                with self.assertRaisesRegex(m.Refused, "^acl_admission$"):
+                    run.begin_acl_execution("fresh")
+
+    def test_acl_finish_rejects_current_context_drift_and_clears_token(self):
+        for field in ("session", "manifest"):
+            with self.subTest(field=field), TemporaryDirectory() as directory:
+                run, _attestor = self.acl_run(directory)
+                run.prepare_acl_admission("anchor", "fresh")
+                run.bind_anchor_publisher(self.publisher(directory))
+                run.prepare_acl_admission("execution", "fresh")
+                token = run.begin_acl_execution("fresh")
+                if field == "session":
+                    run.session = "checkout-" + "f" * 32
+                else:
+                    run.c["manifest"] = "f" * 64
+                with self.assertRaisesRegex(m.Refused, "^acl_attestation$"):
+                    run.finish_acl_execution(token)
+                with self.assertRaisesRegex(m.Refused, "^acl_admission$"):
+                    run.finish_acl_execution(token)
 
     def test_acl_load_mismatch_discards_and_exhausts(self):
         def corrupt(attestor, digest):
@@ -2791,7 +2997,7 @@ class SupervisorTests(unittest.TestCase):
 
         for attestor in (DefaultAttestor(), ClosureAttestor()):
             with self.subTest(kind=type(attestor).__name__), TemporaryDirectory() as directory:
-                run = self.journal_run(directory)
+                run = self.journal_run(directory, publisher=False)
                 with self.assertRaisesRegex(m.Refused, "^acl_attestor_identity$"):
                     run.bind_acl_attestor(attestor)
 
@@ -2832,7 +3038,7 @@ class SupervisorTests(unittest.TestCase):
             self.assertEqual(len(attestor.discards), 1)
 
         with TemporaryDirectory() as directory:
-            run = self.journal_run(directory)
+            run = self.journal_run(directory, publisher=False)
             run.lifecycle_lease.directory_identity = "malformed"
             with self.assertRaisesRegex(m.Refused, "^acl_admission$"):
                 run.bind_acl_attestor(StrictAclAttestor())
