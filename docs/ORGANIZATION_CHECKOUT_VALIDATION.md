@@ -985,3 +985,20 @@ role mask, impersonation, effective `AccessCheck`, source-tree, cache,
 composition/usable attestor, native runtime, serta race belum dibuktikan. Tidak
 ada browser, service, database, network, deploy, atau aktivasi. P15/P16/P17c/P18
 tetap terbuka dan seluruh gate/payment tetap default OFF.
+
+## Checkpoint private Windows ACL current-process TokenGroups — 2026-09-06
+
+Commit `301a823` membaca `TokenGroups` memakai probe/fill exact dengan batas
+**256 KiB/4096 group**. Layout `ANYSIZE_ARRAY`, tabel, dan full span diperiksa;
+setiap SID wajib non-overlap terhadap header/tabel dan sesama SID sebelum urutan
+`IsValidSid` → `GetLengthSid`. Seluruh group+attributes disimpan berurutan tanpa
+filtering; duplikat ditolak, bukan dideduplikasi. Profil current process immutable sebelum/sesudah descriptor
+snapshots harus identik pada token handle yang sama, dengan cleanup exact.
+
+Bukti root accepted: **35/35 unittest**, `py_compile`, diff-check, dan final
+adversarial review **PASS** tanpa P1/P2. Ini tetap pure fake ABI. Ordinary second
+principal/provenance, privileges, LocalSystem exclusion untuk ordinary,
+impersonation, role/policy mask, effective `AccessCheck`, source-tree, cache,
+composition/usable attestor, native Windows/runtime/races belum dibuktikan. Tidak
+ada browser, service, database, network, deploy, atau aktivasi. P15/P16/P17c/P18
+tetap terbuka dan seluruh gate/payment tetap default OFF.

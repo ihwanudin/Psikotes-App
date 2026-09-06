@@ -1028,3 +1028,23 @@ tidak ada runtime/deploy/aktivasi dan seluruh gate/payment default OFF.
 
 Tidak ada checkbox acceptance yang diubah. P15/P16/P17c/P18 tetap terbuka;
 tidak ada runtime/deploy/aktivasi dan seluruh gate/payment default OFF.
+
+### Bukti current-process TokenGroups accepted — runtime tetap terbuka
+
+- `301a823` membaca `TokenGroups` dengan probe/fill exact dan batas **256
+  KiB/4096 group**.
+- Layout `ANYSIZE_ARRAY`, tabel, serta full span diperiksa; SID harus tidak
+  overlap header/tabel atau sesama SID sebelum `IsValidSid` lalu `GetLengthSid`.
+- Semua group+attributes disimpan berurutan tanpa filtering; duplikat ditolak,
+  bukan dideduplikasi; profil
+  immutable sebelum/sesudah descriptor snapshots harus identik pada token handle
+  yang sama, dengan cleanup exact.
+- Bukti root accepted **35/35 unittest**, `py_compile`, diff-check, dan final
+  adversarial review **PASS** tanpa P1/P2; seluruh tes tetap pure fake.
+- Ordinary second principal/provenance, privilege checks, ordinary LocalSystem
+  exclusion, impersonation, role/policy mask, effective `AccessCheck`,
+  source-tree/cache/composition/attestor, native Windows/runtime/races tetap
+  terbuka.
+
+Tidak ada status/checklist yang diubah. P15/P16/P17c/P18 tetap terbuka;
+tidak ada runtime/deploy/aktivasi dan seluruh gate/payment default OFF.

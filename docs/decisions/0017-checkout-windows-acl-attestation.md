@@ -249,3 +249,22 @@ penolakan LocalSystem, role mask, impersonation, effective `AccessCheck`,
 source-tree, cache, composition/usable attestor, serta native runtime/races belum
 tersedia atau terbukti. P15/P16/P17c/P18 tetap terbuka; tidak ada
 runtime/deploy/aktivasi dan seluruh gate/payment tetap default OFF.
+
+## Implementation Checkpoint — `301a823`
+
+Private current-process token profile kini membaca `TokenGroups` dengan probe/
+fill exact, batas **256 KiB** dan maksimum **4096 group**. Layout
+`ANYSIZE_ARRAY`, tabel, serta seluruh span diperiksa; tiap SID harus berada di
+luar header/tabel dan tidak overlap dengan SID lain sebelum `IsValidSid` lalu
+`GetLengthSid`. Semua group dan attributes dipertahankan dalam urutan native tanpa
+filtering; duplikat ditolak, bukan dideduplikasi. Profil immutable dibaca sebelum dan sesudah descriptor snapshots melalui
+token handle yang sama, wajib identik, dan cleanup handle tetap exact.
+
+Bukti root accepted: **35/35 unittest**, `py_compile`, diff-check, dan final
+adversarial review **PASS** tanpa P1/P2. Bukti masih pure fake ABI dan hanya untuk
+current process. Ordinary second principal beserta provenance-nya, privilege
+checks, pengecualian LocalSystem untuk principal ordinary, impersonation, role/
+policy mask, effective `AccessCheck`, source-tree, cache, composition/usable
+attestor, serta native Windows/runtime/races belum tersedia atau terbukti.
+P15/P16/P17c/P18 tetap terbuka; tidak ada runtime/deploy/aktivasi dan seluruh
+gate/payment tetap default OFF.

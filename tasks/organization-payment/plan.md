@@ -716,3 +716,20 @@ Ini tetap pure fake ABI. Groups, privileges, LocalSystem, role mask,
 impersonation, effective `AccessCheck`, source-tree/cache/composition/attestor,
 native runtime, dan races belum dibuktikan. Tidak ada runtime/deploy/aktivasi;
 P15/P16/P17c/P18 tetap terbuka dan seluruh gate/payment default OFF.
+
+### Checkpoint current-process TokenGroups
+
+Commit `301a823` menambah profile `TokenGroups` private dengan probe/fill exact,
+batas **256 KiB/4096 group**, serta validasi `ANYSIZE_ARRAY`, tabel, full span,
+dan SID non-overlap terhadap header/tabel dan sesama SID sebelum `IsValidSid` →
+`GetLengthSid`. Semua group+attributes dipertahankan dalam urutan native tanpa
+filtering; duplikat ditolak, bukan dideduplikasi. Profil immutable sebelum/sesudah descriptor snapshots wajib
+identik pada token handle yang sama, dengan cleanup exact. Bukti root accepted:
+**35/35 unittest**, `py_compile`, diff-check, dan adversarial review **PASS**
+tanpa P1/P2.
+
+Ini tetap pure fake current-process only. Ordinary second principal/provenance,
+privileges, LocalSystem exclusion untuk ordinary, impersonation, role/policy
+mask, effective `AccessCheck`, source-tree/cache/composition/usable attestor,
+native Windows/runtime/races belum dibuktikan. Tidak ada runtime/deploy/aktivasi;
+P15/P16/P17c/P18 tetap terbuka dan seluruh gate/payment default OFF.
