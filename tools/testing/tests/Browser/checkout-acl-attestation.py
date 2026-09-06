@@ -132,6 +132,8 @@ def _request_shape(value):
                 or type(target["role"]) is not str \
                 or target["role"] != role or not _path(target["path"]):
             return False
+    if len({target["path"].casefold() for target in targets}) != 3:
+        return False
     run_path = targets[1]["path"]
     return value["leaseBinding"] == run_binding(run_path) \
         and lease["path"] == run_path + "/.checkout-coordinator.lease" \
@@ -214,6 +216,12 @@ def _validate_evidence(evidence, request):
     for target, expected in zip(evidence["targets"], request["targets"], strict=True):
         if not _evidence_target(target, expected):
             raise AttestationRefused("attestation_evidence")
+    identities = {
+        (target["volumeSerial"], target["fileId"])
+        for target in evidence["targets"]
+    }
+    if len(identities) != 3:
+        raise AttestationRefused("attestation_evidence_binding")
     if evidence["requestDigest"] != request_digest(request) \
             or evidence["policyDigest"] != POLICY_DIGEST \
             or evidence["leaseDigest"] != lease_digest(

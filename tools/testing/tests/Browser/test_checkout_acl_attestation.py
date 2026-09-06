@@ -156,6 +156,29 @@ class CheckoutAclAttestationTests(unittest.TestCase):
                     module.canonical_request(request),
                 )
 
+    def test_request_target_paths_are_pairwise_distinct_by_windows_key(self):
+        valid = self.request()
+        aliases = (
+            valid["targets"][1]["path"],
+            valid["targets"][1]["path"].replace("candidate", "CANDIDATE"),
+            valid["targets"][2]["path"],
+            valid["targets"][2]["path"].replace("candidate", "CANDIDATE"),
+        )
+        for alias in aliases:
+            request = copy.deepcopy(valid)
+            request["targets"][0]["path"] = alias
+            with self.subTest(alias=alias):
+                self.assert_refused(
+                    "attestation_request",
+                    lambda request=request: module.canonical_request(request),
+                )
+                self.assert_refused(
+                    "attestation_request",
+                    lambda request=request: module.canonical_evidence(
+                        self.evidence(request), request,
+                    ),
+                )
+
     def test_request_decoder_rejects_noncanonical_duplicate_nonfinite_and_size(self):
         canonical = module.canonical_request(self.request())
         decoded = json.loads(canonical)
@@ -244,6 +267,74 @@ class CheckoutAclAttestationTests(unittest.TestCase):
             "attestation_evidence_binding",
             lambda: module.canonical_evidence(evidence, request),
         )
+
+    def test_evidence_target_identities_are_pairwise_distinct(self):
+        for left, right in ((0, 1), (0, 2), (1, 2)):
+            request = self.request()
+            evidence = self.evidence(request)
+            duplicate = {
+                key: evidence["targets"][left][key]
+                for key in ("volumeSerial", "fileId")
+            }
+            evidence["targets"][right].update(duplicate)
+            if right == 0 or left == 0:
+                request["leaseIdentity"]["coordinator"] = {
+                    key: evidence["targets"][0][key]
+                    for key in ("volumeSerial", "fileId")
+                }
+            if right == 1 or left == 1:
+                request["leaseIdentity"]["run"] = {
+                    key: evidence["targets"][1][key]
+                    for key in ("volumeSerial", "fileId")
+                }
+            evidence["requestDigest"] = module.request_digest(request)
+            evidence["leaseDigest"] = module.lease_digest(
+                request["leaseBinding"], request["leaseIdentity"],
+            )
+            with self.subTest(pair=(left, right)):
+                self.assert_refused(
+                    "attestation_evidence_binding",
+                    lambda evidence=evidence, request=request:
+                    module.canonical_evidence(evidence, request),
+                )
+
+    def test_distinctness_refuses_without_details_and_preserves_baseexceptions(self):
+        request = self.request()
+        request["targets"][0]["path"] = "c:/PRIVATE"
+        request["targets"][1]["path"] = "c:/private"
+        request["targets"][2]["path"] = "c:/private/source"
+        request["leaseIdentity"]["path"] = "c:/private/.checkout-coordinator.lease"
+        request["leaseBinding"] = module.run_binding(request["targets"][1]["path"])
+        self.assert_refused(
+            "attestation_request", lambda: module.canonical_request(request),
+        )
+
+        original_path = module._path
+        for primary in (KeyboardInterrupt(), SystemExit(61)):
+            def interrupt(_value, primary=primary):
+                raise primary
+
+            module._path = interrupt
+            try:
+                with self.assertRaises(type(primary)) as caught:
+                    module.canonical_request(self.request())
+                self.assertIs(caught.exception, primary)
+            finally:
+                module._path = original_path
+
+        original_evidence_target = module._evidence_target
+        evidence = self.evidence()
+        for primary in (KeyboardInterrupt(), SystemExit(62)):
+            def interrupt_evidence(_value, _expected, primary=primary):
+                raise primary
+
+            module._evidence_target = interrupt_evidence
+            try:
+                with self.assertRaises(type(primary)) as caught:
+                    module.canonical_evidence(evidence, self.request())
+                self.assertIs(caught.exception, primary)
+            finally:
+                module._evidence_target = original_evidence_target
 
     def test_evidence_decoder_rejects_noncanonical_duplicate_nonfinite_and_size(self):
         request = self.request()

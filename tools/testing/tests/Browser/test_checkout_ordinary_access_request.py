@@ -190,7 +190,6 @@ class CheckoutOrdinaryAccessRequestTests(unittest.TestCase):
         path_request["targets"][0]["path"] = path_request["targets"][1]["path"]
         path_evidence = copy.deepcopy(evidence)
         path_evidence["targets"][0]["path"] = path_request["targets"][0]["path"]
-        path_evidence["requestDigest"] = acl.request_digest(path_request)
 
         identity_request = copy.deepcopy(outer)
         identity_request["leaseIdentity"]["coordinator"] = copy.deepcopy(
@@ -203,12 +202,11 @@ class CheckoutOrdinaryAccessRequestTests(unittest.TestCase):
         identity_evidence["leaseDigest"] = acl.lease_digest(
             identity_request["leaseBinding"], identity_request["leaseIdentity"],
         )
-        for name, request, proof in (
-            ("path", path_request, path_evidence),
-            ("identity", identity_request, identity_evidence),
+        for name, request_raw, evidence_raw in (
+            ("path", acl._json_bytes(path_request), acl._json_bytes(path_evidence)),
+            ("identity", acl.canonical_request(identity_request),
+             acl._json_bytes(identity_evidence)),
         ):
-            request_raw = acl.canonical_request(request)
-            evidence_raw = acl.canonical_evidence(proof, request)
             with self.subTest(case=name):
                 self.refused(module, lambda: module._build_request_with_challenge(
                     request_raw, evidence_raw, identity, "1" * 64,
