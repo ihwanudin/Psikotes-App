@@ -2850,3 +2850,19 @@ Evidence root: focused **1/1 test**, `py_compile`, dan independent review
 atau klaim full builder suite, dan bukan bukti runtime/provider/native Windows.
 Tidak ada config/env/deploy/activation atau perubahan P15/P16/P17c/P18,
 checklist/progress, active gates, maupun payment; semuanya tetap default OFF.
+
+### Checkpoint pure ACL source binding — accepted `4bfd005`
+
+Exact canonical outer pair anchor/execution kini divalidasi melalui accepted
+codec dan `validate_boundary_pair`. Source-root identity hanya berasal dari
+evidence `target[2]`; source-tree v2 summaries dihitung ulang dari manifest/
+records dan wajib exact-equal. Sibling authority dipin dan narrow result
+immutable.
+
+Evidence root: **31/31 tests**, `py_compile`, dan independent review **PASS**
+tanpa P1/P2 setelah tuple/frozenset identity P2 diperbaiki. Scope hanya
+supplied-data consistency; tidak membuktikan authority `policySatisfied`, live
+traversal/completeness, handle/path provenance, DACL efficacy, double capture,
+provider, native/runtime, atau usable attestor. P15/P16/P17c/P18,
+checklist/progress, active gates, payment, config/env/deploy, dan activation
+tetap unchanged/default OFF.

@@ -1285,3 +1285,19 @@ gates, dan payment tetap terbuka/default OFF tanpa config/env/deploy/activation.
 Tidak ada status/checklist/progress/gate yang berubah. P15/P16/P17c/P18,
 active gates, dan payment tetap terbuka/default OFF tanpa perubahan
 config/env/deploy/activation.
+
+### Bukti pure ACL source binding accepted — authority tetap terbuka
+
+- Commit `4bfd005` memvalidasi exact canonical anchor/execution outer pairs
+  melalui accepted codec dan `validate_boundary_pair`.
+- Source-root identity hanya diturunkan dari evidence `target[2]`; source-tree
+  v2 summaries dihitung ulang dari manifest/records dan wajib exact-equal.
+- Sibling authority dipin dan narrow result immutable.
+- Evidence root: **31/31 tests**, `py_compile`, dan independent review **PASS**
+  tanpa P1/P2 setelah tuple/frozenset identity P2 diperbaiki.
+- Bukti hanya supplied-data consistency; belum membuktikan authority
+  `policySatisfied`, live traversal/completeness, handle/path provenance, DACL
+  efficacy, double capture, provider, native/runtime, atau usable attestor.
+
+Tidak ada status/checklist/progress/gate yang berubah. P15/P16/P17c/P18,
+active gates, payment, config/env/deploy, dan activation tetap default OFF.

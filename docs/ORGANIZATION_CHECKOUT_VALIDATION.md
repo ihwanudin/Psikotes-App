@@ -1238,3 +1238,19 @@ dan full builder suite tidak diklaim. Ini bukan bukti runtime, provider, atau
 native Windows. Tidak ada perubahan P15/P16/P17c/P18, checklist/progress,
 active gates, payment, config/env/deploy, maupun activation; semuanya tetap
 terbuka/default OFF.
+
+## Checkpoint pure ACL source binding — 2026-09-06
+
+Commit `4bfd005` memvalidasi exact canonical outer pair anchor/execution melalui
+accepted codec dan `validate_boundary_pair`. Source-root identity diturunkan
+hanya dari evidence `target[2]`; source-tree v2 summaries dihitung ulang dari
+manifest/records dan wajib exact-equal. Sibling authority dipin, dengan hasil
+sempit yang immutable.
+
+Bukti root: **31/31 tests**, `py_compile`, dan independent review **PASS** tanpa
+P1/P2 setelah tuple/frozenset identity P2 diperbaiki. Ini hanya membuktikan
+konsistensi supplied data, bukan authority `policySatisfied`, live traversal/
+completeness, handle/path provenance, DACL efficacy, double capture, provider,
+native/runtime, atau usable attestor. P15/P16/P17c/P18, checklist/progress,
+active gates, payment, config/env/deploy, dan activation tetap tidak berubah/
+default OFF.

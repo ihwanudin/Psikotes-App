@@ -944,3 +944,18 @@ tanpa P1/P2. Bukti ini terbatas pada packaging integrity; tidak ada candidate
 build, klaim full builder suite, ataupun bukti runtime/provider/native Windows.
 Plan/checklist/progress, P15/P16/P17c/P18, active gates, payment,
 config/env/deploy, dan activation tidak berubah serta tetap terbuka/default OFF.
+
+### Checkpoint pure ACL source binding
+
+Commit `4bfd005` memvalidasi exact canonical anchor/execution outer pairs dengan
+accepted codec serta `validate_boundary_pair`. Source-root identity hanya
+diturunkan dari evidence `target[2]`; source-tree v2 summaries dihitung ulang
+dari manifest/records dan wajib exact-equal. Sibling authority dipin dan narrow
+result immutable.
+
+Bukti root: **31/31 tests**, `py_compile`, dan independent review **PASS** tanpa
+P1/P2 setelah tuple/frozenset identity P2 diperbaiki. Ini hanya supplied-data
+consistency, bukan authority `policySatisfied`, live traversal/completeness,
+handle/path provenance, DACL efficacy, double capture, provider, native/runtime,
+atau usable attestor. Plan/checklist/progress, P15/P16/P17c/P18, active gates,
+payment, config/env/deploy, dan activation tidak berubah/default OFF.

@@ -483,3 +483,19 @@ Bukti root accepted: focused **1/1 test**, `py_compile`, dan independent review
 build dan tidak ada klaim full builder suite, runtime, provider, ataupun native
 Windows. P15/P16/P17c/P18, checklist/progress, active gates, dan payment tetap
 terbuka/default OFF; tidak ada perubahan config/env/deploy/activation.
+
+## Implementation Checkpoint — `4bfd005`
+
+Pure source binding kini memvalidasi exact canonical outer pair anchor dan
+execution melalui accepted codec serta `validate_boundary_pair`. Source-root
+identity hanya diturunkan dari evidence `target[2]`; source-tree v2 summaries
+dihitung ulang dari manifest/records lalu wajib exact-equal. Sibling authority
+dipin dan hasil sempit bersifat immutable.
+
+Bukti root accepted: **31/31 tests**, `py_compile`, dan independent review
+**PASS** tanpa P1/P2 setelah tuple/frozenset identity P2 diperbaiki. Bukti ini
+hanya konsistensi supplied data, bukan authority `policySatisfied`, live
+traversal/completeness, handle/path provenance, DACL efficacy, double capture,
+provider, native/runtime, atau usable attestor. P15/P16/P17c/P18,
+checklist/progress, active gates, payment, config/env/deploy, dan activation
+tetap tidak berubah/default OFF.
