@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import ctypes
 import os
+import re
 from types import MappingProxyType
 
 
@@ -160,8 +161,13 @@ FILE_FLAG_BACKUP_SEMANTICS = 0x02000000
 FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000
 HANDLE_FLAG_INHERIT = 0x00000001
 FILE_ATTRIBUTE_REPARSE_POINT = 0x00000400
+FILE_ATTRIBUTE_DIRECTORY = 0x00000010
 FileAttributeTagInfo = 9
 FileIdInfo = 18
+FILE_NAME_NORMALIZED = 0x00000000
+VOLUME_NAME_DOS = 0x00000000
+MAX_CANONICAL_PATH_CHARS = 4096
+MAX_FINAL_PATH_TCHARS = 32768
 
 SE_FILE_OBJECT = 1
 OWNER_SECURITY_INFORMATION = 0x00000001
@@ -305,6 +311,251 @@ class _NativeBundle:
             raise
         except Exception:
             raise WindowsAclRefused("acl_attestation") from None
+
+
+_NATIVE_BUNDLE_TYPE = _NativeBundle
+_NATIVE_RESOLVE = _NativeBundle.resolve
+_DOS_DEVICE = re.compile(r"(?:con|prn|aux|nul|com[1-9]|lpt[1-9])")
+
+
+def _canonical_directory_path(value):
+    if type(value) is not str or not 4 <= len(value) <= MAX_CANONICAL_PATH_CHARS:
+        raise WindowsAclRefused("acl_attestation")
+    try:
+        value.encode("ascii")
+    except Exception:
+        raise WindowsAclRefused("acl_attestation") from None
+    if not re.fullmatch(r"[a-z]:/(?:[^/]+)(?:/[^/]+)*", value) \
+            or value != value.lower() or "\\" in value:
+        raise WindowsAclRefused("acl_attestation")
+    for part in value[3:].split("/"):
+        if not 1 <= len(part.encode("ascii")) <= 255 \
+                or part in {".", ".."} or part.endswith((".", " ")) \
+                or any(ord(character) < 32 or ord(character) == 127
+                       or character in '<>"|?*:' for character in part):
+            raise WindowsAclRefused("acl_attestation")
+        device = part.split(".", 1)[0].rstrip(" .")
+        if _DOS_DEVICE.fullmatch(device) is not None:
+            raise WindowsAclRefused("acl_attestation")
+    return value
+
+
+def _resolve_directory_functions(bundle):
+    try:
+        if type(bundle) is not _NATIVE_BUNDLE_TYPE \
+                or type(bundle).resolve is not _NATIVE_RESOLVE:
+            raise WindowsAclRefused("acl_attestation")
+        names = (
+            "CreateFileW", "CloseHandle", "SetHandleInformation",
+            "GetHandleInformation", "GetFileInformationByHandleEx",
+            "GetFinalPathNameByHandleW",
+        )
+        return {name: bundle.resolve(name) for name in names}
+    except WindowsAclRefused:
+        raise
+    except Exception:
+        raise WindowsAclRefused("acl_attestation") from None
+
+
+def _checked_close(bundle, expected, handle):
+    try:
+        if type(bundle) is not _NATIVE_BUNDLE_TYPE \
+                or type(bundle).resolve is not _NATIVE_RESOLVE:
+            raise WindowsAclRefused("acl_attestation")
+        current = bundle.resolve("CloseHandle")
+        if current is not expected or not _successful(current(handle)):
+            raise WindowsAclRefused("acl_attestation")
+    except WindowsAclRefused:
+        raise
+    except Exception:
+        raise WindowsAclRefused("acl_attestation") from None
+
+
+def _successful(value):
+    return type(value) is int and value != 0
+
+
+def _final_path(function, handle):
+    required = function(
+        handle, None, 0, FILE_NAME_NORMALIZED | VOLUME_NAME_DOS,
+    )
+    if type(required) is not int or not 2 <= required <= MAX_FINAL_PATH_TCHARS:
+        raise WindowsAclRefused("acl_attestation")
+    buffer = ctypes.create_unicode_buffer(required)
+    written = function(
+        handle, buffer, required, FILE_NAME_NORMALIZED | VOLUME_NAME_DOS,
+    )
+    if type(written) is not int or written != required - 1 \
+            or written >= required or len(buffer.value) != written:
+        raise WindowsAclRefused("acl_attestation")
+    opened = buffer.value
+    if not opened.startswith("\\\\?\\") or opened.startswith("\\\\?\\UNC\\"):
+        raise WindowsAclRefused("acl_attestation")
+    canonical = opened[4:].replace("\\", "/").lower()
+    return _canonical_directory_path(canonical)
+
+
+def _directory_state(functions, handle, expected_path):
+    flags = DWORD()
+    if not _successful(functions["GetHandleInformation"](
+            handle, ctypes.byref(flags))) or flags.value & HANDLE_FLAG_INHERIT:
+        raise WindowsAclRefused("acl_attestation")
+
+    attributes = FILE_ATTRIBUTE_TAG_INFO()
+    if not _successful(functions["GetFileInformationByHandleEx"](
+            handle, FileAttributeTagInfo, ctypes.byref(attributes),
+            ctypes.sizeof(attributes))):
+        raise WindowsAclRefused("acl_attestation")
+    if not attributes.FileAttributes & FILE_ATTRIBUTE_DIRECTORY \
+            or attributes.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT \
+            or attributes.ReparseTag != 0:
+        raise WindowsAclRefused("acl_attestation")
+
+    identity = FILE_ID_INFO()
+    if not _successful(functions["GetFileInformationByHandleEx"](
+            handle, FileIdInfo, ctypes.byref(identity), ctypes.sizeof(identity))):
+        raise WindowsAclRefused("acl_attestation")
+    file_id_bytes = bytes(identity.FileId.Identifier)
+    if len(file_id_bytes) != 16:
+        raise WindowsAclRefused("acl_attestation")
+    final_path = _final_path(functions["GetFinalPathNameByHandleW"], handle)
+    if final_path != expected_path:
+        raise WindowsAclRefused("acl_attestation")
+    return (
+        flags.value,
+        attributes.FileAttributes,
+        attributes.ReparseTag,
+        identity.VolumeSerialNumber,
+        file_id_bytes,
+        final_path,
+    )
+
+
+class _OpenedDirectory:
+    __slots__ = (
+        "__bundle", "__handle", "__functions", "__path", "__state",
+        "__operational", "__closed",
+    )
+
+    def __init__(self, bundle, handle, functions, path, state):
+        object.__setattr__(self, "_OpenedDirectory__bundle", bundle)
+        object.__setattr__(self, "_OpenedDirectory__handle", handle)
+        object.__setattr__(self, "_OpenedDirectory__functions",
+                           MappingProxyType(dict(functions)))
+        object.__setattr__(self, "_OpenedDirectory__path", path)
+        object.__setattr__(self, "_OpenedDirectory__state", state)
+        object.__setattr__(self, "_OpenedDirectory__closed", False)
+        object.__setattr__(self, "_OpenedDirectory__operational", (
+            bundle, handle, tuple(functions.items()), path, state,
+        ))
+
+    def __setattr__(self, _name, _value):
+        raise WindowsAclRefused("acl_attestation")
+
+    def _current_functions(self):
+        functions = _resolve_directory_functions(self.__bundle)
+        if tuple(functions.items()) != tuple(self.__functions.items()):
+            raise WindowsAclRefused("acl_attestation")
+        return functions
+
+    def validate(self):
+        try:
+            if self.__closed or (
+                self.__bundle, self.__handle, tuple(self.__functions.items()),
+                self.__path, self.__state,
+            ) != self.__operational:
+                raise WindowsAclRefused("acl_attestation")
+            functions = self._current_functions()
+            if _directory_state(functions, self.__handle, self.__path) != self.__state:
+                raise WindowsAclRefused("acl_attestation")
+            return None
+        except WindowsAclRefused:
+            raise
+        except Exception:
+            raise WindowsAclRefused("acl_attestation") from None
+
+    def snapshot(self):
+        self.validate()
+        return {
+            "path": self.__path,
+            "volumeSerial": str(self.__state[3]),
+            # FILE_ID_128 is opaque bytes. Decimal is a contract serialization,
+            # not a claim that Windows defines a native integer byte order.
+            "fileId": str(int.from_bytes(self.__state[4], "big")),
+            "reparse": False,
+        }
+
+    def _close_preserving(self, primary):
+        if self.__closed:
+            if primary is None:
+                raise WindowsAclRefused("acl_attestation")
+            return
+        object.__setattr__(self, "_OpenedDirectory__closed", True)
+        try:
+            _checked_close(
+                self.__bundle, self.__functions["CloseHandle"], self.__handle,
+            )
+        except BaseException as error:
+            if primary is not None:
+                return
+            if isinstance(error, Exception):
+                raise WindowsAclRefused("acl_attestation") from None
+            raise
+
+    def close(self):
+        self._close_preserving(None)
+
+    def __enter__(self):
+        try:
+            self.validate()
+            return self
+        except BaseException as primary:
+            self._close_preserving(primary)
+            raise
+
+    def __exit__(self, _error_type, error, _traceback):
+        self._close_preserving(error)
+        return False
+
+
+def _open_directory(bundle, canonical_path):
+    path = _canonical_directory_path(canonical_path)
+    functions = _resolve_directory_functions(bundle)
+    handle = None
+    try:
+        handle = functions["CreateFileW"](
+            "\\\\?\\" + path.replace("/", "\\"),
+            READ_CONTROL | FILE_READ_ATTRIBUTES,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            None,
+            OPEN_EXISTING,
+            FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+            None,
+        )
+        if type(handle) is not int or handle in (0, INVALID_HANDLE_VALUE):
+            handle = None
+            raise WindowsAclRefused("acl_attestation")
+        if not _successful(functions["SetHandleInformation"](
+                handle, HANDLE_FLAG_INHERIT, 0)):
+            raise WindowsAclRefused("acl_attestation")
+        before = _directory_state(functions, handle, path)
+        after = _directory_state(functions, handle, path)
+        if before != after:
+            raise WindowsAclRefused("acl_attestation")
+        opened = _OpenedDirectory(bundle, handle, functions, path, before)
+        handle = None
+        return opened
+    except BaseException as primary:
+        if handle is not None:
+            try:
+                _checked_close(bundle, functions["CloseHandle"], handle)
+            except BaseException:
+                pass
+        if isinstance(primary, WindowsAclRefused):
+            raise
+        if isinstance(primary, Exception):
+            raise WindowsAclRefused("acl_attestation") from None
+        raise
 
 
 def _load_native():
