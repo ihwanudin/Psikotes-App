@@ -390,3 +390,17 @@ menghasilkan descriptor `policySatisfied`, bukan menyalinnya dari request.
 Outer ADR-017 `policySatisfied` hanya membuktikan descriptor policy; ordinary
 principal denial adalah admission gate terpisah dari ADR-018. Provisioning,
 integration, dan runtime evidence tetap terbuka.
+
+## Implementation Checkpoint — `f011551`
+
+Pure ADR-018 request codec kini menurunkan binding dari exact canonical outer
+ADR-017 request/evidence bytes dan private structural current-token identity
+fixture. Codec mengikat tiga digest exact (`aclRequestDigest`,
+`aclEvidenceDigest`, dan domain-separated `aclDescriptorEvidenceDigest`) serta
+menolak alias path atau `(volumeSerial,fileId)` di antara coordinator/run/source.
+
+Bukti root accepted: **11/11 tests**, `py_compile`, dan independent review
+**PASS** tanpa P1/P2. Belum ada provider/cache/attest, native implementation,
+composition, provenance, atau runtime evidence; provisioning authority tetap
+menjadi gate terbuka. P15/P16/P17c/P18, active gates, dan payment tidak berubah
+serta tetap default OFF.

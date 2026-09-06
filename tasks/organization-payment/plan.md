@@ -854,3 +854,17 @@ Acquisition authority dan provider/cache/
 `attest` belum ada; hanya pure codec preparation boleh dimulai. Native runtime
 tetap terbuka. Tidak ada perubahan
 acceptance/progress; P15/P16/P17c/P18 terbuka dan seluruh gate/payment OFF.
+
+### Checkpoint pure ADR-018 request codec
+
+Commit `f011551` menerima pure codec yang menurunkan request dari exact
+canonical outer ADR-017 request/evidence bytes dan private structural
+current-token identity fixture. Codec mengikat `aclRequestDigest`,
+`aclEvidenceDigest`, domain-separated `aclDescriptorEvidenceDigest`, serta
+pairwise-distinct path dan `(volumeSerial,fileId)` tiga target.
+
+Bukti root: **11/11 tests**, `py_compile`, dan independent review **PASS** tanpa
+P1/P2. Belum ada provider/cache/attest, native implementation, composition,
+provenance, runtime, atau provisioning authority. Tidak ada perubahan status,
+acceptance, maupun progress; P15/P16/P17c/P18 dan active gate/payment tetap
+terbuka/default OFF tanpa runtime/config/env/deploy/activation.

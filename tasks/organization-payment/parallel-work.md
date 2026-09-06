@@ -2759,3 +2759,17 @@ AppContainer raw/nonzero, class-11/`IsTokenRestricted`, atau profile drift.
 Acquisition authority dan provider/cache/`attest` belum ada; hanya pure codec
 preparation boleh dimulai. P15/P16/P17c/P18 terbuka, tanpa activation/deploy,
 dan seluruh gate/payment default OFF.
+
+### Checkpoint pure ADR-018 request codec — accepted `f011551`
+
+Pure codec kini memvalidasi exact canonical outer ADR-017 request/evidence
+bytes beserta private structural current-token identity fixture, lalu menurunkan
+request ADR-018 dan tiga digest exact: `aclRequestDigest`, `aclEvidenceDigest`,
+serta domain-separated `aclDescriptorEvidenceDigest`. Path dan identity
+`(volumeSerial,fileId)` coordinator/run/source wajib pairwise distinct.
+
+Evidence root: **11/11 tests**, `py_compile`, dan independent review **PASS**
+tanpa P1/P2. Provider/cache/attest, native implementation, composition,
+provenance, runtime, dan provisioning authority tetap belum tersedia/terbuka.
+Tidak ada runtime/config/env/deploy/activation; P15/P16/P17c/P18 dan seluruh
+active gate/payment tidak berubah serta tetap default OFF.

@@ -1181,3 +1181,20 @@ tidak ada aktivasi/deploy dan seluruh gate/payment default OFF.
 
 Tidak ada status/checklist/progress yang diubah. P15/P16/P17c/P18 tetap terbuka;
 tidak ada aktivasi/deploy dan seluruh gate/payment default OFF.
+
+### Bukti pure ADR-018 request codec accepted — provisioning tetap terbuka
+
+- Commit `f011551` menerima pure codec yang memvalidasi exact canonical outer
+  ADR-017 request/evidence bytes plus private structural current-token identity
+  fixture dan menurunkan request ADR-018 sendiri.
+- Codec mengikat exact `aclRequestDigest`, `aclEvidenceDigest`, serta
+  domain-separated `aclDescriptorEvidenceDigest`; path dan identity
+  `(volumeSerial,fileId)` coordinator/run/source wajib pairwise distinct.
+- Evidence root: **11/11 tests**, `py_compile`, dan independent review **PASS**
+  tanpa P1/P2.
+- Provider/cache/attest, native implementation, composition, provenance,
+  runtime, dan provisioning authority tetap belum ada/terbuka.
+
+Tidak ada status/checklist/progress yang diubah. P15/P16/P17c/P18 tetap terbuka;
+tidak ada runtime/config/env/deploy/activation dan seluruh active gate/payment
+tetap default OFF.

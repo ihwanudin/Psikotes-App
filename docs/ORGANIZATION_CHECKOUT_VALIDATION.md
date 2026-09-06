@@ -1139,3 +1139,19 @@ pure codec preparation yang boleh menurunkan binding dari exact outer bytes;
 kontrak ini bukan bukti Windows runtime atau effective `AccessCheck`.
 P15/P16/P17c/P18 tetap terbuka dan seluruh gate/payment tetap default OFF;
 tidak ada checklist/progress yang diubah.
+
+## Checkpoint pure ADR-018 request codec — 2026-09-06
+
+Commit `f011551` menerima pure request codec yang memvalidasi exact canonical
+outer ADR-017 request/evidence bytes plus private structural current-token
+identity fixture, lalu menurunkan request ADR-018 sendiri. Tiga digest exact
+(`aclRequestDigest`, `aclEvidenceDigest`, dan domain-separated
+`aclDescriptorEvidenceDigest`) serta pairwise-distinct path dan
+`(volumeSerial,fileId)` untuk coordinator/run/source telah ditegakkan.
+
+Bukti root: **11/11 tests**, `py_compile`, dan independent review **PASS** tanpa
+P1/P2. Bukti ini tidak mencakup provider, cache, attest, native implementation,
+composition, provenance, atau runtime; provisioning authority gate tetap
+terbuka. Tidak ada runtime/config/env/deploy/activation. P15/P16/P17c/P18,
+active gates, payment, checklist, dan progress tidak berubah; semuanya yang
+belum diterima tetap terbuka/default OFF.

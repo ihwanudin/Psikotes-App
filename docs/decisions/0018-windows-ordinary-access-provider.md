@@ -302,3 +302,20 @@ diputuskan melalui ADR terpisah dan bukan bagian dari attestation ini.
 - [TOKEN_ORIGIN](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-token_origin)
 - [TOKEN_STATISTICS](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-token_statistics)
 - [Requesting access rights (`MAXIMUM_ALLOWED`)](https://learn.microsoft.com/en-us/windows/win32/secauthz/requesting-access-rights-to-an-object)
+
+## Implementation Checkpoint — `f011551`
+
+Pure request codec kini menerima exact canonical outer ADR-017 request/evidence
+bytes beserta private structural current-token identity fixture, memvalidasi
+keduanya, lalu menurunkan request ADR-018 sendiri. Codec mengikat exact
+`aclRequestDigest`, `aclEvidenceDigest`, dan domain-separated
+`aclDescriptorEvidenceDigest`; path serta `(volumeSerial,fileId)` ketiga target
+wajib pairwise distinct.
+
+Bukti root accepted: **11/11 tests**, `py_compile`, dan independent review
+**PASS** tanpa P1/P2. Ini hanya bukti pure codec dan struktur fixture; belum ada
+provider, cache, `attest/load/discard`, native token/handle/descriptor/
+`AccessCheck`, composition, provenance, atau Windows runtime evidence.
+Provisioning authority gate tetap terbuka. Tidak ada runtime, config/env,
+deploy, atau activation; P15/P16/P17c/P18 dan seluruh active gate/payment tetap
+unchanged dan default OFF.
