@@ -970,3 +970,16 @@ focused **1/1 test**, `py_compile`, dan independent review **PASS** tanpa P1/P2.
 Ini hanya packaging integrity; tidak ada candidate build atau bukti runtime.
 Plan/checklist/progress, P15/P16/P17c/P18, gates/payment, config/env/deploy, dan
 activation tidak berubah/default OFF.
+
+### Checkpoint ACL source-binding dependency pinning
+
+Commit `538c144` mem-pin direct sibling dan stdlib dependency callables melalui
+module, callable identity/type, serta Python metadata yang diperiksa pre/post
+setiap call dan kembali sebelum result. Bukti root: **32/32 tests**,
+`py_compile`, dan independent review **PASS** tanpa P1/P2.
+
+Trust/residual masih mencakup CPython builtins, deeper stdlib internals, dan
+dependency mutation yang dipulihkan sepenuhnya di dalam callback. Increment ini
+hanya integrity hardening, bukan functional/native/provider/runtime authority.
+Plan/checklist/progress, P15/P16/P17c/P18, gates/payment, config/env/deploy, dan
+activation tidak berubah/default OFF.

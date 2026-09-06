@@ -1315,3 +1315,18 @@ active gates, payment, config/env/deploy, dan activation tetap default OFF.
 
 Tidak ada status/checklist/progress/gate yang berubah. P15/P16/P17c/P18,
 active gates, payment, config/env/deploy, dan activation tetap default OFF.
+
+### Bukti ACL source-binding dependency pinning accepted — trust boundary tetap terbuka
+
+- Commit `538c144` mem-pin direct sibling dan stdlib dependency callables
+  berdasarkan module, callable identity/type, serta Python metadata pre/post
+  setiap panggilan dan sebelum hasil diterima.
+- Evidence root: **32/32 tests**, `py_compile`, dan independent review **PASS**
+  tanpa P1/P2.
+- CPython builtins, deeper stdlib internals, dan dependency mutation yang
+  sepenuhnya dipulihkan dalam callback tetap trusted/residual.
+- Bukti hanya integrity hardening, bukan functional/native/provider/runtime
+  authority.
+
+Tidak ada status/checklist/progress/gate yang berubah. P15/P16/P17c/P18,
+active gates, payment, config/env/deploy, dan activation tetap default OFF.
