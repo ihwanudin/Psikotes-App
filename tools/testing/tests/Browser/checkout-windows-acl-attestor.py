@@ -232,6 +232,8 @@ SENSITIVE_PRIVILEGE_NAMES = (
     "SeRestorePrivilege",
     "SeTakeOwnershipPrivilege",
 )
+LOCAL_SYSTEM_SID_BYTES = bytes.fromhex("010100000000000512000000")
+LOCAL_SYSTEM_SID = "S-1-5-18"
 
 FILE_GENERIC_READ = 0x00120089
 FILE_GENERIC_WRITE = 0x00120116
@@ -910,6 +912,17 @@ def _token_user_snapshot(functions, handle):
     return _TokenUserSnapshot(sid_bytes, _canonical_sid(sid_bytes))
 
 
+def _reject_local_system_token_user(user):
+    if type(user) is not _TokenUserSnapshot \
+            or _canonical_sid(LOCAL_SYSTEM_SID_BYTES) != LOCAL_SYSTEM_SID:
+        raise WindowsAclRefused("acl_attestation")
+    sid_bytes, sid = user.values()
+    binary_match = sid_bytes == LOCAL_SYSTEM_SID_BYTES
+    canonical_match = sid == LOCAL_SYSTEM_SID
+    if binary_match is not canonical_match or binary_match:
+        raise WindowsAclRefused("acl_attestation")
+
+
 class _TokenGroupsSnapshot:
     __slots__ = ("__values",)
 
@@ -1446,6 +1459,7 @@ class _OpenedProcessToken:
     def _profile_snapshot(self):
         functions = self.validate()
         user = _token_user_snapshot(functions, self.__handle)
+        _reject_local_system_token_user(user)
         functions = self.validate()
         groups = _token_groups_snapshot(functions, self.__handle)
         functions = self.validate()

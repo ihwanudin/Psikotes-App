@@ -2075,6 +2075,50 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
             self.assertEqual(self.call_names(harness).count("GetTokenInformation"), 20)
             self.assertEqual(self.call_names(harness).count("CloseHandle"), 2)
 
+    def test_local_system_token_user_is_rejected_before_descriptor_access(self):
+        module = load_module()
+        local_system = bytes.fromhex("010100000000000512000000")
+        self.assertEqual(module.LOCAL_SYSTEM_SID_BYTES, local_system)
+        self.assertEqual(module.LOCAL_SYSTEM_SID, "S-1-5-18")
+        self.assertEqual(module._canonical_sid(local_system), "S-1-5-18")
+
+        for owner_matches in (False, True):
+            harness = NativeDirectoryHarness(module)
+            harness.token_sids = [local_system, local_system]
+            if owner_matches:
+                harness.owner_sid = local_system
+                harness.trustee_sid = local_system
+            opened = self.opened(module, harness)
+            with self.subTest(owner_matches=owner_matches), opened:
+                self.assert_refused(module, opened._security_snapshot)
+            self.assertNotIn("GetSecurityInfo", self.call_names(harness))
+            self.assertEqual(
+                [args[0] for call, args in harness.calls
+                 if call == "CloseHandle"],
+                [harness.token_handle, harness.handle],
+            )
+            self.assertFalse({"DuplicateTokenEx", "AccessCheck",
+                              "CheckTokenMembership"}.intersection(
+                                  self.call_names(harness)))
+
+    def test_local_system_group_or_restricting_sid_is_not_token_identity(self):
+        module = load_module()
+        local_system = bytes.fromhex("010100000000000512000000")
+        harness = NativeDirectoryHarness(module)
+        harness.token_groups = [(local_system, 0)]
+        harness.token_restricting_sids = [(local_system, 0)]
+        opened = self.opened(module, harness)
+        with opened:
+            values = opened._security_snapshot().values()
+        self.assertNotEqual(values["processTokenSid"], "S-1-5-18")
+        self.assertEqual(values["processTokenGroups"], (
+            (local_system, "S-1-5-18", 0),
+        ))
+        self.assertEqual(values["processTokenRestrictingSids"], (
+            (local_system, "S-1-5-18"),
+        ))
+        self.assertEqual(self.call_names(harness).count("GetSecurityInfo"), 2)
+
     def test_process_token_cleanup_preserves_primary_base_exception(self):
         module = load_module()
         harness = NativeDirectoryHarness(module)
