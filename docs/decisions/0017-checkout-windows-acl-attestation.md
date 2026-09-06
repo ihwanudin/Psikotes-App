@@ -20,16 +20,32 @@ di Windows. Attestation saat build juga dapat kedaluwarsa sebelum lifecycle mula
 Policy authority adalah exact canonical artifact
 `tools/testing/tests/Browser/checkout-windows-acl-policy-v1.json`. Artifact wajib
 masuk manifest/candidate closure dan SHA-256 literalnya dipin di builder serta
-supervisor (`614364b6991087472648863798b9cbc307c15aed49fa351cb5552c0de90edc80`).
+supervisor (`a63c221764f73a54e87513fc91cded6b3fa16825138f6b24b6118132829f4eeb`).
 Caller dan attestor tidak menerima authority untuk memilih policy.
 Canonical encoding adalah ASCII JSON sorted-key dengan separator `,`/`:`, tanpa
 BOM/duplicate/nonfinite, tepat satu LF akhir, dan maksimum 8 KiB.
 
-Policy v1 mewajibkan protected DACL tanpa inherited ACE: coordinator/run memberi
-runtime token SID `FULL_CONTROL`, source hanya `READ_EXECUTE`; ACE diwariskan ke
-container dan object, dan principal uji non-privileged lain harus tidak memiliki
-effective access. Privilege SYSTEM/backup/restore/take-ownership berada di luar
-klaim ordinary-second-principal dan harus dilaporkan terpisah pada runtime.
+Policy v1 mewajibkan security descriptor ber-owner exact
+`PROCESS_TOKEN_USER`, DACL present/non-NULL, protected, tidak auto-inherited,
+revision 2, dan tepat satu ACE pada urutan 0. ACE tersebut adalah
+`ACCESS_ALLOWED_ACE_TYPE` numerik 0 untuk trustee `PROCESS_TOKEN_USER`, bukan
+inherited, tanpa propagation flag, serta memakai exact gabungan
+`OBJECT_INHERIT_ACE|CONTAINER_INHERIT_ACE` numerik 3. Coordinator dan run memakai
+`FILE_ALL_ACCESS` `0x001F01FF`/2032127; source memakai
+`FILE_GENERIC_READ|FILE_GENERIC_EXECUTE` `0x001200A9`/1179817.
+
+Principal uji ordinary kedua harus merupakan token non-privileged yang exact
+membership scope `TOKEN_USER` dan seluruh `TOKEN_GROUPS`-nya tidak memuat SID
+`PROCESS_TOKEN_USER`; token user tersebut juga bukan LocalSystem `S-1-5-18`. Enabled
+`SeBackupPrivilege`, `SeRestorePrivilege`, atau `SeTakeOwnershipPrivilege`
+mengecualikan token dari klaim ordinary. Exact native `AccessCheck` dengan
+`MAXIMUM_ALLOWED` `0x02000000`/33554432 harus berhasil sebagai pemanggilan fungsi
+(`expectedFunctionSuccess=true`) tetapi mengembalikan keputusan akses false
+(`expectedAccessStatus=false`) dan granted mask 0. Penolakan akses bukan kegagalan
+pemanggilan native dan tidak dimodelkan sebagai `ERROR_ACCESS_DENIED`. Klaim ini
+hanya mengenai akses yang diberikan DACL; SYSTEM dan
+akses yang dimediasi privilege berada di luar klaim dan wajib dilaporkan terpisah
+pada runtime.
 
 Coordinator menerima satu attestor yang dipin setelah lifecycle lease diperoleh.
 Coordinator lalu membangun dan memvalidasi run secara side-effect-free, mengikat
@@ -90,5 +106,9 @@ menutup admission, dan melepas lease tanpa menutupi error utama atau
 - Runtime Windows tetap wajib membuktikan ACE/DACL effective access, inheritance,
   volume/file ID, reparse/rename races, perubahan ACL setelah attest, serta
   penolakan principal kedua.
+- Tiga target evidence hanya membuktikan descriptor direktori coordinator, run,
+  dan source. ACL existing descendant source tree belum dibuktikan oleh kontrak
+  ini; recursive descendant attestation atau bukti ekuivalen tetap merupakan gate
+  runtime terbuka sebelum candidate dapat dipromosikan.
 - DACL tidak membedakan dua proses dengan SID sama dan tidak menggantikan lease.
 - P17c tetap terbuka sampai bukti runtime dan browser matrix selesai.
