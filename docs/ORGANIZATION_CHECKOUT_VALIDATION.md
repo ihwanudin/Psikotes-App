@@ -811,3 +811,27 @@ ulang; hasil lookup bukan settlement. Tidak ada consumer, invoice atau data nyat
 PG tidak diulang karena query/schema/RLS tidak berubah. Detail batas dan cursor:
 [wave-13](../tasks/organization-payment/reports/integration-wave-13.md).
 P10b baru proposal, public/E2E belum selesai; tidak ada izin aktivasi atau deploy.
+
+## Checkpoint kontrak dan authority ACL Windows — 2026-09-06
+
+Commit `e47406a` menerima kontrak code-only policy dan codec attestation ACL;
+commit `8461e03` mengikat authority policy yang sama ke closure candidate builder,
+schema/config binding supervisor, serta preflight descriptor yang gagal tertutup
+sebelum identity probe atau proses. Policy canonical exact memakai digest final
+`a63c221764f73a54e87513fc91cded6b3fa16825138f6b24b6118132829f4eeb`;
+caller dan attestor tidak dapat memilih policy lain. Request/evidence memakai
+vocabulary exact, encoding canonical bounded, challenge terpisah, serta binding
+policy, lease, path, dan identity. Error tetap fixed dan tidak membawa path,
+policy, SID, DACL, atau detail privat.
+
+Bukti root/agent yang diterima: policy+codec **13/13 tes**, candidate builder
+**26/26**, supervisor aman **102/102** dengan tes real-listener sengaja
+dikecualikan, serta `py_compile`, AST, dan diff-check lulus. Bukti ini hanya
+parser, closure, binding, dan urutan preflight tanpa proses; bukan attestation ACL
+Windows nyata.
+
+ACL seluruh descendant pada source tree belum dibuktikan. Effective access,
+cross-process/crash, reparse/rename, durability Windows, candidate/browser P17c,
+serta operasi P18 tetap terbuka. Tidak ada candidate, browser, service, database,
+network, provider, deploy, atau aktivasi; seluruh gate dan payment tetap default
+OFF dan tidak ada acceptance P17c/P18 yang ditutup.

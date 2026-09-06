@@ -2471,3 +2471,20 @@ Root lulus lease+coordinator+builder **58/58**, supervisor aman **101/101**, AST
 **8 file**, dan diff-check. Cross-process/crash locking, whole-run rename/reparse,
 Windows ACL/durability, dedicated process, dan browser matrix tetap runtime gate.
 Tidak ada runtime/deploy/aktivasi; P17c/P18 tetap terbuka dan payment/gate OFF.
+
+### Checkpoint ACL policy/codec — accepted `e47406a`, `8461e03`
+
+Lane contract `e47406a` menetapkan policy canonical dan codec attestation dengan
+vocabulary, batas, challenge, serta binding policy/lease/path/identity exact.
+Lane authority `8461e03` mengikat digest policy final
+`a63c221764f73a54e87513fc91cded6b3fa16825138f6b24b6118132829f4eeb`
+ke manifest closure, CONFIG_KEYS/configBinding, dan preflight same-descriptor yang
+berhenti sebelum identity probe maupun proses.
+
+Root/agent lulus policy+codec **13/13**, builder **26/26**, supervisor aman
+**102/102** dengan real-listener dikecualikan, ditambah `py_compile`, AST, dan
+diff-check. Ini tidak menjalankan atau membuktikan ACL Windows. Recursive ACL
+descendant source, effective access, cross-process/crash, reparse/rename,
+durability, browser P17c, dan operasi P18 tetap residual. Tidak ada runtime,
+deploy, atau aktivasi; acceptance P17c/P18 tetap terbuka dan semua gate/payment
+default OFF.

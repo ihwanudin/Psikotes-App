@@ -563,3 +563,20 @@ Root lulus **58/58 + 101/101 tes aman**, AST **8 file**, dan diff-check.
 Runtime Windows masih harus membuktikan cross-process/crash lock, rename/reparse,
 ACL/effective access, durability, serta dedicated single-use process. Tidak ada
 browser/service/DB/env/network/deploy/aktivasi; P17c/P18 dan gate/payment tetap OFF.
+
+### Checkpoint kontrak dan policy authority ACL Windows
+
+`e47406a` menerima policy canonical dan codec request/evidence attestation;
+`8461e03` memasukkan policy ke closure/hash kandidat serta config binding dan
+preflight supervisor. Digest authority final adalah
+`a63c221764f73a54e87513fc91cded6b3fa16825138f6b24b6118132829f4eeb`.
+Schema, vocabulary, order, path/identity/lease binding, pembacaan descriptor yang
+sama, dan error redacted kini exact. Policy invalid berhenti sebelum identity
+probe atau proses.
+
+Bukti root/agent: policy+codec **13/13**, builder **26/26**, supervisor aman
+**102/102** dengan real-listener dikecualikan, serta `py_compile`, AST, dan
+diff-check lulus. Ini preparation statis/pure saja. Recursive ACL descendant
+source tree, effective access, crash/cross-process, reparse/rename dan durability
+Windows, browser P17c, serta operasi P18 masih harus dibuktikan. Tidak ada
+aktivasi atau runtime; P17c/P18 tetap terbuka dan seluruh gate/payment default OFF.

@@ -835,6 +835,23 @@ checkbox P17c/P18 tidak berubah dan seluruh gate tetap default OFF.
 Tidak ada candidate/browser/service/DB/env/network/deploy atau aktivasi;
 checkbox P17c/P18 tetap terbuka dan seluruh gate/payment tetap default OFF.
 
+### Bukti kontrak/policy ACL Windows accepted — runtime gate tetap terbuka
+
+- `e47406a` menerima parser policy canonical dan codec attestation exact dengan
+  binding challenge, policy, lease, path, dan identity.
+- `8461e03` mem-pin digest policy final
+  `a63c221764f73a54e87513fc91cded6b3fa16825138f6b24b6118132829f4eeb`
+  pada closure candidate, CONFIG_KEYS/configBinding, dan preflight descriptor
+  sebelum identity probe atau proses.
+- Evidence root/agent: policy+codec **13/13**, builder **26/26**, supervisor aman
+  **102/102** (real-listener dikecualikan), `py_compile`, AST, dan diff-check.
+- Tetap belum terbukti: ACL recursive seluruh descendant source tree, effective
+  access Windows nyata, cross-process/crash, reparse/rename, durability,
+  candidate/browser P17c, dan operasi P18.
+
+Tidak ada checkbox acceptance yang diubah. Tidak ada runtime/browser/service/DB/
+network/deploy/aktivasi; P17c/P18 tetap terbuka dan gate/payment default OFF.
+
 ### Bukti source identity/façade accepted — checklist tetap terbuka
 
 - [x] `30c78ee` mem-pin source root/ancestor selama inventory, open/hash/copy,
