@@ -322,3 +322,20 @@ atau effective `AccessCheck`. Ordinary second-token provenance, LocalSystem,
 token restriction/impersonation, source-tree/cache/composition/usable attestor,
 dan native Windows/runtime tetap terbuka. P15/P16/P17c/P18 tetap terbuka;
 tidak ada aktivasi/deploy dan seluruh gate/payment tetap default OFF.
+
+## Implementation Checkpoint — `69a25c2`
+
+`TokenRestrictedSids` menjadi authority untuk snapshot restricting SID current
+process. Encoding kosong hanya sah sebagai count nol dengan panjang exact **4
+byte**; bentuk kosong lain gagal tertutup. Bentuk nonempty memakai parser
+berbatas **256 KiB/4096 SID**, mewajibkan attributes nol, dan mempertahankan
+duplicate SID yang berada pada span berbeda tanpa deduplikasi.
+
+Bukti root accepted: **51/51 unittest**, `py_compile`, diff-check, dan final
+adversarial review **PASS** tanpa P1/P2. Ini hanya observasi current-process
+berbasis pure fake ABI; bukan bukti `IsTokenRestricted`, general unrestricted,
+ordinary principal/policy, atau effective `AccessCheck`. Ordinary second-token
+provenance, LocalSystem, token restriction/impersonation lainnya, source-tree/
+cache/composition/usable attestor, dan native Windows/runtime tetap terbuka.
+P15/P16/P17c/P18 tetap terbuka; tidak ada aktivasi/deploy dan seluruh
+gate/payment tetap default OFF.

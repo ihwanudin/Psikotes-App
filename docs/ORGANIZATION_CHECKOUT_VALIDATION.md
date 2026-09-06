@@ -1055,3 +1055,20 @@ impersonation, source-tree/cache/composition/usable attestor, dan native Windows
 runtime tetap terbuka. Tidak ada browser, service, database, network, aktivasi,
 atau deploy. P15/P16/P17c/P18 tetap terbuka dan seluruh gate/payment tetap
 default OFF.
+
+## Checkpoint Windows restricting SID profile — 2026-09-06
+
+Commit `69a25c2` menetapkan `TokenRestrictedSids` sebagai authority untuk
+snapshot restricting SID current process. Encoding kosong hanya sah sebagai
+count nol dengan panjang exact **4 byte** dan bentuk kosong lain gagal tertutup.
+Parser nonempty dibatasi **256 KiB/4096 SID**, mewajibkan attributes nol, serta
+mempertahankan duplicate SID pada span berbeda tanpa deduplikasi.
+
+Bukti root accepted: **51/51 unittest**, `py_compile`, diff-check, dan final
+adversarial review **PASS** tanpa P1/P2. Bukti hanya pure fake current-process
+observation; bukan `IsTokenRestricted`, general-unrestricted evidence, ordinary
+principal/policy, atau effective `AccessCheck`. Ordinary second-token provenance,
+LocalSystem, token restriction/impersonation lainnya, source-tree/cache/
+composition/usable attestor, dan native Windows/runtime tetap terbuka. Tidak ada
+browser, service, database, network, aktivasi, atau deploy. P15/P16/P17c/P18
+tetap terbuka dan seluruh gate/payment tetap default OFF.

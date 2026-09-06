@@ -1102,3 +1102,20 @@ tidak ada aktivasi/deploy dan seluruh gate/payment default OFF.
 
 Tidak ada status/checklist yang diubah. P15/P16/P17c/P18 tetap terbuka;
 tidak ada aktivasi/deploy dan seluruh gate/payment default OFF.
+
+### Bukti restricting SID profile accepted — runtime tetap terbuka
+
+- `69a25c2` menetapkan `TokenRestrictedSids` sebagai authority untuk snapshot
+  restricting SID current process.
+- Encoding kosong hanya sah sebagai count nol dengan panjang exact **4 byte**;
+  bentuk lain gagal tertutup. Parser nonempty berbatas **256 KiB/4096 SID**,
+  attributes wajib nol, dan duplicate SID pada span berbeda dipertahankan.
+- Bukti root accepted **51/51 unittest**, `py_compile`, diff-check, dan final
+  adversarial review **PASS** tanpa P1/P2; seluruh tes masih pure fake.
+- Ini bukan `IsTokenRestricted`, general-unrestricted evidence, ordinary
+  evidence/policy, atau effective `AccessCheck`. Second-token provenance,
+  LocalSystem, token restriction/impersonation lainnya, source-tree/cache/
+  composition/usable attestor, dan native Windows/runtime tetap terbuka.
+
+Tidak ada status/checklist yang diubah. P15/P16/P17c/P18 tetap terbuka;
+tidak ada aktivasi/deploy dan seluruh gate/payment default OFF.

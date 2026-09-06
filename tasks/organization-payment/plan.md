@@ -781,3 +781,20 @@ rejection policy, atau effective `AccessCheck`. Second-token provenance,
 LocalSystem, token restriction/impersonation, source-tree/cache/composition/
 usable attestor, serta native Windows/runtime masih terbuka. Tidak ada
 aktivasi/deploy; P15/P16/P17c/P18 tetap terbuka dan seluruh gate/payment OFF.
+
+### Checkpoint restricting SID profile
+
+Commit `69a25c2` menjadikan `TokenRestrictedSids` authority bagi snapshot
+restricting SID current process. Encoding kosong hanya sah sebagai count nol
+dengan panjang exact **4 byte** dan bentuk lain gagal tertutup. Parser nonempty
+berbatas **256 KiB/4096 SID**, mewajibkan attributes nol, serta mempertahankan
+duplicate SID pada span berbeda tanpa deduplikasi. Bukti root accepted:
+**51/51 unittest**, `py_compile`, diff-check, dan adversarial review **PASS**
+tanpa P1/P2.
+
+Ini hanya pure fake current-process observation; bukan `IsTokenRestricted`,
+general-unrestricted evidence, ordinary evidence/policy, atau effective
+`AccessCheck`. Second-token provenance, LocalSystem, token restriction/
+impersonation lainnya, source-tree/cache/composition/usable attestor, dan native
+Windows/runtime masih terbuka. Tidak ada aktivasi/deploy; P15/P16/P17c/P18 tetap
+terbuka dan seluruh gate/payment OFF.
