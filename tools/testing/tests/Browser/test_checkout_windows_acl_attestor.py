@@ -181,6 +181,18 @@ class NativeDirectoryHarness:
         self.token_group_returned_override = None
         self.token_group_count_override = None
         self.token_group_pointer_overrides = {}
+        self.token_privileges = [
+            (0xFFFFFFFF, -0x80000000, 0xFFFFFFFF),
+            (2, 0x7FFFFFFF, 0x2),
+        ]
+        self.token_privilege_sets = None
+        self.token_privilege_fill_count = 0
+        self.token_privilege_probe_result = 0
+        self.token_privilege_probe_error = 122
+        self.token_privilege_fill_result = 1
+        self.token_privilege_required_override = None
+        self.token_privilege_returned_override = None
+        self.token_privilege_count_override = None
         self.token_sid_addresses = {}
         self.calls = []
         self.close_result = 1
@@ -283,6 +295,8 @@ class NativeDirectoryHarness:
             raise AssertionError("wrong token handle")
         if info_class == 2:
             return self._call_token_groups(output, capacity, returned)
+        if info_class == 3:
+            return self._call_token_privileges(output, capacity, returned)
         if info_class != 1:
             raise AssertionError("wrong TokenUser request")
         sid_values = self.token_sids or [self.owner_sid, self.owner_sid]
@@ -357,6 +371,44 @@ class NativeDirectoryHarness:
         )
         self.token_group_fill_count += 1
         return self.token_group_fill_result
+
+    def _call_token_privileges(self, output, capacity, returned):
+        privilege_sets = (self.token_privilege_sets
+                          or [self.token_privileges, self.token_privileges])
+        privileges = privilege_sets[min(self.token_privilege_fill_count,
+                                        len(privilege_sets) - 1)]
+        required = (self.module.TOKEN_PRIVILEGES.Privileges.offset
+                    + len(privileges) * ctypes.sizeof(
+                        self.module.LUID_AND_ATTRIBUTES))
+        if self.token_privilege_required_override is not None:
+            required = self.token_privilege_required_override
+        returned._obj.value = required
+        if output is None:
+            if capacity != 0:
+                raise AssertionError("TokenPrivileges probe capacity must be zero")
+            self.module.ctypes.set_last_error(self.token_privilege_probe_error)
+            return self.token_privilege_probe_result
+        if capacity != required:
+            raise AssertionError("TokenPrivileges fill capacity mismatch")
+        base = ctypes.addressof(output)
+        ctypes.c_uint32.from_address(base).value = (
+            len(privileges) if self.token_privilege_count_override is None
+            else self.token_privilege_count_override
+        )
+        for index, (low, high, attributes) in enumerate(privileges):
+            entry = self.module.LUID_AND_ATTRIBUTES.from_address(
+                base + self.module.TOKEN_PRIVILEGES.Privileges.offset
+                + index * ctypes.sizeof(self.module.LUID_AND_ATTRIBUTES)
+            )
+            entry.Luid.LowPart = low
+            entry.Luid.HighPart = high
+            entry.Attributes = attributes
+        returned._obj.value = (
+            required if self.token_privilege_returned_override is None
+            else self.token_privilege_returned_override
+        )
+        self.token_privilege_fill_count += 1
+        return self.token_privilege_fill_result
 
     def call_GetFileInformationByHandleEx(self, _handle, info_class, output,
                                           output_size):
@@ -722,6 +774,13 @@ class CheckoutWindowsAclAttestorAbiTests(unittest.TestCase):
         self.assertEqual(module.ACCESS_ALLOWED_ACE.Mask.offset, 4)
         self.assertEqual(module.ACCESS_ALLOWED_ACE.SidStart.offset, 8)
         self.assertEqual(ctypes.sizeof(module.LUID), 8)
+        self.assertEqual(module.LUID.LowPart.offset, 0)
+        self.assertEqual(module.LUID.HighPart.offset, 4)
+        self.assertEqual(ctypes.sizeof(module.LUID_AND_ATTRIBUTES), 12)
+        self.assertEqual(module.LUID_AND_ATTRIBUTES.Luid.offset, 0)
+        self.assertEqual(module.LUID_AND_ATTRIBUTES.Attributes.offset, 8)
+        self.assertEqual(module.TOKEN_PRIVILEGES.PrivilegeCount.offset, 0)
+        self.assertEqual(module.TOKEN_PRIVILEGES.Privileges.offset, 4)
         pointer_size = ctypes.sizeof(ctypes.c_void_p)
         self.assertEqual(ctypes.sizeof(module.SID_AND_ATTRIBUTES),
                          16 if pointer_size == 8 else 8)
@@ -762,8 +821,11 @@ class CheckoutWindowsAclAttestorAbiTests(unittest.TestCase):
         self.assertEqual(module.SecurityImpersonation, 2)
         self.assertEqual(module.TokenImpersonation, 2)
         self.assertEqual(module.TokenGroups, 2)
+        self.assertEqual(module.TokenPrivileges, 3)
         self.assertEqual(module.MAX_TOKEN_GROUPS_BYTES, 262144)
         self.assertEqual(module.MAX_TOKEN_GROUP_COUNT, 4096)
+        self.assertEqual(module.MAX_TOKEN_PRIVILEGES_BYTES, 262144)
+        self.assertEqual(module.MAX_TOKEN_PRIVILEGE_COUNT, 4096)
 
 
 class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
@@ -890,6 +952,10 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
                     (harness.token_groups[0][0], "S-1-5-18", 0),
                     (harness.token_groups[1][0], "S-1-5-19", 0x10),
                 ),
+                "processTokenPrivileges": (
+                    (0xFFFFFFFF, -0x80000000, 0xFFFFFFFF),
+                    (2, 0x7FFFFFFF, 0x2),
+                ),
             })
             with self.assertRaises(TypeError):
                 values["control"] = 0
@@ -943,7 +1009,8 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
         }
         self.assertFalse(interiors.intersection(freed))
         forbidden = {"DuplicateTokenEx", "AccessCheck",
-                     "ConvertSidToStringSidW"}
+                     "ConvertSidToStringSidW", "LookupPrivilegeValueW",
+                     "IsTokenRestricted"}
         self.assertFalse(forbidden.intersection(self.call_names(harness)))
 
         token_information = [args for name, args in harness.calls
@@ -954,19 +1021,25 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
             + len(harness.token_groups) * ctypes.sizeof(module.SID_AND_ATTRIBUTES)
             + sum(len(sid) for sid, _attributes in harness.token_groups)
         )
-        self.assertEqual(len(token_information), 8)
+        privilege_required = (
+            module.TOKEN_PRIVILEGES.Privileges.offset
+            + len(harness.token_privileges)
+            * ctypes.sizeof(module.LUID_AND_ATTRIBUTES)
+        )
+        self.assertEqual(len(token_information), 12)
         self.assertEqual(
             [(args[1], args[2] is None, args[3]) for args in token_information],
             [(1, True, 0), (1, False, required),
-             (2, True, 0), (2, False, group_required)] * 2,
+             (2, True, 0), (2, False, group_required),
+             (3, True, 0), (3, False, privilege_required)] * 2,
         )
         names = self.call_names(harness)
         token_positions = [index for index, name in enumerate(names)
                            if name == "GetTokenInformation"]
         descriptor_positions = [index for index, name in enumerate(names)
                                 if name == "GetSecurityInfo"]
-        self.assertLess(token_positions[3], descriptor_positions[0])
-        self.assertLess(descriptor_positions[1], token_positions[4])
+        self.assertLess(token_positions[5], descriptor_positions[0])
+        self.assertLess(descriptor_positions[1], token_positions[6])
         open_token = [args for name, args in harness.calls
                       if name == "OpenProcessToken"]
         self.assertEqual([(args[0], args[1]) for args in open_token],
@@ -1158,6 +1231,132 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
                               if call == "CloseHandle"],
                              [harness.token_handle, harness.handle])
 
+    def test_token_privileges_snapshot_is_complete_ordered_and_immutable(self):
+        module = load_module()
+        harness = NativeDirectoryHarness(module)
+        with module._open_current_process_token(harness.bundle()) as token:
+            snapshot = token._privileges_snapshot()
+            self.assertEqual(snapshot.values(), (
+                (0xFFFFFFFF, -0x80000000, 0xFFFFFFFF),
+                (2, 0x7FFFFFFF, 0x2),
+            ))
+            with self.assertRaisesRegex(module.WindowsAclRefused,
+                                        "^acl_attestation$"):
+                snapshot.extra = object()
+        calls = [args for name, args in harness.calls
+                 if name == "GetTokenInformation"]
+        required = (module.TOKEN_PRIVILEGES.Privileges.offset
+                    + 2 * ctypes.sizeof(module.LUID_AND_ATTRIBUTES))
+        self.assertEqual(
+            [(args[1], args[2] is None, args[3]) for args in calls],
+            [(3, True, 0), (3, False, required)],
+        )
+        self.assertEqual([args[0] for name, args in harness.calls
+                          if name == "CloseHandle"], [harness.token_handle])
+
+    def test_token_privileges_bounds_duplicates_and_results_fail_closed(self):
+        module = load_module()
+        cases = (
+            ("probe_true", lambda h: setattr(
+                h, "token_privilege_probe_result", 1,
+            )),
+            ("probe_bool", lambda h: setattr(
+                h, "token_privilege_probe_result", False,
+            )),
+            ("probe_error", lambda h: setattr(
+                h, "token_privilege_probe_error", 5,
+            )),
+            ("required_small", lambda h: setattr(
+                h, "token_privilege_required_override",
+                module.TOKEN_PRIVILEGES.Privileges.offset - 1,
+            )),
+            ("required_large", lambda h: setattr(
+                h, "token_privilege_required_override",
+                module.MAX_TOKEN_PRIVILEGES_BYTES + 1,
+            )),
+            ("trailing", lambda h: setattr(
+                h, "token_privilege_required_override",
+                module.TOKEN_PRIVILEGES.Privileges.offset
+                + 2 * ctypes.sizeof(module.LUID_AND_ATTRIBUTES) + 1,
+            )),
+            ("fill_false", lambda h: setattr(
+                h, "token_privilege_fill_result", 0,
+            )),
+            ("fill_bool", lambda h: setattr(
+                h, "token_privilege_fill_result", True,
+            )),
+            ("returned", lambda h: setattr(
+                h, "token_privilege_returned_override", 1,
+            )),
+            ("count", lambda h: setattr(
+                h, "token_privilege_count_override", 4097,
+            )),
+            ("table_span", lambda h: setattr(
+                h, "token_privilege_count_override", 3,
+            )),
+            ("duplicate", lambda h: setattr(h, "token_privileges", [
+                h.token_privileges[0], (0xFFFFFFFF, -0x80000000, 0x2),
+            ])),
+        )
+        for name, mutate in cases:
+            harness = NativeDirectoryHarness(module)
+            mutate(harness)
+            with self.subTest(case=name), \
+                    module._open_current_process_token(harness.bundle()) as token:
+                self.assert_refused(module, token._privileges_snapshot)
+            self.assertEqual([args[0] for call, args in harness.calls
+                              if call == "CloseHandle"],
+                             [harness.token_handle])
+
+    def test_token_privilege_drift_is_bound_to_process_profile(self):
+        module = load_module()
+        harness = NativeDirectoryHarness(module)
+        harness.token_privilege_sets = [
+            harness.token_privileges,
+            [harness.token_privileges[0], (2, 0x7FFFFFFF, 0)],
+        ]
+        opened = self.opened(module, harness)
+        with opened:
+            self.assert_refused(module, opened._security_snapshot)
+        self.assertEqual(self.call_names(harness).count("GetSecurityInfo"), 2)
+        self.assertEqual(self.call_names(harness).count("CloseHandle"), 2)
+
+    def test_token_privileges_errors_preserve_both_cleanups_and_redaction(self):
+        module = load_module()
+        for primary in (RuntimeError("PRIVATE TOKEN DETAIL"),
+                        KeyboardInterrupt(), SystemExit(37)):
+            harness = NativeDirectoryHarness(module)
+            original = harness.dlls["advapi32.dll"].functions[
+                "GetTokenInformation"
+            ].implementation
+
+            def interrupt_privileges(*args, primary=primary):
+                if args[1] == 3:
+                    raise primary
+                return original(*args)
+
+            harness.dlls["advapi32.dll"].functions[
+                "GetTokenInformation"
+            ].implementation = interrupt_privileges
+            harness.close_error = RuntimeError("PRIVATE CLOSE DETAIL")
+            opened = self.opened(module, harness)
+            with self.subTest(error=type(primary).__name__):
+                if isinstance(primary, Exception):
+                    with self.assertRaisesRegex(
+                            module.WindowsAclRefused,
+                            "^acl_attestation$") as raised:
+                        with opened:
+                            opened._security_snapshot()
+                    self.assertNotIn("PRIVATE", str(raised.exception))
+                else:
+                    with self.assertRaises(type(primary)) as raised:
+                        with opened:
+                            opened._security_snapshot()
+                    self.assertIs(raised.exception, primary)
+            self.assertEqual([args[0] for call, args in harness.calls
+                              if call == "CloseHandle"],
+                             [harness.token_handle, harness.handle])
+
     def test_process_token_open_and_query_boundaries_fail_closed(self):
         module = load_module()
         cases = (
@@ -1231,7 +1430,7 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
             with self.subTest(case=name), opened:
                 self.assert_refused(module, opened._security_snapshot)
             self.assertEqual(self.call_names(harness).count("GetSecurityInfo"), 2)
-            self.assertEqual(self.call_names(harness).count("GetTokenInformation"), 8)
+            self.assertEqual(self.call_names(harness).count("GetTokenInformation"), 12)
             self.assertEqual(self.call_names(harness).count("CloseHandle"), 2)
 
     def test_process_token_cleanup_preserves_primary_base_exception(self):

@@ -197,6 +197,8 @@ MAX_SECURITY_DESCRIPTOR_BYTES = 65535
 MAX_TOKEN_USER_BYTES = 4096
 MAX_TOKEN_GROUPS_BYTES = 256 * 1024
 MAX_TOKEN_GROUP_COUNT = 4096
+MAX_TOKEN_PRIVILEGES_BYTES = 256 * 1024
+MAX_TOKEN_PRIVILEGE_COUNT = 4096
 MIN_SID_BYTES = 8
 MAX_SID_BYTES = 68
 AclRevisionInformation = 1
@@ -535,6 +537,7 @@ class _SecuritySnapshot:
         "daclBytesInUse", "daclSize", "ownerSid", "trusteeSid",
         "aceType", "aceFlags", "accessMask", "aceSize",
         "processTokenSidBytes", "processTokenSid", "processTokenGroups",
+        "processTokenPrivileges",
     )
 
     def __init__(self, values):
@@ -555,13 +558,15 @@ class _SecuritySnapshot:
     def _owner_binding(self):
         return self.__values[0], self.__values[12]
 
-    def _bind_process_token(self, sid_bytes, sid, groups):
-        if self.__values[-3:] != (None, None, None) \
+    def _bind_process_token(self, sid_bytes, sid, groups, privileges):
+        if self.__values[-4:] != (None, None, None, None) \
                 or (sid_bytes, sid) != self._owner_binding():
             raise WindowsAclRefused("acl_attestation")
-        if type(groups) is not tuple:
+        if type(groups) is not tuple or type(privileges) is not tuple:
             raise WindowsAclRefused("acl_attestation")
-        return _SecuritySnapshot(self.__values[:-3] + (sid_bytes, sid, groups))
+        return _SecuritySnapshot(
+            self.__values[:-4] + (sid_bytes, sid, groups, privileges),
+        )
 
 
 def _canonical_sid(value):
@@ -769,7 +774,7 @@ def _security_descriptor_parts(functions, descriptor, owner, group, dacl):
         revision_information.AclRevision, size_information.AceCount,
         bytes_in_use, dacl_size, owner_sid, trustee_sid,
         ace_header.AceType, ace_header.AceFlags, access_mask, ace_size,
-        None, None, None,
+        None, None, None, None,
     ))
 
 
@@ -989,15 +994,89 @@ def _token_groups_snapshot(functions, handle):
     return _TokenGroupsSnapshot(tuple(values))
 
 
-class _ProcessTokenProfile:
-    __slots__ = ("__user", "__groups")
+class _TokenPrivilegesSnapshot:
+    __slots__ = ("__values",)
 
-    def __init__(self, user, groups):
+    def __init__(self, values):
+        if type(values) is not tuple or any(
+                type(entry) is not tuple or len(entry) != 3
+                or any(type(part) is not int for part in entry)
+                for entry in values):
+            raise WindowsAclRefused("acl_attestation")
+        object.__setattr__(self, "_TokenPrivilegesSnapshot__values", values)
+
+    def __setattr__(self, _name, _value):
+        raise WindowsAclRefused("acl_attestation")
+
+    def __eq__(self, other):
+        return type(other) is _TokenPrivilegesSnapshot \
+            and self.__values == other.__values
+
+    def values(self):
+        return self.__values
+
+
+def _token_privileges_snapshot(functions, handle):
+    # TOKEN_PRIVILEGES uses a variable-length LUID_AND_ATTRIBUTES array:
+    # https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-token_privileges
+    # GetTokenInformation defines the NULL/zero-size probe contract:
+    # https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-gettokeninformation
+    required = DWORD()
+    ctypes.set_last_error(0)
+    probe = functions["GetTokenInformation"](
+        handle, TokenPrivileges, None, 0, ctypes.byref(required),
+    )
+    probe_error = ctypes.get_last_error()
+    table_offset = TOKEN_PRIVILEGES.Privileges.offset
+    if type(probe) is not int or probe != 0 \
+            or probe_error != ERROR_INSUFFICIENT_BUFFER \
+            or not table_offset <= required.value <= MAX_TOKEN_PRIVILEGES_BYTES:
+        raise WindowsAclRefused("acl_attestation")
+
+    buffer = ctypes.create_string_buffer(required.value)
+    returned = DWORD()
+    if not _successful(functions["GetTokenInformation"](
+            handle, TokenPrivileges, buffer, required.value,
+            ctypes.byref(returned))) or returned.value != required.value:
+        raise WindowsAclRefused("acl_attestation")
+
+    base = ctypes.addressof(buffer)
+    privilege_count = DWORD.from_buffer(buffer).value
+    entry_size = ctypes.sizeof(LUID_AND_ATTRIBUTES)
+    if privilege_count > MAX_TOKEN_PRIVILEGE_COUNT:
+        raise WindowsAclRefused("acl_attestation")
+    table_length = privilege_count * entry_size
+    if table_offset + table_length != required.value or (
+            table_length and not _contained(
+                base, required.value, base + table_offset, table_length,
+            )):
+        raise WindowsAclRefused("acl_attestation")
+
+    values = []
+    seen = set()
+    for index in range(privilege_count):
+        entry = LUID_AND_ATTRIBUTES.from_buffer(
+            buffer, table_offset + index * entry_size,
+        )
+        luid = (entry.Luid.LowPart, entry.Luid.HighPart)
+        if luid in seen:
+            raise WindowsAclRefused("acl_attestation")
+        seen.add(luid)
+        values.append((luid[0], luid[1], entry.Attributes))
+    return _TokenPrivilegesSnapshot(tuple(values))
+
+
+class _ProcessTokenProfile:
+    __slots__ = ("__user", "__groups", "__privileges")
+
+    def __init__(self, user, groups, privileges):
         if type(user) is not _TokenUserSnapshot \
-                or type(groups) is not _TokenGroupsSnapshot:
+                or type(groups) is not _TokenGroupsSnapshot \
+                or type(privileges) is not _TokenPrivilegesSnapshot:
             raise WindowsAclRefused("acl_attestation")
         object.__setattr__(self, "_ProcessTokenProfile__user", user)
         object.__setattr__(self, "_ProcessTokenProfile__groups", groups)
+        object.__setattr__(self, "_ProcessTokenProfile__privileges", privileges)
 
     def __setattr__(self, _name, _value):
         raise WindowsAclRefused("acl_attestation")
@@ -1005,10 +1084,12 @@ class _ProcessTokenProfile:
     def __eq__(self, other):
         return type(other) is _ProcessTokenProfile \
             and self.__user == other.__user \
-            and self.__groups == other.__groups
+            and self.__groups == other.__groups \
+            and self.__privileges == other.__privileges
 
     def values(self):
-        return self.__user.values(), self.__groups.values()
+        return (self.__user.values(), self.__groups.values(),
+                self.__privileges.values())
 
 
 class _OpenedProcessToken:
@@ -1062,13 +1143,26 @@ class _OpenedProcessToken:
         except Exception:
             raise WindowsAclRefused("acl_attestation") from None
 
+    def _privileges_snapshot(self):
+        try:
+            functions = self.validate()
+            result = _token_privileges_snapshot(functions, self.__handle)
+            self.validate()
+            return result
+        except WindowsAclRefused:
+            raise
+        except Exception:
+            raise WindowsAclRefused("acl_attestation") from None
+
     def _profile_snapshot(self):
         functions = self.validate()
         user = _token_user_snapshot(functions, self.__handle)
         functions = self.validate()
         groups = _token_groups_snapshot(functions, self.__handle)
+        functions = self.validate()
+        privileges = _token_privileges_snapshot(functions, self.__handle)
         self.validate()
-        return _ProcessTokenProfile(user, groups)
+        return _ProcessTokenProfile(user, groups, privileges)
 
     def _close_preserving(self, primary):
         if self.__closed:
@@ -1218,13 +1312,13 @@ class _OpenedDirectory:
                 token_after = process_token._profile_snapshot()
                 if first != second or token_before != token_after:
                     raise WindowsAclRefused("acl_attestation")
-                token_user, token_groups = token_before.values()
+                token_user, token_groups, token_privileges = token_before.values()
                 token_sid_bytes, token_sid = token_user
                 if first._owner_binding() != (token_sid_bytes, token_sid) \
                         or second._owner_binding() != (token_sid_bytes, token_sid):
                     raise WindowsAclRefused("acl_attestation")
                 result = first._bind_process_token(
-                    token_sid_bytes, token_sid, token_groups,
+                    token_sid_bytes, token_sid, token_groups, token_privileges,
                 )
         except BaseException as error:
             primary = error
