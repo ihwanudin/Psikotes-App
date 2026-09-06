@@ -1,5 +1,41 @@
 # Koordinasi task paralel organization-payment
 
+## Landing publik dan metadata Compose diperbaiki lokal — 2026-09-07
+
+Empat commit non-overlap memperbaiki boundary presentasi publik tanpa deploy.
+`edf3b65` hanya mempercayai `X-Forwarded-Proto` dari loopback/RFC1918 edge dan
+tetap menolak forwarded host; `9317b88` mengeluarkan 14 ikon dekoratif landing
+dari accessibility tree; `ec379f0` mengganti fallback suffix judul menjadi
+`ONCAM Psikotes`; dan `892c621` memberi default Compose publik
+`APP_NAME=ONCAM Psikotes` serta `APP_LOCALE=id` sambil mempertahankan `APP_URL`
+env-backed.
+
+Bukti root menerima focused PHP **8 tes / 31 assertions**, Node metadata/a11y
+**6/6**, syntax, Pint, ESLint, Prettier, TypeScript, serta validasi
+`docker compose config` dengan placeholder sintetis process-scoped. Tidak ada
+container, database, provider, browser submission, push, atau deploy yang
+dijalankan. Produksi masih memerlukan rebuild/deploy dan verifikasi environment;
+deployment non-Compose tetap wajib menyuntik metadata publik yang sesuai.
+
+## Structural privilege authority diterima sebagai non-authorizing — 2026-09-07
+
+Commit `7a39213`, koreksi `28b25fb`, dan lifecycle fix `702118a` menambah exact
+dua file pure-Python untuk mengikat observasi tiga privilege sensitif pada
+manifest/start/request ADR-018–020. Authority one-shot menolak privilege enabled,
+drift initial/final, supplied-data/cross-binding rusak, dependency helper yang
+diganti, object-slot forgery, serta replay sesudah exhausted. Vault weak-key
+dibatasi dan dibersihkan; reviewer membuktikan **96** lifecycle berurutan melewati
+cap 64 dengan final count `(0, 0, 0)`.
+
+Bukti final reviewer: focused **15/15**, gabungan codec/ACL/transport **136/136**,
+`py_compile`, static surface, diff-check, dan 14 dependency source/test tetap
+blob-identical. Hasil hanya marker `structuralOnly`, belum masuk candidate dan
+tidak membuka `attest/load`. Arbitrary code dalam interpreter yang sudah mampu
+memutasi private `__closure__`/vault secara reflektif dinyatakan di luar threat
+model pure-Python ini; karena itu marker bukan authorization boundary. Native
+Windows/provenance/provider/cache/runtime/browser tetap belum dibuktikan.
+P15/P16/P17c/P18, seluruh active gate, dan payment tetap terbuka/default OFF.
+
 ## PostgreSQL baseline DASS/v2 kembali hijau — 2026-09-06
 
 Tiga commit test-only menyelaraskan fixture PostgreSQL lama dengan kontrak yang
