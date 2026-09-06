@@ -1,6 +1,7 @@
 # CHANGELOG
 
 ## [Unreleased] — F1 fondasi
+- Ganti halaman awal bawaan Laravel dengan landing page ONCAM Psikotes yang responsif, berfokus pada alur asesmen CPMI Jepang, tinjauan psikolog, privasi, dan pendaftaran peserta.
 - Jadikan DASS-21 komponen wajib setiap paket psikotes, hapus paket DASS mandiri, dan ganti pilihan ikut/tolak dengan persetujuan wajib; isolasi hasil DASS dari kelayakan tetap berlaku.
 - Bootstrap Laravel 13 + Inertia 3/React 19 dengan lockfile PHP/frontend dan quality gate otomatis.
 - Tambah topologi Compose untuk app, queue, scheduler, PostgreSQL, dan Redis; data service berada di jaringan internal.
