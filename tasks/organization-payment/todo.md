@@ -1346,3 +1346,21 @@ active gates, payment, config/env/deploy, dan activation tetap default OFF.
 Tidak ada status/checklist/progress/gate yang berubah dan tidak ada account/
 service/config/env/deploy/activation. P15/P16/P17c/P18, active gates, dan
 payment tetap terbuka/default OFF.
+
+### Pure authority manifest dan broker transport accepted — evidence tetap fail closed
+
+- Commit `6469561`: pure canonical authority-manifest codec ADR-019,
+  **14/14 tests**; cap pipe exact 20/36 KiB, owner pipe akun broker, LocalSystem
+  ditolak, dan direct SAM membership terpisah dari bound runtime token-group
+  policy.
+- Commit `459e988`: pure canonical broker-transport codec, **11/11 tests**;
+  hanya request, refusal, discard, dan load-sentinel.
+- Bukti gabungan **25/25**, `py_compile`, `diff-check`, serta final adversarial
+  review **PASS** tanpa P1/P2.
+- Successful `attest`/`load` evidence tetap fail closed sampai canonical
+  ADR-018 evidence validator/provider diterima.
+
+Tidak ada bukti instalasi/read freshness manifest, efektivitas ACL, account/
+service/firewall, native IPC/cache/provider/runtime, candidate/browser, deploy,
+atau activation. Tidak ada status/checklist/progress/gate yang berubah;
+P15/P16/P17c/P18, active gates, dan payment tetap terbuka/default OFF.

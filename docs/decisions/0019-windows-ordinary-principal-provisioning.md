@@ -374,3 +374,20 @@ melakukan descriptor lifecycle dan `AccessCheck` exact ADR-018.
 - [Account Rights Constants](https://learn.microsoft.com/en-us/windows/win32/secauthz/account-rights-constants)
 - [Interactive Services](https://learn.microsoft.com/en-us/windows/win32/services/interactive-services)
 - [Configure Windows Firewall rules](https://learn.microsoft.com/en-us/windows/security/operating-system-security/network-security/windows-firewall/configure)
+
+## Implementation Checkpoint — `6469561`, `459e988`
+
+Pure authority-manifest codec pada `6469561` memvalidasi authority canonical
+ADR ini, termasuk cap pipe exact 20/36 KiB, owner pipe akun broker, penolakan
+LocalSystem, serta direct SAM membership yang terpisah dari runtime token-group
+policy terikat. Pure broker-transport codec pada `459e988` memvalidasi hanya
+request canonical dan response refusal, discard, atau load-sentinel.
+
+Bukti accepted: masing-masing **14/14** dan **11/11 tests**; gabungan **25/25**,
+`py_compile`, `diff-check`, serta final adversarial review **PASS** tanpa P1/P2.
+Successful `attest`/`load` evidence tetap fail closed sampai canonical ADR-018
+evidence validator/provider diterima. Checkpoint ini tidak membuktikan instalasi
+atau read freshness manifest, efektivitas ACL, account/service/firewall, native
+IPC/cache/provider/runtime, candidate/browser, deploy, atau activation.
+P15/P16/P17c/P18, checklist/progress, gates/payment tetap terbuka/tidak berubah/
+default OFF.

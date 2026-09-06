@@ -541,3 +541,19 @@ berlandaskan sumber resmi Microsoft. Ini keputusan desain saja: install/runtime
 tetap dilarang dan tidak ada account/service/config/env/deploy/activation.
 P15/P16/P17c/P18, checklist/progress, gates, dan payment tetap terbuka/default
 OFF.
+
+## Implementation Checkpoint — `6469561`, `459e988`
+
+Pure codec authority manifest ADR-019 (`6469561`) kini mengikat manifest
+canonical, cap pipe exact 20/36 KiB, owner pipe akun broker, penolakan
+LocalSystem, serta pemisahan direct SAM membership dari runtime token-group
+policy yang terikat. Pure codec transport broker (`459e988`) hanya menerima
+request canonical serta response refusal, discard, dan load-sentinel.
+
+Bukti accepted: masing-masing **14/14** dan **11/11 tests**; gabungan **25/25**,
+`py_compile`, `diff-check`, serta final adversarial review **PASS** tanpa P1/P2.
+Successful `attest`/`load` evidence tetap fail closed sampai canonical ADR-018
+evidence validator/provider diterima. Ini bukan bukti instalasi/read freshness
+manifest, efektivitas ACL, account/service/firewall, native IPC/cache/provider/
+runtime, candidate/browser, deploy, atau activation. P15/P16/P17c/P18,
+checklist/progress, gates/payment tetap terbuka/tidak berubah/default OFF.

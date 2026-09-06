@@ -1291,3 +1291,19 @@ Independent review **PASS** tanpa P1/P2; ADR memakai sumber resmi Microsoft.
 Ini design-only, bukan bukti install, provider, native Windows, atau runtime.
 Tidak ada account/service/config/env/deploy/activation. P15/P16/P17c/P18,
 checklist/progress, gates, dan payment tidak berubah serta tetap default OFF.
+
+## Checkpoint pure authority manifest dan broker transport — 2026-09-06
+
+Commit `6469561` menerima pure canonical authority-manifest codec ADR-019
+(**14/14 tests**): cap pipe exact 20/36 KiB, owner pipe akun broker, LocalSystem
+ditolak, dan direct SAM membership dipisahkan dari bound runtime token-group
+policy. Commit `459e988` menerima pure canonical broker-transport codec
+(**11/11 tests**) untuk request, refusal, discard, dan load-sentinel saja.
+
+Bukti gabungan **25/25**, `py_compile`, `diff-check`, dan final adversarial review
+**PASS** tanpa P1/P2. Successful `attest`/`load` evidence tetap fail closed
+sampai canonical ADR-018 evidence validator/provider diterima. Ini bukan bukti
+instalasi/read freshness manifest, efektivitas ACL, account/service/firewall,
+native IPC/cache/provider/runtime, candidate/browser, deploy, atau activation.
+P15/P16/P17c/P18, checklist/progress, gates/payment tidak berubah, tetap terbuka/
+default OFF.

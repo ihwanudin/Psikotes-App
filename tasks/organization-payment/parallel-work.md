@@ -2901,3 +2901,19 @@ Independent review **PASS** tanpa P1/P2 dan referensi hanya sumber resmi
 Microsoft. Scope design-only; install/provider/native runtime tetap dilarang.
 Tidak ada account/service/config/env/deploy/activation. P15/P16/P17c/P18,
 checklist/progress, gates, dan payment tetap unchanged/default OFF.
+
+### Checkpoint pure authority manifest dan broker transport — accepted `6469561`, `459e988`
+
+Pure authority-manifest codec `6469561` (**14/14**) mengikat manifest canonical,
+cap pipe exact 20/36 KiB, owner pipe akun broker, penolakan LocalSystem, dan
+direct SAM membership terpisah dari bound runtime token-group policy. Pure
+broker-transport codec `459e988` (**11/11**) hanya menerima request canonical,
+refusal, discard, dan load-sentinel.
+
+Bukti gabungan **25/25**, `py_compile`, `diff-check`, serta final adversarial
+review **PASS** tanpa P1/P2. Successful `attest`/`load` evidence tetap fail
+closed sampai canonical ADR-018 evidence validator/provider diterima. Tidak ada
+bukti instalasi/read freshness manifest, efektivitas ACL, account/service/
+firewall, native IPC/cache/provider/runtime, candidate/browser, deploy, atau
+activation. P15/P16/P17c/P18, checklist/progress, gates/payment tidak berubah,
+tetap terbuka/default OFF.
