@@ -7,6 +7,7 @@ defines data only; native DLL discovery is explicit through ``_load_native``.
 from __future__ import annotations
 
 import ctypes
+import hashlib
 import os
 import re
 from types import MappingProxyType
@@ -81,6 +82,16 @@ class ACL_SIZE_INFORMATION(ctypes.Structure):
 
 class ACL_REVISION_INFORMATION(ctypes.Structure):
     _fields_ = [("AclRevision", DWORD)]
+
+
+class ACL(ctypes.Structure):
+    _fields_ = [
+        ("AclRevision", BYTE),
+        ("Sbz1", BYTE),
+        ("AclSize", WORD),
+        ("AceCount", WORD),
+        ("Sbz2", WORD),
+    ]
 
 
 class ACE_HEADER(ctypes.Structure):
@@ -173,9 +184,18 @@ SE_FILE_OBJECT = 1
 OWNER_SECURITY_INFORMATION = 0x00000001
 GROUP_SECURITY_INFORMATION = 0x00000002
 DACL_SECURITY_INFORMATION = 0x00000004
+SE_OWNER_DEFAULTED = 0x0001
+SE_GROUP_DEFAULTED = 0x0002
 SE_DACL_PRESENT = 0x0004
+SE_DACL_DEFAULTED = 0x0008
 SE_DACL_AUTO_INHERITED = 0x0400
 SE_DACL_PROTECTED = 0x1000
+SE_SELF_RELATIVE = 0x8000
+SECURITY_DESCRIPTOR_REVISION = 1
+MIN_SECURITY_DESCRIPTOR_BYTES = 20
+MAX_SECURITY_DESCRIPTOR_BYTES = 65535
+MIN_SID_BYTES = 8
+MAX_SID_BYTES = 68
 AclRevisionInformation = 1
 AclSizeInformation = 2
 ACL_REVISION = 2
@@ -213,6 +233,7 @@ class WindowsAclRefused(Exception):
 # Handle-based file/security contracts:
 # https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew
 # https://learn.microsoft.com/en-us/windows/win32/api/aclapi/nf-aclapi-getsecurityinfo
+# https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-isvalidacl
 # AccessCheck requires an impersonation token and a GENERIC_MAPPING:
 # https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-accesscheck
 _SIGNATURES = MappingProxyType({
@@ -251,6 +272,7 @@ _SIGNATURES = MappingProxyType({
     )),
     "GetSecurityDescriptorLength": ("advapi32.dll", DWORD, (PSECURITY_DESCRIPTOR,)),
     "IsValidSecurityDescriptor": ("advapi32.dll", BOOL, (PSECURITY_DESCRIPTOR,)),
+    "IsValidAcl": ("advapi32.dll", BOOL, (PACL,)),
     "GetAclInformation": ("advapi32.dll", BOOL, (PACL, LPVOID, DWORD, ctypes.c_int)),
     "GetAce": ("advapi32.dll", BOOL, (PACL, DWORD, ctypes.POINTER(LPVOID))),
     "IsValidSid": ("advapi32.dll", BOOL, (PSID,)),
@@ -371,8 +393,60 @@ def _checked_close(bundle, expected, handle):
         raise WindowsAclRefused("acl_attestation") from None
 
 
+def _resolve_security_functions(bundle):
+    try:
+        if type(bundle) is not _NATIVE_BUNDLE_TYPE \
+                or type(bundle).resolve is not _NATIVE_RESOLVE:
+            raise WindowsAclRefused("acl_attestation")
+        names = (
+            "GetSecurityInfo", "LocalFree", "IsValidSecurityDescriptor",
+            "GetSecurityDescriptorLength", "GetSecurityDescriptorOwner",
+            "GetSecurityDescriptorGroup", "GetSecurityDescriptorDacl",
+            "GetSecurityDescriptorControl", "IsValidSid", "GetLengthSid",
+            "IsValidAcl", "GetAclInformation",
+        )
+        return {name: bundle.resolve(name) for name in names}
+    except WindowsAclRefused:
+        raise
+    except Exception:
+        raise WindowsAclRefused("acl_attestation") from None
+
+
+def _checked_local_free(bundle, expected, descriptor):
+    try:
+        if type(bundle) is not _NATIVE_BUNDLE_TYPE \
+                or type(bundle).resolve is not _NATIVE_RESOLVE:
+            raise WindowsAclRefused("acl_attestation")
+        current = bundle.resolve("LocalFree")
+        if current is not expected or current(descriptor) is not None:
+            raise WindowsAclRefused("acl_attestation")
+    except WindowsAclRefused:
+        raise
+    except Exception:
+        raise WindowsAclRefused("acl_attestation") from None
+
+
 def _successful(value):
     return type(value) is int and value != 0
+
+
+def _exact_unsigned(value, maximum):
+    return type(value) is int and 0 <= value <= maximum
+
+
+def _pointer(value):
+    pointer = getattr(value, "value", None)
+    if type(pointer) is not int or pointer <= 0:
+        raise WindowsAclRefused("acl_attestation")
+    return pointer
+
+
+def _contained(base, total, start, length):
+    maximum = (1 << (ctypes.sizeof(ctypes.c_void_p) * 8)) - 1
+    return _exact_unsigned(base, maximum) and 1 <= total <= maximum \
+        and base <= maximum - (total - 1) \
+        and _exact_unsigned(start, maximum) and 1 <= length <= total \
+        and base <= start and start <= base + total - length
 
 
 def _final_path(function, handle):
@@ -431,6 +505,189 @@ def _directory_state(functions, handle, expected_path):
     )
 
 
+class _SecuritySnapshot:
+    __slots__ = ("__values",)
+
+    _KEYS = (
+        "ownerSidBytes", "groupSidBytes", "daclDigest", "control",
+        "ownerDefaulted", "groupDefaulted", "daclDefaulted",
+        "descriptorRevision", "daclRevision", "aceCount",
+        "daclBytesInUse", "daclSize",
+    )
+
+    def __init__(self, values):
+        if type(values) is not tuple or len(values) != len(self._KEYS):
+            raise WindowsAclRefused("acl_attestation")
+        object.__setattr__(self, "_SecuritySnapshot__values", values)
+
+    def __setattr__(self, _name, _value):
+        raise WindowsAclRefused("acl_attestation")
+
+    def __eq__(self, other):
+        return type(other) is _SecuritySnapshot \
+            and self.__values == other.__values
+
+    def values(self):
+        return MappingProxyType(dict(zip(self._KEYS, self.__values, strict=True)))
+
+
+def _security_descriptor_parts(functions, descriptor, owner, group, dacl):
+    if not _successful(functions["IsValidSecurityDescriptor"](descriptor)):
+        raise WindowsAclRefused("acl_attestation")
+    descriptor_length = functions["GetSecurityDescriptorLength"](descriptor)
+    if not _exact_unsigned(descriptor_length, MAX_SECURITY_DESCRIPTOR_BYTES) \
+            or descriptor_length < MIN_SECURITY_DESCRIPTOR_BYTES:
+        raise WindowsAclRefused("acl_attestation")
+    base = _pointer(descriptor)
+    if not _contained(base, descriptor_length, base, descriptor_length):
+        raise WindowsAclRefused("acl_attestation")
+
+    owner_read = PSID()
+    owner_defaulted = BOOL()
+    if not _successful(functions["GetSecurityDescriptorOwner"](
+            descriptor, ctypes.byref(owner_read), ctypes.byref(owner_defaulted))):
+        raise WindowsAclRefused("acl_attestation")
+    group_read = PSID()
+    group_defaulted = BOOL()
+    if not _successful(functions["GetSecurityDescriptorGroup"](
+            descriptor, ctypes.byref(group_read), ctypes.byref(group_defaulted))):
+        raise WindowsAclRefused("acl_attestation")
+    dacl_present = BOOL()
+    dacl_read = PACL()
+    dacl_defaulted = BOOL()
+    if not _successful(functions["GetSecurityDescriptorDacl"](
+            descriptor, ctypes.byref(dacl_present), ctypes.byref(dacl_read),
+            ctypes.byref(dacl_defaulted))):
+        raise WindowsAclRefused("acl_attestation")
+    boolean_values = (
+        owner_defaulted.value, group_defaulted.value, dacl_present.value,
+        dacl_defaulted.value,
+    )
+    if any(type(value) is not int or value not in (0, 1)
+           for value in boolean_values):
+        raise WindowsAclRefused("acl_attestation")
+
+    owner_address = _pointer(owner)
+    group_address = _pointer(group)
+    dacl_address = _pointer(dacl)
+    if _pointer(owner_read) != owner_address or _pointer(group_read) != group_address \
+            or _pointer(dacl_read) != dacl_address \
+            or dacl_present.value != 1:
+        raise WindowsAclRefused("acl_attestation")
+
+    control = WORD()
+    descriptor_revision = DWORD()
+    if not _successful(functions["GetSecurityDescriptorControl"](
+            descriptor, ctypes.byref(control), ctypes.byref(descriptor_revision))):
+        raise WindowsAclRefused("acl_attestation")
+    required_control = SE_SELF_RELATIVE | SE_DACL_PRESENT | SE_DACL_PROTECTED
+    if descriptor_revision.value != SECURITY_DESCRIPTOR_REVISION \
+            or control.value & required_control != required_control \
+            or control.value & SE_DACL_AUTO_INHERITED \
+            or bool(control.value & SE_OWNER_DEFAULTED) != bool(owner_defaulted.value) \
+            or bool(control.value & SE_GROUP_DEFAULTED) != bool(group_defaulted.value) \
+            or bool(control.value & SE_DACL_DEFAULTED) != bool(dacl_defaulted.value):
+        raise WindowsAclRefused("acl_attestation")
+
+    sid_values = []
+    for sid, address in ((owner, owner_address), (group, group_address)):
+        if not _contained(base, descriptor_length, address, 1) \
+                or not _successful(functions["IsValidSid"](sid)):
+            raise WindowsAclRefused("acl_attestation")
+        sid_length = functions["GetLengthSid"](sid)
+        if not _exact_unsigned(sid_length, MAX_SID_BYTES) \
+                or sid_length < MIN_SID_BYTES \
+                or not _contained(base, descriptor_length, address, sid_length):
+            raise WindowsAclRefused("acl_attestation")
+        sid_values.append(ctypes.string_at(address, sid_length))
+
+    if not _contained(base, descriptor_length, dacl_address, ctypes.sizeof(ACL)):
+        raise WindowsAclRefused("acl_attestation")
+    header_bytes = ctypes.string_at(dacl_address, ctypes.sizeof(ACL))
+    header = ACL.from_buffer_copy(header_bytes)
+    dacl_size = header.AclSize
+    if header.AclRevision != ACL_REVISION \
+            or header.Sbz1 != 0 or header.Sbz2 != 0 \
+            or not 8 <= dacl_size <= MAX_SECURITY_DESCRIPTOR_BYTES \
+            or not _contained(base, descriptor_length, dacl_address, dacl_size):
+        raise WindowsAclRefused("acl_attestation")
+    if not _successful(functions["IsValidAcl"](dacl)):
+        raise WindowsAclRefused("acl_attestation")
+    size_information = ACL_SIZE_INFORMATION()
+    if not _successful(functions["GetAclInformation"](
+            dacl, ctypes.byref(size_information), ctypes.sizeof(size_information),
+            AclSizeInformation)):
+        raise WindowsAclRefused("acl_attestation")
+    revision_information = ACL_REVISION_INFORMATION()
+    if not _successful(functions["GetAclInformation"](
+            dacl, ctypes.byref(revision_information),
+            ctypes.sizeof(revision_information), AclRevisionInformation)):
+        raise WindowsAclRefused("acl_attestation")
+
+    bytes_in_use = size_information.AclBytesInUse
+    bytes_free = size_information.AclBytesFree
+    if revision_information.AclRevision != ACL_REVISION \
+            or header.AceCount != size_information.AceCount \
+            or not 8 <= bytes_in_use <= dacl_size <= MAX_SECURITY_DESCRIPTOR_BYTES \
+            or size_information.AceCount > (bytes_in_use - 8) // 4 \
+            or bytes_in_use + bytes_free != dacl_size:
+        raise WindowsAclRefused("acl_attestation")
+    dacl_bytes = ctypes.string_at(dacl_address, bytes_in_use)
+    return _SecuritySnapshot((
+        sid_values[0], sid_values[1], hashlib.sha256(dacl_bytes).hexdigest(),
+        control.value, bool(owner_defaulted.value), bool(group_defaulted.value),
+        bool(dacl_defaulted.value), descriptor_revision.value,
+        revision_information.AclRevision, size_information.AceCount,
+        bytes_in_use, dacl_size,
+    ))
+
+
+def _one_security_snapshot(bundle, functions, handle):
+    owner = PSID()
+    group = PSID()
+    dacl = PACL()
+    descriptor = PSECURITY_DESCRIPTOR()
+    result = None
+    primary = None
+    try:
+        status = functions["GetSecurityInfo"](
+            handle,
+            SE_FILE_OBJECT,
+            OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION
+            | DACL_SECURITY_INFORMATION,
+            ctypes.byref(owner),
+            ctypes.byref(group),
+            ctypes.byref(dacl),
+            None,
+            ctypes.byref(descriptor),
+        )
+        if type(status) is not int or status != 0:
+            raise WindowsAclRefused("acl_attestation")
+        _pointer(descriptor)
+        result = _security_descriptor_parts(
+            functions, descriptor, owner, group, dacl,
+        )
+    except BaseException as error:
+        primary = error
+
+    if getattr(descriptor, "value", None) is not None:
+        try:
+            _checked_local_free(bundle, functions["LocalFree"], descriptor)
+        except BaseException as error:
+            if primary is None:
+                primary = error
+
+    if primary is not None:
+        if isinstance(primary, WindowsAclRefused):
+            raise primary
+        if isinstance(primary, Exception):
+            raise WindowsAclRefused("acl_attestation") from None
+        raise primary
+    if type(result) is not _SecuritySnapshot:
+        raise WindowsAclRefused("acl_attestation")
+    return result
+
+
 class _OpenedDirectory:
     __slots__ = (
         "__bundle", "__handle", "__functions", "__path", "__state",
@@ -484,6 +741,41 @@ class _OpenedDirectory:
             "fileId": str(int.from_bytes(self.__state[4], "big")),
             "reparse": False,
         }
+
+    def _security_snapshot(self):
+        result = None
+        primary = None
+        try:
+            self.validate()
+            first_functions = _resolve_security_functions(self.__bundle)
+            first = _one_security_snapshot(
+                self.__bundle, first_functions, self.__handle,
+            )
+            second_functions = _resolve_security_functions(self.__bundle)
+            if tuple(second_functions.items()) != tuple(first_functions.items()):
+                raise WindowsAclRefused("acl_attestation")
+            second = _one_security_snapshot(
+                self.__bundle, second_functions, self.__handle,
+            )
+            if first != second:
+                raise WindowsAclRefused("acl_attestation")
+            result = first
+        except BaseException as error:
+            primary = error
+        try:
+            self.validate()
+        except BaseException as error:
+            if primary is None:
+                primary = error
+        if primary is not None:
+            if isinstance(primary, WindowsAclRefused):
+                raise primary
+            if isinstance(primary, Exception):
+                raise WindowsAclRefused("acl_attestation") from None
+            raise primary
+        if type(result) is not _SecuritySnapshot:
+            raise WindowsAclRefused("acl_attestation")
+        return result
 
     def _close_preserving(self, primary):
         if self.__closed:

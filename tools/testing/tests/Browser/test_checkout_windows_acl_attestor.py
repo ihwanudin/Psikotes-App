@@ -1,6 +1,7 @@
 """Pure ABI tests for the lazy Windows ACL native boundary."""
 
 import ctypes
+import hashlib
 import importlib.util
 import os
 from pathlib import Path
@@ -101,6 +102,7 @@ def expected_signatures(module):
         "IsValidSecurityDescriptor": ("advapi32.dll", module.BOOL, (
             module.PSECURITY_DESCRIPTOR,
         )),
+        "IsValidAcl": ("advapi32.dll", module.BOOL, (module.PACL,)),
         "GetAclInformation": ("advapi32.dll", module.BOOL, (
             module.PACL, module.LPVOID, module.DWORD, ctypes.c_int,
         )),
@@ -154,6 +156,45 @@ class NativeDirectoryHarness:
         self.close_error = None
         self.state_reads = 0
         self.mutate_identity_after = None
+        self.security_statuses = [0, 0]
+        self.allocate_descriptor = True
+        self.security_call = 0
+        self.security_buffers = []
+        self.security_records = {}
+        self.security_mutator = None
+        self.local_free_result = None
+        self.local_free_error = None
+        self.valid_descriptor = 1
+        self.valid_acl = 1
+        self.valid_sid = 1
+        self.descriptor_length = 128
+        self.control = (module.SE_SELF_RELATIVE | module.SE_DACL_PRESENT
+                        | module.SE_DACL_PROTECTED)
+        self.descriptor_revision = 1
+        self.owner_defaulted = 0
+        self.group_defaulted = 0
+        self.dacl_defaulted = 0
+        self.dacl_present = 1
+        self.acl_revision = 2
+        self.header_acl_revision = 2
+        self.header_sbz1 = 0
+        self.header_sbz2 = 0
+        self.acl_bytes_in_use = 12
+        self.acl_bytes_free = 4
+        self.acl_size = 16
+        self.header_acl_size = 16
+        self.ace_count = 1
+        self.header_ace_count = 1
+        self.owner_pointer_override = None
+        self.group_pointer_override = None
+        self.dacl_pointer_override = None
+        self.owner_length_override = None
+        self.group_length_override = None
+        self.owner_sid = bytes.fromhex("010100000000000520000000")
+        self.group_sid = bytes.fromhex("010100000000000512000000")
+        self.owner_offset = 20
+        self.group_offset = 40
+        self.dacl_offset = 64
         self.dlls = {"kernel32.dll": FakeDll(), "advapi32.dll": FakeDll()}
         for name, (dll_name, _restype, _argtypes) in expected_signatures(module).items():
             implementation = getattr(self, "call_" + name, self.call_unused)
@@ -226,6 +267,137 @@ class NativeDirectoryHarness:
             raise self.close_error
         return self.close_result
 
+    def _new_security_record(self, index):
+        raw = bytearray(self.descriptor_length)
+        owner_offset = self.owner_offset
+        group_offset = self.group_offset
+        dacl_offset = self.dacl_offset
+        raw[owner_offset:owner_offset + len(self.owner_sid)] = self.owner_sid
+        raw[group_offset:group_offset + len(self.group_sid)] = self.group_sid
+        header = self.module.ACL()
+        header.AclRevision = self.header_acl_revision
+        header.Sbz1 = self.header_sbz1
+        header.AclSize = self.header_acl_size
+        header.AceCount = self.header_ace_count
+        header.Sbz2 = self.header_sbz2
+        header_bytes = bytes(header)
+        raw[dacl_offset:dacl_offset + len(header_bytes)] = header_bytes
+        payload_length = max(
+            0, min(self.acl_bytes_in_use - 8, len(raw) - dacl_offset - 8),
+        )
+        raw[dacl_offset + 8:dacl_offset + 8 + payload_length] = (
+            b"A" * payload_length
+        )
+        if self.security_mutator is not None:
+            self.security_mutator(index, raw)
+        buffer = ctypes.create_string_buffer(bytes(raw), len(raw))
+        base = ctypes.addressof(buffer)
+        record = {
+            "buffer": buffer,
+            "base": base,
+            "owner": base + owner_offset,
+            "group": base + group_offset,
+            "dacl": base + dacl_offset,
+            "ownerLength": len(self.owner_sid),
+            "groupLength": len(self.group_sid),
+        }
+        self.security_buffers.append(buffer)
+        self.security_records[base] = record
+        return record
+
+    def _record_for_pointer(self, pointer):
+        address = pointer.value if hasattr(pointer, "value") else pointer
+        for record in self.security_records.values():
+            if record["base"] <= address < record["base"] + self.descriptor_length:
+                return record
+        raise AssertionError("pointer outside fake descriptor")
+
+    def call_GetSecurityInfo(self, _handle, object_type, information, owner,
+                             group, dacl, sacl, descriptor):
+        index = self.security_call
+        self.security_call += 1
+        status = self.security_statuses[min(index, len(self.security_statuses) - 1)]
+        if not self.allocate_descriptor:
+            return status
+        record = self._new_security_record(index)
+        owner._obj.value = (record["owner"] if self.owner_pointer_override is None
+                            else self.owner_pointer_override)
+        group._obj.value = (record["group"] if self.group_pointer_override is None
+                            else self.group_pointer_override)
+        dacl._obj.value = (record["dacl"] if self.dacl_pointer_override is None
+                           else self.dacl_pointer_override)
+        descriptor._obj.value = record["base"]
+        return status
+
+    def call_LocalFree(self, _descriptor):
+        if self.local_free_error is not None:
+            raise self.local_free_error
+        return self.local_free_result
+
+    def call_IsValidSecurityDescriptor(self, _descriptor):
+        return self.valid_descriptor
+
+    def call_IsValidAcl(self, _dacl):
+        return self.valid_acl
+
+    def call_GetSecurityDescriptorLength(self, _descriptor):
+        return self.descriptor_length
+
+    def call_GetSecurityDescriptorOwner(self, descriptor, owner, defaulted):
+        record = self._record_for_pointer(descriptor)
+        owner._obj.value = (record["owner"] if self.owner_pointer_override is None
+                            else self.owner_pointer_override)
+        defaulted._obj.value = self.owner_defaulted
+        return 1
+
+    def call_GetSecurityDescriptorGroup(self, descriptor, group, defaulted):
+        record = self._record_for_pointer(descriptor)
+        group._obj.value = (record["group"] if self.group_pointer_override is None
+                            else self.group_pointer_override)
+        defaulted._obj.value = self.group_defaulted
+        return 1
+
+    def call_GetSecurityDescriptorDacl(self, descriptor, present, dacl, defaulted):
+        record = self._record_for_pointer(descriptor)
+        present._obj.value = self.dacl_present
+        dacl._obj.value = (
+            record["dacl"] if self.dacl_pointer_override is None
+            else self.dacl_pointer_override
+        ) if self.dacl_present else None
+        defaulted._obj.value = self.dacl_defaulted
+        return 1
+
+    def call_GetSecurityDescriptorControl(self, _descriptor, control, revision):
+        control._obj.value = self.control
+        revision._obj.value = self.descriptor_revision
+        return 1
+
+    def call_IsValidSid(self, _sid):
+        return self.valid_sid
+
+    def call_GetLengthSid(self, sid):
+        record = self._record_for_pointer(sid)
+        if sid.value == record["owner"]:
+            return (record["ownerLength"] if self.owner_length_override is None
+                    else self.owner_length_override)
+        if sid.value == record["group"]:
+            return (record["groupLength"] if self.group_length_override is None
+                    else self.group_length_override)
+        raise AssertionError("unknown fake SID")
+
+    def call_GetAclInformation(self, _dacl, output, output_size, info_class):
+        if info_class == 2:
+            self.assert_size(output._obj, output_size)
+            output._obj.AceCount = self.ace_count
+            output._obj.AclBytesInUse = self.acl_bytes_in_use
+            output._obj.AclBytesFree = self.acl_bytes_free
+            return 1
+        if info_class == 1:
+            self.assert_size(output._obj, output_size)
+            output._obj.AclRevision = self.acl_revision
+            return 1
+        raise AssertionError("unexpected ACL information class")
+
 
 class CheckoutWindowsAclAttestorAbiTests(unittest.TestCase):
     def test_import_is_side_effect_free_and_exposes_no_usable_attestor(self):
@@ -247,6 +419,7 @@ class CheckoutWindowsAclAttestorAbiTests(unittest.TestCase):
     def test_loader_uses_exact_dll_names_last_error_and_signature_table(self):
         module = load_module()
         expected = expected_signatures(module)
+        self.assertEqual(len(expected), 29)
         dlls = {"kernel32.dll": FakeDll(), "advapi32.dll": FakeDll()}
         calls = []
 
@@ -374,6 +547,11 @@ class CheckoutWindowsAclAttestorAbiTests(unittest.TestCase):
         self.assertEqual(module.FILE_ID_INFO.FileId.offset, 8)
         self.assertEqual(ctypes.sizeof(module.FILE_ATTRIBUTE_TAG_INFO), 8)
         self.assertEqual(ctypes.sizeof(module.ACL_SIZE_INFORMATION), 12)
+        self.assertEqual(ctypes.sizeof(module.ACL_REVISION_INFORMATION), 4)
+        self.assertEqual(ctypes.sizeof(module.ACL), 8)
+        self.assertEqual(module.ACL.AclRevision.offset, 0)
+        self.assertEqual(module.ACL.AclSize.offset, 2)
+        self.assertEqual(module.ACL.AceCount.offset, 4)
         self.assertEqual(ctypes.sizeof(module.ACE_HEADER), 4)
         self.assertEqual(module.ACE_HEADER.AceType.offset, 0)
         self.assertEqual(module.ACE_HEADER.AceFlags.offset, 1)
@@ -409,11 +587,13 @@ class CheckoutWindowsAclAttestorAbiTests(unittest.TestCase):
         self.assertEqual(module.MAXIMUM_ALLOWED, 0x02000000)
         self.assertEqual(module.ACCESS_ALLOWED_ACE_TYPE, 0)
         self.assertEqual(module.ACL_REVISION, 2)
+        self.assertEqual(module.SECURITY_DESCRIPTOR_REVISION, 1)
+        self.assertEqual(module.SE_SELF_RELATIVE, 0x8000)
         self.assertEqual(module.SecurityImpersonation, 2)
         self.assertEqual(module.TokenImpersonation, 2)
 
 
-class CheckoutWindowsAclDirectoryHandleTests(unittest.TestCase):
+class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
     def assert_refused(self, module, callback):
         with self.assertRaisesRegex(module.WindowsAclRefused,
                                     "^acl_attestation$"):
@@ -422,6 +602,9 @@ class CheckoutWindowsAclDirectoryHandleTests(unittest.TestCase):
     @staticmethod
     def call_names(harness):
         return [name for name, _args in harness.calls]
+
+    def opened(self, module, harness):
+        return module._open_directory(harness.bundle(), harness.path)
 
     def test_open_validates_twice_exposes_known_vector_and_closes_once(self):
         module = load_module()
@@ -471,6 +654,7 @@ class CheckoutWindowsAclDirectoryHandleTests(unittest.TestCase):
         self.assertFalse(hasattr(opened, "handle"))
         opened.close()
         self.assertEqual(self.call_names(harness).count("CloseHandle"), 1)
+
         self.assert_refused(module, opened.close)
         self.assert_refused(module, opened.snapshot)
 
@@ -497,6 +681,312 @@ class CheckoutWindowsAclDirectoryHandleTests(unittest.TestCase):
             high_byte_opened.snapshot()["fileId"], str(2 ** 120),
         )
         high_byte_opened.close()
+
+    def test_two_exact_snapshots_copy_values_hash_used_bytes_and_free_bases(self):
+        module = load_module()
+        harness = NativeDirectoryHarness(module)
+        opened = self.opened(module, harness)
+        with opened:
+            snapshot = opened._security_snapshot()
+            values = snapshot.values()
+            expected_dacl = bytes.fromhex("0200100001000000") + b"AAAA"
+            self.assertEqual(dict(values), {
+                "ownerSidBytes": harness.owner_sid,
+                "groupSidBytes": harness.group_sid,
+                "daclDigest": hashlib.sha256(expected_dacl).hexdigest(),
+                "control": 0x9004,
+                "ownerDefaulted": False,
+                "groupDefaulted": False,
+                "daclDefaulted": False,
+                "descriptorRevision": 1,
+                "daclRevision": 2,
+                "aceCount": 1,
+                "daclBytesInUse": 12,
+                "daclSize": 16,
+            })
+            with self.assertRaises(TypeError):
+                values["control"] = 0
+            with self.assertRaisesRegex(module.WindowsAclRefused,
+                                        "^acl_attestation$"):
+                snapshot.extra = object()
+
+        self.assertEqual(self.call_names(harness).count("GetSecurityInfo"), 2)
+        self.assertEqual(self.call_names(harness).count("LocalFree"), 2)
+        self.assertEqual(self.call_names(harness).count("CloseHandle"), 1)
+        security_calls = [args for name, args in harness.calls
+                          if name == "GetSecurityInfo"]
+        self.assertEqual([(args[1], args[2], args[6]) for args in security_calls],
+                         [(1, 7, None), (1, 7, None)])
+        acl_calls = [args for name, args in harness.calls
+                     if name == "GetAclInformation"]
+        self.assertEqual([(args[2], args[3]) for args in acl_calls],
+                         [(12, 2), (4, 1)] * 2)
+        security_names = {
+            "GetSecurityInfo", "IsValidSecurityDescriptor",
+            "GetSecurityDescriptorLength", "GetSecurityDescriptorOwner",
+            "GetSecurityDescriptorGroup", "GetSecurityDescriptorDacl",
+            "GetSecurityDescriptorControl", "IsValidSid", "GetLengthSid",
+            "IsValidAcl", "GetAclInformation", "LocalFree",
+        }
+        one_snapshot_order = [
+            "GetSecurityInfo", "IsValidSecurityDescriptor",
+            "GetSecurityDescriptorLength", "GetSecurityDescriptorOwner",
+            "GetSecurityDescriptorGroup", "GetSecurityDescriptorDacl",
+            "GetSecurityDescriptorControl", "IsValidSid", "GetLengthSid",
+            "IsValidSid", "GetLengthSid", "IsValidAcl", "GetAclInformation",
+            "GetAclInformation", "LocalFree",
+        ]
+        self.assertEqual(
+            [name for name in self.call_names(harness) if name in security_names],
+            one_snapshot_order * 2,
+        )
+        freed = [args[0].value for name, args in harness.calls
+                 if name == "LocalFree"]
+        bases = list(harness.security_records)
+        self.assertEqual(freed, bases)
+        interiors = {
+            record[key] for record in harness.security_records.values()
+            for key in ("owner", "group", "dacl")
+        }
+        self.assertFalse(interiors.intersection(freed))
+        forbidden = {"GetAce", "OpenProcessToken", "GetTokenInformation",
+                     "DuplicateTokenEx", "AccessCheck",
+                     "ConvertSidToStringSidW"}
+        self.assertFalse(forbidden.intersection(self.call_names(harness)))
+
+    def test_defaulted_values_must_agree_with_control_and_are_captured(self):
+        module = load_module()
+        harness = NativeDirectoryHarness(module)
+        harness.owner_defaulted = 1
+        harness.group_defaulted = 1
+        harness.dacl_defaulted = 1
+        harness.control |= (module.SE_OWNER_DEFAULTED | module.SE_GROUP_DEFAULTED
+                            | module.SE_DACL_DEFAULTED)
+        opened = self.opened(module, harness)
+        with opened:
+            values = opened._security_snapshot().values()
+            self.assertTrue(values["ownerDefaulted"])
+            self.assertTrue(values["groupDefaulted"])
+            self.assertTrue(values["daclDefaulted"])
+
+        harness = NativeDirectoryHarness(module)
+        harness.dacl_defaulted = 1
+        opened = self.opened(module, harness)
+        with opened:
+            self.assert_refused(module, opened._security_snapshot)
+
+    def test_descriptor_pointer_presence_control_and_revision_fail_closed(self):
+        module = load_module()
+        cases = (
+            ("invalid", lambda h: setattr(h, "valid_descriptor", 0)),
+            ("short", lambda h: setattr(h, "descriptor_length", 19)),
+            ("long", lambda h: setattr(h, "descriptor_length", 65536)),
+            ("owner_out", lambda h: setattr(h, "owner_pointer_override", 1)),
+            ("group_out", lambda h: setattr(h, "group_pointer_override", 1)),
+            ("dacl_out", lambda h: setattr(h, "dacl_pointer_override", 1)),
+            ("owner_span", lambda h: setattr(h, "owner_offset", 124)),
+            ("group_span", lambda h: setattr(h, "group_offset", 124)),
+            ("dacl_header_span", lambda h: setattr(h, "dacl_offset", 124)),
+            ("dacl_null", lambda h: setattr(h, "dacl_pointer_override", 0)),
+            ("dacl_missing", lambda h: setattr(h, "dacl_present", 0)),
+            ("revision", lambda h: setattr(h, "descriptor_revision", 2)),
+            ("self_relative", lambda h: setattr(
+                h, "control", h.control & ~module.SE_SELF_RELATIVE,
+            )),
+            ("protected", lambda h: setattr(
+                h, "control", h.control & ~module.SE_DACL_PROTECTED,
+            )),
+            ("auto_inherited", lambda h: setattr(
+                h, "control", h.control | module.SE_DACL_AUTO_INHERITED,
+            )),
+            ("bad_bool", lambda h: setattr(h, "dacl_defaulted", 2)),
+        )
+        for name, mutate in cases:
+            harness = NativeDirectoryHarness(module)
+            mutate(harness)
+            opened = self.opened(module, harness)
+            with self.subTest(case=name), opened:
+                self.assert_refused(module, opened._security_snapshot)
+            self.assertEqual(self.call_names(harness).count("LocalFree"), 1)
+            self.assertEqual(self.call_names(harness).count("CloseHandle"), 1)
+
+    def test_sid_and_acl_bounds_header_revision_and_free_math_fail_closed(self):
+        module = load_module()
+        cases = (
+            ("sid_invalid", lambda h: setattr(h, "valid_sid", 0)),
+            ("sid_short", lambda h: setattr(h, "owner_length_override", 7)),
+            ("sid_long", lambda h: setattr(h, "group_length_override", 69)),
+            ("acl_revision", lambda h: setattr(h, "acl_revision", 1)),
+            ("header_revision", lambda h: setattr(h, "header_acl_revision", 3)),
+            ("malformed_acl", lambda h: setattr(h, "valid_acl", 0)),
+            ("sbz1", lambda h: setattr(h, "header_sbz1", 1)),
+            ("sbz2", lambda h: setattr(h, "header_sbz2", 1)),
+            ("used_short", lambda h: setattr(h, "acl_bytes_in_use", 7)),
+            ("used_over_size", lambda h: setattr(h, "acl_bytes_in_use", 17)),
+            ("free_math", lambda h: setattr(h, "acl_bytes_free", 5)),
+            ("header_size", lambda h: setattr(h, "header_acl_size", 17)),
+            ("ace_count", lambda h: setattr(h, "header_ace_count", 2)),
+            ("ace_capacity", lambda h: (
+                setattr(h, "ace_count", 2), setattr(h, "header_ace_count", 2),
+            )),
+            ("span", lambda h: setattr(h, "header_acl_size", 80)),
+        )
+        for name, mutate in cases:
+            harness = NativeDirectoryHarness(module)
+            mutate(harness)
+            opened = self.opened(module, harness)
+            with self.subTest(case=name), opened:
+                self.assert_refused(module, opened._security_snapshot)
+            self.assertEqual(self.call_names(harness).count("LocalFree"), 1)
+            if name == "span":
+                self.assertNotIn("IsValidAcl", self.call_names(harness))
+                self.assertNotIn("GetAclInformation", self.call_names(harness))
+
+    def test_get_security_error_with_buffer_and_ordinary_errors_clean_up(self):
+        module = load_module()
+        for status in (5, False, True):
+            harness = NativeDirectoryHarness(module)
+            harness.security_statuses = [status]
+            opened = self.opened(module, harness)
+            with self.subTest(status=status), opened:
+                self.assert_refused(module, opened._security_snapshot)
+            self.assertEqual(self.call_names(harness).count("LocalFree"), 1)
+
+        harness = NativeDirectoryHarness(module)
+        harness.security_statuses = [5]
+        harness.allocate_descriptor = False
+        opened = self.opened(module, harness)
+        with opened:
+            self.assert_refused(module, opened._security_snapshot)
+        self.assertEqual(self.call_names(harness).count("LocalFree"), 0)
+
+        harness = NativeDirectoryHarness(module)
+        harness.security_statuses = [0]
+        harness.allocate_descriptor = False
+        opened = self.opened(module, harness)
+        with opened:
+            self.assert_refused(module, opened._security_snapshot)
+        self.assertEqual(self.call_names(harness).count("LocalFree"), 0)
+
+        harness = NativeDirectoryHarness(module)
+
+        def private_error(*_args):
+            raise RuntimeError("PRIVATE SECURITY DETAIL")
+
+        harness.dlls["advapi32.dll"].functions[
+            "GetSecurityDescriptorOwner"
+        ].implementation = private_error
+        opened = self.opened(module, harness)
+        with opened:
+            with self.assertRaisesRegex(module.WindowsAclRefused,
+                                        "^acl_attestation$") as raised:
+                opened._security_snapshot()
+            self.assertNotIn("PRIVATE", str(raised.exception))
+        self.assertEqual(self.call_names(harness).count("LocalFree"), 1)
+
+    def test_descriptor_getter_disagreement_and_acl_query_failure_refuse(self):
+        module = load_module()
+        for function_name in (
+            "GetSecurityDescriptorOwner", "GetSecurityDescriptorGroup",
+            "GetSecurityDescriptorDacl",
+        ):
+            harness = NativeDirectoryHarness(module)
+            original = harness.dlls["advapi32.dll"].functions[
+                function_name
+            ].implementation
+
+            def disagree(*args, original=original, function_name=function_name):
+                result = original(*args)
+                pointer_index = 1 if function_name != "GetSecurityDescriptorDacl" else 2
+                args[pointer_index]._obj.value += 1
+                return result
+
+            harness.dlls["advapi32.dll"].functions[
+                function_name
+            ].implementation = disagree
+            opened = self.opened(module, harness)
+            with self.subTest(function=function_name), opened:
+                self.assert_refused(module, opened._security_snapshot)
+            self.assertEqual(self.call_names(harness).count("LocalFree"), 1)
+
+        harness = NativeDirectoryHarness(module)
+        harness.dlls["advapi32.dll"].functions[
+            "GetAclInformation"
+        ].implementation = lambda *_args: 0
+        opened = self.opened(module, harness)
+        with opened:
+            self.assert_refused(module, opened._security_snapshot)
+        self.assertEqual(self.call_names(harness).count("LocalFree"), 1)
+
+    def test_local_free_requires_none_is_one_shot_and_preserves_primary(self):
+        module = load_module()
+        for failure in (0, RuntimeError("PRIVATE FREE DETAIL")):
+            harness = NativeDirectoryHarness(module)
+            if isinstance(failure, BaseException):
+                harness.local_free_error = failure
+            else:
+                harness.local_free_result = failure
+            opened = self.opened(module, harness)
+            with self.subTest(failure=type(failure).__name__), opened:
+                with self.assertRaisesRegex(module.WindowsAclRefused,
+                                            "^acl_attestation$") as raised:
+                    opened._security_snapshot()
+                self.assertNotIn("PRIVATE", str(raised.exception))
+            self.assertEqual(self.call_names(harness).count("LocalFree"), 1)
+
+        harness = NativeDirectoryHarness(module)
+        free_exit = SystemExit(6)
+        harness.local_free_error = free_exit
+        opened = self.opened(module, harness)
+        with self.assertRaises(SystemExit) as raised:
+            with opened:
+                opened._security_snapshot()
+        self.assertIs(raised.exception, free_exit)
+        self.assertEqual(self.call_names(harness).count("LocalFree"), 1)
+        self.assertEqual(self.call_names(harness).count("CloseHandle"), 1)
+
+        harness = NativeDirectoryHarness(module)
+        primary = KeyboardInterrupt()
+        original = harness.dlls["advapi32.dll"].functions[
+            "GetSecurityInfo"
+        ].implementation
+
+        def primary_after_allocation(*args):
+            original(*args)
+            raise primary
+
+        harness.dlls["advapi32.dll"].functions[
+            "GetSecurityInfo"
+        ].implementation = primary_after_allocation
+        harness.local_free_error = SystemExit(7)
+        opened = self.opened(module, harness)
+        with self.assertRaises(KeyboardInterrupt) as raised:
+            with opened:
+                opened._security_snapshot()
+        self.assertIs(raised.exception, primary)
+        self.assertEqual(self.call_names(harness).count("LocalFree"), 1)
+        self.assertEqual(self.call_names(harness).count("CloseHandle"), 1)
+
+    def test_second_security_snapshot_and_post_handle_drift_are_rejected(self):
+        module = load_module()
+        harness = NativeDirectoryHarness(module)
+
+        def mutate_second(index, raw):
+            if index == 1:
+                raw[72] = ord("Z")
+
+        harness.security_mutator = mutate_second
+        opened = self.opened(module, harness)
+        with opened:
+            self.assert_refused(module, opened._security_snapshot)
+        self.assertEqual(self.call_names(harness).count("LocalFree"), 2)
+
+        harness = NativeDirectoryHarness(module)
+        harness.mutate_identity_after = 5
+        opened = self.opened(module, harness)
+        with opened:
+            self.assert_refused(module, opened._security_snapshot)
+        self.assertEqual(self.call_names(harness).count("LocalFree"), 2)
 
     def test_invalid_paths_and_bundle_refuse_before_create(self):
         module = load_module()
