@@ -434,6 +434,7 @@ def _resolve_token_user_functions(bundle):
             "GetCurrentProcess", "OpenProcessToken", "GetTokenInformation",
             "SetHandleInformation", "GetHandleInformation", "CloseHandle",
             "IsValidSid", "GetLengthSid", "LookupPrivilegeValueW",
+            "IsTokenRestricted",
         )
         return {name: bundle.resolve(name) for name in names}
     except WindowsAclRefused:
@@ -1066,58 +1067,74 @@ def _token_restricted_sids_snapshot(functions, handle):
     if sid_count == 0:
         if required.value != ctypes.sizeof(DWORD):
             raise WindowsAclRefused("acl_attestation")
-        return _RestrictedSidsSnapshot((), required.value)
-    if sid_count > MAX_TOKEN_RESTRICTED_SID_COUNT:
-        raise WindowsAclRefused("acl_attestation")
+        snapshot = _RestrictedSidsSnapshot((), required.value)
+    else:
+        if sid_count > MAX_TOKEN_RESTRICTED_SID_COUNT:
+            raise WindowsAclRefused("acl_attestation")
 
-    table_offset = TOKEN_GROUPS.Groups.offset
-    entry_size = ctypes.sizeof(SID_AND_ATTRIBUTES)
-    table_length = sid_count * entry_size
-    table_end_offset = table_offset + table_length
-    if table_end_offset > required.value or not _contained(
-            base, required.value, base + table_offset, table_length):
-        raise WindowsAclRefused("acl_attestation")
+        table_offset = TOKEN_GROUPS.Groups.offset
+        entry_size = ctypes.sizeof(SID_AND_ATTRIBUTES)
+        table_length = sid_count * entry_size
+        table_end_offset = table_offset + table_length
+        if table_end_offset > required.value or not _contained(
+                base, required.value, base + table_offset, table_length):
+            raise WindowsAclRefused("acl_attestation")
 
-    values = []
-    spans = []
-    sid_floor = base + table_end_offset
-    for index in range(sid_count):
-        entry = SID_AND_ATTRIBUTES.from_buffer(
-            buffer, table_offset + index * entry_size,
-        )
-        if entry.Attributes != 0:
+        values = []
+        spans = []
+        sid_floor = base + table_end_offset
+        for index in range(sid_count):
+            entry = SID_AND_ATTRIBUTES.from_buffer(
+                buffer, table_offset + index * entry_size,
+            )
+            if entry.Attributes != 0:
+                raise WindowsAclRefused("acl_attestation")
+            sid_address = _pointer(PSID(entry.Sid))
+            if sid_address < sid_floor or not _contained(
+                    base, required.value, sid_address, MIN_SID_BYTES):
+                raise WindowsAclRefused("acl_attestation")
+            prefix = ctypes.string_at(sid_address, MIN_SID_BYTES)
+            claimed_length = 8 + 4 * prefix[1]
+            if prefix[0] != 1 or not 1 <= prefix[1] <= 15 \
+                    or not MIN_SID_BYTES <= claimed_length <= MAX_SID_BYTES \
+                    or not _contained(base, required.value, sid_address,
+                                      claimed_length):
+                raise WindowsAclRefused("acl_attestation")
+            sid_end = sid_address + claimed_length
+            if any(sid_address < prior_end and prior_start < sid_end
+                   for prior_start, prior_end in spans):
+                raise WindowsAclRefused("acl_attestation")
+            sid_before = ctypes.string_at(sid_address, claimed_length)
+            if sid_before[:MIN_SID_BYTES] != prefix:
+                raise WindowsAclRefused("acl_attestation")
+            sid = PSID(sid_address)
+            if not _successful(functions["IsValidSid"](sid)):
+                raise WindowsAclRefused("acl_attestation")
+            sid_length = functions["GetLengthSid"](sid)
+            if not _exact_unsigned(sid_length, MAX_SID_BYTES) \
+                    or sid_length != claimed_length:
+                raise WindowsAclRefused("acl_attestation")
+            sid_bytes = ctypes.string_at(sid_address, sid_length)
+            if sid_bytes != sid_before:
+                raise WindowsAclRefused("acl_attestation")
+            spans.append((sid_address, sid_end))
+            values.append((sid_bytes, _canonical_sid(sid_bytes)))
+        snapshot = _RestrictedSidsSnapshot(tuple(values), required.value)
+
+    ctypes.set_last_error(0)
+    corroboration = functions["IsTokenRestricted"](handle)
+    if type(corroboration) is not int:
+        raise WindowsAclRefused("acl_attestation")
+    if corroboration == 0:
+        corroboration_error = ctypes.get_last_error()
+        if corroboration_error != 0:
             raise WindowsAclRefused("acl_attestation")
-        sid_address = _pointer(PSID(entry.Sid))
-        if sid_address < sid_floor or not _contained(
-                base, required.value, sid_address, MIN_SID_BYTES):
-            raise WindowsAclRefused("acl_attestation")
-        prefix = ctypes.string_at(sid_address, MIN_SID_BYTES)
-        claimed_length = 8 + 4 * prefix[1]
-        if prefix[0] != 1 or not 1 <= prefix[1] <= 15 \
-                or not MIN_SID_BYTES <= claimed_length <= MAX_SID_BYTES \
-                or not _contained(base, required.value, sid_address,
-                                  claimed_length):
-            raise WindowsAclRefused("acl_attestation")
-        sid_end = sid_address + claimed_length
-        if any(sid_address < prior_end and prior_start < sid_end
-               for prior_start, prior_end in spans):
-            raise WindowsAclRefused("acl_attestation")
-        sid_before = ctypes.string_at(sid_address, claimed_length)
-        if sid_before[:MIN_SID_BYTES] != prefix:
-            raise WindowsAclRefused("acl_attestation")
-        sid = PSID(sid_address)
-        if not _successful(functions["IsValidSid"](sid)):
-            raise WindowsAclRefused("acl_attestation")
-        sid_length = functions["GetLengthSid"](sid)
-        if not _exact_unsigned(sid_length, MAX_SID_BYTES) \
-                or sid_length != claimed_length:
-            raise WindowsAclRefused("acl_attestation")
-        sid_bytes = ctypes.string_at(sid_address, sid_length)
-        if sid_bytes != sid_before:
-            raise WindowsAclRefused("acl_attestation")
-        spans.append((sid_address, sid_end))
-        values.append((sid_bytes, _canonical_sid(sid_bytes)))
-    return _RestrictedSidsSnapshot(tuple(values), required.value)
+        corroborated = False
+    else:
+        corroborated = True
+    if corroborated is not snapshot.values()[1]:
+        raise WindowsAclRefused("acl_attestation")
+    return snapshot
 
 
 class _TokenPrivilegesSnapshot:

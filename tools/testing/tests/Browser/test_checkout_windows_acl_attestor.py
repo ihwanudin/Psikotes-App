@@ -217,6 +217,9 @@ class NativeDirectoryHarness:
         self.token_restricted_returned_override = None
         self.token_restricted_count_override = None
         self.token_restricted_pointer_overrides = {}
+        self.is_token_restricted_results = None
+        self.is_token_restricted_error = None
+        self.is_token_restricted_call_count = 0
         self.token_sid_addresses = {}
         self.calls = []
         self.close_result = 1
@@ -520,6 +523,24 @@ class NativeDirectoryHarness:
         )
         self.token_restricted_fill_count += 1
         return self.token_restricted_fill_result
+
+    def call_IsTokenRestricted(self, handle):
+        if handle != self.token_handle:
+            raise AssertionError("wrong token handle")
+        sid_sets = (self.token_restricting_sid_sets
+                    if self.token_restricting_sid_sets is not None
+                    else [self.token_restricting_sids,
+                          self.token_restricting_sids])
+        index = min(max(self.token_restricted_fill_count - 1, 0),
+                    len(sid_sets) - 1)
+        results = self.is_token_restricted_results
+        result = (1 if sid_sets[index] else 0) if results is None else results[
+            min(self.is_token_restricted_call_count, len(results) - 1)
+        ]
+        self.is_token_restricted_call_count += 1
+        if self.is_token_restricted_error is not None:
+            self.module.ctypes.set_last_error(self.is_token_restricted_error)
+        return result
 
     def call_GetFileInformationByHandleEx(self, _handle, info_class, output,
                                           output_size):
@@ -1141,9 +1162,9 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
         }
         self.assertFalse(interiors.intersection(freed))
         forbidden = {"DuplicateTokenEx", "AccessCheck",
-                     "ConvertSidToStringSidW", "LookupPrivilegeNameW",
-                     "IsTokenRestricted"}
+                     "ConvertSidToStringSidW", "LookupPrivilegeNameW"}
         self.assertFalse(forbidden.intersection(self.call_names(harness)))
+        self.assertEqual(self.call_names(harness).count("IsTokenRestricted"), 2)
 
         token_information = [args for name, args in harness.calls
                              if name == "GetTokenInformation"]
@@ -1731,6 +1752,83 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
             [(args[1], args[2] is None, args[3]) for args in calls],
             [(11, True, 0), (11, False, expected_length)],
         )
+        names = self.call_names(harness)
+        self.assertLess(
+            max(index for index, name in enumerate(names)
+                if name == "GetTokenInformation"),
+            names.index("IsTokenRestricted"),
+        )
+
+    def test_restricted_parity_uses_authoritative_list_and_strict_bool_contract(self):
+        module = load_module()
+        sid = bytes.fromhex("010100000000000515000000")
+        cases = (
+            ("empty_false", [], [0], None, True),
+            ("stale_error_cleared", [], [0], None, True),
+            ("false_error", [], [0], 5, False),
+            ("empty_true", [], [1], None, False),
+            ("nonempty_two", [(sid, 0)], [2], None, True),
+            ("nonempty_two_ignores_error", [(sid, 0)], [2], 5, True),
+            ("nonempty_negative_ignores_error", [(sid, 0)], [-1], 5, True),
+            ("nonempty_false", [(sid, 0)], [0], None, False),
+            ("bool_false", [], [False], None, False),
+            ("bool_true", [(sid, 0)], [True], None, False),
+        )
+        for name, records, results, error, accepted in cases:
+            harness = NativeDirectoryHarness(module)
+            harness.token_restricting_sids = records
+            harness.is_token_restricted_results = results
+            harness.is_token_restricted_error = error
+            if name == "stale_error_cleared":
+                module.ctypes.set_last_error(999)
+            with self.subTest(case=name), \
+                    module._open_current_process_token(harness.bundle()) as token:
+                if accepted:
+                    snapshot = token._restricted_sids_snapshot()
+                    self.assertEqual(snapshot.values()[1], bool(records))
+                else:
+                    self.assert_refused(module, token._restricted_sids_snapshot)
+            names = self.call_names(harness)
+            fill = max(index for index, call in enumerate(names)
+                       if call == "GetTokenInformation")
+            parity = names.index("IsTokenRestricted")
+            self.assertLess(fill, parity)
+
+    def test_restricted_parity_errors_preserve_cleanup_and_redaction(self):
+        module = load_module()
+        for primary in (RuntimeError("PRIVATE PARITY DETAIL"),
+                        KeyboardInterrupt(), SystemExit(53)):
+            harness = NativeDirectoryHarness(module)
+
+            def interrupt(_handle, primary=primary):
+                raise primary
+
+            harness.dlls["advapi32.dll"].functions[
+                "IsTokenRestricted"
+            ].implementation = interrupt
+            harness.close_error = RuntimeError("PRIVATE CLOSE DETAIL")
+            opened = self.opened(module, harness)
+            with self.subTest(error=type(primary).__name__):
+                if isinstance(primary, Exception):
+                    with self.assertRaisesRegex(
+                            module.WindowsAclRefused,
+                            "^acl_attestation$") as raised:
+                        with opened:
+                            opened._security_snapshot()
+                    self.assertNotIn("PRIVATE", str(raised.exception))
+                else:
+                    with self.assertRaises(type(primary)) as raised:
+                        with opened:
+                            opened._security_snapshot()
+                    self.assertIs(raised.exception, primary)
+            self.assertEqual(
+                [args[0] for call, args in harness.calls
+                 if call == "CloseHandle"],
+                [harness.token_handle, harness.handle],
+            )
+            self.assertFalse({"DuplicateTokenEx", "AccessCheck",
+                              "CheckTokenMembership"}.intersection(
+                                  self.call_names(harness)))
 
     def test_restricting_sid_bounds_attributes_and_overlap_fail_closed(self):
         module = load_module()
