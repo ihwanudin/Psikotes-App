@@ -97,6 +97,42 @@ final class ProductionConfigurationTest extends TestCase
         $this->assertStringContainsString('SELECTION_RESULT_CALLBACK_TIMEOUT_SECONDS=10', $example);
     }
 
+    public function test_trusted_private_edge_proxy_can_report_https_without_overriding_the_public_host(): void
+    {
+        $response = $this->call('GET', 'http://psikotes.oncam.id/', server: [
+            'REMOTE_ADDR' => '172.18.0.1',
+            'HTTP_HOST' => 'psikotes.oncam.id',
+            'SERVER_NAME' => 'psikotes.oncam.id',
+            'SERVER_PORT' => '80',
+            'HTTPS' => 'off',
+            'HTTP_X_FORWARDED_PROTO' => 'https',
+            'HTTP_X_FORWARDED_HOST' => 'attacker.example',
+        ]);
+
+        $response->assertOk();
+        $response->assertSee('https://psikotes.oncam.id/build/assets/', escape: false);
+        $response->assertDontSee('http://psikotes.oncam.id/build/assets/', escape: false);
+        $response->assertDontSee('attacker.example', escape: false);
+    }
+
+    public function test_untrusted_peer_cannot_spoof_forwarded_scheme_or_host(): void
+    {
+        $response = $this->call('GET', 'http://psikotes.oncam.id/', server: [
+            'REMOTE_ADDR' => '203.0.113.10',
+            'HTTP_HOST' => 'psikotes.oncam.id',
+            'SERVER_NAME' => 'psikotes.oncam.id',
+            'SERVER_PORT' => '80',
+            'HTTPS' => 'off',
+            'HTTP_X_FORWARDED_PROTO' => 'https',
+            'HTTP_X_FORWARDED_HOST' => 'attacker.example',
+        ]);
+
+        $response->assertOk();
+        $response->assertSee('http://psikotes.oncam.id/build/assets/', escape: false);
+        $response->assertDontSee('https://psikotes.oncam.id/build/assets/', escape: false);
+        $response->assertDontSee('attacker.example', escape: false);
+    }
+
     private function configureValidProductionRuntime(): void
     {
         config([
