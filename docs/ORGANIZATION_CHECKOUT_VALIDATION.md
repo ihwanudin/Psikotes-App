@@ -1103,3 +1103,35 @@ restriction/impersonation lainnya, source-tree/cache/composition/usable
 attestor, dan native Windows/runtime tetap terbuka. Tidak ada browser, service,
 database, network, aktivasi, atau deploy. P15/P16/P17c/P18 tetap terbuka dan
 seluruh gate/payment tetap default OFF.
+
+## Checkpoint kontrak ordinary access provider — 2026-09-06
+
+[ADR-018](decisions/0018-windows-ordinary-access-provider.md) menerima kontrak
+internal/pure-fake bagi provider independent externally provisioned ordinary
+token dan exact native `AccessCheck`. Provider memiliki token, seluruh raw
+handle, exact primary-to-impersonation derivation, dan evidence one-shot;
+caller tidak dapat memasukkan credentials, username/account/environment choice,
+raw handle/SID pointer, atau process handle.
+
+Request/evidence baru pada boundary anchor/execution dalam phase fresh/recovery
+mengikat lifecycle serta exact outer request/evidence ADR-017 melalui
+`aclRequestDigest`/`aclEvidenceDigest`, policy digest, fresh challenge, current
+token identity, ordered descriptor evidence digest, target identity,
+`MAXIMUM_ALLOWED`, provenance/profile token, serta exact function-success/
+access-denied/granted-zero.
+Provider membuka target sendiri; kedua descriptor capture diparse independen
+terhadap policy ADR-017 dan hanya provider yang menghasilkan descriptor
+`policySatisfied`; ordinary denial tetap admission gate terpisah. Mismatch
+path/identity/descriptor yang teramati ditolak.
+Invariant ordinary menolak same user, LocalSystem, current owner SID dalam user/
+groups tanpa memandang attributes, fixed sensitive privilege enabled,
+AppContainer raw/nonzero, class-11 nonempty atau `IsTokenRestricted` true,
+profile drift, dan target yang tidak exact-denied. `TokenOrigin` dan distinct
+`AuthenticationId` hanya observational/corroboration.
+
+Belum ada acquisition authority, provider/cache/`attest`, provisioning,
+integration, browser, service, database, network, activation, atau deploy. Hanya
+pure codec preparation yang boleh menurunkan binding dari exact outer bytes;
+kontrak ini bukan bukti Windows runtime atau effective `AccessCheck`.
+P15/P16/P17c/P18 tetap terbuka dan seluruh gate/payment tetap default OFF;
+tidak ada checklist/progress yang diubah.

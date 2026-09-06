@@ -1152,3 +1152,29 @@ tidak ada aktivasi/deploy dan seluruh gate/payment default OFF.
 
 Tidak ada status/checklist yang diubah. P15/P16/P17c/P18 tetap terbuka;
 tidak ada aktivasi/deploy dan seluruh gate/payment default OFF.
+
+### Kontrak ordinary access provider accepted — implementasi tetap terbuka
+
+- ADR-018 menerima contract/pure-fake testing bagi provider internal pemilik
+  independent externally provisioned ordinary token, seluruh raw handle,
+  derivation impersonation, live target/descriptor, native `AccessCheck`, dan
+  one-shot `attest/load/discard`.
+- Caller tidak menerima atau memasukkan credentials, username/account/environment
+  selector, raw handle, SID/descriptor pointer, atau process handle.
+- Request/evidence baru pada boundary anchor/execution untuk fresh/recovery
+  mengikat exact outer ADR-017 request/evidence, policy/challenge/current
+  identity, tiga target ordered+descriptor dengan `MAXIMUM_ALLOWED`, profile
+  original+derived, dan function-success/access-false/granted-zero. Provider
+  membuka/revalidasi target, memparse kedua live descriptor capture independen,
+  dan menghasilkan descriptor `policySatisfied`; mismatch teramati ditolak.
+- Descriptor `policySatisfied` hanya menutup policy descriptor; ordinary denial
+  tetap admission gate terpisah.
+- Policy menolak same user, LocalSystem, owner SID pada setiap group, fixed
+  sensitive privilege enabled, AppContainer raw/nonzero, class-11 nonempty atau
+  `IsTokenRestricted` true, serta profile drift. `TokenOrigin` observational;
+  distinct `AuthenticationId` hanya corroboration.
+- Acquisition authority dan provider/cache/`attest` belum ada; hanya pure codec
+  preparation boleh dimulai. Native `AccessCheck`/runtime tetap terbuka.
+
+Tidak ada status/checklist/progress yang diubah. P15/P16/P17c/P18 tetap terbuka;
+tidak ada aktivasi/deploy dan seluruh gate/payment default OFF.

@@ -371,3 +371,16 @@ effective `AccessCheck`. Token restriction/impersonation lainnya, source-tree/
 cache/composition/usable attestor, dan native Windows/runtime tetap terbuka.
 P15/P16/P17c/P18 tetap terbuka; tidak ada aktivasi/deploy dan seluruh
 gate/payment tetap default OFF.
+
+## Decision Refinement — ordinary access provider
+
+Kontrak principal ordinary kedua dan native `AccessCheck` dipisahkan ke
+[ADR-018](0018-windows-ordinary-access-provider.md). Provider internal tersebut,
+bukan launcher/coordinator atau caller, menjadi pemilik independent externally
+provisioned token, derivation impersonation token, raw handle, dan evidence
+one-shot. ADR-018 accepted hanya untuk contract/pure-fake testing; native
+provider wajib memparse kedua live descriptor capture secara independen dan
+menghasilkan descriptor `policySatisfied`, bukan menyalinnya dari request.
+Outer ADR-017 `policySatisfied` hanya membuktikan descriptor policy; ordinary
+principal denial adalah admission gate terpisah dari ADR-018. Provisioning,
+integration, dan runtime evidence tetap terbuka.

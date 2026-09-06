@@ -829,3 +829,26 @@ policy, atau effective `AccessCheck`. Token restriction/impersonation lainnya,
 source-tree/cache/composition/usable attestor, dan native Windows/runtime masih
 terbuka. Tidak ada aktivasi/deploy; P15/P16/P17c/P18 tetap terbuka dan seluruh
 gate/payment OFF.
+
+### Checkpoint kontrak ordinary access provider
+
+ADR-018 menerima contract/pure-fake testing bagi provider internal yang memiliki
+independent externally provisioned ordinary token, raw handles, exact
+primary-to-impersonation derivation, native `AccessCheck`, dan one-shot
+`attest/load/discard`. Tidak ada credentials, account/environment selection,
+raw handle/SID pointer, atau process handle pada input/output caller.
+
+Kontrak mewajibkan request baru pada anchor/execution untuk fresh/recovery yang
+mengikat exact outer ADR-017 request/evidence, policy digest, fresh challenge,
+current token identity, tiga target ordered+descriptor dengan `MAXIMUM_ALLOWED`,
+provenance/profile token, serta exact function-success/access-false/granted-zero.
+Same user, LocalSystem, owner SID dalam setiap group, fixed sensitive privilege
+enabled, AppContainer raw/nonzero, class-11/`IsTokenRestricted`, atau profile
+drift wajib ditolak; `TokenOrigin` hanya
+observational dan distinct `AuthenticationId` hanya corroboration. Kedua live
+descriptor capture diparse independen dan descriptor `policySatisfied` hanya
+berasal dari provider, bukan request; ordinary denial adalah gate terpisah.
+Acquisition authority dan provider/cache/
+`attest` belum ada; hanya pure codec preparation boleh dimulai. Native runtime
+tetap terbuka. Tidak ada perubahan
+acceptance/progress; P15/P16/P17c/P18 terbuka dan seluruh gate/payment OFF.
