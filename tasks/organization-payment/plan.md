@@ -749,3 +749,20 @@ mapping, dangerous-enabled policy, ordinary principal/provenance, LocalSystem,
 token type/restriction/impersonation, effective `AccessCheck`, source-tree/cache/
 composition/attestor, dan native Windows/runtime belum dibuktikan. Tidak ada
 aktivasi/deploy; P15/P16/P17c/P18 tetap terbuka dan seluruh gate/payment OFF.
+
+### Checkpoint sensitive-privilege observation
+
+Commit `4f015f3` mengamati tiga privilege fixed dalam urutan exact:
+`SeBackupPrivilege`, `SeRestorePrivilege`, dan `SeTakeOwnershipPrivilege`.
+Lookup lokal memakai `LookupPrivilegeValueW(system=None)`; LUID signed/unsigned
+dinormalisasi exact dan duplicate mapping ditolak. Observation immutable memuat
+name/LUID/present/enabled, dengan enabled hanya `Attributes & 0x2`, dan membedakan
+absent/disabled/enabled. Profile sebelum/sesudah harus stabil dengan cleanup
+exact. Bukti root accepted: **43/43 unittest**, `py_compile`, diff-check, dan
+adversarial review **PASS** tanpa P1/P2.
+
+Ini current-process pure fake observation saja, bukan rejection policy atau
+ordinary evidence. Second ordinary-token provenance, LocalSystem, token type/
+restriction/impersonation, effective `AccessCheck`, source-tree/cache/
+composition/attestor, native Windows/runtime masih terbuka. Tidak ada
+aktivasi/deploy; P15/P16/P17c/P18 tetap terbuka dan seluruh gate/payment OFF.

@@ -1020,3 +1020,22 @@ impersonation, effective `AccessCheck`, source-tree/cache/composition/attestor,
 dan native Windows/runtime tetap terbuka. Tidak ada browser, service, database,
 network, aktivasi, atau deploy. P15/P16/P17c/P18 tetap terbuka dan seluruh
 gate/payment tetap default OFF.
+
+## Checkpoint observasi Windows sensitive privileges — 2026-09-06
+
+Commit `4f015f3` mengobservasi urutan fixed `SeBackupPrivilege`,
+`SeRestorePrivilege`, dan `SeTakeOwnershipPrivilege` pada current process.
+`LookupPrivilegeValueW` memakai system `None`; normalisasi LUID signed/unsigned
+wajib exact dan duplicate mapping ditolak. Snapshot immutable menyimpan
+name/LUID/present/enabled, dengan enabled hanya dari `Attributes & 0x2`, serta
+membedakan absent, disabled, dan enabled. Profile sebelum/sesudah harus stabil
+dan cleanup token handle tetap exact.
+
+Bukti root accepted: **43/43 unittest**, `py_compile`, diff-check, dan final
+adversarial review **PASS** tanpa P1/P2. Ini pure fake current-process
+observation, bukan rejection policy atau ordinary-principal evidence. Second
+ordinary-token provenance, LocalSystem, token type/restriction/impersonation,
+effective `AccessCheck`, source-tree/cache/composition/attestor, dan native
+Windows/runtime tetap terbuka. Tidak ada browser, service, database, network,
+aktivasi, atau deploy. P15/P16/P17c/P18 tetap terbuka dan seluruh gate/payment
+tetap default OFF.

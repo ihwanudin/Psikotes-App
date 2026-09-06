@@ -2654,3 +2654,20 @@ enabled-dangerous-privilege policy, ordinary principal/provenance, LocalSystem,
 token type/restriction/impersonation, effective `AccessCheck`, source-tree/cache/
 composition/attestor, maupun native Windows/runtime. P15/P16/P17c/P18 terbuka;
 tidak ada aktivasi/deploy dan seluruh gate/payment default OFF.
+
+### Checkpoint sensitive-privilege observation — accepted `4f015f3`
+
+Current-process profile mengobservasi tiga nama fixed berurutan:
+`SeBackupPrivilege`, `SeRestorePrivilege`, dan `SeTakeOwnershipPrivilege`.
+`LookupPrivilegeValueW` memakai system `None`; signed/unsigned LUID wajib exact,
+duplicate mapping ditolak, dan hasil immutable mengikat name/LUID/present/enabled.
+Enabled hanya berasal dari `Attributes & 0x2`; absent/disabled/enabled dibedakan.
+Profile sebelum/sesudah wajib stabil dengan cleanup exact. Bukti root accepted:
+**43/43 unittest**, `py_compile`, diff-check, dan adversarial review **PASS**
+tanpa P1/P2.
+
+Ini pure fake current-process observation, bukan rejection policy atau ordinary
+evidence. Second-token provenance, LocalSystem, token type/restriction/
+impersonation, effective `AccessCheck`, source-tree/cache/composition/attestor,
+native Windows/runtime tetap terbuka. P15/P16/P17c/P18 terbuka; tidak ada
+aktivasi/deploy dan seluruh gate/payment default OFF.

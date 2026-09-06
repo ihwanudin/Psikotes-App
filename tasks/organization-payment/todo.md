@@ -1067,3 +1067,21 @@ tidak ada runtime/deploy/aktivasi dan seluruh gate/payment default OFF.
 
 Tidak ada status/checklist yang diubah. P15/P16/P17c/P18 tetap terbuka;
 tidak ada aktivasi/deploy dan seluruh gate/payment default OFF.
+
+### Bukti sensitive-privilege observation accepted — runtime tetap terbuka
+
+- `4f015f3` mengobservasi urutan fixed `SeBackupPrivilege`,
+  `SeRestorePrivilege`, dan `SeTakeOwnershipPrivilege` pada current process.
+- `LookupPrivilegeValueW` memakai system `None`; signed/unsigned LUID wajib exact
+  dan duplicate mapping ditolak.
+- Hasil immutable mengikat name/LUID/present/enabled; enabled hanya
+  `Attributes & 0x2`, dengan kasus absent/disabled/enabled terpisah. Profile
+  sebelum/sesudah wajib stabil dan cleanup tetap exact.
+- Bukti root accepted **43/43 unittest**, `py_compile`, diff-check, dan final
+  adversarial review **PASS** tanpa P1/P2; seluruh tes masih pure fake.
+- Ini bukan rejection policy atau ordinary evidence. Second-token provenance,
+  LocalSystem, token type/restriction/impersonation, effective `AccessCheck`,
+  source-tree/cache/composition/attestor, serta native Windows/runtime terbuka.
+
+Tidak ada status/checklist yang diubah. P15/P16/P17c/P18 tetap terbuka;
+tidak ada aktivasi/deploy dan seluruh gate/payment default OFF.

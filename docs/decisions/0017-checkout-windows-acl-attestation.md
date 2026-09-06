@@ -287,3 +287,22 @@ token type/restriction/impersonation, effective `AccessCheck`, source-tree,
 cache/composition/usable attestor, dan native Windows/runtime belum dibuktikan.
 P15/P16/P17c/P18 tetap terbuka; tidak ada aktivasi/deploy dan seluruh
 gate/payment tetap default OFF.
+
+## Implementation Checkpoint — `4f015f3`
+
+Current-process profile kini mengobservasi tiga privilege sensitif dalam urutan
+fixed: `SeBackupPrivilege`, `SeRestorePrivilege`, dan
+`SeTakeOwnershipPrivilege`. Resolusi memakai `LookupPrivilegeValueW` lokal dengan
+system name `None`; LUID signed/unsigned dinormalisasi exact dan duplicate
+mapping ditolak. Hasil immutable mengikat name, LUID, `present`, serta `enabled`;
+enabled hanya berarti `Attributes & 0x2`. Kasus absent, present-disabled, dan
+present-enabled dibedakan, lalu profile sebelum/sesudah wajib stabil dengan
+cleanup token handle tetap exact.
+
+Bukti root accepted: **43/43 unittest**, `py_compile`, diff-check, dan final
+adversarial review **PASS** tanpa P1/P2. Ini hanya observasi current process,
+bukan rejection policy atau bukti ordinary principal. Provenance second ordinary
+token, LocalSystem exclusion, token type/restriction/impersonation, effective
+`AccessCheck`, source-tree, cache, composition/usable attestor, serta native
+Windows/runtime tetap terbuka. P15/P16/P17c/P18 tidak berubah; tidak ada
+aktivasi/deploy dan seluruh gate/payment tetap default OFF.
