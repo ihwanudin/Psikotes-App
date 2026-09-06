@@ -580,3 +580,16 @@ diff-check lulus. Ini preparation statis/pure saja. Recursive ACL descendant
 source tree, effective access, crash/cross-process, reparse/rename dan durability
 Windows, browser P17c, serta operasi P18 masih harus dibuktikan. Tidak ada
 aktivasi atau runtime; P17c/P18 tetap terbuka dan seluruh gate/payment default OFF.
+
+### Checkpoint admission anchor-only attestation ACL
+
+Commit `20cf713` menambah jalur evidence attestation ACL anchor-only pada
+supervisor. Codec, lease, dan attestor dipin exact; konsumsi one-shot memakai
+sentinel `None`, sedangkan discard dan `BaseException` tetap fail-closed dengan
+cleanup dipertahankan. Bukti root: supervisor aman **116/116**, `py_compile`,
+diff-check, dan cross-review **PASS**; real-listener tidak dijalankan.
+
+Publisher, execution/enforcement attestor, coordinator wiring, descendant
+source-tree ACL, serta bukti Windows runtime/crash/reparse/rename belum tersedia.
+Browser P17c dan operasi P18 tetap terbuka, tanpa aktivasi; seluruh gate/payment
+tetap default OFF.

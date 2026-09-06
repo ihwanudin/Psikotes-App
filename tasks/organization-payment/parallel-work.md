@@ -2488,3 +2488,16 @@ descendant source, effective access, cross-process/crash, reparse/rename,
 durability, browser P17c, dan operasi P18 tetap residual. Tidak ada runtime,
 deploy, atau aktivasi; acceptance P17c/P18 tetap terbuka dan semua gate/payment
 default OFF.
+
+### Checkpoint ACL anchor admission — accepted `20cf713`
+
+Supervisor kini memiliki jalur admission attestation ACL anchor-only, dengan
+codec/lease/attestor dipin exact. Load one-shot memakai sentinel `None`; replay,
+discard, dan seluruh `BaseException` gagal tertutup sambil mempertahankan cleanup.
+Root lulus supervisor aman **116/116**, `py_compile`, dan diff-check; cross-review
+**PASS**, tanpa real-listener.
+
+Publisher, execution/enforcement attestor, wiring coordinator, descendant
+source-tree ACL, dan bukti Windows runtime/crash/reparse/rename masih terbuka.
+Browser P17c/P18 belum diterima; tidak ada runtime atau aktivasi dan semua
+gate/payment tetap default OFF.

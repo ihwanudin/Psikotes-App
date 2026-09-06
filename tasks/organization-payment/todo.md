@@ -852,6 +852,20 @@ checkbox P17c/P18 tetap terbuka dan seluruh gate/payment tetap default OFF.
 Tidak ada checkbox acceptance yang diubah. Tidak ada runtime/browser/service/DB/
 network/deploy/aktivasi; P17c/P18 tetap terbuka dan gate/payment default OFF.
 
+### Bukti ACL anchor admission accepted — runtime gate tetap terbuka
+
+- `20cf713` menambah jalur admission supervisor untuk evidence anchor-only dan
+  mem-pin codec, lease, serta attestor secara exact.
+- Konsumsi one-shot memakai sentinel `None`; discard dan seluruh `BaseException`
+  gagal tertutup dengan cleanup tetap dijalankan.
+- Root lulus supervisor aman **116/116**, `py_compile`, dan diff-check;
+  cross-review **PASS** dan real-listener tidak dijalankan.
+- Publisher, execution/enforcement attestor, wiring coordinator, descendant
+  source-tree ACL, serta Windows runtime/crash/reparse/rename masih terbuka.
+
+Tidak ada checkbox acceptance yang diubah. Browser P17c dan operasi P18 tetap
+terbuka; tidak ada runtime atau aktivasi dan seluruh gate/payment default OFF.
+
 ### Bukti source identity/façade accepted — checklist tetap terbuka
 
 - [x] `30c78ee` mem-pin source root/ancestor selama inventory, open/hash/copy,

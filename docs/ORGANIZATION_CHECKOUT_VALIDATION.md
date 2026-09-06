@@ -835,3 +835,17 @@ cross-process/crash, reparse/rename, durability Windows, candidate/browser P17c,
 serta operasi P18 tetap terbuka. Tidak ada candidate, browser, service, database,
 network, provider, deploy, atau aktivasi; seluruh gate dan payment tetap default
 OFF dan tidak ada acceptance P17c/P18 yang ditutup.
+
+## Checkpoint admission attestation ACL anchor-only — 2026-09-06
+
+Commit `20cf713` menambah jalur admission anchor-only pada supervisor untuk
+evidence ACL. Codec, lease, dan attestor dipin exact; load memakai sentinel
+`None` satu kali sehingga evidence tidak dapat dipakai ulang. Jalur discard dan
+seluruh `BaseException` tetap gagal tertutup serta mempertahankan cleanup.
+
+Bukti root lulus supervisor aman **116/116 tes**, `py_compile`, dan diff-check;
+cross-review menyatakan **PASS**. Real-listener tidak dijalankan. Checkpoint ini
+belum menyediakan publisher, execution/enforcement attestor, atau wiring
+coordinator, dan belum membuktikan descendant source-tree ACL maupun perilaku
+Windows nyata saat runtime, crash, reparse, atau rename. Browser P17c dan operasi
+P18 tetap terbuka; tidak ada aktivasi dan seluruh gate/payment tetap default OFF.
