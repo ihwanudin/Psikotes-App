@@ -926,3 +926,21 @@ capture/double stability, `policySatisfied`/evidence, source-tree completeness,
 usable attestor, native/runtime implementation, atau provider. Plan/checklist/
 progress, P15/P16/P17c/P18, active gates, dan payment tidak berubah serta tetap
 terbuka/default OFF tanpa config/env/deploy/activation.
+
+### Checkpoint candidate manifest closure ACL
+
+Commit `3460588` menjadikan enam path berikut exact required sekaligus allowed
+dalam candidate manifest closure:
+
+- `tools/testing/tests/Browser/checkout-acl-source-tree.py`
+- `tools/testing/tests/Browser/test_checkout_acl_source_tree.py`
+- `tools/testing/tests/Browser/checkout-windows-acl-attestor.py`
+- `tools/testing/tests/Browser/test_checkout_windows_acl_attestor.py`
+- `tools/testing/tests/Browser/checkout-ordinary-access-request.py`
+- `tools/testing/tests/Browser/test_checkout_ordinary_access_request.py`
+
+Bukti root: focused **1/1 test**, `py_compile`, dan independent review **PASS**
+tanpa P1/P2. Bukti ini terbatas pada packaging integrity; tidak ada candidate
+build, klaim full builder suite, ataupun bukti runtime/provider/native Windows.
+Plan/checklist/progress, P15/P16/P17c/P18, active gates, payment,
+config/env/deploy, dan activation tidak berubah serta tetap terbuka/default OFF.

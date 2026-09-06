@@ -1266,3 +1266,22 @@ gates, dan payment tetap terbuka/default OFF.
 
 Tidak ada status/checklist/progress/gate yang berubah. P15/P16/P17c/P18, active
 gates, dan payment tetap terbuka/default OFF tanpa config/env/deploy/activation.
+
+### Bukti candidate manifest closure ACL accepted — runtime tetap terbuka
+
+- Commit `3460588` menetapkan enam path berikut sebagai exact required
+  sekaligus allowed:
+  - `tools/testing/tests/Browser/checkout-acl-source-tree.py`
+  - `tools/testing/tests/Browser/test_checkout_acl_source_tree.py`
+  - `tools/testing/tests/Browser/checkout-windows-acl-attestor.py`
+  - `tools/testing/tests/Browser/test_checkout_windows_acl_attestor.py`
+  - `tools/testing/tests/Browser/checkout-ordinary-access-request.py`
+  - `tools/testing/tests/Browser/test_checkout_ordinary_access_request.py`
+- Evidence root: focused **1/1 test**, `py_compile`, dan independent review
+  **PASS** tanpa P1/P2.
+- Bukti hanya packaging integrity; tidak ada candidate build, klaim full builder
+  suite, maupun bukti runtime/provider/native Windows.
+
+Tidak ada status/checklist/progress/gate yang berubah. P15/P16/P17c/P18,
+active gates, dan payment tetap terbuka/default OFF tanpa perubahan
+config/env/deploy/activation.

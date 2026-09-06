@@ -465,3 +465,21 @@ mengikat path/filesystem identity, capture/double stability,
 attestor, native/runtime implementation, maupun provider. P15/P16/P17c/P18,
 checklist/progress, active gates, dan payment tetap terbuka/default OFF; tidak
 ada config/env/deploy/activation.
+
+## Implementation Checkpoint — `3460588`
+
+Candidate manifest closure sekarang mewajibkan sekaligus mengizinkan exact
+enam path berikut:
+
+- `tools/testing/tests/Browser/checkout-acl-source-tree.py`
+- `tools/testing/tests/Browser/test_checkout_acl_source_tree.py`
+- `tools/testing/tests/Browser/checkout-windows-acl-attestor.py`
+- `tools/testing/tests/Browser/test_checkout_windows_acl_attestor.py`
+- `tools/testing/tests/Browser/checkout-ordinary-access-request.py`
+- `tools/testing/tests/Browser/test_checkout_ordinary_access_request.py`
+
+Bukti root accepted: focused **1/1 test**, `py_compile`, dan independent review
+**PASS** tanpa P1/P2. Ini hanya bukti packaging integrity: tidak ada candidate
+build dan tidak ada klaim full builder suite, runtime, provider, ataupun native
+Windows. P15/P16/P17c/P18, checklist/progress, active gates, dan payment tetap
+terbuka/default OFF; tidak ada perubahan config/env/deploy/activation.

@@ -1219,3 +1219,22 @@ path/filesystem identity binding, capture/double stability,
 native/runtime implementation, atau provider. Tidak ada perubahan
 P15/P16/P17c/P18, checklist/progress, active gates, maupun payment; semuanya
 tetap terbuka/default OFF tanpa config/env/deploy/activation.
+
+## Checkpoint candidate manifest closure ACL — 2026-09-06
+
+Commit `3460588` menjadikan enam path berikut exact required sekaligus allowed
+dalam candidate manifest closure:
+
+- `tools/testing/tests/Browser/checkout-acl-source-tree.py`
+- `tools/testing/tests/Browser/test_checkout_acl_source_tree.py`
+- `tools/testing/tests/Browser/checkout-windows-acl-attestor.py`
+- `tools/testing/tests/Browser/test_checkout_windows_acl_attestor.py`
+- `tools/testing/tests/Browser/checkout-ordinary-access-request.py`
+- `tools/testing/tests/Browser/test_checkout_ordinary_access_request.py`
+
+Bukti root: focused **1/1 test**, `py_compile`, dan independent review **PASS**
+tanpa P1/P2. Bukti hanya mencakup packaging integrity; candidate tidak dibangun
+dan full builder suite tidak diklaim. Ini bukan bukti runtime, provider, atau
+native Windows. Tidak ada perubahan P15/P16/P17c/P18, checklist/progress,
+active gates, payment, config/env/deploy, maupun activation; semuanya tetap
+terbuka/default OFF.
