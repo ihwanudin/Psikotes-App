@@ -182,7 +182,7 @@ class NativeDirectoryHarness:
         self.token_group_count_override = None
         self.token_group_pointer_overrides = {}
         self.token_privileges = [
-            (0xFFFFFFFF, -0x80000000, 0xFFFFFFFF),
+            (0xFFFFFFFF, -0x80000000, 0xFFFFFFFD),
             (2, 0x7FFFFFFF, 0x2),
         ]
         self.token_privilege_sets = None
@@ -193,6 +193,14 @@ class NativeDirectoryHarness:
         self.token_privilege_required_override = None
         self.token_privilege_returned_override = None
         self.token_privilege_count_override = None
+        self.sensitive_luids = {
+            "SeBackupPrivilege": (0xFFFFFFFF, -0x80000000),
+            "SeRestorePrivilege": (2, 0x7FFFFFFF),
+            "SeTakeOwnershipPrivilege": (3, 0),
+        }
+        self.sensitive_luid_sets = None
+        self.lookup_privilege_result = 1
+        self.lookup_privilege_call_count = 0
         self.token_sid_addresses = {}
         self.calls = []
         self.close_result = 1
@@ -409,6 +417,20 @@ class NativeDirectoryHarness:
         )
         self.token_privilege_fill_count += 1
         return self.token_privilege_fill_result
+
+    def call_LookupPrivilegeValueW(self, system, name, output):
+        if system is not None or name not in self.sensitive_luids:
+            raise AssertionError("wrong local privilege lookup")
+        mappings = self.sensitive_luid_sets or [
+            self.sensitive_luids, self.sensitive_luids,
+        ]
+        mapping = mappings[min(self.lookup_privilege_call_count // 3,
+                               len(mappings) - 1)]
+        low, high = mapping[name]
+        output._obj.LowPart = low
+        output._obj.HighPart = high
+        self.lookup_privilege_call_count += 1
+        return self.lookup_privilege_result
 
     def call_GetFileInformationByHandleEx(self, _handle, info_class, output,
                                           output_size):
@@ -826,6 +848,11 @@ class CheckoutWindowsAclAttestorAbiTests(unittest.TestCase):
         self.assertEqual(module.MAX_TOKEN_GROUP_COUNT, 4096)
         self.assertEqual(module.MAX_TOKEN_PRIVILEGES_BYTES, 262144)
         self.assertEqual(module.MAX_TOKEN_PRIVILEGE_COUNT, 4096)
+        self.assertEqual(module.SENSITIVE_PRIVILEGE_NAMES, (
+            "SeBackupPrivilege",
+            "SeRestorePrivilege",
+            "SeTakeOwnershipPrivilege",
+        ))
 
 
 class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
@@ -953,8 +980,14 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
                     (harness.token_groups[1][0], "S-1-5-19", 0x10),
                 ),
                 "processTokenPrivileges": (
-                    (0xFFFFFFFF, -0x80000000, 0xFFFFFFFF),
+                    (0xFFFFFFFF, -0x80000000, 0xFFFFFFFD),
                     (2, 0x7FFFFFFF, 0x2),
+                ),
+                "processTokenSensitivePrivileges": (
+                    ("SeBackupPrivilege", 0xFFFFFFFF, -0x80000000,
+                     True, False),
+                    ("SeRestorePrivilege", 2, 0x7FFFFFFF, True, True),
+                    ("SeTakeOwnershipPrivilege", 3, 0, False, False),
                 ),
             })
             with self.assertRaises(TypeError):
@@ -1009,7 +1042,7 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
         }
         self.assertFalse(interiors.intersection(freed))
         forbidden = {"DuplicateTokenEx", "AccessCheck",
-                     "ConvertSidToStringSidW", "LookupPrivilegeValueW",
+                     "ConvertSidToStringSidW", "LookupPrivilegeNameW",
                      "IsTokenRestricted"}
         self.assertFalse(forbidden.intersection(self.call_names(harness)))
 
@@ -1032,6 +1065,15 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
             [(1, True, 0), (1, False, required),
              (2, True, 0), (2, False, group_required),
              (3, True, 0), (3, False, privilege_required)] * 2,
+        )
+        lookup_calls = [args for name, args in harness.calls
+                        if name == "LookupPrivilegeValueW"]
+        self.assertEqual(
+            [(args[0], args[1]) for args in lookup_calls],
+            [(None, name) for name in (
+                "SeBackupPrivilege", "SeRestorePrivilege",
+                "SeTakeOwnershipPrivilege",
+            )] * 2,
         )
         names = self.call_names(harness)
         token_positions = [index for index, name in enumerate(names)
@@ -1237,7 +1279,7 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
         with module._open_current_process_token(harness.bundle()) as token:
             snapshot = token._privileges_snapshot()
             self.assertEqual(snapshot.values(), (
-                (0xFFFFFFFF, -0x80000000, 0xFFFFFFFF),
+                (0xFFFFFFFF, -0x80000000, 0xFFFFFFFD),
                 (2, 0x7FFFFFFF, 0x2),
             ))
             with self.assertRaisesRegex(module.WindowsAclRefused,
@@ -1338,6 +1380,95 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
             harness.dlls["advapi32.dll"].functions[
                 "GetTokenInformation"
             ].implementation = interrupt_privileges
+            harness.close_error = RuntimeError("PRIVATE CLOSE DETAIL")
+            opened = self.opened(module, harness)
+            with self.subTest(error=type(primary).__name__):
+                if isinstance(primary, Exception):
+                    with self.assertRaisesRegex(
+                            module.WindowsAclRefused,
+                            "^acl_attestation$") as raised:
+                        with opened:
+                            opened._security_snapshot()
+                    self.assertNotIn("PRIVATE", str(raised.exception))
+                else:
+                    with self.assertRaises(type(primary)) as raised:
+                        with opened:
+                            opened._security_snapshot()
+                    self.assertIs(raised.exception, primary)
+            self.assertEqual([args[0] for call, args in harness.calls
+                              if call == "CloseHandle"],
+                             [harness.token_handle, harness.handle])
+
+    def test_sensitive_privilege_observations_are_exact_ordered_and_immutable(self):
+        module = load_module()
+        harness = NativeDirectoryHarness(module)
+        with module._open_current_process_token(harness.bundle()) as token:
+            raw = token._privileges_snapshot()
+            snapshot = token._sensitive_privileges_snapshot(raw)
+            self.assertEqual(snapshot.values(), (
+                ("SeBackupPrivilege", 0xFFFFFFFF, -0x80000000, True, False),
+                ("SeRestorePrivilege", 2, 0x7FFFFFFF, True, True),
+                ("SeTakeOwnershipPrivilege", 3, 0, False, False),
+            ))
+            with self.assertRaisesRegex(module.WindowsAclRefused,
+                                        "^acl_attestation$"):
+                snapshot.extra = object()
+        lookup_calls = [args for name, args in harness.calls
+                        if name == "LookupPrivilegeValueW"]
+        self.assertEqual(
+            [(args[0], args[1]) for args in lookup_calls],
+            [(None, "SeBackupPrivilege"),
+             (None, "SeRestorePrivilege"),
+             (None, "SeTakeOwnershipPrivilege")],
+        )
+        self.assertFalse({"LookupPrivilegeNameW", "AccessCheck",
+                          "DuplicateTokenEx"}.intersection(
+                              self.call_names(harness)))
+
+    def test_sensitive_privilege_lookup_failures_and_duplicates_fail_closed(self):
+        module = load_module()
+        cases = (
+            ("false", lambda h: setattr(h, "lookup_privilege_result", 0)),
+            ("bool", lambda h: setattr(h, "lookup_privilege_result", True)),
+            ("duplicate", lambda h: setattr(h, "sensitive_luids", {
+                "SeBackupPrivilege": (1, -1),
+                "SeRestorePrivilege": (1, -1),
+                "SeTakeOwnershipPrivilege": (3, 0),
+            })),
+        )
+        for name, mutate in cases:
+            harness = NativeDirectoryHarness(module)
+            mutate(harness)
+            with self.subTest(case=name), \
+                    module._open_current_process_token(harness.bundle()) as token:
+                raw = token._privileges_snapshot()
+                self.assert_refused(
+                    module,
+                    lambda: token._sensitive_privileges_snapshot(raw),
+                )
+
+    def test_sensitive_privilege_mapping_drift_is_bound_to_process_profile(self):
+        module = load_module()
+        harness = NativeDirectoryHarness(module)
+        changed = dict(harness.sensitive_luids)
+        changed["SeTakeOwnershipPrivilege"] = (4, 0)
+        harness.sensitive_luid_sets = [harness.sensitive_luids, changed]
+        opened = self.opened(module, harness)
+        with opened:
+            self.assert_refused(module, opened._security_snapshot)
+        self.assertEqual(self.call_names(harness).count("GetSecurityInfo"), 2)
+        self.assertEqual(self.call_names(harness).count("CloseHandle"), 2)
+
+    def test_sensitive_privilege_errors_preserve_cleanup_and_redaction(self):
+        module = load_module()
+        for primary in (RuntimeError("PRIVATE LOOKUP DETAIL"),
+                        KeyboardInterrupt(), SystemExit(41)):
+            harness = NativeDirectoryHarness(module)
+            harness.dlls["advapi32.dll"].functions[
+                "LookupPrivilegeValueW"
+            ].implementation = lambda *_args, primary=primary: (
+                _ for _ in ()
+            ).throw(primary)
             harness.close_error = RuntimeError("PRIVATE CLOSE DETAIL")
             opened = self.opened(module, harness)
             with self.subTest(error=type(primary).__name__):
