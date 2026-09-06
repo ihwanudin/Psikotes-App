@@ -2889,3 +2889,15 @@ sepenuhnya dipulihkan selama callback masih trusted/residual. Scope hanya
 integrity hardening, bukan functional/native/provider/runtime authority.
 P15/P16/P17c/P18, checklist/progress, gates/payment, config/env/deploy, dan
 activation tetap tidak berubah/default OFF.
+
+### Checkpoint design provisioning ordinary Windows principal — accepted `16c320f`
+
+ADR-019 memilih administrator/SCM sebagai provisioning authority untuk
+dedicated non-admin local Windows user pada own-process broker service; broker
+menjadi provider ADR-018. Token/credentials tidak diekspor, dengan strict local
+IPC dan mutual SID/token plus SCM/process identity authentication.
+
+Independent review **PASS** tanpa P1/P2 dan referensi hanya sumber resmi
+Microsoft. Scope design-only; install/provider/native runtime tetap dilarang.
+Tidak ada account/service/config/env/deploy/activation. P15/P16/P17c/P18,
+checklist/progress, gates, dan payment tetap unchanged/default OFF.

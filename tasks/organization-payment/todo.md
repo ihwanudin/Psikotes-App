@@ -1330,3 +1330,19 @@ active gates, payment, config/env/deploy, dan activation tetap default OFF.
 
 Tidak ada status/checklist/progress/gate yang berubah. P15/P16/P17c/P18,
 active gates, payment, config/env/deploy, dan activation tetap default OFF.
+
+### Design provisioning ordinary Windows principal accepted — runtime tetap terbuka
+
+- Commit `16c320f` menerima ADR-019: administrator/SCM menjadi provisioning
+  authority bagi dedicated non-admin local Windows user dalam own-process broker
+  service yang menjadi provider ADR-018.
+- Token/credentials tidak diekspor; strict local IPC dan mutual SID/token plus
+  SCM/process identity authentication wajib berlaku.
+- Independent review **PASS** tanpa P1/P2; sumber ADR berasal dari dokumentasi
+  resmi Microsoft.
+- Acceptance hanya design/provisioning authority. Install/provider/native
+  runtime tetap dilarang dan belum dibuktikan.
+
+Tidak ada status/checklist/progress/gate yang berubah dan tidak ada account/
+service/config/env/deploy/activation. P15/P16/P17c/P18, active gates, dan
+payment tetap terbuka/default OFF.

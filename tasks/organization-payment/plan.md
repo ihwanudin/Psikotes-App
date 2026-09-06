@@ -983,3 +983,16 @@ dependency mutation yang dipulihkan sepenuhnya di dalam callback. Increment ini
 hanya integrity hardening, bukan functional/native/provider/runtime authority.
 Plan/checklist/progress, P15/P16/P17c/P18, gates/payment, config/env/deploy, dan
 activation tidak berubah/default OFF.
+
+### Checkpoint design provisioning ordinary Windows principal
+
+Commit `16c320f` menerima ADR-019: administrator/SCM menjadi provisioning
+authority untuk dedicated non-admin local Windows user dalam own-process broker
+service yang bertindak sebagai provider ADR-018. Tidak ada token/credentials
+export; strict local IPC dan mutual SID/token plus SCM/process identity
+authentication diwajibkan.
+
+Independent review **PASS** tanpa P1/P2 dengan sumber resmi Microsoft. Ini hanya
+keputusan desain; install/provider/native/runtime tetap dilarang dan belum
+diterima. Plan/checklist/progress, P15/P16/P17c/P18, gates, dan payment tidak
+berubah/default OFF; tidak ada account/service/config/env/deploy/activation.

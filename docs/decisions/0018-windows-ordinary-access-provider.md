@@ -2,8 +2,9 @@
 
 ## Status
 
-Accepted untuk kontrak internal dan pengujian pure-fake saja. Native provider,
-provisioning principal, integrasi attestor, efektivitas Windows, candidate,
+Accepted untuk kontrak internal dan pengujian pure-fake saja. Authority desain
+provisioning principal diputuskan oleh ADR-019, tetapi native provider,
+provisioning/install nyata, integrasi attestor, efektivitas Windows, candidate,
 browser, service, payment, dan deployment belum diterima atau diaktifkan.
 
 ## Date
@@ -246,24 +247,19 @@ berbeda. Fungsi itu hanya boleh dipakai provider untuk mengubah independent
 primary token yang telah diprovisikan menjadi derived impersonation token dengan
 security context yang sama.
 
-### Provisioning belum dipilih
+### Provisioning diputuskan oleh ADR-019
 
-ADR ini tidak memilih cara acquisition atau provisioning independent ordinary
-principal. Tidak ada provider konkret/usable atau composition sampai keputusan
-authority provisioning terpisah diterima. Tanpa authority tersebut, provider
-dan seluruh lifecycle yang bergantung padanya wajib fail closed sebelum native
-token acquisition atau target access. Selector `DISTINCT_NON_PRIVILEGED_TEST_TOKEN`
-pada policy hanya membatasi hasil yang wajib dibuktikan dan bukan mekanisme
-acquisition.
+[ADR-019](0019-windows-ordinary-principal-provisioning.md) memilih administrator/
+SCM sebagai provisioning authority untuk dedicated non-admin local Windows user
+yang berjalan sebagai own-process broker service. Broker menjadi provider ini;
+token dan credentials tetap tidak boleh diekspor, dan strict local IPC/mutual
+authentication wajib berlaku.
 
-Sebelum ADR provisioning diterima, hanya pure request-codec preparation yang
-boleh dimulai. Codec tersebut wajib menerima exact canonical outer ADR-017
-request/evidence bytes, memvalidasinya, dan menurunkan lifecycle bindings,
-targets, `aclRequestDigest`, `aclEvidenceDigest`, serta
-`aclDescriptorEvidenceDigest` sendiri; tidak boleh menerima nilai derivasi itu
-sebagai input bebas. Satu-satunya input tambahan adalah immutable private
-current-token identity dari attestor yang sama, yang juga tidak tersedia bagi
-caller.
+Keputusan tersebut hanya menutup pilihan desain. Belum ada provider concrete/
+usable, account/service, composition, install, atau runtime. Seluruh lifecycle
+tetap fail closed sebelum native token acquisition atau target access. Selector
+`DISTINCT_NON_PRIVILEGED_TEST_TOKEN` pada policy tetap hanya membatasi hasil
+yang wajib dibuktikan, bukan input atau mekanisme acquisition caller.
 
 ## Alternatives Considered
 
@@ -284,11 +280,12 @@ diputuskan melalui ADR terpisah dan bukan bagian dari attestation ini.
 
 ## Consequences
 
-- Sebelum ADR provisioning, pure-fake implementation hanya boleh mencakup codec
-  yang menurunkan request dari exact outer bytes. One-shot provider, pinning,
-  cleanup, dan native behavior tetap sekadar contract.
-- Native provider, provisioning authority, serta integration belum ada dan tetap
-  menjadi gate wajib; tidak ada credentials atau principal nyata di repository.
+- ADR-019 memilih provisioning authority pada tingkat desain. Pure-fake
+  implementation tetap terbatas pada contract/codec; one-shot provider,
+  pinning, cleanup, dan native behavior belum diterima.
+- Native provider, provisioning/install nyata, serta integration belum ada dan
+  tetap menjadi gate wajib; tidak ada credentials atau principal nyata di
+  repository.
 - Runtime Windows masih harus membuktikan independent provenance, native token
   derivation, handle lifetime, descriptor binding, `AccessCheck`, race/crash,
   dan effective denial untuk semua target.
@@ -337,3 +334,16 @@ Checkpoint ini tidak menambahkan provider, native/runtime implementation,
 config/env, deploy, atau activation. Provisioning authority, P15/P16/P17c/P18,
 seluruh checklist/progress, active gates, dan payment tetap terbuka/tidak
 berubah serta default OFF.
+
+## Implementation Checkpoint — `16c320f`
+
+ADR-019 menerima design provisioning authority berupa dedicated non-admin local
+Windows user dalam SCM own-process broker service yang menjadi provider
+ADR-018. Token/credentials tidak diekspor; strict local IPC dan mutual
+SID/token plus SCM/process identity authentication diwajibkan.
+
+Commit `16c320f` mendapat independent review **PASS** tanpa P1/P2 dan memakai
+sumber resmi Microsoft. Provider/native runtime dan install tetap terbuka serta
+dilarang pada checkpoint ini. Tidak ada account/service/config/env/deploy/
+activation; P15/P16/P17c/P18, checklist/progress, gates, dan payment tetap
+terbuka/default OFF.

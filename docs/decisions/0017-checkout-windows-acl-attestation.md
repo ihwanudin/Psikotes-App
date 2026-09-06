@@ -527,3 +527,17 @@ dalam callback. Ini hanya integrity hardening, bukan functional, native,
 provider, runtime, atau authority evidence. P15/P16/P17c/P18,
 checklist/progress, gates/payment, config/env/deploy, dan activation tidak
 berubah/default OFF.
+
+## Implementation Checkpoint — `16c320f`
+
+[ADR-019](0019-windows-ordinary-principal-provisioning.md) menerima design
+authority provisioning: dedicated non-admin local Windows user dijalankan oleh
+SCM sebagai own-process broker service dan broker menjadi provider ADR-018.
+Token/credentials tidak diekspor; local IPC memakai strict DACL dan mutual
+SID/token plus SCM/process identity authentication.
+
+Commit `16c320f` telah mendapat independent review **PASS** tanpa P1/P2 dan
+berlandaskan sumber resmi Microsoft. Ini keputusan desain saja: install/runtime
+tetap dilarang dan tidak ada account/service/config/env/deploy/activation.
+P15/P16/P17c/P18, checklist/progress, gates, dan payment tetap terbuka/default
+OFF.

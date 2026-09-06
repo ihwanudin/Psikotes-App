@@ -1278,3 +1278,16 @@ yang dipulihkan sepenuhnya di dalam callback masih menjadi trusted/residual
 boundary. Ini hanya integrity hardening, bukan bukti functional, native,
 provider, runtime, atau authority. P15/P16/P17c/P18, checklist/progress,
 gates/payment, config/env/deploy, dan activation tidak berubah/default OFF.
+
+## Checkpoint design provisioning ordinary Windows principal — 2026-09-06
+
+Commit `16c320f` menerima ADR-019: administrator/SCM menjadi provisioning
+authority bagi dedicated non-admin local Windows user dalam own-process broker
+service, dan broker menjadi provider ADR-018. Token/credentials tidak diekspor;
+strict local IPC dan mutual SID/token plus SCM/process identity authentication
+wajib berlaku.
+
+Independent review **PASS** tanpa P1/P2; ADR memakai sumber resmi Microsoft.
+Ini design-only, bukan bukti install, provider, native Windows, atau runtime.
+Tidak ada account/service/config/env/deploy/activation. P15/P16/P17c/P18,
+checklist/progress, gates, dan payment tidak berubah serta tetap default OFF.
