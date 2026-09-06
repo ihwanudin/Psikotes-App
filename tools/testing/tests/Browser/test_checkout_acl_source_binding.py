@@ -275,41 +275,167 @@ class CheckoutAclSourceBindingTests(unittest.TestCase):
         finally:
             module._ACL_CODEC._TARGET_ROLES = original_roles
 
-        original_dumps = module._ACL_CODEC.json.dumps
-        calls_during_role_drift = 0
+        original_required = module._required_siblings
+        role_checks = 0
 
-        def mutate_roles_after_callback(*args, **kwargs):
-            nonlocal calls_during_role_drift
-            calls_during_role_drift += 1
-            result = original_dumps(*args, **kwargs)
-            module._ACL_CODEC._TARGET_ROLES = tuple(list(original_roles))
+        def mutate_roles_after_precheck():
+            nonlocal role_checks
+            result = original_required()
+            role_checks += 1
+            if role_checks == 1:
+                module._ACL_CODEC._TARGET_ROLES = tuple(list(original_roles))
             return result
 
-        module._ACL_CODEC.json.dumps = mutate_roles_after_callback
         try:
-            self.refused(module, lambda: self.bind(fixture))
+            with patch.object(
+                    module, "_required_siblings",
+                    side_effect=mutate_roles_after_precheck):
+                self.refused(
+                    module,
+                    lambda: module._sibling_call(
+                        "acl", "sha256_bytes", b"source-binding",
+                    ),
+                )
         finally:
-            module._ACL_CODEC.json.dumps = original_dumps
             module._ACL_CODEC._TARGET_ROLES = original_roles
-        self.assertGreaterEqual(calls_during_role_drift, 1)
+        self.assertEqual(role_checks, 1)
 
-        original_sha256 = module._SOURCE_TREE.hashlib.sha256
-        calls = 0
+        helper_checks = 0
 
-        def mutate_after_callback(*args, **kwargs):
-            nonlocal calls
-            calls += 1
-            result = original_sha256(*args, **kwargs)
-            helper.__code__ = helper.__code__.replace()
+        def mutate_helper_after_precheck():
+            nonlocal helper_checks
+            result = original_required()
+            helper_checks += 1
+            if helper_checks == 1:
+                helper.__code__ = helper.__code__.replace()
             return result
 
-        module._SOURCE_TREE.hashlib.sha256 = mutate_after_callback
+        try:
+            with patch.object(
+                    module, "_required_siblings",
+                    side_effect=mutate_helper_after_precheck):
+                self.refused(
+                    module,
+                    lambda: module._sibling_call(
+                        "source", "validate_summary", {
+                            "algorithm": "sha256-canonical-json-v2",
+                            "descendantCount": 1,
+                            "digest": "a" * 64,
+                        },
+                    ),
+                )
+        finally:
+            helper.__code__ = original_code
+        self.assertEqual(helper_checks, 1)
+
+    def test_sibling_dependency_callables_are_exact_and_checked_around_calls(self):
+        shared = self.fixture()
+        self.assertIs(shared["module"]._ACL_CODEC.json,
+                      shared["module"]._SOURCE_TREE.json)
+
+        dependency_cases = (
+            ("acl_json_dumps", "_ACL_CODEC", "json", "dumps"),
+            ("acl_json_loads", "_ACL_CODEC", "json", "loads"),
+            ("acl_hash", "_ACL_CODEC", "hashlib", "sha256"),
+            ("acl_match", "_ACL_CODEC", "re", "match"),
+            ("source_json_dumps", "_SOURCE_TREE", "json", "dumps"),
+            ("source_hash", "_SOURCE_TREE", "hashlib", "sha256"),
+            ("source_copy", "_SOURCE_TREE", "copy", "deepcopy"),
+        )
+        for name, sibling_name, module_name, attribute_name in dependency_cases:
+            with self.subTest(name=name):
+                fixture = self.fixture()
+                module = fixture["module"]
+                dependency = getattr(getattr(module, sibling_name), module_name)
+                original = getattr(dependency, attribute_name)
+
+                def equal_behavior(*args, __original=original, **kwargs):
+                    return __original(*args, **kwargs)
+
+                setattr(dependency, attribute_name, equal_behavior)
+                try:
+                    self.refused(module, lambda: self.bind(fixture))
+                finally:
+                    setattr(dependency, attribute_name, original)
+
+        fixture = self.fixture()
+        module = fixture["module"]
+        original_json_module = module._ACL_CODEC.json
+        module._ACL_CODEC.json = module._SOURCE_TREE.copy
         try:
             self.refused(module, lambda: self.bind(fixture))
         finally:
-            module._SOURCE_TREE.hashlib.sha256 = original_sha256
-            helper.__code__ = original_code
-        self.assertGreaterEqual(calls, 1)
+            module._ACL_CODEC.json = original_json_module
+
+        fixture = self.fixture()
+        module = fixture["module"]
+        original_code = module._ACL_CODEC.json.dumps.__code__
+        replacement_code = original_code.replace()
+        self.assertIsNot(replacement_code, original_code)
+        module._ACL_CODEC.json.dumps.__code__ = replacement_code
+        try:
+            self.refused(module, lambda: self.bind(fixture))
+        finally:
+            module._ACL_CODEC.json.dumps.__code__ = original_code
+
+        during_cases = (
+            ("acl", "sha256_bytes", (b"source-binding",),
+             "_ACL_CODEC", "hashlib", "sha256"),
+            ("source", "validate_summary", ({
+                "algorithm": "sha256-canonical-json-v2",
+                "descendantCount": 1,
+                "digest": "a" * 64,
+            },), "_SOURCE_TREE", "copy", "deepcopy"),
+        )
+        for (which, call_name, args, sibling_name, dependency_name,
+             attribute_name) in during_cases:
+            with self.subTest(during=which):
+                fixture = self.fixture()
+                module = fixture["module"]
+                dependency = getattr(
+                    getattr(module, sibling_name), dependency_name,
+                )
+                original_attribute = getattr(dependency, attribute_name)
+                original_required = module._required_siblings
+                checks = 0
+                dependency_calls = 0
+
+                def replacement(*values, __original=original_attribute,
+                                **keywords):
+                    nonlocal dependency_calls
+                    dependency_calls += 1
+                    return __original(*values, **keywords)
+
+                def mutate_after_precheck():
+                    nonlocal checks
+                    result = original_required()
+                    checks += 1
+                    if checks == 1:
+                        setattr(dependency, attribute_name, replacement)
+                    return result
+
+                try:
+                    with patch.object(
+                            module, "_required_siblings",
+                            side_effect=mutate_after_precheck):
+                        self.refused(
+                            module,
+                            lambda: module._sibling_call(
+                                which, call_name, *args,
+                            ),
+                        )
+                finally:
+                    setattr(dependency, attribute_name, original_attribute)
+                self.assertEqual(checks, 1)
+                self.assertEqual(dependency_calls, 1)
+
+        fixture = self.fixture()
+        module = fixture["module"]
+        module._ACL_CODEC.json.source_binding_unrelated = object()
+        try:
+            self.bind(fixture)
+        finally:
+            del module._ACL_CODEC.json.source_binding_unrelated
 
     def test_ordinary_errors_are_redacted_and_baseexceptions_preserved(self):
         fixture = self.fixture()

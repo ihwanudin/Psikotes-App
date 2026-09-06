@@ -2,6 +2,8 @@
 
 This validates supplied canonical data only. It does not attest a filesystem,
 ACL policy efficacy, source completeness, or runtime provenance.
+Selected sibling dependency callables are pinned; CPython builtins and other
+stdlib internals remain trusted, as does mutation fully restored within a call.
 """
 
 from __future__ import annotations
@@ -14,6 +16,48 @@ import types
 
 class SourceBindingRefused(Exception):
     """Fixed refusal without path, identity, manifest, or sibling details."""
+
+
+_ACL_DEPENDENCIES = (
+    ("json", ("dumps", "loads")),
+    ("hashlib", ("sha256",)),
+    ("re", ("match",)),
+)
+_SOURCE_DEPENDENCIES = (
+    ("json", ("dumps",)),
+    ("hashlib", ("sha256",)),
+    ("copy", ("deepcopy",)),
+)
+
+
+def _callable_authority(value):
+    if not callable(value):
+        raise ValueError("dependency")
+    if type(value) is types.FunctionType:
+        return (
+            value, type(value), value.__code__, value.__defaults__,
+            value.__kwdefaults__,
+            None if value.__kwdefaults__ is None
+            else tuple(sorted(value.__kwdefaults__.items())),
+            value.__closure__, value.__globals__,
+        )
+    return (value, type(value), None, None, None, None, None, None)
+
+
+def _valid_callable(value, expected):
+    if value is not expected[0] or type(value) is not expected[1] \
+            or not callable(value):
+        return False
+    if type(value) is not types.FunctionType:
+        return True
+    return value.__code__ is expected[2] \
+        and value.__defaults__ is expected[3] \
+        and value.__kwdefaults__ is expected[4] \
+        and (None if value.__kwdefaults__ is None else tuple(sorted(
+            value.__kwdefaults__.items()
+        ))) == expected[5] \
+        and value.__closure__ is expected[6] \
+        and value.__globals__ is expected[7]
 
 
 def _fingerprint(value):
@@ -40,7 +84,7 @@ def _fingerprint(value):
     return ("identity", value)
 
 
-def _load_sibling(filename, module_name):
+def _load_sibling(filename, module_name, dependency_spec):
     try:
         path = Path(__file__).resolve().with_name(filename)
         spec = importlib.util.spec_from_file_location(module_name, path)
@@ -66,9 +110,21 @@ def _load_sibling(filename, module_name):
             for name, value in module.__dict__.items()
             if not name.startswith("__") and name not in functions
         })
+        dependency_authority = tuple(
+            (
+                dependency_name, dependency_module, type(dependency_module),
+                MappingProxyType({
+                    attribute: _callable_authority(
+                        getattr(dependency_module, attribute),
+                    ) for attribute in attributes
+                }),
+            )
+            for dependency_name, attributes in dependency_spec
+            for dependency_module in (module.__dict__[dependency_name],)
+        )
         return (
             path, module, type(module), functions,
-            function_authority, global_authority,
+            function_authority, global_authority, dependency_authority,
         )
     except Exception:
         raise SourceBindingRefused("acl_source_binding") from None
@@ -76,9 +132,11 @@ def _load_sibling(filename, module_name):
 
 _ACL_AUTHORITY = _load_sibling(
     "checkout-acl-attestation.py", "checkout_acl_attestation_source_binding",
+    _ACL_DEPENDENCIES,
 )
 _SOURCE_AUTHORITY = _load_sibling(
     "checkout-acl-source-tree.py", "checkout_acl_source_tree_source_binding",
+    _SOURCE_DEPENDENCIES,
 )
 _ACL_CODEC = _ACL_AUTHORITY[1]
 _SOURCE_TREE = _SOURCE_AUTHORITY[1]
@@ -108,7 +166,8 @@ def _validate_fingerprint(value, expected):
 
 
 def _require_sibling(authority):
-    path, module, module_type, functions, function_authority, globals_authority = authority
+    (path, module, module_type, functions, function_authority,
+     globals_authority, dependency_authority) = authority
     if type(module) is not module_type \
             or Path(getattr(module, "__file__", "")).resolve() != path:
         raise SourceBindingRefused("acl_source_binding")
@@ -136,6 +195,15 @@ def _require_sibling(authority):
         if name not in module.__dict__ \
                 or not _validate_fingerprint(module.__dict__[name], expected):
             raise SourceBindingRefused("acl_source_binding")
+    for dependency_name, dependency_module, dependency_type, attributes \
+            in dependency_authority:
+        if module.__dict__.get(dependency_name) is not dependency_module \
+                or type(dependency_module) is not dependency_type:
+            raise SourceBindingRefused("acl_source_binding")
+        for attribute, expected in attributes.items():
+            if not _valid_callable(
+                    getattr(dependency_module, attribute, None), expected):
+                raise SourceBindingRefused("acl_source_binding")
     return functions
 
 
