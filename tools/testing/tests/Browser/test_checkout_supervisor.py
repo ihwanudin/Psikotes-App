@@ -24,6 +24,8 @@ class Fake:
         self.duration = duration
         self.claimed = False
         self.launched = []
+        self.admission_calls = []
+        self.admission_token = object()
 
     def clock(self):
         return self.time
@@ -54,6 +56,13 @@ class Fake:
         self.call("cleanup")
         return self.clean
     def invalidate(self): self.call("invalid")
+    def begin_acl_execution(self, phase, *binding):
+        self.admission_calls.append(("begin", phase, *binding))
+        return self.admission_token
+    def finish_acl_execution(self, token):
+        self.admission_calls.append(("finish", token))
+        if token is not self.admission_token:
+            raise RuntimeError("token")
 
 
 class AnchorStore:
@@ -180,7 +189,22 @@ class SupervisorTests(unittest.TestCase):
         run.bind_lifecycle_lease(lease)
         return run, lease
 
-    def journal_run(self, directory, *, admitted=True, publisher=True):
+    def activate(self, run, publisher, *, phase="fresh"):
+        run.session = "checkout-" + "c" * 32
+        if run.lifecycle_lease is None:
+            self.admit(run)
+        run.bind_acl_attestor(StrictAclAttestor())
+        run.prepare_acl_admission("anchor", phase)
+        run.bind_anchor_publisher(publisher)
+        recovery_anchor = run.load_recovery_anchor() if phase == "recovery" else None
+        run.prepare_acl_admission("execution", phase)
+        if phase == "recovery":
+            run.begin_acl_execution(phase, run.session, recovery_anchor)
+        else:
+            run.begin_acl_execution(phase)
+        return run
+
+    def journal_run(self, directory, *, admitted=True, publisher=True, phase="fresh"):
         filenames = {
             "php": "php", "python": "python", "node": "node", "powershell": "powershell",
             "cli": "cli", "browser": "browser", "ini": "runtime.ini",
@@ -201,9 +225,12 @@ class SupervisorTests(unittest.TestCase):
                             for name, path in paths.items()},
             "asset_delivery_review": {name: "b" * 64 for name in m.ASSET_REVIEW_FILES},
         }
-        run = m.WindowsRun(config, anchor_publisher=store if publisher else None)
+        run = m.WindowsRun(config, anchor_publisher=store if publisher and not admitted else None)
+        run.session = "checkout-" + "c" * 32
         if admitted:
             self.admit(run)
+            if publisher:
+                self.activate(run, store, phase=phase)
         return run
 
     def acl_run(self, directory, attestor=None):
@@ -367,7 +394,7 @@ class SupervisorTests(unittest.TestCase):
                         patch.object(Path, "read_bytes", side_effect=AssertionError("read")), \
                         patch.object(m.subprocess, "Popen", side_effect=AssertionError("spawn")):
                     with self.assertRaisesRegex(m.Refused, "^candidate_config$"):
-                        candidate_run.preflight(1)
+                        candidate_run._validate_candidate_config()
 
         directory_path = valid["directory"]
         directory_parent = str(Path(directory_path).parent)
@@ -385,7 +412,7 @@ class SupervisorTests(unittest.TestCase):
                     patch.object(Path, "read_bytes", side_effect=AssertionError("read")), \
                     patch.object(m.subprocess, "Popen", side_effect=AssertionError("spawn")):
                 with self.assertRaisesRegex(m.Refused, "^candidate_config$"):
-                    candidate_run.preflight(1)
+                    candidate_run._validate_candidate_config()
 
     def test_candidate_config_shape_guards_binding_and_recovery_before_anchor_load(self):
         valid = self.candidate_config()
@@ -409,7 +436,7 @@ class SupervisorTests(unittest.TestCase):
                 patch.object(run, "_snapshot", side_effect=AssertionError("snapshot")), \
                 patch.object(m.subprocess, "Popen", side_effect=AssertionError("spawn")):
             with self.assertRaisesRegex(m.Refused, "^recovery_config$"):
-                run.recover_ownership(
+                run._recover_ownership(
                     session,
                     {"generation": 1, "digest": "d" * 64},
                 )
@@ -545,7 +572,6 @@ class SupervisorTests(unittest.TestCase):
             }
             raw = json.dumps(config).encode("utf-8")
             Path(run.c["browser_config"]).write_bytes(raw)
-            run.c["tool_hashes"]["browser_config"] = hashlib.sha256(raw).hexdigest()
             run._cli = lambda args, remaining: self.fail("must not invoke CLI")
             with patch.object(m.subprocess, "Popen", side_effect=AssertionError("must not spawn")):
                 with self.assertRaisesRegex(m.Refused, "^browser_config$"):
@@ -605,7 +631,7 @@ class SupervisorTests(unittest.TestCase):
                 },
                 "asset_delivery_review": review,
             }
-            run = m.WindowsRun(config)
+            run = self.activate(m.WindowsRun(config), self.publisher(run_path))
             with patch.object(m.tempfile, "gettempdir", return_value=str(root)), \
                     patch.object(run, "_identity", side_effect=AssertionError("identity")), \
                     patch.object(m.subprocess, "Popen", side_effect=AssertionError("spawn")):
@@ -616,6 +642,7 @@ class SupervisorTests(unittest.TestCase):
             self.assertEqual(run.launch_intents, [])
 
             def assert_policy_preflight_refused(candidate, *extra_patches):
+                self.activate(candidate, self.publisher(run_path))
                 with ExitStack() as stack:
                     stack.enter_context(patch.object(
                         m.tempfile, "gettempdir", return_value=str(root)
@@ -761,11 +788,10 @@ class SupervisorTests(unittest.TestCase):
         with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
             baseline = self.journal_run(directory)
             run = m.WindowsRun(baseline.c)
-            self.admit(run)
             run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
             run.session = "checkout-" + "c" * 32
             with patch.object(m.subprocess, "Popen") as popen:
-                with self.assertRaisesRegex(m.Refused, "^anchor_publisher$"):
+                with self.assertRaisesRegex(m.Refused, "^acl_admission$"):
                     run.claim(1)
                 popen.assert_not_called()
             self.assertFalse((Path(directory) / "supervisor.json").exists())
@@ -775,13 +801,15 @@ class SupervisorTests(unittest.TestCase):
     def test_anchor_publisher_bind_is_attach_once_and_normal_path_claims(self):
         with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
             baseline = self.journal_run(directory)
-            run = m.WindowsRun(baseline.c)
-            self.admit(run)
+            run, _attestor = self.acl_run(directory)
             publisher = self.publisher(directory)
+            run.prepare_acl_admission("anchor", "fresh")
             self.assertIsNone(run.bind_anchor_publisher(publisher))
             self.assertIs(run.anchor_publisher, publisher)
             with self.assertRaisesRegex(m.Refused, "^anchor_publisher_bind$"):
                 run.bind_anchor_publisher(publisher)
+            run.prepare_acl_admission("execution", "fresh")
+            run.begin_acl_execution("fresh")
             run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
             run.session = "checkout-" + "c" * 32
             run.claim(1)
@@ -797,28 +825,27 @@ class SupervisorTests(unittest.TestCase):
         with TemporaryDirectory(prefix="oncam-supervisor-test-") as directory:
             run = self.journal_run(directory, admitted=False)
             publisher = run.anchor_publisher
-            with self.assertRaisesRegex(m.Refused, "^lifecycle_lease$"):
+            with self.assertRaisesRegex(m.Refused, "^acl_admission$"):
                 run.claim(1)
             self.assertFalse((run.run / "supervisor.json").exists())
             self.assertEqual(publisher.calls if hasattr(publisher, "calls") else [], [])
 
-            with self.assertRaisesRegex(m.Refused, "^lifecycle_lease$"):
+            with self.assertRaisesRegex(m.Refused, "^acl_admission$"):
                 run.recover_ownership(run.session, {"generation": 1, "digest": "a" * 64})
             self.assertFalse(run.recovery_hydrated)
 
     def test_pinned_lifecycle_lease_is_required_before_claim_and_each_recovery(self):
         with TemporaryDirectory(prefix="oncam-supervisor-test-") as directory:
-            run = self.journal_run(directory, admitted=False)
-            run, lease = self.admit(run)
+            run = self.journal_run(directory)
+            lease = run.lifecycle_lease
             run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
             run.session = "checkout-" + "c" * 32
             run.claim(1)
             self.assertGreaterEqual(lease.calls, 2)
             anchor = run.journal_anchor()
 
-            recovered = self.journal_run(directory, admitted=False)
-            recovered.anchor_publisher.latest = dict(anchor)
-            recovered, recovery_lease = self.admit(recovered)
+            recovered = self.journal_run(directory, phase="recovery")
+            recovery_lease = recovered.lifecycle_lease
             with patch.object(recovered, "_read_claim", side_effect=m.Refused("stop_after_admission")), \
                     self.assertRaisesRegex(m.Refused, "^stop_after_admission$"):
                 recovered.recover_ownership(run.session, anchor)
@@ -834,8 +861,8 @@ class SupervisorTests(unittest.TestCase):
         for mutate in mutations:
             with self.subTest(mutation=mutate), \
                     TemporaryDirectory(prefix="oncam-supervisor-test-") as directory:
-                run = self.journal_run(directory, admitted=False)
-                run, lease = self.admit(run)
+                run = self.journal_run(directory)
+                lease = run.lifecycle_lease
                 mutate(run, lease)
                 with self.assertRaisesRegex(m.Refused, "^lifecycle_lease_identity$"):
                     run.claim(1)
@@ -856,8 +883,7 @@ class SupervisorTests(unittest.TestCase):
         for replacement in (None, StaticPublisher()):
             with self.subTest(replacement=replacement), TemporaryDirectory(prefix="oncam-journal-test-") as directory:
                 baseline = self.journal_run(directory)
-                run = m.WindowsRun(baseline.c, anchor_publisher=self.publisher(directory))
-                self.admit(run)
+                run = self.activate(m.WindowsRun(baseline.c), self.publisher(directory))
                 run.anchor_publisher = replacement
                 run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
                 run.session = "checkout-" + "c" * 32
@@ -876,8 +902,7 @@ class SupervisorTests(unittest.TestCase):
                     pass
 
                 publisher = Publisher()
-                run = m.WindowsRun(baseline.c, anchor_publisher=publisher)
-                self.admit(run)
+                run = self.activate(m.WindowsRun(baseline.c), publisher)
                 if drift == "instance_load":
                     publisher.load = lambda: None
                 else:
@@ -917,8 +942,7 @@ class SupervisorTests(unittest.TestCase):
                         return anchor
 
                 publisher = Publisher()
-                run = m.WindowsRun(baseline.c, anchor_publisher=publisher)
-                self.admit(run)
+                run = self.activate(m.WindowsRun(baseline.c), publisher)
                 run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
                 run.session = "checkout-" + "c" * 32
                 run.claim(1)
@@ -942,8 +966,7 @@ class SupervisorTests(unittest.TestCase):
             with self.subTest(value=publisher.value, error=publisher.error), \
                     TemporaryDirectory(prefix="oncam-journal-test-") as directory:
                 baseline = self.journal_run(directory)
-                run = m.WindowsRun(baseline.c, anchor_publisher=publisher)
-                self.admit(run)
+                run = self.activate(m.WindowsRun(baseline.c), publisher)
                 run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
                 run.session = "checkout-" + "c" * 32
                 with patch.object(m.subprocess, "Popen") as popen:
@@ -974,7 +997,7 @@ class SupervisorTests(unittest.TestCase):
                         "role": "command" if operation == "command" else "php",
                         "executable": run.c["php"],
                     }
-                    self.assertEqual(run.launch_intents, [expected_intent])
+                    self.assertEqual(run.launch_intents, [])
                     self.assertEqual(run._read_journal()["launchIntents"], [])
 
     def test_publisher_alias_drift_during_publish_or_reload_blocks_before_popen(self):
@@ -998,8 +1021,7 @@ class SupervisorTests(unittest.TestCase):
                         return anchor
 
                 publisher = DriftingPublisher()
-                run = m.WindowsRun(baseline.c, anchor_publisher=publisher)
-                self.admit(run)
+                run = self.activate(m.WindowsRun(baseline.c), publisher)
                 publisher.run = run
                 run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
                 run.session = "checkout-" + "c" * 32
@@ -1131,12 +1153,12 @@ class SupervisorTests(unittest.TestCase):
             ]
             anchor = run.journal_anchor()
 
-            recovered = self.journal_run(directory)
+            recovered = self.journal_run(directory, phase="recovery")
             recovered._snapshot = lambda: rows
             recovered.recover_ownership(run.session, anchor)
             self.assertEqual(recovered.owned, {10: "110", 11: "120"})
 
-            missing_parent = self.journal_run(directory)
+            missing_parent = self.journal_run(directory, phase="recovery")
             missing_parent._snapshot = lambda: rows[1:]
             with self.assertRaisesRegex(m.Refused, "^recovery_parent$"):
                 missing_parent.recover_ownership(run.session, anchor)
@@ -1150,12 +1172,12 @@ class SupervisorTests(unittest.TestCase):
             }
             for reason, (session, snapshot, drift) in cases.items():
                 with self.subTest(reason=reason):
-                    candidate = self.journal_run(directory)
+                    candidate = self.journal_run(directory, phase="recovery")
                     if drift:
                         candidate.c[drift] = "f" * 64
                     candidate._snapshot = lambda snapshot=snapshot: snapshot
                     with self.assertRaisesRegex(m.Refused, f"^{reason}$"):
-                        candidate.recover_ownership(session, anchor)
+                        candidate._recover_ownership(session, anchor)
 
     def test_recovery_refuses_active_owner_and_takes_its_own_snapshot(self):
         with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
@@ -1165,7 +1187,7 @@ class SupervisorTests(unittest.TestCase):
             run.claim(1)
             run._register_owned({"pid": 10, "started": "110"}, "php", run.owner, run.c["php"])
 
-            candidate = self.journal_run(directory)
+            candidate = self.journal_run(directory, phase="recovery")
             snapshots = [[
                 {"pid": 7, "parent": 1, "started": "100", "executable": str(Path(directory) / "owner.exe")},
                 {"pid": 10, "parent": 7, "started": "110", "executable": run.c["php"]},
@@ -1183,7 +1205,7 @@ class SupervisorTests(unittest.TestCase):
             run.claim(1)
             run._push_launch_intent("php", run.c["php"])
 
-            candidate = self.journal_run(directory)
+            candidate = self.journal_run(directory, phase="recovery")
             candidate._snapshot = lambda: []
             with self.assertRaisesRegex(m.Refused, "^recovery_incomplete$"):
                 candidate.recover_ownership(run.session, run.journal_anchor())
@@ -1195,9 +1217,8 @@ class SupervisorTests(unittest.TestCase):
             run.session = "checkout-" + "c" * 32
             run.claim(1)
             candidate = m.WindowsRun(run.c)
-            self.admit(candidate)
             with patch.object(m.subprocess, "Popen") as popen:
-                with self.assertRaisesRegex(m.Refused, "^anchor_publisher$"):
+                with self.assertRaisesRegex(m.Refused, "^acl_admission$"):
                     candidate.recover_ownership(run.session, run.journal_anchor())
                 popen.assert_not_called()
             self.assertFalse(candidate.claimed)
@@ -1210,8 +1231,8 @@ class SupervisorTests(unittest.TestCase):
                 run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
                 run.session = "checkout-" + "c" * 32
                 run.claim(1)
-                candidate = m.WindowsRun(run.c, anchor_publisher=run.anchor_publisher)
-                self.admit(candidate)
+                candidate = self.activate(m.WindowsRun(run.c), run.anchor_publisher,
+                                          phase="recovery")
                 candidate.anchor_publisher = replacement
                 candidate._snapshot = lambda: self.fail("snapshot must not run")
                 with patch.object(m.subprocess, "Popen") as popen:
@@ -1226,8 +1247,8 @@ class SupervisorTests(unittest.TestCase):
             run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
             run.session = "checkout-" + "c" * 32
             run.claim(1)
-            candidate = m.WindowsRun(run.c, anchor_publisher=run.anchor_publisher)
-            self.admit(candidate)
+            candidate = self.activate(m.WindowsRun(run.c), run.anchor_publisher,
+                                      phase="recovery")
             candidate.anchor_publisher.load = lambda: run.journal_anchor()
             candidate._snapshot = lambda: self.fail("snapshot must not run")
             with patch.object(m.subprocess, "Popen") as popen:
@@ -1248,8 +1269,8 @@ class SupervisorTests(unittest.TestCase):
                 reader = self.journal_run(directory)
                 observed.append(reader._read_journal(anchor)["launchIntents"])
 
-            candidate = m.WindowsRun(run.c, anchor_publisher=self.publisher(directory, publish))
-            self.admit(candidate)
+            candidate = self.activate(m.WindowsRun(run.c), self.publisher(directory, publish),
+                                      phase="recovery")
 
             class Process:
                 pid = 10
@@ -1262,7 +1283,7 @@ class SupervisorTests(unittest.TestCase):
                 return Process()
 
             with patch.object(m.subprocess, "Popen", side_effect=popen):
-                candidate.recover_ownership(run.session, run.journal_anchor())
+                candidate._recover_ownership(run.session, run.journal_anchor())
             self.assertTrue(candidate.recovery_hydrated)
             self.assertTrue(candidate.recovery_validated)
             self.assertEqual(observed[-2:], [
@@ -1278,10 +1299,7 @@ class SupervisorTests(unittest.TestCase):
             run.claim(1)
             published = []
             store = self.publisher(directory, lambda anchor: published.append(dict(anchor)))
-            candidate = m.WindowsRun(
-                run.c, anchor_publisher=store
-            )
-            self.admit(candidate)
+            candidate = self.activate(m.WindowsRun(run.c), store, phase="recovery")
 
             class Process:
                 pid = 10
@@ -1300,7 +1318,7 @@ class SupervisorTests(unittest.TestCase):
                 {"role": "helper", "executable": run.c["powershell"]},
             ])
             self.assertTrue((Path(directory) / "integrity-invalid").is_file())
-            retry = self.journal_run(directory)
+            retry = self.journal_run(directory, phase="recovery")
             with patch.object(m.subprocess, "Popen") as popen:
                 with self.assertRaisesRegex(m.Refused, "^recovery_incomplete$"):
                     retry.recover_ownership(run.session, store.load())
@@ -1315,10 +1333,7 @@ class SupervisorTests(unittest.TestCase):
             original_anchor = run.journal_anchor()
             published = []
             store = self.publisher(directory, lambda anchor: published.append(dict(anchor)))
-            candidate = m.WindowsRun(
-                run.c, anchor_publisher=store
-            )
-            self.admit(candidate)
+            candidate = self.activate(m.WindowsRun(run.c), store, phase="recovery")
 
             class Process:
                 pid = 10
@@ -1337,14 +1352,13 @@ class SupervisorTests(unittest.TestCase):
                 with self.assertRaisesRegex(m.Refused, "^recovery_owner_active$"):
                     candidate.recover_ownership(run.session, original_anchor)
             latest_anchor = store.load()
-            stale = self.journal_run(directory)
+            stale = self.journal_run(directory, phase="recovery")
             with patch.object(m.subprocess, "Popen") as popen:
-                with self.assertRaisesRegex(m.Refused, "^journal_anchor$"):
+                with self.assertRaisesRegex(m.Refused, "^acl_attestation$"):
                     stale.recover_ownership(run.session, original_anchor)
                 popen.assert_not_called()
 
-            retry = m.WindowsRun(run.c, anchor_publisher=store)
-            self.admit(retry)
+            retry = self.activate(m.WindowsRun(run.c), store, phase="recovery")
             def clean(*args, **kwargs):
                 kwargs["stdout"].write(b"[]")
                 return Process()
@@ -1373,7 +1387,7 @@ class SupervisorTests(unittest.TestCase):
                 {"role": "command", "executable": run.c["php"]},
             ])
 
-            candidate = self.journal_run(directory)
+            candidate = self.journal_run(directory, phase="recovery")
             candidate._snapshot = lambda: []
             with self.assertRaisesRegex(m.Refused, "^recovery_incomplete$"):
                 candidate.recover_ownership(run.session, run.journal_anchor())
@@ -1409,8 +1423,9 @@ class SupervisorTests(unittest.TestCase):
             (True, None, "helper"),
         )
         for claimed, policy, role in invalid:
-            with self.subTest(claimed=claimed, policy=policy, role=role):
-                run = m.WindowsRun({"directory": "synthetic-unused"})
+            with self.subTest(claimed=claimed, policy=policy, role=role), \
+                    TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+                run = self.journal_run(directory)
                 run.claimed = claimed
                 with patch.object(m.subprocess, "Popen") as popen:
                     with self.assertRaisesRegex(m.Refused, "^tracking_policy$"):
@@ -1422,12 +1437,12 @@ class SupervisorTests(unittest.TestCase):
         with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
             preclaim = self.journal_run(directory)
             operations = (
-                lambda run: run.launch("php", 1),
-                lambda run: run.harness("integrity-pre", 1),
-                lambda run: run.assert_owned(1),
-                lambda run: run._run_code("async()=>({})", 1),
+                (lambda run: run.launch("php", 1), "acl_admission"),
+                (lambda run: run.harness("integrity-pre", 1), "lifecycle_phase"),
+                (lambda run: run.assert_owned(1), "lifecycle_phase"),
+                (lambda run: run._run_code("async()=>({})", 1), "lifecycle_phase"),
             )
-            for operation in operations:
+            for operation, _recovery_reason in operations:
                 with self.subTest(phase="preclaim", operation=operation):
                     with patch.object(m.subprocess, "Popen") as popen:
                         with self.assertRaisesRegex(m.Refused, "^lifecycle_phase$"):
@@ -1437,13 +1452,13 @@ class SupervisorTests(unittest.TestCase):
             preclaim.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
             preclaim.session = "checkout-" + "c" * 32
             preclaim.claim(1)
-            recovered = self.journal_run(directory)
+            recovered = self.journal_run(directory, phase="recovery")
             recovered._snapshot = lambda: []
             recovered.recover_ownership(preclaim.session, preclaim.journal_anchor())
-            for operation in operations:
+            for operation, recovery_reason in operations:
                 with self.subTest(phase="recovery", operation=operation):
                     with patch.object(m.subprocess, "Popen") as popen:
-                        with self.assertRaisesRegex(m.Refused, "^lifecycle_phase$"):
+                        with self.assertRaisesRegex(m.Refused, f"^{recovery_reason}$"):
                             operation(recovered)
                         popen.assert_not_called()
 
@@ -1457,8 +1472,7 @@ class SupervisorTests(unittest.TestCase):
                 observed.append(candidate._read_journal()["launchIntents"])
 
             baseline = self.journal_run(directory)
-            run = m.WindowsRun(baseline.c, anchor_publisher=self.publisher(directory, publish))
-            self.admit(run)
+            run = self.activate(m.WindowsRun(baseline.c), self.publisher(directory, publish))
             run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
             run.session = "checkout-" + "c" * 32
             run.claim(1)
@@ -1479,12 +1493,11 @@ class SupervisorTests(unittest.TestCase):
     def test_postclaim_ps_publisher_failure_prevents_helper_popen(self):
         with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
             baseline = self.journal_run(directory)
-            run = m.WindowsRun(baseline.c, anchor_publisher=self.publisher(
+            run = self.activate(m.WindowsRun(baseline.c), self.publisher(
                 directory,
                 lambda anchor: (_ for _ in ()).throw(RuntimeError("offline"))
                 if anchor["generation"] == 2 else None,
             ))
-            self.admit(run)
             run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
             run.session = "checkout-" + "c" * 32
             run.claim(1)
@@ -1502,11 +1515,7 @@ class SupervisorTests(unittest.TestCase):
                 published = []
                 baseline = self.journal_run(directory)
                 store = self.publisher(directory, lambda anchor: published.append(dict(anchor)))
-                run = m.WindowsRun(
-                    baseline.c,
-                    anchor_publisher=store,
-                )
-                self.admit(run)
+                run = self.activate(m.WindowsRun(baseline.c), store)
                 run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
                 run.session = "checkout-" + "c" * 32
                 run.claim(1)
@@ -1538,7 +1547,7 @@ class SupervisorTests(unittest.TestCase):
                 self.assertEqual(run._read_journal()["launchIntents"], [
                     {"role": "helper", "executable": run.c["powershell"]},
                 ])
-                candidate = self.journal_run(directory)
+                candidate = self.journal_run(directory, phase="recovery")
                 candidate._snapshot = lambda: []
                 with self.assertRaisesRegex(m.Refused, "^recovery_incomplete$"):
                     candidate.recover_ownership(run.session, store.load())
@@ -1547,8 +1556,7 @@ class SupervisorTests(unittest.TestCase):
         for outcome in ("stderr", "oversized", "malformed_utf8"):
             with self.subTest(outcome=outcome), TemporaryDirectory(prefix="oncam-journal-test-") as directory:
                 baseline = self.journal_run(directory)
-                run = m.WindowsRun(baseline.c, anchor_publisher=self.publisher(directory))
-                self.admit(run)
+                run = self.activate(m.WindowsRun(baseline.c), self.publisher(directory))
                 run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
                 run.session = "checkout-" + "c" * 32
                 run.claim(1)
@@ -1606,7 +1614,7 @@ class SupervisorTests(unittest.TestCase):
             self.assertEqual(run.launch_intents, [intent])
             persist()
             self.assertEqual(run._read_journal(run.journal_anchor())["launchIntents"], [intent])
-            retry = self.journal_run(directory)
+            retry = self.journal_run(directory, phase="recovery")
             with self.assertRaisesRegex(m.Refused, "^recovery_incomplete$"):
                 retry.recover_ownership(run.session, run.journal_anchor())
 
@@ -1635,7 +1643,7 @@ class SupervisorTests(unittest.TestCase):
 
             sorted(run.run.glob(m.JOURNAL_PREFIX + "*.json"))[-1].unlink()
             (run.run / m.JOURNAL).write_text(old_head, encoding="ascii")
-            candidate = self.journal_run(directory)
+            candidate = self.journal_run(directory, phase="recovery")
             candidate._snapshot = lambda: []
             with self.assertRaisesRegex(m.Refused, "^journal_anchor$"):
                 candidate.recover_ownership(run.session, latest_anchor)
@@ -1646,13 +1654,13 @@ class SupervisorTests(unittest.TestCase):
             run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
             run.session = "checkout-" + "c" * 32
             run.claim(1)
-            candidate = self.journal_run(directory)
-            candidate._snapshot = lambda: []
             invalid = [None, {}, {"generation": True, "digest": "a" * 64},
                        {"generation": 1, "digest": "A" * 64},
                        {"generation": 1, "digest": "a" * 64, "extra": False}]
             for anchor in invalid:
-                with self.subTest(anchor=anchor), self.assertRaisesRegex(m.Refused, "^journal_anchor$"):
+                candidate = self.journal_run(directory, phase="recovery")
+                candidate._snapshot = lambda: []
+                with self.subTest(anchor=anchor), self.assertRaisesRegex(m.Refused, "^acl_attestation$"):
                     candidate.recover_ownership(run.session, anchor)
 
     def test_publisher_receives_ordered_durable_anchor_copies(self):
@@ -1670,8 +1678,7 @@ class SupervisorTests(unittest.TestCase):
                 anchor.update(original)
 
             baseline = self.journal_run(directory)
-            run = m.WindowsRun(baseline.c, anchor_publisher=self.publisher(directory, publish))
-            self.admit(run)
+            run = self.activate(m.WindowsRun(baseline.c), self.publisher(directory, publish))
             run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
             run.session = "checkout-" + "c" * 32
             run.claim(1)
@@ -1689,8 +1696,7 @@ class SupervisorTests(unittest.TestCase):
                 delivered.append(dict(anchor))
 
             baseline = self.journal_run(directory)
-            run = m.WindowsRun(baseline.c, anchor_publisher=self.publisher(directory, publish))
-            self.admit(run)
+            run = self.activate(m.WindowsRun(baseline.c), self.publisher(directory, publish))
             run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
             run.session = "checkout-" + "c" * 32
             run.claim(1)
@@ -1708,8 +1714,7 @@ class SupervisorTests(unittest.TestCase):
         with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
             baseline = self.journal_run(directory)
             store = self.publisher(directory)
-            run = m.WindowsRun(baseline.c, anchor_publisher=store)
-            self.admit(run)
+            run = self.activate(m.WindowsRun(baseline.c), store)
             run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
             run.session = "checkout-" + "c" * 32
             run.claim(1)
@@ -1724,10 +1729,11 @@ class SupervisorTests(unittest.TestCase):
                 run._push_launch_intent("helper", run.c["powershell"])
             self.assertEqual(store.load(), run.journal_anchor())
 
-            reopened = self.journal_run(directory)
+            reopened = self.journal_run(directory, phase="recovery")
             with patch.object(m.subprocess, "Popen") as popen:
-                with self.assertRaisesRegex(m.Refused, "^journal_anchor$"):
+                with self.assertRaisesRegex(m.Refused, "^acl_attestation$"):
                     reopened.recover_ownership(run.session, old_anchor)
+                reopened = self.journal_run(directory, phase="recovery")
                 with self.assertRaisesRegex(m.Refused, "^recovery_incomplete$"):
                     reopened.recover_ownership(run.session, store.load())
                 popen.assert_not_called()
@@ -1743,8 +1749,7 @@ class SupervisorTests(unittest.TestCase):
                     delivered.append(dict(anchor))
 
                 baseline = self.journal_run(directory)
-                run = m.WindowsRun(baseline.c, anchor_publisher=self.publisher(directory, publish))
-                self.admit(run)
+                run = self.activate(m.WindowsRun(baseline.c), self.publisher(directory, publish))
                 run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
                 run.session = "checkout-" + "c" * 32
                 run.claim(1)
@@ -1764,7 +1769,7 @@ class SupervisorTests(unittest.TestCase):
                 self.assertIn(process, run.handles)
                 self.assertEqual(run.journal_anchor()["generation"], 3)
                 self.assertEqual(delivered[-1]["generation"], 2)
-                candidate = self.journal_run(directory)
+                candidate = self.journal_run(directory, phase="recovery")
                 candidate._snapshot = lambda: []
                 with self.assertRaisesRegex(m.Refused, "^journal_anchor$"):
                     candidate.recover_ownership(run.session, delivered[-1])
@@ -1793,17 +1798,13 @@ class SupervisorTests(unittest.TestCase):
             published = []
             baseline = self.journal_run(directory)
             store = self.publisher(directory, lambda anchor: published.append(dict(anchor)))
-            run = m.WindowsRun(
-                baseline.c,
-                anchor_publisher=store,
-            )
-            self.admit(run)
+            run = self.activate(m.WindowsRun(baseline.c), store)
             run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
             run.session = "checkout-" + "c" * 32
             run.claim(1)
             run._register_owned({"pid": 10, "started": "110"}, "php", run.owner, run.c["php"])
 
-            candidate = self.journal_run(directory)
+            candidate = self.journal_run(directory, phase="recovery")
             candidate._snapshot = lambda: [
                 {"pid": 10, "parent": 7, "started": "110", "executable": run.c["php"]},
             ]
@@ -1864,7 +1865,7 @@ class SupervisorTests(unittest.TestCase):
                 candidate = self.journal_run(directory)
                 mutate(candidate)
                 with self.assertRaisesRegex(m.Refused, "^recovery_config$"):
-                    candidate.recover_ownership(run.session, run.journal_anchor())
+                    candidate._recover_ownership(run.session, run.journal_anchor())
         with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
             run = self.journal_run(directory)
             run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
@@ -1874,7 +1875,7 @@ class SupervisorTests(unittest.TestCase):
             candidate = self.journal_run(directory)
             candidate.c["tool_hashes"] = dict(run.c["tool_hashes"])
             with self.assertRaisesRegex(m.Refused, "^recovery_config$"):
-                candidate.recover_ownership(run.session, run.journal_anchor())
+                candidate._recover_ownership(run.session, run.journal_anchor())
 
     def test_journal_clears_only_when_final_exact_cleanup_is_allowed(self):
         with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
@@ -1951,7 +1952,11 @@ class SupervisorTests(unittest.TestCase):
 
             def __init__(self):
                 self.calls = []
+                self.token = object()
 
+            def begin_acl_execution(self, phase, *binding):
+                self.calls.append(("begin", phase, *binding)); return self.token
+            def finish_acl_execution(self, token): self.calls.append(("finish", token))
             def clock(self): return 10
             def recover_ownership(self, session, anchor): self.calls.append(("recover", session, anchor))
             def cleanup(self, budget): self.calls.append(("cleanup", budget)); return True
@@ -1961,15 +1966,20 @@ class SupervisorTests(unittest.TestCase):
         anchor = {"generation": 3, "digest": "a" * 64}
         result = m.recover(io, session="checkout-" + "c" * 32, anchor=anchor, budget=12)
         self.assertEqual(result, {"state": "recovered_cleanup", "accepted": False})
-        self.assertEqual(io.calls, [("recover", "checkout-" + "c" * 32, anchor),
-                                    ("cleanup", 12), ("invalidate",)])
+        self.assertEqual(io.calls, [("begin", "recovery", "checkout-" + "c" * 32, anchor),
+                                    ("recover", "checkout-" + "c" * 32, anchor),
+                                    ("cleanup", 12), ("invalidate",),
+                                    ("finish", io.token)])
 
     def test_recover_invalidates_hydrated_failure_without_premature_cleanup(self):
         class Recovery:
             uncertain = False
             recovery_hydrated = False
 
-            def __init__(self): self.calls = []
+            def __init__(self): self.calls = []; self.token = object()
+            def begin_acl_execution(self, phase, *binding):
+                self.calls.append(("begin", phase, *binding)); return self.token
+            def finish_acl_execution(self, token): self.calls.append(("finish", token))
             def clock(self): return 10
             def recover_ownership(self, session, anchor):
                 self.calls.append(("recover", session, anchor))
@@ -1983,9 +1993,64 @@ class SupervisorTests(unittest.TestCase):
         with self.assertRaises(KeyboardInterrupt):
             m.recover(io, session="checkout-" + "c" * 32, anchor=anchor, budget=12)
         self.assertEqual(io.calls, [
+            ("begin", "recovery", "checkout-" + "c" * 32, anchor),
             ("recover", "checkout-" + "c" * 32, anchor),
             ("invalidate",),
+            ("finish", io.token),
         ])
+
+    def test_supervise_admission_wraps_cleanup_and_preserves_primary_baseexception(self):
+        class Ordered(Fake):
+            def begin_acl_execution(self, phase):
+                self.calls.append("acl-begin-" + phase)
+                return self.admission_token
+
+            def finish_acl_execution(self, token):
+                self.calls.append("acl-finish")
+
+        io = Ordered()
+        m.supervise(io)
+        self.assertEqual(io.calls[0], "acl-begin-fresh")
+        self.assertEqual(io.calls[-1], "acl-finish")
+        self.assertLess(io.calls.index("cleanup"), io.calls.index("acl-finish"))
+        self.assertLess(io.calls.index("invalid"), io.calls.index("acl-finish"))
+
+        primary = KeyboardInterrupt()
+        finish_failure = SystemExit(9)
+        io = Ordered()
+        io.preflight = lambda _remaining: (_ for _ in ()).throw(primary)
+        io.finish_acl_execution = lambda _token: (_ for _ in ()).throw(finish_failure)
+        with self.assertRaises(KeyboardInterrupt) as caught:
+            m.supervise(io)
+        self.assertIs(caught.exception, primary)
+
+    def test_supervise_finish_failure_surfaces_and_invalid_args_do_not_begin(self):
+        finish_failure = KeyboardInterrupt()
+        io = Fake()
+        io.finish_acl_execution = lambda _token: (_ for _ in ()).throw(finish_failure)
+        with self.assertRaises(KeyboardInterrupt) as caught:
+            m.supervise(io)
+        self.assertIs(caught.exception, finish_failure)
+
+        for options in ({"mode": "bad"}, {"requests": True}, {"budget": 0}):
+            candidate = Fake()
+            with self.assertRaises(m.Refused):
+                m.supervise(candidate, **options)
+            self.assertEqual(candidate.admission_calls, [])
+
+    def test_recover_invalid_public_input_refuses_before_admission(self):
+        io = Fake()
+        invalid = (
+            ("bad", {"generation": 1, "digest": "a" * 64}, 12),
+            ("checkout-" + "c" * 32, {"generation": True, "digest": "a" * 64}, 12),
+            ("checkout-" + "c" * 32, {"generation": 1, "digest": "A" * 64}, 12),
+            ("checkout-" + "c" * 32, {"generation": 1, "digest": "a" * 64}, 0),
+        )
+        for session, anchor, budget in invalid:
+            with self.subTest(session=session, anchor=anchor, budget=budget), \
+                    self.assertRaises(m.Refused):
+                m.recover(io, session=session, anchor=anchor, budget=budget)
+        self.assertEqual(io.admission_calls, [])
 
     def test_primary_reason_and_cleanup_status_matrix_are_independent(self):
         cases = [
@@ -2372,7 +2437,7 @@ class SupervisorTests(unittest.TestCase):
         run = m.WindowsRun(config)
         with patch.object(Path, "read_bytes", side_effect=AssertionError("must not read")), patch.object(m.subprocess, "Popen", side_effect=AssertionError("must not spawn")):
             with self.assertRaisesRegex(m.Refused, "candidate_config"):
-                run.preflight(1)
+                run._validate_candidate_config()
 
     def test_asset_delivery_review_contract_rejects_old_or_malformed_before_identity(self):
         valid = {name: "a" * 64 for name in m.ASSET_REVIEW_FILES}
@@ -2400,7 +2465,7 @@ class SupervisorTests(unittest.TestCase):
                 with patch.object(run, "_canonical", side_effect=AssertionError("identity")), \
                         patch.object(m.subprocess, "Popen", side_effect=AssertionError("spawn")):
                     with self.assertRaisesRegex(m.Refused, "^candidate_config$"):
-                        run.preflight(1)
+                        run._validate_candidate_config()
 
         manifest = dict(valid)
         manifest[m.ASSET_REVIEW_FILES[0]] = "b" * 64
@@ -2493,11 +2558,14 @@ class SupervisorTests(unittest.TestCase):
         self.assertIn("invalid", f.calls)
 
     def test_deadline_prevents_adapter_spawn(self):
-        run = m.WindowsRun({"directory": "synthetic-unused"})
-        run.io_deadline = 0
-        with patch.object(m.subprocess, "Popen", side_effect=AssertionError("must not spawn")):
-            with self.assertRaisesRegex(m.Refused, "budget"):
-                run._command(["unused"], 1, policy="untracked", role="helper")
+        with TemporaryDirectory(prefix="oncam-journal-test-") as directory:
+            run = self.journal_run(directory)
+            run.claimed = True
+            run.lifecycle_phase = "normal"
+            run.io_deadline = 0
+            with patch.object(m.subprocess, "Popen", side_effect=AssertionError("must not spawn")):
+                with self.assertRaisesRegex(m.Refused, "budget"):
+                    run._command([run.c["php"]], 1, policy="owned", role="command")
 
     def test_smoke_offline_only_released_after_exact_one_request_route(self):
         run = m.WindowsRun({"directory": "synthetic-unused"})
@@ -2694,7 +2762,7 @@ class SupervisorTests(unittest.TestCase):
 
             other = Path(directory) / "other"
             other.mkdir()
-            claimed = self.journal_run(other)
+            claimed = self.journal_run(other, publisher=False)
             claimed.claimed = True
             with self.assertRaisesRegex(m.Refused, "^acl_admission$"):
                 claimed.bind_acl_attestor(StrictAclAttestor())
@@ -2706,12 +2774,12 @@ class SupervisorTests(unittest.TestCase):
 
         with TemporaryDirectory() as directory:
             run, attestor = self.acl_run(directory, StrictAclAttestor(hook=mutate))
-            self.assertIsNone(run.prepare_acl_admission("anchor", "recovery"))
+            self.assertIsNone(run.prepare_acl_admission("anchor", "fresh"))
             self.assertNotEqual(attestor.requests[0]["targets"][2]["path"], "/attacker")
             self.assertNotEqual(attestor.requests[0]["challenge"], "0" * 64)
             run.bind_anchor_publisher(self.publisher(directory))
-            self.assertIsNone(run.prepare_acl_admission("execution", "recovery"))
-            token = run.begin_acl_execution("recovery")
+            self.assertIsNone(run.prepare_acl_admission("execution", "fresh"))
+            token = run.begin_acl_execution("fresh")
             self.assertIsNone(run.finish_acl_execution(token))
 
     def test_acl_bound_path_requires_publisher_between_boundaries(self):
@@ -2811,14 +2879,136 @@ class SupervisorTests(unittest.TestCase):
     def test_acl_execution_rejects_phase_and_source_identity_mismatch(self):
         with TemporaryDirectory() as directory:
             run, attestor = self.acl_run(directory)
-            run.prepare_acl_admission("anchor", "recovery")
+            run.prepare_acl_admission("anchor", "fresh")
             run.bind_anchor_publisher(self.publisher(directory))
             with self.assertRaisesRegex(m.Refused, "^acl_admission$"):
-                run.prepare_acl_admission("execution", "fresh")
+                run.prepare_acl_admission("execution", "recovery")
             attestor.source_identity = ("31", "99")
             with self.assertRaisesRegex(m.Refused, "^acl_attestation$"):
-                run.prepare_acl_admission("execution", "recovery")
+                run.prepare_acl_admission("execution", "fresh")
             self.assertEqual(len(attestor.discards), 1)
+
+    def test_acl_recovery_anchor_load_is_copied_one_shot_and_required(self):
+        anchor = {"generation": 1, "digest": "a" * 64}
+        with TemporaryDirectory() as directory:
+            run, _attestor = self.acl_run(directory)
+            run.prepare_acl_admission("anchor", "recovery")
+            publisher = self.publisher(directory)
+            publisher.latest = dict(anchor)
+            run.bind_anchor_publisher(publisher)
+            loaded = run.load_recovery_anchor()
+            self.assertEqual(loaded, anchor)
+            loaded["generation"] = 99
+            with self.assertRaisesRegex(m.Refused, "^acl_admission$"):
+                run.load_recovery_anchor()
+            self.assertIsNone(run.prepare_acl_admission("execution", "recovery"))
+            token = run.begin_acl_execution("recovery", run.session, anchor)
+            self.assertIsNone(run.finish_acl_execution(token))
+
+        with TemporaryDirectory() as directory:
+            run, _attestor = self.acl_run(directory)
+            run.prepare_acl_admission("anchor", "fresh")
+            run.bind_anchor_publisher(self.publisher(directory))
+            with self.assertRaisesRegex(m.Refused, "^acl_admission$"):
+                run.load_recovery_anchor()
+
+    def test_direct_operational_boundaries_require_current_active_acl_before_io(self):
+        operations = (
+            lambda run: run.preflight(1),
+            lambda run: run.claim(1),
+            lambda run: run.recover_ownership(
+                "checkout-" + "c" * 32,
+                {"generation": 1, "digest": "a" * 64},
+            ),
+            lambda run: run._command([run.c["php"], "synthetic"], 1),
+            lambda run: run.launch("php", 1),
+        )
+        for operation in operations:
+            with self.subTest(operation=operation), TemporaryDirectory() as directory:
+                run = self.journal_run(directory, admitted=False)
+                with patch.object(m.os, "lstat", side_effect=AssertionError("filesystem")), \
+                        patch.object(m.subprocess, "Popen",
+                                     side_effect=AssertionError("process")) as popen, \
+                        self.assertRaisesRegex(m.Refused, "^acl_admission$"):
+                    operation(run)
+                popen.assert_not_called()
+
+    def test_command_and_launch_revalidate_active_acl_immediately_before_popen(self):
+        for operation in ("command", "php", "browser"):
+            with self.subTest(operation=operation), TemporaryDirectory() as directory:
+                run = self.journal_run(directory)
+                run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
+                run.claim(1)
+                calls = []
+
+                def gate(phase):
+                    calls.append(phase)
+                    if len(calls) == 2:
+                        raise m.Refused("acl_admission")
+
+                run._require_acl_active = gate
+                with patch.object(m.subprocess, "Popen") as popen, \
+                        patch.object(run, "_cli", side_effect=AssertionError("cli")) as cli, \
+                        self.assertRaisesRegex(m.Refused, "^acl_admission$"):
+                    if operation == "command":
+                        run._command([run.c["php"], "synthetic"], 1)
+                    else:
+                        run.launch(operation, 1)
+                self.assertEqual(calls, ["fresh", "fresh"])
+                popen.assert_not_called()
+                cli.assert_not_called()
+
+    def test_recovery_wrapper_binds_exact_one_shot_anchor_before_io(self):
+        anchor = {"generation": 1, "digest": "a" * 64}
+        for changed in (
+            {"generation": 2, "digest": "a" * 64},
+            {"generation": 1, "digest": "b" * 64},
+        ):
+            with self.subTest(changed=changed), TemporaryDirectory() as directory:
+                run, _attestor = self.acl_run(directory)
+                run.session = "checkout-" + "c" * 32
+                run.prepare_acl_admission("anchor", "recovery")
+                publisher = self.publisher(directory)
+                publisher.latest = dict(anchor)
+                run.bind_anchor_publisher(publisher)
+                run.load_recovery_anchor()
+                run.prepare_acl_admission("execution", "recovery")
+                with patch.object(run, "recover_ownership",
+                                  side_effect=AssertionError("recovery io")) as recover, \
+                        self.assertRaisesRegex(m.Refused, "^acl_attestation$"):
+                    m.recover(run, session=run.session, anchor=changed, budget=1)
+                recover.assert_not_called()
+        for changed_session, changed_anchor in (
+            ("checkout-" + "f" * 32, anchor),
+            ("checkout-" + "c" * 32, {"generation": 2, "digest": "b" * 64}),
+        ):
+            with self.subTest(session=changed_session, anchor=changed_anchor), \
+                    TemporaryDirectory() as directory:
+                run, _attestor = self.acl_run(directory)
+                run.session = "checkout-" + "c" * 32
+                run.prepare_acl_admission("anchor", "recovery")
+                publisher = self.publisher(directory)
+                publisher.latest = dict(anchor)
+                run.bind_anchor_publisher(publisher)
+                loaded = run.load_recovery_anchor()
+                run.prepare_acl_admission("execution", "recovery")
+                with self.assertRaisesRegex(m.Refused, "^acl_attestation$"):
+                    run.begin_acl_execution("recovery", changed_session, changed_anchor)
+                self.assertEqual(loaded, anchor)
+
+        with TemporaryDirectory() as directory:
+            publisher = self.publisher(directory)
+            publisher.latest = dict(anchor)
+            run = self.activate(self.journal_run(directory, publisher=False),
+                                publisher, phase="recovery")
+            with patch.object(run, "_recover_ownership",
+                              side_effect=AssertionError("recovery io")) as recover, \
+                    self.assertRaisesRegex(m.Refused, "^acl_attestation$"):
+                run.recover_ownership(
+                    run.session,
+                    {"generation": anchor["generation"] + 1, "digest": anchor["digest"]},
+                )
+            recover.assert_not_called()
 
     def test_acl_execution_replayable_load_and_publisher_drift_fail_closed(self):
         class ExecutionReplayAttestor(StrictAclAttestor):

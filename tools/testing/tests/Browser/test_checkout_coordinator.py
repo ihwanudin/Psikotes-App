@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -14,6 +15,55 @@ def load_module(name: str, filename: str):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+class SyntheticAclAttestor:
+    """Pure canonical evidence adapter; it does not claim operating-system ACL proof."""
+
+    def __init__(self, module):
+        self.module = module
+        self.cache = {}
+        self.requests = []
+        self.discards = []
+
+    def attest(self, request):
+        snapshot = json.loads(json.dumps(request))
+        self.requests.append(snapshot)
+        evidence = {
+            "version": 1,
+            "requestDigest": self.module.supervisor_module.acl_attestation_module.request_digest(
+                snapshot
+            ),
+            "policyDigest": self.module.supervisor_module.ACL_POLICY_DIGEST,
+            "leaseDigest": self.module.supervisor_module.acl_attestation_module.lease_digest(
+                snapshot["leaseBinding"], snapshot["leaseIdentity"],
+            ),
+            "targets": [],
+        }
+        for target in snapshot["targets"]:
+            identity = snapshot["leaseIdentity"].get(target["role"], {
+                "volumeSerial": "31", "fileId": "32",
+            })
+            evidence["targets"].append({
+                **target,
+                **identity,
+                "ownerSid": "S-1-5-21-1",
+                "daclDigest": "d" * 64,
+                "reparse": False,
+                "policySatisfied": True,
+            })
+        raw = self.module.supervisor_module.acl_attestation_module.canonical_evidence(
+            evidence, snapshot,
+        )
+        self.cache[evidence["requestDigest"]] = raw
+        return raw
+
+    def load(self, digest):
+        return self.cache.pop(digest, None)
+
+    def discard(self, digest):
+        self.discards.append(digest)
+        self.cache.pop(digest, None)
 
 
 class CheckoutCoordinatorTests(unittest.TestCase):
@@ -30,15 +80,22 @@ class CheckoutCoordinatorTests(unittest.TestCase):
     def module(self):
         return load_module("checkout_coordinator", "checkout-coordinator.py")
 
+    @staticmethod
+    def attestor(module):
+        return SyntheticAclAttestor(module)
+
     def leased_run(self, module, config, coordinator):
         lease = module.lease_module.CheckoutCoordinatorLease.acquire(
             coordinator_directory=coordinator,
             run_directory=config["directory"],
         )
-        return module._assemble_fresh(config, coordinator, lease), lease
+        return module._assemble_fresh(
+            config, coordinator, lease, self.attestor(module),
+        ), lease
 
     def claimed_history(self, module, config, coordinator):
         run, lease = self.leased_run(module, config, coordinator)
+        run.begin_acl_execution("fresh")
         run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
         run.claim(1)
         anchor = run.journal_anchor()
@@ -61,6 +118,9 @@ class CheckoutCoordinatorTests(unittest.TestCase):
         return {
             "directory": str(run.absolute()),
             "manifest": "a" * 64,
+            "acl_policy_digest": (
+                "a63c221764f73a54e87513fc91cded6b3fa16825138f6b24b6118132829f4eeb"
+            ),
             **paths,
             "tool_hashes": {name: format(index, "064x") for index, name in enumerate(paths, 1)},
             "asset_delivery_review": {
@@ -274,42 +334,47 @@ class CheckoutCoordinatorTests(unittest.TestCase):
             }
             for name, mutate in mutations.items():
                 with self.subTest(name=name):
-                    run = module.assemble_fresh(
-                        config=self.config(run_directory), coordinator_directory=coordinator,
+                    run, lease = self.leased_run(
+                        module, self.config(run_directory), coordinator,
                     )
-                    publisher = run.anchor_publisher
-                    store = publisher.store
-                    mutate(run, store)
-                    with patch.object(module.supervisor_module.subprocess, "Popen") as popen:
-                        with self.assertRaisesRegex(module.CoordinatorRefused, "^coordinator_binding$"):
-                            publisher({"generation": 1, "digest": "c" * 64})
-                        with self.assertRaisesRegex(module.CoordinatorRefused, "^coordinator_binding$"):
-                            publisher.load()
-                    popen.assert_not_called()
-                    self.assertEqual(run.journal_generation, 0)
-                    self.assertFalse(any(coordinator.glob("checkout-anchor-*.json")))
+                    try:
+                        publisher = run.anchor_publisher
+                        store = publisher.store
+                        mutate(run, store)
+                        with patch.object(module.supervisor_module.subprocess, "Popen") as popen:
+                            with self.assertRaisesRegex(module.CoordinatorRefused, "^coordinator_binding$"):
+                                publisher({"generation": 1, "digest": "c" * 64})
+                            with self.assertRaisesRegex(module.CoordinatorRefused, "^coordinator_binding$"):
+                                publisher.load()
+                        popen.assert_not_called()
+                        self.assertEqual(run.journal_generation, 0)
+                        self.assertFalse(any(coordinator.glob("checkout-anchor-*.json")))
+                    finally:
+                        lease.release("lifecycle_finished")
 
-            run = module.assemble_fresh(
-                config=self.config(run_directory), coordinator_directory=coordinator,
-            )
-            publisher = run.anchor_publisher
-            run.anchor_publisher = object()
-            with patch.object(module.supervisor_module.subprocess, "Popen") as popen, \
-                    self.assertRaisesRegex(module.CoordinatorRefused, "^coordinator_binding$"):
-                publisher({"generation": 1, "digest": "c" * 64})
-            popen.assert_not_called()
-            self.assertFalse(any(coordinator.glob("checkout-anchor-*.json")))
+            run, lease = self.leased_run(module, self.config(run_directory), coordinator)
+            try:
+                publisher = run.anchor_publisher
+                run.anchor_publisher = object()
+                with patch.object(module.supervisor_module.subprocess, "Popen") as popen, \
+                        self.assertRaisesRegex(module.CoordinatorRefused, "^coordinator_binding$"):
+                    publisher({"generation": 1, "digest": "c" * 64})
+                popen.assert_not_called()
+                self.assertFalse(any(coordinator.glob("checkout-anchor-*.json")))
+            finally:
+                lease.release("lifecycle_finished")
 
-            run = module.assemble_fresh(
-                config=self.config(run_directory), coordinator_directory=coordinator,
-            )
-            publisher = run.anchor_publisher
-            publisher.store = object()
-            with patch.object(module.supervisor_module.subprocess, "Popen") as popen, \
-                    self.assertRaisesRegex(module.CoordinatorRefused, "^coordinator_binding$"):
-                publisher.load()
-            popen.assert_not_called()
-            self.assertFalse(any(coordinator.glob("checkout-anchor-*.json")))
+            run, lease = self.leased_run(module, self.config(run_directory), coordinator)
+            try:
+                publisher = run.anchor_publisher
+                publisher.store = object()
+                with patch.object(module.supervisor_module.subprocess, "Popen") as popen, \
+                        self.assertRaisesRegex(module.CoordinatorRefused, "^coordinator_binding$"):
+                    publisher.load()
+                popen.assert_not_called()
+                self.assertFalse(any(coordinator.glob("checkout-anchor-*.json")))
+            finally:
+                lease.release("lifecycle_finished")
 
     def test_adapter_postcheck_detects_in_process_drift_from_captured_callable(self):
         module = self.module()
@@ -380,6 +445,7 @@ class CheckoutCoordinatorTests(unittest.TestCase):
             )
             run.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
             with patch.object(module.supervisor_module.subprocess, "Popen") as popen:
+                run.begin_acl_execution("fresh")
                 run.claim(1)
                 popen.assert_not_called()
             self.assertEqual(run.anchor_publisher.load(), run.journal_anchor())
@@ -395,9 +461,8 @@ class CheckoutCoordinatorTests(unittest.TestCase):
             run = module.assemble_fresh(
                 config=self.config(run_directory), coordinator_directory=coordinator,
             )
-            with self.assertRaisesRegex(module.CoordinatorRefused, "^coordinator_binding$"):
-                run.anchor_publisher({"generation": 1, "digest": "c" * 64})
-            with self.assertRaisesRegex(module.supervisor_module.Refused, "^lifecycle_lease$"):
+            self.assertIsNone(run.anchor_publisher)
+            with self.assertRaisesRegex(module.supervisor_module.Refused, "^acl_admission$"):
                 run.claim(1)
             self.assertFalse((run_directory / "supervisor.json").exists())
             self.assertFalse(any(coordinator.glob("checkout-anchor-*.json")))
@@ -433,6 +498,8 @@ class CheckoutCoordinatorTests(unittest.TestCase):
             observed = {}
 
             def supervise(run, *, mode, requests, budget):
+                with self.assertRaisesRegex(module.supervisor_module.Refused, "^acl_admission$"):
+                    run.begin_acl_execution("fresh")
                 run.anchor_publisher._validate_binding()
                 observed.update(
                     run=run,
@@ -442,13 +509,15 @@ class CheckoutCoordinatorTests(unittest.TestCase):
                 )
                 return {"state": "synthetic"}
 
-            with patch.object(module.supervisor_module, "supervise", side_effect=supervise) as lifecycle, \
+            with patch.object(module.supervisor_module, "_supervise_active",
+                              side_effect=supervise) as lifecycle, \
                     patch.object(module.os, "getenv", side_effect=AssertionError("no environment")), \
                     patch.object(module.supervisor_module.subprocess, "Popen",
                                  side_effect=AssertionError("no process")) as popen:
                 result = module.supervise_fresh(
                     config=self.config(run_directory),
                     coordinator_directory=coordinator,
+                    acl_attestor=self.attestor(module),
                     mode="full",
                     requests=2,
                     budget=321,
@@ -458,6 +527,7 @@ class CheckoutCoordinatorTests(unittest.TestCase):
             self.assertEqual(lifecycle.call_count, 1)
             self.assertFalse(observed["run"].claimed)
             self.assertEqual(observed["run"].lifecycle_phase, "new")
+            self.assertEqual(observed["run"]._WindowsRun__acl_state, "exhausted")
             self.assertEqual(
                 (observed["mode"], observed["requests"], observed["budget"]),
                 ("full", 2, 321),
@@ -486,6 +556,7 @@ class CheckoutCoordinatorTests(unittest.TestCase):
                 self.assertEqual(
                     module.supervise_fresh(
                         config=config, coordinator_directory=coordinator,
+                        acl_attestor=self.attestor(module),
                         mode="smoke", requests=1, budget=1,
                     ),
                     {"state": "synthetic"},
@@ -506,6 +577,7 @@ class CheckoutCoordinatorTests(unittest.TestCase):
                     self.assertRaises(KeyboardInterrupt) as caught:
                 module.supervise_fresh(
                     config=config, coordinator_directory=coordinator,
+                    acl_attestor=self.attestor(module),
                     mode="smoke", requests=1, budget=1,
                 )
             self.assertIs(caught.exception, interruption)
@@ -532,6 +604,7 @@ class CheckoutCoordinatorTests(unittest.TestCase):
                     self.assertRaisesRegex(module.CoordinatorRefused, "^coordinator_lease_terminal$"):
                 module.supervise_fresh(
                     config=config, coordinator_directory=coordinator,
+                    acl_attestor=self.attestor(module),
                     mode="smoke", requests=1, budget=1,
                 )
             replacement = module.lease_module.CheckoutCoordinatorLease.acquire(
@@ -587,6 +660,7 @@ class CheckoutCoordinatorTests(unittest.TestCase):
                     patch.object(module.supervisor_module, "supervise", side_effect=supervise):
                 module.supervise_fresh(
                     config=config, coordinator_directory=coordinator,
+                    acl_attestor=self.attestor(module),
                     mode="smoke", requests=1, budget=1,
                 )
             self.assertEqual(observed["run"], first)
@@ -612,6 +686,7 @@ class CheckoutCoordinatorTests(unittest.TestCase):
             with patch.object(module.supervisor_module, "supervise", return_value={"state": "synthetic"}):
                 module.supervise_fresh(
                     config=self.config(run_directory), coordinator_directory=pathlike,
+                    acl_attestor=self.attestor(module),
                     mode="smoke", requests=1, budget=1,
                 )
             self.assertEqual(pathlike.calls, 1)
@@ -630,6 +705,8 @@ class CheckoutCoordinatorTests(unittest.TestCase):
             observed = {}
 
             def recover(run, *, session, anchor, budget):
+                with self.assertRaisesRegex(module.supervisor_module.Refused, "^acl_admission$"):
+                    run.begin_acl_execution("recovery")
                 run.anchor_publisher._validate_binding()
                 observed.update(
                     run=run,
@@ -639,13 +716,15 @@ class CheckoutCoordinatorTests(unittest.TestCase):
                 )
                 return {"state": "synthetic_recovery"}
 
-            with patch.object(module.supervisor_module, "recover", side_effect=recover) as lifecycle, \
+            with patch.object(module.supervisor_module, "_recover_active",
+                              side_effect=recover) as lifecycle, \
                     patch.object(module.os, "getenv", side_effect=AssertionError("no environment")), \
                     patch.object(module.supervisor_module.subprocess, "Popen",
                                  side_effect=AssertionError("no process")) as popen:
                 result = module.recover_existing(
                     config=config,
                     coordinator_directory=coordinator,
+                    acl_attestor=self.attestor(module),
                     session=original.session,
                     budget=14,
                 )
@@ -653,6 +732,7 @@ class CheckoutCoordinatorTests(unittest.TestCase):
             self.assertEqual(result, {"state": "synthetic_recovery"})
             self.assertEqual(lifecycle.call_count, 1)
             self.assertEqual(observed["run"].lifecycle_phase, "recovery_ready")
+            self.assertEqual(observed["run"]._WindowsRun__acl_state, "exhausted")
             self.assertEqual(observed["session"], original.session)
             self.assertEqual(observed["anchor"], expected_anchor)
             self.assertIsNot(observed["anchor"], expected_anchor)
@@ -676,14 +756,16 @@ class CheckoutCoordinatorTests(unittest.TestCase):
                     module.supervise_fresh(
                         config=invalid,
                         coordinator_directory=coordinator,
+                        acl_attestor=self.attestor(module),
                         mode="smoke",
                         requests=1,
                         budget=1,
                     )
-                with self.assertRaisesRegex(module.CoordinatorRefused, "^coordinator_anchor$"):
+                with self.assertRaisesRegex(module.CoordinatorRefused, "^coordinator_acl$"):
                     module.recover_existing(
                         config=self.config(run_directory),
                         coordinator_directory=coordinator,
+                        acl_attestor=self.attestor(module),
                         session=self.session,
                         budget=1,
                     )
@@ -704,10 +786,12 @@ class CheckoutCoordinatorTests(unittest.TestCase):
             calls = (
                 ("fresh", "supervise", lambda: module.supervise_fresh(
                     config=config, coordinator_directory=coordinator,
+                    acl_attestor=self.attestor(module),
                     mode="smoke", requests=1, budget=1,
                 )),
                 ("recovery", "recover", lambda: module.recover_existing(
                     config=config, coordinator_directory=coordinator,
+                    acl_attestor=self.attestor(module),
                     session=original.session, budget=1,
                 )),
             )
@@ -718,13 +802,19 @@ class CheckoutCoordinatorTests(unittest.TestCase):
             )
             for operation, target, invoke in calls:
                 for error in errors:
+                    expected = (module.CoordinatorRefused
+                                if isinstance(error, module.supervisor_module.Refused)
+                                else type(error))
                     with self.subTest(operation=operation, error=type(error).__name__), \
                             patch.object(module.supervisor_module, target, side_effect=error), \
                             patch.object(module.supervisor_module.subprocess, "Popen",
                                          side_effect=AssertionError("no process")) as popen, \
-                            self.assertRaises(type(error)) as caught:
+                            self.assertRaises(expected) as caught:
                         invoke()
-                    self.assertIs(caught.exception, error)
+                    if isinstance(error, module.supervisor_module.Refused):
+                        self.assertEqual(str(caught.exception), "coordinator_acl")
+                    else:
+                        self.assertIs(caught.exception, error)
                     popen.assert_not_called()
 
     def test_recovery_wrong_session_or_config_fails_without_popen(self):
@@ -742,10 +832,11 @@ class CheckoutCoordinatorTests(unittest.TestCase):
             for session, candidate_config in cases:
                 with self.subTest(session=session, changed=candidate_config is changed), \
                         patch.object(module.supervisor_module.subprocess, "Popen") as popen, \
-                        self.assertRaisesRegex(module.CoordinatorRefused, "^coordinator_anchor$"):
+                        self.assertRaisesRegex(module.CoordinatorRefused, "^coordinator_acl$"):
                     module.recover_existing(
                         config=candidate_config,
                         coordinator_directory=coordinator,
+                        acl_attestor=self.attestor(module),
                         session=session,
                         budget=1,
                     )
@@ -765,23 +856,296 @@ class CheckoutCoordinatorTests(unittest.TestCase):
             )
             locked.owner = {"pid": 7, "started": "100", "nonce": "b" * 64}
             locked.anchor_publisher.store.lock_path.write_text("LOCK\n", encoding="ascii")
-            with patch.object(module.supervisor_module.subprocess, "Popen") as popen, \
-                    self.assertRaisesRegex(module.supervisor_module.Refused, "^anchor_publish$"):
-                locked.claim(1)
-            popen.assert_not_called()
-            locked_lease.release("lifecycle_finished")
+            try:
+                locked.begin_acl_execution("fresh")
+                with patch.object(module.supervisor_module.subprocess, "Popen") as popen, \
+                        self.assertRaisesRegex(module.supervisor_module.Refused, "^anchor_publish$"):
+                    locked.claim(1)
+                popen.assert_not_called()
+            finally:
+                locked_lease.release("lifecycle_finished")
 
             original, _ = self.claimed_history(module, self.config(second_run), coordinator)
             original.anchor_publisher.store.path.write_text('{"truncated":', encoding="ascii")
             with patch.object(module.supervisor_module.subprocess, "Popen") as popen, \
-                    self.assertRaisesRegex(module.CoordinatorRefused, "^coordinator_anchor$"):
+                    self.assertRaisesRegex(module.CoordinatorRefused, "^coordinator_acl$"):
                 module.recover_existing(
                     config=self.config(second_run),
                     coordinator_directory=coordinator,
+                    acl_attestor=self.attestor(module),
                     session=original.session,
                     budget=1,
                 )
             popen.assert_not_called()
+
+    def test_facades_require_attestor_and_acl_failure_precedes_publisher_or_delegate(self):
+        module = self.module()
+
+        class FailingAttestor(SyntheticAclAttestor):
+            def attest(self, request):
+                raise self.error
+
+        with TemporaryDirectory(prefix="oncam-coordinator-test-") as root:
+            root = Path(root)
+            coordinator, run_directory = root / "coordinator", root / "candidate"
+            coordinator.mkdir()
+            run_directory.mkdir()
+            config = self.config(run_directory)
+            with self.assertRaisesRegex(module.CoordinatorRefused, "^coordinator_acl$"):
+                module.supervise_fresh(
+                    config=config, coordinator_directory=coordinator,
+                    mode="smoke", requests=1, budget=1,
+                )
+            with self.assertRaisesRegex(module.CoordinatorRefused, "^coordinator_acl$"):
+                module.supervise_fresh(
+                    config=config, coordinator_directory=coordinator,
+                    acl_attestor=None, mode="smoke", requests=1, budget=1,
+                )
+            with patch.object(module.anchor_store_module, "CheckoutAnchorStore") as store, \
+                    patch.object(module.supervisor_module, "supervise") as supervise, \
+                    self.assertRaisesRegex(module.CoordinatorRefused, "^coordinator_acl$"):
+                module.supervise_fresh(
+                    config=config, coordinator_directory=coordinator,
+                    acl_attestor=object(), mode="smoke", requests=1, budget=1,
+                )
+            store.assert_not_called()
+            supervise.assert_not_called()
+
+            for error in (RuntimeError("PRIVATE_ACL"), KeyboardInterrupt("ACL_INTERRUPT"),
+                          SystemExit(17)):
+                attestor = FailingAttestor(module)
+                attestor.error = error
+                expected = module.CoordinatorRefused if isinstance(error, RuntimeError) else type(error)
+                with self.subTest(kind=type(error).__name__), \
+                        patch.object(module.anchor_store_module, "CheckoutAnchorStore") as store, \
+                        patch.object(module.supervisor_module, "supervise") as supervise, \
+                        self.assertRaises(expected) as caught:
+                    module.supervise_fresh(
+                        config=config, coordinator_directory=coordinator,
+                        acl_attestor=attestor, mode="smoke", requests=1, budget=1,
+                    )
+                if isinstance(error, RuntimeError):
+                    self.assertEqual(str(caught.exception), "coordinator_acl")
+                    self.assertNotIn("PRIVATE", str(caught.exception))
+                else:
+                    self.assertIs(caught.exception, error)
+                store.assert_not_called()
+                supervise.assert_not_called()
+                replacement = module.lease_module.CheckoutCoordinatorLease.acquire(
+                    coordinator_directory=coordinator, run_directory=run_directory,
+                )
+                replacement.release("lifecycle_finished")
+
+    def test_wrapper_base_exception_exhausts_admission_and_facade_releases_lease(self):
+        module = self.module()
+        error = KeyboardInterrupt("SYNTHETIC_WRAPPER_PRIMARY")
+        observed = {}
+        with TemporaryDirectory(prefix="oncam-coordinator-test-") as root:
+            root = Path(root)
+            coordinator, run_directory = root / "coordinator", root / "candidate"
+            coordinator.mkdir()
+            run_directory.mkdir()
+
+            def interrupt(run, **_options):
+                observed["run"] = run
+                raise error
+
+            with patch.object(module.supervisor_module, "_supervise_active",
+                              side_effect=interrupt), \
+                    self.assertRaises(KeyboardInterrupt) as caught:
+                module.supervise_fresh(
+                    config=self.config(run_directory), coordinator_directory=coordinator,
+                    acl_attestor=self.attestor(module), mode="smoke", requests=1, budget=1,
+                )
+            self.assertIs(caught.exception, error)
+            self.assertEqual(observed["run"]._WindowsRun__acl_state, "exhausted")
+            replacement = module.lease_module.CheckoutCoordinatorLease.acquire(
+                coordinator_directory=coordinator, run_directory=run_directory,
+            )
+            replacement.release("lifecycle_finished")
+
+    def test_supervisor_wrapper_refusals_are_fixed_at_coordinator_boundary(self):
+        module = self.module()
+        with TemporaryDirectory(prefix="oncam-coordinator-test-") as root:
+            root = Path(root)
+            coordinator, run_directory = root / "coordinator", root / "candidate"
+            coordinator.mkdir()
+            run_directory.mkdir()
+
+            def invoke():
+                return module.supervise_fresh(
+                    config=self.config(run_directory), coordinator_directory=coordinator,
+                    acl_attestor=self.attestor(module), mode="smoke", requests=1, budget=1,
+                )
+
+            cases = ("begin", "body", "finish")
+            for boundary in cases:
+                refusal = module.supervisor_module.Refused("PRIVATE_" + boundary)
+                patches = []
+                if boundary == "begin":
+                    patches.append(patch.object(
+                        module.supervisor_module.WindowsRun, "begin_acl_execution",
+                        side_effect=refusal,
+                    ))
+                    patches.append(patch.object(module.supervisor_module, "_supervise_active"))
+                elif boundary == "body":
+                    patches.append(patch.object(
+                        module.supervisor_module, "_supervise_active", side_effect=refusal,
+                    ))
+                else:
+                    patches.append(patch.object(
+                        module.supervisor_module, "_supervise_active",
+                        return_value={"state": "synthetic"},
+                    ))
+                    patches.append(patch.object(
+                        module.supervisor_module.WindowsRun, "finish_acl_execution",
+                        side_effect=refusal,
+                    ))
+                with self.subTest(boundary=boundary), patches[0] as first:
+                    second_context = patches[1] if len(patches) == 2 else None
+                    if second_context is None:
+                        with self.assertRaisesRegex(
+                            module.CoordinatorRefused, "^coordinator_acl$",
+                        ) as caught:
+                            invoke()
+                    else:
+                        with second_context as second, self.assertRaisesRegex(
+                            module.CoordinatorRefused, "^coordinator_acl$",
+                        ) as caught:
+                            invoke()
+                        if boundary == "begin":
+                            second.assert_not_called()
+                    self.assertNotIn("PRIVATE", str(caught.exception))
+                    self.assertTrue(first.called)
+                replacement = module.lease_module.CheckoutCoordinatorLease.acquire(
+                    coordinator_directory=coordinator, run_directory=run_directory,
+                )
+                replacement.release("lifecycle_finished")
+
+    def test_fresh_and_recovery_admission_order_is_exact(self):
+        module = self.module()
+        with TemporaryDirectory(prefix="oncam-coordinator-test-") as root:
+            root = Path(root)
+            coordinator, run_directory = root / "coordinator", root / "candidate"
+            coordinator.mkdir()
+            run_directory.mkdir()
+            config = self.config(run_directory)
+            original, _anchor = self.claimed_history(module, config, coordinator)
+
+            def exercise(phase):
+                events = []
+                real_acquire = module._acquire_lease
+                real_builder = module._run_from_config
+
+                def acquire(candidate, coordinator_path):
+                    events.append("lease")
+                    return real_acquire(candidate, coordinator_path)
+
+                def build(candidate):
+                    events.append("construct")
+                    run = real_builder(candidate)
+                    methods = {
+                        "bind_lifecycle_lease": "bind_lease",
+                        "bind_acl_attestor": "bind_attestor",
+                        "bind_anchor_publisher": "bind_publisher",
+                    }
+                    for name, event in methods.items():
+                        original_method = getattr(run, name)
+
+                        def wrapper(value, original_method=original_method, event=event):
+                            events.append(event)
+                            return original_method(value)
+
+                        setattr(run, name, wrapper)
+                    original_prepare = run.prepare_acl_admission
+
+                    def prepare(boundary, requested_phase):
+                        events.append("prepare_" + boundary)
+                        return original_prepare(boundary, requested_phase)
+
+                    run.prepare_acl_admission = prepare
+                    if phase == "recovery":
+                        original_load = run.load_recovery_anchor
+
+                        def load_anchor():
+                            events.append("load_anchor")
+                            return original_load()
+
+                        run.load_recovery_anchor = load_anchor
+                    return run
+
+                def delegate(_run, **_options):
+                    events.append("delegate")
+                    return {"state": "synthetic"}
+
+                attestor = self.attestor(module)
+                with patch.object(module, "_acquire_lease", side_effect=acquire), \
+                        patch.object(module, "_run_from_config", side_effect=build), \
+                        patch.object(module.supervisor_module, "supervise" if phase == "fresh" else "recover",
+                                     side_effect=delegate):
+                    if phase == "fresh":
+                        module.supervise_fresh(
+                            config=config, coordinator_directory=coordinator,
+                            acl_attestor=attestor, mode="smoke", requests=1, budget=1,
+                        )
+                    else:
+                        module.recover_existing(
+                            config=config, coordinator_directory=coordinator,
+                            acl_attestor=attestor, session=original.session, budget=1,
+                        )
+                expected = [
+                    "lease", "construct", "bind_lease", "bind_attestor",
+                    "prepare_anchor", "bind_publisher",
+                ]
+                if phase == "recovery":
+                    expected.append("load_anchor")
+                expected.extend(("prepare_execution", "delegate"))
+                self.assertEqual(events, expected)
+                self.assertEqual(
+                    [request["boundary"] for request in attestor.requests],
+                    ["anchor", "execution"],
+                )
+
+            exercise("fresh")
+            exercise("recovery")
+
+    def test_recovery_underlying_publisher_load_occurs_only_inside_supervisor_gate(self):
+        module = self.module()
+        with TemporaryDirectory(prefix="oncam-coordinator-test-") as root:
+            root = Path(root)
+            coordinator, run_directory = root / "coordinator", root / "candidate"
+            coordinator.mkdir()
+            run_directory.mkdir()
+            config = self.config(run_directory)
+            original, _anchor = self.claimed_history(module, config, coordinator)
+            gate_load = module.supervisor_module.WindowsRun.load_recovery_anchor
+            publisher_load = module.SupervisorAnchorPublisher.load
+            state = {"inside": False, "gates": 0, "loads": 0}
+
+            def gated(run):
+                self.assertFalse(state["inside"])
+                state["inside"] = True
+                state["gates"] += 1
+                try:
+                    return gate_load(run)
+                finally:
+                    state["inside"] = False
+
+            def loaded(publisher):
+                self.assertTrue(state["inside"])
+                state["loads"] += 1
+                return publisher_load(publisher)
+
+            with patch.object(module.supervisor_module.WindowsRun, "load_recovery_anchor", gated), \
+                    patch.object(module.SupervisorAnchorPublisher, "load", loaded), \
+                    patch.object(module.supervisor_module, "_recover_active",
+                                 return_value={"state": "synthetic"}):
+                result = module.recover_existing(
+                    config=config, coordinator_directory=coordinator,
+                    acl_attestor=self.attestor(module), session=original.session, budget=1,
+                )
+            self.assertEqual(result, {"state": "synthetic"})
+            self.assertEqual(state, {"inside": False, "gates": 1, "loads": 1})
 
     def test_assembly_rejects_implicit_inputs_and_never_creates_directories(self):
         module = self.module()
@@ -795,14 +1159,16 @@ class CheckoutCoordinatorTests(unittest.TestCase):
                  "coordinator_config"),
                 ({"config": self.config(run_directory), "coordinator_directory": None},
                  module.CoordinatorRefused, "coordinator_directory"),
-                ({"config": self.config(run_directory), "coordinator_directory": missing},
-                 module.anchor_store_module.AnchorStoreRefused, "anchor_path"),
-                ({"config": self.config(run_directory), "coordinator_directory": run_directory},
-                 module.anchor_store_module.AnchorStoreRefused, "anchor_scope"),
             )
             for kwargs, exception, reason in cases:
                 with self.subTest(reason=reason), self.assertRaisesRegex(exception, f"^{reason}$"):
                     module.assemble_fresh(**kwargs)
+            self.assertFalse(module.assemble_fresh(
+                config=self.config(run_directory), coordinator_directory=missing,
+            ).claimed)
+            self.assertFalse(module.assemble_fresh(
+                config=self.config(run_directory), coordinator_directory=run_directory,
+            ).claimed)
             self.assertFalse(missing.exists())
 
     def test_assembly_maps_malformed_nested_candidate_config_to_fixed_coordinator_error(self):

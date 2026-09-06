@@ -339,7 +339,7 @@ def _read_validated_acl_policy(path, expected_digest, expected_source):
     return result
 
 
-def supervise(io, *, mode="smoke", requests=3, budget=180):
+def _supervise_active(io, *, mode="smoke", requests=3, budget=180):
     """Sequencing core: the OS adapter owns handles even when launch raises."""
     if mode not in ("smoke", "full") or type(requests) is not int or not 1 <= requests <= 3:
         raise Refused("invalid_options")
@@ -448,7 +448,27 @@ def supervise(io, *, mode="smoke", requests=3, budget=180):
     return result
 
 
-def recover(io, *, session, anchor, budget=15):
+def supervise(io, *, mode="smoke", requests=3, budget=180):
+    if mode not in ("smoke", "full") or type(requests) is not int or not 1 <= requests <= 3:
+        raise Refused("invalid_options")
+    if type(budget) is not int or not 1 <= budget <= 1200:
+        raise Refused("invalid_budget")
+    token = io.begin_acl_execution("fresh")
+    primary = None
+    try:
+        return _supervise_active(io, mode=mode, requests=requests, budget=budget)
+    except BaseException as error:
+        primary = error
+        raise
+    finally:
+        try:
+            io.finish_acl_execution(token)
+        except BaseException:
+            if primary is None:
+                raise
+
+
+def _recover_active(io, *, session, anchor, budget=15):
     """Callable crash-recovery flow; never resumes a run or marks it accepted."""
     if type(budget) is not int or not 1 <= budget <= 60:
         raise Refused("invalid_budget")
@@ -467,6 +487,30 @@ def recover(io, *, session, anchor, budget=15):
     finally:
         if ownership_validated or getattr(io, "recovery_hydrated", False):
             io.invalidate()
+
+
+def recover(io, *, session, anchor, budget=15):
+    if type(budget) is not int or not 1 <= budget <= 60:
+        raise Refused("invalid_budget")
+    if type(session) is not str or re.fullmatch(r"checkout-[a-f0-9]{32}", session) is None \
+            or type(anchor) is not dict or set(anchor) != {"generation", "digest"} \
+            or type(anchor["generation"]) is not int or anchor["generation"] <= 0 \
+            or type(anchor["digest"]) is not str \
+            or re.fullmatch(r"[a-f0-9]{64}", anchor["digest"]) is None:
+        raise Refused("recovery_input")
+    token = io.begin_acl_execution("recovery", session, anchor)
+    primary = None
+    try:
+        return _recover_active(io, session=session, anchor=anchor, budget=budget)
+    except BaseException as error:
+        primary = error
+        raise
+    finally:
+        try:
+            io.finish_acl_execution(token)
+        except BaseException:
+            if primary is None:
+                raise
 
 
 class WindowsRun:
@@ -505,6 +549,8 @@ class WindowsRun:
         self.__acl_anchor = None
         self.__acl_execution = None
         self.__acl_execution_token = None
+        self.__acl_recovery_anchor = None
+        self.__acl_recovery_anchor_loaded = False
         if anchor_publisher is not None:
             self._pin_anchor_publisher(anchor_publisher)
         self.run = Path(config["directory"])
@@ -777,13 +823,17 @@ class WindowsRun:
                 primary = error
         return primary
 
-    def _acl_fail(self, error, digest=None):
+    def _acl_fail(self, error, digest=None, *, preserve_refused=False):
         if digest is not None:
             self._discard_acl(digest)
         self.__acl_state = "exhausted"
         self.__acl_anchor = None
         self.__acl_execution = None
         self.__acl_execution_token = None
+        self.__acl_recovery_anchor = None
+        self.__acl_recovery_anchor_loaded = False
+        if preserve_refused and isinstance(error, Refused):
+            raise error
         if isinstance(error, Exception):
             raise Refused("acl_attestation") from None
         raise error
@@ -869,7 +919,11 @@ class WindowsRun:
         if type(boundary) is not str or boundary not in ("anchor", "execution") \
                 or type(phase) is not str or phase not in ("fresh", "recovery") \
                 or self.__acl_state != expected \
-                or boundary == "execution" and phase != self.__acl_phase:
+                or boundary == "execution" and phase != self.__acl_phase \
+                or boundary == "execution" and phase == "recovery" \
+                and not self.__acl_recovery_anchor_loaded \
+                or boundary == "execution" and phase == "fresh" \
+                and self.__acl_recovery_anchor_loaded:
             raise Refused("acl_admission")
         digest = None
         try:
@@ -907,22 +961,78 @@ class WindowsRun:
         except BaseException as error:
             self._acl_fail(error, digest)
 
-    def begin_acl_execution(self, phase):
+    def load_recovery_anchor(self):
+        if self.__acl_state != "anchor_consumed" or self.__acl_phase != "recovery" \
+                or self.__acl_recovery_anchor_loaded:
+            raise Refused("acl_admission")
+        try:
+            self._validated_acl_anchor()
+            publisher, _publish, load = self._bound_anchor_publisher()
+            anchor = load()
+            if self._bound_anchor_publisher()[0] is not publisher:
+                raise Refused("anchor_publisher_identity")
+            self._validated_acl_anchor()
+            self._validate_anchor(anchor)
+            copied = dict(anchor)
+            self.__acl_recovery_anchor = copied
+            self.__acl_recovery_anchor_loaded = True
+            return dict(copied)
+        except BaseException as error:
+            self._acl_fail(error)
+
+    def _validated_acl_execution(self):
+        codec, anchor_request, anchor_evidence, _anchor_raw = \
+            self._validated_acl_anchor()
+        self._bound_anchor_publisher()
+        if type(self.__acl_execution) is not tuple or len(self.__acl_execution) != 3:
+            raise Refused("acl_attestation")
+        execution_request, execution_evidence, execution_raw = self.__acl_execution
+        self._validate_current_acl_request(execution_request, "execution")
+        if codec["canonical_evidence"](execution_evidence, execution_request) \
+                != execution_raw:
+            raise Refused("acl_attestation")
+        codec["validate_boundary_pair"](
+            anchor_request, anchor_evidence, execution_request, execution_evidence,
+        )
+        return codec
+
+    def _require_acl_active(self, phase):
+        if type(phase) is not str or phase not in ("fresh", "recovery") \
+                or self.__acl_state != "active" \
+                or self.__acl_execution_token is None \
+                or phase != self.__acl_phase:
+            raise Refused("acl_admission")
+        try:
+            self._validated_acl_execution()
+            if phase == "recovery":
+                self._validate_anchor(self.__acl_recovery_anchor)
+                if not self.__acl_recovery_anchor_loaded:
+                    raise Refused("acl_attestation")
+            elif self.__acl_recovery_anchor_loaded or self.__acl_recovery_anchor is not None:
+                raise Refused("acl_attestation")
+            return self.__acl_execution_token
+        except BaseException as error:
+            self._acl_fail(error, preserve_refused=True)
+
+    def _validate_acl_recovery_binding(self, session, anchor):
+        if type(session) is not str or session != self.session \
+                or type(anchor) is not dict \
+                or anchor != self.__acl_recovery_anchor:
+            raise Refused("acl_attestation")
+        self._validate_anchor(anchor)
+
+    def begin_acl_execution(self, phase, session=None, anchor=None):
         if type(phase) is not str or phase != self.__acl_phase \
                 or self.__acl_state != "execution_ready":
             raise Refused("acl_admission")
         try:
-            codec, anchor_request, anchor_evidence, anchor_raw = \
-                self._validated_acl_anchor()
-            self._bound_anchor_publisher()
-            execution_request, execution_evidence, execution_raw = self.__acl_execution
-            self._validate_current_acl_request(execution_request, "execution")
-            if codec["canonical_evidence"](execution_evidence, execution_request) \
-                    != execution_raw:
+            self._validated_acl_execution()
+            if phase == "recovery":
+                self._validate_acl_recovery_binding(session, anchor)
+            elif session is not None or anchor is not None \
+                    or self.__acl_recovery_anchor_loaded \
+                    or self.__acl_recovery_anchor is not None:
                 raise Refused("acl_attestation")
-            codec["validate_boundary_pair"](
-                anchor_request, anchor_evidence, execution_request, execution_evidence,
-            )
             token = object()
             self.__acl_execution_token = token
             self.__acl_state = "active"
@@ -935,22 +1045,14 @@ class WindowsRun:
             raise Refused("acl_admission")
         primary = None
         try:
-            codec, anchor_request, anchor_evidence, anchor_raw = \
-                self._validated_acl_anchor()
-            self._bound_anchor_publisher()
-            execution_request, execution_evidence, execution_raw = self.__acl_execution
-            self._validate_current_acl_request(execution_request, "execution")
-            if codec["canonical_evidence"](execution_evidence, execution_request) \
-                    != execution_raw:
-                raise Refused("acl_attestation")
-            codec["validate_boundary_pair"](
-                anchor_request, anchor_evidence, execution_request, execution_evidence,
-            )
+            self._validated_acl_execution()
         except BaseException as error:
             primary = error
         self.__acl_execution_token = None
         self.__acl_anchor = None
         self.__acl_execution = None
+        self.__acl_recovery_anchor = None
+        self.__acl_recovery_anchor_loaded = False
         self.__acl_state = "exhausted"
         if primary is not None:
             if isinstance(primary, Exception):
@@ -1095,6 +1197,7 @@ class WindowsRun:
             raise Refused("candidate_config") from None
 
     def preflight(self, remaining):
+        self._require_acl_active("fresh")
         review = self._validate_candidate_config()
         required = ASSET_REVIEW_FILES
         if os.name != "nt" or self.run.parent.resolve() != Path(tempfile.gettempdir()).resolve():
@@ -1480,6 +1583,11 @@ class WindowsRun:
         return {self._normalized_path(self.c[key]) for key in keys}
 
     def recover_ownership(self, session, anchor):
+        self._require_acl_active("recovery")
+        try:
+            self._validate_acl_recovery_binding(session, anchor)
+        except BaseException as error:
+            self._acl_fail(error, preserve_refused=True)
         self._required_lifecycle_lease()
         try:
             return self._recover_ownership(session, anchor)
@@ -1582,6 +1690,8 @@ class WindowsRun:
         head.unlink()
 
     def _command(self, args, timeout, *, policy="owned", role="command"):
+        phase = "recovery" if self.lifecycle_phase in {"recovery_ready", "recovery"} else "fresh"
+        self._require_acl_active(phase)
         valid_policy = type(policy) is str and type(role) is str and (
             (policy == "untracked" and self.claimed is False and self.lifecycle_phase == "new" and role == "helper")
             or (policy == "intent_only" and self.claimed is True
@@ -1598,6 +1708,7 @@ class WindowsRun:
         intent = self._push_launch_intent(role, str(Path(args[0]).absolute())) if tracked else None
         # Real files avoid Windows pipe-read hangs. Output is bounded on capture/poll.
         with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as errors:
+            self._require_acl_active(phase)
             process = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=output, stderr=errors,
                                        cwd=self.run, env=self.env, creationflags=subprocess.CREATE_NO_WINDOW)
             self.handles.append(process)  # retain even if registration/timeout fails
@@ -1707,6 +1818,7 @@ class WindowsRun:
             raise Refused("occupied_port")
 
     def claim(self, remaining):
+        self._require_acl_active("fresh")
         self._required_lifecycle_lease()
         if self.lifecycle_phase != "new":
             raise Refused("lifecycle_phase")
@@ -1753,6 +1865,7 @@ class WindowsRun:
                              policy="owned", role="browser_launcher" if args[0] == "open" else "command")
 
     def launch(self, role, remaining):
+        self._require_acl_active("fresh")
         self._require_normal_run()
         expected = self.c[{"php": "php", "tls": "python", "browser": "browser"}[role]]
         if role == "browser":
@@ -1762,6 +1875,7 @@ class WindowsRun:
             )
         intent = self._push_launch_intent(role, expected)
         if role == "browser":
+            self._require_acl_active("fresh")
             text = self._cli(["open", "about:blank", "--config=" + self.c["browser_config"]], remaining)
             match = re.search(r"opened with pid ([0-9]+)\.", text)
             if not match:
@@ -1778,6 +1892,7 @@ class WindowsRun:
         else:
             args = ([self.c["php"], "-n", "-c", self.c["ini"], "-S", "127.0.0.1:8126", "-t", str(self.run / "storage/public"), str(self.source / HARNESS)] if role == "php" else
                     [self.c["python"], str(self.source / "tools/testing/tests/Browser/https-loopback-proxy.py"), self.c["cert"], self.c["key"], "443", "8126"])
+            self._require_acl_active("fresh")
             process = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                        cwd=self.run, env=self.env, creationflags=subprocess.CREATE_NO_WINDOW)
             self.handles.append(process)

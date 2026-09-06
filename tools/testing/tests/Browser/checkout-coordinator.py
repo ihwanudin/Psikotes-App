@@ -166,12 +166,23 @@ def _explicit_inputs(config, coordinator_directory):
         raise CoordinatorRefused("coordinator_directory")
 
 
-def _attach(run, *, coordinator_directory, session, lifecycle_lease=None):
+def _acl_call(callback, *args, **kwargs):
+    try:
+        return callback(*args, **kwargs)
+    except supervisor_module.Refused:
+        raise CoordinatorRefused("coordinator_acl") from None
+
+
+def _bind_admission(run, *, lifecycle_lease, acl_attestor):
+    _acl_call(run.bind_lifecycle_lease, lifecycle_lease)
+    _acl_call(run.bind_acl_attestor, acl_attestor)
+    return run
+
+
+def _attach_publisher(run, *, coordinator_directory, session):
     # This is deliberate same-tool coupling. The parity tests pin the supervisor's
     # own binding implementation rather than duplicating its security contract.
-    binding = run._config_binding(session)
-    if lifecycle_lease is not None:
-        run.bind_lifecycle_lease(lifecycle_lease)
+    binding = _acl_call(run._config_binding, session)
     store = anchor_store_module.CheckoutAnchorStore(
         coordinator_directory=coordinator_directory,
         run_directory=run.run,
@@ -185,8 +196,8 @@ def _attach(run, *, coordinator_directory, session, lifecycle_lease=None):
         expected_session=session,
         expected_config_binding=binding,
     )
-    run.bind_anchor_publisher(publisher)
-    publisher._validate_binding(require_attached=lifecycle_lease is not None)
+    _acl_call(run.bind_anchor_publisher, publisher)
+    publisher._validate_binding(require_attached=True)
     return run
 
 
@@ -207,10 +218,9 @@ def _run_from_config(config):
 
 
 def assemble_fresh(*, config, coordinator_directory):
-    """Create an inspection-only run; lifecycle operations require the façade lease."""
+    """Create an inspection-only bare run; lifecycle operations require the façade."""
     _explicit_inputs(config, coordinator_directory)
-    run = _run_from_config(config)
-    return _attach(run, coordinator_directory=coordinator_directory, session=run.session)
+    return _run_from_config(config)
 
 
 def assemble_recovery(*, config, coordinator_directory, session):
@@ -243,25 +253,32 @@ def _acquire_lease(config, coordinator_directory):
         raise CoordinatorRefused("coordinator_lease") from None
 
 
-def _assemble_fresh(config, coordinator_directory, lease):
+def _assemble_fresh(config, coordinator_directory, lease, acl_attestor, context=None):
     run = _run_from_config(config)
-    return _attach(
-        run, coordinator_directory=coordinator_directory, session=run.session,
-        lifecycle_lease=lease,
-    )
+    if context is not None:
+        context["run"] = run
+    _bind_admission(run, lifecycle_lease=lease, acl_attestor=acl_attestor)
+    _acl_call(run.prepare_acl_admission, "anchor", "fresh")
+    _attach_publisher(run, coordinator_directory=coordinator_directory, session=run.session)
+    _acl_call(run.prepare_acl_admission, "execution", "fresh")
+    return run
 
 
-def _assemble_recovery(config, coordinator_directory, session, lease):
+def _assemble_recovery(config, coordinator_directory, session, lease, acl_attestor,
+                       context=None):
     if not isinstance(session, str) or _SESSION.fullmatch(session) is None:
         raise CoordinatorRefused("coordinator_session")
     run = _run_from_config(config)
+    if context is not None:
+        context["run"] = run
     run.session = session
-    _attach(
-        run, coordinator_directory=coordinator_directory, session=session,
-        lifecycle_lease=lease,
-    )
+    _bind_admission(run, lifecycle_lease=lease, acl_attestor=acl_attestor)
+    _acl_call(run.prepare_acl_admission, "anchor", "recovery")
+    _attach_publisher(run, coordinator_directory=coordinator_directory, session=session)
+    anchor = _acl_call(run.load_recovery_anchor)
+    _acl_call(run.prepare_acl_admission, "execution", "recovery")
     run.lifecycle_phase = "recovery_ready"
-    return run, run.anchor_publisher.load()
+    return run, anchor
 
 
 def _safe_to_release(run):
@@ -298,8 +315,10 @@ def _release_lease(lease, run, primary):
         raise CoordinatorRefused("coordinator_lease_terminal") from None
 
 
-def _execute_with_lease(config, coordinator_directory, operation):
+def _execute_with_lease(config, coordinator_directory, acl_attestor, operation):
     _explicit_inputs(config, coordinator_directory)
+    if acl_attestor is None:
+        raise CoordinatorRefused("coordinator_acl")
     try:
         config_snapshot = copy.deepcopy(config)
     except Exception:
@@ -323,27 +342,29 @@ def _execute_with_lease(config, coordinator_directory, operation):
     return result
 
 
-def supervise_fresh(*, config, coordinator_directory, mode, requests, budget):
+def supervise_fresh(*, config, coordinator_directory, acl_attestor=None, mode, requests, budget):
     """Run the supervisor only after fresh coordinator assembly and binding."""
     def execute(lease, context, config_snapshot, coordinator_snapshot):
-        run = _assemble_fresh(config_snapshot, coordinator_snapshot, lease)
-        context["run"] = run
-        return supervisor_module.supervise(
+        run = _assemble_fresh(
+            config_snapshot, coordinator_snapshot, lease, acl_attestor, context,
+        )
+        return _acl_call(
+            supervisor_module.supervise,
             run, mode=mode, requests=requests, budget=budget,
         )
 
-    return _execute_with_lease(config, coordinator_directory, execute)
+    return _execute_with_lease(config, coordinator_directory, acl_attestor, execute)
 
 
-def recover_existing(*, config, coordinator_directory, session, budget):
+def recover_existing(*, config, coordinator_directory, acl_attestor=None, session, budget):
     """Run recovery only with the exact anchor loaded by coordinator assembly."""
     def execute(lease, context, config_snapshot, coordinator_snapshot):
         run, anchor = _assemble_recovery(
-            config_snapshot, coordinator_snapshot, session, lease,
+            config_snapshot, coordinator_snapshot, session, lease, acl_attestor, context,
         )
-        context["run"] = run
-        return supervisor_module.recover(
+        return _acl_call(
+            supervisor_module.recover,
             run, session=session, anchor=anchor, budget=budget,
         )
 
-    return _execute_with_lease(config, coordinator_directory, execute)
+    return _execute_with_lease(config, coordinator_directory, acl_attestor, execute)
