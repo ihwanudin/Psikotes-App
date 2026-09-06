@@ -1136,3 +1136,19 @@ tidak ada aktivasi/deploy dan seluruh gate/payment default OFF.
 
 Tidak ada status/checklist yang diubah. P15/P16/P17c/P18 tetap terbuka;
 tidak ada aktivasi/deploy dan seluruh gate/payment default OFF.
+
+### Bukti LocalSystem identity rejection accepted — runtime tetap terbuka
+
+- `bbcd5b7` menolak current-process `TokenUser` LocalSystem exact `S-1-5-18`
+  sebelum descriptor snapshots.
+- Pemeriksaan identity-only: group SID dan restricting SID tidak dipakai sebagai
+  identitas `TokenUser`.
+- Bukti root accepted **55/55 unittest**, `py_compile`, diff-check, dan final
+  adversarial review **PASS** tanpa P1/P2; seluruh tes masih pure fake.
+- Ini hanya mengecualikan LocalSystem sebagai current-process identity; bukan
+  ordinary second-principal/provenance evidence, policy, atau effective
+  `AccessCheck`. Token restriction/impersonation lainnya, source-tree/cache/
+  composition/usable attestor, dan native Windows/runtime tetap terbuka.
+
+Tidak ada status/checklist yang diubah. P15/P16/P17c/P18 tetap terbuka;
+tidak ada aktivasi/deploy dan seluruh gate/payment default OFF.

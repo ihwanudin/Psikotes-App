@@ -2717,3 +2717,18 @@ provenance, LocalSystem, token restriction/impersonation lainnya, source-tree/
 cache/composition/usable attestor, dan native Windows/runtime tetap terbuka.
 P15/P16/P17c/P18 terbuka; tidak ada aktivasi/deploy dan seluruh gate/payment
 default OFF.
+
+### Checkpoint LocalSystem identity rejection — accepted `bbcd5b7`
+
+Current-process `TokenUser` LocalSystem exact `S-1-5-18` ditolak sebelum
+descriptor snapshots. Pemeriksaan ini identity-only; group SID atau restricting
+SID tidak dipakai sebagai identitas `TokenUser`. Bukti root accepted:
+**55/55 unittest**, `py_compile`, diff-check, dan adversarial review **PASS**
+tanpa P1/P2.
+
+Ini tetap pure fake dan hanya mengecualikan LocalSystem sebagai current-process
+identity; bukan ordinary second-principal/provenance evidence, policy, atau
+effective `AccessCheck`. Token restriction/impersonation lainnya, source-tree/
+cache/composition/usable attestor, dan native Windows/runtime tetap terbuka.
+P15/P16/P17c/P18 terbuka; tidak ada aktivasi/deploy dan seluruh gate/payment
+default OFF.

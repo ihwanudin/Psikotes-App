@@ -1088,3 +1088,18 @@ token restriction/impersonation lainnya, source-tree/cache/composition/usable
 attestor, dan native Windows/runtime tetap terbuka. Tidak ada browser, service,
 database, network, aktivasi, atau deploy. P15/P16/P17c/P18 tetap terbuka dan
 seluruh gate/payment tetap default OFF.
+
+## Checkpoint penolakan Windows LocalSystem identity — 2026-09-06
+
+Commit `bbcd5b7` menolak current-process `TokenUser` LocalSystem exact
+`S-1-5-18` sebelum descriptor snapshots. Pemeriksaan hanya terhadap identity;
+group SID dan restricting SID bukan authority untuk identitas `TokenUser`.
+
+Bukti root accepted: **55/55 unittest**, `py_compile`, diff-check, dan final
+adversarial review **PASS** tanpa P1/P2. Bukti tetap pure fake dan hanya
+mengecualikan LocalSystem sebagai current-process identity; bukan bukti ordinary
+second principal/provenance, policy, atau effective `AccessCheck`. Token
+restriction/impersonation lainnya, source-tree/cache/composition/usable
+attestor, dan native Windows/runtime tetap terbuka. Tidak ada browser, service,
+database, network, aktivasi, atau deploy. P15/P16/P17c/P18 tetap terbuka dan
+seluruh gate/payment tetap default OFF.
