@@ -27,10 +27,11 @@ class Capture:
         )
         self.responses = responses if len(responses) == 2 else responses * 2
         self.wrapped = None
+        self.module = None
 
     @property
     def calls(self):
-        return getattr(self.wrapped, "_CaptureCapability__index", 0)
+        return self.module._structural_fixture_capture_count_only(self.wrapped)
 def fixture():
     mt = load("pa_mt", HERE / "test_checkout_ordinary_authority_manifest.py")
     mc = load("pa_mc", HERE / "checkout-ordinary-authority-manifest.py")
@@ -108,6 +109,7 @@ def fixture():
 
 
 def bind(module, raw, capability):
+    capability.module = module
     capability.wrapped = module._structural_fixture_capability_only(
         *capability.responses
     )
@@ -159,8 +161,9 @@ class PrivilegeAuthorityTests(unittest.TestCase):
         self.assertEqual(len(result.bindingDigest), 64)
         self.assertFalse(hasattr(result, "captureDigest"))
         self.assertFalse(hasattr(result, "admitted"))
-        self.assertEqual(cap.calls, 2)
-        self.refused(m,lambda:setattr(result,"session","x"))
+        self.refused(m, lambda: cap.calls)
+        with self.assertRaises(AttributeError):
+            result.session = "x"
     def test_enabled_and_presence_contracts_exhaust(self):
         m, raw, live, entries, _ = fixture()
         for row in range(3):
@@ -288,18 +291,25 @@ class PrivilegeAuthorityTests(unittest.TestCase):
             + "\n"
         ).encode("ascii")
         self.refused(m, lambda: bind(m, changed, Capture(observation)))
+
     def test_transitions_failures_and_baseexception_exhaust(self):
         m, raw, _, _, obs = fixture()
-        authority = bind(m, raw, Capture(obs, obs))
+        capability = Capture(obs, obs)
+        authority = bind(m, raw, capability)
         self.refused(m, authority.final)
-        self.assertEqual(authority._PrivilegeLuidAuthority__capability._CaptureCapability__index, 0)
+        self.refused(m, lambda: capability.calls)
         self.refused(m, authority.initial)
-        authority = bind(m, raw, Capture(obs, obs))
+        capability = Capture(obs, obs)
+        authority = bind(m, raw, capability)
         authority.initial()
-        self.assertEqual(authority._PrivilegeLuidAuthority__capability._CaptureCapability__index, 1)
+        self.assertEqual(capability.calls, 1)
         self.refused(m, authority.initial)
         self.refused(m, authority.final)
-        for failure in (RuntimeError("secret"),KeyboardInterrupt("stop"),SystemExit(9)):
+        for failure in (
+            RuntimeError("secret"),
+            KeyboardInterrupt("stop"),
+            SystemExit(9),
+        ):
             authority = bind(m, raw, Capture(failure))
             if isinstance(failure, RuntimeError):
                 self.refused(m, authority.initial)
@@ -325,6 +335,7 @@ class PrivilegeAuthorityTests(unittest.TestCase):
         )
         self.assertIsNone(first.initial())
         self.assertTrue(first.final().structuralOnly)
+
     def test_copy_pickle_forgery_refused(self):
         m, raw, _, _, obs = fixture()
         for operation in (copy.copy, copy.deepcopy, pickle.dumps):
@@ -346,19 +357,40 @@ class PrivilegeAuthorityTests(unittest.TestCase):
         self.refused(
             m, lambda: type(result)(object(), True, "a", "b", "c", "d")
         )
-        forged = object.__new__(type(result))
+        forged = tuple.__new__(type(result), ())
+        self.refused(m, lambda: forged.bindingDigest)
+
+    def test_object_setattr_cannot_rewrite_state_binding_or_replay(self):
+        m, raw, _, _, observation = fixture()
+        capability = Capture(observation, observation)
+        authority = bind(m, raw, capability)
+        for name, value in (
+            ("_PrivilegeLuidAuthority__state", 1),
+            ("_PrivilegeLuidAuthority__binding", "f" * 64),
+        ):
+            with self.assertRaises(AttributeError):
+                object.__setattr__(authority, name, value)
+        self.assertIsNone(authority.initial())
+        marker = authority.final()
+        original_binding = marker.bindingDigest
         with self.assertRaises(AttributeError):
-            _ = forged.bindingDigest
+            object.__setattr__(
+                marker,
+                "_StructuralPrivilegeBinding__binding",
+                "f" * 64,
+            )
+        self.assertEqual(marker.bindingDigest, original_binding)
+        with self.assertRaises(AttributeError):
+            object.__setattr__(authority, "_PrivilegeLuidAuthority__state", 1)
+        self.refused(m, authority.final)
+
     def test_capability_module_and_type_drift(self):
         m, raw, _, _, obs = fixture()
         cap = Capture(obs, obs)
         authority = bind(m, raw, cap)
-        object.__setattr__(
-            cap.wrapped,
-            "_CaptureCapability__responses",
-            tuple(list(cap.responses)),
-        )
-        self.refused(m, authority.initial)
+        with self.assertRaises(AttributeError):
+            object.__setattr__(cap.wrapped, "_CaptureCapability__index", 1)
+        self.assertIsNone(authority.initial())
         m, raw, _, _, obs = fixture()
         authority = bind(m, raw, Capture(obs, obs))
         original = m._MANIFEST.decode.__code__
@@ -383,6 +415,34 @@ class PrivilegeAuthorityTests(unittest.TestCase):
         finally:
             m._PrivilegeLuidAuthority.initial.__code__ = original_code
 
+    def test_transitive_decoder_helper_replacement_refuses(self):
+        m, raw, _, _, observation = fixture()
+        replacements = (
+            (m._REQUEST, "_decode", lambda value: value),
+            (m._MANIFEST, "_strict_object", lambda pairs: dict(pairs)),
+        )
+        for module, name, replacement in replacements:
+            original = getattr(module, name)
+            setattr(module, name, replacement)
+            try:
+                self.refused(
+                    m, lambda: bind(m, raw, Capture(observation))
+                )
+            finally:
+                setattr(module, name, original)
+        start_helper = next(
+            cell.cell_contents
+            for cell in m._START.decode.__closure__
+            if callable(cell.cell_contents)
+            and getattr(cell.cell_contents, "__name__", "") == "decode_impl"
+        )
+        original_code = start_helper.__code__
+        start_helper.__code__ = original_code.replace()
+        try:
+            self.refused(m, lambda: bind(m, raw, Capture(observation)))
+        finally:
+            start_helper.__code__ = original_code
+
     def test_hostile_repr_is_never_invoked_and_post_capture_state_is_pinned(self):
         class Hostile:
             calls = 0
@@ -402,12 +462,13 @@ class PrivilegeAuthorityTests(unittest.TestCase):
         capability = Capture(obs, obs)
         authority = bind(m, raw, capability)
         self.assertIsNone(authority.initial())
-        object.__setattr__(
-            capability.wrapped,
-            "_CaptureCapability__responses",
-            tuple(list(capability.responses)),
-        )
-        self.refused(m, authority.final)
+        with self.assertRaises(AttributeError):
+            object.__setattr__(
+                capability.wrapped,
+                "_CaptureCapability__responses",
+                tuple(list(capability.responses)),
+            )
+        self.assertTrue(authority.final().structuralOnly)
     def test_static_surface(self):
         source = MODULE_PATH.read_text(encoding="utf-8")
         tree = ast.parse(source)

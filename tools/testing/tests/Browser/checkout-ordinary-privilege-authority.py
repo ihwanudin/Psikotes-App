@@ -96,16 +96,6 @@ def _make_api():
     module_globals = globals()
     modules = (_MANIFEST, _START, _REQUEST)
 
-    function_pins = tuple(
-        (module, name, _callable_state(getattr(module, name)))
-        for module, name in (
-            (_MANIFEST, "decode"),
-            (_START, "decode"),
-            (_START, "canonical"),
-            (_REQUEST, "decode_request"),
-        )
-    )
-
     def class_state(value):
         return tuple(
             (
@@ -116,14 +106,54 @@ def _make_api():
             for name, item in value.__dict__.items()
         )
 
-    type_pins = tuple(
-        (module, name, value, class_state(value))
-        for module, name, value in (
-            (_MANIFEST, "_AuthorityManifest", _MANIFEST._AuthorityManifest),
-            (_START, "_BrokerStartIdentity", _START._BrokerStartIdentity),
-            (_REQUEST, "_RequestSnapshot", _REQUEST._RequestSnapshot),
-        )
-    )
+    dependency_functions = []
+    dependency_globals = []
+    dependency_closures = []
+    dependency_types = []
+    visited = set()
+
+    def seal_dependency(value):
+        if len(visited) > 512:
+            raise refusal("ordinary_privilege_authority")
+        identity = id(value)
+        if identity in visited:
+            return
+        visited.add(identity)
+        if isinstance(value, type):
+            dependency_types.append((value, class_state(value)))
+            for item in value.__dict__.values():
+                if callable(item):
+                    seal_dependency(item)
+            return
+        if not callable(value):
+            return
+        state = _callable_state(value)
+        dependency_functions.append((value, state))
+        code = state[2]
+        function_globals = state[6]
+        if code is not None and type(function_globals) is dict:
+            for name in code.co_names:
+                if name in function_globals:
+                    item = function_globals[name]
+                    dependency_globals.append((function_globals, name, item))
+                    if callable(item) and getattr(item, "__module__", None) \
+                            == getattr(value, "__module__", None):
+                        seal_dependency(item)
+        closure = state[5]
+        if closure is not None:
+            for cell in closure:
+                item = cell.cell_contents
+                dependency_closures.append((cell, item))
+                if callable(item):
+                    seal_dependency(item)
+
+    for root in (
+        _MANIFEST.decode,
+        _START.decode,
+        _START.canonical,
+        _REQUEST.decode_request,
+    ):
+        seal_dependency(root)
     global_pins = (
         ("OrdinaryPrivilegeAuthorityRefused", refusal),
         ("_LiveBinding", live_type),
@@ -137,15 +167,18 @@ def _make_api():
         for name, expected in global_pins:
             if module_globals.get(name) is not expected:
                 raise ValueError("authority")
-        for module, name, expected in function_pins:
-            actual = _callable_state(getattr(module, name, None))
+        for expected_function, expected in dependency_functions:
+            actual = _callable_state(expected_function)
             if any(left is not right for left, right in zip(actual, expected)):
                 raise ValueError("function")
-        for module, name, expected_type, expected_state in type_pins:
-            actual_type = getattr(module, name, None)
-            if actual_type is not expected_type:
-                raise ValueError("type")
-            actual_state = class_state(actual_type)
+        for namespace, name, expected in dependency_globals:
+            if namespace.get(name) is not expected:
+                raise ValueError("helper")
+        for cell, expected in dependency_closures:
+            if cell.cell_contents is not expected:
+                raise ValueError("closure")
+        for expected_type, expected_state in dependency_types:
+            actual_state = class_state(expected_type)
             if len(actual_state) != len(expected_state):
                 raise ValueError("type")
             for actual, expected in zip(actual_state, expected_state):
@@ -206,8 +239,13 @@ def _make_api():
             return (frozenset, tuple(sorted(frozen, key=lambda item: str(item[0]))))
         raise ValueError("capability")
 
+    capability_vault = {}
+    authority_vault = {}
+    marker_vault = {}
+    maximum_live_objects = 64
+
     class CaptureCapability:
-        __slots__ = ("__responses", "__responses_pin", "__index", "__owner")
+        __slots__ = ()
 
         def __new__(cls, token, responses):
             if token is not construction_token:
@@ -215,34 +253,30 @@ def _make_api():
             return object.__new__(cls)
 
         def __init__(self, token, responses):
-            freeze_primitive(responses)
-            object.__setattr__(self, "_CaptureCapability__responses", responses)
-            object.__setattr__(self, "_CaptureCapability__responses_pin", responses)
-            object.__setattr__(self, "_CaptureCapability__index", 0)
-            object.__setattr__(self, "_CaptureCapability__owner", None)
-
-        def __setattr__(self, name, value):
-            raise refusal("ordinary_privilege_authority")
+            pass
 
         def claim(self, owner):
-            if self.__owner is not None or self.__index != 0:
+            state = capability_vault.get(id(self))
+            if state is None or state[0] is not self or state[3] is not None:
                 raise refusal("ordinary_privilege_authority")
-            object.__setattr__(self, "_CaptureCapability__owner", owner)
+            capability_vault[id(self)] = (self, state[1], state[2], owner)
 
         def validate(self, owner, index):
-            freeze_primitive(self.__responses)
-            if (
-                self.__responses is not self.__responses_pin
-                or self.__owner is not owner
-                or self.__index != index
-            ):
+            state = capability_vault.get(id(self))
+            if state is None or state[0] is not self or state[2] != index \
+                    or state[3] is not owner:
                 raise refusal("ordinary_privilege_authority")
+            freeze_primitive(state[1])
 
         def __call__(self):
-            if self.__owner is None or self.__index not in (0, 1):
+            state = capability_vault.get(id(self))
+            if state is None or state[0] is not self or state[2] not in (0, 1) \
+                    or state[3] is None:
                 raise refusal("ordinary_privilege_authority")
-            response = self.__responses[self.__index]
-            object.__setattr__(self, "_CaptureCapability__index", self.__index + 1)
+            response = state[1][state[2]]
+            capability_vault[id(self)] = (
+                self, state[1], state[2] + 1, state[3]
+            )
             if type(response) is tuple and len(response) == 2 \
                     and response[0] == "raise":
                 raise response[1]
@@ -253,35 +287,34 @@ def _make_api():
         raise refusal("ordinary_privilege_authority")
     capability_call_pin = _callable_state(CaptureCapability.__call__)
 
-    class StructuralPrivilegeBinding:
-        __slots__ = (
-            "__structural",
-            "__binding",
-            "__phase",
-            "__boundary",
-            "__session",
-        )
+    class StructuralPrivilegeBinding(tuple):
+        __slots__ = ()
 
         def __new__(cls, token, structural, binding, phase, boundary, session):
             if token is not construction_token:
                 raise refusal("ordinary_privilege_authority")
-            return object.__new__(cls)
+            if len(marker_vault) >= maximum_live_objects:
+                raise refusal("ordinary_privilege_authority")
+            marker = tuple.__new__(cls, ())
+            marker_vault[id(marker)] = (
+                marker, structural, binding, phase, boundary, session
+            )
+            return marker
 
         def __init__(self, token, structural, binding, phase, boundary, session):
-            object.__setattr__(self, "_StructuralPrivilegeBinding__structural", structural)
-            object.__setattr__(self, "_StructuralPrivilegeBinding__binding", binding)
-            object.__setattr__(self, "_StructuralPrivilegeBinding__phase", phase)
-            object.__setattr__(self, "_StructuralPrivilegeBinding__boundary", boundary)
-            object.__setattr__(self, "_StructuralPrivilegeBinding__session", session)
+            pass
 
-        structuralOnly = property(lambda self: self.__structural)
-        bindingDigest = property(lambda self: self.__binding)
-        phase = property(lambda self: self.__phase)
-        boundary = property(lambda self: self.__boundary)
-        session = property(lambda self: self.__session)
+        def _value(self, index):
+            state = marker_vault.get(id(self))
+            if state is None or state[0] is not self:
+                raise refusal("ordinary_privilege_authority")
+            return state[index]
 
-        def __setattr__(self, name, value):
-            raise refusal("ordinary_privilege_authority")
+        structuralOnly = property(lambda self: self._value(1))
+        bindingDigest = property(lambda self: self._value(2))
+        phase = property(lambda self: self._value(3))
+        boundary = property(lambda self: self._value(4))
+        session = property(lambda self: self._value(5))
 
         def __copy__(self):
             raise refusal("ordinary_privilege_authority")
@@ -296,6 +329,7 @@ def _make_api():
             return self.__copy__()
 
         def __repr__(self):
+            self._value(1)
             return "_StructuralPrivilegeBinding(structuralOnly=True)"
 
     marker_type = StructuralPrivilegeBinding
@@ -419,13 +453,7 @@ def _make_api():
         return value.entries
 
     class PrivilegeLuidAuthority:
-        __slots__ = (
-            "__capability",
-            "__live",
-            "__binding",
-            "__initial",
-            "__state",
-        )
+        __slots__ = ()
 
         def __new__(cls, token, capability, live, binding):
             if token is not construction_token:
@@ -433,38 +461,34 @@ def _make_api():
             return object.__new__(cls)
 
         def __init__(self, token, capability, live, binding):
-            object.__setattr__(self, "_PrivilegeLuidAuthority__capability", capability)
-            object.__setattr__(self, "_PrivilegeLuidAuthority__live", live)
-            object.__setattr__(self, "_PrivilegeLuidAuthority__binding", binding)
-            object.__setattr__(self, "_PrivilegeLuidAuthority__initial", None)
-            object.__setattr__(self, "_PrivilegeLuidAuthority__state", 0)
-            capability.claim(self)
-
-        def __setattr__(self, name, value):
-            self._exhaust()
-            raise refusal("ordinary_privilege_authority")
+            pass
 
         def _exhaust(self):
-            object.__setattr__(self, "_PrivilegeLuidAuthority__state", 2)
+            state = authority_vault.pop(id(self), None)
+            if state is not None:
+                capability_vault.pop(id(state[1]), None)
 
-        def _capture(self, state):
+        def _capture(self, expected_state):
             try:
-                if self.__state != state:
+                state = authority_vault.get(id(self))
+                if state is None or state[0] is not self \
+                        or state[4] != expected_state:
                     raise ValueError("state")
                 guard_authority()
                 guard_internal_types()
-                self.__capability.validate(self, state)
-                actual_call = _callable_state(type(self.__capability).__call__)
+                capability = state[1]
+                capability.validate(self, expected_state)
+                actual_call = _callable_state(type(capability).__call__)
                 if any(
                     left is not right
                     for left, right in zip(actual_call, capability_call_pin)
                 ):
                     raise ValueError("capability")
-                value = self.__capability()
-                self.__capability.validate(self, state + 1)
+                value = capability()
+                capability.validate(self, expected_state + 1)
                 guard_authority()
                 guard_internal_types()
-                return validate_observation(value, self.__live)
+                return validate_observation(value, state[2])
             except BaseException as primary:
                 self._exhaust()
                 if isinstance(primary, (KeyboardInterrupt, SystemExit)):
@@ -473,13 +497,24 @@ def _make_api():
 
         def initial(self):
             value = self._capture(0)
-            object.__setattr__(self, "_PrivilegeLuidAuthority__initial", value)
-            object.__setattr__(self, "_PrivilegeLuidAuthority__state", 1)
+            state = authority_vault.get(id(self))
+            if state is None or state[0] is not self:
+                self._exhaust()
+                raise refusal("ordinary_privilege_authority")
+            authority_vault[id(self)] = (
+                self, state[1], state[2], state[3], 1, value
+            )
             return None
 
         def final(self):
             value = self._capture(1)
-            initial = self.__initial
+            state = authority_vault.get(id(self))
+            if state is None or state[0] is not self:
+                self._exhaust()
+                raise refusal("ordinary_privilege_authority")
+            live = state[2]
+            binding = state[3]
+            initial = state[5]
             self._exhaust()
             if value != initial:
                 raise refusal("ordinary_privilege_authority")
@@ -487,10 +522,10 @@ def _make_api():
             return marker_type(
                 construction_token,
                 True,
-                self.__binding,
-                self.__live.phase,
-                self.__live.boundary,
-                self.__live.session,
+                binding,
+                live.phase,
+                live.boundary,
+                live.session,
             )
 
         def __copy__(self):
@@ -527,9 +562,24 @@ def _make_api():
                     raise ValueError("internal_type")
 
     def structural_fixture_capability_only(initial, final):
-        return invoke(
-            lambda: capability_type(construction_token, (initial, final))
-        )
+        def operation():
+            if len(capability_vault) >= maximum_live_objects:
+                raise ValueError("capacity")
+            responses = (initial, final)
+            freeze_primitive(responses)
+            capability = capability_type(construction_token, responses)
+            capability_vault[id(capability)] = (
+                capability, responses, 0, None
+            )
+            return capability
+
+        return invoke(operation)
+
+    def structural_fixture_capture_count_only(capability):
+        state = capability_vault.get(id(capability))
+        if state is None or state[0] is not capability:
+            raise refusal("ordinary_privilege_authority")
+        return state[2]
 
     def bind_structural_authority(
         *,
@@ -548,12 +598,19 @@ def _make_api():
                 request_raw,
                 machine_identity_digest,
             )
-            return authority_type(
+            if len(authority_vault) >= maximum_live_objects:
+                raise ValueError("capacity")
+            authority = authority_type(
                 construction_token,
                 capture_capability,
                 live,
                 binding,
             )
+            capture_capability.claim(authority)
+            authority_vault[id(authority)] = (
+                authority, capture_capability, live, binding, 0, None
+            )
+            return authority
 
         return invoke(operation)
 
@@ -562,6 +619,7 @@ def _make_api():
         StructuralPrivilegeBinding,
         PrivilegeLuidAuthority,
         structural_fixture_capability_only,
+        structural_fixture_capture_count_only,
         bind_structural_authority,
     )
 
@@ -571,6 +629,7 @@ def _make_api():
     _StructuralPrivilegeBinding,
     _PrivilegeLuidAuthority,
     _structural_fixture_capability_only,
+    _structural_fixture_capture_count_only,
     _bind_structural_authority,
 ) = _make_api()
 del _make_api
