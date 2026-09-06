@@ -865,3 +865,18 @@ review **PASS**; real-listener tidak dijalankan. Wiring operasional
 attestor, serta enforcement/runtime Windows tetap terbuka. Browser P17c dan
 operasi P18 belum diterima; tidak ada aktivasi dan seluruh gate/payment tetap
 default OFF.
+
+## Checkpoint enforcement admission ACL code-only — 2026-09-06
+
+Commit `15a5509` mengaktifkan gate pada wrapper dan boundary direct, dengan
+revalidasi admission tepat sebelum setiap `Popen`. Recovery mengikat session dan
+anchor exact ke hasil load one-shot dan memeriksanya kembali sebelum ownership
+I/O. Coordinator kini merangkai lease, dua boundary attestation, publisher,
+gated recovery load, serta error mapping fixed tanpa menutupi `BaseException`.
+
+Bukti root lulus supervisor aman **133/133 tes** dengan real-listener
+dikecualikan, coordinator+lease **38/38**, AST **4 file**, `py_compile`,
+diff-check, dan review adversarial **PASS**. Real Windows attestor, recursive
+descendant source-tree ACL/effective access, cross-process/crash,
+reparse/rename/durability, dan browser runtime tetap terbuka. P17c/P18 belum
+diterima; tidak ada runtime/deploy dan seluruh gate/payment tetap default OFF.

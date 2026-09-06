@@ -607,3 +607,17 @@ Bukti root: supervisor aman **127/127**, `py_compile`, diff-check, dan review
 `recover`, preflight, claim, `_command`, launch, coordinator, real attestor,
 serta enforcement/runtime Windows tetap terbuka. P17c/P18 belum diterima,
 tanpa aktivasi, dan semua gate/payment tetap default OFF.
+
+### Checkpoint enforcement admission ACL code-only
+
+`15a5509` menambahkan wrapper dan direct gates dengan recheck admission segera
+sebelum setiap `Popen`, exact recovery session+anchor yang berasal dari load
+one-shot, serta coordinator wiring canonical dan fixed error mapping. Error utama
+dan `BaseException` dipertahankan sementara cleanup admission/lease tetap dicoba.
+
+Bukti root: supervisor aman **133/133** tanpa real-listener, coordinator+lease
+**38/38**, AST **4 file**, `py_compile`, diff-check, dan adversarial review
+**PASS**. Real Windows attestor, recursive descendant source-tree ACL/effective
+access, cross-process/crash, reparse/rename/durability, dan browser runtime masih
+terbuka. P17c/P18 belum diterima; tidak ada runtime/deploy dan seluruh
+gate/payment tetap default OFF.

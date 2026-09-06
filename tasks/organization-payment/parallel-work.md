@@ -2514,3 +2514,18 @@ Root lulus supervisor aman **127/127**, `py_compile`, diff-check, dan review
 **PASS**, tanpa real-listener. Wiring `supervise`/`recover`, preflight, claim,
 `_command`, launch, coordinator, real attestor, dan enforcement/runtime tetap
 terbuka. P17c/P18 belum diterima dan seluruh gate/payment tetap default OFF.
+
+### Checkpoint ACL execution gates — accepted `15a5509`
+
+Wrapper dan seluruh boundary direct memerlukan admission aktif serta recheck
+tepat sebelum `Popen`. Recovery memakai session+anchor exact dari gated load
+one-shot dan memvalidasinya lagi sebelum ownership I/O. Coordinator wiring kini
+mengurutkan lease, dua attestation, publisher, recovery load, delegation, serta
+fixed error mapping dengan prioritas `BaseException` dan cleanup lease terjaga.
+
+Root lulus supervisor aman **133/133** (real-listener dikecualikan),
+coordinator+lease **38/38**, AST **4 file**, `py_compile`, diff-check, dan review
+adversarial **PASS**. Real attestor Windows, recursive descendant source-tree
+ACL/effective access, cross-process/crash, reparse/rename/durability, dan browser
+runtime tetap terbuka. P17c/P18 belum diterima; tidak ada runtime/deploy dan
+semua gate/payment tetap default OFF.

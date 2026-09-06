@@ -882,6 +882,23 @@ terbuka; tidak ada runtime atau aktivasi dan seluruh gate/payment default OFF.
 Tidak ada checkbox acceptance yang diubah. Browser P17c dan operasi P18 tetap
 terbuka; tidak ada aktivasi dan seluruh gate/payment default OFF.
 
+### Bukti ACL execution gates accepted — runtime gate tetap terbuka
+
+- `15a5509` mewajibkan admission pada wrapper dan direct boundary dengan recheck
+  tepat sebelum setiap `Popen`.
+- Recovery mengikat session+anchor exact dari gated load one-shot; coordinator
+  merangkai urutan canonical dan memetakan refusal ke error fixed tanpa menutupi
+  `BaseException` utama.
+- Root lulus supervisor aman **133/133** (real-listener dikecualikan),
+  coordinator+lease **38/38**, AST **4 file**, `py_compile`, diff-check, dan
+  adversarial review **PASS**.
+- Real attestor Windows, recursive descendant source-tree ACL/effective access,
+  cross-process/crash, reparse/rename/durability, dan browser runtime masih
+  terbuka.
+
+Tidak ada checkbox acceptance yang diubah. P17c/P18 tetap terbuka; tidak ada
+runtime/deploy dan seluruh gate/payment default OFF.
+
 ### Bukti source identity/façade accepted — checklist tetap terbuka
 
 - [x] `30c78ee` mem-pin source root/ancestor selama inventory, open/hash/copy,

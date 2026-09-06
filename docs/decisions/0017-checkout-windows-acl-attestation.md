@@ -117,3 +117,19 @@ menutup admission, dan melepas lease tanpa menutupi error utama atau
   runtime terbuka sebelum candidate dapat dipromosikan.
 - DACL tidak membedakan dua proses dengan SID sama dan tidak menggantikan lease.
 - P17c tetap terbuka sampai bukti runtime dan browser matrix selesai.
+
+## Implementation Checkpoint — `15a5509`
+
+Supervisor wrapper dan boundary direct kini mewajibkan admission aktif, termasuk
+recheck tepat sebelum setiap `Popen`. Recovery mengikat session dan anchor exact
+ke hasil load one-shot, lalu memvalidasinya kembali sebelum ownership I/O.
+Coordinator merangkai lease, dua boundary attestation, publisher dan gated anchor
+load dalam urutan canonical; refusal supervisor dipetakan ke vocabulary
+coordinator tanpa menutupi `BaseException` utama.
+
+Bukti root: supervisor aman **133/133 tes** dengan real-listener dikecualikan,
+coordinator+lease **38/38**, AST **4 file**, `py_compile`, diff-check, dan review
+adversarial **PASS**. Ini hanya bukti pure/mock dan statis. Real attestor Windows,
+recursive descendant source-tree ACL/effective access, cross-process/crash,
+reparse/rename, durability, serta browser runtime tetap terbuka. P17c/P18 tidak
+ditutup; tidak ada runtime/deploy dan seluruh gate/payment tetap default OFF.
