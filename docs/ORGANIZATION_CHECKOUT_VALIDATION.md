@@ -849,3 +849,19 @@ belum menyediakan publisher, execution/enforcement attestor, atau wiring
 coordinator, dan belum membuktikan descendant source-tree ACL maupun perilaku
 Windows nyata saat runtime, crash, reparse, atau rename. Browser P17c dan operasi
 P18 tetap terbuka; tidak ada aktivasi dan seluruh gate/payment tetap default OFF.
+
+## Checkpoint admission execution attestation ACL — 2026-09-06
+
+Commit `221ae47` mengikat publisher ke transisi exact `anchor_consumed` lalu
+memerlukan challenge kedua dan source pair baru untuk admission execution.
+Codec, lease, dan attestor tetap dipin exact; validasi memakai session, config
+binding, dan lease dari current context. Token opaque hanya aktif selama
+admission, menjadi exhausted setelah dipakai, dan dibersihkan pada seluruh jalur
+keluar.
+
+Bukti root lulus supervisor aman **127/127 tes**, `py_compile`, diff-check, dan
+review **PASS**; real-listener tidak dijalankan. Wiring operasional
+`supervise`/`recover`, preflight, claim, `_command`, launch, coordinator, real
+attestor, serta enforcement/runtime Windows tetap terbuka. Browser P17c dan
+operasi P18 belum diterima; tidak ada aktivasi dan seluruh gate/payment tetap
+default OFF.

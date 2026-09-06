@@ -2501,3 +2501,16 @@ Publisher, execution/enforcement attestor, wiring coordinator, descendant
 source-tree ACL, dan bukti Windows runtime/crash/reparse/rename masih terbuka.
 Browser P17c/P18 belum diterima; tidak ada runtime atau aktivasi dan semua
 gate/payment tetap default OFF.
+
+### Checkpoint ACL execution admission — accepted `221ae47`
+
+Publisher kini terikat ke transisi exact `anchor_consumed`; execution admission
+memakai challenge kedua/source pair baru dan memvalidasi session, config binding,
+serta lease dari current context, sementara codec, lease, dan attestor tetap
+dipin exact. Token opaque hanya hidup selama admission, exhausted setelah
+konsumsi, dan dibersihkan pada seluruh exit path.
+
+Root lulus supervisor aman **127/127**, `py_compile`, diff-check, dan review
+**PASS**, tanpa real-listener. Wiring `supervise`/`recover`, preflight, claim,
+`_command`, launch, coordinator, real attestor, dan enforcement/runtime tetap
+terbuka. P17c/P18 belum diterima dan seluruh gate/payment tetap default OFF.

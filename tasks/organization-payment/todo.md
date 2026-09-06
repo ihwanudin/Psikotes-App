@@ -866,6 +866,22 @@ network/deploy/aktivasi; P17c/P18 tetap terbuka dan gate/payment default OFF.
 Tidak ada checkbox acceptance yang diubah. Browser P17c dan operasi P18 tetap
 terbuka; tidak ada runtime atau aktivasi dan seluruh gate/payment default OFF.
 
+### Bukti ACL execution admission accepted — runtime gate tetap terbuka
+
+- `221ae47` mengikat publisher ke transisi exact `anchor_consumed`, mem-pin
+  codec/lease/attestor exact, dan memakai challenge kedua/source pair baru untuk
+  execution admission.
+- Session, config binding, dan lease divalidasi dari current context; token
+  opaque aktif hanya selama admission, exhausted setelah konsumsi, dan selalu
+  dibersihkan.
+- Root lulus supervisor aman **127/127**, `py_compile`, diff-check, dan review
+  **PASS**; real-listener tidak dijalankan.
+- Wiring `supervise`/`recover`, preflight, claim, `_command`, launch,
+  coordinator, real attestor, serta enforcement/runtime masih terbuka.
+
+Tidak ada checkbox acceptance yang diubah. Browser P17c dan operasi P18 tetap
+terbuka; tidak ada aktivasi dan seluruh gate/payment default OFF.
+
 ### Bukti source identity/façade accepted — checklist tetap terbuka
 
 - [x] `30c78ee` mem-pin source root/ancestor selama inventory, open/hash/copy,
