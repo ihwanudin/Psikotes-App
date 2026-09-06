@@ -2574,3 +2574,18 @@ owner/DACL/token/`AccessCheck`, recursive completeness, empty dirs/root binding,
 ACL efficacy, race/reparse/rename/TOCTOU, crash, dan browser runtime masih
 terbuka. Tidak ada runtime/deploy/aktivasi; P15/P16/P17c/P18 tidak berubah dan
 seluruh gate/payment default OFF.
+
+### Checkpoint private Windows ACL descriptor snapshot — accepted `49d6b87`
+
+ABI kini berisi **29 signature**, termasuk `IsValidAcl`. Primitive private
+mengambil dua descriptor snapshot dari live handle yang sama dan mewajibkan
+self-relative/bounds/revision 1, pointer owner-group-DACL interior, serta DACL
+present non-NULL, protected, tidak auto-inherited, dan revision 2. Seluruh rentang
+`AclSize` harus contained sebelum traversal; digest memakai exact
+`AclBytesInUse`. Hanya pointer allocation base di-`LocalFree` tepat sekali. Bukti root:
+**24/24 tes**, `py_compile`, diff-check, dan final adversarial review **PASS**.
+
+Bukti masih pure fake ABI. SID string/process-token owner match, ACE parsing
+exact, policy/effective `AccessCheck`, source-tree/composition/cache/attestor,
+native runtime, dan race protection belum ada. P15/P16/P17c/P18 tetap terbuka;
+tidak ada runtime/deploy/aktivasi dan seluruh gate/payment default OFF.

@@ -932,3 +932,22 @@ owner/DACL/token/`AccessCheck`, recursive completeness, empty-dir/root binding,
 native ACL efficacy, race/reparse/rename/TOCTOU, crash, maupun browser runtime.
 Tidak ada runtime, service, database, network, deploy, atau aktivasi.
 P15/P16/P17c/P18 tetap terbuka dan seluruh gate/payment tetap default OFF.
+
+## Checkpoint private Windows ACL descriptor snapshot — 2026-09-06
+
+Commit `49d6b87` memperluas ABI menjadi **29 signature** dengan `IsValidAcl` dan
+menambah dua snapshot descriptor melalui live directory handle yang sama.
+Security descriptor wajib self-relative/revision 1 dan bounded; pointer owner,
+group, serta DACL harus interior terhadap allocation. DACL wajib present,
+non-NULL, protected, tidak auto-inherited, dan revision 2. Seluruh rentang
+`AclSize` harus contained sebelum traversal native; digest memakai exact
+`AclSizeInformation.AclBytesInUse`. Hanya pointer base dialokasikan yang di-
+`LocalFree` tepat sekali.
+
+Bukti root accepted: **24/24 tes**, `py_compile`, diff-check, dan final
+adversarial review **PASS**. Ini tetap pure fake ABI, bukan native Windows.
+Konversi SID/process-token owner matching, parsing ACE exact, policy/effective
+`AccessCheck`, source-tree/composition/cache/usable-attestor wiring, runtime, dan
+race protection belum tersedia. Tidak ada browser, service, database, network,
+deploy, atau aktivasi. P15/P16/P17c/P18 tetap terbuka dan seluruh gate/payment
+tetap default OFF.

@@ -975,3 +975,21 @@ native/runtime/deploy/aktivasi dan seluruh gate/payment tetap default OFF.
 
 Tidak ada checkbox acceptance yang diubah. P15/P16/P17c/P18 tetap terbuka;
 tidak ada native/runtime/deploy/aktivasi dan seluruh gate/payment default OFF.
+
+### Bukti private Windows ACL descriptor snapshot accepted — runtime tetap terbuka
+
+- `49d6b87` memperluas ABI menjadi **29 signature**, termasuk `IsValidAcl`, dan
+  mengambil dua descriptor snapshot melalui live directory handle yang sama.
+- Descriptor wajib self-relative/bounded/revision 1; pointer owner, group, dan
+  DACL harus interior. DACL wajib present non-NULL, protected, tidak
+  auto-inherited, dan revision 2.
+- Seluruh rentang `AclSize` harus contained sebelum traversal dan digest memakai
+  exact `AclBytesInUse`; hanya pointer allocation base di-`LocalFree` tepat sekali.
+- Bukti root accepted **24/24 tes**, `py_compile`, diff-check, dan final
+  adversarial review **PASS**. Tes tetap pure fake ABI.
+- SID string/process-token owner match, parsing ACE exact, policy/effective
+  `AccessCheck`, source-tree/composition/cache/attestor, native runtime, dan race
+  protection belum tersedia atau terbukti.
+
+Tidak ada checkbox acceptance yang diubah. P15/P16/P17c/P18 tetap terbuka;
+tidak ada runtime/deploy/aktivasi dan seluruh gate/payment default OFF.

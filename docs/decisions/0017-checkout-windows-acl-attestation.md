@@ -192,3 +192,23 @@ atau token, maupun menjalankan `AccessCheck`. Kelengkapan descendant, empty dirs
 root binding, native ACL efficacy, race/reparse/rename/TOCTOU, crash, dan browser
 runtime tetap terbuka. P15/P16/P17c/P18 tidak berubah; seluruh gate/payment tetap
 default OFF dan tidak ada deploy/aktivasi.
+
+## Implementation Checkpoint — `49d6b87`
+
+Boundary ABI kini mem-pin **29 signature**, termasuk `IsValidAcl`. Primitive
+private mengambil dua snapshot security descriptor melalui live handle yang
+sama. Setiap snapshot wajib self-relative dan bounded; pointer owner, group, dan
+DACL harus berada di dalam allocation descriptor. DACL wajib present, non-NULL,
+protected, tidak auto-inherited, memakai security descriptor revision 1 dan ACL
+revision 2. Seluruh rentang `AclSize` harus contained sebelum traversal native
+apa pun dan digest dihitung dari tepat `AclBytesInUse`. Hanya pointer
+base hasil alokasi yang diberikan ke `LocalFree`, tepat sekali pada setiap jalur.
+
+Bukti root accepted: **24/24 tes**, `py_compile`, diff-check, dan final review
+adversarial **PASS**. Semua bukti masih memakai fake ABI. Primitive belum
+mengubah SID ke string atau mencocokkan owner dengan process token, belum
+mem-parsing ACE exact atau membuktikan policy/effective `AccessCheck`, dan belum
+terhubung ke source-tree summary, composition, cache, atau usable attestor.
+Native runtime, recursive completeness, race/reparse/rename/TOCTOU, crash, dan
+browser tetap terbuka. P15/P16/P17c/P18 tidak berubah; tidak ada
+runtime/deploy/aktivasi dan seluruh gate/payment tetap default OFF.
