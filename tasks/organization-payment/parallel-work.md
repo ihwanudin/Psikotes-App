@@ -2800,3 +2800,21 @@ evidence; tidak ada klaim full-suite green. Consumer integration, native
 traversal, live identity/provenance, dan runtime tetap terbuka. Tidak ada
 config/env/deploy/activation atau perubahan P15/P16/P17c/P18,
 checklist/progress, active gates, maupun payment; semuanya tetap default OFF.
+
+### Checkpoint pure ACL role-mask policy — accepted `a62f8bd`
+
+Pure primitive kini mencocokkan role mask hanya pada process-token-bound
+snapshot yang telah direvalidasi penuh. Exact coordinator/run `2032127` dan
+source `1179817` berasal dari dan parity-checked terhadap canonical policy
+artifact digest
+`a63c221764f73a54e87513fc91cded6b3fa16825138f6b24b6118132829f4eeb`.
+Output dibatasi menjadi immutable private match tanpa `policySatisfied`,
+evidence, atau handle.
+
+Evidence root: **60/60 tests**, `py_compile`, dan independent review **PASS**
+tanpa P1/P2 setelah forged-snapshot P1 serta artifact-parity P2 diperbaiki.
+Role tetap internal/test input. Future composition harus mengikat canonical
+target order/path/identity dan double descriptor/token stability. Usable
+attestor, native/runtime implementation, serta provider belum ada. Tidak ada
+config/env/deploy/activation atau perubahan P15/P16/P17c/P18,
+checklist/progress, active gates, maupun payment; semuanya tetap default OFF.

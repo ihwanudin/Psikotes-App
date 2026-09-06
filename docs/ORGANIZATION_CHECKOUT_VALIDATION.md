@@ -1186,3 +1186,21 @@ native traversal, live identity/provenance, serta runtime evidence tetap belum
 ada. Tidak ada config/env/deploy/activation maupun perubahan P15/P16/P17c/P18,
 checklist/progress, active gates, atau payment; semuanya tetap terbuka/default
 OFF.
+
+## Checkpoint pure ACL role-mask policy — 2026-09-06
+
+Commit `a62f8bd` menerima pure role-mask policy primitive atas
+process-token-bound snapshot yang telah direvalidasi penuh. Exact mask
+coordinator/run `2032127` dan source `1179817` diturunkan serta parity-checked
+terhadap canonical policy artifact digest
+`a63c221764f73a54e87513fc91cded6b3fa16825138f6b24b6118132829f4eeb`.
+Output hanya immutable private match tanpa `policySatisfied`, evidence, atau
+handle.
+
+Bukti root: **60/60 tests**, `py_compile`, dan independent review **PASS**
+tanpa P1/P2 setelah forged-snapshot P1 dan artifact-parity P2 diperbaiki. Role
+masih internal/test input; future composition wajib mengikat canonical target
+order/path/identity serta double descriptor/token stability. Belum ada usable
+attestor, native/runtime implementation, atau provider. Tidak ada perubahan
+P15/P16/P17c/P18, checklist/progress, active gates, maupun payment; semuanya
+tetap terbuka/default OFF tanpa config/env/deploy/activation.

@@ -1231,3 +1231,22 @@ gates, dan payment tetap terbuka/default OFF.
 
 Tidak ada status/checklist/progress/gate yang berubah. P15/P16/P17c/P18, active
 gates, dan payment tetap terbuka/default OFF.
+
+### Bukti pure ACL role-mask policy accepted — composition tetap terbuka
+
+- Commit `a62f8bd` menerima pure role-mask primitive atas fully revalidated
+  process-token-bound snapshots.
+- Exact mask coordinator/run `2032127` dan source `1179817` diturunkan serta
+  parity-checked terhadap canonical policy artifact digest
+  `a63c221764f73a54e87513fc91cded6b3fa16825138f6b24b6118132829f4eeb`.
+- Hasil hanya immutable private match; tidak memuat `policySatisfied`, evidence,
+  atau handle.
+- Evidence root: **60/60 tests**, `py_compile`, dan independent review **PASS**
+  tanpa P1/P2 setelah forged-snapshot P1 dan artifact-parity P2 diperbaiki.
+- Role masih internal/test input. Future composition wajib mengikat canonical
+  target order/path/identity serta double descriptor/token stability.
+- Usable attestor, native/runtime implementation, dan provider tetap belum ada;
+  tidak ada config/env/deploy/activation.
+
+Tidak ada status/checklist/progress/gate yang berubah. P15/P16/P17c/P18, active
+gates, dan payment tetap terbuka/default OFF.
