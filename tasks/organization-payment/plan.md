@@ -798,3 +798,19 @@ general-unrestricted evidence, ordinary evidence/policy, atau effective
 impersonation lainnya, source-tree/cache/composition/usable attestor, dan native
 Windows/runtime masih terbuka. Tidak ada aktivasi/deploy; P15/P16/P17c/P18 tetap
 terbuka dan seluruh gate/payment OFF.
+
+### Checkpoint restricting SID corroboration
+
+Commit `a5e3c98` memakai `IsTokenRestricted` hanya sebagai corroboration untuk
+authority `TokenRestrictedSids` class 11. `FALSE` hanya sah setelah
+`SetLastError(0)` dan immediate `GetLastError()==0`; nonzero berarti `true`, dan
+hasil wajib parity dengan snapshot class 11. Bukti root accepted:
+**53/53 unittest**, `py_compile`, diff-check, dan adversarial review **PASS**
+tanpa P1/P2.
+
+Ini tetap pure fake current-process observation; bukan general-unrestricted
+evidence, ordinary evidence/policy, atau effective `AccessCheck`. Second-token
+provenance, LocalSystem, token restriction/impersonation lainnya, source-tree/
+cache/composition/usable attestor, dan native Windows/runtime masih terbuka.
+Tidak ada aktivasi/deploy; P15/P16/P17c/P18 tetap terbuka dan seluruh
+gate/payment OFF.

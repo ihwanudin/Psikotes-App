@@ -1072,3 +1072,19 @@ LocalSystem, token restriction/impersonation lainnya, source-tree/cache/
 composition/usable attestor, dan native Windows/runtime tetap terbuka. Tidak ada
 browser, service, database, network, aktivasi, atau deploy. P15/P16/P17c/P18
 tetap terbuka dan seluruh gate/payment tetap default OFF.
+
+## Checkpoint corroboration Windows restricting SID — 2026-09-06
+
+Commit `a5e3c98` memakai `IsTokenRestricted` hanya sebagai corroboration atas
+authority `TokenRestrictedSids` (class 11). Hasil `FALSE` hanya sah setelah
+`SetLastError(0)` dan immediate `GetLastError()==0`; hasil nonzero berarti
+`true`. Nilai corroboration wajib parity dengan snapshot class 11.
+
+Bukti root accepted: **53/53 unittest**, `py_compile`, diff-check, dan final
+adversarial review **PASS** tanpa P1/P2. Bukti tetap pure fake current-process
+observation; bukan general-unrestricted evidence, ordinary principal/policy,
+atau effective `AccessCheck`. Ordinary second-token provenance, LocalSystem,
+token restriction/impersonation lainnya, source-tree/cache/composition/usable
+attestor, dan native Windows/runtime tetap terbuka. Tidak ada browser, service,
+database, network, aktivasi, atau deploy. P15/P16/P17c/P18 tetap terbuka dan
+seluruh gate/payment tetap default OFF.

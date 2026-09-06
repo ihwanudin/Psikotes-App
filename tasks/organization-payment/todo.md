@@ -1119,3 +1119,20 @@ tidak ada aktivasi/deploy dan seluruh gate/payment default OFF.
 
 Tidak ada status/checklist yang diubah. P15/P16/P17c/P18 tetap terbuka;
 tidak ada aktivasi/deploy dan seluruh gate/payment default OFF.
+
+### Bukti restricting SID corroboration accepted — runtime tetap terbuka
+
+- `a5e3c98` memakai `IsTokenRestricted` hanya sebagai corroboration atas
+  authority `TokenRestrictedSids` class 11.
+- `FALSE` hanya sah setelah `SetLastError(0)` dan immediate
+  `GetLastError()==0`; nonzero berarti `true`, dan hasil wajib parity dengan
+  snapshot class 11.
+- Bukti root accepted **53/53 unittest**, `py_compile`, diff-check, dan final
+  adversarial review **PASS** tanpa P1/P2; seluruh tes masih pure fake.
+- Ini bukan general-unrestricted evidence, ordinary evidence/policy, atau
+  effective `AccessCheck`. Second-token provenance, LocalSystem, token
+  restriction/impersonation lainnya, source-tree/cache/composition/usable
+  attestor, dan native Windows/runtime tetap terbuka.
+
+Tidak ada status/checklist yang diubah. P15/P16/P17c/P18 tetap terbuka;
+tidak ada aktivasi/deploy dan seluruh gate/payment default OFF.
