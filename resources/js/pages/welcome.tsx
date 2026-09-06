@@ -130,7 +130,11 @@ function ReportPreview() {
                         </p>
                     </div>
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-brand-green">
-                        <BadgeCheck className="size-3.5" />
+                        <BadgeCheck
+                            className="size-3.5"
+                            aria-hidden="true"
+                            focusable="false"
+                        />
                         Ditinjau
                     </span>
                 </div>
@@ -185,7 +189,11 @@ function ReportPreview() {
                     </div>
 
                     <div className="flex items-start gap-3 rounded-xl border border-brand-gold/30 bg-brand-gold-soft/55 p-4">
-                        <ClipboardCheck className="mt-0.5 size-5 shrink-0 text-brand-green" />
+                        <ClipboardCheck
+                            className="mt-0.5 size-5 shrink-0 text-brand-green"
+                            aria-hidden="true"
+                            focusable="false"
+                        />
                         <p className="text-xs leading-5 text-slate-600">
                             Rekomendasi dibaca terhadap standar bidang kerja dan
                             disahkan setelah tinjauan psikolog.
@@ -196,7 +204,11 @@ function ReportPreview() {
 
             <div className="absolute -right-3 -bottom-6 flex items-center gap-3 rounded-xl border border-white/20 bg-brand-green-deep px-4 py-3 text-white shadow-xl sm:-right-6">
                 <span className="grid size-9 place-items-center rounded-full bg-brand-gold text-brand-green-deep">
-                    <ShieldCheck className="size-5" />
+                    <ShieldCheck
+                        className="size-5"
+                        aria-hidden="true"
+                        focusable="false"
+                    />
                 </span>
                 <span>
                     <span className="block text-xs font-semibold">
@@ -320,7 +332,11 @@ export default function Welcome() {
                         <div className="relative mx-auto grid max-w-7xl items-center gap-16 px-5 sm:px-8 lg:grid-cols-[1.05fr_0.95fr] lg:px-10">
                             <div className="max-w-2xl">
                                 <p className="inline-flex items-center gap-2 rounded-full border border-brand-gold/35 bg-brand-gold/10 px-3.5 py-2 text-xs font-semibold tracking-[0.12em] text-brand-gold uppercase">
-                                    <Fingerprint className="size-4" />
+                                    <Fingerprint
+                                        className="size-4"
+                                        aria-hidden="true"
+                                        focusable="false"
+                                    />
                                     Asesmen kerja CPMI Jepang
                                 </p>
                                 <h1 className="mt-7 text-4xl leading-[1.08] font-semibold tracking-[-0.035em] text-balance sm:text-5xl lg:text-6xl">
@@ -340,7 +356,11 @@ export default function Welcome() {
                                         className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-brand-gold px-6 text-sm font-semibold text-brand-green-deep transition hover:bg-[#e2c34f] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
                                     >
                                         Daftar psikotes
-                                        <ArrowRight className="size-4" />
+                                        <ArrowRight
+                                            className="size-4"
+                                            aria-hidden="true"
+                                            focusable="false"
+                                        />
                                     </Link>
                                     <a
                                         href="#cara-kerja"
@@ -352,15 +372,27 @@ export default function Welcome() {
 
                                 <ul className="mt-9 grid gap-3 text-sm text-white/72 sm:grid-cols-3">
                                     <li className="flex items-center gap-2">
-                                        <CheckCircle2 className="size-4 text-brand-gold" />
+                                        <CheckCircle2
+                                            className="size-4 text-brand-gold"
+                                            aria-hidden="true"
+                                            focusable="false"
+                                        />
                                         100% daring
                                     </li>
                                     <li className="flex items-center gap-2">
-                                        <CheckCircle2 className="size-4 text-brand-gold" />
+                                        <CheckCircle2
+                                            className="size-4 text-brand-gold"
+                                            aria-hidden="true"
+                                            focusable="false"
+                                        />
                                         HPP ID–JP
                                     </li>
                                     <li className="flex items-center gap-2">
-                                        <CheckCircle2 className="size-4 text-brand-gold" />
+                                        <CheckCircle2
+                                            className="size-4 text-brand-gold"
+                                            aria-hidden="true"
+                                            focusable="false"
+                                        />
                                         Ditinjau psikolog
                                     </li>
                                 </ul>
@@ -412,7 +444,11 @@ export default function Welcome() {
                                             className="bg-white p-7 sm:p-9"
                                         >
                                             <span className="grid size-11 place-items-center rounded-lg bg-emerald-50 text-brand-green">
-                                                <Icon className="size-5" />
+                                                <Icon
+                                                    className="size-5"
+                                                    aria-hidden="true"
+                                                    focusable="false"
+                                                />
                                             </span>
                                             <h3 className="mt-6 text-lg font-semibold">
                                                 {benefit.title}
@@ -477,7 +513,11 @@ export default function Welcome() {
                     >
                         <div className="mx-auto grid max-w-7xl overflow-hidden rounded-2xl border border-emerald-950/10 bg-white lg:grid-cols-[0.9fr_1.1fr]">
                             <div className="bg-brand-green px-7 py-10 text-white sm:p-12">
-                                <LockKeyhole className="size-8 text-brand-gold" />
+                                <LockKeyhole
+                                    className="size-8 text-brand-gold"
+                                    aria-hidden="true"
+                                    focusable="false"
+                                />
                                 <h2 className="mt-8 max-w-md text-3xl leading-tight font-semibold tracking-tight">
                                     Privasi dan keputusan profesional menjadi
                                     bagian dari alur.
@@ -492,7 +532,11 @@ export default function Welcome() {
 
                             <div className="grid gap-7 p-7 sm:grid-cols-2 sm:p-12">
                                 <div>
-                                    <FileCheck2 className="size-6 text-brand-green" />
+                                    <FileCheck2
+                                        className="size-6 text-brand-green"
+                                        aria-hidden="true"
+                                        focusable="false"
+                                    />
                                     <h3 className="mt-4 font-semibold">
                                         Wajib tinjauan psikolog
                                     </h3>
@@ -502,7 +546,11 @@ export default function Welcome() {
                                     </p>
                                 </div>
                                 <div>
-                                    <HeartPulse className="size-6 text-brand-green" />
+                                    <HeartPulse
+                                        className="size-6 text-brand-green"
+                                        aria-hidden="true"
+                                        focusable="false"
+                                    />
                                     <h3 className="mt-4 font-semibold">
                                         DASS-21 dipisahkan
                                     </h3>
@@ -513,7 +561,11 @@ export default function Welcome() {
                                     </p>
                                 </div>
                                 <div>
-                                    <Laptop2 className="size-6 text-brand-green" />
+                                    <Laptop2
+                                        className="size-6 text-brand-green"
+                                        aria-hidden="true"
+                                        focusable="false"
+                                    />
                                     <h3 className="mt-4 font-semibold">
                                         Sesi dapat ditelusuri
                                     </h3>
@@ -523,7 +575,11 @@ export default function Welcome() {
                                     </p>
                                 </div>
                                 <div>
-                                    <ShieldCheck className="size-6 text-brand-green" />
+                                    <ShieldCheck
+                                        className="size-6 text-brand-green"
+                                        aria-hidden="true"
+                                        focusable="false"
+                                    />
                                     <h3 className="mt-4 font-semibold">
                                         Akses berbasis peran
                                     </h3>
@@ -557,7 +613,11 @@ export default function Welcome() {
                                 className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-brand-green-deep px-6 text-sm font-semibold text-white transition hover:bg-brand-green focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand-green"
                             >
                                 Daftar sekarang
-                                <ArrowRight className="size-4" />
+                                <ArrowRight
+                                    className="size-4"
+                                    aria-hidden="true"
+                                    focusable="false"
+                                />
                             </Link>
                         </div>
                     </section>
@@ -574,7 +634,11 @@ export default function Welcome() {
                         </div>
                         <div className="flex flex-col gap-2 text-sm text-slate-500 md:text-right">
                             <span className="inline-flex items-center gap-2 md:justify-end">
-                                <Clock3 className="size-4" />
+                                <Clock3
+                                    className="size-4"
+                                    aria-hidden="true"
+                                    focusable="false"
+                                />
                                 Layanan asesmen daring
                             </span>
                             <p>
