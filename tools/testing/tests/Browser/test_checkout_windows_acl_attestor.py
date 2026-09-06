@@ -1002,6 +1002,16 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
             ((), False, 4),
         )
 
+    @staticmethod
+    def replace_bound_security_snapshot(module, snapshot, **changes):
+        values = dict(snapshot.values())
+        values.update(changes)
+        state = object.__getattribute__(snapshot, "_SecuritySnapshot__state")
+        return module._SecuritySnapshot._create(
+            tuple(values[key] for key in module._SecuritySnapshot._KEYS),
+            state,
+        )
+
     def opened(self, module, harness):
         return module._open_directory(harness.bundle(), harness.path)
 
@@ -2999,6 +3009,219 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
         )
         self.assertEqual(
             artifact_masks, tuple(module._TARGET_ACCESS_MASKS.items()),
+        )
+
+    def test_ordered_target_policy_bundle_assigns_roles_internally_and_is_immutable(self):
+        module = load_module()
+        snapshots = (
+            self.bound_security_snapshot(module, 2032127),
+            self.bound_security_snapshot(module, 2032127),
+            self.bound_security_snapshot(module, 1179817),
+        )
+        bundle = module._match_ordered_target_policies(snapshots)
+        self.assertIs(type(bundle), module._OrderedTargetPolicyMatch)
+        self.assertEqual(bundle.values(), {
+            "policyDigest": module.ACL_POLICY_DIGEST,
+            "targets": (
+                ("coordinator", 2032127),
+                ("run", 2032127),
+                ("source", 1179817),
+            ),
+        })
+        self.assertNotIn("policySatisfied", bundle.values())
+        self.assertFalse(any(
+            word in repr(bundle.values())
+            for word in ("path", "fileId", "volumeSerial", "handle", "pointer")
+        ))
+        with self.assertRaises(module.WindowsAclRefused):
+            bundle.extra = "PRIVATE"
+        with self.assertRaises(TypeError):
+            bundle.values()["targets"] = ()
+        with self.assertRaises(TypeError):
+            module._match_ordered_target_policies(snapshots, ("run",))
+
+    def test_ordered_target_policy_bundle_rejects_shape_order_and_invalid_snapshots(self):
+        module = load_module()
+        coordinator = self.bound_security_snapshot(module, 2032127)
+        run = self.bound_security_snapshot(module, 2032127)
+        source = self.bound_security_snapshot(module, 1179817)
+        unbound_values = dict(run.values())
+        for key in module._SecuritySnapshot._KEYS[-11:]:
+            unbound_values[key] = None
+        unbound = module._SecuritySnapshot._from_descriptor(tuple(
+            unbound_values[key] for key in module._SecuritySnapshot._KEYS
+        ))
+        forged = self.replace_bound_security_snapshot(
+            module, run, descriptorRevision=2,
+        )
+
+        class TupleSubclass(tuple):
+            pass
+
+        cases = (
+            None,
+            [coordinator, run, source],
+            TupleSubclass((coordinator, run, source)),
+            (),
+            (coordinator,),
+            (coordinator, run),
+            (coordinator, run, source, source),
+            (source, run, coordinator),
+            (coordinator, source, run),
+            (coordinator, unbound, source),
+            (coordinator, forged, source),
+            (coordinator, object(), source),
+        )
+        for candidate in cases:
+            with self.subTest(candidate_type=type(candidate).__name__), \
+                    self.assertRaisesRegex(module.WindowsAclRefused,
+                                            "^acl_attestation$"):
+                module._match_ordered_target_policies(candidate)
+
+    def test_ordered_target_policy_bundle_rejects_process_profile_drift(self):
+        module = load_module()
+        coordinator = self.bound_security_snapshot(module, 2032127)
+        run = self.bound_security_snapshot(module, 2032127)
+        source = self.bound_security_snapshot(module, 1179817)
+        sid = coordinator.values()["processTokenSidBytes"]
+        sid_text = coordinator.values()["processTokenSid"]
+        other_sid = (
+            b"\x01\x02\x00\x00\x00\x00\x00\x05"
+            + (21).to_bytes(4, "little") + (101).to_bytes(4, "little")
+        )
+        other_text = "S-1-5-21-101"
+        profile_keys = tuple(
+            key for key in module._SecuritySnapshot._KEYS
+            if key.startswith("processToken")
+        )
+        self.assertEqual(profile_keys, module._PROCESS_TOKEN_POLICY_KEYS)
+
+        sid_drift = self.replace_bound_security_snapshot(
+            module, run,
+            ownerSidBytes=other_sid,
+            ownerSid=other_text,
+            trusteeSid=other_text,
+            processTokenSidBytes=other_sid,
+            processTokenSid=other_text,
+            aceSize=24,
+            daclBytesInUse=32,
+        )
+        group = (sid, sid_text, 0)
+        group_drift = self.replace_bound_security_snapshot(
+            module, run, processTokenGroups=(group,),
+        )
+        privilege_drift = self.replace_bound_security_snapshot(
+            module, run,
+            processTokenPrivileges=((7, -1, 2),),
+            processTokenSensitivePrivileges=(
+                ("SeBackupPrivilege", 7, -1, True, True),
+                ("SeRestorePrivilege", 8, 0, False, False),
+                ("SeTakeOwnershipPrivilege", 9, 0, False, False),
+            ),
+        )
+        app_drift = self.replace_bound_security_snapshot(
+            module, run,
+            processTokenIsAppContainerRaw=2,
+            processTokenIsAppContainer=True,
+        )
+        restricting_entry = (sid, sid_text)
+        restricting_length = (
+            module.TOKEN_GROUPS.Groups.offset
+            + module.ctypes.sizeof(module.SID_AND_ATTRIBUTES)
+            + len(sid)
+        )
+        restricting_drift = self.replace_bound_security_snapshot(
+            module, run,
+            processTokenRestrictingSids=(restricting_entry,),
+            processTokenHasRestrictingSids=True,
+            processTokenRestrictedSidsReturnedLength=restricting_length,
+        )
+        for name, drifted in (
+            ("sid", sid_drift),
+            ("groups", group_drift),
+            ("privileges", privilege_drift),
+            ("app_container", app_drift),
+            ("restricting_sids", restricting_drift),
+        ):
+            self.assertEqual(
+                module._match_target_policy(drifted, "run").values()["role"],
+                "run",
+            )
+            with self.subTest(name=name), \
+                    self.assertRaisesRegex(module.WindowsAclRefused,
+                                            "^acl_attestation$"):
+                module._match_ordered_target_policies(
+                    (coordinator, drifted, source),
+                )
+
+    def test_ordered_target_policy_bundle_is_pure_redacted_and_preserves_baseexceptions(self):
+        module = load_module()
+        snapshots = (
+            self.bound_security_snapshot(module, 2032127),
+            self.bound_security_snapshot(module, 2032127),
+            self.bound_security_snapshot(module, 1179817),
+        )
+        with patch.object(
+                module, "_resolve_security_functions",
+                side_effect=AssertionError("native resolver called")), \
+                patch.object(module, "_load_native",
+                             side_effect=AssertionError("native loader called")):
+            self.assertEqual(
+                module._match_ordered_target_policies(snapshots).values()[
+                    "policyDigest"
+                ],
+                module.ACL_POLICY_DIGEST,
+            )
+
+        for primary in (
+            RuntimeError("PRIVATE ordered bundle"),
+            KeyboardInterrupt(),
+            SystemExit(75),
+        ):
+            with patch.object(module, "_match_target_policy", side_effect=primary):
+                if isinstance(primary, Exception):
+                    with self.assertRaisesRegex(
+                            module.WindowsAclRefused,
+                            "^acl_attestation$") as raised:
+                        module._match_ordered_target_policies(snapshots)
+                    self.assertNotIn("PRIVATE", str(raised.exception))
+                else:
+                    with self.assertRaises(type(primary)) as raised:
+                        module._match_ordered_target_policies(snapshots)
+                    self.assertIs(raised.exception, primary)
+
+    def test_ordered_target_policy_bundle_refuses_rebound_internal_authority(self):
+        module = load_module()
+        snapshots = (
+            self.bound_security_snapshot(module, 2032127),
+            self.bound_security_snapshot(module, 2032127),
+            self.bound_security_snapshot(module, 1179817),
+        )
+        original_roles = module._ORDERED_TARGET_POLICY_ROLES
+        original_keys = module._PROCESS_TOKEN_POLICY_KEYS
+        cases = (
+            ("_ORDERED_TARGET_POLICY_ROLES", tuple(list(original_roles))),
+            ("_ORDERED_TARGET_POLICY_ROLES", tuple(reversed(original_roles))),
+            ("_PROCESS_TOKEN_POLICY_KEYS", tuple(list(original_keys))),
+            ("_PROCESS_TOKEN_POLICY_KEYS", ()),
+            ("_PROCESS_TOKEN_POLICY_KEYS", original_keys[:1]),
+        )
+        for name, replacement in cases:
+            with self.subTest(name=name, replacement=replacement):
+                setattr(module, name, replacement)
+                try:
+                    self.assert_refused(
+                        module,
+                        lambda: module._match_ordered_target_policies(snapshots),
+                    )
+                finally:
+                    setattr(
+                        module, name,
+                        original_roles if name.endswith("ROLES") else original_keys,
+                    )
+        self.assertEqual(
+            module._match_ordered_target_policies(snapshots).values()["targets"],
+            (("coordinator", 2032127), ("run", 2032127), ("source", 1179817)),
         )
 
 

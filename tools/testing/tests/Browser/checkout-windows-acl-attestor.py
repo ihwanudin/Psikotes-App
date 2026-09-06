@@ -647,6 +647,57 @@ class _TargetPolicyMatch:
         )))
 
 
+_ORDERED_TARGET_POLICY_ROLES = ("coordinator", "run", "source")
+_PROCESS_TOKEN_POLICY_KEYS = tuple(
+    key for key in _SecuritySnapshot._KEYS if key.startswith("processToken")
+)
+_PINNED_ORDERED_TARGET_POLICY_ROLES_OBJECT = _ORDERED_TARGET_POLICY_ROLES
+_PINNED_ORDERED_TARGET_POLICY_ROLES = (
+    "coordinator", "run", "source",
+)
+_PINNED_PROCESS_TOKEN_POLICY_KEYS_OBJECT = _PROCESS_TOKEN_POLICY_KEYS
+_PINNED_PROCESS_TOKEN_POLICY_KEYS = (
+    "processTokenSidBytes", "processTokenSid", "processTokenGroups",
+    "processTokenPrivileges", "processTokenSensitivePrivileges",
+    "processTokenType", "processTokenIsAppContainerRaw",
+    "processTokenIsAppContainer", "processTokenRestrictingSids",
+    "processTokenHasRestrictingSids",
+    "processTokenRestrictedSidsReturnedLength",
+)
+
+
+def _require_ordered_target_policy_authority():
+    if _ORDERED_TARGET_POLICY_ROLES \
+            is not _PINNED_ORDERED_TARGET_POLICY_ROLES_OBJECT \
+            or _ORDERED_TARGET_POLICY_ROLES \
+            != _PINNED_ORDERED_TARGET_POLICY_ROLES \
+            or _PROCESS_TOKEN_POLICY_KEYS \
+            is not _PINNED_PROCESS_TOKEN_POLICY_KEYS_OBJECT \
+            or _PROCESS_TOKEN_POLICY_KEYS != _PINNED_PROCESS_TOKEN_POLICY_KEYS:
+        raise WindowsAclRefused("acl_attestation")
+
+
+class _OrderedTargetPolicyMatch:
+    __slots__ = ("__targets",)
+
+    def __init__(self, targets):
+        _require_ordered_target_policy_authority()
+        if type(targets) is not tuple or targets != tuple(
+                (role, _TARGET_ACCESS_MASKS[role])
+                for role in _ORDERED_TARGET_POLICY_ROLES):
+            raise WindowsAclRefused("acl_attestation")
+        object.__setattr__(self, "_OrderedTargetPolicyMatch__targets", targets)
+
+    def __setattr__(self, _name, _value):
+        raise WindowsAclRefused("acl_attestation")
+
+    def values(self):
+        return MappingProxyType({
+            "policyDigest": ACL_POLICY_DIGEST,
+            "targets": self.__targets,
+        })
+
+
 def _target_snapshot_policy_state(snapshot):
     if type(snapshot) is not _SecuritySnapshot:
         raise WindowsAclRefused("acl_attestation")
@@ -803,6 +854,34 @@ def _match_target_policy(snapshot, role):
                 or access_mask != _TARGET_ACCESS_MASKS[role]:
             raise WindowsAclRefused("acl_attestation")
         return _TargetPolicyMatch(role, access_mask)
+    except WindowsAclRefused:
+        raise
+    except Exception:
+        raise WindowsAclRefused("acl_attestation") from None
+
+
+def _match_ordered_target_policies(snapshots):
+    try:
+        _require_ordered_target_policy_authority()
+        if type(snapshots) is not tuple or len(snapshots) != len(
+                _ORDERED_TARGET_POLICY_ROLES):
+            raise WindowsAclRefused("acl_attestation")
+        targets = []
+        expected_profile = None
+        for snapshot, role in zip(
+                snapshots, _ORDERED_TARGET_POLICY_ROLES, strict=True):
+            match = _match_target_policy(snapshot, role)
+            _require_ordered_target_policy_authority()
+            state = snapshot._target_policy_state()
+            profile = tuple(state[key] for key in _PROCESS_TOKEN_POLICY_KEYS)
+            if expected_profile is None:
+                expected_profile = profile
+            elif profile != expected_profile:
+                raise WindowsAclRefused("acl_attestation")
+            values = match.values()
+            targets.append((values["role"], values["accessMask"]))
+        _require_ordered_target_policy_authority()
+        return _OrderedTargetPolicyMatch(tuple(targets))
     except WindowsAclRefused:
         raise
     except Exception:
