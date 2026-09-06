@@ -1048,3 +1048,22 @@ tidak ada runtime/deploy/aktivasi dan seluruh gate/payment default OFF.
 
 Tidak ada status/checklist yang diubah. P15/P16/P17c/P18 tetap terbuka;
 tidak ada runtime/deploy/aktivasi dan seluruh gate/payment default OFF.
+
+### Bukti current-process TokenPrivileges accepted — runtime tetap terbuka
+
+- `ea9fe9c` membaca `TokenPrivileges` dengan probe/fill exact dan batas **256
+  KiB/4096 privilege**.
+- Inline `ANYSIZE_ARRAY` wajib mengonsumsi buffer exact tanpa trailing; semua
+  entry ordered/immutable sebagai `(LowPart uint32, HighPart int32, Attributes
+  uint32)` dan duplicate LUID ditolak.
+- Profil privilege sebelum/sesudah descriptor snapshots harus stabil pada token
+  handle yang sama dengan cleanup exact.
+- Bukti root accepted **39/39 unittest**, `py_compile`, diff-check, dan final
+  adversarial review **PASS** tanpa P1/P2; ini pure fake current-process only.
+- `LookupPrivilegeValue`/name mapping, enabled dangerous privilege policy,
+  ordinary principal/provenance, LocalSystem, token type/restriction/
+  impersonation, effective `AccessCheck`, source-tree/cache/composition/attestor,
+  dan native Windows/runtime tetap terbuka.
+
+Tidak ada status/checklist yang diubah. P15/P16/P17c/P18 tetap terbuka;
+tidak ada aktivasi/deploy dan seluruh gate/payment default OFF.

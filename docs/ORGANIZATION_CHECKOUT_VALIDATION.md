@@ -1002,3 +1002,21 @@ impersonation, role/policy mask, effective `AccessCheck`, source-tree, cache,
 composition/usable attestor, native Windows/runtime/races belum dibuktikan. Tidak
 ada browser, service, database, network, deploy, atau aktivasi. P15/P16/P17c/P18
 tetap terbuka dan seluruh gate/payment tetap default OFF.
+
+## Checkpoint private Windows ACL current-process TokenPrivileges — 2026-09-06
+
+Commit `ea9fe9c` menambah probe/fill exact `TokenPrivileges` dengan batas **256
+KiB/4096 privilege**. Inline `ANYSIZE_ARRAY` harus mengonsumsi buffer penuh tanpa
+trailing byte. Semua entry disimpan berurutan dan immutable sebagai
+`(LowPart uint32, HighPart int32, Attributes uint32)`; duplicate LUID ditolak.
+Profil sebelum/sesudah descriptor snapshots wajib stabil melalui token handle
+yang sama dan cleanup tetap exact.
+
+Bukti root accepted: **39/39 unittest**, `py_compile`, diff-check, dan final
+adversarial review **PASS** tanpa P1/P2. Bukti hanya pure fake current-process
+observation. `LookupPrivilegeValue`/name mapping, enabled-dangerous-privilege
+policy, ordinary principal/provenance, LocalSystem, token type/restriction/
+impersonation, effective `AccessCheck`, source-tree/cache/composition/attestor,
+dan native Windows/runtime tetap terbuka. Tidak ada browser, service, database,
+network, aktivasi, atau deploy. P15/P16/P17c/P18 tetap terbuka dan seluruh
+gate/payment tetap default OFF.

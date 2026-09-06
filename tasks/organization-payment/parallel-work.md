@@ -2638,3 +2638,19 @@ privilege checks, ordinary LocalSystem exclusion, impersonation, role/policy
 mask, effective `AccessCheck`, source-tree/cache/composition/attestor, native
 Windows/runtime/races tetap residual. P15/P16/P17c/P18 terbuka; tidak ada
 runtime/deploy/aktivasi dan seluruh gate/payment default OFF.
+
+### Checkpoint current-process TokenPrivileges — accepted `ea9fe9c`
+
+Private profile memakai probe/fill exact **256 KiB/4096 privilege**. Inline
+`ANYSIZE_ARRAY` harus mengonsumsi buffer exact tanpa trailing; seluruh entry
+ordered dan immutable sebagai `(LowPart uint32, HighPart int32, Attributes
+uint32)`, serta duplicate LUID ditolak. Profil sebelum/sesudah descriptor
+snapshots wajib stabil pada token handle yang sama dengan cleanup exact. Bukti
+root accepted: **39/39 unittest**, `py_compile`, diff-check, dan adversarial
+review **PASS** tanpa P1/P2.
+
+Ini hanya pure fake current-process observation. Belum ada name mapping atau
+enabled-dangerous-privilege policy, ordinary principal/provenance, LocalSystem,
+token type/restriction/impersonation, effective `AccessCheck`, source-tree/cache/
+composition/attestor, maupun native Windows/runtime. P15/P16/P17c/P18 terbuka;
+tidak ada aktivasi/deploy dan seluruh gate/payment default OFF.
