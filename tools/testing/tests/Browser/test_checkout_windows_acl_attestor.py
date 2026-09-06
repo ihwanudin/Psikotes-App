@@ -207,6 +207,16 @@ class NativeDirectoryHarness:
         self.token_app_container_call_count = 0
         self.token_fixed_results = {8: 1, 29: 1}
         self.token_fixed_returned = {8: 4, 29: 4}
+        self.token_restricting_sids = []
+        self.token_restricting_sid_sets = None
+        self.token_restricted_fill_count = 0
+        self.token_restricted_probe_result = 0
+        self.token_restricted_probe_error = 122
+        self.token_restricted_fill_result = 1
+        self.token_restricted_required_override = None
+        self.token_restricted_returned_override = None
+        self.token_restricted_count_override = None
+        self.token_restricted_pointer_overrides = {}
         self.token_sid_addresses = {}
         self.calls = []
         self.close_result = 1
@@ -313,6 +323,8 @@ class NativeDirectoryHarness:
             return self._call_token_privileges(output, capacity, returned)
         if info_class in {8, 29}:
             return self._call_token_fixed(info_class, output, capacity, returned)
+        if info_class == 11:
+            return self._call_token_restricted_sids(output, capacity, returned)
         if info_class != 1:
             raise AssertionError("wrong TokenUser request")
         sid_values = self.token_sids or [self.owner_sid, self.owner_sid]
@@ -454,6 +466,60 @@ class NativeDirectoryHarness:
         output._obj.value = values[index]
         returned._obj.value = self.token_fixed_returned[info_class]
         return self.token_fixed_results[info_class]
+
+    def _call_token_restricted_sids(self, output, capacity, returned):
+        sid_sets = (self.token_restricting_sid_sets
+                    if self.token_restricting_sid_sets is not None
+                    else [self.token_restricting_sids,
+                          self.token_restricting_sids])
+        records = sid_sets[min(self.token_restricted_fill_count,
+                               len(sid_sets) - 1)]
+        if records:
+            table_end = (self.module.TOKEN_GROUPS.Groups.offset
+                         + len(records) * ctypes.sizeof(
+                             self.module.SID_AND_ATTRIBUTES))
+            required = table_end + sum(len(sid) for sid, _attrs in records)
+        else:
+            table_end = 4
+            required = 4
+        if self.token_restricted_required_override is not None:
+            required = self.token_restricted_required_override
+        returned._obj.value = required
+        if output is None:
+            if capacity != 0:
+                raise AssertionError("TokenRestrictedSids probe must be zero")
+            self.module.ctypes.set_last_error(self.token_restricted_probe_error)
+            return self.token_restricted_probe_result
+        if capacity != required:
+            raise AssertionError("TokenRestrictedSids fill capacity mismatch")
+        base = ctypes.addressof(output)
+        ctypes.c_uint32.from_address(base).value = (
+            len(records) if self.token_restricted_count_override is None
+            else self.token_restricted_count_override
+        )
+        sid_offset = table_end
+        for index, (sid, attributes) in enumerate(records):
+            entry = self.module.SID_AND_ATTRIBUTES.from_address(
+                base + self.module.TOKEN_GROUPS.Groups.offset
+                + index * ctypes.sizeof(self.module.SID_AND_ATTRIBUTES)
+            )
+            pointer_offset = self.token_restricted_pointer_overrides.get(
+                index, sid_offset,
+            )
+            entry.Sid = base + pointer_offset
+            entry.Attributes = attributes
+            end = min(capacity, pointer_offset + len(sid))
+            if pointer_offset >= table_end and pointer_offset < capacity \
+                    and end > pointer_offset:
+                ctypes.memmove(base + pointer_offset, sid, end - pointer_offset)
+            self.token_sid_addresses[base + pointer_offset] = sid
+            sid_offset += len(sid)
+        returned._obj.value = (
+            required if self.token_restricted_returned_override is None
+            else self.token_restricted_returned_override
+        )
+        self.token_restricted_fill_count += 1
+        return self.token_restricted_fill_result
 
     def call_GetFileInformationByHandleEx(self, _handle, info_class, output,
                                           output_size):
@@ -1019,6 +1085,9 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
                 "processTokenType": 1,
                 "processTokenIsAppContainerRaw": 0xFFFFFFFF,
                 "processTokenIsAppContainer": True,
+                "processTokenRestrictingSids": (),
+                "processTokenHasRestrictingSids": False,
+                "processTokenRestrictedSidsReturnedLength": 4,
             })
             with self.assertRaises(TypeError):
                 values["control"] = 0
@@ -1089,13 +1158,14 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
             + len(harness.token_privileges)
             * ctypes.sizeof(module.LUID_AND_ATTRIBUTES)
         )
-        self.assertEqual(len(token_information), 16)
+        self.assertEqual(len(token_information), 20)
         self.assertEqual(
             [(args[1], args[2] is None, args[3]) for args in token_information],
             [(1, True, 0), (1, False, required),
              (2, True, 0), (2, False, group_required),
              (3, True, 0), (3, False, privilege_required),
-             (8, False, 4), (29, False, 4)] * 2,
+             (8, False, 4), (29, False, 4),
+             (11, True, 0), (11, False, 4)] * 2,
         )
         lookup_calls = [args for name, args in harness.calls
                         if name == "LookupPrivilegeValueW"]
@@ -1111,9 +1181,9 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
                            if name == "GetTokenInformation"]
         descriptor_positions = [index for index, name in enumerate(names)
                                 if name == "GetSecurityInfo"]
-        self.assertLess(token_positions[7], descriptor_positions[0])
-        self.assertLess(descriptor_positions[1], token_positions[8])
-        self.assertFalse({9, 11}.intersection(args[1] for args in token_information))
+        self.assertLess(token_positions[9], descriptor_positions[0])
+        self.assertLess(descriptor_positions[1], token_positions[10])
+        self.assertNotIn(9, (args[1] for args in token_information))
         open_token = [args for name, args in harness.calls
                       if name == "OpenProcessToken"]
         self.assertEqual([(args[0], args[1]) for args in open_token],
@@ -1627,6 +1697,210 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
                                   "AccessCheck"}.intersection(
                                       self.call_names(harness)))
 
+    def test_restricting_sid_snapshot_supports_empty_and_distinct_duplicates(self):
+        module = load_module()
+        harness = NativeDirectoryHarness(module)
+        with module._open_current_process_token(harness.bundle()) as token:
+            empty = token._restricted_sids_snapshot()
+            self.assertEqual(empty.values(), ((), False, 4))
+
+        duplicate_sid = bytes.fromhex("010100000000000515000000")
+        harness = NativeDirectoryHarness(module)
+        harness.token_restricting_sids = [
+            (duplicate_sid, 0), (duplicate_sid, 0),
+        ]
+        with module._open_current_process_token(harness.bundle()) as token:
+            snapshot = token._restricted_sids_snapshot()
+            expected_length = (
+                module.TOKEN_GROUPS.Groups.offset
+                + 2 * ctypes.sizeof(module.SID_AND_ATTRIBUTES)
+                + 2 * len(duplicate_sid)
+            )
+            self.assertEqual(snapshot.values(), (
+                ((duplicate_sid, "S-1-5-21"),
+                 (duplicate_sid, "S-1-5-21")),
+                True,
+                expected_length,
+            ))
+            with self.assertRaisesRegex(module.WindowsAclRefused,
+                                        "^acl_attestation$"):
+                snapshot.extra = object()
+        calls = [args for name, args in harness.calls
+                 if name == "GetTokenInformation"]
+        self.assertEqual(
+            [(args[1], args[2] is None, args[3]) for args in calls],
+            [(11, True, 0), (11, False, expected_length)],
+        )
+
+    def test_restricting_sid_bounds_attributes_and_overlap_fail_closed(self):
+        module = load_module()
+        sid = bytes.fromhex("010100000000000515000000")
+        table_end = (module.TOKEN_GROUPS.Groups.offset
+                     + 2 * ctypes.sizeof(module.SID_AND_ATTRIBUTES))
+
+        def partial_overlap(harness):
+            interior = bytes.fromhex("010100000000000516000000")
+            long_sid = (bytes.fromhex("0104000000000005")
+                        + interior + b"\x04\x00\x00\x00")
+            harness.token_restricting_sids = [(long_sid, 0), (interior, 0)]
+            harness.token_restricted_pointer_overrides[1] = table_end + 8
+
+        cases = (
+            ("probe_true", lambda h: setattr(
+                h, "token_restricted_probe_result", 1,
+            )),
+            ("probe_bool", lambda h: setattr(
+                h, "token_restricted_probe_result", False,
+            )),
+            ("probe_error", lambda h: setattr(
+                h, "token_restricted_probe_error", 5,
+            )),
+            ("required_small", lambda h: setattr(
+                h, "token_restricted_required_override", 3,
+            )),
+            ("required_large", lambda h: setattr(
+                h, "token_restricted_required_override",
+                module.MAX_TOKEN_RESTRICTED_SIDS_BYTES + 1,
+            )),
+            ("empty_not_four", lambda h: setattr(
+                h, "token_restricted_required_override", 8,
+            )),
+            ("fill_false", lambda h: setattr(
+                h, "token_restricted_fill_result", 0,
+            )),
+            ("fill_bool", lambda h: setattr(
+                h, "token_restricted_fill_result", True,
+            )),
+            ("returned", lambda h: setattr(
+                h, "token_restricted_returned_override", 1,
+            )),
+            ("count", lambda h: setattr(
+                h, "token_restricted_count_override", 4097,
+            )),
+            ("table_span", lambda h: (
+                setattr(h, "token_restricting_sids", [(sid, 0)]),
+                setattr(h, "token_restricted_count_override", 2),
+            )),
+            ("attributes", lambda h: setattr(
+                h, "token_restricting_sids", [(sid, 1)],
+            )),
+            ("pointer_table", lambda h: (
+                setattr(h, "token_restricting_sids", [(sid, 0)]),
+                h.token_restricted_pointer_overrides.update({0: 4}),
+            )),
+            ("pointer_tail", lambda h: (
+                setattr(h, "token_restricting_sids", [(sid, 0)]),
+                h.token_restricted_pointer_overrides.update({0:
+                    module.TOKEN_GROUPS.Groups.offset
+                    + ctypes.sizeof(module.SID_AND_ATTRIBUTES)
+                    + len(sid) - 4}),
+            )),
+            ("sid_revision", lambda h: setattr(
+                h, "token_restricting_sids", [(b"\x02" + sid[1:], 0)],
+            )),
+            ("sid_count", lambda h: setattr(
+                h, "token_restricting_sids", [(
+                    b"\x01\x0f" + sid[2:], 0,
+                )],
+            )),
+            ("sid_native", lambda h: (
+                setattr(h, "token_restricting_sids", [(sid, 0)]),
+                setattr(h, "token_valid_sid", 0),
+            )),
+            ("sid_length", lambda h: (
+                setattr(h, "token_restricting_sids", [(sid, 0)]),
+                setattr(h, "token_sid_length_override", 8),
+            )),
+            ("sid_live_drift", lambda h: (
+                setattr(h, "token_restricting_sids", [(sid, 0)]),
+                setattr(h, "token_sid_mutate_during_validation", True),
+            )),
+            ("overlap", partial_overlap),
+        )
+        for name, mutate in cases:
+            harness = NativeDirectoryHarness(module)
+            mutate(harness)
+            with self.subTest(case=name), \
+                    module._open_current_process_token(harness.bundle()) as token:
+                self.assert_refused(module, token._restricted_sids_snapshot)
+            if name == "overlap":
+                self.assertEqual(
+                    [call for call, _args in harness.calls
+                     if call in {"IsValidSid", "GetLengthSid"}],
+                    ["IsValidSid", "GetLengthSid"],
+                )
+            if name == "sid_native":
+                self.assertNotIn("GetLengthSid", self.call_names(harness))
+            if name in {"sid_length", "sid_live_drift"}:
+                self.assertEqual(
+                    [call for call, _args in harness.calls
+                     if call in {"IsValidSid", "GetLengthSid"}],
+                    ["IsValidSid", "GetLengthSid"],
+                )
+            if name == "sid_count":
+                self.assertFalse(
+                    {"IsValidSid", "GetLengthSid"}.intersection(
+                        self.call_names(harness),
+                    ),
+                )
+
+    def test_restricting_sid_drift_is_bound_to_process_profile(self):
+        module = load_module()
+        first = bytes.fromhex("010100000000000515000000")
+        second = bytes.fromhex("010100000000000516000000")
+        for name, sets in (
+            ("encoding", [[], [(first, 0)]]),
+            ("order", [[(first, 0), (second, 0)],
+                       [(second, 0), (first, 0)]]),
+            ("attributes", [[(first, 0)], [(first, 1)]]),
+        ):
+            harness = NativeDirectoryHarness(module)
+            harness.token_restricting_sid_sets = sets
+            opened = self.opened(module, harness)
+            with self.subTest(case=name), opened:
+                self.assert_refused(module, opened._security_snapshot)
+            self.assertEqual(self.call_names(harness).count("GetSecurityInfo"), 2)
+            self.assertEqual(self.call_names(harness).count("CloseHandle"), 2)
+
+    def test_restricting_sid_errors_preserve_cleanup_and_forbidden_calls(self):
+        module = load_module()
+        for primary in (RuntimeError("PRIVATE RESTRICTED DETAIL"),
+                        KeyboardInterrupt(), SystemExit(47)):
+            harness = NativeDirectoryHarness(module)
+            original = harness.dlls["advapi32.dll"].functions[
+                "GetTokenInformation"
+            ].implementation
+
+            def interrupt_restricted(*args, primary=primary):
+                if args[1] == 11:
+                    raise primary
+                return original(*args)
+
+            harness.dlls["advapi32.dll"].functions[
+                "GetTokenInformation"
+            ].implementation = interrupt_restricted
+            harness.close_error = RuntimeError("PRIVATE CLOSE DETAIL")
+            opened = self.opened(module, harness)
+            with self.subTest(error=type(primary).__name__):
+                if isinstance(primary, Exception):
+                    with self.assertRaisesRegex(
+                            module.WindowsAclRefused,
+                            "^acl_attestation$") as raised:
+                        with opened:
+                            opened._security_snapshot()
+                    self.assertNotIn("PRIVATE", str(raised.exception))
+                else:
+                    with self.assertRaises(type(primary)) as raised:
+                        with opened:
+                            opened._security_snapshot()
+                    self.assertIs(raised.exception, primary)
+            self.assertEqual([args[0] for call, args in harness.calls
+                              if call == "CloseHandle"],
+                             [harness.token_handle, harness.handle])
+            self.assertFalse({"IsTokenRestricted", "DuplicateTokenEx",
+                              "AccessCheck", "CheckTokenMembership"}.intersection(
+                                  self.call_names(harness)))
+
     def test_process_token_open_and_query_boundaries_fail_closed(self):
         module = load_module()
         cases = (
@@ -1700,7 +1974,7 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
             with self.subTest(case=name), opened:
                 self.assert_refused(module, opened._security_snapshot)
             self.assertEqual(self.call_names(harness).count("GetSecurityInfo"), 2)
-            self.assertEqual(self.call_names(harness).count("GetTokenInformation"), 16)
+            self.assertEqual(self.call_names(harness).count("GetTokenInformation"), 20)
             self.assertEqual(self.call_names(harness).count("CloseHandle"), 2)
 
     def test_process_token_cleanup_preserves_primary_base_exception(self):
