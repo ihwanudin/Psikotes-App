@@ -2671,3 +2671,18 @@ evidence. Second-token provenance, LocalSystem, token type/restriction/
 impersonation, effective `AccessCheck`, source-tree/cache/composition/attestor,
 native Windows/runtime tetap terbuka. P15/P16/P17c/P18 terbuka; tidak ada
 aktivasi/deploy dan seluruh gate/payment default OFF.
+
+### Checkpoint fixed token profile — accepted `95450a6`
+
+Private current-process profile mengobservasi `TokenType` sebagai `TOKEN_TYPE`
+yang wajib exact `TokenPrimary` dan `TokenIsAppContainer` sebagai `DWORD` raw
+dengan klasifikasi nonzero. Profil sebelum/sesudah descriptor snapshots wajib
+stabil pada token handle yang sama dengan cleanup exact. Bukti root accepted:
+**47/47 unittest**, `py_compile`, diff-check, dan adversarial review **PASS**
+tanpa P1/P2.
+
+Ini hanya pure fake current-process observation, bukan ordinary evidence,
+rejection policy, atau effective `AccessCheck`. Second-token provenance,
+LocalSystem, token restriction/impersonation, source-tree/cache/composition/
+usable attestor, dan native Windows/runtime tetap terbuka. P15/P16/P17c/P18
+terbuka; tidak ada aktivasi/deploy dan seluruh gate/payment default OFF.

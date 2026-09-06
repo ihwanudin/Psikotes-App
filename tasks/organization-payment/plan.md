@@ -766,3 +766,18 @@ ordinary evidence. Second ordinary-token provenance, LocalSystem, token type/
 restriction/impersonation, effective `AccessCheck`, source-tree/cache/
 composition/attestor, native Windows/runtime masih terbuka. Tidak ada
 aktivasi/deploy; P15/P16/P17c/P18 tetap terbuka dan seluruh gate/payment OFF.
+
+### Checkpoint fixed token profile
+
+Commit `95450a6` mengobservasi `TokenType` sebagai `TOKEN_TYPE` yang wajib exact
+`TokenPrimary` dan `TokenIsAppContainer` sebagai nilai `DWORD` raw dengan
+klasifikasi nonzero. Profil current process sebelum/sesudah descriptor snapshots
+harus stabil pada token handle yang sama dengan cleanup exact. Bukti root
+accepted: **47/47 unittest**, `py_compile`, diff-check, dan adversarial review
+**PASS** tanpa P1/P2.
+
+Ini hanya pure fake current-process observation, bukan ordinary evidence,
+rejection policy, atau effective `AccessCheck`. Second-token provenance,
+LocalSystem, token restriction/impersonation, source-tree/cache/composition/
+usable attestor, serta native Windows/runtime masih terbuka. Tidak ada
+aktivasi/deploy; P15/P16/P17c/P18 tetap terbuka dan seluruh gate/payment OFF.

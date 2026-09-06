@@ -306,3 +306,19 @@ token, LocalSystem exclusion, token type/restriction/impersonation, effective
 `AccessCheck`, source-tree, cache, composition/usable attestor, serta native
 Windows/runtime tetap terbuka. P15/P16/P17c/P18 tidak berubah; tidak ada
 aktivasi/deploy dan seluruh gate/payment tetap default OFF.
+
+## Implementation Checkpoint — `95450a6`
+
+Private current-process token profile kini juga mengobservasi `TokenType`
+sebagai `TOKEN_TYPE` yang wajib exact `TokenPrimary`, serta
+`TokenIsAppContainer` sebagai nilai `DWORD` raw dengan klasifikasi nonzero.
+Profil sebelum/sesudah descriptor snapshots wajib stabil pada token handle yang
+sama dan cleanup handle tetap exact.
+
+Bukti root accepted: **47/47 unittest**, `py_compile`, diff-check, dan final
+adversarial review **PASS** tanpa P1/P2. Ini hanya observasi current-process
+berbasis pure fake ABI, bukan ordinary-principal evidence, rejection policy,
+atau effective `AccessCheck`. Ordinary second-token provenance, LocalSystem,
+token restriction/impersonation, source-tree/cache/composition/usable attestor,
+dan native Windows/runtime tetap terbuka. P15/P16/P17c/P18 tetap terbuka;
+tidak ada aktivasi/deploy dan seluruh gate/payment tetap default OFF.

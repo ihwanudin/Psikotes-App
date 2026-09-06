@@ -1039,3 +1039,19 @@ effective `AccessCheck`, source-tree/cache/composition/attestor, dan native
 Windows/runtime tetap terbuka. Tidak ada browser, service, database, network,
 aktivasi, atau deploy. P15/P16/P17c/P18 tetap terbuka dan seluruh gate/payment
 tetap default OFF.
+
+## Checkpoint fixed Windows token profile — 2026-09-06
+
+Commit `95450a6` mengobservasi `TokenType` sebagai `TOKEN_TYPE` yang wajib exact
+`TokenPrimary`, serta `TokenIsAppContainer` sebagai nilai `DWORD` raw dengan
+klasifikasi nonzero. Profil current process sebelum/sesudah descriptor snapshots
+wajib stabil pada token handle yang sama dan cleanup tetap exact.
+
+Bukti root accepted: **47/47 unittest**, `py_compile`, diff-check, dan final
+adversarial review **PASS** tanpa P1/P2. Bukti hanya pure fake current-process
+observation, bukan ordinary-principal evidence, rejection policy, atau effective
+`AccessCheck`. Ordinary second-token provenance, LocalSystem, token restriction/
+impersonation, source-tree/cache/composition/usable attestor, dan native Windows/
+runtime tetap terbuka. Tidak ada browser, service, database, network, aktivasi,
+atau deploy. P15/P16/P17c/P18 tetap terbuka dan seluruh gate/payment tetap
+default OFF.
