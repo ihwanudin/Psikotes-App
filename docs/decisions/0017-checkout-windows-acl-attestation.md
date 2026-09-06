@@ -418,3 +418,16 @@ unrelated supervisor real-listener failure bersifat environment-specific.
 Karena itu full suite tidak dinyatakan green. Provider/native/runtime,
 config/env/deploy/activation, provisioning authority, P15/P16/P17c/P18,
 checklist/progress, active gates, dan payment tetap tidak berubah/default OFF.
+
+## Implementation Checkpoint — `5edb335`
+
+Pure source-tree summary v2 kini mewajibkan exact `sourceRootIdentity` dan
+mengikatnya ke canonical digest. Identity root tidak boleh dipakai ulang oleh
+descendant; urutan output tetap deterministik dan drift pada boundary ditolak.
+
+Bukti root accepted: **11/11 tests**, `py_compile`, dan independent review
+**PASS** tanpa P1/P2. Builder suite timeout setelah lima dot bukan evidence dan
+tidak mendukung klaim full-suite green. Belum ada consumer integration, native
+traversal, live identity/provenance, atau runtime evidence. P15/P16/P17c/P18,
+checklist/progress, active gates, dan payment tidak berubah/default OFF; tidak
+ada config/env/deploy/activation.

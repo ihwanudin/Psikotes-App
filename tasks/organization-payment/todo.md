@@ -1215,3 +1215,19 @@ tetap default OFF.
 
 Tidak ada status/checklist/progress/gate yang diubah. P15/P16/P17c/P18, active
 gates, dan payment tetap terbuka/default OFF.
+
+### Bukti pure ACL source-tree summary v2 accepted — integration tetap terbuka
+
+- Commit `5edb335` mewajibkan exact `sourceRootIdentity` dan mengikatnya ke
+  canonical digest v2.
+- Descendant root-identity reuse ditolak; deterministic order dipertahankan dan
+  boundary drift wajib fail closed.
+- Evidence root accepted: **11/11 tests**, `py_compile`, dan independent review
+  **PASS** tanpa P1/P2.
+- Builder suite timeout setelah lima dot bukan acceptance evidence; full suite
+  tidak diklaim green.
+- Consumer integration, native traversal, live identity/provenance, serta
+  runtime tetap belum ada; tidak ada config/env/deploy/activation.
+
+Tidak ada status/checklist/progress/gate yang berubah. P15/P16/P17c/P18, active
+gates, dan payment tetap terbuka/default OFF.

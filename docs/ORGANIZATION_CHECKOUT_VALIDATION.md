@@ -1171,3 +1171,18 @@ environment. Dokumen ini tidak mengklaim full suite green.
 Tidak ada provider/native/runtime, config/env/deploy/activation, atau perubahan
 provisioning authority. P15/P16/P17c/P18, checklist/progress, active gates, dan
 payment tetap terbuka/tidak berubah serta default OFF.
+
+## Checkpoint pure ACL source-tree summary v2 — 2026-09-06
+
+Commit `5edb335` mewajibkan exact `sourceRootIdentity` pada pure source-tree
+summary v2 dan memasukkannya ke canonical digest. Descendant tidak boleh memakai
+ulang identity root; deterministic order dipertahankan dan boundary drift
+ditolak.
+
+Bukti root accepted: **11/11 tests**, `py_compile`, dan independent review
+**PASS** tanpa P1/P2. Builder suite yang timeout setelah lima dot bukan
+acceptance evidence dan full suite tidak diklaim green. Consumer integration,
+native traversal, live identity/provenance, serta runtime evidence tetap belum
+ada. Tidak ada config/env/deploy/activation maupun perubahan P15/P16/P17c/P18,
+checklist/progress, active gates, atau payment; semuanya tetap terbuka/default
+OFF.

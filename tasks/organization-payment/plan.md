@@ -882,3 +882,16 @@ supervisor real-listener failure berasal dari environment, sehingga full suite
 tidak dinyatakan green. Tidak ada perubahan plan/checklist/progress/gate:
 provider/native/runtime, provisioning authority, P15/P16/P17c/P18, active
 gates, dan payment tetap terbuka/default OFF tanpa config/env/deploy/activation.
+
+### Checkpoint pure ACL source-tree summary v2
+
+Commit `5edb335` membuat exact `sourceRootIdentity` mandatory dan terikat ke
+canonical digest v2. Descendant root-identity reuse ditolak, deterministic order
+dipertahankan, dan boundary drift ditolak.
+
+Bukti root accepted: **11/11 tests**, `py_compile`, serta independent review
+**PASS** tanpa P1/P2. Builder suite timeout setelah lima dot bukan evidence dan
+full suite tidak dinyatakan green. Consumer integration, native traversal, live
+identity/provenance, dan runtime masih terbuka. Tidak ada perubahan plan,
+checklist, progress, atau gate: P15/P16/P17c/P18 serta active gate/payment tetap
+terbuka/default OFF tanpa config/env/deploy/activation.
