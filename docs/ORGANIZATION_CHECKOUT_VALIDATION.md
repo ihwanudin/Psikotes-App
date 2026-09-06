@@ -968,3 +968,20 @@ Konversi SID/process-token owner matching, parsing ACE exact, policy/effective
 race protection belum tersedia. Tidak ada browser, service, database, network,
 deploy, atau aktivasi. P15/P16/P17c/P18 tetap terbuka dan seluruh gate/payment
 tetap default OFF.
+
+## Checkpoint private Windows ACL process-token owner binding — 2026-09-06
+
+Commit `9301369` mengikat owner descriptor ke current process token dengan urutan
+token-before → descriptor-1 → descriptor-2 → token-after. `GetCurrentProcess`
+menghasilkan pseudo-handle yang tidak ditutup; real `OpenProcessToken` handle
+memakai `TOKEN_QUERY`, non-inheritable, dan ditutup exact sekali. Probe bounded
+`TokenUser` harus menghasilkan error 122 sebelum fill exact. SID wajib tidak
+overlap header dan full-contained sebelum native validation; token harus stabil,
+kedua owner wajib exact match, dan `processTokenSid` immutable.
+
+Bukti root accepted: **30/30 tes**, `py_compile`, diff-check, dan adversarial
+review **PASS**. Pengujian tetap pure fake ABI. Groups, privileges, LocalSystem,
+role mask, impersonation, effective `AccessCheck`, source-tree, cache,
+composition/usable attestor, native runtime, serta race belum dibuktikan. Tidak
+ada browser, service, database, network, deploy, atau aktivasi. P15/P16/P17c/P18
+tetap terbuka dan seluruh gate/payment tetap default OFF.

@@ -231,3 +231,21 @@ process-token owner dan privilege, effective `AccessCheck`, source-tree, cache,
 composition/usable attestor, serta native runtime dan race belum tersedia atau
 terbukti. P15/P16/P17c/P18 tetap terbuka; tidak ada runtime/deploy/aktivasi dan
 seluruh gate/payment tetap default OFF.
+
+## Implementation Checkpoint — `9301369`
+
+Primitive owner binding kini memakai urutan exact token SID sebelum → descriptor
+snapshot pertama → descriptor snapshot kedua → token SID sesudah. Pseudo-handle
+`GetCurrentProcess` tidak ditutup; real handle dari `OpenProcessToken` memakai
+`TOKEN_QUERY`, dibuat non-inheritable, dan ditutup tepat sekali. Pembacaan
+`TokenUser` memakai probe bounded yang harus gagal dengan error 122 lalu fill
+exact. Pointer SID wajib tidak overlap dengan header dan seluruh span-nya harus
+contained sebelum pemeriksaan native. SID token harus stabil, kedua owner
+descriptor harus exact sama dengannya, dan output `processTokenSid` immutable.
+
+Bukti root accepted: **30/30 tes**, `py_compile`, diff-check, dan review
+adversarial **PASS**. Bukti tetap pure fake ABI. Token groups, privileges,
+penolakan LocalSystem, role mask, impersonation, effective `AccessCheck`,
+source-tree, cache, composition/usable attestor, serta native runtime/races belum
+tersedia atau terbukti. P15/P16/P17c/P18 tetap terbuka; tidak ada
+runtime/deploy/aktivasi dan seluruh gate/payment tetap default OFF.

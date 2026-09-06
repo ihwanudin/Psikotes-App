@@ -1010,3 +1010,21 @@ tidak ada runtime/deploy/aktivasi dan seluruh gate/payment default OFF.
 
 Tidak ada checkbox acceptance yang diubah. P15/P16/P17c/P18 tetap terbuka;
 tidak ada runtime/deploy/aktivasi dan seluruh gate/payment default OFF.
+
+### Bukti process-token owner binding accepted — runtime tetap terbuka
+
+- `9301369` menjalankan urutan exact token-before → descriptor-1 → descriptor-2
+  → token-after dan mewajibkan token SID stabil serta kedua owner exact match.
+- `GetCurrentProcess` pseudo-handle tidak ditutup; real
+  `OpenProcessToken(TOKEN_QUERY)` handle non-inheritable dan ditutup exact sekali.
+- Probe `TokenUser` bounded harus menghasilkan error 122 lalu fill exact; SID
+  tidak overlap header dan full-contained sebelum native validation. Output
+  `processTokenSid` immutable.
+- Bukti root accepted **30/30 tes**, `py_compile`, diff-check, dan adversarial
+  review **PASS**; seluruh pengujian masih pure fake ABI.
+- Groups/privileges/LocalSystem, role mask, impersonation, effective
+  `AccessCheck`, source-tree/cache/composition/attestor, native runtime, dan races
+  masih terbuka.
+
+Tidak ada checkbox acceptance yang diubah. P15/P16/P17c/P18 tetap terbuka;
+tidak ada runtime/deploy/aktivasi dan seluruh gate/payment default OFF.
