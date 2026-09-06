@@ -2866,3 +2866,13 @@ traversal/completeness, handle/path provenance, DACL efficacy, double capture,
 provider, native/runtime, atau usable attestor. P15/P16/P17c/P18,
 checklist/progress, active gates, payment, config/env/deploy, dan activation
 tetap unchanged/default OFF.
+
+### Checkpoint candidate packaging ACL source binding — accepted `1f8b22f`
+
+Candidate manifest closure kini mewajibkan sekaligus mengizinkan exact
+`tools/testing/tests/Browser/checkout-acl-source-binding.py` dan
+`tools/testing/tests/Browser/test_checkout_acl_source_binding.py`. Evidence
+root: focused **1/1 test**, `py_compile`, dan independent review **PASS** tanpa
+P1/P2. Bukti ini packaging-only; tidak ada candidate build atau runtime
+evidence. P15/P16/P17c/P18, checklist/progress, gates/payment,
+config/env/deploy, dan activation tetap tidak berubah/default OFF.

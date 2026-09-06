@@ -1301,3 +1301,17 @@ config/env/deploy/activation.
 
 Tidak ada status/checklist/progress/gate yang berubah. P15/P16/P17c/P18,
 active gates, payment, config/env/deploy, dan activation tetap default OFF.
+
+### Bukti candidate packaging ACL source binding accepted — runtime tetap terbuka
+
+- Commit `1f8b22f` menjadikan
+  `tools/testing/tests/Browser/checkout-acl-source-binding.py` dan
+  `tools/testing/tests/Browser/test_checkout_acl_source_binding.py` exact
+  required sekaligus allowed dalam candidate manifest closure.
+- Evidence root: focused **1/1 test**, `py_compile`, dan independent review
+  **PASS** tanpa P1/P2.
+- Bukti hanya packaging integrity; tidak ada candidate build atau runtime
+  evidence.
+
+Tidak ada status/checklist/progress/gate yang berubah. P15/P16/P17c/P18,
+active gates, payment, config/env/deploy, dan activation tetap default OFF.
