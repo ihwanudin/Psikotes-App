@@ -201,6 +201,12 @@ class NativeDirectoryHarness:
         self.sensitive_luid_sets = None
         self.lookup_privilege_result = 1
         self.lookup_privilege_call_count = 0
+        self.token_type_values = [1, 1]
+        self.token_type_call_count = 0
+        self.token_app_container_values = [0xFFFFFFFF, 0xFFFFFFFF]
+        self.token_app_container_call_count = 0
+        self.token_fixed_results = {8: 1, 29: 1}
+        self.token_fixed_returned = {8: 4, 29: 4}
         self.token_sid_addresses = {}
         self.calls = []
         self.close_result = 1
@@ -305,6 +311,8 @@ class NativeDirectoryHarness:
             return self._call_token_groups(output, capacity, returned)
         if info_class == 3:
             return self._call_token_privileges(output, capacity, returned)
+        if info_class in {8, 29}:
+            return self._call_token_fixed(info_class, output, capacity, returned)
         if info_class != 1:
             raise AssertionError("wrong TokenUser request")
         sid_values = self.token_sids or [self.owner_sid, self.owner_sid]
@@ -431,6 +439,21 @@ class NativeDirectoryHarness:
         output._obj.HighPart = high
         self.lookup_privilege_call_count += 1
         return self.lookup_privilege_result
+
+    def _call_token_fixed(self, info_class, output, capacity, returned):
+        if output is None or capacity != 4:
+            raise AssertionError("fixed token query must use a DWORD buffer")
+        if info_class == 8:
+            values = self.token_type_values
+            index = min(self.token_type_call_count, len(values) - 1)
+            self.token_type_call_count += 1
+        else:
+            values = self.token_app_container_values
+            index = min(self.token_app_container_call_count, len(values) - 1)
+            self.token_app_container_call_count += 1
+        output._obj.value = values[index]
+        returned._obj.value = self.token_fixed_returned[info_class]
+        return self.token_fixed_results[info_class]
 
     def call_GetFileInformationByHandleEx(self, _handle, info_class, output,
                                           output_size):
@@ -774,6 +797,7 @@ class CheckoutWindowsAclAttestorAbiTests(unittest.TestCase):
         self.assertEqual(ctypes.sizeof(module.LONG), 4)
         self.assertEqual(ctypes.sizeof(module.LONGLONG), 8)
         self.assertEqual(ctypes.sizeof(module.BOOL), 4)
+        self.assertEqual(ctypes.sizeof(ctypes.c_int), 4)
         self.assertEqual(ctypes.sizeof(module.HANDLE), ctypes.sizeof(ctypes.c_void_p))
         self.assertEqual(ctypes.sizeof(module.LPVOID), ctypes.sizeof(ctypes.c_void_p))
         self.assertEqual(ctypes.sizeof(module.FILE_ID_128), 16)
@@ -844,6 +868,9 @@ class CheckoutWindowsAclAttestorAbiTests(unittest.TestCase):
         self.assertEqual(module.TokenImpersonation, 2)
         self.assertEqual(module.TokenGroups, 2)
         self.assertEqual(module.TokenPrivileges, 3)
+        self.assertEqual(module.TokenType, 8)
+        self.assertEqual(module.TokenIsAppContainer, 29)
+        self.assertEqual(module.TokenPrimary, 1)
         self.assertEqual(module.MAX_TOKEN_GROUPS_BYTES, 262144)
         self.assertEqual(module.MAX_TOKEN_GROUP_COUNT, 4096)
         self.assertEqual(module.MAX_TOKEN_PRIVILEGES_BYTES, 262144)
@@ -989,6 +1016,9 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
                     ("SeRestorePrivilege", 2, 0x7FFFFFFF, True, True),
                     ("SeTakeOwnershipPrivilege", 3, 0, False, False),
                 ),
+                "processTokenType": 1,
+                "processTokenIsAppContainerRaw": 0xFFFFFFFF,
+                "processTokenIsAppContainer": True,
             })
             with self.assertRaises(TypeError):
                 values["control"] = 0
@@ -1059,12 +1089,13 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
             + len(harness.token_privileges)
             * ctypes.sizeof(module.LUID_AND_ATTRIBUTES)
         )
-        self.assertEqual(len(token_information), 12)
+        self.assertEqual(len(token_information), 16)
         self.assertEqual(
             [(args[1], args[2] is None, args[3]) for args in token_information],
             [(1, True, 0), (1, False, required),
              (2, True, 0), (2, False, group_required),
-             (3, True, 0), (3, False, privilege_required)] * 2,
+             (3, True, 0), (3, False, privilege_required),
+             (8, False, 4), (29, False, 4)] * 2,
         )
         lookup_calls = [args for name, args in harness.calls
                         if name == "LookupPrivilegeValueW"]
@@ -1080,8 +1111,9 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
                            if name == "GetTokenInformation"]
         descriptor_positions = [index for index, name in enumerate(names)
                                 if name == "GetSecurityInfo"]
-        self.assertLess(token_positions[5], descriptor_positions[0])
-        self.assertLess(descriptor_positions[1], token_positions[6])
+        self.assertLess(token_positions[7], descriptor_positions[0])
+        self.assertLess(descriptor_positions[1], token_positions[8])
+        self.assertFalse({9, 11}.intersection(args[1] for args in token_information))
         open_token = [args for name, args in harness.calls
                       if name == "OpenProcessToken"]
         self.assertEqual([(args[0], args[1]) for args in open_token],
@@ -1488,6 +1520,113 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
                               if call == "CloseHandle"],
                              [harness.token_handle, harness.handle])
 
+    def test_fixed_process_token_observations_are_exact_and_immutable(self):
+        module = load_module()
+        for raw, normalized in ((0, False), (1, True), (2, True),
+                                (0xFFFFFFFF, True)):
+            harness = NativeDirectoryHarness(module)
+            harness.token_app_container_values = [raw, raw]
+            with self.subTest(raw=raw), \
+                    module._open_current_process_token(harness.bundle()) as token:
+                snapshot = token._fixed_snapshot()
+                self.assertEqual(snapshot.values(), (1, raw, normalized))
+                with self.assertRaisesRegex(module.WindowsAclRefused,
+                                            "^acl_attestation$"):
+                    snapshot.extra = object()
+            calls = [args for name, args in harness.calls
+                     if name == "GetTokenInformation"]
+            self.assertEqual(
+                [(args[1], args[2] is None, args[3]) for args in calls],
+                [(8, False, 4), (29, False, 4)],
+            )
+
+    def test_fixed_process_token_type_and_query_failures_refuse(self):
+        module = load_module()
+        cases = (
+            ("type_zero", lambda h: setattr(h, "token_type_values", [0, 0])),
+            ("type_impersonation", lambda h: setattr(
+                h, "token_type_values", [2, 2],
+            )),
+            ("type_other", lambda h: setattr(h, "token_type_values", [3, 3])),
+            ("type_false", lambda h: h.token_fixed_results.update({8: 0})),
+            ("type_bool", lambda h: h.token_fixed_results.update({8: True})),
+            ("type_length", lambda h: h.token_fixed_returned.update({8: 3})),
+            ("app_false", lambda h: h.token_fixed_results.update({29: 0})),
+            ("app_bool", lambda h: h.token_fixed_results.update({29: True})),
+            ("app_length", lambda h: h.token_fixed_returned.update({29: 5})),
+        )
+        for name, mutate in cases:
+            harness = NativeDirectoryHarness(module)
+            mutate(harness)
+            with self.subTest(case=name), \
+                    module._open_current_process_token(harness.bundle()) as token:
+                self.assert_refused(module, token._fixed_snapshot)
+            self.assertEqual([args[0] for call, args in harness.calls
+                              if call == "CloseHandle"],
+                             [harness.token_handle])
+
+    def test_fixed_process_token_drift_is_bound_to_profile(self):
+        module = load_module()
+        for name, mutate in (
+            ("app_container", lambda h: setattr(
+                h, "token_app_container_values", [0, 1],
+            )),
+            ("token_type", lambda h: setattr(h, "token_type_values", [1, 2])),
+        ):
+            harness = NativeDirectoryHarness(module)
+            mutate(harness)
+            opened = self.opened(module, harness)
+            with self.subTest(case=name), opened:
+                self.assert_refused(module, opened._security_snapshot)
+            self.assertEqual(self.call_names(harness).count("GetSecurityInfo"), 2)
+            self.assertEqual(self.call_names(harness).count("CloseHandle"), 2)
+
+    def test_fixed_process_token_errors_preserve_cleanup_and_redaction(self):
+        module = load_module()
+        for info_class in (8, 29):
+            for primary in (RuntimeError("PRIVATE FIXED DETAIL"),
+                            KeyboardInterrupt(), SystemExit(43)):
+                harness = NativeDirectoryHarness(module)
+                original = harness.dlls["advapi32.dll"].functions[
+                    "GetTokenInformation"
+                ].implementation
+
+                def interrupt_fixed(*args, primary=primary):
+                    if args[1] == info_class:
+                        raise primary
+                    return original(*args)
+
+                harness.dlls["advapi32.dll"].functions[
+                    "GetTokenInformation"
+                ].implementation = interrupt_fixed
+                harness.close_error = RuntimeError("PRIVATE CLOSE DETAIL")
+                opened = self.opened(module, harness)
+                with self.subTest(info_class=info_class,
+                                  error=type(primary).__name__):
+                    if isinstance(primary, Exception):
+                        with self.assertRaisesRegex(
+                                module.WindowsAclRefused,
+                                "^acl_attestation$") as raised:
+                            with opened:
+                                opened._security_snapshot()
+                        self.assertNotIn("PRIVATE", str(raised.exception))
+                    else:
+                        with self.assertRaises(type(primary)) as raised:
+                            with opened:
+                                opened._security_snapshot()
+                        self.assertIs(raised.exception, primary)
+                self.assertEqual([args[0] for call, args in harness.calls
+                                  if call == "CloseHandle"],
+                                 [harness.token_handle, harness.handle])
+                forbidden_classes = {9, 11}
+                self.assertFalse(forbidden_classes.intersection(
+                    args[1] for call, args in harness.calls
+                    if call == "GetTokenInformation"
+                ))
+                self.assertFalse({"IsTokenRestricted", "DuplicateTokenEx",
+                                  "AccessCheck"}.intersection(
+                                      self.call_names(harness)))
+
     def test_process_token_open_and_query_boundaries_fail_closed(self):
         module = load_module()
         cases = (
@@ -1561,7 +1700,7 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
             with self.subTest(case=name), opened:
                 self.assert_refused(module, opened._security_snapshot)
             self.assertEqual(self.call_names(harness).count("GetSecurityInfo"), 2)
-            self.assertEqual(self.call_names(harness).count("GetTokenInformation"), 12)
+            self.assertEqual(self.call_names(harness).count("GetTokenInformation"), 16)
             self.assertEqual(self.call_names(harness).count("CloseHandle"), 2)
 
     def test_process_token_cleanup_preserves_primary_base_exception(self):

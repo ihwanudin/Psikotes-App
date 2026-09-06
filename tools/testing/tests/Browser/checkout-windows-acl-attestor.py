@@ -220,6 +220,7 @@ TokenImpersonationLevel = 9
 TokenStatistics = 10
 TokenRestrictedSids = 11
 TokenIsAppContainer = 29
+TokenPrimary = 1
 SecurityImpersonation = 2
 TokenImpersonation = 2
 SE_PRIVILEGE_ENABLED = 0x00000002
@@ -543,6 +544,8 @@ class _SecuritySnapshot:
         "aceType", "aceFlags", "accessMask", "aceSize",
         "processTokenSidBytes", "processTokenSid", "processTokenGroups",
         "processTokenPrivileges", "processTokenSensitivePrivileges",
+        "processTokenType", "processTokenIsAppContainerRaw",
+        "processTokenIsAppContainer",
     )
 
     def __init__(self, values):
@@ -564,17 +567,18 @@ class _SecuritySnapshot:
         return self.__values[0], self.__values[12]
 
     def _bind_process_token(self, sid_bytes, sid, groups, privileges,
-                            sensitive_privileges):
-        if self.__values[-5:] != (None, None, None, None, None) \
+                            sensitive_privileges, fixed):
+        if self.__values[-8:] != (None,) * 8 \
                 or (sid_bytes, sid) != self._owner_binding():
             raise WindowsAclRefused("acl_attestation")
         if type(groups) is not tuple or type(privileges) is not tuple \
-                or type(sensitive_privileges) is not tuple:
+                or type(sensitive_privileges) is not tuple \
+                or type(fixed) is not tuple or len(fixed) != 3:
             raise WindowsAclRefused("acl_attestation")
         return _SecuritySnapshot(
-            self.__values[:-5] + (
+            self.__values[:-8] + (
                 sid_bytes, sid, groups, privileges, sensitive_privileges,
-            ),
+            ) + fixed,
         )
 
 
@@ -783,7 +787,7 @@ def _security_descriptor_parts(functions, descriptor, owner, group, dacl):
         revision_information.AclRevision, size_information.AceCount,
         bytes_in_use, dacl_size, owner_sid, trustee_sid,
         ace_header.AceType, ace_header.AceFlags, access_mask, ace_size,
-        None, None, None, None, None,
+        None, None, None, None, None, None, None, None,
     ))
 
 
@@ -1125,19 +1129,69 @@ def _sensitive_privileges_snapshot(functions, privileges):
     return _SensitivePrivilegesSnapshot(tuple(values))
 
 
-class _ProcessTokenProfile:
-    __slots__ = ("__user", "__groups", "__privileges", "__sensitive")
+class _FixedProcessTokenSnapshot:
+    __slots__ = ("__values",)
 
-    def __init__(self, user, groups, privileges, sensitive):
+    def __init__(self, token_type, app_container_raw):
+        if type(token_type) is not int or token_type != TokenPrimary \
+                or type(app_container_raw) is not int \
+                or not 0 <= app_container_raw <= 0xFFFFFFFF:
+            raise WindowsAclRefused("acl_attestation")
+        object.__setattr__(self, "_FixedProcessTokenSnapshot__values", (
+            token_type, app_container_raw, app_container_raw != 0,
+        ))
+
+    def __setattr__(self, _name, _value):
+        raise WindowsAclRefused("acl_attestation")
+
+    def __eq__(self, other):
+        return type(other) is _FixedProcessTokenSnapshot \
+            and self.__values == other.__values
+
+    def values(self):
+        return self.__values
+
+
+def _fixed_process_token_snapshot(functions, handle):
+    # TOKEN_TYPE is a C enum; TokenIsAppContainer returns a DWORD whose
+    # nonzero values mean true.
+    # https://learn.microsoft.com/en-us/windows/win32/api/winnt/ne-winnt-token_type
+    # https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-gettokeninformation
+    token_type = ctypes.c_int()
+    returned = DWORD()
+    if ctypes.sizeof(token_type) != 4 \
+            or not _successful(functions["GetTokenInformation"](
+                handle, TokenType, ctypes.byref(token_type), 4,
+                ctypes.byref(returned),
+            )) or returned.value != 4 or token_type.value != TokenPrimary:
+        raise WindowsAclRefused("acl_attestation")
+
+    app_container = DWORD()
+    returned = DWORD()
+    if not _successful(functions["GetTokenInformation"](
+            handle, TokenIsAppContainer, ctypes.byref(app_container), 4,
+            ctypes.byref(returned))) or returned.value != 4:
+        raise WindowsAclRefused("acl_attestation")
+    return _FixedProcessTokenSnapshot(token_type.value, app_container.value)
+
+
+class _ProcessTokenProfile:
+    __slots__ = (
+        "__user", "__groups", "__privileges", "__sensitive", "__fixed",
+    )
+
+    def __init__(self, user, groups, privileges, sensitive, fixed):
         if type(user) is not _TokenUserSnapshot \
                 or type(groups) is not _TokenGroupsSnapshot \
                 or type(privileges) is not _TokenPrivilegesSnapshot \
-                or type(sensitive) is not _SensitivePrivilegesSnapshot:
+                or type(sensitive) is not _SensitivePrivilegesSnapshot \
+                or type(fixed) is not _FixedProcessTokenSnapshot:
             raise WindowsAclRefused("acl_attestation")
         object.__setattr__(self, "_ProcessTokenProfile__user", user)
         object.__setattr__(self, "_ProcessTokenProfile__groups", groups)
         object.__setattr__(self, "_ProcessTokenProfile__privileges", privileges)
         object.__setattr__(self, "_ProcessTokenProfile__sensitive", sensitive)
+        object.__setattr__(self, "_ProcessTokenProfile__fixed", fixed)
 
     def __setattr__(self, _name, _value):
         raise WindowsAclRefused("acl_attestation")
@@ -1147,11 +1201,13 @@ class _ProcessTokenProfile:
             and self.__user == other.__user \
             and self.__groups == other.__groups \
             and self.__privileges == other.__privileges \
-            and self.__sensitive == other.__sensitive
+            and self.__sensitive == other.__sensitive \
+            and self.__fixed == other.__fixed
 
     def values(self):
         return (self.__user.values(), self.__groups.values(),
-                self.__privileges.values(), self.__sensitive.values())
+                self.__privileges.values(), self.__sensitive.values(),
+                self.__fixed.values())
 
 
 class _OpenedProcessToken:
@@ -1227,6 +1283,17 @@ class _OpenedProcessToken:
         except Exception:
             raise WindowsAclRefused("acl_attestation") from None
 
+    def _fixed_snapshot(self):
+        try:
+            functions = self.validate()
+            result = _fixed_process_token_snapshot(functions, self.__handle)
+            self.validate()
+            return result
+        except WindowsAclRefused:
+            raise
+        except Exception:
+            raise WindowsAclRefused("acl_attestation") from None
+
     def _profile_snapshot(self):
         functions = self.validate()
         user = _token_user_snapshot(functions, self.__handle)
@@ -1236,8 +1303,10 @@ class _OpenedProcessToken:
         privileges = _token_privileges_snapshot(functions, self.__handle)
         functions = self.validate()
         sensitive = _sensitive_privileges_snapshot(functions, privileges)
+        functions = self.validate()
+        fixed = _fixed_process_token_snapshot(functions, self.__handle)
         self.validate()
-        return _ProcessTokenProfile(user, groups, privileges, sensitive)
+        return _ProcessTokenProfile(user, groups, privileges, sensitive, fixed)
 
     def _close_preserving(self, primary):
         if self.__closed:
@@ -1388,14 +1457,14 @@ class _OpenedDirectory:
                 if first != second or token_before != token_after:
                     raise WindowsAclRefused("acl_attestation")
                 (token_user, token_groups, token_privileges,
-                 token_sensitive_privileges) = token_before.values()
+                 token_sensitive_privileges, token_fixed) = token_before.values()
                 token_sid_bytes, token_sid = token_user
                 if first._owner_binding() != (token_sid_bytes, token_sid) \
                         or second._owner_binding() != (token_sid_bytes, token_sid):
                     raise WindowsAclRefused("acl_attestation")
                 result = first._bind_process_token(
                     token_sid_bytes, token_sid, token_groups, token_privileges,
-                    token_sensitive_privileges,
+                    token_sensitive_privileges, token_fixed,
                 )
         except BaseException as error:
             primary = error
