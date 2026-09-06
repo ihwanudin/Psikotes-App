@@ -151,3 +151,23 @@ tree, empty directory yang tidak diimplikasikan manifest, identity root yang
 dikecualikan dari summary, enforcement ACL/effective access, atau perilaku
 Windows runtime. P17c/P18 tetap terbuka, tidak ada runtime/deploy/aktivasi, dan
 seluruh gate/payment tetap default OFF.
+
+## Implementation Checkpoint — `2b715e1`
+
+Boundary ABI `ctypes` Win32 kini didefinisikan secara lazy untuk persiapan
+attestor. Import hanya membentuk tipe, konstanta, dan tabel; belum ada class
+attestor dan tidak ada native call. Platform non-Windows menolak sebelum
+`WinDLL`. Loader mengikat **28 signature exact** memakai oracle pengujian
+independen, nama DLL canonical, `use_last_error`, width/layout struktur, serta
+resolver sempit yang memvalidasi ulang identity, signature, dan bundle agar
+mutasi gagal tertutup. Error memakai vocabulary fixed tanpa detail native;
+`KeyboardInterrupt` dan `SystemExit` tetap dipertahankan.
+
+Signature boundary merujuk dokumentasi Microsoft untuk
+[CreateFileW](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew),
+[GetSecurityInfo](https://learn.microsoft.com/en-us/windows/win32/api/aclapi/nf-aclapi-getsecurityinfo),
+dan [AccessCheck](https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-accesscheck).
+Bukti accepted: **7/7 tes**, `py_compile`, diff-check, dan cross-review **PASS**.
+Ini belum merupakan real attestor, scanner, cache, atau composition wiring dan
+tidak membuktikan efektivitas native/ACL Windows. P17c/P18 tetap terbuka, tidak
+ada native/runtime/deploy/aktivasi, dan seluruh gate/payment tetap default OFF.

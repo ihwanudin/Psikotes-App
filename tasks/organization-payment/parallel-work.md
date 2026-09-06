@@ -2544,3 +2544,16 @@ tree completeness, empty directory di luar manifest, identity root yang tidak
 masuk summary, ACL enforcement/effective access, dan Windows runtime tetap
 terbuka. Tidak ada runtime/deploy/aktivasi; P17c/P18 tetap terbuka dan semua
 gate/payment default OFF.
+
+### Checkpoint lazy Win32 ACL ABI boundary — accepted `2b715e1`
+
+Boundary `ctypes` bersifat lazy: import tidak membuat usable attestor maupun
+native call, dan non-Windows menolak sebelum `WinDLL`. Oracle independen
+memverifikasi **28 signature exact**, ownership DLL, `use_last_error`, width dan
+layout; resolver sempit memvalidasi ulang identity/signature/bundle dan menolak
+mutasi dengan error fixed sambil mempertahankan `KeyboardInterrupt`/`SystemExit`.
+Bukti accepted: **7/7 tes**, `py_compile`, diff-check, dan cross-review **PASS**.
+
+Real attestor, scanner, cache, composition wiring, dan native efficacy belum
+tersedia atau terbukti. Tidak ada native/runtime/deploy/aktivasi; P17c/P18 tetap
+terbuka, tidak ada checkbox berubah, dan seluruh gate/payment default OFF.

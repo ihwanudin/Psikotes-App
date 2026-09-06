@@ -897,3 +897,19 @@ manifest, identity root yang tidak masuk summary, enforcement ACL/effective
 access, dan Windows runtime tetap belum terbukti. Tidak ada runtime, browser,
 service, database, network, deploy, atau aktivasi. P17c/P18 tetap terbuka dan
 seluruh gate/payment tetap default OFF.
+
+## Checkpoint lazy Win32 ACL ABI boundary — 2026-09-06
+
+Commit `2b715e1` menetapkan boundary `ctypes` yang lazy: import tidak menyediakan
+class attestor dan tidak memanggil native API; non-Windows menolak sebelum
+`WinDLL`. Tabel **28 signature exact** diverifikasi dengan oracle independen,
+nama DLL dan `use_last_error` dipin, width/layout struktur diperiksa, dan resolver
+sempit memvalidasi ulang identity, signature, serta bundle sehingga mutasi gagal
+tertutup. Error tetap fixed/redacted sementara `KeyboardInterrupt` dan
+`SystemExit` dipertahankan.
+
+Bukti accepted: **7/7 tes**, `py_compile`, diff-check, dan cross-review **PASS**.
+Ini hanya boundary ABI, bukan real attestor, scanner, cache, atau composition
+wiring, serta bukan bukti native efficacy/ACL Windows. Tidak ada native call,
+runtime, browser, service, database, network, deploy, atau aktivasi. P17c/P18
+tetap terbuka dan seluruh gate/payment tetap default OFF.

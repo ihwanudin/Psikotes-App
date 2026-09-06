@@ -636,3 +636,17 @@ completeness, empty directory yang tidak tersirat manifest, identity root yang
 dikecualikan, ACL enforcement/effective access, dan Windows runtime tetap gate.
 Tidak ada runtime/deploy/aktivasi; P17c/P18 tetap terbuka dan seluruh
 gate/payment default OFF.
+
+### Checkpoint lazy Win32 ACL ABI boundary
+
+Commit `2b715e1` menyediakan boundary `ctypes` lazy tanpa usable attestor atau
+native call saat import; non-Windows berhenti sebelum `WinDLL`. Sebanyak **28
+signature exact** dijaga oracle independen bersama ownership DLL,
+`use_last_error`, width/layout, dan resolver sempit yang memvalidasi ulang
+identity/signature/bundle serta fail closed terhadap mutasi. Error redacted
+tetap fixed dan `KeyboardInterrupt`/`SystemExit` tidak ditutupi.
+
+Bukti accepted: **7/7 tes**, `py_compile`, diff-check, dan cross-review **PASS**.
+Real attestor/scanner/cache/composition serta native efficacy belum ada. Tidak
+ada native/runtime/deploy/aktivasi; P17c/P18 tetap terbuka dan seluruh
+gate/payment default OFF.

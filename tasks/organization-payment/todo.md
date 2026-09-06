@@ -942,3 +942,18 @@ checkbox P17c/P18 tetap terbuka dan seluruh gate/payment tetap default OFF.
 
 Tidak ada checkbox acceptance yang diubah. P17c/P18 tetap terbuka; tidak ada
 runtime/deploy/aktivasi dan seluruh gate/payment tetap default OFF.
+
+### Bukti lazy Win32 ACL ABI boundary accepted — runtime gate tetap terbuka
+
+- `2b715e1` mendefinisikan import lazy tanpa usable attestor/native call;
+  non-Windows menolak sebelum `WinDLL`.
+- Oracle independen mem-pin **28 signature exact**, ownership DLL,
+  `use_last_error`, width/layout, dan resolver sempit dengan revalidasi
+  identity/signature/bundle yang fail closed terhadap mutasi.
+- Error tetap fixed/redacted dan `KeyboardInterrupt`/`SystemExit` dipertahankan;
+  bukti accepted **7/7 tes**, `py_compile`, diff-check, dan cross-review **PASS**.
+- Real attestor, scanner, cache, composition wiring, dan native efficacy belum
+  tersedia atau terbukti.
+
+Tidak ada checkbox acceptance yang diubah. P17c/P18 tetap terbuka; tidak ada
+native/runtime/deploy/aktivasi dan seluruh gate/payment tetap default OFF.
