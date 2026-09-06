@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -11,6 +12,31 @@ import re
 import ssl
 import stat
 import tempfile
+
+
+_HERE = Path(__file__).resolve().parent
+ACL_POLICY_FILE = "tools/testing/tests/Browser/checkout-windows-acl-policy-v1.json"
+ACL_POLICY_DIGEST = "a63c221764f73a54e87513fc91cded6b3fa16825138f6b24b6118132829f4eeb"
+
+
+def _load_acl_policy_module():
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "checkout_acl_policy_builder", _HERE / "checkout-acl-policy.py"
+        )
+        if spec is None or spec.loader is None:
+            raise ValueError("module")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        if module.ACL_POLICY_FILE != Path(ACL_POLICY_FILE).name \
+                or module.ACL_POLICY_DIGEST != ACL_POLICY_DIGEST:
+            raise ValueError("binding")
+        return module
+    except Exception:
+        raise RuntimeError("ACL policy module unavailable") from None
+
+
+acl_policy_module = _load_acl_policy_module()
 
 
 EXTERNAL_TOOLS = ("php", "python", "node", "powershell", "cli", "browser")
@@ -32,6 +58,8 @@ ASSET_REVIEW_FILES = (
 )
 SCRIPT_SOURCE_FILES = frozenset(DELIVERED_ASSETS[2:])
 BROWSER_TOOLS = frozenset({
+    "tools/testing/tests/Browser/checkout-acl-attestation.py",
+    "tools/testing/tests/Browser/checkout-acl-policy.py",
     "tools/testing/tests/Browser/checkout-anchor-store.py",
     "tools/testing/tests/Browser/checkout-candidate-builder.py",
     "tools/testing/tests/Browser/checkout-coordinator.py",
@@ -39,9 +67,12 @@ BROWSER_TOOLS = frozenset({
     "tools/testing/tests/Browser/checkout-integrity-tests.php",
     "tools/testing/tests/Browser/checkout-session.browser.mjs",
     "tools/testing/tests/Browser/checkout-supervisor.py",
+    "tools/testing/tests/Browser/checkout-windows-acl-policy-v1.json",
     "tools/testing/tests/Browser/https-loopback-proxy.py",
     "tools/testing/tests/Browser/serve-checkout-session.php",
     "tools/testing/tests/Browser/test_checkout_anchor_store.py",
+    "tools/testing/tests/Browser/test_checkout_acl_attestation.py",
+    "tools/testing/tests/Browser/test_checkout_acl_policy.py",
     "tools/testing/tests/Browser/test_checkout_candidate_builder.py",
     "tools/testing/tests/Browser/test_checkout_coordinator.py",
     "tools/testing/tests/Browser/test_checkout_coordinator_lease.py",
@@ -64,7 +95,8 @@ REQUIRED_SOURCE = frozenset({
     *BROWSER_TOOLS,
 })
 CONFIG_KEYS = frozenset({
-    "directory", "manifest", *ALL_TOOL_KEYS, "tool_hashes", "asset_delivery_review"
+    "directory", "manifest", *ALL_TOOL_KEYS, "tool_hashes", "asset_delivery_review",
+    "acl_policy_digest",
 })
 CLI_SUFFIX = "31e32ef8478fbf80/node_modules/@playwright/cli/playwright-cli.js"
 BROWSER_SUFFIX = "ms-playwright/chromium-1234/chrome-win64/chrome.exe"
@@ -665,6 +697,15 @@ def build_candidate(*, destination, candidate_parent, source_root, expected_mani
         raise CandidateRefused("source_revision")
 
     manifest = _validated_manifest(expected_manifest, source, source_guard)
+    try:
+        policy_path = source / Path(*ACL_POLICY_FILE.split("/"))
+        if manifest.get(ACL_POLICY_FILE) != ACL_POLICY_DIGEST \
+                or acl_policy_module.policy_digest(policy_path.read_bytes()) != ACL_POLICY_DIGEST:
+            raise CandidateRefused("acl_policy")
+    except CandidateRefused:
+        raise
+    except Exception:
+        raise CandidateRefused("acl_policy") from None
     reviewed_tools = _validated_tools(tools)
     runtime = _validated_runtime(runtime_files)
     review = _validated_review(asset_delivery_review, manifest)
@@ -734,6 +775,7 @@ def build_candidate(*, destination, candidate_parent, source_root, expected_mani
         config = {
             "directory": str(target.absolute()),
             "manifest": _digest(manifest_bytes),
+            "acl_policy_digest": ACL_POLICY_DIGEST,
             **{name: reviewed_tools[name]["path"] for name in EXTERNAL_TOOLS},
             **{name: str(local_paths[name].absolute()) for name in RUN_LOCAL_FILES},
             "tool_hashes": {

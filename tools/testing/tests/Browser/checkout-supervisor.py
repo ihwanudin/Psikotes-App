@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import math
 import os
@@ -12,6 +13,30 @@ import stat
 import subprocess
 import tempfile
 import time
+
+_HERE = Path(__file__).resolve().parent
+ACL_POLICY_FILE = "tools/testing/tests/Browser/checkout-windows-acl-policy-v1.json"
+ACL_POLICY_DIGEST = "a63c221764f73a54e87513fc91cded6b3fa16825138f6b24b6118132829f4eeb"
+
+
+def _load_acl_policy_module():
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "checkout_acl_policy_supervisor", _HERE / "checkout-acl-policy.py"
+        )
+        if spec is None or spec.loader is None:
+            raise ValueError("module")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        if module.ACL_POLICY_FILE != Path(ACL_POLICY_FILE).name \
+                or module.ACL_POLICY_DIGEST != ACL_POLICY_DIGEST:
+            raise ValueError("binding")
+        return module
+    except Exception:
+        raise RuntimeError("ACL policy module unavailable") from None
+
+
+acl_policy_module = _load_acl_policy_module()
 
 PORTS = (8126, 443)
 DELIVERED_ASSETS = (
@@ -47,6 +72,7 @@ CONFIG_TOOL_KEYS = (
 )
 CONFIG_KEYS = frozenset({
     "directory", "manifest", *CONFIG_TOOL_KEYS, "tool_hashes", "asset_delivery_review",
+    "acl_policy_digest",
 })
 FULL_MATRIX_KEYS = (
     "checks", "exchangePosts", "hostileForms", "opaqueNetworkBlocks",
@@ -217,6 +243,72 @@ def _read_validated_browser_config(path, expected_hash, expected_browser, expect
                 os.close(descriptor)
             except Exception:
                 raise Refused("browser_config") from None
+
+
+def _read_validated_acl_policy(path, expected_digest, expected_source):
+    descriptor = None
+    primary = None
+    result = None
+    try:
+        if not isinstance(path, Path) or type(expected_digest) is not str \
+                or expected_digest != ACL_POLICY_DIGEST or not isinstance(expected_source, Path) \
+                or path != expected_source / Path(*ACL_POLICY_FILE.split("/")):
+            raise ValueError("binding")
+        for candidate in (expected_source, path.parent, path):
+            candidate_info = candidate.lstat()
+            if candidate.is_symlink() \
+                    or getattr(candidate_info, "st_file_attributes", 0) \
+                    & _FILE_ATTRIBUTE_REPARSE_POINT \
+                    or candidate.resolve(strict=True) != candidate.absolute():
+                raise ValueError("canonical")
+        before = path.lstat()
+        source_before = expected_source.lstat()
+        if not stat.S_ISREG(before.st_mode) or not stat.S_ISDIR(source_before.st_mode) \
+                or not 0 < before.st_size <= acl_policy_module.MAX_POLICY_BYTES:
+            raise ValueError("shape")
+        flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(path, flags)
+        opened = os.fstat(descriptor)
+        if not os.path.samestat(before, opened):
+            raise ValueError("identity")
+        chunks = []
+        total = 0
+        while True:
+            chunk = os.read(descriptor, min(4096, acl_policy_module.MAX_POLICY_BYTES + 1 - total))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+            if total > acl_policy_module.MAX_POLICY_BYTES:
+                raise ValueError("bounds")
+        raw = b"".join(chunks)
+        if hashlib.sha256(raw).hexdigest() != expected_digest \
+                or acl_policy_module.policy_digest(raw) != expected_digest:
+            raise ValueError("digest")
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        repeated = os.read(descriptor, acl_policy_module.MAX_POLICY_BYTES + 1)
+        after = os.fstat(descriptor)
+        linked = path.lstat()
+        source_after = expected_source.lstat()
+        if repeated != raw or not os.path.samestat(opened, after) \
+                or not os.path.samestat(after, linked) \
+                or not os.path.samestat(source_before, source_after) \
+                or path.resolve(strict=True) != path.absolute():
+            raise ValueError("drift")
+        result = acl_policy_module.validated_policy(raw)
+    except BaseException as error:
+        primary = error
+    if descriptor is not None:
+        try:
+            os.close(descriptor)
+        except BaseException as error:
+            if primary is None:
+                primary = error
+    if primary is not None:
+        if isinstance(primary, Exception):
+            raise Refused("acl_policy") from None
+        raise primary
+    return result
 
 
 def supervise(io, *, mode="smoke", requests=3, budget=180):
@@ -536,6 +628,9 @@ class WindowsRun:
             if type(self.c["manifest"]) is not str \
                     or re.fullmatch(r"[a-f0-9]{64}", self.c["manifest"]) is None:
                 raise ValueError("manifest")
+            if type(self.c["acl_policy_digest"]) is not str \
+                    or self.c["acl_policy_digest"] != ACL_POLICY_DIGEST:
+                raise ValueError("acl_policy")
             hashes = self.c["tool_hashes"]
             if type(hashes) is not dict or set(hashes) != set(CONFIG_TOOL_KEYS):
                 raise ValueError("hashes")
@@ -598,6 +693,13 @@ class WindowsRun:
         if hashlib.sha256(raw).hexdigest() != self.c["manifest"]:
             raise Refused("manifest")
         manifest = json.loads(raw)
+        if type(manifest) is not dict or manifest.get(ACL_POLICY_FILE) != ACL_POLICY_DIGEST:
+            raise Refused("acl_policy")
+        _read_validated_acl_policy(
+            self.source / Path(*ACL_POLICY_FILE.split("/")),
+            self.c["acl_policy_digest"],
+            self.source,
+        )
         review = _validated_asset_review(review, manifest)
         # This reviewed asset-delivery contract is deliberately absent from the old copy.
         # Presence alone does not authorize a generic static-file router.
@@ -707,6 +809,7 @@ class WindowsRun:
         payload = {
             "directory": self._normalized_path(self.c["directory"]),
             "manifest": self.c["manifest"],
+            "aclPolicyDigest": self.c["acl_policy_digest"],
             "session": session,
             "tools": {key: {"path": self._normalized_path(self.c[key]), "sha256": hashes[key]}
                       for key in keys},

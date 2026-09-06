@@ -168,7 +168,9 @@ class CandidateBuilderTests(unittest.TestCase):
         source.mkdir()
         manifest = {}
         for index, relative in enumerate(sorted(m.REQUIRED_SOURCE), 1):
-            value = f"reviewed-source-{index}\n".encode()
+            value = ((HERE / Path(relative).name).read_bytes()
+                     if relative == m.ACL_POLICY_FILE
+                     else f"reviewed-source-{index}\n".encode())
             path = source / Path(*relative.split("/"))
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(value)
@@ -219,9 +221,15 @@ class CandidateBuilderTests(unittest.TestCase):
             self.assertEqual(result, config)
             self.assertIsNot(result, config)
             self.assertEqual(config["manifest"], digest(manifest_bytes))
+            self.assertEqual(config["acl_policy_digest"], m.ACL_POLICY_DIGEST)
+            self.assertEqual(
+                args["expected_manifest"][m.ACL_POLICY_FILE], m.ACL_POLICY_DIGEST
+            )
             self.assertEqual(json.loads(manifest_bytes), args["expected_manifest"])
             self.assertTrue({
+                "tools/testing/tests/Browser/checkout-acl-attestation.py",
                 "tools/testing/tests/Browser/checkout-coordinator-lease.py",
+                "tools/testing/tests/Browser/test_checkout_acl_attestation.py",
                 "tools/testing/tests/Browser/test_checkout_coordinator_lease.py",
             } <= set(args["expected_manifest"]))
             self.assertEqual(config["asset_delivery_review"], args["asset_delivery_review"])
@@ -235,6 +243,19 @@ class CandidateBuilderTests(unittest.TestCase):
                 "browser.sqlite", "baseline.json", "fixtures.json", "storage", "supervisor.json"
             )))
             self.assertFalse(hasattr(m, "main"))
+
+    def test_acl_policy_authority_is_compiled_and_not_caller_selectable(self):
+        with tempfile.TemporaryDirectory(prefix="candidate-builder-test-") as directory:
+            args = self.fixture(directory)
+            policy = Path(args["source_root"]) / Path(*m.ACL_POLICY_FILE.split("/"))
+            document = json.loads(policy.read_bytes())
+            document["policyId"] = "caller-selected"
+            changed = (json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n").encode()
+            policy.write_bytes(changed)
+            args["expected_manifest"][m.ACL_POLICY_FILE] = digest(changed)
+            with self.assertRaisesRegex(m.CandidateRefused, "^acl_policy$"):
+                self.build(args)
+            self.assertFalse(Path(args["destination"]).exists())
 
     def test_output_is_deterministic_for_identical_explicit_inputs(self):
         with tempfile.TemporaryDirectory(prefix="candidate-builder-test-") as directory:
@@ -768,7 +789,8 @@ class CandidateBuilderTests(unittest.TestCase):
             if isinstance(target, ast.Name)
             and target.id in {
                 "CLI_SUFFIX", "BROWSER_SUFFIX", "BROWSER_LAUNCH_ARGS", "CONFIG_TOOL_KEYS",
-                "DELIVERED_ASSETS", "ASSET_REVIEW_FILES",
+                "DELIVERED_ASSETS", "ASSET_REVIEW_FILES", "ACL_POLICY_FILE",
+                "ACL_POLICY_DIGEST",
             }
         }
         self.assertEqual(assignments, {
@@ -778,6 +800,8 @@ class CandidateBuilderTests(unittest.TestCase):
             "CONFIG_TOOL_KEYS": m.ALL_TOOL_KEYS,
             "DELIVERED_ASSETS": m.DELIVERED_ASSETS,
             "ASSET_REVIEW_FILES": m.ASSET_REVIEW_FILES,
+            "ACL_POLICY_FILE": m.ACL_POLICY_FILE,
+            "ACL_POLICY_DIGEST": m.ACL_POLICY_DIGEST,
         })
         self.assertEqual(static_config_keys(supervisor, m.ALL_TOOL_KEYS), m.CONFIG_KEYS)
         self.assertEqual(m.ASSET_REVIEW_FILES[:4], m.DELIVERED_ASSETS)

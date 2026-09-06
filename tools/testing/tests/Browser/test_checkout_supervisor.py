@@ -3,6 +3,7 @@ import hashlib
 import importlib.util
 import json
 import os
+from contextlib import ExitStack
 from pathlib import Path
 import socket
 from tempfile import TemporaryDirectory
@@ -132,6 +133,7 @@ class SupervisorTests(unittest.TestCase):
         store = self.anchor_stores.setdefault(str(Path(directory)), AnchorStore())
         run = m.WindowsRun({
             "directory": directory, "manifest": "a" * 64, **paths,
+            "acl_policy_digest": m.ACL_POLICY_DIGEST,
             "tool_hashes": {name: hashlib.sha256(Path(path).read_bytes()).hexdigest()
                             for name, path in paths.items()},
             "asset_delivery_review": {name: "b" * 64 for name in m.ASSET_REVIEW_FILES},
@@ -218,6 +220,7 @@ class SupervisorTests(unittest.TestCase):
         return {
             "directory": str(run),
             "manifest": "a" * 64,
+            "acl_policy_digest": m.ACL_POLICY_DIGEST,
             **paths,
             "tool_hashes": {name: "b" * 64 for name in tool_keys},
             "asset_delivery_review": {name: "c" * 64 for name in m.ASSET_REVIEW_FILES},
@@ -246,6 +249,13 @@ class SupervisorTests(unittest.TestCase):
             ("manifest-short", "a" * 63),
         ):
             candidate = json.loads(json.dumps(valid)); candidate["manifest"] = value
+            invalid.append((label, candidate))
+        for label, value in (
+            ("acl-policy-bool", True),
+            ("acl-policy-upper", m.ACL_POLICY_DIGEST.upper()),
+            ("acl-policy-other", "d" * 64),
+        ):
+            candidate = json.loads(json.dumps(valid)); candidate["acl_policy_digest"] = value
             invalid.append((label, candidate))
         for label, value in (
             ("hash-bool", True), ("hash-upper", "B" * 64), ("hash-short", "b" * 63),
@@ -317,6 +327,11 @@ class SupervisorTests(unittest.TestCase):
         self.assertNotEqual(run._config_binding(session), original_binding)
 
         run.c = json.loads(json.dumps(valid))
+        run.c["acl_policy_digest"] = "d" * 64
+        with self.assertRaisesRegex(m.Refused, "^candidate_config$"):
+            run._config_binding(session)
+
+        run.c = json.loads(json.dumps(valid))
         run.c["tool_hashes"]["php"] = "B" * 64
         with self.assertRaisesRegex(m.Refused, "^candidate_config$"):
             run._config_binding(session)
@@ -328,6 +343,31 @@ class SupervisorTests(unittest.TestCase):
                     session,
                     {"generation": 1, "digest": "d" * 64},
                 )
+
+    def test_acl_policy_reader_is_fixed_path_same_descriptor_and_fails_closed_on_drift(self):
+        reviewed = Path(__file__).with_name("checkout-windows-acl-policy-v1.json").read_bytes()
+        with TemporaryDirectory(prefix="oncam-acl-policy-") as directory:
+            source = Path(directory).absolute()
+            policy = source / Path(*m.ACL_POLICY_FILE.split("/"))
+            policy.parent.mkdir(parents=True)
+            policy.write_bytes(reviewed)
+
+            with patch.object(Path, "read_bytes", side_effect=AssertionError("path reread")):
+                document = m._read_validated_acl_policy(
+                    policy, m.ACL_POLICY_DIGEST, source,
+                )
+            self.assertEqual(document["policyId"], "checkout-windows-owner-only-v1")
+
+            with self.assertRaisesRegex(m.Refused, "^acl_policy$"):
+                m._read_validated_acl_policy(
+                    source / "caller-policy.json", m.ACL_POLICY_DIGEST, source,
+                )
+            with self.assertRaisesRegex(m.Refused, "^acl_policy$"):
+                m._read_validated_acl_policy(policy, "d" * 64, source)
+
+            with patch.object(m.os.path, "samestat", side_effect=(True, True, False)):
+                with self.assertRaisesRegex(m.Refused, "^acl_policy$"):
+                    m._read_validated_acl_policy(policy, m.ACL_POLICY_DIGEST, source)
 
     def test_browser_config_decoder_accepts_only_exact_semantic_schema(self):
         browser = "C:/approved/chrome.exe"
@@ -458,7 +498,12 @@ class SupervisorTests(unittest.TestCase):
                 value = f"asset-{index}".encode()
                 path.write_bytes(value)
                 review[name] = hashlib.sha256(value).hexdigest()
-            manifest_bytes = json.dumps(review, sort_keys=True, separators=(",", ":")).encode()
+            policy_path = source / Path(*m.ACL_POLICY_FILE.split("/"))
+            policy_path.parent.mkdir(parents=True, exist_ok=True)
+            policy_raw = (Path(__file__).with_name("checkout-windows-acl-policy-v1.json")).read_bytes()
+            policy_path.write_bytes(policy_raw)
+            manifest = {**review, m.ACL_POLICY_FILE: hashlib.sha256(policy_raw).hexdigest()}
+            manifest_bytes = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
             (run_path / "source-manifest.json").write_bytes(manifest_bytes)
             paths = {}
             local_names = {"ini": "runtime.ini", "cert": "cert.pem", "key": "key.pem"}
@@ -482,6 +527,7 @@ class SupervisorTests(unittest.TestCase):
             config = {
                 "directory": str(run_path.absolute()),
                 "manifest": hashlib.sha256(manifest_bytes).hexdigest(),
+                "acl_policy_digest": m.ACL_POLICY_DIGEST,
                 **paths,
                 "tool_hashes": {
                     name: hashlib.sha256(Path(path).read_bytes()).hexdigest()
@@ -498,6 +544,40 @@ class SupervisorTests(unittest.TestCase):
             self.assertFalse((run_path / "supervisor.json").exists())
             self.assertFalse((run_path / m.JOURNAL).exists())
             self.assertEqual(run.launch_intents, [])
+
+            def assert_policy_preflight_refused(candidate, *extra_patches):
+                with ExitStack() as stack:
+                    stack.enter_context(patch.object(
+                        m.tempfile, "gettempdir", return_value=str(root)
+                    ))
+                    stack.enter_context(patch.object(
+                        candidate, "_identity", side_effect=AssertionError("identity")
+                    ))
+                    stack.enter_context(patch.object(
+                        candidate, "_ps", side_effect=AssertionError("process")
+                    ))
+                    stack.enter_context(patch.object(
+                        m.subprocess, "Popen", side_effect=AssertionError("spawn")
+                    ))
+                    for context in extra_patches:
+                        stack.enter_context(context)
+                    with self.assertRaisesRegex(m.Refused, "^acl_policy$"):
+                        candidate.preflight(1)
+                self.assertFalse(candidate.claimed)
+                self.assertEqual(candidate.launch_intents, [])
+                self.assertFalse(any((run_path / name).exists() for name in (
+                    "supervisor.json", m.JOURNAL, m.JOURNAL_TEMP,
+                    "integrity-evidence.json", "integrity-invalid",
+                )))
+
+            policy_path.write_bytes(policy_raw + b" ")
+            assert_policy_preflight_refused(m.WindowsRun(config))
+
+            policy_path.write_bytes(policy_raw)
+            assert_policy_preflight_refused(
+                m.WindowsRun(config),
+                patch.object(m.os.path, "samestat", side_effect=(True, True, False)),
+            )
 
     def test_browser_launch_args_require_exact_canonical_ordered_list(self):
         approved = [
