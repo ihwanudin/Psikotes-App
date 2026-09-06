@@ -3,6 +3,7 @@
 import ctypes
 import hashlib
 import importlib.util
+import json
 import os
 from pathlib import Path
 import unittest
@@ -979,6 +980,28 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
     def call_names(harness):
         return [name for name, _args in harness.calls]
 
+    @staticmethod
+    def bound_security_snapshot(module, access_mask):
+        owner_bytes = (
+            b"\x01\x02\x00\x00\x00\x00\x00\x05"
+            + (21).to_bytes(4, "little") + (100).to_bytes(4, "little")
+        )
+        owner_sid = "S-1-5-21-100"
+        unbound = module._SecuritySnapshot._from_descriptor((
+            owner_bytes, owner_bytes, "d" * 64, 0x9004,
+            False, False, False, 1, 2, 0, 0, 1, 32, 32,
+            owner_sid, owner_sid, 0, 3, access_mask, 24,
+            None, None, None, None, None, None, None, None, None, None, None,
+        ))
+        return unbound._bind_process_token(
+            owner_bytes, owner_sid, (), (), (
+                ("SeBackupPrivilege", 1, 0, False, False),
+                ("SeRestorePrivilege", 2, 0, False, False),
+                ("SeTakeOwnershipPrivilege", 3, 0, False, False),
+            ), (1, 0, False),
+            ((), False, 4),
+        )
+
     def opened(self, module, harness):
         return module._open_directory(harness.bundle(), harness.path)
 
@@ -1078,6 +1101,8 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
                 "daclDefaulted": False,
                 "descriptorRevision": 1,
                 "daclRevision": 2,
+                "aclSbz1": 0,
+                "aclSbz2": 0,
                 "aceCount": 1,
                 "daclBytesInUse": 28,
                 "daclSize": 32,
@@ -2706,6 +2731,275 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
                 self.assert_refused(module, opened.close)
                 self.assertEqual(self.call_names(harness).count("CloseHandle"), 0)
                 self.assert_refused(module, opened.close)
+
+    def test_private_target_policy_match_uses_exact_authoritative_role_masks(self):
+        module = load_module()
+        self.assertEqual(
+            module.ACL_POLICY_DIGEST,
+            "a63c221764f73a54e87513fc91cded6b3fa16825138f6b24b6118132829f4eeb",
+        )
+        for role, access_mask in (
+            ("coordinator", 2032127),
+            ("run", 2032127),
+            ("source", 1179817),
+        ):
+            with self.subTest(role=role):
+                snapshot = self.bound_security_snapshot(module, access_mask)
+                match = module._match_target_policy(snapshot, role)
+                self.assertIs(type(match), module._TargetPolicyMatch)
+                self.assertEqual(match.values(), {
+                    "role": role,
+                    "accessMask": access_mask,
+                    "policyDigest": module.ACL_POLICY_DIGEST,
+                })
+                self.assertNotIn("policySatisfied", match.values())
+                with self.assertRaises(module.WindowsAclRefused):
+                    match.extra = "PRIVATE"
+                with self.assertRaises(TypeError):
+                    match.values()["accessMask"] = 0
+
+        with self.assertRaises(TypeError):
+            module._TARGET_ACCESS_MASKS["source"] = 2032127
+
+        original_masks = module._TARGET_ACCESS_MASKS
+        module._TARGET_ACCESS_MASKS = dict(original_masks)
+        try:
+            self.assert_refused(
+                module,
+                lambda: module._match_target_policy(
+                    self.bound_security_snapshot(module, 2032127), "run",
+                ),
+            )
+        finally:
+            module._TARGET_ACCESS_MASKS = original_masks
+
+        original_digest = module.ACL_POLICY_DIGEST
+        module.ACL_POLICY_DIGEST = "0" * 64
+        try:
+            self.assert_refused(
+                module,
+                lambda: module._match_target_policy(
+                    self.bound_security_snapshot(module, 2032127), "run",
+                ),
+            )
+        finally:
+            module.ACL_POLICY_DIGEST = original_digest
+
+    def test_target_policy_rejects_unbound_wrong_mask_and_nonexact_role(self):
+        module = load_module()
+        bound_all = self.bound_security_snapshot(module, 2032127)
+        bound_source = self.bound_security_snapshot(module, 1179817)
+        unbound_values = list(bound_all.values().values())
+        unbound_values[-11:] = [None] * 11
+        unbound = module._SecuritySnapshot._from_descriptor(tuple(unbound_values))
+
+        class RoleSubclass(str):
+            pass
+
+        cases = (
+            (unbound, "coordinator"),
+            (object.__new__(module._SecuritySnapshot), "coordinator"),
+            (bound_all, "source"),
+            (bound_source, "coordinator"),
+            (bound_source, "run"),
+            (self.bound_security_snapshot(module, 2032126), "coordinator"),
+            (self.bound_security_snapshot(module, 1179785), "source"),
+            (self.bound_security_snapshot(module, 1179808), "source"),
+            (self.bound_security_snapshot(module, 1179819), "source"),
+            (bound_all, None),
+            (bound_all, True),
+            (bound_all, RoleSubclass("coordinator")),
+            (bound_all, "other"),
+            (object(), "coordinator"),
+        )
+        for snapshot, role in cases:
+            with self.subTest(role=role), \
+                    self.assertRaisesRegex(module.WindowsAclRefused,
+                                            "^acl_attestation$"):
+                module._match_target_policy(snapshot, role)
+        with self.assertRaisesRegex(module.WindowsAclRefused,
+                                    "^acl_attestation$"):
+            module._SecuritySnapshot(tuple(bound_all.values().values()))
+
+    def test_target_policy_is_pure_redacted_and_preserves_baseexceptions(self):
+        module = load_module()
+        snapshot = self.bound_security_snapshot(module, 2032127)
+        with patch.object(
+                module, "_resolve_security_functions",
+                side_effect=AssertionError("native resolver called")), \
+                patch.object(module, "_load_native",
+                             side_effect=AssertionError("native loader called")):
+            self.assertEqual(
+                module._match_target_policy(snapshot, "run").values()["role"],
+                "run",
+            )
+
+        for primary in (
+            RuntimeError("PRIVATE policy state"), KeyboardInterrupt(), SystemExit(74),
+        ):
+            with patch.object(
+                    module, "_target_snapshot_policy_state", side_effect=primary):
+                if isinstance(primary, Exception):
+                    with self.assertRaisesRegex(
+                            module.WindowsAclRefused, "^acl_attestation$") as raised:
+                        module._match_target_policy(snapshot, "run")
+                    self.assertNotIn("PRIVATE", str(raised.exception))
+                else:
+                    with self.assertRaises(type(primary)) as raised:
+                        module._match_target_policy(snapshot, "run")
+                    self.assertIs(raised.exception, primary)
+
+    def test_target_policy_revalidates_every_bound_snapshot_category(self):
+        module = load_module()
+        baseline = self.bound_security_snapshot(module, 2032127)
+        baseline_values = dict(baseline.values())
+        bound_state = object.__getattribute__(
+            baseline, "_SecuritySnapshot__state",
+        )
+        sid = baseline_values["ownerSidBytes"]
+        group = (sid, baseline_values["ownerSid"], 0)
+        privilege = (7, -1, 2)
+        sensitive = (
+            ("SeBackupPrivilege", 7, -1, True, True),
+            ("SeRestorePrivilege", 8, 0, False, False),
+            ("SeTakeOwnershipPrivilege", 9, 0, False, False),
+        )
+        valid_richer = dict(baseline_values)
+        valid_richer.update({
+            "processTokenGroups": (group,),
+            "processTokenPrivileges": (privilege,),
+            "processTokenSensitivePrivileges": sensitive,
+        })
+        baseline = module._SecuritySnapshot._create(
+            tuple(valid_richer[key] for key in module._SecuritySnapshot._KEYS),
+            bound_state,
+        )
+        self.assertEqual(
+            module._match_target_policy(baseline, "run").values()["accessMask"],
+            2032127,
+        )
+
+        bad_sid = b"\x00" * len(sid)
+        mutations = (
+            ("owner_bytes", "ownerSidBytes", bad_sid),
+            ("group_bytes", "groupSidBytes", bad_sid),
+            ("dacl_digest", "daclDigest", "D" * 64),
+            ("control_type", "control", True),
+            ("control_required", "control", 0x8004),
+            ("control_auto", "control", 0x9404),
+            ("owner_default_type", "ownerDefaulted", 0),
+            ("owner_default_parity", "ownerDefaulted", True),
+            ("group_default_type", "groupDefaulted", 0),
+            ("group_default_parity", "groupDefaulted", True),
+            ("dacl_default_type", "daclDefaulted", 0),
+            ("dacl_default_parity", "daclDefaulted", True),
+            ("descriptor_revision", "descriptorRevision", 2),
+            ("dacl_revision", "daclRevision", 4),
+            ("acl_sbz1", "aclSbz1", 1),
+            ("acl_sbz2", "aclSbz2", 1),
+            ("ace_count", "aceCount", 2),
+            ("bytes_in_use", "daclBytesInUse", 31),
+            ("dacl_size", "daclSize", 31),
+            ("owner_text", "ownerSid", "S-1-5-21-101"),
+            ("trustee_text", "trusteeSid", "S-1-5-21-101"),
+            ("ace_type", "aceType", 1),
+            ("ace_flags", "aceFlags", 1),
+            ("ace_size", "aceSize", 20),
+            ("token_sid_bytes", "processTokenSidBytes", bad_sid),
+            ("token_sid_text", "processTokenSid", "S-1-5-21-101"),
+            ("groups_type", "processTokenGroups", [group]),
+            ("groups_duplicate", "processTokenGroups", (group, group)),
+            ("privileges_type", "processTokenPrivileges", [privilege]),
+            ("privileges_duplicate", "processTokenPrivileges",
+             (privilege, (7, -1, 0))),
+            ("sensitive_order", "processTokenSensitivePrivileges",
+             tuple(reversed(sensitive))),
+            ("sensitive_mapping", "processTokenSensitivePrivileges", (
+                ("SeBackupPrivilege", 7, -1, True, False),
+                sensitive[1], sensitive[2],
+            )),
+            ("token_type", "processTokenType", 2),
+            ("app_raw", "processTokenIsAppContainerRaw", True),
+            ("app_parity", "processTokenIsAppContainer", True),
+            ("restricting_type", "processTokenRestrictingSids", []),
+            ("restricting_parity", "processTokenHasRestrictingSids", True),
+            ("restricting_length", "processTokenRestrictedSidsReturnedLength", 5),
+        )
+        for name, key, value in mutations:
+            candidate = dict(valid_richer)
+            candidate[key] = value
+            forged = module._SecuritySnapshot._create(
+                tuple(candidate[item] for item in module._SecuritySnapshot._KEYS),
+                bound_state,
+            )
+            with self.subTest(name=name), \
+                    self.assertRaisesRegex(module.WindowsAclRefused,
+                                            "^acl_attestation$"):
+                module._match_target_policy(forged, "run")
+
+    def test_target_policy_mapping_matches_exact_canonical_authority_artifact(self):
+        module = load_module()
+        raw = SOURCE.with_name("checkout-windows-acl-policy-v1.json").read_bytes()
+        expected_digest = (
+            "a63c221764f73a54e87513fc91cded6b3"
+            "fa16825138f6b24b6118132829f4eeb"
+        )
+        self.assertEqual(hashlib.sha256(raw).hexdigest(), expected_digest)
+        self.assertEqual(module.ACL_POLICY_DIGEST, expected_digest)
+        self.assertEqual(hashlib.sha256(raw).hexdigest(), module.ACL_POLICY_DIGEST)
+        document = json.loads(raw.decode("ascii"))
+        self.assertEqual(
+            raw,
+            (json.dumps(
+                document, sort_keys=True, separators=(",", ":"),
+                ensure_ascii=True,
+            ) + "\n").encode("ascii"),
+        )
+        self.assertEqual(list(document), [
+            "ordinarySecondPrincipal", "policyId", "targets", "version",
+        ])
+        self.assertEqual(document["version"], 1)
+        self.assertEqual(document["policyId"], "checkout-windows-owner-only-v1")
+        self.assertEqual([target["role"] for target in document["targets"]], [
+            "coordinator", "run", "source",
+        ])
+        for target in document["targets"]:
+            self.assertEqual(list(target), ["dacl", "owner", "role"])
+            self.assertEqual(target["owner"], "PROCESS_TOKEN_USER")
+            self.assertEqual(list(target["dacl"]), [
+                "aceCount", "aces", "autoInherited", "present",
+                "protected", "revision",
+            ])
+            self.assertEqual(target["dacl"]["aceCount"], 1)
+            self.assertEqual(target["dacl"]["autoInherited"], False)
+            self.assertEqual(target["dacl"]["present"], True)
+            self.assertEqual(target["dacl"]["protected"], True)
+            self.assertEqual(target["dacl"]["revision"], 2)
+            self.assertEqual(len(target["dacl"]["aces"]), 1)
+            ace = target["dacl"]["aces"][0]
+            self.assertEqual(list(ace), [
+                "accessMask", "flags", "order", "trustee", "type",
+            ])
+            self.assertEqual(ace["order"], 0)
+            self.assertEqual(ace["trustee"], "PROCESS_TOKEN_USER")
+            self.assertEqual(ace["type"], {
+                "name": "ACCESS_ALLOWED_ACE_TYPE", "numeric": 0,
+            })
+            self.assertEqual(ace["flags"], {
+                "inheritance": [
+                    "OBJECT_INHERIT_ACE", "CONTAINER_INHERIT_ACE",
+                ],
+                "inherited": False,
+                "numeric": 3,
+                "propagation": [],
+            })
+        artifact_masks = tuple(
+            (target["role"], target["dacl"]["aces"][0]["accessMask"])
+            for target in document["targets"]
+        )
+        self.assertEqual(
+            artifact_masks, tuple(module._TARGET_ACCESS_MASKS.items()),
+        )
 
 
 if __name__ == "__main__":

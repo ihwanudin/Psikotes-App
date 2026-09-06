@@ -13,6 +13,17 @@ import re
 from types import MappingProxyType
 
 
+ACL_POLICY_DIGEST = "a63c221764f73a54e87513fc91cded6b3fa16825138f6b24b6118132829f4eeb"
+_PINNED_ACL_POLICY_DIGEST = ACL_POLICY_DIGEST
+_TARGET_ACCESS_MASKS = MappingProxyType({
+    "coordinator": 2032127,
+    "run": 2032127,
+    "source": 1179817,
+})
+_PINNED_TARGET_ACCESS_MASKS_OBJECT = _TARGET_ACCESS_MASKS
+_PINNED_TARGET_ACCESS_MASKS = tuple(_TARGET_ACCESS_MASKS.items())
+
+
 BYTE = ctypes.c_ubyte
 WORD = ctypes.c_ushort
 DWORD = ctypes.c_uint32
@@ -539,12 +550,15 @@ def _directory_state(functions, handle, expected_path):
 
 
 class _SecuritySnapshot:
-    __slots__ = ("__values",)
+    __slots__ = ("__values", "__state")
+
+    __PARSED = object()
+    __PROCESS_TOKEN_BOUND = object()
 
     _KEYS = (
         "ownerSidBytes", "groupSidBytes", "daclDigest", "control",
         "ownerDefaulted", "groupDefaulted", "daclDefaulted",
-        "descriptorRevision", "daclRevision", "aceCount",
+        "descriptorRevision", "daclRevision", "aclSbz1", "aclSbz2", "aceCount",
         "daclBytesInUse", "daclSize", "ownerSid", "trusteeSid",
         "aceType", "aceFlags", "accessMask", "aceSize",
         "processTokenSidBytes", "processTokenSid", "processTokenGroups",
@@ -555,27 +569,43 @@ class _SecuritySnapshot:
         "processTokenRestrictedSidsReturnedLength",
     )
 
-    def __init__(self, values):
-        if type(values) is not tuple or len(values) != len(self._KEYS):
+    def __init__(self, _values):
+        raise WindowsAclRefused("acl_attestation")
+
+    @classmethod
+    def _create(cls, values, state):
+        if type(values) is not tuple or len(values) != len(cls._KEYS):
             raise WindowsAclRefused("acl_attestation")
-        object.__setattr__(self, "_SecuritySnapshot__values", values)
+        if state is not cls.__PARSED and state is not cls.__PROCESS_TOKEN_BOUND:
+            raise WindowsAclRefused("acl_attestation")
+        instance = object.__new__(cls)
+        object.__setattr__(instance, "_SecuritySnapshot__values", values)
+        object.__setattr__(instance, "_SecuritySnapshot__state", state)
+        return instance
+
+    @classmethod
+    def _from_descriptor(cls, values):
+        return cls._create(values, cls.__PARSED)
 
     def __setattr__(self, _name, _value):
         raise WindowsAclRefused("acl_attestation")
 
     def __eq__(self, other):
         return type(other) is _SecuritySnapshot \
+            and self.__state is other.__state \
             and self.__values == other.__values
 
     def values(self):
         return MappingProxyType(dict(zip(self._KEYS, self.__values, strict=True)))
 
     def _owner_binding(self):
-        return self.__values[0], self.__values[12]
+        values = dict(zip(self._KEYS, self.__values, strict=True))
+        return values["ownerSidBytes"], values["ownerSid"]
 
     def _bind_process_token(self, sid_bytes, sid, groups, privileges,
                             sensitive_privileges, fixed, restricting_sids):
-        if self.__values[-11:] != (None,) * 11 \
+        if self.__state is not self.__PARSED \
+                or self.__values[-11:] != (None,) * 11 \
                 or (sid_bytes, sid) != self._owner_binding():
             raise WindowsAclRefused("acl_attestation")
         if type(groups) is not tuple or type(privileges) is not tuple \
@@ -584,11 +614,199 @@ class _SecuritySnapshot:
                 or type(restricting_sids) is not tuple \
                 or len(restricting_sids) != 3:
             raise WindowsAclRefused("acl_attestation")
-        return _SecuritySnapshot(
+        return self._create(
             self.__values[:-11] + (
                 sid_bytes, sid, groups, privileges, sensitive_privileges,
             ) + fixed + restricting_sids,
+            self.__PROCESS_TOKEN_BOUND,
         )
+
+    def _target_policy_state(self):
+        if self.__state is not self.__PROCESS_TOKEN_BOUND:
+            raise WindowsAclRefused("acl_attestation")
+        return MappingProxyType(dict(zip(
+            self._KEYS, self.__values, strict=True,
+        )))
+
+
+class _TargetPolicyMatch:
+    __slots__ = ("__values",)
+
+    def __init__(self, role, access_mask):
+        object.__setattr__(self, "_TargetPolicyMatch__values", (
+            role, access_mask, ACL_POLICY_DIGEST,
+        ))
+
+    def __setattr__(self, _name, _value):
+        raise WindowsAclRefused("acl_attestation")
+
+    def values(self):
+        return MappingProxyType(dict(zip(
+            ("role", "accessMask", "policyDigest"), self.__values,
+            strict=True,
+        )))
+
+
+def _target_snapshot_policy_state(snapshot):
+    if type(snapshot) is not _SecuritySnapshot:
+        raise WindowsAclRefused("acl_attestation")
+    values = snapshot._target_policy_state()
+    owner_bytes = values["ownerSidBytes"]
+    owner_sid = values["ownerSid"]
+    group_bytes = values["groupSidBytes"]
+    process_bytes = values["processTokenSidBytes"]
+    process_sid = values["processTokenSid"]
+    if type(owner_bytes) is not bytes or type(group_bytes) is not bytes \
+            or type(process_bytes) is not bytes \
+            or _canonical_sid(owner_bytes) != owner_sid \
+            or type(_canonical_sid(group_bytes)) is not str \
+            or process_bytes != owner_bytes or process_sid != owner_sid \
+            or owner_bytes == LOCAL_SYSTEM_SID_BYTES \
+            or owner_sid == LOCAL_SYSTEM_SID \
+            or values["trusteeSid"] != owner_sid \
+            or type(values["daclDigest"]) is not str \
+            or re.fullmatch(r"[a-f0-9]{64}", values["daclDigest"]) is None:
+        raise WindowsAclRefused("acl_attestation")
+
+    booleans = (
+        values["ownerDefaulted"], values["groupDefaulted"],
+        values["daclDefaulted"],
+    )
+    control = values["control"]
+    required_control = SE_SELF_RELATIVE | SE_DACL_PRESENT | SE_DACL_PROTECTED
+    if any(type(value) is not bool for value in booleans) \
+            or not _exact_unsigned(control, (1 << 16) - 1) \
+            or control & required_control != required_control \
+            or control & SE_DACL_AUTO_INHERITED \
+            or bool(control & SE_OWNER_DEFAULTED) != values["ownerDefaulted"] \
+            or bool(control & SE_GROUP_DEFAULTED) != values["groupDefaulted"] \
+            or bool(control & SE_DACL_DEFAULTED) != values["daclDefaulted"]:
+        raise WindowsAclRefused("acl_attestation")
+
+    integer_expectations = {
+        "descriptorRevision": SECURITY_DESCRIPTOR_REVISION,
+        "daclRevision": ACL_REVISION,
+        "aclSbz1": 0,
+        "aclSbz2": 0,
+        "aceCount": 1,
+        "aceType": ACCESS_ALLOWED_ACE_TYPE,
+        "aceFlags": OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE,
+    }
+    if any(type(values[key]) is not int or values[key] != expected
+           for key, expected in integer_expectations.items()):
+        raise WindowsAclRefused("acl_attestation")
+    bytes_in_use = values["daclBytesInUse"]
+    dacl_size = values["daclSize"]
+    ace_size = values["aceSize"]
+    access_mask = values["accessMask"]
+    if not _exact_unsigned(bytes_in_use, MAX_SECURITY_DESCRIPTOR_BYTES) \
+            or not _exact_unsigned(dacl_size, MAX_SECURITY_DESCRIPTOR_BYTES) \
+            or not _exact_unsigned(ace_size, MAX_SECURITY_DESCRIPTOR_BYTES) \
+            or not _exact_unsigned(access_mask, (1 << 32) - 1) \
+            or not 8 <= bytes_in_use <= dacl_size \
+            or ace_size % ctypes.alignment(DWORD) != 0 \
+            or ace_size != ACCESS_ALLOWED_ACE.SidStart.offset + len(owner_bytes) \
+            or bytes_in_use != ctypes.sizeof(ACL) + ace_size:
+        raise WindowsAclRefused("acl_attestation")
+
+    groups = values["processTokenGroups"]
+    if type(groups) is not tuple or len(groups) > MAX_TOKEN_GROUP_COUNT:
+        raise WindowsAclRefused("acl_attestation")
+    group_sids = set()
+    for entry in groups:
+        if type(entry) is not tuple or len(entry) != 3 \
+                or type(entry[0]) is not bytes or type(entry[1]) is not str \
+                or _canonical_sid(entry[0]) != entry[1] \
+                or not _exact_unsigned(entry[2], (1 << 32) - 1) \
+                or entry[0] in group_sids:
+            raise WindowsAclRefused("acl_attestation")
+        group_sids.add(entry[0])
+
+    privileges = values["processTokenPrivileges"]
+    if type(privileges) is not tuple \
+            or len(privileges) > MAX_TOKEN_PRIVILEGE_COUNT:
+        raise WindowsAclRefused("acl_attestation")
+    privilege_map = {}
+    for entry in privileges:
+        if type(entry) is not tuple or len(entry) != 3 \
+                or not _exact_unsigned(entry[0], (1 << 32) - 1) \
+                or type(entry[1]) is not int \
+                or not -(1 << 31) <= entry[1] <= (1 << 31) - 1 \
+                or not _exact_unsigned(entry[2], (1 << 32) - 1) \
+                or (entry[0], entry[1]) in privilege_map:
+            raise WindowsAclRefused("acl_attestation")
+        privilege_map[(entry[0], entry[1])] = entry[2]
+
+    sensitive = values["processTokenSensitivePrivileges"]
+    if type(sensitive) is not tuple or len(sensitive) != len(SENSITIVE_PRIVILEGE_NAMES):
+        raise WindowsAclRefused("acl_attestation")
+    resolved_luids = set()
+    for entry, name in zip(sensitive, SENSITIVE_PRIVILEGE_NAMES, strict=True):
+        if type(entry) is not tuple or len(entry) != 5 or entry[0] != name \
+                or not _exact_unsigned(entry[1], (1 << 32) - 1) \
+                or type(entry[2]) is not int \
+                or not -(1 << 31) <= entry[2] <= (1 << 31) - 1 \
+                or type(entry[3]) is not bool or type(entry[4]) is not bool \
+                or (entry[1], entry[2]) in resolved_luids:
+            raise WindowsAclRefused("acl_attestation")
+        resolved_luids.add((entry[1], entry[2]))
+        attributes = privilege_map.get((entry[1], entry[2]))
+        if entry[3] is not (attributes is not None) \
+                or entry[4] is not (
+                    attributes is not None
+                    and bool(attributes & SE_PRIVILEGE_ENABLED)
+                ):
+            raise WindowsAclRefused("acl_attestation")
+
+    token_type = values["processTokenType"]
+    app_raw = values["processTokenIsAppContainerRaw"]
+    app = values["processTokenIsAppContainer"]
+    if type(token_type) is not int or token_type != TokenPrimary \
+            or not _exact_unsigned(app_raw, (1 << 32) - 1) \
+            or type(app) is not bool or app is not (app_raw != 0):
+        raise WindowsAclRefused("acl_attestation")
+
+    restricting = values["processTokenRestrictingSids"]
+    has_restricting = values["processTokenHasRestrictingSids"]
+    returned_length = values["processTokenRestrictedSidsReturnedLength"]
+    if type(restricting) is not tuple \
+            or len(restricting) > MAX_TOKEN_RESTRICTED_SID_COUNT \
+            or type(has_restricting) is not bool \
+            or has_restricting is not bool(restricting) \
+            or not _exact_unsigned(returned_length,
+                                   MAX_TOKEN_RESTRICTED_SIDS_BYTES) \
+            or returned_length < 4 \
+            or (not restricting and returned_length != 4) \
+            or (restricting and returned_length <= (
+                TOKEN_GROUPS.Groups.offset
+                + len(restricting) * ctypes.sizeof(SID_AND_ATTRIBUTES)
+            )):
+        raise WindowsAclRefused("acl_attestation")
+    for entry in restricting:
+        if type(entry) is not tuple or len(entry) != 2 \
+                or type(entry[0]) is not bytes or type(entry[1]) is not str \
+                or _canonical_sid(entry[0]) != entry[1]:
+            raise WindowsAclRefused("acl_attestation")
+    return access_mask
+
+
+def _match_target_policy(snapshot, role):
+    try:
+        if ACL_POLICY_DIGEST != _PINNED_ACL_POLICY_DIGEST \
+                or _TARGET_ACCESS_MASKS is not _PINNED_TARGET_ACCESS_MASKS_OBJECT \
+                or tuple(_TARGET_ACCESS_MASKS.items()) \
+                != _PINNED_TARGET_ACCESS_MASKS \
+                or type(role) is not str or role not in _TARGET_ACCESS_MASKS:
+            raise WindowsAclRefused("acl_attestation")
+        access_mask = _target_snapshot_policy_state(snapshot)
+        if type(access_mask) is not int \
+                or access_mask != _TARGET_ACCESS_MASKS[role]:
+            raise WindowsAclRefused("acl_attestation")
+        return _TargetPolicyMatch(role, access_mask)
+    except WindowsAclRefused:
+        raise
+    except Exception:
+        raise WindowsAclRefused("acl_attestation") from None
 
 
 def _canonical_sid(value):
@@ -789,11 +1007,12 @@ def _security_descriptor_parts(functions, descriptor, owner, group, dacl):
                    ctypes.sizeof(ACL) + ACCESS_ALLOWED_ACE.Mask.offset + 4],
         "little", signed=False,
     )
-    return _SecuritySnapshot((
+    return _SecuritySnapshot._from_descriptor((
         sid_values[0], sid_values[1], hashlib.sha256(dacl_bytes).hexdigest(),
         control.value, bool(owner_defaulted.value), bool(group_defaulted.value),
         bool(dacl_defaulted.value), descriptor_revision.value,
-        revision_information.AclRevision, size_information.AceCount,
+        revision_information.AclRevision, header.Sbz1, header.Sbz2,
+        size_information.AceCount,
         bytes_in_use, dacl_size, owner_sid, trustee_sid,
         ace_header.AceType, ace_header.AceFlags, access_mask, ace_size,
         None, None, None, None, None, None, None, None, None, None, None,
