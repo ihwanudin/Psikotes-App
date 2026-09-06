@@ -133,6 +133,80 @@ final class ProductionConfigurationTest extends TestCase
         $response->assertDontSee('attacker.example', escape: false);
     }
 
+    public function test_app_config_uses_public_safe_metadata_defaults_without_environment(): void
+    {
+        $config = $this->loadIsolatedAppConfig([]);
+
+        $this->assertSame('ONCAM Psikotes', $config['name']);
+        $this->assertSame('id', $config['locale']);
+        $this->assertSame('http://localhost', $config['url']);
+    }
+
+    public function test_app_config_honors_explicit_public_metadata_and_url_environment(): void
+    {
+        $config = $this->loadIsolatedAppConfig([
+            'APP_NAME' => 'Configured application name',
+            'APP_LOCALE' => 'ja',
+            'APP_URL' => 'http://localhost:4321',
+        ]);
+
+        $this->assertSame('Configured application name', $config['name']);
+        $this->assertSame('ja', $config['locale']);
+        $this->assertSame('http://localhost:4321', $config['url']);
+    }
+
+    /**
+     * @param  array<string, string>  $environment
+     * @return array{name: string, locale: string, url: string}
+     */
+    private function loadIsolatedAppConfig(array $environment): array
+    {
+        $script = <<<'PHP'
+require $argv[1];
+$config = require $argv[2];
+echo json_encode([
+    'name' => $config['name'],
+    'locale' => $config['locale'],
+    'url' => $config['url'],
+], JSON_THROW_ON_ERROR);
+PHP;
+        $process = proc_open(
+            [PHP_BINARY, '-r', $script, '--', base_path('vendor/autoload.php'), base_path('config/app.php')],
+            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+            $pipes,
+            base_path(),
+            $environment,
+        );
+
+        if (! is_resource($process)) {
+            $this->fail('Unable to start isolated PHP config process.');
+        }
+
+        $output = stream_get_contents($pipes[1]);
+        $error = stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+
+        $this->assertSame(0, proc_close($process), $error ?: 'Isolated config process failed.');
+        $decoded = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        if (
+            ! is_array($decoded)
+            || ! isset($decoded['name'], $decoded['locale'], $decoded['url'])
+            || ! is_string($decoded['name'])
+            || ! is_string($decoded['locale'])
+            || ! is_string($decoded['url'])
+        ) {
+            throw new RuntimeException('Isolated app config returned an invalid metadata shape.');
+        }
+
+        return [
+            'name' => $decoded['name'],
+            'locale' => $decoded['locale'],
+            'url' => $decoded['url'],
+        ];
+    }
+
     private function configureValidProductionRuntime(): void
     {
         config([
