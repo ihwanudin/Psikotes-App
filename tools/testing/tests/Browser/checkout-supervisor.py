@@ -38,6 +38,34 @@ def _load_acl_policy_module():
 
 acl_policy_module = _load_acl_policy_module()
 
+
+def _load_acl_attestation_module():
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "checkout_acl_attestation_supervisor", _HERE / "checkout-acl-attestation.py"
+        )
+        if spec is None or spec.loader is None:
+            raise ValueError("module")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        required = (
+            "canonical_request", "request_digest", "decode_evidence",
+            "canonical_evidence", "validate_boundary_pair",
+        )
+        if module.POLICY_DIGEST != ACL_POLICY_DIGEST \
+                or module.MAX_REQUEST_BYTES != 16 * 1024 \
+                or module.MAX_EVIDENCE_BYTES != 32 * 1024 \
+                or any(not callable(getattr(module, name, None)) for name in required):
+            raise ValueError("binding")
+        return module, {name: getattr(module, name) for name in required}
+    except Exception:
+        raise RuntimeError("ACL attestation module unavailable") from None
+
+
+acl_attestation_module, _ACL_CODEC_FUNCTIONS = _load_acl_attestation_module()
+_ACL_CODEC_MODULE = acl_attestation_module
+_ACL_CODEC_TYPE = type(acl_attestation_module)
+
 PORTS = (8126, 443)
 DELIVERED_ASSETS = (
     "public/css/checkout-summary-v1.css",
@@ -465,6 +493,16 @@ class WindowsRun:
         self.__lease_validate_fingerprint = None
         self.__lease_binding = None
         self.__lease_descriptor_identity = None
+        self.__lease_acl_context = None
+        self.acl_attestor = None
+        self.__expected_acl_attestor = None
+        self.__expected_acl_attestor_type = None
+        self.__expected_acl_attestor_mro = None
+        self.__acl_attestor_methods = {}
+        self.__acl_attestor_descriptors = {}
+        self.__acl_state = "unbound"
+        self.__acl_phase = None
+        self.__acl_anchor = None
         if anchor_publisher is not None:
             self._pin_anchor_publisher(anchor_publisher)
         self.run = Path(config["directory"])
@@ -530,6 +568,247 @@ class WindowsRun:
             raise
         except Exception:
             raise Refused("lifecycle_lease_bind") from None
+
+    @staticmethod
+    def _class_descriptor(cls, name):
+        for owner in cls.__mro__:
+            if name in owner.__dict__:
+                return owner, owner.__dict__[name]
+        raise Refused("acl_attestor_identity")
+
+    @staticmethod
+    def _narrow_attestor_method(method):
+        function = getattr(method, "__func__", None)
+        code = getattr(function, "__code__", None)
+        if not callable(function) or code is None \
+                or function.__defaults__ is not None or function.__kwdefaults__ is not None \
+                or function.__closure__ is not None or code.co_argcount != 2 \
+                or code.co_posonlyargcount != 0 or code.co_kwonlyargcount != 0 \
+                or code.co_flags & (0x04 | 0x08 | 0x20 | 0x80 | 0x200):
+            raise Refused("acl_attestor_identity")
+        return function, code
+
+    def _required_acl_codec(self):
+        if acl_attestation_module is not _ACL_CODEC_MODULE \
+                or type(acl_attestation_module) is not _ACL_CODEC_TYPE \
+                or acl_attestation_module.POLICY_DIGEST != ACL_POLICY_DIGEST \
+                or acl_attestation_module.MAX_REQUEST_BYTES != 16 * 1024 \
+                or acl_attestation_module.MAX_EVIDENCE_BYTES != 32 * 1024:
+            raise Refused("acl_attestation")
+        for name, function in _ACL_CODEC_FUNCTIONS.items():
+            if getattr(acl_attestation_module, name, None) is not function:
+                raise Refused("acl_attestation")
+        return _ACL_CODEC_FUNCTIONS
+
+    @staticmethod
+    def _lease_identity(value):
+        if type(value) is not tuple or len(value) != 2 \
+                or any(type(part) is not int or part < 0 for part in value):
+            raise Refused("acl_admission")
+        return {"volumeSerial": str(value[0]), "fileId": str(value[1])}
+
+    def _acl_lease_context(self, lease, *, capture=False):
+        try:
+            coordinator = self._normalized_path(str(Path(lease.directory).absolute()))
+            run = self._normalized_path(str(Path(lease.run_directory).absolute()))
+            source = self._normalized_path(str(self.source.absolute()))
+            lease_path = self._normalized_path(str(Path(lease.path).absolute()))
+            normalized_run = self._normalized_path(str(self.run.absolute()))
+            context = {
+                "coordinatorPath": coordinator,
+                "runPath": run,
+                "sourcePath": source,
+                "leasePath": lease_path,
+                "coordinator": self._lease_identity(lease.directory_identity),
+                "run": self._lease_identity(lease.run_identity),
+                "descriptor": self._lease_identity(lease.descriptor_identity),
+            }
+            if run != normalized_run or source != run + "/source" \
+                    or lease_path != run + "/.checkout-coordinator.lease":
+                raise Refused("acl_admission")
+            if capture:
+                self.__lease_acl_context = context
+            elif context != self.__lease_acl_context:
+                raise Refused("acl_admission")
+            return context
+        except Exception:
+            raise Refused("acl_admission") from None
+
+    def bind_acl_attestor(self, attestor):
+        if self.__acl_state != "unbound" or self.lifecycle_phase != "new" \
+                or self.claimed is not False or self.recovery_hydrated \
+                or self.owner is not None or self.handles or self.owned or self.owned_records \
+                or self.roles or self.launch_intents:
+            raise Refused("acl_admission")
+        lease = self._required_lifecycle_lease()
+        try:
+            cls = type(attestor)
+            methods = {}
+            descriptors = {}
+            for name in ("attest", "load", "discard"):
+                method = getattr(attestor, name)
+                owner, descriptor = self._class_descriptor(cls, name)
+                if not callable(method) or getattr(method, "__self__", None) is not attestor \
+                        or not callable(getattr(method, "__func__", None)):
+                    raise Refused("acl_attestor_identity")
+                function, code = self._narrow_attestor_method(method)
+                if descriptor is not function:
+                    raise Refused("acl_attestor_identity")
+                methods[name] = (method, self._callable_fingerprint(method), code)
+                descriptors[name] = (owner, descriptor)
+            self._required_acl_codec()
+            self._acl_lease_context(lease, capture=True)
+            self.acl_attestor = attestor
+            self.__expected_acl_attestor = attestor
+            self.__expected_acl_attestor_type = cls
+            self.__expected_acl_attestor_mro = cls.__mro__
+            self.__acl_attestor_methods = methods
+            self.__acl_attestor_descriptors = descriptors
+            self.__acl_state = "bound"
+        except Refused:
+            raise
+        except Exception:
+            raise Refused("acl_admission") from None
+
+    def _bound_acl_attestor(self):
+        attestor = self.__expected_acl_attestor
+        if attestor is None:
+            raise Refused("acl_admission")
+        cls = type(attestor)
+        try:
+            if self.acl_attestor is not attestor or cls is not self.__expected_acl_attestor_type \
+                    or cls.__mro__ != self.__expected_acl_attestor_mro:
+                raise Refused("acl_attestor_identity")
+            for name, (captured, fingerprint, expected_code) \
+                    in self.__acl_attestor_methods.items():
+                owner, descriptor = self._class_descriptor(cls, name)
+                expected_owner, expected_descriptor = self.__acl_attestor_descriptors[name]
+                current = getattr(attestor, name)
+                function, code = self._narrow_attestor_method(current)
+                if owner is not expected_owner or descriptor is not expected_descriptor \
+                        or descriptor is not function or code is not expected_code \
+                        or not self._callable_matches(current, fingerprint):
+                    raise Refused("acl_attestor_identity")
+            return attestor
+        except Refused:
+            raise
+        except Exception:
+            raise Refused("acl_attestor_identity") from None
+
+    def _acl_callback(self, name, *args):
+        self._required_acl_codec()
+        self._bound_acl_attestor()
+        self._acl_lease_context(self._required_lifecycle_lease())
+        callback = self.__acl_attestor_methods[name][0]
+        primary = None
+        result = None
+        try:
+            result = callback(*args)
+        except BaseException as error:
+            primary = error
+        try:
+            self._required_acl_codec()
+            self._bound_acl_attestor()
+            self._acl_lease_context(self._required_lifecycle_lease())
+        except BaseException as error:
+            if primary is None:
+                primary = error
+        if primary is not None:
+            raise primary
+        return result
+
+    def _discard_acl(self, digest):
+        primary = None
+        try:
+            self._required_acl_codec()
+            self._bound_acl_attestor()
+            self._acl_lease_context(self._required_lifecycle_lease())
+        except BaseException as error:
+            primary = error
+        try:
+            self.__acl_attestor_methods["discard"][0](digest)
+        except BaseException as error:
+            if primary is None:
+                primary = error
+        try:
+            self._required_acl_codec()
+            self._bound_acl_attestor()
+            self._acl_lease_context(self._required_lifecycle_lease())
+        except BaseException as error:
+            if primary is None:
+                primary = error
+        return primary
+
+    def _acl_fail(self, error, digest=None):
+        if digest is not None:
+            self._discard_acl(digest)
+        self.__acl_state = "exhausted"
+        self.__acl_anchor = None
+        if isinstance(error, Exception):
+            raise Refused("acl_attestation") from None
+        raise error
+
+    def _build_acl_request(self, boundary, phase):
+        codec = self._required_acl_codec()
+        lease = self._required_lifecycle_lease()
+        context = self._acl_lease_context(lease)
+        challenge = secrets.token_hex(32)
+        if type(challenge) is not str or re.fullmatch(r"[a-f0-9]{64}", challenge) is None \
+                or self.__acl_anchor is not None \
+                and challenge == self.__acl_anchor[0]["challenge"]:
+            raise Refused("acl_attestation")
+        request = {
+            "version": 1,
+            "boundary": boundary,
+            "phase": phase,
+            "session": self.session,
+            "configBinding": self._config_binding(self.session),
+            "leaseBinding": self.__lease_binding,
+            "leaseIdentity": {
+                "path": context["leasePath"],
+                "coordinator": dict(context["coordinator"]),
+                "descriptor": dict(context["descriptor"]),
+                "run": dict(context["run"]),
+            },
+            "policyDigest": ACL_POLICY_DIGEST,
+            "challenge": challenge,
+            "targets": [
+                {"role": "coordinator", "path": context["coordinatorPath"]},
+                {"role": "run", "path": context["runPath"]},
+                {"role": "source", "path": context["sourcePath"]},
+            ],
+        }
+        codec["canonical_request"](request)
+        return request
+
+    def prepare_acl_admission(self, boundary, phase):
+        if type(boundary) is not str or boundary != "anchor" \
+                or type(phase) is not str or phase not in ("fresh", "recovery") \
+                or self.__acl_state != "bound":
+            raise Refused("acl_admission")
+        digest = None
+        try:
+            codec = self._required_acl_codec()
+            request = self._build_acl_request(boundary, phase)
+            digest = codec["request_digest"](request)
+            raw = self._acl_callback("attest", json.loads(json.dumps(request)))
+            evidence = codec["decode_evidence"](raw, request)
+            if codec["canonical_evidence"](evidence, request) != raw:
+                raise Refused("acl_attestation")
+            loaded = self._acl_callback("load", digest)
+            if type(loaded) is not bytes or loaded != raw:
+                raise Refused("acl_attestation")
+            # load is a destructive, one-shot read. A second read must prove absence.
+            if self._acl_callback("load", digest) is not None:
+                raise Refused("acl_attestation")
+            loaded_evidence = codec["decode_evidence"](loaded, request)
+            self.__acl_anchor = (json.loads(json.dumps(request)),
+                                 json.loads(json.dumps(loaded_evidence)), bytes(loaded))
+            self.__acl_phase = phase
+            self.__acl_state = "anchor_ready"
+            return None
+        except BaseException as error:
+            self._acl_fail(error, digest)
 
     def _required_lifecycle_lease(self):
         lease = self.__expected_lifecycle_lease

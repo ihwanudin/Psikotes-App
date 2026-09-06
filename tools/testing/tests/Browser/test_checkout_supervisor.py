@@ -91,6 +91,11 @@ class LifecycleLease:
     def __init__(self, run):
         normalized = os.path.normcase(str(Path(run).absolute())).replace("\\", "/")
         self.run = normalized
+        self.run_directory = Path(run).absolute()
+        self.directory = self.run_directory.parent
+        self.path = self.run_directory / ".checkout-coordinator.lease"
+        self.directory_identity = (11, 12)
+        self.run_identity = (13, 14)
         self.binding = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
         self.descriptor_identity = (1, 2)
         self.calls = 0
@@ -98,6 +103,64 @@ class LifecycleLease:
     def validate(self):
         self.calls += 1
         return {"version": 1, "run": self.run, "leaseBinding": self.binding}
+
+
+class StrictAclAttestor:
+    def __init__(self, hook=None, load_hook=None, discard_error=None):
+        self.cache = {}
+        self.requests = []
+        self.loads = []
+        self.discards = []
+        self.hook = hook
+        self.load_hook = load_hook
+        self.discard_error = discard_error
+        self.source_identity = ("31", "32")
+
+    def attest(self, request):
+        snapshot = json.loads(json.dumps(request))
+        self.requests.append(snapshot)
+        evidence = {
+            "version": 1,
+            "requestDigest": m.acl_attestation_module.request_digest(snapshot),
+            "policyDigest": m.ACL_POLICY_DIGEST,
+            "leaseDigest": m.acl_attestation_module.lease_digest(
+                snapshot["leaseBinding"], snapshot["leaseIdentity"],
+            ),
+            "targets": [],
+        }
+        for target in snapshot["targets"]:
+            if target["role"] == "coordinator":
+                identity = snapshot["leaseIdentity"]["coordinator"]
+            elif target["role"] == "run":
+                identity = snapshot["leaseIdentity"]["run"]
+            else:
+                identity = {"volumeSerial": self.source_identity[0],
+                            "fileId": self.source_identity[1]}
+            evidence["targets"].append({
+                **target,
+                **identity,
+                "ownerSid": "S-1-5-21-1",
+                "daclDigest": "d" * 64,
+                "reparse": False,
+                "policySatisfied": True,
+            })
+        raw = m.acl_attestation_module.canonical_evidence(evidence, snapshot)
+        self.cache[evidence["requestDigest"]] = raw
+        if self.hook is not None:
+            self.hook(self, request, raw)
+        return raw
+
+    def load(self, digest):
+        self.loads.append(digest)
+        if self.load_hook is not None:
+            self.load_hook(self, digest)
+        return self.cache.pop(digest, None)
+
+    def discard(self, digest):
+        self.discards.append(digest)
+        self.cache.pop(digest, None)
+        if self.discard_error is not None:
+            raise self.discard_error
 
 
 class SupervisorTests(unittest.TestCase):
@@ -141,6 +204,12 @@ class SupervisorTests(unittest.TestCase):
         if admitted:
             self.admit(run)
         return run
+
+    def acl_run(self, directory, attestor=None):
+        run = self.journal_run(directory)
+        attestor = attestor or StrictAclAttestor()
+        run.bind_acl_attestor(attestor)
+        return run, attestor
 
     def rewrite_journal(self, run, mutate):
         path = sorted(run.run.glob(m.JOURNAL_PREFIX + "*.json"))[-1]
@@ -2565,6 +2634,247 @@ class SupervisorTests(unittest.TestCase):
         self.assertEqual(owned, [])
         self.assertEqual(result["state"], "invalid")
         self.assertIn("invalid", f.calls)
+
+    def test_acl_anchor_admission_is_one_way_and_load_is_one_shot(self):
+        with TemporaryDirectory() as directory:
+            run, attestor = self.acl_run(directory)
+            self.assertIsNone(run.prepare_acl_admission("anchor", "fresh"))
+            digest = m.acl_attestation_module.request_digest(attestor.requests[0])
+            self.assertEqual(attestor.loads, [digest, digest])
+            request = attestor.requests[0]
+            self.assertEqual(request["targets"], [
+                {"role": "coordinator", "path": run.lifecycle_lease.run.rsplit("/", 1)[0]},
+                {"role": "run", "path": run.lifecycle_lease.run},
+                {"role": "source", "path": run.lifecycle_lease.run + "/source"},
+            ])
+            self.assertEqual(request["leaseIdentity"]["run"],
+                             {"volumeSerial": "13", "fileId": "14"})
+            with self.assertRaisesRegex(m.Refused, "^acl_admission$"):
+                run.prepare_acl_admission("anchor", "fresh")
+
+    def test_acl_attestor_binding_requires_lease_pristine_bound_methods_and_is_once(self):
+        with TemporaryDirectory() as directory:
+            run = self.journal_run(directory, admitted=False)
+            with self.assertRaisesRegex(m.Refused, "^lifecycle_lease$"):
+                run.bind_acl_attestor(StrictAclAttestor())
+            self.admit(run)
+
+            class Invalid:
+                attest = lambda request: request
+                load = lambda digest: digest
+                discard = lambda digest: None
+
+            with self.assertRaisesRegex(m.Refused, "^acl_attestor_identity$"):
+                run.bind_acl_attestor(Invalid)
+            attestor = StrictAclAttestor()
+            run.bind_acl_attestor(attestor)
+            with self.assertRaisesRegex(m.Refused, "^acl_admission$"):
+                run.bind_acl_attestor(attestor)
+
+            other = Path(directory) / "other"
+            other.mkdir()
+            claimed = self.journal_run(other)
+            claimed.claimed = True
+            with self.assertRaisesRegex(m.Refused, "^acl_admission$"):
+                claimed.bind_acl_attestor(StrictAclAttestor())
+
+    def test_acl_request_argument_mutation_cannot_change_stored_boundary(self):
+        def mutate(_attestor, request, _raw):
+            request["targets"][2]["path"] = "/attacker"
+            request["challenge"] = "0" * 64
+
+        with TemporaryDirectory() as directory:
+            run, attestor = self.acl_run(directory, StrictAclAttestor(hook=mutate))
+            self.assertIsNone(run.prepare_acl_admission("anchor", "recovery"))
+            self.assertNotEqual(attestor.requests[0]["targets"][2]["path"], "/attacker")
+            self.assertNotEqual(attestor.requests[0]["challenge"], "0" * 64)
+
+    def test_acl_load_mismatch_discards_and_exhausts(self):
+        def corrupt(attestor, digest):
+            attestor.cache[digest] = b"{}\n"
+
+        with TemporaryDirectory() as directory:
+            run, attestor = self.acl_run(
+                directory, StrictAclAttestor(load_hook=corrupt),
+            )
+            with self.assertRaisesRegex(m.Refused, "^acl_attestation$"):
+                run.prepare_acl_admission("anchor", "fresh")
+            self.assertEqual(attestor.discards, attestor.loads)
+            with self.assertRaisesRegex(m.Refused, "^acl_admission$"):
+                run.prepare_acl_admission("anchor", "fresh")
+
+    def test_acl_replayable_load_is_rejected_and_discarded(self):
+        class ReplayAclAttestor(StrictAclAttestor):
+            def load(self, digest):
+                self.loads.append(digest)
+                return self.cache.get(digest)
+
+        with TemporaryDirectory() as directory:
+            run, attestor = self.acl_run(directory, ReplayAclAttestor())
+            with self.assertRaisesRegex(m.Refused, "^acl_attestation$"):
+                run.prepare_acl_admission("anchor", "fresh")
+            self.assertEqual(len(attestor.loads), 2)
+            self.assertEqual(len(attestor.discards), 1)
+
+    def test_acl_method_and_class_descriptor_drift_refuse_before_callback(self):
+        with TemporaryDirectory() as directory:
+            run, attestor = self.acl_run(directory)
+            attestor.load = lambda _digest: None
+            with self.assertRaisesRegex(m.Refused, "^acl_attestation$"):
+                run.prepare_acl_admission("anchor", "fresh")
+            self.assertEqual(attestor.requests, [])
+
+        original = StrictAclAttestor.attest
+        try:
+            with TemporaryDirectory() as directory:
+                run, attestor = self.acl_run(directory)
+                StrictAclAttestor.attest = lambda self, request: b"{}\n"
+                with self.assertRaisesRegex(m.Refused, "^acl_attestation$"):
+                    run.prepare_acl_admission("anchor", "fresh")
+                self.assertEqual(attestor.requests, [])
+        finally:
+            StrictAclAttestor.attest = original
+
+        with TemporaryDirectory() as directory:
+            run, attestor = self.acl_run(directory)
+            run.acl_attestor = StrictAclAttestor()
+            with self.assertRaisesRegex(m.Refused, "^acl_attestation$"):
+                run.prepare_acl_admission("anchor", "fresh")
+            self.assertEqual(attestor.requests, [])
+
+    def test_acl_in_place_method_code_drift_refuses_before_callback(self):
+        original_code = StrictAclAttestor.attest.__code__
+        original_method = StrictAclAttestor.attest
+        original_clone = type(original_method)(
+            original_code, original_method.__globals__, original_method.__name__,
+            original_method.__defaults__, original_method.__closure__,
+        )
+        calls = []
+
+        def replacement(self, request):
+            _acl_mutated_code_calls.append("called")
+            return _acl_original_attest_clone(self, request)
+
+        try:
+            globals()["_acl_mutated_code_calls"] = calls
+            globals()["_acl_original_attest_clone"] = original_clone
+            with TemporaryDirectory() as directory:
+                run, attestor = self.acl_run(directory)
+                StrictAclAttestor.attest.__code__ = replacement.__code__
+                with self.assertRaisesRegex(m.Refused, "^acl_attestation$"):
+                    run.prepare_acl_admission("anchor", "fresh")
+                self.assertEqual(attestor.requests, [])
+                self.assertEqual(calls, [])
+        finally:
+            StrictAclAttestor.attest.__code__ = original_code
+            globals().pop("_acl_mutated_code_calls", None)
+            globals().pop("_acl_original_attest_clone", None)
+
+    def test_acl_attestor_methods_reject_defaults_and_closures(self):
+        class DefaultAttestor(StrictAclAttestor):
+            def attest(self, request=None):
+                return super().attest(request)
+
+        captured = object()
+
+        def make_closure():
+            marker = captured
+
+            def load(self, digest):
+                if marker is None:
+                    return None
+                return super(ClosureAttestor, self).load(digest)
+            return load
+
+        class ClosureAttestor(StrictAclAttestor):
+            load = make_closure()
+
+        for attestor in (DefaultAttestor(), ClosureAttestor()):
+            with self.subTest(kind=type(attestor).__name__), TemporaryDirectory() as directory:
+                run = self.journal_run(directory)
+                with self.assertRaisesRegex(m.Refused, "^acl_attestor_identity$"):
+                    run.bind_acl_attestor(attestor)
+
+    def test_acl_interrupt_and_exit_are_preserved_while_discard_is_attempted(self):
+        for error in (KeyboardInterrupt(), SystemExit(7)):
+            with self.subTest(kind=type(error).__name__), TemporaryDirectory() as directory:
+                def interrupt(_attestor, _request, _raw, error=error):
+                    raise error
+
+                run, attestor = self.acl_run(
+                    directory,
+                    StrictAclAttestor(hook=interrupt,
+                                      discard_error=RuntimeError("PRIVATE_DISCARD")),
+                )
+                with self.assertRaises(type(error)) as caught:
+                    run.prepare_acl_admission("anchor", "fresh")
+                self.assertIs(caught.exception, error)
+                self.assertEqual(len(attestor.discards), 1)
+
+    def test_acl_lease_identity_drift_and_invalid_phase_fail_closed(self):
+        with TemporaryDirectory() as directory:
+            run, attestor = self.acl_run(directory)
+            with self.assertRaisesRegex(m.Refused, "^acl_admission$"):
+                run.prepare_acl_admission("execution", "fresh")
+            with self.assertRaisesRegex(m.Refused, "^acl_admission$"):
+                run.prepare_acl_admission("anchor", 1)
+            class EqualString(str):
+                pass
+            with self.assertRaisesRegex(m.Refused, "^acl_admission$"):
+                run.prepare_acl_admission(EqualString("anchor"), "fresh")
+
+            def drift(_attestor, _request, _raw):
+                run.lifecycle_lease.run_identity = (13, 15)
+
+            attestor.hook = drift
+            with self.assertRaisesRegex(m.Refused, "^acl_attestation$"):
+                run.prepare_acl_admission("anchor", "fresh")
+            self.assertEqual(len(attestor.discards), 1)
+
+        with TemporaryDirectory() as directory:
+            run = self.journal_run(directory)
+            run.lifecycle_lease.directory_identity = "malformed"
+            with self.assertRaisesRegex(m.Refused, "^acl_admission$"):
+                run.bind_acl_attestor(StrictAclAttestor())
+
+    def test_acl_lease_context_interrupt_is_preserved(self):
+        error = KeyboardInterrupt()
+
+        class InterruptPath:
+            def __fspath__(self):
+                raise error
+
+        with TemporaryDirectory() as directory:
+            run, _attestor = self.acl_run(directory)
+            run.lifecycle_lease.directory = InterruptPath()
+            with self.assertRaises(KeyboardInterrupt) as caught:
+                run.prepare_acl_admission("anchor", "fresh")
+            self.assertIs(caught.exception, error)
+
+    def test_acl_ordinary_attestor_failure_is_redacted_and_discards(self):
+        failure = RuntimeError("PRIVATE_ATTESTOR_PAYLOAD")
+
+        def fail(_attestor, _request, _raw):
+            raise failure
+
+        with TemporaryDirectory() as directory:
+            run, attestor = self.acl_run(directory, StrictAclAttestor(hook=fail))
+            with self.assertRaisesRegex(m.Refused, "^acl_attestation$") as caught:
+                run.prepare_acl_admission("anchor", "fresh")
+            self.assertNotIn("PRIVATE", str(caught.exception))
+            self.assertEqual(len(attestor.discards), 1)
+
+    def test_acl_codec_alias_drift_refuses_before_attestor_callback(self):
+        original = m.acl_attestation_module.canonical_request
+        try:
+            with TemporaryDirectory() as directory:
+                run, attestor = self.acl_run(directory)
+                m.acl_attestation_module.canonical_request = lambda request: b"{}\n"
+                with self.assertRaisesRegex(m.Refused, "^acl_attestation$"):
+                    run.prepare_acl_admission("anchor", "fresh")
+                self.assertEqual(attestor.requests, [])
+        finally:
+            m.acl_attestation_module.canonical_request = original
 
 
 if __name__ == "__main__":

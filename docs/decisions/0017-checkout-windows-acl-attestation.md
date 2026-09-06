@@ -53,6 +53,9 @@ lease, melakukan attestation, dan hanya setelah sukses memasang anchor store.
 Attestor menyediakan `attest(request)`, `load(requestDigest)`, dan
 `discard(requestDigest)`; object, tipe, bound method implementation, request, dan
 hasilnya wajib exact serta diperiksa ulang sebelum delegasi fresh/recovery.
+Ketiga method adalah instance method sempit dua argumen termasuk `self`, tanpa
+default, keyword-only, closure, varargs, generator, atau coroutine; identity code
+implementation dipin dan diperiksa sebelum serta sesudah callback.
 
 Setiap lifecycle memakai dua challenge acak 256-bit berbeda: boundary `anchor`
 sebelum anchor I/O dan boundary `execution` tepat sebelum supervisor berjalan.
@@ -72,7 +75,9 @@ SHA-256. Target evidence harus sama role/path-nya, `reparse=false`, dan
 directory, serta source harus sama pada kedua boundary.
 
 Cache attestor hanya process-local dan one-shot: `attest` melakukan live scan dan
-insert satu digest, `load` atomik mem-pop hasil, load-only/second-load ditolak.
+insert satu digest, lalu `load` pertama atomik mem-pop hasil. `load` tanpa hasil
+atau pemanggilan kedua wajib mengembalikan sentinel `None`; supervisor memanggil
+ulang sekali dan menolak nilai lain sebagai evidence replayable.
 `discard` selalu dicoba pada failure setelah request terbentuk. Evidence tidak
 dipersistenkan. Recovery selalu membuat challenge dan attestation baru; evidence lama atau cache
 saja tidak menjadi authority. Tanpa attestor, schema exact, atau canonical-byte return/load equality,
