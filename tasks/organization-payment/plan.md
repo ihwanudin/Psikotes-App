@@ -1012,3 +1012,17 @@ instalasi/read freshness manifest, efektivitas ACL, account/service/firewall,
 native IPC/cache/provider/runtime, candidate/browser, deploy, atau activation.
 Plan/checklist/progress, P15/P16/P17c/P18, gates/payment tidak berubah, tetap
 terbuka/default OFF.
+
+### Checkpoint broker-start identity dan structural evidence
+
+Commit `b66ebba` menerima pure canonical supplied-data broker-start identity
+(**8/8 tests**) tanpa live process/token composition binding. Commit `bb369c6`
+menerima design boundary ADR-020, lalu `9785eb5` menerima bytes-only structural
+evidence codec (**12/12 tests**) dengan hasil explicit `structuralOnly`, bukan
+native policy/provenance/admission proof.
+
+Suite codec lokal gabungan **56/56** lulus dengan `py_compile`, `diff-check`,
+dan review **PASS**. Successful `attest`/`load` tetap disabled sampai native
+authority/provider/cache/runtime diterima. Tidak ada instalasi, service,
+environment, network, deployment, atau activation. Plan/progress/checklist,
+P15/P16/P17c/P18, gates, dan payment tetap terbuka/tidak berubah/default OFF.

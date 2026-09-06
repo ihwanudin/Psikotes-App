@@ -1364,3 +1364,19 @@ Tidak ada bukti instalasi/read freshness manifest, efektivitas ACL, account/
 service/firewall, native IPC/cache/provider/runtime, candidate/browser, deploy,
 atau activation. Tidak ada status/checklist/progress/gate yang berubah;
 P15/P16/P17c/P18, active gates, dan payment tetap terbuka/default OFF.
+
+### Broker-start identity dan structural evidence accepted — native authority tetap terbuka
+
+- Commit `b66ebba`: pure canonical supplied-data broker-start identity,
+  **8/8 tests**; live process/token composition binding belum dibuktikan.
+- Commit `bb369c6`: design boundary ADR-020 memisahkan structural validation
+  dari native authority.
+- Commit `9785eb5`: pure bytes-only structural evidence codec, **12/12 tests**;
+  hasil explicit `structuralOnly` bukan policy/provenance/admission proof.
+- Suite codec lokal gabungan **56/56**, `py_compile`, `diff-check`, dan review
+  **PASS**.
+
+Successful `attest`/`load` tetap disabled sampai native authority, provider,
+cache, dan runtime diterima. Tidak ada instalasi, service, environment, network,
+deployment, atau activation. Tidak ada progress/checklist/status yang berubah;
+P15/P16/P17c/P18, active gates, dan payment tetap terbuka/default OFF.

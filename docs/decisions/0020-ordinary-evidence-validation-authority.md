@@ -315,3 +315,17 @@ deployment, atau gate activation.
 - [IsTokenRestricted](https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-istokenrestricted)
 - [GetTokenInformation](https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-gettokeninformation)
 - [AccessCheck](https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-accesscheck)
+
+## Implementation Checkpoint — `b66ebba`, `bb369c6`, `9785eb5`
+
+Design boundary ADR ini diterima pada `bb369c6`. Commit `b66ebba` menerima pure
+canonical broker-start identity codec (**8/8 tests**) untuk supplied data saja;
+live composition binding tetap terbuka. Commit `9785eb5` menerima pure
+bytes-only evidence codec (**12/12 tests**) yang memvalidasi struktur tanpa
+menaikkan hasil `structuralOnly` menjadi native policy/provenance/admission.
+
+Suite codec lokal gabungan **56/56** lulus dengan `py_compile`, `diff-check`,
+dan review **PASS**. Successful `attest`/`load` tetap disabled sampai native
+authority/provider/cache/runtime diterima. Tidak ada instalasi, service,
+environment, network, deployment, atau activation. P15/P16/P17c/P18,
+progress/checklist, gates, dan payment tetap terbuka/tidak berubah/default OFF.

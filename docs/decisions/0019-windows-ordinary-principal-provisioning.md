@@ -391,3 +391,17 @@ atau read freshness manifest, efektivitas ACL, account/service/firewall, native
 IPC/cache/provider/runtime, candidate/browser, deploy, atau activation.
 P15/P16/P17c/P18, checklist/progress, gates/payment tetap terbuka/tidak berubah/
 default OFF.
+
+## Implementation Checkpoint — `b66ebba`, `bb369c6`, `9785eb5`
+
+Commit `b66ebba` menerima canonical per-start broker identity codec (**8/8
+tests**) atas supplied data; live service-process/token binding belum dibuktikan.
+Commit `bb369c6` menerima pemisahan authority ADR-020, dan `9785eb5` menerima
+bytes-only structural evidence codec (**12/12 tests**) yang tetap explicit
+`structuralOnly`, tanpa native policy/provenance/admission claim.
+
+Suite codec lokal gabungan **56/56**, `py_compile`, `diff-check`, dan review
+**PASS**. Successful `attest`/`load` tetap disabled menunggu native authority,
+provider, cache, dan runtime. Tidak ada instalasi, service, environment, network,
+deployment, atau activation. P15/P16/P17c/P18, progress/checklist, gates, dan
+payment tetap terbuka/tidak berubah/default OFF.

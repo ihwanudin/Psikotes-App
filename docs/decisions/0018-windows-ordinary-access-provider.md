@@ -363,3 +363,17 @@ ADR-018 evidence validator/provider diterima. Tidak ada bukti instalasi/read
 freshness manifest, efektivitas ACL, account/service/firewall, native IPC/cache/
 provider/runtime, candidate/browser, deploy, atau activation. P15/P16/P17c/P18,
 checklist/progress, gates/payment tetap terbuka/tidak berubah/default OFF.
+
+## Implementation Checkpoint — `b66ebba`, `bb369c6`, `9785eb5`
+
+Pure codec `b66ebba` mengikat canonical supplied broker-start identity (**8/8
+tests**) tetapi tidak membuktikan live process/token composition. ADR-020 design
+boundary diterima pada `bb369c6`; pure bytes-only structural evidence codec
+`9785eb5` (**12/12 tests**) hanya mengembalikan hasil `structuralOnly` dan tidak
+menetapkan native policy, provenance, atau admission.
+
+Suite codec lokal gabungan **56/56** lulus dengan `py_compile`, `diff-check`,
+dan review **PASS**. Successful `attest`/`load` tetap disabled sampai native
+authority/provider/cache/runtime diterima. Tidak ada instalasi, service,
+environment, network, deployment, atau activation. P15/P16/P17c/P18,
+progress/checklist, gates, dan payment tetap terbuka/tidak berubah/default OFF.

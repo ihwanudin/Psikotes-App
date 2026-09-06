@@ -2917,3 +2917,17 @@ bukti instalasi/read freshness manifest, efektivitas ACL, account/service/
 firewall, native IPC/cache/provider/runtime, candidate/browser, deploy, atau
 activation. P15/P16/P17c/P18, checklist/progress, gates/payment tidak berubah,
 tetap terbuka/default OFF.
+
+### Checkpoint broker-start identity dan structural evidence — accepted `b66ebba`, `bb369c6`, `9785eb5`
+
+`b66ebba` menerima pure canonical supplied-data broker-start identity (**8/8
+tests**) tanpa live composition proof. `bb369c6` menerima design boundary
+ADR-020; `9785eb5` menerima bytes-only structural evidence codec (**12/12
+tests**) dengan hasil explicit `structuralOnly`, bukan native policy,
+provenance, atau admission.
+
+Suite codec lokal gabungan **56/56**, `py_compile`, `diff-check`, dan review
+**PASS**. Successful `attest`/`load` tetap disabled menunggu native authority,
+provider, cache, dan runtime. Tidak ada instalasi, service, environment, network,
+deployment, atau activation. P15/P16/P17c/P18, progress/checklist, gates, dan
+payment tetap terbuka/tidak berubah/default OFF.
