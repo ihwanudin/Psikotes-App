@@ -571,7 +571,9 @@ class CandidateBuilderTests(unittest.TestCase):
 
     def test_acl_preparation_sources_are_exact_required_manifest_members(self):
         accepted = frozenset({
+            "tools/testing/tests/Browser/checkout-acl-source-binding.py",
             "tools/testing/tests/Browser/checkout-acl-source-tree.py",
+            "tools/testing/tests/Browser/test_checkout_acl_source_binding.py",
             "tools/testing/tests/Browser/test_checkout_acl_source_tree.py",
             "tools/testing/tests/Browser/checkout-windows-acl-attestor.py",
             "tools/testing/tests/Browser/test_checkout_windows_acl_attestor.py",

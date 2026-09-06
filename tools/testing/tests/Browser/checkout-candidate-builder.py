@@ -60,6 +60,7 @@ SCRIPT_SOURCE_FILES = frozenset(DELIVERED_ASSETS[2:])
 BROWSER_TOOLS = frozenset({
     "tools/testing/tests/Browser/checkout-acl-attestation.py",
     "tools/testing/tests/Browser/checkout-acl-policy.py",
+    "tools/testing/tests/Browser/checkout-acl-source-binding.py",
     "tools/testing/tests/Browser/checkout-acl-source-tree.py",
     "tools/testing/tests/Browser/checkout-anchor-store.py",
     "tools/testing/tests/Browser/checkout-candidate-builder.py",
@@ -76,6 +77,7 @@ BROWSER_TOOLS = frozenset({
     "tools/testing/tests/Browser/test_checkout_anchor_store.py",
     "tools/testing/tests/Browser/test_checkout_acl_attestation.py",
     "tools/testing/tests/Browser/test_checkout_acl_policy.py",
+    "tools/testing/tests/Browser/test_checkout_acl_source_binding.py",
     "tools/testing/tests/Browser/test_checkout_acl_source_tree.py",
     "tools/testing/tests/Browser/test_checkout_candidate_builder.py",
     "tools/testing/tests/Browser/test_checkout_coordinator.py",
