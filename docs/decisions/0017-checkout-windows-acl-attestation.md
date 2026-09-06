@@ -133,3 +133,21 @@ adversarial **PASS**. Ini hanya bukti pure/mock dan statis. Real attestor Window
 recursive descendant source-tree ACL/effective access, cross-process/crash,
 reparse/rename, durability, serta browser runtime tetap terbuka. P17c/P18 tidak
 ditutup; tidak ada runtime/deploy dan seluruh gate/payment tetap default OFF.
+
+## Implementation Checkpoint — `6256dc8`
+
+Kontrak pure source-tree summary sekarang menerima manifest nonempty beserta
+tepat seluruh file dan implied directory-nya. Path relatif dibatasi pada ASCII
+yang aman untuk semantik Windows; jumlah record, kedalaman, panjang path, dan
+ukuran canonical payload dibatasi. Record mengikat identity unik, bentuk owner
+SID canonical, dan digest DACL. Digest summary memakai preimage canonical
+manifest+records yang domain-separated, berurutan deterministik, dan dijaga oleh
+known vector; summary pada boundary anchor dan execution harus sama exact.
+
+Bukti lokal accepted: **8/8 tes**, `py_compile`, diff-check, dan review
+adversarial **PASS**. Primitive ini belum diintegrasikan ke codec, policy,
+attestor, atau candidate builder. Ia belum membuktikan kelengkapan native source
+tree, empty directory yang tidak diimplikasikan manifest, identity root yang
+dikecualikan dari summary, enforcement ACL/effective access, atau perilaku
+Windows runtime. P17c/P18 tetap terbuka, tidak ada runtime/deploy/aktivasi, dan
+seluruh gate/payment tetap default OFF.

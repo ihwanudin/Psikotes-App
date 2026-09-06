@@ -925,3 +925,20 @@ aktivasi; checkbox P17c/P18 tetap terbuka dan gate/payment tetap default OFF.
 
 Tidak ada runtime/browser/service/DB/env/network/deploy atau aktivasi;
 checkbox P17c/P18 tetap terbuka dan seluruh gate/payment tetap default OFF.
+
+### Bukti pure ACL source-tree summary accepted — runtime gate tetap terbuka
+
+- `6256dc8` memvalidasi manifest nonempty dengan exact file+implied-directory
+  closure, path ASCII Windows-safe yang bounded, identity record unik, serta
+  bentuk owner SID dan digest DACL exact.
+- Manifest+records canonical memakai ordering deterministik, digest
+  domain-separated dengan known vector, dan parity summary exact antar-boundary.
+- Bukti accepted **8/8 tes**, `py_compile`, diff-check, dan adversarial review
+  **PASS**.
+- Primitive belum terintegrasi ke codec/policy/attestor/builder; native tree
+  completeness, empty directory di luar manifest, identity root yang tidak
+  masuk summary, ACL enforcement/effective access, dan Windows runtime tetap
+  terbuka.
+
+Tidak ada checkbox acceptance yang diubah. P17c/P18 tetap terbuka; tidak ada
+runtime/deploy/aktivasi dan seluruh gate/payment tetap default OFF.

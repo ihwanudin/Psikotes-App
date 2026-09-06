@@ -621,3 +621,18 @@ Bukti root: supervisor aman **133/133** tanpa real-listener, coordinator+lease
 access, cross-process/crash, reparse/rename/durability, dan browser runtime masih
 terbuka. P17c/P18 belum diterima; tidak ada runtime/deploy dan seluruh
 gate/payment tetap default OFF.
+
+### Checkpoint pure source-tree summary ACL
+
+Commit `6256dc8` mendefinisikan kontrak pure untuk manifest nonempty dengan
+closure exact file dan implied directory. Path ASCII Windows-safe serta seluruh
+batas ukuran diperiksa; identity record unik dan bentuk owner SID/DACL digest
+exact. Canonical manifest+records diikat oleh digest domain-separated, known
+vector, ordering deterministik, dan parity exact antar-boundary. Bukti accepted:
+**8/8 tes**, `py_compile`, diff-check, dan review adversarial **PASS**.
+
+Kontrak belum di-wire ke codec, policy, attestor, atau builder. Native tree
+completeness, empty directory yang tidak tersirat manifest, identity root yang
+dikecualikan, ACL enforcement/effective access, dan Windows runtime tetap gate.
+Tidak ada runtime/deploy/aktivasi; P17c/P18 tetap terbuka dan seluruh
+gate/payment default OFF.

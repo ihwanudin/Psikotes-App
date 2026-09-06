@@ -2529,3 +2529,18 @@ adversarial **PASS**. Real attestor Windows, recursive descendant source-tree
 ACL/effective access, cross-process/crash, reparse/rename/durability, dan browser
 runtime tetap terbuka. P17c/P18 belum diterima; tidak ada runtime/deploy dan
 semua gate/payment tetap default OFF.
+
+### Checkpoint pure ACL source-tree summary — accepted `6256dc8`
+
+Primitive pure memvalidasi manifest nonempty dan exact file+implied-directory
+closure, path ASCII Windows-safe yang bounded, identity record unik, serta bentuk
+owner SID dan digest DACL exact. Summary memakai manifest+records canonical
+berurutan dengan domain-separated digest dan known vector; boundary parity harus
+exact. Bukti accepted: **8/8 tes**, `py_compile`, diff-check, dan adversarial
+review **PASS**.
+
+Primitive belum diintegrasikan ke codec/policy/attestor/builder. Native source
+tree completeness, empty directory di luar manifest, identity root yang tidak
+masuk summary, ACL enforcement/effective access, dan Windows runtime tetap
+terbuka. Tidak ada runtime/deploy/aktivasi; P17c/P18 tetap terbuka dan semua
+gate/payment default OFF.

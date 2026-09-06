@@ -880,3 +880,20 @@ diff-check, dan review adversarial **PASS**. Real Windows attestor, recursive
 descendant source-tree ACL/effective access, cross-process/crash,
 reparse/rename/durability, dan browser runtime tetap terbuka. P17c/P18 belum
 diterima; tidak ada runtime/deploy dan seluruh gate/payment tetap default OFF.
+
+## Checkpoint kontrak pure ACL source-tree summary — 2026-09-06
+
+Commit `6256dc8` menetapkan summary pure untuk manifest nonempty beserta tepat
+seluruh file dan implied directory. Path ASCII Windows-safe serta batas jumlah,
+kedalaman, panjang, dan canonical bytes diperiksa; identity record wajib unik,
+sedangkan owner SID dan digest DACL memakai bentuk exact. Manifest+records
+diurutkan canonical dan diikat oleh digest domain-separated dengan known vector;
+boundary anchor/execution harus memiliki summary exact yang sama.
+
+Bukti accepted: **8/8 tes**, `py_compile`, diff-check, dan adversarial review
+**PASS**. Kontrak ini belum terhubung ke codec, policy, attestor, atau candidate
+builder. Kelengkapan native tree, empty directory yang tidak diimplikasikan
+manifest, identity root yang tidak masuk summary, enforcement ACL/effective
+access, dan Windows runtime tetap belum terbukti. Tidak ada runtime, browser,
+service, database, network, deploy, atau aktivasi. P17c/P18 tetap terbuka dan
+seluruh gate/payment tetap default OFF.
