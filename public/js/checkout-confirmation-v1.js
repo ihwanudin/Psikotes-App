@@ -325,6 +325,85 @@ function resultForStatus(status) {
     }
 }
 
+function malformedSuccessResult() {
+    return {
+        kind: 'malformed',
+        retryable: false,
+        message:
+            'Respons konfirmasi tidak valid. Muat ulang halaman sebelum melanjutkan.',
+    };
+}
+
+function hasExactKeys(value, expectedKeys) {
+    return (
+        typeof value === 'object' &&
+        value !== null &&
+        !Array.isArray(value) &&
+        Object.keys(value).sort().join(',') === expectedKeys.join(',')
+    );
+}
+
+async function resultForResponse(response) {
+    try {
+        if (
+            typeof response !== 'object' ||
+            response === null ||
+            Array.isArray(response) ||
+            !Number.isInteger(response.status)
+        ) {
+            return malformedSuccessResult();
+        }
+
+        if (
+            response.redirected === true ||
+            response.type === 'opaque' ||
+            response.type === 'opaqueredirect' ||
+            response.type === 'error'
+        ) {
+            return malformedSuccessResult();
+        }
+
+        if (response.status !== 200) {
+            return resultForStatus(response.status);
+        }
+
+        if (
+            response.redirected !== false ||
+            response.type !== 'basic' ||
+            typeof response.headers?.get !== 'function' ||
+            typeof response.json !== 'function'
+        ) {
+            return malformedSuccessResult();
+        }
+
+        const contentType = response.headers.get('content-type');
+
+        if (
+            typeof contentType !== 'string' ||
+            !/^application\/json(?:\s*;\s*charset\s*=\s*(?:utf-8|"utf-8"))?\s*$/i.test(
+                contentType,
+            )
+        ) {
+            return malformedSuccessResult();
+        }
+
+        const body = await response.json();
+
+        if (
+            !hasExactKeys(body, ['data']) ||
+            !hasExactKeys(body.data, ['confirmed', 'replayed']) ||
+            body.data.confirmed !== true ||
+            typeof body.data.replayed !== 'boolean'
+        ) {
+            return malformedSuccessResult();
+        }
+
+        return resultForStatus(200);
+    } catch {
+        return malformedSuccessResult();
+    }
+}
+
 export async function postConfirmation({
     action,
     origin,
@@ -349,7 +428,7 @@ export async function postConfirmation({
             body: JSON.stringify(payload),
         });
 
-        return resultForStatus(response.status);
+        return resultForResponse(response);
     } catch {
         return {
             kind: 'network',

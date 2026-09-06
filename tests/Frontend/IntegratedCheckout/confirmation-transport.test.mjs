@@ -10,6 +10,17 @@ import {
 
 const csrf = `ocsrf1_${'a'.repeat(64)}`;
 const hash = (character) => character.repeat(64);
+const jsonResponse = (
+    body = { data: { confirmed: true, replayed: false } },
+    overrides = {},
+) => ({
+    status: 200,
+    redirected: false,
+    type: 'basic',
+    headers: { get: () => 'application/json; charset=utf-8' },
+    json: async () => body,
+    ...overrides,
+});
 const element = (
     name,
     value,
@@ -261,7 +272,7 @@ test('posts same-origin JSON with dedicated CSRF and maps safe response states',
     const fetchImpl = async (...args) => {
         calls.push(args);
 
-        return { status: 200 };
+        return jsonResponse();
     };
     const payload = { profile: {}, consents: {} };
     assert.deepEqual(
@@ -359,6 +370,69 @@ test('posts same-origin JSON with dedicated CSRF and maps safe response states',
             message: 'Koneksi bermasalah. Periksa jaringan lalu coba lagi.',
         },
     );
+
+    assert.equal(
+        (
+            await postConfirmation({
+                action: '/checkout/confirm',
+                origin: 'https://psikotes.oncam.id',
+                csrf,
+                payload,
+                fetchImpl: async () =>
+                    jsonResponse({
+                        data: { confirmed: true, replayed: true },
+                    }),
+            })
+        ).kind,
+        'success',
+    );
+
+    const malformedResponses = [
+        null,
+        'not-a-response',
+        jsonResponse(undefined, { redirected: true }),
+        jsonResponse(undefined, { status: 0, type: 'opaqueredirect' }),
+        jsonResponse(undefined, { type: 'error' }),
+        jsonResponse(undefined, { type: 'opaqueredirect' }),
+        jsonResponse(undefined, {
+            headers: { get: () => 'text/html' },
+        }),
+        jsonResponse(undefined, {
+            headers: { get: () => 'application/json;garbage' },
+        }),
+        jsonResponse(undefined, {
+            headers: {
+                get: () => 'application/json; charset=utf-8, text/html',
+            },
+        }),
+        jsonResponse(undefined, {
+            json: async () => {
+                throw new Error('PRIVATE_MALFORMED_BODY');
+            },
+        }),
+        jsonResponse({}),
+        jsonResponse({ data: { confirmed: false, replayed: false } }),
+        jsonResponse({ data: { confirmed: true, replayed: 'false' } }),
+        jsonResponse({ data: { confirmed: true, replayed: false, extra: 1 } }),
+        jsonResponse({ data: { confirmed: true, replayed: false }, extra: 1 }),
+    ];
+
+    for (const response of malformedResponses) {
+        const result = await postConfirmation({
+            action: '/checkout/confirm',
+            origin: 'https://psikotes.oncam.id',
+            csrf,
+            payload,
+            fetchImpl: async () => response,
+        });
+        assert.deepEqual(result, {
+            kind: 'malformed',
+            retryable: false,
+            message:
+                'Respons konfirmasi tidak valid. Muat ulang halaman sebelum melanjutkan.',
+        });
+        assert.equal(result.message.includes('PRIVATE'), false);
+    }
 });
 
 test('enhances valid DOM, prevents native submit, blocks duplicates, and focuses retryable errors', async () => {
@@ -407,11 +481,12 @@ test('enhances valid DOM, prevents native submit, blocks duplicates, and focuses
     const response = new Promise((resolve) => {
         release = resolve;
     });
+    let activeResponse = response;
     let fetchCount = 0;
     const fetchImpl = async () => {
         fetchCount++;
 
-        return response;
+        return activeResponse;
     };
     const entries = [
         ['_checkout_csrf', csrf],
@@ -479,5 +554,14 @@ test('enhances valid DOM, prevents native submit, blocks duplicates, and focuses
     assert.equal(submit.disabled, false);
     assert.equal(attributes.has('aria-busy'), false);
     assert.equal(status.dataset.state, 'validation');
+    assert.equal(status.focused, true);
+
+    activeResponse = Promise.resolve(jsonResponse({}));
+    status.focused = false;
+    await handler({ preventDefault: () => prevented++ });
+    assert.equal(fetchCount, 2);
+    assert.equal(submit.disabled, true);
+    assert.equal(attributes.has('aria-busy'), false);
+    assert.equal(status.dataset.state, 'malformed');
     assert.equal(status.focused, true);
 });
