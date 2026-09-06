@@ -1,5 +1,31 @@
 # Koordinasi task paralel organization-payment
 
+## Checkpoint baseline root `149a5da` — 2026-09-07
+
+Rangkaian `7a39213` baru dapat diterima setelah hardening `28b25fb` dan
+`702118a`: pure structural privilege authority kini mengikat observasi tiga
+privilege sensitif pada manifest/start/request, menjaga lifecycle one-shot dan
+vault bounded, serta tetap menghasilkan marker `structuralOnly` yang bukan
+authorization decision. Commit `149a5da` kemudian menambahkan tepat module dan
+test authority tersebut ke candidate required/allowed manifest dengan penolakan
+omission, suffix tambahan, serta collision casefold. Ini hanya packaging
+integrity; candidate tidak dibangun dan successful broker `attest/load`, native
+provider, cache, Windows/runtime, serta browser acceptance belum tersedia.
+
+Empat commit metadata publik yang paralel tetap non-overlap: `9317b88`
+menyembunyikan ikon dekoratif landing dari accessibility tree, `ec379f0`
+menetapkan fallback judul `ONCAM Psikotes`, `892c621` memberi default Compose
+`APP_NAME=ONCAM Psikotes`/`APP_LOCALE=id`, dan `9bc1e93` menyamakan default
+sumber Laravel tanpa menghilangkan override environment maupun membuat
+`APP_URL` statis.
+
+Re-audit pada HEAD menjalankan authority **15/15**, focused candidate closure
+**1/1**, Node metadata/a11y **6/6**, dan konfigurasi PHP **2 tes / 8
+assertions**; diff commit juga bersih. Bukti ini tidak mencakup candidate build,
+container, database, browser, provider/native Windows, network, atau deploy.
+Persentase/checklist tidak berubah; P15/P16/P17c/P18 tetap terbuka dan seluruh
+gate, payment, provider/outbound, serta deployment/activation tetap OFF.
+
 ## Landing publik dan metadata Compose diperbaiki lokal — 2026-09-07
 
 Empat commit non-overlap memperbaiki boundary presentasi publik tanpa deploy.

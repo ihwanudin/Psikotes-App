@@ -3,6 +3,29 @@
 Tanggal: 2026-08-31
 Status: **P1–P13b, core privat P14/P15, dan P17a–P17b selesai lokal. P16-pay-a–i, binding Blade/UI summary-v2, subset consent current, serta privacy audit selesai lokal dan default OFF; DASS-21 wajib pada ingress/snapshot/handoff/session/form. Bukti terbaru: Blade 19+7, Node 4, HTTP/PHP 38/684, PostgreSQL fresh 400/3.950, beserta PHPStan/ESLint/Prettier/Pint/diff-check. Runtime browser/P17c belum dijalankan dan checkbox P15/P16 tetap terbuka. DASS consent tetap terpisah dan RLS privat. Tidak ada deploy, migrasi DB aktif, invoice/notifikasi nyata, provider/outbound, atau cutover sumber/feature flag.**
 
+## Checkpoint baseline root `149a5da` — 2026-09-07
+
+Commit awal structural privilege authority `7a39213` diterima sebagai rangkaian
+setelah koreksi sealing `28b25fb` dan lifecycle/vault `702118a`. Hasilnya tetap
+pure supplied-data consistency dengan marker `structuralOnly`, bukan native
+provenance, policy satisfaction, atau authorization. `149a5da` hanya
+memasukkan exact module+test itu ke candidate required/allowed manifest dan
+mempertahankan omission/extra/casefold fail-closed; tidak ada candidate build,
+transport enablement, provider/cache, ataupun runtime proof.
+
+Pada jalur metadata, `9317b88` memperbaiki semantik ikon dekoratif landing,
+`ec379f0` menetapkan fallback title publik, `892c621` menetapkan default
+metadata Compose, dan `9bc1e93` menyelaraskan default sumber Laravel menjadi
+`ONCAM Psikotes`/`id` sambil mempertahankan override environment serta
+`APP_URL` environment-backed.
+
+Re-audit HEAD lulus authority **15/15**, focused candidate closure **1/1**,
+Node metadata/a11y **6/6**, dan konfigurasi PHP **2 tes / 8 assertions**.
+Acceptance ini tetap code/test-only: tidak membuktikan candidate/browser,
+container/DB, native Windows, provider/outbound, network, atau deploy.
+Persentase dan checklist tidak berubah; P15/P16/P17c/P18 serta seluruh gate,
+payment, deploy, dan activation tetap terbuka/default OFF.
+
 Checkpoint backend P17b selesai lokal dengan bukti race dua proses, rollback
 crash, replay, serta PostgreSQL disposable **394 tes / 3.865 assertions**.
 Verifikasi UI desktop/mobile/keyboard bukan bagian checkpoint backend tersebut;
