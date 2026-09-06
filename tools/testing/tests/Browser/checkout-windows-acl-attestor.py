@@ -194,6 +194,7 @@ SE_SELF_RELATIVE = 0x8000
 SECURITY_DESCRIPTOR_REVISION = 1
 MIN_SECURITY_DESCRIPTOR_BYTES = 20
 MAX_SECURITY_DESCRIPTOR_BYTES = 65535
+MAX_TOKEN_USER_BYTES = 4096
 MIN_SID_BYTES = 8
 MAX_SID_BYTES = 68
 AclRevisionInformation = 1
@@ -412,6 +413,23 @@ def _resolve_security_functions(bundle):
         raise WindowsAclRefused("acl_attestation") from None
 
 
+def _resolve_token_user_functions(bundle):
+    try:
+        if type(bundle) is not _NATIVE_BUNDLE_TYPE \
+                or type(bundle).resolve is not _NATIVE_RESOLVE:
+            raise WindowsAclRefused("acl_attestation")
+        names = (
+            "GetCurrentProcess", "OpenProcessToken", "GetTokenInformation",
+            "SetHandleInformation", "GetHandleInformation", "CloseHandle",
+            "IsValidSid", "GetLengthSid",
+        )
+        return {name: bundle.resolve(name) for name in names}
+    except WindowsAclRefused:
+        raise
+    except Exception:
+        raise WindowsAclRefused("acl_attestation") from None
+
+
 def _checked_local_free(bundle, expected, descriptor):
     try:
         if type(bundle) is not _NATIVE_BUNDLE_TYPE \
@@ -514,6 +532,7 @@ class _SecuritySnapshot:
         "descriptorRevision", "daclRevision", "aceCount",
         "daclBytesInUse", "daclSize", "ownerSid", "trusteeSid",
         "aceType", "aceFlags", "accessMask", "aceSize",
+        "processTokenSidBytes", "processTokenSid",
     )
 
     def __init__(self, values):
@@ -530,6 +549,15 @@ class _SecuritySnapshot:
 
     def values(self):
         return MappingProxyType(dict(zip(self._KEYS, self.__values, strict=True)))
+
+    def _owner_binding(self):
+        return self.__values[0], self.__values[12]
+
+    def _bind_process_token(self, sid_bytes, sid):
+        if self.__values[-2:] != (None, None) \
+                or (sid_bytes, sid) != self._owner_binding():
+            raise WindowsAclRefused("acl_attestation")
+        return _SecuritySnapshot(self.__values[:-2] + (sid_bytes, sid))
 
 
 def _canonical_sid(value):
@@ -737,6 +765,7 @@ def _security_descriptor_parts(functions, descriptor, owner, group, dacl):
         revision_information.AclRevision, size_information.AceCount,
         bytes_in_use, dacl_size, owner_sid, trustee_sid,
         ace_header.AceType, ace_header.AceFlags, access_mask, ace_size,
+        None, None,
     ))
 
 
@@ -784,6 +813,186 @@ def _one_security_snapshot(bundle, functions, handle):
     if type(result) is not _SecuritySnapshot:
         raise WindowsAclRefused("acl_attestation")
     return result
+
+
+class _TokenUserSnapshot:
+    __slots__ = ("__values",)
+
+    def __init__(self, sid_bytes, sid):
+        if type(sid_bytes) is not bytes or type(sid) is not str:
+            raise WindowsAclRefused("acl_attestation")
+        object.__setattr__(self, "_TokenUserSnapshot__values", (sid_bytes, sid))
+
+    def __setattr__(self, _name, _value):
+        raise WindowsAclRefused("acl_attestation")
+
+    def __eq__(self, other):
+        return type(other) is _TokenUserSnapshot \
+            and self.__values == other.__values
+
+    def values(self):
+        return self.__values
+
+
+def _token_user_snapshot(functions, handle):
+    required = DWORD()
+    ctypes.set_last_error(0)
+    probe = functions["GetTokenInformation"](
+        handle, TokenUser, None, 0, ctypes.byref(required),
+    )
+    probe_error = ctypes.get_last_error()
+    minimum = ctypes.sizeof(TOKEN_USER) + MIN_SID_BYTES
+    if type(probe) is not int or probe != 0 or probe_error != ERROR_INSUFFICIENT_BUFFER \
+            or not minimum <= required.value <= MAX_TOKEN_USER_BYTES:
+        raise WindowsAclRefused("acl_attestation")
+
+    buffer = ctypes.create_string_buffer(required.value)
+    returned = DWORD()
+    if not _successful(functions["GetTokenInformation"](
+            handle, TokenUser, buffer, required.value, ctypes.byref(returned))) \
+            or returned.value != required.value:
+        raise WindowsAclRefused("acl_attestation")
+    base = ctypes.addressof(buffer)
+    user = TOKEN_USER.from_buffer(buffer)
+    sid_address = _pointer(PSID(user.User.Sid))
+    header_end = base + ctypes.sizeof(TOKEN_USER)
+    if sid_address < header_end \
+            or not _contained(base, required.value, sid_address, MIN_SID_BYTES):
+        raise WindowsAclRefused("acl_attestation")
+    prefix = ctypes.string_at(sid_address, MIN_SID_BYTES)
+    claimed_length = 8 + 4 * prefix[1]
+    if prefix[0] != 1 or not 1 <= prefix[1] <= 15 \
+            or not MIN_SID_BYTES <= claimed_length <= MAX_SID_BYTES \
+            or not _contained(base, required.value, sid_address, claimed_length):
+        raise WindowsAclRefused("acl_attestation")
+    sid_before = ctypes.string_at(sid_address, claimed_length)
+    if sid_before[:MIN_SID_BYTES] != prefix:
+        raise WindowsAclRefused("acl_attestation")
+    sid = PSID(sid_address)
+    if not _successful(functions["IsValidSid"](sid)):
+        raise WindowsAclRefused("acl_attestation")
+    sid_length = functions["GetLengthSid"](sid)
+    if not _exact_unsigned(sid_length, MAX_SID_BYTES) \
+            or sid_length != claimed_length:
+        raise WindowsAclRefused("acl_attestation")
+    sid_bytes = ctypes.string_at(sid_address, sid_length)
+    if sid_bytes != sid_before:
+        raise WindowsAclRefused("acl_attestation")
+    return _TokenUserSnapshot(sid_bytes, _canonical_sid(sid_bytes))
+
+
+class _OpenedProcessToken:
+    __slots__ = ("__bundle", "__functions", "__handle", "__operational", "__closed")
+
+    def __init__(self, bundle, functions, handle):
+        object.__setattr__(self, "_OpenedProcessToken__bundle", bundle)
+        object.__setattr__(self, "_OpenedProcessToken__functions",
+                           MappingProxyType(dict(functions)))
+        object.__setattr__(self, "_OpenedProcessToken__handle", handle)
+        object.__setattr__(self, "_OpenedProcessToken__closed", False)
+        object.__setattr__(self, "_OpenedProcessToken__operational", (
+            bundle, tuple(functions.items()), handle,
+        ))
+
+    def __setattr__(self, _name, _value):
+        raise WindowsAclRefused("acl_attestation")
+
+    def _current_functions(self):
+        functions = _resolve_token_user_functions(self.__bundle)
+        if tuple(functions.items()) != tuple(self.__functions.items()):
+            raise WindowsAclRefused("acl_attestation")
+        return functions
+
+    def validate(self):
+        if self.__closed or (
+            self.__bundle, tuple(self.__functions.items()), self.__handle,
+        ) != self.__operational:
+            raise WindowsAclRefused("acl_attestation")
+        functions = self._current_functions()
+        flags = DWORD()
+        if not _successful(functions["GetHandleInformation"](
+                self.__handle, ctypes.byref(flags))) or flags.value != 0:
+            raise WindowsAclRefused("acl_attestation")
+        return functions
+
+    def _user_snapshot(self):
+        functions = self.validate()
+        result = _token_user_snapshot(functions, self.__handle)
+        self.validate()
+        return result
+
+    def _close_preserving(self, primary):
+        if self.__closed:
+            if primary is None:
+                raise WindowsAclRefused("acl_attestation")
+            return
+        object.__setattr__(self, "_OpenedProcessToken__closed", True)
+        try:
+            _checked_close(
+                self.__bundle, self.__functions["CloseHandle"], self.__handle,
+            )
+        except BaseException as error:
+            if primary is not None:
+                return
+            if isinstance(error, Exception):
+                raise WindowsAclRefused("acl_attestation") from None
+            raise
+
+    def close(self):
+        self._close_preserving(None)
+
+    def __enter__(self):
+        try:
+            self.validate()
+            return self
+        except BaseException as primary:
+            self._close_preserving(primary)
+            raise
+
+    def __exit__(self, _error_type, error, _traceback):
+        self._close_preserving(error)
+        return False
+
+
+def _open_current_process_token(bundle):
+    functions = _resolve_token_user_functions(bundle)
+    token = HANDLE()
+    primary = None
+    try:
+        process = functions["GetCurrentProcess"]()
+        if type(process) is not int or process == 0:
+            raise WindowsAclRefused("acl_attestation")
+        opened = functions["OpenProcessToken"](
+            process, TOKEN_QUERY, ctypes.byref(token),
+        )
+        if not _successful(opened):
+            raise WindowsAclRefused("acl_attestation")
+        token_handle = _pointer(token)
+        if token_handle == INVALID_HANDLE_VALUE:
+            raise WindowsAclRefused("acl_attestation")
+        if not _successful(functions["SetHandleInformation"](
+                token_handle, HANDLE_FLAG_INHERIT, 0)):
+            raise WindowsAclRefused("acl_attestation")
+        flags = DWORD()
+        if not _successful(functions["GetHandleInformation"](
+                token_handle, ctypes.byref(flags))) or flags.value != 0:
+            raise WindowsAclRefused("acl_attestation")
+        result = _OpenedProcessToken(bundle, functions, token_handle)
+        token.value = None
+        return result
+    except BaseException as error:
+        primary = error
+    token_value = getattr(token, "value", None)
+    if type(token_value) is int and token_value not in (0, INVALID_HANDLE_VALUE):
+        try:
+            _checked_close(bundle, functions["CloseHandle"], token_value)
+        except BaseException:
+            pass
+    if isinstance(primary, WindowsAclRefused):
+        raise primary
+    if isinstance(primary, Exception):
+        raise WindowsAclRefused("acl_attestation") from None
+    raise primary
 
 
 class _OpenedDirectory:
@@ -845,19 +1054,26 @@ class _OpenedDirectory:
         primary = None
         try:
             self.validate()
-            first_functions = _resolve_security_functions(self.__bundle)
-            first = _one_security_snapshot(
-                self.__bundle, first_functions, self.__handle,
-            )
-            second_functions = _resolve_security_functions(self.__bundle)
-            if tuple(second_functions.items()) != tuple(first_functions.items()):
-                raise WindowsAclRefused("acl_attestation")
-            second = _one_security_snapshot(
-                self.__bundle, second_functions, self.__handle,
-            )
-            if first != second:
-                raise WindowsAclRefused("acl_attestation")
-            result = first
+            with _open_current_process_token(self.__bundle) as process_token:
+                token_before = process_token._user_snapshot()
+                first_functions = _resolve_security_functions(self.__bundle)
+                first = _one_security_snapshot(
+                    self.__bundle, first_functions, self.__handle,
+                )
+                second_functions = _resolve_security_functions(self.__bundle)
+                if tuple(second_functions.items()) != tuple(first_functions.items()):
+                    raise WindowsAclRefused("acl_attestation")
+                second = _one_security_snapshot(
+                    self.__bundle, second_functions, self.__handle,
+                )
+                token_after = process_token._user_snapshot()
+                if first != second or token_before != token_after:
+                    raise WindowsAclRefused("acl_attestation")
+                token_sid_bytes, token_sid = token_before.values()
+                if first._owner_binding() != (token_sid_bytes, token_sid) \
+                        or second._owner_binding() != (token_sid_bytes, token_sid):
+                    raise WindowsAclRefused("acl_attestation")
+                result = first._bind_process_token(token_sid_bytes, token_sid)
         except BaseException as error:
             primary = error
         try:

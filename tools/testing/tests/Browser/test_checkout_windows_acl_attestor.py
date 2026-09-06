@@ -151,6 +151,24 @@ class NativeDirectoryHarness:
         self.reparse_tag = 0
         self.handle_flags = 0
         self.handle = 123
+        self.process_handle = ctypes.c_void_p(-1).value
+        self.token_handle = 456
+        self.open_token_result = 1
+        self.open_token_output = True
+        self.token_handle_flags = 0
+        self.token_set_result = 1
+        self.token_get_result = 1
+        self.token_probe_result = 0
+        self.token_probe_error = 122
+        self.token_fill_result = 1
+        self.token_required_override = None
+        self.token_returned_override = None
+        self.token_sid_offset_override = None
+        self.token_sid_length_override = None
+        self.token_sid_mutate_during_validation = False
+        self.token_sids = None
+        self.token_fill_count = 0
+        self.token_sid_addresses = {}
         self.calls = []
         self.close_result = 1
         self.close_error = None
@@ -167,6 +185,7 @@ class NativeDirectoryHarness:
         self.valid_descriptor = 1
         self.valid_acl = 1
         self.valid_sid = 1
+        self.token_valid_sid = 1
         self.descriptor_length = 128
         self.control = (module.SE_SELF_RELATIVE | module.SE_DACL_PRESENT
                         | module.SE_DACL_PROTECTED)
@@ -227,13 +246,56 @@ class NativeDirectoryHarness:
     def call_CreateFileW(self, *_args):
         return self.handle
 
-    @staticmethod
-    def call_SetHandleInformation(*_args):
-        return 1
+    def call_GetCurrentProcess(self):
+        return self.process_handle
 
-    def call_GetHandleInformation(self, _handle, flags):
-        flags._obj.value = self.handle_flags
-        return 1
+    def call_OpenProcessToken(self, process, access, output):
+        if process != self.process_handle or access != 8:
+            raise AssertionError("wrong process token request")
+        if self.open_token_output:
+            output._obj.value = self.token_handle
+        return self.open_token_result
+
+    def call_SetHandleInformation(self, handle, _mask, _flags):
+        return self.token_set_result if handle == self.token_handle else 1
+
+    def call_GetHandleInformation(self, handle, flags):
+        flags._obj.value = (self.token_handle_flags
+                            if handle == self.token_handle else self.handle_flags)
+        return self.token_get_result if handle == self.token_handle else 1
+
+    def call_GetTokenInformation(self, handle, info_class, output, capacity,
+                                 returned):
+        if handle != self.token_handle or info_class != 1:
+            raise AssertionError("wrong TokenUser request")
+        sid_values = self.token_sids or [self.owner_sid, self.owner_sid]
+        sid = sid_values[min(self.token_fill_count, len(sid_values) - 1)]
+        required = (ctypes.sizeof(self.module.TOKEN_USER) + len(sid)
+                    if self.token_required_override is None
+                    else self.token_required_override)
+        returned._obj.value = required
+        if output is None:
+            if capacity != 0:
+                raise AssertionError("TokenUser probe capacity must be zero")
+            self.module.ctypes.set_last_error(self.token_probe_error)
+            return self.token_probe_result
+        if capacity != required:
+            raise AssertionError("TokenUser fill capacity mismatch")
+        base = ctypes.addressof(output)
+        sid_offset = (ctypes.sizeof(self.module.TOKEN_USER)
+                      if self.token_sid_offset_override is None
+                      else self.token_sid_offset_override)
+        user = self.module.TOKEN_USER.from_buffer(output)
+        user.User.Sid = base + sid_offset
+        user.User.Attributes = 0
+        end = min(capacity, sid_offset + len(sid))
+        if sid_offset < capacity and end > sid_offset:
+            ctypes.memmove(base + sid_offset, sid, end - sid_offset)
+        self.token_sid_addresses[base + sid_offset] = sid
+        returned._obj.value = (required if self.token_returned_override is None
+                               else self.token_returned_override)
+        self.token_fill_count += 1
+        return self.token_fill_result
 
     def call_GetFileInformationByHandleEx(self, _handle, info_class, output,
                                           output_size):
@@ -390,9 +452,18 @@ class NativeDirectoryHarness:
         return 1
 
     def call_IsValidSid(self, _sid):
+        if _sid.value in self.token_sid_addresses:
+            if self.token_sid_mutate_during_validation:
+                length = len(self.token_sid_addresses[_sid.value])
+                ctypes.c_ubyte.from_address(_sid.value + length - 1).value ^= 1
+            return self.token_valid_sid
         return self.valid_sid
 
     def call_GetLengthSid(self, sid):
+        if sid.value in self.token_sid_addresses:
+            token_sid = self.token_sid_addresses[sid.value]
+            return (len(token_sid) if self.token_sid_length_override is None
+                    else self.token_sid_length_override)
         record = self._record_for_pointer(sid)
         if sid.value == record["owner"]:
             return (record["ownerLength"] if self.owner_length_override is None
@@ -740,6 +811,8 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
                 "aceFlags": 3,
                 "accessMask": 2032127,
                 "aceSize": 20,
+                "processTokenSidBytes": harness.owner_sid,
+                "processTokenSid": "S-1-5-32",
             })
             with self.assertRaises(TypeError):
                 values["control"] = 0
@@ -749,7 +822,7 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
 
         self.assertEqual(self.call_names(harness).count("GetSecurityInfo"), 2)
         self.assertEqual(self.call_names(harness).count("LocalFree"), 2)
-        self.assertEqual(self.call_names(harness).count("CloseHandle"), 1)
+        self.assertEqual(self.call_names(harness).count("CloseHandle"), 2)
         security_calls = [args for name, args in harness.calls
                           if name == "GetSecurityInfo"]
         self.assertEqual([(args[1], args[2], args[6]) for args in security_calls],
@@ -774,8 +847,13 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
             "GetAclInformation", "GetAce", "IsValidSid", "GetLengthSid",
             "LocalFree",
         ]
+        names = self.call_names(harness)
+        descriptor_start = names.index("GetSecurityInfo")
+        descriptor_end = max(index for index, name in enumerate(names)
+                             if name == "LocalFree") + 1
         self.assertEqual(
-            [name for name in self.call_names(harness) if name in security_names],
+            [name for name in names[descriptor_start:descriptor_end]
+             if name in security_names],
             one_snapshot_order * 2,
         )
         freed = [args[0].value for name, args in harness.calls
@@ -787,10 +865,134 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
             for key in ("owner", "group", "dacl")
         }
         self.assertFalse(interiors.intersection(freed))
-        forbidden = {"OpenProcessToken", "GetTokenInformation",
-                     "DuplicateTokenEx", "AccessCheck",
+        forbidden = {"DuplicateTokenEx", "AccessCheck",
                      "ConvertSidToStringSidW"}
         self.assertFalse(forbidden.intersection(self.call_names(harness)))
+
+        token_information = [args for name, args in harness.calls
+                             if name == "GetTokenInformation"]
+        required = ctypes.sizeof(module.TOKEN_USER) + len(harness.owner_sid)
+        self.assertEqual(len(token_information), 4)
+        self.assertEqual(
+            [(args[1], args[2] is None, args[3]) for args in token_information],
+            [(1, True, 0), (1, False, required)] * 2,
+        )
+        names = self.call_names(harness)
+        token_positions = [index for index, name in enumerate(names)
+                           if name == "GetTokenInformation"]
+        descriptor_positions = [index for index, name in enumerate(names)
+                                if name == "GetSecurityInfo"]
+        self.assertLess(token_positions[1], descriptor_positions[0])
+        self.assertLess(descriptor_positions[1], token_positions[2])
+        open_token = [args for name, args in harness.calls
+                      if name == "OpenProcessToken"]
+        self.assertEqual([(args[0], args[1]) for args in open_token],
+                         [(harness.process_handle, 8)])
+        token_set = [args for name, args in harness.calls
+                     if name == "SetHandleInformation"
+                     and args[0] == harness.token_handle]
+        self.assertEqual(token_set, [(harness.token_handle, 1, 0)])
+        closed = [args[0] for name, args in harness.calls
+                  if name == "CloseHandle"]
+        self.assertEqual(closed, [harness.token_handle, harness.handle])
+        self.assertNotIn(harness.process_handle, closed)
+
+    def test_process_token_open_and_query_boundaries_fail_closed(self):
+        module = load_module()
+        cases = (
+            ("process_null", lambda h: setattr(h, "process_handle", 0)),
+            ("process_bool", lambda h: setattr(h, "process_handle", True)),
+            ("open_failure_with_output", lambda h: setattr(h, "open_token_result", 0)),
+            ("open_null", lambda h: setattr(h, "open_token_output", False)),
+            ("open_invalid", lambda h: setattr(h, "token_handle",
+                                                module.INVALID_HANDLE_VALUE)),
+            ("set_inherit_failure", lambda h: setattr(h, "token_set_result", 0)),
+            ("get_flags_failure", lambda h: setattr(h, "token_get_result", 0)),
+            ("inherit", lambda h: setattr(h, "token_handle_flags", 1)),
+            ("protect_close", lambda h: setattr(h, "token_handle_flags", 2)),
+            ("probe_true", lambda h: setattr(h, "token_probe_result", 1)),
+            ("probe_bool_false", lambda h: setattr(h, "token_probe_result", False)),
+            ("probe_error", lambda h: setattr(h, "token_probe_error", 5)),
+            ("required_small", lambda h: setattr(
+                h, "token_required_override", ctypes.sizeof(module.TOKEN_USER) + 7,
+            )),
+            ("required_large", lambda h: setattr(
+                h, "token_required_override", module.MAX_TOKEN_USER_BYTES + 1,
+            )),
+            ("fill_false", lambda h: setattr(h, "token_fill_result", 0)),
+            ("fill_bool_true", lambda h: setattr(h, "token_fill_result", True)),
+            ("returned_mismatch", lambda h: setattr(h, "token_returned_override", 1)),
+            ("sid_overlap", lambda h: setattr(h, "token_sid_offset_override", 8)),
+            ("sid_tail", lambda h: setattr(
+                h, "token_sid_offset_override",
+                ctypes.sizeof(module.TOKEN_USER) + len(h.owner_sid) - 4,
+            )),
+            ("sid_revision", lambda h: setattr(
+                h, "token_sids", [b"\x02" + h.owner_sid[1:]] * 2,
+            )),
+            ("sid_count", lambda h: setattr(
+                h, "token_sids", [b"\x01\x02" + h.owner_sid[2:]] * 2,
+            )),
+            ("sid_native", lambda h: setattr(h, "token_valid_sid", 0)),
+            ("sid_length", lambda h: setattr(h, "token_sid_length_override", 8)),
+            ("sid_live_drift", lambda h: setattr(
+                h, "token_sid_mutate_during_validation", True,
+            )),
+        )
+        for name, mutate in cases:
+            harness = NativeDirectoryHarness(module)
+            mutate(harness)
+            opened = self.opened(module, harness)
+            with self.subTest(case=name), opened:
+                self.assert_refused(module, opened._security_snapshot)
+            closed = [args[0] for call, args in harness.calls
+                      if call == "CloseHandle"]
+            if name in {"process_null", "process_bool", "open_null", "open_invalid"}:
+                self.assertEqual(closed, [harness.handle])
+            else:
+                self.assertEqual(closed, [harness.token_handle, harness.handle])
+            self.assertNotIn(harness.process_handle, closed)
+            self.assertFalse({"TokenGroups", "TokenPrivileges",
+                              "DuplicateTokenEx", "AccessCheck",
+                              "ConvertSidToStringSidW"}.intersection(
+                                  self.call_names(harness)))
+
+    def test_process_token_and_descriptor_owner_must_be_stable_and_exact(self):
+        module = load_module()
+        different = bytes.fromhex("010100000000000521000000")
+        for name, token_sids in (
+            ("token_drift", [NativeDirectoryHarness(module).owner_sid, different]),
+            ("owner_mismatch", [different, different]),
+        ):
+            harness = NativeDirectoryHarness(module)
+            harness.token_sids = token_sids
+            opened = self.opened(module, harness)
+            with self.subTest(case=name), opened:
+                self.assert_refused(module, opened._security_snapshot)
+            self.assertEqual(self.call_names(harness).count("GetSecurityInfo"), 2)
+            self.assertEqual(self.call_names(harness).count("GetTokenInformation"), 4)
+            self.assertEqual(self.call_names(harness).count("CloseHandle"), 2)
+
+    def test_process_token_cleanup_preserves_primary_base_exception(self):
+        module = load_module()
+        harness = NativeDirectoryHarness(module)
+        primary = KeyboardInterrupt()
+
+        def interrupt(*_args):
+            raise primary
+
+        opened = self.opened(module, harness)
+        harness.dlls["advapi32.dll"].functions[
+            "GetTokenInformation"
+        ].implementation = interrupt
+        harness.close_error = SystemExit(19)
+        with self.assertRaises(KeyboardInterrupt) as raised:
+            with opened:
+                opened._security_snapshot()
+        self.assertIs(raised.exception, primary)
+        closed = [args[0] for name, args in harness.calls
+                  if name == "CloseHandle"]
+        self.assertEqual(closed, [harness.token_handle, harness.handle])
 
     def test_defaulted_values_must_agree_with_control_and_are_captured(self):
         module = load_module()
@@ -847,7 +1049,7 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
                 self.assert_refused(module, opened._security_snapshot)
             self.assertEqual(self.call_names(harness).count("LocalFree"), 1)
             if name in {"owner_span", "group_span"}:
-                expected_prior_sids = 0 if name == "owner_span" else 1
+                expected_prior_sids = 1 if name == "owner_span" else 2
                 self.assertEqual(
                     self.call_names(harness).count("IsValidSid"),
                     expected_prior_sids,
@@ -856,7 +1058,7 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
                     self.call_names(harness).count("GetLengthSid"),
                     expected_prior_sids,
                 )
-            self.assertEqual(self.call_names(harness).count("CloseHandle"), 1)
+            self.assertEqual(self.call_names(harness).count("CloseHandle"), 2)
 
     def test_sid_and_acl_bounds_header_revision_and_free_math_fail_closed(self):
         module = load_module()
@@ -936,7 +1138,7 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
             with self.subTest(case=name), opened:
                 self.assert_refused(module, opened._security_snapshot)
             self.assertEqual(self.call_names(harness).count("LocalFree"), 1)
-            self.assertEqual(self.call_names(harness).count("CloseHandle"), 1)
+            self.assertEqual(self.call_names(harness).count("CloseHandle"), 2)
 
     def test_sid_canonicalization_locks_authority_and_subauthority_byte_order(self):
         module = load_module()
@@ -958,8 +1160,7 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
 
         get_ace_calls = [args for name, args in harness.calls if name == "GetAce"]
         self.assertEqual([args[1] for args in get_ace_calls], [0, 0])
-        self.assertFalse({"OpenProcessToken", "GetTokenInformation",
-                          "DuplicateTokenEx", "AccessCheck",
+        self.assertFalse({"DuplicateTokenEx", "AccessCheck",
                           "ConvertSidToStringSidW"}.intersection(
                               self.call_names(harness)))
 
@@ -1079,7 +1280,7 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
                 opened._security_snapshot()
         self.assertIs(raised.exception, free_exit)
         self.assertEqual(self.call_names(harness).count("LocalFree"), 1)
-        self.assertEqual(self.call_names(harness).count("CloseHandle"), 1)
+        self.assertEqual(self.call_names(harness).count("CloseHandle"), 2)
 
         harness = NativeDirectoryHarness(module)
         primary = KeyboardInterrupt()
@@ -1101,7 +1302,7 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
                 opened._security_snapshot()
         self.assertIs(raised.exception, primary)
         self.assertEqual(self.call_names(harness).count("LocalFree"), 1)
-        self.assertEqual(self.call_names(harness).count("CloseHandle"), 1)
+        self.assertEqual(self.call_names(harness).count("CloseHandle"), 2)
 
     def test_second_security_snapshot_and_post_handle_drift_are_rejected(self):
         module = load_module()
