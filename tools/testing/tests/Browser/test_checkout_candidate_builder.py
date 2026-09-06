@@ -569,6 +569,59 @@ class CandidateBuilderTests(unittest.TestCase):
             with self.assertRaisesRegex(m.CandidateRefused, "^manifest_shape$"):
                 self.build(args)
 
+    def test_acl_preparation_sources_are_exact_required_manifest_members(self):
+        accepted = frozenset({
+            "tools/testing/tests/Browser/checkout-acl-source-tree.py",
+            "tools/testing/tests/Browser/test_checkout_acl_source_tree.py",
+            "tools/testing/tests/Browser/checkout-windows-acl-attestor.py",
+            "tools/testing/tests/Browser/test_checkout_windows_acl_attestor.py",
+            "tools/testing/tests/Browser/checkout-ordinary-access-request.py",
+            "tools/testing/tests/Browser/test_checkout_ordinary_access_request.py",
+        })
+        self.assertTrue(accepted <= m.BROWSER_TOOLS)
+        self.assertTrue(accepted <= m.REQUIRED_SOURCE)
+        self.assertTrue(all(m._allowed_source(relative) for relative in accepted))
+
+        class Guard:
+            def validate(self):
+                return None
+
+        manifest = {
+            relative: "a" * 64 for relative in sorted(m.REQUIRED_SOURCE)
+        }
+        with patch.object(m, "_inventory", return_value=set(manifest)), \
+                patch.object(m, "_hash_verified"):
+            self.assertEqual(
+                m._validated_manifest(manifest, Path("C:/reviewed-source"), Guard()),
+                manifest,
+            )
+
+        for relative in sorted(accepted):
+            with self.subTest(omitted=relative):
+                omitted = dict(manifest)
+                omitted.pop(relative)
+                with patch.object(m, "_inventory", return_value=set(omitted)), \
+                        patch.object(m, "_hash_verified"):
+                    with self.assertRaisesRegex(
+                            m.CandidateRefused, "^manifest_inventory$"):
+                        m._validated_manifest(
+                            omitted, Path("C:/reviewed-source"), Guard(),
+                        )
+
+        extra = {
+            **manifest,
+            "tools/testing/tests/Browser/checkout-unreviewed.py": "b" * 64,
+        }
+        with self.assertRaisesRegex(m.CandidateRefused, "^manifest_shape$"):
+            m._validated_manifest(extra, Path("C:/reviewed-source"), Guard())
+
+        collision = {
+            **manifest,
+            "TOOLS/TESTING/TESTS/BROWSER/CHECKOUT-ACL-SOURCE-TREE.PY": "b" * 64,
+        }
+        with self.assertRaisesRegex(m.CandidateRefused, "^manifest_shape$"):
+            m._validated_manifest(collision, Path("C:/reviewed-source"), Guard())
+
     def test_refuses_omitted_or_changed_reviewed_source_before_destination(self):
         with tempfile.TemporaryDirectory(prefix="candidate-builder-test-") as directory:
             base = self.fixture(directory)
