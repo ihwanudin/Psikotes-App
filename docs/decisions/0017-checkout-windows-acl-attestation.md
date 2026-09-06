@@ -212,3 +212,22 @@ terhubung ke source-tree summary, composition, cache, atau usable attestor.
 Native runtime, recursive completeness, race/reparse/rename/TOCTOU, crash, dan
 browser tetap terbuka. P15/P16/P17c/P18 tidak berubah; tidak ada
 runtime/deploy/aktivasi dan seluruh gate/payment tetap default OFF.
+
+## Implementation Checkpoint — `97d7b33`
+
+Primitive semantik DACL kini mengambil ACE melalui live `GetAce`, menyalinnya,
+kemudian mem-parsing copy secara strict. DACL harus berisi tepat satu allow ACE
+type 0 dengan flags exact 3. Pointer, alignment, dan seluruh span ACE wajib berada
+di dalam `AclBytesInUse`; satu ACE tersebut harus mengonsumsi seluruh area ACE
+tanpa trailing byte. SID trustee diperiksa revision, subauthority count, dan
+full-span sebelum `IsValidSid`; identifier authority dibaca big-endian dan setiap
+subauthority little-endian lalu diserialisasi canonical. Trustee harus exact sama
+dengan owner. Dua snapshot semantic immutable wajib identik. ABI tetap **29
+signature** karena `GetAce` sudah berada dalam boundary awal.
+
+Bukti root accepted: **27/27 tes**, `py_compile`, diff-check, dan review
+adversarial **PASS**. Bukti masih memakai fake ABI. Mask berbasis role/policy,
+process-token owner dan privilege, effective `AccessCheck`, source-tree, cache,
+composition/usable attestor, serta native runtime dan race belum tersedia atau
+terbukti. P15/P16/P17c/P18 tetap terbuka; tidak ada runtime/deploy/aktivasi dan
+seluruh gate/payment tetap default OFF.

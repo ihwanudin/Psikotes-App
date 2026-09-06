@@ -993,3 +993,20 @@ tidak ada native/runtime/deploy/aktivasi dan seluruh gate/payment default OFF.
 
 Tidak ada checkbox acceptance yang diubah. P15/P16/P17c/P18 tetap terbuka;
 tidak ada runtime/deploy/aktivasi dan seluruh gate/payment default OFF.
+
+### Bukti private Windows ACL single-ACE semantics accepted — runtime tetap terbuka
+
+- `97d7b33` mengambil ACE melalui live `GetAce`, menyalinnya, dan mem-parsing
+  copied bytes secara strict; ABI tetap **29 signature** karena API telah ada.
+- Tepat satu allow ACE type 0/flags 3 wajib mengonsumsi seluruh
+  `AclBytesInUse`, dengan pointer, alignment, dan full containment exact.
+- SID revision/count/full-span diperiksa sebelum `IsValidSid`; authority
+  big-endian dan subauthority little-endian diserialisasi canonical. Trustee
+  wajib exact owner dan dua semantic snapshot immutable wajib identik.
+- Bukti root accepted **27/27 tes**, `py_compile`, diff-check, dan adversarial
+  review **PASS**; seluruh tes masih pure fake ABI.
+- Mask role/policy, process-token owner/privilege, effective `AccessCheck`,
+  source-tree/cache/composition/attestor, native runtime, dan race belum tersedia.
+
+Tidak ada checkbox acceptance yang diubah. P15/P16/P17c/P18 tetap terbuka;
+tidak ada runtime/deploy/aktivasi dan seluruh gate/payment default OFF.

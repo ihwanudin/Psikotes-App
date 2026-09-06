@@ -2589,3 +2589,19 @@ Bukti masih pure fake ABI. SID string/process-token owner match, ACE parsing
 exact, policy/effective `AccessCheck`, source-tree/composition/cache/attestor,
 native runtime, dan race protection belum ada. P15/P16/P17c/P18 tetap terbuka;
 tidak ada runtime/deploy/aktivasi dan seluruh gate/payment default OFF.
+
+### Checkpoint private Windows ACL single-ACE semantics — accepted `97d7b33`
+
+Primitive mengambil ACE melalui live `GetAce`, menyalin bytes, lalu mem-parsing
+copy secara strict. DACL harus memuat tepat satu allow ACE type 0/flags 3;
+pointer, alignment, dan full span harus contained serta ACE mengonsumsi seluruh
+`AclBytesInUse`. SID revision/count/full-span diperiksa sebelum `IsValidSid`,
+authority dibaca big-endian dan subauthority little-endian canonical. Trustee
+harus exact owner dan dua semantic snapshot immutable harus identik. ABI tetap
+**29 signature**. Bukti root accepted: **27/27 tes**, `py_compile`, diff-check,
+dan adversarial review **PASS**.
+
+Tes masih pure fake ABI. Mask role/policy, process-token owner/privilege,
+effective `AccessCheck`, source-tree/cache/composition/attestor, native runtime,
+dan race belum tersedia. P15/P16/P17c/P18 tetap terbuka; tidak ada
+runtime/deploy/aktivasi dan seluruh gate/payment default OFF.

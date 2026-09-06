@@ -933,6 +933,23 @@ native ACL efficacy, race/reparse/rename/TOCTOU, crash, maupun browser runtime.
 Tidak ada runtime, service, database, network, deploy, atau aktivasi.
 P15/P16/P17c/P18 tetap terbuka dan seluruh gate/payment tetap default OFF.
 
+## Checkpoint private Windows ACL single-ACE semantics — 2026-09-06
+
+Commit `97d7b33` mengambil ACE melalui live `GetAce`, menyalin bytes, lalu
+mem-parsing copy secara strict. Hanya satu allow ACE type 0 dengan flags exact 3
+yang diterima. Pointer/alignment/full span harus contained dan ACE wajib
+mengonsumsi seluruh `AclBytesInUse`. SID diperiksa revision, count, dan full-span
+sebelum `IsValidSid`; authority memakai big-endian dan subauthority little-endian
+canonical. Trustee harus exact owner dan dua snapshot semantic immutable harus
+identik. ABI tetap **29 signature** karena `GetAce` bukan API baru.
+
+Bukti root accepted: **27/27 tes**, `py_compile`, diff-check, dan adversarial
+review **PASS**. Semua bukti masih pure fake ABI. Mask role/policy,
+process-token owner/privilege, effective `AccessCheck`, source-tree, cache,
+composition/usable attestor, native runtime, serta race belum tersedia atau
+terbukti. Tidak ada browser, service, database, network, deploy, atau aktivasi.
+P15/P16/P17c/P18 tetap terbuka dan seluruh gate/payment tetap default OFF.
+
 ## Checkpoint private Windows ACL descriptor snapshot — 2026-09-06
 
 Commit `49d6b87` memperluas ABI menjadi **29 signature** dengan `IsValidAcl` dan
