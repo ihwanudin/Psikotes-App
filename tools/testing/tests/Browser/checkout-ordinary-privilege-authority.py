@@ -1,7 +1,10 @@
 """Pure structural ADR-020 privilege-observation boundary.
 
 The returned marker proves supplied-data consistency only. It is not native
-provenance, policy satisfaction, or an admission decision.
+provenance, policy satisfaction, or an admission decision, and this unpackaged
+module is not an authorization boundary. Code already able to mutate private
+``__closure__`` cells or vault objects in this interpreter is explicitly out of
+scope; pure Python cannot honestly resist that reflective capability.
 """
 
 from __future__ import annotations
@@ -10,6 +13,7 @@ import hashlib as _hashlib
 import importlib.util as _importlib_util
 import inspect as _inspect
 import json as _json
+import weakref as _weakref
 from pathlib import Path as _Path
 from typing import NamedTuple as _NamedTuple
 
@@ -239,13 +243,13 @@ def _make_api():
             return (frozenset, tuple(sorted(frozen, key=lambda item: str(item[0]))))
         raise ValueError("capability")
 
-    capability_vault = {}
-    authority_vault = {}
-    marker_vault = {}
+    capability_vault = _weakref.WeakKeyDictionary()
+    authority_vault = _weakref.WeakKeyDictionary()
+    marker_vault = _weakref.WeakKeyDictionary()
     maximum_live_objects = 64
 
     class CaptureCapability:
-        __slots__ = ()
+        __slots__ = ("__weakref__",)
 
         def __new__(cls, token, responses):
             if token is not construction_token:
@@ -256,27 +260,25 @@ def _make_api():
             pass
 
         def claim(self, owner):
-            state = capability_vault.get(id(self))
-            if state is None or state[0] is not self or state[3] is not None:
+            state = capability_vault.get(self)
+            if state is None or state[2] is not None:
                 raise refusal("ordinary_privilege_authority")
-            capability_vault[id(self)] = (self, state[1], state[2], owner)
+            capability_vault[self] = (state[0], state[1], _weakref.ref(owner))
 
         def validate(self, owner, index):
-            state = capability_vault.get(id(self))
-            if state is None or state[0] is not self or state[2] != index \
-                    or state[3] is not owner:
+            state = capability_vault.get(self)
+            if state is None or state[1] != index or state[2] is None \
+                    or state[2]() is not owner:
                 raise refusal("ordinary_privilege_authority")
-            freeze_primitive(state[1])
+            freeze_primitive(state[0])
 
         def __call__(self):
-            state = capability_vault.get(id(self))
-            if state is None or state[0] is not self or state[2] not in (0, 1) \
-                    or state[3] is None:
+            state = capability_vault.get(self)
+            if state is None or state[1] not in (0, 1) or state[2] is None \
+                    or state[2]() is None:
                 raise refusal("ordinary_privilege_authority")
-            response = state[1][state[2]]
-            capability_vault[id(self)] = (
-                self, state[1], state[2] + 1, state[3]
-            )
+            response = state[0][state[1]]
+            capability_vault[self] = (state[0], state[1] + 1, state[2])
             if type(response) is tuple and len(response) == 2 \
                     and response[0] == "raise":
                 raise response[1]
@@ -287,17 +289,17 @@ def _make_api():
         raise refusal("ordinary_privilege_authority")
     capability_call_pin = _callable_state(CaptureCapability.__call__)
 
-    class StructuralPrivilegeBinding(tuple):
-        __slots__ = ()
+    class StructuralPrivilegeBinding:
+        __slots__ = ("__weakref__",)
 
         def __new__(cls, token, structural, binding, phase, boundary, session):
             if token is not construction_token:
                 raise refusal("ordinary_privilege_authority")
             if len(marker_vault) >= maximum_live_objects:
                 raise refusal("ordinary_privilege_authority")
-            marker = tuple.__new__(cls, ())
-            marker_vault[id(marker)] = (
-                marker, structural, binding, phase, boundary, session
+            marker = object.__new__(cls)
+            marker_vault[marker] = (
+                structural, binding, phase, boundary, session
             )
             return marker
 
@@ -305,16 +307,16 @@ def _make_api():
             pass
 
         def _value(self, index):
-            state = marker_vault.get(id(self))
-            if state is None or state[0] is not self:
+            state = marker_vault.get(self)
+            if state is None:
                 raise refusal("ordinary_privilege_authority")
             return state[index]
 
-        structuralOnly = property(lambda self: self._value(1))
-        bindingDigest = property(lambda self: self._value(2))
-        phase = property(lambda self: self._value(3))
-        boundary = property(lambda self: self._value(4))
-        session = property(lambda self: self._value(5))
+        structuralOnly = property(lambda self: self._value(0))
+        bindingDigest = property(lambda self: self._value(1))
+        phase = property(lambda self: self._value(2))
+        boundary = property(lambda self: self._value(3))
+        session = property(lambda self: self._value(4))
 
         def __copy__(self):
             raise refusal("ordinary_privilege_authority")
@@ -453,7 +455,7 @@ def _make_api():
         return value.entries
 
     class PrivilegeLuidAuthority:
-        __slots__ = ()
+        __slots__ = ("__weakref__",)
 
         def __new__(cls, token, capability, live, binding):
             if token is not construction_token:
@@ -464,19 +466,18 @@ def _make_api():
             pass
 
         def _exhaust(self):
-            state = authority_vault.pop(id(self), None)
+            state = authority_vault.pop(self, None)
             if state is not None:
-                capability_vault.pop(id(state[1]), None)
+                capability_vault.pop(state[0], None)
 
         def _capture(self, expected_state):
             try:
-                state = authority_vault.get(id(self))
-                if state is None or state[0] is not self \
-                        or state[4] != expected_state:
+                state = authority_vault.get(self)
+                if state is None or state[3] != expected_state:
                     raise ValueError("state")
                 guard_authority()
                 guard_internal_types()
-                capability = state[1]
+                capability = state[0]
                 capability.validate(self, expected_state)
                 actual_call = _callable_state(type(capability).__call__)
                 if any(
@@ -488,7 +489,7 @@ def _make_api():
                 capability.validate(self, expected_state + 1)
                 guard_authority()
                 guard_internal_types()
-                return validate_observation(value, state[2])
+                return validate_observation(value, state[1])
             except BaseException as primary:
                 self._exhaust()
                 if isinstance(primary, (KeyboardInterrupt, SystemExit)):
@@ -497,24 +498,24 @@ def _make_api():
 
         def initial(self):
             value = self._capture(0)
-            state = authority_vault.get(id(self))
-            if state is None or state[0] is not self:
+            state = authority_vault.get(self)
+            if state is None:
                 self._exhaust()
                 raise refusal("ordinary_privilege_authority")
-            authority_vault[id(self)] = (
-                self, state[1], state[2], state[3], 1, value
+            authority_vault[self] = (
+                state[0], state[1], state[2], 1, value
             )
             return None
 
         def final(self):
             value = self._capture(1)
-            state = authority_vault.get(id(self))
-            if state is None or state[0] is not self:
+            state = authority_vault.get(self)
+            if state is None:
                 self._exhaust()
                 raise refusal("ordinary_privilege_authority")
-            live = state[2]
-            binding = state[3]
-            initial = state[5]
+            live = state[1]
+            binding = state[2]
+            initial = state[4]
             self._exhaust()
             if value != initial:
                 raise refusal("ordinary_privilege_authority")
@@ -549,6 +550,9 @@ def _make_api():
 
     def guard_internal_types():
         for value, expected_state in internal_type_pins:
+            if value.__hash__ is not object.__hash__ \
+                    or value.__eq__ is not object.__eq__:
+                raise ValueError("identity")
             actual_state = class_state(value)
             if len(actual_state) != len(expected_state):
                 raise ValueError("internal_type")
@@ -568,18 +572,23 @@ def _make_api():
             responses = (initial, final)
             freeze_primitive(responses)
             capability = capability_type(construction_token, responses)
-            capability_vault[id(capability)] = (
-                capability, responses, 0, None
-            )
+            capability_vault[capability] = (responses, 0, None)
             return capability
 
         return invoke(operation)
 
     def structural_fixture_capture_count_only(capability):
-        state = capability_vault.get(id(capability))
-        if state is None or state[0] is not capability:
+        state = capability_vault.get(capability)
+        if state is None:
             raise refusal("ordinary_privilege_authority")
-        return state[2]
+        return state[1]
+
+    def structural_fixture_vault_counts_only():
+        return (
+            len(capability_vault),
+            len(authority_vault),
+            len(marker_vault),
+        )
 
     def bind_structural_authority(
         *,
@@ -607,8 +616,8 @@ def _make_api():
                 binding,
             )
             capture_capability.claim(authority)
-            authority_vault[id(authority)] = (
-                authority, capture_capability, live, binding, 0, None
+            authority_vault[authority] = (
+                capture_capability, live, binding, 0, None
             )
             return authority
 
@@ -620,6 +629,7 @@ def _make_api():
         PrivilegeLuidAuthority,
         structural_fixture_capability_only,
         structural_fixture_capture_count_only,
+        structural_fixture_vault_counts_only,
         bind_structural_authority,
     )
 
@@ -630,6 +640,7 @@ def _make_api():
     _PrivilegeLuidAuthority,
     _structural_fixture_capability_only,
     _structural_fixture_capture_count_only,
+    _structural_fixture_vault_counts_only,
     _bind_structural_authority,
 ) = _make_api()
 del _make_api

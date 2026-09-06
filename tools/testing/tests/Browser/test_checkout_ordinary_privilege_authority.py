@@ -1,5 +1,6 @@
 import ast
 import copy
+import gc
 import hashlib
 import importlib.util
 import inspect
@@ -357,8 +358,22 @@ class PrivilegeAuthorityTests(unittest.TestCase):
         self.refused(
             m, lambda: type(result)(object(), True, "a", "b", "c", "d")
         )
-        forged = tuple.__new__(type(result), ())
+        forged = object.__new__(type(result))
         self.refused(m, lambda: forged.bindingDigest)
+
+    def test_weak_vaults_release_more_than_capacity_sequentially(self):
+        m, raw, _, _, observation = fixture()
+        for _ in range(80):
+            capability = Capture(observation, observation)
+            authority = bind(m, raw, capability)
+            self.assertIsNone(authority.initial())
+            marker = authority.final()
+            self.assertTrue(marker.structuralOnly)
+            del marker
+            del authority
+            del capability
+            gc.collect()
+        self.assertEqual(m._structural_fixture_vault_counts_only(), (0, 0, 0))
 
     def test_object_setattr_cannot_rewrite_state_binding_or_replay(self):
         m, raw, _, _, observation = fixture()
@@ -471,6 +486,9 @@ class PrivilegeAuthorityTests(unittest.TestCase):
         self.assertTrue(authority.final().structuralOnly)
     def test_static_surface(self):
         source = MODULE_PATH.read_text(encoding="utf-8")
+        self.assertIn("not an authorization boundary", source)
+        self.assertIn("__closure__", source)
+        self.assertIn("explicitly out of", source)
         tree = ast.parse(source)
         imports = {
             alias.name.split(".")[0]
