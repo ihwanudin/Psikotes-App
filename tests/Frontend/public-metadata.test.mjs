@@ -6,7 +6,11 @@ import { fileURLToPath } from 'node:url';
 const appPath = fileURLToPath(
     new URL('../../resources/js/app.tsx', import.meta.url),
 );
+const composePath = fileURLToPath(
+    new URL('../../compose.yaml', import.meta.url),
+);
 const source = await readFile(appPath, 'utf8');
+const composeSource = await readFile(composePath, 'utf8');
 
 function readAppNameContract() {
     const declaration = source.match(
@@ -38,4 +42,19 @@ test('an explicit VITE_APP_NAME still overrides the public title suffix fallback
 
     assert.equal(configured, 'import.meta.env.VITE_APP_NAME');
     assert.equal(resolvedName, explicitName);
+});
+
+test('Compose gives every app service safe public metadata defaults', () => {
+    assert.match(
+        composeSource,
+        /^    APP_NAME: \$\{APP_NAME:-ONCAM Psikotes\}$/m,
+    );
+    assert.match(composeSource, /^    APP_LOCALE: \$\{APP_LOCALE:-id\}$/m);
+});
+
+test('Compose keeps the public application URL environment-backed', () => {
+    assert.match(
+        composeSource,
+        /^    APP_URL: \$\{APP_URL:-http:\/\/localhost:8000\}$/m,
+    );
 });
