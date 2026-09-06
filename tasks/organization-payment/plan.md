@@ -842,6 +842,8 @@ Kontrak mewajibkan request baru pada anchor/execution untuk fresh/recovery yang
 mengikat exact outer ADR-017 request/evidence, policy digest, fresh challenge,
 current token identity, tiga target ordered+descriptor dengan `MAXIMUM_ALLOWED`,
 provenance/profile token, serta exact function-success/access-false/granted-zero.
+Path dan identity `(volumeSerial,fileId)` ketiga role wajib pairwise distinct;
+ADR-018 codec menolak alias segera dan remediation outer codec tetap terbuka.
 Same user, LocalSystem, owner SID dalam setiap group, fixed sensitive privilege
 enabled, AppContainer raw/nonzero, class-11/`IsTokenRestricted`, atau profile
 drift wajib ditolak; `TokenOrigin` hanya

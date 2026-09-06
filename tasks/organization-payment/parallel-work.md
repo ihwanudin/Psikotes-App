@@ -2746,6 +2746,9 @@ Request/evidence baru pada anchor/execution untuk fresh/recovery mengikat
 lifecycle serta exact outer ADR-017 request/evidence, policy/challenge/current
 identity, ordered target+descriptor dengan `MAXIMUM_ALLOWED`, provenance/profile
 original+derived, dan per-target function success + access false + granted zero.
+Ketiga path dan identity `(volumeSerial,fileId)` wajib pairwise distinct;
+ADR-018 codec menolak alias segera, sementara enforcement outer codec existing
+masih remediation terbuka.
 Provider membuka/revalidasi target sendiri dan memparse kedua descriptor capture
 secara independen; descriptor `policySatisfied` provider-derived dan mismatch
 teramati ditolak. Ordinary denial tetap admission gate terpisah. Ordinary gates

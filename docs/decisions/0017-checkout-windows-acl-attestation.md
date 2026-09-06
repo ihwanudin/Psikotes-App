@@ -67,6 +67,12 @@ mengikat digest request/policy/lease serta untuk setiap target: role/path,
 volume serial, file ID, owner SID, DACL digest, `reparse=false`, dan
 `policySatisfied=true`. Raw SID/DACL tidak dicatat ke log atau browser.
 
+Path ketiga target wajib pairwise distinct dan pasangan identity
+`(volumeSerial,fileId)` juga wajib pairwise distinct; object filesystem yang sama
+tidak boleh memenuhi lebih dari satu role. Kontrak outer codec wajib menolak
+alias tersebut. Enforcement pada outer codec existing masih remediation terbuka
+dan belum boleh dianggap terbukti oleh dokumentasi ini.
+
 Request/evidence memakai exact types/keys/order; bool tidak diterima sebagai int.
 Volume serial dan file ID adalah string desimal unsigned canonical tanpa leading
 zero dan dibatasi 128-bit. SID wajib canonical `S-...`; seluruh digest lowercase

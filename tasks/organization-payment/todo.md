@@ -1167,6 +1167,9 @@ tidak ada aktivasi/deploy dan seluruh gate/payment default OFF.
   original+derived, dan function-success/access-false/granted-zero. Provider
   membuka/revalidasi target, memparse kedua live descriptor capture independen,
   dan menghasilkan descriptor `policySatisfied`; mismatch teramati ditolak.
+- Path dan identity `(volumeSerial,fileId)` ketiga role wajib pairwise distinct;
+  ADR-018 codec menolak alias segera, sementara remediation outer codec existing
+  tetap terbuka.
 - Descriptor `policySatisfied` hanya menutup policy descriptor; ordinary denial
   tetap admission gate terpisah.
 - Policy menolak same user, LocalSystem, owner SID pada setiap group, fixed

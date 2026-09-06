@@ -88,6 +88,11 @@ tanpa duplicate/nonfinite/extra field. Top-level memiliki tepat:
 - `aclDescriptorEvidenceDigest`; dan
 - `targets` berisi tepat tiga entry ordered `coordinator`, `run`, `source`.
 
+Ketiga target path wajib pairwise distinct dan ketiga pasangan
+`(volumeSerial,fileId)` wajib pairwise distinct. Object yang sama tidak dapat
+memenuhi beberapa role; request codec ADR-018 menolak alias ini segera sebelum
+request digest atau provider boundary terbentuk.
+
 Setiap target memiliki tepat `role`, `path`, `volumeSerial`, `fileId`,
 `ownerSid`, `daclDigest`, `reparse=false`, serta `desiredAccess=MAXIMUM_ALLOWED`
 (`0x02000000`/33554432). Nilai target merupakan identity/summary exact dari

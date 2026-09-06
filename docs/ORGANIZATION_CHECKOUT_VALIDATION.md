@@ -1119,6 +1119,10 @@ mengikat lifecycle serta exact outer request/evidence ADR-017 melalui
 token identity, ordered descriptor evidence digest, target identity,
 `MAXIMUM_ALLOWED`, provenance/profile token, serta exact function-success/
 access-denied/granted-zero.
+Path dan pasangan `(volumeSerial,fileId)` untuk coordinator/run/source wajib
+pairwise distinct; satu object tidak boleh memenuhi beberapa role. ADR-018 codec
+menolak segera, sedangkan enforcement outer codec existing masih remediation
+terbuka.
 Provider membuka target sendiri; kedua descriptor capture diparse independen
 terhadap policy ADR-017 dan hanya provider yang menghasilkan descriptor
 `policySatisfied`; ordinary denial tetap admission gate terpisah. Mismatch
