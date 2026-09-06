@@ -2773,3 +2773,17 @@ tanpa P1/P2. Provider/cache/attest, native implementation, composition,
 provenance, runtime, dan provisioning authority tetap belum tersedia/terbuka.
 Tidak ada runtime/config/env/deploy/activation; P15/P16/P17c/P18 dan seluruh
 active gate/payment tidak berubah serta tetap default OFF.
+
+### Checkpoint outer target anti-alias — accepted `a72727e`
+
+Outer ADR-017 codec kini menolak pairwise path aliases memakai accepted
+casefold rule dan duplicate evidence identities `(volumeSerial,fileId)` untuk
+coordinator/run/source. Evidence root accepted: **24/24 tests**, `py_compile`,
+dan independent review **PASS** tanpa P1/P2.
+
+Full 299-test discovery yang dicoba saat concurrent edits bukan acceptance
+evidence: transient ordinary fixture error telah diperbaiki, sedangkan
+unrelated supervisor real-listener failure berasal dari environment. Tidak ada
+klaim full suite green. Provider/native/runtime, config/env/deploy/activation,
+provisioning authority, P15/P16/P17c/P18, checklist/progress, active gates, dan
+payment tetap tidak berubah/default OFF.

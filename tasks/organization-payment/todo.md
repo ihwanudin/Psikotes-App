@@ -1198,3 +1198,20 @@ tidak ada aktivasi/deploy dan seluruh gate/payment default OFF.
 Tidak ada status/checklist/progress yang diubah. P15/P16/P17c/P18 tetap terbuka;
 tidak ada runtime/config/env/deploy/activation dan seluruh active gate/payment
 tetap default OFF.
+
+### Bukti outer target anti-alias accepted — runtime tetap terbuka
+
+- Commit `a72727e` membuat outer ADR-017 codec menolak pairwise path aliases
+  menurut accepted casefold rule dan duplicate evidence identities
+  `(volumeSerial,fileId)` pada coordinator/run/source.
+- Evidence root accepted: **24/24 tests**, `py_compile`, dan independent review
+  **PASS** tanpa P1/P2.
+- Full 299-test discovery saat concurrent edits bukan acceptance evidence: satu
+  transient ordinary fixture error telah diperbaiki dan satu unrelated
+  supervisor real-listener failure berasal dari environment. Full suite tidak
+  diklaim green.
+- Provider/native/runtime dan provisioning authority tetap belum ada/terbuka;
+  tidak ada config/env/deploy/activation.
+
+Tidak ada status/checklist/progress/gate yang diubah. P15/P16/P17c/P18, active
+gates, dan payment tetap terbuka/default OFF.

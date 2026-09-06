@@ -404,3 +404,17 @@ Bukti root accepted: **11/11 tests**, `py_compile`, dan independent review
 composition, provenance, atau runtime evidence; provisioning authority tetap
 menjadi gate terbuka. P15/P16/P17c/P18, active gates, dan payment tidak berubah
 serta tetap default OFF.
+
+## Implementation Checkpoint — `a72727e`
+
+Outer codec existing kini menolak pairwise path aliases memakai accepted
+casefold rule dan duplicate evidence identities `(volumeSerial,fileId)` untuk
+coordinator/run/source. Bukti root accepted: **24/24 tests**, `py_compile`, dan
+independent review **PASS** tanpa P1/P2.
+
+Full 299-test discovery yang dicoba saat concurrent edits bukan acceptance
+evidence: satu transient ordinary fixture error telah diperbaiki dan satu
+unrelated supervisor real-listener failure bersifat environment-specific.
+Karena itu full suite tidak dinyatakan green. Provider/native/runtime,
+config/env/deploy/activation, provisioning authority, P15/P16/P17c/P18,
+checklist/progress, active gates, dan payment tetap tidak berubah/default OFF.

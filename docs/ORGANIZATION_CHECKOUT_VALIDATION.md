@@ -1155,3 +1155,19 @@ composition, provenance, atau runtime; provisioning authority gate tetap
 terbuka. Tidak ada runtime/config/env/deploy/activation. P15/P16/P17c/P18,
 active gates, payment, checklist, dan progress tidak berubah; semuanya yang
 belum diterima tetap terbuka/default OFF.
+
+## Checkpoint outer target anti-alias — 2026-09-06
+
+Commit `a72727e` membuat outer ADR-017 codec menolak pairwise path aliases
+berdasarkan accepted casefold rule dan duplicate evidence identity
+`(volumeSerial,fileId)` untuk coordinator/run/source. Bukti root accepted:
+**24/24 tests**, `py_compile`, dan independent review **PASS** tanpa P1/P2.
+
+Full 299-test discovery sempat dicoba ketika concurrent edits berlangsung dan
+bukan acceptance evidence. Satu transient ordinary fixture error telah
+diperbaiki; satu unrelated supervisor real-listener failure berasal dari
+environment. Dokumen ini tidak mengklaim full suite green.
+
+Tidak ada provider/native/runtime, config/env/deploy/activation, atau perubahan
+provisioning authority. P15/P16/P17c/P18, checklist/progress, active gates, dan
+payment tetap terbuka/tidak berubah serta default OFF.

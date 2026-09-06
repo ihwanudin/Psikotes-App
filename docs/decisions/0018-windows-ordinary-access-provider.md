@@ -319,3 +319,21 @@ provider, cache, `attest/load/discard`, native token/handle/descriptor/
 Provisioning authority gate tetap terbuka. Tidak ada runtime, config/env,
 deploy, atau activation; P15/P16/P17c/P18 dan seluruh active gate/payment tetap
 unchanged dan default OFF.
+
+## Implementation Checkpoint — `a72727e`
+
+Outer ADR-017 codec kini menolak alias path coordinator/run/source memakai
+accepted casefold rule dan menolak duplicate evidence identity
+`(volumeSerial,fileId)`. Dengan demikian satu path atau object filesystem tidak
+dapat memenuhi lebih dari satu target role pada input yang diterima codec.
+
+Bukti root accepted: **24/24 tests**, `py_compile`, dan independent review
+**PASS** tanpa P1/P2. Full 299-test discovery sempat dicoba saat concurrent edits
+dan bukan acceptance evidence: satu transient ordinary fixture error telah
+diperbaiki, sementara satu unrelated supervisor real-listener failure berasal
+dari environment. Tidak ada klaim full suite green.
+
+Checkpoint ini tidak menambahkan provider, native/runtime implementation,
+config/env, deploy, atau activation. Provisioning authority, P15/P16/P17c/P18,
+seluruh checklist/progress, active gates, dan payment tetap terbuka/tidak
+berubah serta default OFF.
