@@ -3058,3 +3058,17 @@ final independent review **PASS** tanpa P1/P2.
 Tidak ada authority untuk signature, trust, quorum, TTL, revocation, replay,
 admission, atau runtime. P15/P16/P17c/P18 tetap open, gates tetap default OFF,
 dan formal checklist/progress tetap **173/220 = 78.6%**.
+
+### Checkpoint I2 release/source dan I3 revocation snapshot — accepted `0416cd1`, `8741ef0`
+
+`0416cd1` menerima pure structural release/source codec I2 setelah dua P2 path
+Windows ditutup; focused **13/13**, `py_compile`, `diff-check`, dan final review
+**PASS**. `8741ef0` menerima pure structural revocation-snapshot codec I3
+setelah P2 cutoff ditutup dengan exact `notBefore <= issuedAt < nextUpdate`;
+focused **10/10**, `py_compile`, `diff-check`, dan final review **PASS**.
+
+Checkpoint ini supplied-data-only: tidak ada Git/filesystem authority,
+signature, trust, quorum, live freshness, protected high-water, rollback/replay
+acceptance, admission, atau runtime authority. P15/P16/P17c/P18 tetap terbuka,
+seluruh gate/payment tetap default OFF, dan formal checklist/progress tetap
+**173/220 = 78.6%**.

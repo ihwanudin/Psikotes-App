@@ -1116,3 +1116,18 @@ Acceptance ini tidak membuktikan signature, trust, quorum, TTL, revocation,
 replay, admission, ataupun runtime authority. P15/P16/P17c/P18 tetap terbuka,
 seluruh gate tetap default OFF, dan checklist/progress tidak berubah pada
 **173/220 = 78.6%**.
+
+### Checkpoint I2 release/source dan I3 revocation snapshot — accepted `0416cd1`, `8741ef0`
+
+Commit `0416cd1` menerima codec struktural release/source I2 setelah dua P2
+path Windows diperbaiki; focused **13/13**, `py_compile`, `diff-check`, dan
+final review **PASS**. Commit `8741ef0` menerima codec struktural revocation
+snapshot I3 setelah P2 cutoff diperbaiki menjadi exact
+`notBefore <= issuedAt < nextUpdate`; focused **10/10**, `py_compile`,
+`diff-check`, dan final review **PASS**.
+
+Keduanya hanya memvalidasi supplied canonical data. I2 tidak membuktikan Git
+atau filesystem; I3 tidak membuktikan signature, trust, quorum, live freshness,
+protected high-water, rollback/replay acceptance, admission, maupun authority
+runtime. P15/P16/P17c/P18 tetap terbuka, seluruh gate/payment tetap default
+OFF, dan formal checklist/progress tetap **173/220 = 78.6%**.
