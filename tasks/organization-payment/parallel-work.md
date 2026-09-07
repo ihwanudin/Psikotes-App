@@ -1,5 +1,34 @@
 # Koordinasi task paralel organization-payment
 
+## Checkpoint guard dan observability performa lokal — 2026-09-07
+
+Enam commit non-overlap menambah bukti performa tanpa mengaktifkan layanan.
+`1b8da17`/`260ee18` menyediakan analyzer backlog dari snapshot sintetis bounded;
+delayed work tetap masuk depth tetapi belum eligible, chronology lease mustahil
+ditolak, dan tenant/topic/message ID tidak dikeluarkan. `c248366`/`360f84d`
+menginventarisasi satu `Cache::add` TTL 70 serta tiga unique-job lock TTL
+300/900/900 melalui lexer source yang menolak string decoy. Inventory tersebut
+secara eksplisit hanya sah pada trusted quiescent working tree dan bukan bukti
+Redis, hit rate, invalidation, atau efektivitas lock runtime.
+
+`649ceb9`/`0309aae` menjalankan functional
+`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` SELECT-only pada PostgreSQL disposable
+sebagai role runtime non-super/non-bypass dengan FORCE RLS. Buffer dibaca dari
+root plan agar child tidak dihitung ulang; statistik planner sengaja tidak
+di-refresh, sehingga hasil bukan klaim index, latency, atau representasi
+produksi. Runner terakhir lulus **403 tes / 4.043 assertions** dan seluruh
+container/network disposable dibersihkan.
+
+`4d1cd35` mengaktifkan `Model::preventLazyLoading()` hanya pada environment
+testing. Lazy relation dari koleksi persisted ditolak, eager loading tetap
+berhasil, dan regresi billing lulus **28 tes / 409 assertions** dengan halaman
+10/25/50 tetap **7 query**. Local dan production tidak berubah. Node queue
+**11/11**, cache inventory, syntax, ESLint, Prettier, PHPStan, Pint, dan
+diff-check lulus. Tidak ada `.env`, database aktif, Redis/worker, provider,
+outbound, browser, Cloudflare, deploy, atau activation yang disentuh. P15/P16/
+P17c/P18 tetap terbuka, seluruh gate/payment tetap default **OFF**, dan progress
+formal tetap **173/220 = 78.6%**.
+
 ## Checkpoint baseline performa terjaga `d0909d7` — 2026-09-07
 
 Tiga lane performa lokal yang tidak overlap telah direview dan diterima.
@@ -1559,6 +1588,7 @@ yang diperlukan. Tidak mengedit UI/Filament. Perubahan schema atau route baru
 harus diajukan dahulu, jangan memperluas token checkout menjadi token tes.
 
 Acceptance:
+
 - Aktivasi hanya dari settlement tepat + consent/identitas per attempt;
   legacy entitlement tidak memberi akses attempt baru; DASS decline tidak
   memblokir tes utama yang sah.
@@ -1589,6 +1619,7 @@ jika runner existing mendukung; harness preview test-only khusus frontend bila
 diperlukan. Jangan edit package.json/routes/controller/global CSS.
 
 Acceptance:
+
 - Ringkasan profil lengkap, field kurang saja, cabang terkunci, consent terpisah,
   self/organization/free/paid serta loading/error/expired ditampilkan jelas.
 - Tidak menghitung tagihan atau memberi status paid/akses sendiri; organization
@@ -1621,6 +1652,7 @@ Jangan mengedit resource AssessmentParticipants (P12b belum dimulai), shared
 policies, routes, billing actions atau konfigurasi global.
 
 Acceptance:
+
 - Hanya BranchAdmin organisasi pemilik melihat list/detail; direct URL dan
   role salah/lintas cabang ditolak server, bukan sekadar sembunyikan menu.
 - Jumlah peserta/total/status dari server, riwayat dari bill yang sama;
@@ -1637,7 +1669,7 @@ Browser, TDD, Git Workflow; dokumentasi Filament versi terpasang.
 ## Checkpoint koordinator
 
 - [x] Tiga task dibuat; baseline lengkap ada di setiap worktree tanpa .env aktif,
-  dan masing-masing task melaporkan pengecekan skill sebelum implementasi.
+      dan masing-masing task melaporkan pengecekan skill sebelum implementasi.
 - [x] Setiap task selesai slice awal dengan bukti tes dan daftar batas yang belum diuji.
 - [x] Tinjau ownership, kontrak props vs backend, privasi, dan diff sebelum merge.
 - [x] Gabungkan satu slice sekali; ulang regression yang terdampak dan build.
@@ -1651,10 +1683,10 @@ dan tidak berarti pemantauan latar terus-menerus.
 
 ## Registri task (2026-08-31)
 
-| Lane | Task ID | Worktree |
-| --- | --- | --- |
-| Backend | 01a05839-3b48-7801-8175-0392e8764c23 | C:/Users/ThinkPad/.codex/worktrees/14a0/Psikotes |
-| Frontend | 01a05839-3b39-7d83-b59f-9e7432d7883e | C:/Users/ThinkPad/.codex/worktrees/d4ea/Psikotes |
+| Lane          | Task ID                              | Worktree                                         |
+| ------------- | ------------------------------------ | ------------------------------------------------ |
+| Backend       | 01a05839-3b48-7801-8175-0392e8764c23 | C:/Users/ThinkPad/.codex/worktrees/14a0/Psikotes |
+| Frontend      | 01a05839-3b39-7d83-b59f-9e7432d7883e | C:/Users/ThinkPad/.codex/worktrees/d4ea/Psikotes |
 | Portal cabang | 01a05839-3b18-73e0-8fdc-8db3b02f835d | C:/Users/ThinkPad/.codex/worktrees/6e61/Psikotes |
 
 Worktree dibuat dari working tree lengkap (base HEAD 58da1de dengan perubahan
