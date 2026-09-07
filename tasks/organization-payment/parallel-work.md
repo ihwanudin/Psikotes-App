@@ -1,5 +1,31 @@
 # Koordinasi task paralel organization-payment
 
+## Checkpoint baseline performa terjaga `d0909d7` — 2026-09-07
+
+Tiga lane performa lokal yang tidak overlap telah direview dan diterima.
+`f4b4cbe` memperbaiki fixture query-budget yang tertinggal dari kontrak
+DASS-21 wajib; halaman 10/25/50 kini masing-masing terukur **7 query** pada
+batas `<=20`. `b444121` menambahkan tes proxy/Vite hermetic yang membuktikan
+peer privat tepercaya dengan `X-Forwarded-Proto=https` membentuk body dan
+preload HTTPS, sedangkan spoof peer publik dan forwarded host tetap ditolak.
+Karena kode repository hijau, preload HTTP yang terlihat di publik masih harus
+dilokalisasi pada revisi/config/topologi/cache deployment; tidak ada config
+produksi yang diubah.
+
+`d0909d7` menambah guard bundle report-only yang membaca build existing secara
+fail-closed. Baseline saat diterima: initial JS **166.533 B gzip** pada hard
+budget `<204.800`, entry CSS **17.429 B gzip** pada hard budget `<51.200`, dan
+largest raw chunk **520.428 B** pada warning `>=512.000`; media/font **116.068
+B** dalam 6 file dan 19 dynamic import. Bukti root: query suite **31/31 / 324
+assertions**, proxy hermetic **3/3 / 49**, config/deployment **13/13 / 48**,
+candidate packaging exact **1/1 / 54**, serta bundle adversarial, syntax,
+ESLint, Prettier, Pint, PHP syntax, `py_compile`, dan diff-check lulus.
+
+Checkpoint ini hanya memulihkan measurement/guard dan packaging. Tidak ada
+optimasi spekulatif, candidate build, database aktif, Cloudflare/DNS, deploy,
+provider/outbound, atau activation. P15/P16/P17c/P18 dan seluruh gate/payment
+tetap terbuka/default **OFF**; progress formal tetap **173/220 = 78.6%**.
+
 ## Checkpoint runtime security composition `58fcbe6` — 2026-09-07
 
 Empat increment lokal yang tidak saling tumpang tindih telah direview dan
