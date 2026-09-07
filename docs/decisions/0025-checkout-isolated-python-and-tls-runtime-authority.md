@@ -8,10 +8,11 @@
 ADR-021 mensyaratkan verifier artifact Ed25519 yang berjalan pada Python dan
 dependency kriptografi yang diperoleh secara offline, dipin, dan ditutup sampai
 dependency native. ADR-022 menetapkan authority material TLS sintetis per-run,
-sedangkan ADR-023 menetapkan atomic protected root dan handle-relative lease
-sebagai prasyarat normatif. Ketiganya sengaja belum memilih satu kontrak
-executable yang menghubungkan bootstrap verifier, akuisisi archive, instalasi
-terisolasi, loader Windows, custody private key, consumer proxy, dan browser.
+ADR-023 menetapkan atomic protected root dan handle-relative lease sebagai
+prasyarat normatif, dan ADR-024 menetapkan distinct journal/trusted-time service
+serta rollback witness. Keempatnya sengaja belum memilih satu kontrak executable
+yang menghubungkan bootstrap verifier, akuisisi archive, instalasi terisolasi,
+loader Windows, custody private key, consumer proxy, dan browser.
 
 Repository sekarang memiliki structural wheel locks dan host-closure observer
 untuk `cryptography`, `cffi`, dan `pycparser`. Bukti tersebut memvalidasi data
@@ -100,6 +101,19 @@ promote_target(
 
 discard(BootstrapVerifierRuntimeCapability) -> terminal
 ```
+
+`trustedTimeCapability` bukan timestamp atau callback generik. Ia hanya boleh
+berasal dari successful one-shot `time.challenge` -> `time.validate` ADR-024
+melalui exact journal/time service `OncamCheckoutJournalTimeV1`, dedicated
+local-account label `OncamCkJournalTime` dan manifest-bound account/service SID,
+endpoint `\\.\pipe\oncam-checkout-journal-time-v1`, admin-owned manifest schema
+`oncam.checkout.journal-time-service-manifest.v1` beserta generation, transport
+domain `oncam.checkout.journal-time-transport.v1\0`, rollback witness,
+trusted-time signer, dan revocation bindings yang dipin. Service/account/
+endpoint/manifest/codec/cache/witness tersebut wajib berbeda dari preparation
+service ADR-023 dan ordinary broker ADR-019. Local clock, process uptime, file
+time, caller callback, atau in-process replacement tidak dapat menghasilkan
+capability ini.
 
 Bootstrap manifest mengikat exact external provider/broker process identity,
 source/binary digest, already-installed runtime-root identity, interpreter,
@@ -344,10 +358,23 @@ acknowledgment baru dapat lahir setelah admission mengizinkan child start.
 
 ### 9. Post-load execution observation
 
-Proxy dimulai dalam state suspended/non-listening setelah final composition dan
-fresh ADR-017 execution admission. Setelah exact child memuat key, private
-acknowledgment divalidasi dan dicatat sebagai satu protected-journal transition
-`proxy-key-load-v1` sebelum socket bind/listen atau browser launch. Record exact
+Proxy dimulai sebagai **running bootstrap child** dalam mode exact
+`tls-bootstrap-v1` setelah final composition dan fresh ADR-017 execution
+admission. Mode ini hanya boleh memvalidasi inherited handles/frame, memuat
+certificate/key sekali, mengirim acknowledgment, lalu menunggu release frame.
+Sebelum release tervalidasi, process dilarang membuat socket atau memperoleh
+socket handle; `socket`, `bind`, `listen`, accept loop, HTTP handler, dan browser
+launch semuanya belum boleh dijangkau. “Non-listening” saja tidak cukup karena
+socket yang sudah dibuat atau bound tetap memperluas authority sebelum journal
+gate.
+
+Setelah exact child memuat key, private acknowledgment divalidasi dan dicatat
+sebagai satu protected-journal CAS transition `proxy-key-load-v1` sebelum socket
+create/bind/listen atau browser launch. CAS hanya boleh dilakukan melalui exact
+`journal.compare-and-append` ADR-024 pada service/account/endpoint/manifest/
+codec/rollback-witness generation yang sama dengan `trustedTimeCapability` run
+ini. Generic local file, existing test storage primitive, coordinator journal,
+ordinary broker cache, atau alternate witness bukan substitute. Record exact
 memiliki field berikut dan tidak boleh memiliki field lain:
 
 ```text
@@ -359,9 +386,13 @@ certificateSha256, spkiSha256, consumerAcknowledgmentDigest, recordDigest
 ```
 
 `version` exact `1`, `kind` exact `proxy-key-load`, generation mengikuti exact
-protected compare-and-swap predecessor, `observedAt` canonical trusted UTC, dan
-seluruh digest lowercase SHA-256. `recordDigest` memakai domain
-`oncam.checkout.proxy-key-load.v1\0` plus canonical bytes seluruh field
+protected compare-and-swap predecessor, dan `observedAt` berasal dari exact
+current ADR-024 `trustedTimeCapability`; seluruh digest lowercase SHA-256.
+Request/response juga mengikat journal/time service-start identity, authority
+manifest digest/generation, endpoint/codec domain, rollback-witness identity/
+generation/digest, trusted-time evidence digest, request challenge, run/session,
+lease/config, dan current revocation set sesuai ADR-024. `recordDigest` memakai
+domain `oncam.checkout.proxy-key-load.v1\0` plus canonical bytes seluruh field
 sebelumnya. Record tidak memuat private-key path/hash/identity/size, password,
 handle, raw acknowledgment, SID, atau certificate bytes. Exact private
 `TlsMaterialCapability` dan source-handle identities tetap dibandingkan in-memory
@@ -369,11 +400,17 @@ sebelum dan sesudah journal commit.
 
 Setelah commit, supervisor merevalidasi current composition, lease, journal,
 runtime/TLS capabilities, process identity, retained handles, dan fresh ACL
-execution context. Baru kemudian satu one-shot release pipe mengizinkan proxy
-bind/listen; browser launch menyusul setelah listener identity terbukti. Missing,
-failed, ambiguous, replayed, stale, atau unpersisted record membuat child
-diterminalkan. Observation ini bukan pengganti signed pre-launch TLS artifact,
-final composition admission, atau ADR-017.
+execution context. Baru kemudian satu one-shot release frame yang mengikat exact
+acknowledgment digest, committed record digest/generation, journal/time
+service-start identity, rollback-witness generation, proxy PID/start identity,
+dan fresh release challenge dikirim melalui retained release pipe. Child
+memvalidasi frame exact, menutup bootstrap inputs, lalu—dan hanya lalu—membuat
+socket, bind, dan listen. Browser launch menyusul setelah listener identity
+terbukti. Missing, failed, ambiguous, replayed, stale, atau unpersisted CAS;
+release sebelum CAS; socket create/bind/listen sebelum release; atau ADR-024
+service/witness drift membuat child diterminalkan. Observation ini bukan
+pengganti signed pre-launch TLS artifact, final composition admission, ADR-017,
+atau ADR-024 authority.
 
 ### 10. Lifecycle exact
 
@@ -398,9 +435,11 @@ Urutan lifecycle tidak dapat dipertukarkan:
 9. verifikasi final composition admission yang mengikat runtime evidence, TLS
    public evidence, exact private capability identity, run/lease, dan config;
 10. lulus fresh final ADR-017 anchor/execution admission;
-11. start proxy non-listening melalui exact inherited-handle/pipe contract,
-    validasi private acknowledgment, commit `proxy-key-load-v1`, revalidasi semua
-    authority, lalu release listener dan launch browser dengan one-SPKI exception;
+11. start exact running `tls-bootstrap-v1` child tanpa socket melalui inherited-
+    handle/pipe contract, validasi private acknowledgment, commit
+    `proxy-key-load-v1` melalui exact ADR-024 authority, revalidasi semua
+    authority, lalu kirim one-shot release yang baru mengizinkan socket create/
+    bind/listen dan launch browser dengan one-SPKI exception;
 12. sepanjang run revalidasi retained capabilities/identities dan budget; dan
 13. pada success, refusal, interruption, atau crash, terminalkan child lalu
     discard/close/zeroize seluruh capability dan held resource dalam reverse
@@ -444,17 +483,19 @@ Contract dianggap implemented hanya jika seluruh hal berikut diterima bersama:
 - real isolated CPython starts dengan exact flags/path set dan membuktikan tidak
   ada environment, registry, site, CWD, `PATH`, network, atau ambient import;
 - atomic protected root dan handle-relative lease capability ADR-023,
-  preparation ACL, serta protected journal/clock/revocation prerequisites
-  ADR-021 lulus sebelum runtime/TLS materialization;
+  preparation ACL, serta exact distinct journal/time service, protected journal,
+  rollback witness, trusted-time, dan revocation prerequisites ADR-024 lulus
+  sebelum runtime/TLS materialization;
 - real key generation dan independent X.509 validation membuktikan exact
   RSA/SHA-256, ordered two-domain SAN, extensions, time bounds, key match, dan
   fresh-run uniqueness;
 - native handle inheritance membuktikan exact handles, noninheritability,
   one-shot passphrase, child identity, acknowledgment binding, no path reopen,
   retained identity stability, timeout, dan reverse cleanup;
-- proxy tidak bind/listen sebelum exact acknowledgment, protected
-  `proxy-key-load-v1` compare-and-swap, full context revalidation, dan one-shot
-  listener release berhasil;
+- proxy tidak membuat socket, bind, atau listen sebelum exact acknowledgment,
+  protected `proxy-key-load-v1` compare-and-swap melalui distinct ADR-024
+  service/witness, full context revalidation, dan one-shot listener release
+  berhasil;
 - disposable Chromium membuktikan exact single-SPKI arg, run-local profile,
   `ignoreHTTPSErrors=false`, effective process args, successful expected
   `https://psikotes.oncam.id` transport, exact resolver rules, dan negative
@@ -515,8 +556,8 @@ transport exception, bukan certificate-policy authority.
 
 ## Dependencies dan keputusan lanjutan
 
-ADR ini bergantung secara normatif pada ADR-016, ADR-017, ADR-021, ADR-022, dan
-ADR-023. `PinnedPreparationParentCapability`,
+ADR ini bergantung secara normatif pada ADR-016, ADR-017, ADR-021, ADR-022,
+ADR-023, dan ADR-024. `PinnedPreparationParentCapability`,
 `HeldPreparationRootCapability`, dan `HeldPreparationLeaseCapability` ADR-023
 wajib tersedia dan tetap exact sebelum runtime root, extracted file, TLS key,
 atau certificate dibuat. Implementasi juga bergantung pada accepted external
@@ -524,6 +565,12 @@ bootstrap runtime authority, offline acquisition/signing, exact CPython archive
 digest, preparation ACL, protected journal/trusted clock/revocation, TLS evidence
 signer, native system-DLL/API-set producer, inherited-handle consumer,
 post-load journal/release boundary, dan final composition wiring.
+
+Setiap trusted-time use dan `proxy-key-load-v1` CAS wajib memakai exact ADR-024
+service/account/endpoint/manifest/codec/witness capability yang dipin bersama
+run. ADR-024 yang belum terimplementasi membuat kedua boundary unavailable; ADR
+ini tidak mengizinkan local clock, generic journal/provider, atau synthetic
+fixture sebagai fallback.
 
 Material user/operations decisions yang belum tersedia adalah operator/key
 assignment dan custody, offline archive transfer/storage, accepted CPython
@@ -540,6 +587,7 @@ machine atau fake adapter.
 - [ADR-021: Authority persiapan release kandidat checkout](0021-checkout-release-preparation-authority.md)
 - [ADR-022: Synthetic TLS material authority](0022-checkout-synthetic-tls-material-authority.md)
 - [ADR-023: Authority root persiapan dan lease handle-relative checkout](0023-checkout-preparation-root-and-lease-authority.md)
+- [ADR-024: Authority broker journal dan trusted time checkout](0024-checkout-broker-journal-and-trusted-time-authority.md)
 - [Python embeddable package](https://docs.python.org/3/using/windows.html#the-embeddable-package)
 - [Python isolated mode](https://docs.python.org/3/using/cmdline.html#cmdoption-I)
 - [Python path configuration files](https://docs.python.org/3/using/windows.html#finding-modules)
