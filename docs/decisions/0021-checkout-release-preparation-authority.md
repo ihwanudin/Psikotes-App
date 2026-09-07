@@ -65,7 +65,16 @@ Setiap authority role memiliki key berbeda. Asset review wajib 2-of-2 dari dua r
 
 Private signing keys hanya berada pada offline signer custody masing-masing role dan tidak pernah berada pada candidate atau verifier host. Tidak ada private key, passphrase, signer callback, atau signer selection pada builder/config/request. Bootstrap default adalah verifikasi fingerprint bundle/verifier offline oleh dua operator melalui dua salinan/channel yang independen. Enterprise Authenticode/catalog PKI hanya dapat menggantikan ceremony itu setelah authority, certificate chain, publisher, root, revocation, dan installer contract-nya diterima melalui keputusan terpisah.
 
-Durasi maksimum dihitung dari `issuedAt` sampai `expiresAt`: release/source, vendor, asset review, tool/runtime closure, dan runtime-configuration-policy artifact maksimum 7 hari; preparation authorization maksimum 10 menit; final composition admission maksimum 5 menit. Durasi nol/negatif, overflow, timestamp non-UTC/nonkanonis, expiry yang melampaui batas, atau waktu yang tidak dapat dipercaya wajib menolak. TTL adalah batas atas, bukan izin untuk memakai artifact setelah revocation atau binding drift.
+Durasi maksimum dihitung dari `issuedAt` sampai `expiresAt`: release/source,
+vendor, asset review, tool/runtime closure, dan runtime-configuration-policy
+artifact maksimum 7 hari; trust-root bundle maksimum 366 hari agar satu periode
+tahunan tetap kanonis melintasi tahun kabisat; preparation authorization maksimum
+10 menit; final composition admission maksimum 5 menit. Durasi nol/negatif,
+overflow, timestamp non-UTC/nonkanonis, expiry yang melampaui batas, atau waktu
+yang tidak dapat dipercaya wajib menolak. Seluruh artifact, termasuk trust-root
+bundle, hanya dapat dievaluasi pada interval setengah-terbuka
+`issuedAt <= trustedNow < expiresAt`. TTL adalah batas atas, bukan izin untuk
+memakai artifact setelah revocation atau binding drift.
 
 #### Release/source artifact
 
@@ -159,7 +168,10 @@ Persiapan menolak secara tetap dan tanpa fallback ketika salah satu kondisi beri
 
 - artifact/authentication/schema/issuer tidak tepat, hilang, expired, revoked, replayed, generation mundur, atau revocation snapshot memakai generation yang sama;
 - domain signature, algorithm Ed25519, artifact digest, role/key/trust generation, atau threshold signer tidak tepat;
-- artifact melampaui lifetime maksimum 7 hari, revocation `nextUpdate` melampaui 24 jam, preparation authorization melampaui 10 menit, atau final composition admission melampaui 5 menit;
+- static non-trust-root artifact melampaui lifetime maksimum 7 hari,
+  trust-root bundle melampaui 366 hari, revocation `nextUpdate` melampaui 24
+  jam, preparation authorization melampaui 10 menit, atau final composition
+  admission melampaui 5 menit;
 - trust bundle belum melalui bootstrap fingerprint dua-operator/dua-channel, rotasi tidak memenuhi 2-of-3 old dan 2-of-3 new, atau revocation snapshot tidak memenuhi independent 2-of-3;
 - verifier/runtime/wheel closure tidak memiliki exact acquisition acceptance evidence atau mencoba memakai package ambient/fallback;
 - dependency graph atau cross-binding tidak cocok;
@@ -192,7 +204,16 @@ Revocation snapshot juga menggunakan opaque identifiers; distribusinya offline d
 
 ## Contract yang diterima dan gate yang tetap terbuka
 
-ADR ini menetapkan sebagai keputusan normatif: detached Ed25519 dengan domain separation; key berbeda per authority role; asset review 2-of-2 tanpa release/source key; trust-root rotation 2-of-3 old dan 2-of-3 new; independent revocation 2-of-3; tidak adanya private signing key pada candidate/verifier; bootstrap fingerprint dua-operator/dua-channel; threat model ordinary-user; protected high-water journal; generation sebagai freshness authority utama; serta lifetime maksimum 7 hari, 24 jam, 10 menit, dan 5 menit yang ditetapkan di atas. Pilihan tersebut bukan lagi open decision.
+ADR ini menetapkan sebagai keputusan normatif: detached Ed25519 dengan domain
+separation; key berbeda per authority role; asset review 2-of-2 tanpa
+release/source key; trust-root rotation 2-of-3 old dan 2-of-3 new; independent
+revocation 2-of-3; tidak adanya private signing key pada candidate/verifier;
+bootstrap fingerprint dua-operator/dua-channel; threat model ordinary-user;
+protected high-water journal; generation sebagai freshness authority utama;
+serta lifetime maksimum static artifact 7 hari, trust-root bundle 366 hari,
+revocation snapshot 24 jam, preparation authorization 10 menit, dan final
+composition admission 5 menit yang ditetapkan di atas. Pilihan tersebut bukan
+lagi open decision.
 
 Gate acceptance yang masih terbuka adalah bukti konkret, bukan kewenangan untuk mengganti baseline tersebut:
 
