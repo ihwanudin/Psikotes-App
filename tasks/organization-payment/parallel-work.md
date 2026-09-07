@@ -3247,3 +3247,19 @@ Checkpoint ini packaging-only: candidate tidak dibangun dan tidak ada full
 suite, runtime, native evidence, dependency acquisition, atau activation.
 P15/P16/P17c/P18 tetap terbuka, gate/payment tetap default OFF, dan formal
 checklist/progress tidak berubah pada **173/220 = 78.6%**.
+
+### Checkpoint I20–I22 execution preparation — accepted `ac59705`, `57a1174`, `9ece3e9`, `635d31d`
+
+Tiga lane non-overlap menerima wheel-archive lock `cryptography 50.0.1`, sealed
+repository Ed25519 verifier, dan native Windows protected-journal storage
+primitive. Packaging commit menambahkan exact tujuh file baru ke candidate
+required/allowed manifest. Bukti root: gabungan **122/122**, packaging **1/1**,
+`py_compile`, `diff-check`, serta independent review **PASS** setelah dua bypass
+wheel/verifier dan dua overclaim/cleanup journal ditutup.
+
+Wheel belum menutup dependency eksternal `cffi>=2.0.0` atau host/runtime
+closure. Journal hanya storage observation point-in-time dan tidak menerbitkan
+I18; descriptor/token snapshot, ACL efficacy, DPAPI/TPM, reboot/power-loss/
+offline rollback masih terbuka. Tidak ada install, candidate, browser, service,
+config/env, payment, deploy, atau activation. P15/P16/P17c/P18 dan progres
+formal tetap **173/220 = 78.6%**.

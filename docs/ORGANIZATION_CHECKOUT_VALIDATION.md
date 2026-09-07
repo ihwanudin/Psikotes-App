@@ -1321,3 +1321,25 @@ dan review **PASS**. Successful `attest`/`load` tetap disabled sampai native
 authority/provider/cache/runtime diterima. Tidak ada instalasi, service,
 environment, network, deployment, atau activation. P15/P16/P17c/P18,
 progress/checklist, gates, serta payment tetap terbuka/tidak berubah/default OFF.
+
+## Checkpoint execution preparation I20–I22 — 2026-09-07
+
+Commit `ac59705` mem-pin dan menginspeksi archive wheel resmi
+`cryptography-50.0.1-cp311-abi3-win_amd64.whl` tanpa install/import. Exact
+download sementara cocok SHA-256
+`aed8db4f6d71c51efb89530e12d9464e7bf2923d46c3205dc794a2a93f8c0648`,
+120 entry ZIP/RECORD, PE AMD64, 19 import DLL, dan marker OpenSSL 4.0.2.
+Claim tetap `wheel-archive-only`; `cffi>=2.0.0` dan closure host belum diterima.
+
+Commit `57a1174` menambah sealed repository Ed25519 verifier dengan actual RFC
+8032 test dan threshold ADR-021. Commit `9ece3e9` menambah native Windows journal
+storage primitive pada temporary directory dengan exclusive/non-inheritable
+handles, WRITE_THROUGH/flush, CAS, path/identity recheck, corruption/replay
+refusal, serta primary-exception preserving cleanup. Journal hanya observation
+point-in-time dan tidak menerbitkan I18 atau bukti ACL/DPAPI/TPM/reboot/rollback.
+
+Commit `635d31d` mengikat exact tujuh file baru ke candidate manifest. Bukti root
+gabungan **122/122 tests**, focused packaging **1/1**, `py_compile`,
+`diff-check`, dan independent review **PASS** setelah P1/P2 ditutup. Tidak ada
+candidate/browser/install/service/config/env/payment/deploy/activation. P15,
+P16, P17c, P18 serta progres formal tetap **173/220 = 78.6%**.

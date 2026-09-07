@@ -1307,3 +1307,31 @@ Checkpoint ini packaging-only: candidate tidak dibangun dan tidak ada full
 suite, runtime, native evidence, dependency acquisition, atau activation.
 P15/P16/P17c/P18 tetap terbuka, gate/payment tetap default OFF, dan formal
 checklist/progress tidak berubah pada **173/220 = 78.6%**.
+
+### Checkpoint I20–I22 execution preparation — accepted `ac59705`, `57a1174`, `9ece3e9`, `635d31d`
+
+`ac59705` mem-pin archive resmi
+`cryptography-50.0.1-cp311-abi3-win_amd64.whl` (SHA-256
+`aed8db4f6d71c51efb89530e12d9464e7bf2923d46c3205dc794a2a93f8c0648`)
+dan memverifikasi 120 entry ZIP/RECORD, PE AMD64, import DLL, resource, lisensi,
+serta marker OpenSSL 4.0.2 tanpa install/import. Closure ini sengaja hanya
+`wheel-archive-only`; dependency eksternal `cffi>=2.0.0`, runtime host, dan
+acquisition trust masih terbuka.
+
+`57a1174` menerima repository Ed25519 verifier dengan exact domain message,
+threshold ordinary/asset/revocation/bootstrap/rotation, acquisition-bound
+sealed backend, replay-input refusal, dan mutation guards. Ambient
+`cryptography 46.0.6` hanya adapter tes non-authoritative. `9ece3e9` menerima
+native Windows append journal storage primitive pada temporary directory:
+exclusive non-inheritable handle, WRITE_THROUGH/flush, identity/path recheck,
+CAS/replay/corruption refusal, dan cleanup yang mempertahankan primary
+`BaseException`. Hasilnya hanya `nativeStorageOnly` point-in-time; tidak dapat
+menerbitkan I18 karena descriptor/token snapshot, ACL efficacy, DPAPI/TPM,
+reboot/power-loss/offline rollback tetap belum dibuktikan.
+
+`635d31d` memasukkan exact tujuh file I20–I22 ke required/allowed candidate
+manifest dengan omission, `.bak`, dan casefold refusal. Bukti root gabungan
+**122/122 tests**, focused packaging **1/1**, `py_compile`, `diff-check`, dan
+independent review **PASS** setelah seluruh P1/P2 ditutup. Tidak ada candidate,
+browser, install, config/env, service, payment, deploy, atau activation. P15,
+P16, P17c, P18 dan progres formal tetap **173/220 = 78.6%**.

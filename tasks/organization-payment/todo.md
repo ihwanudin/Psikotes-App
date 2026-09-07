@@ -1380,3 +1380,21 @@ Successful `attest`/`load` tetap disabled sampai native authority, provider,
 cache, dan runtime diterima. Tidak ada instalasi, service, environment, network,
 deployment, atau activation. Tidak ada progress/checklist/status yang berubah;
 P15/P16/P17c/P18, active gates, dan payment tetap terbuka/default OFF.
+
+### I20–I22 execution preparation accepted — runtime authority tetap terbuka
+
+- `ac59705`: exact `cryptography 50.0.1` Windows wheel archive lock dan
+  inspector, 10/10 focused; wheel tidak di-install/import dan closure eksternal
+  `cffi>=2.0.0` serta host runtime belum tertutup.
+- `57a1174`: sealed repository Ed25519 verifier, 16/16 focused; ambient package
+  hanya adapter tes non-authoritative dan hasil tidak memberi trust/freshness/
+  revocation/replay-consumption/admission.
+- `9ece3e9`: native Windows journal storage primitive, 10/10 focused; hasil
+  hanya `nativeStorageOnly`, bukan I18/ACL/DPAPI/TPM/reboot/rollback authority.
+- `635d31d`: exact tujuh file baru required/allowed dalam manifest, focused
+  1/1. Gabungan root **122/122**, `py_compile`, `diff-check`, dan independent
+  review **PASS** setelah P1/P2 ditutup.
+
+Tidak ada checklist/progress/gate yang berubah. P15/P16/P17c/P18, payment,
+candidate/browser, config/env, service, deploy, dan activation tetap terbuka/
+default OFF; progres formal tetap **173/220 = 78.6%**.
