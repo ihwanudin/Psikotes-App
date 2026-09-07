@@ -5,6 +5,7 @@ import importlib.util
 import io
 import gc
 import unittest
+import weakref
 from types import MappingProxyType
 
 
@@ -479,6 +480,35 @@ class HostClosureTest(unittest.TestCase):
             self.assertEqual(calls, [])
         finally:
             token_type.__hash__ = original
+
+    def test_registry_pop_replacement_refuses_without_executing(self):
+        capability = host.seal_adapter(self.adapter)
+        original = weakref.WeakKeyDictionary.__dict__["pop"]
+        calls = []
+        try:
+            weakref.WeakKeyDictionary.pop = lambda *_args: calls.append(True) or None
+            self.refused(lambda: host.observe(capability, "C:/isolated", self.manifest))
+            self.assertEqual(calls, [])
+        finally:
+            weakref.WeakKeyDictionary.pop = original
+        self.refused(lambda: host.observe(capability, "C:/isolated", self.manifest))
+
+    def test_adapter_capability_cycles_are_reclaimed(self):
+        references = []
+        for _index in range(host.MAX_CAPABILITIES):
+            files, identities, imports, _manifest = fixture()
+            adapter = FakeAdapter(files, identities, imports)
+            capability = host.seal_adapter(adapter)
+            adapter.retained_capability = capability
+            references.append((weakref.ref(adapter), weakref.ref(capability)))
+            del capability, adapter
+        gc.collect()
+        self.assertTrue(all(adapter() is None and capability() is None
+                            for adapter, capability in references))
+        capability = host.seal_adapter(self.adapter)
+        self.assertTrue(host.observe(capability, "C:/isolated", self.manifest)[
+            "hostClosureObservationOnly"
+        ])
 
     def test_pe_import_names_are_unique_ascii_basenames(self):
         path = "cryptography/hazmat/bindings/_rust.pyd"

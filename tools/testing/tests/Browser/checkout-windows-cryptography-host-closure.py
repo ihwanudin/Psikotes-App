@@ -85,7 +85,11 @@ def _make_api():
     capability_type = CapabilityToken
     token_hash = CapabilityToken.__dict__["__hash__"]
     token_eq = CapabilityToken.__dict__["__eq__"]
-    capabilities = weakref.WeakKeyDictionary()
+    weakref_ref = weakref.ref
+    weak_dictionary_type = weakref.WeakKeyDictionary
+    weak_dictionary_pop = weak_dictionary_type.__dict__["pop"]
+    weak_dictionary_pop_state = None
+    capabilities = []
     maximum_file = MAX_FILE_BYTES
     maximum_files = MAX_FILES
     maximum_path = MAX_PATH_BYTES
@@ -134,6 +138,7 @@ def _make_api():
         (base64_module, "urlsafe_b64encode", state(b64encode)),
         (re_module, "fullmatch", state(fullmatch)),
     )
+    weak_dictionary_pop_state = state(weak_dictionary_pop)
     global_pins = (
         ("MAX_FILE_BYTES", maximum_file), ("MAX_FILES", maximum_files),
         ("MAX_PATH_BYTES", maximum_path), ("_PACKAGES", packages),
@@ -156,6 +161,19 @@ def _make_api():
                 raise ValueError("authority")
         if types_module.FunctionType is not function_type:
             raise ValueError("dependency")
+        if weakref.ref is not weakref_ref \
+                or weakref.WeakKeyDictionary is not weak_dictionary_type \
+                or weak_dictionary_type.__dict__.get("pop") is not weak_dictionary_pop:
+            raise ValueError("dependency")
+        observed_pop = state(weak_dictionary_pop)
+        if observed_pop[2] is not weak_dictionary_pop_state[2] \
+                or observed_pop[3] is not weak_dictionary_pop_state[3] \
+                or observed_pop[4] != weak_dictionary_pop_state[4] \
+                or observed_pop[5] is not weak_dictionary_pop_state[5] \
+                or observed_pop[6] != weak_dictionary_pop_state[6] \
+                or observed_pop[7] is not weak_dictionary_pop_state[7] \
+                or observed_pop[8] is not weak_dictionary_pop_state[8]:
+            raise ValueError("dependency")
         for owner, name, expected in dependency_pins:
             current = getattr(owner, name, None)
             if current is not expected[0] or type(current) is not expected[1]:
@@ -176,7 +194,10 @@ def _make_api():
         return observed
 
     def adapter_guard(sealed):
-        adapter, expected_cls, mro, methods = sealed
+        adapter_reference, expected_cls, mro, methods = sealed
+        adapter = adapter_reference()
+        if adapter is None:
+            raise ValueError("adapter")
         cls = type(adapter)
         if cls is not expected_cls or type(cls) is not type or cls.__mro__ is not mro:
             raise ValueError("adapter")
@@ -347,7 +368,9 @@ def _make_api():
                 raise ValueError("record")
 
     def cleanup(sealed, handle):
-        adapter = sealed[0]
+        adapter = sealed[0]()
+        if adapter is None:
+            raise ValueError("adapter")
         callback = callback_for(sealed, "close")
         primary = None
         try:
@@ -521,6 +544,10 @@ def _make_api():
 
     def seal(adapter):
         def operation():
+            capabilities[:] = [
+                entry for entry in capabilities
+                if entry[0]() is not None and entry[1][0]() is not None
+            ]
             if len(capabilities) >= maximum_capabilities:
                 raise ValueError("capability")
             cls = type(adapter)
@@ -533,7 +560,8 @@ def _make_api():
                     raise ValueError("adapter")
                 methods.append((name, function, method_state(function)))
             capability = capability_type()
-            capabilities[capability] = (adapter, cls, cls.__mro__, tuple(methods))
+            sealed = (weakref_ref(adapter), cls, cls.__mro__, tuple(methods))
+            capabilities.append((weakref_ref(capability), sealed))
             return capability
         return invoke(operation)
 
@@ -542,9 +570,18 @@ def _make_api():
                 or capability_type.__dict__.get("__hash__") is not token_hash \
                 or capability_type.__dict__.get("__eq__") is not token_eq:
             raise refusal("host_closure")
-        sealed = capabilities.pop(capability, None)
+        sealed = None
+        for index, (capability_reference, candidate) in enumerate(capabilities):
+            if capability_reference() is capability:
+                sealed = candidate
+                capabilities.pop(index)
+                break
         if sealed is None:
             raise refusal("host_closure")
+        try:
+            authority()
+        except Exception:
+            raise refusal("host_closure") from None
         return invoke(lambda: inspect(sealed, root, manifest))
 
     return seal, public_observe
