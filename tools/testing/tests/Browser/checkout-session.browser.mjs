@@ -783,7 +783,7 @@ async (page) => {
     assert(exchangePosts === 9, 'Browser did not exercise the nine preceding cross-site POSTs')
 
     // Native logout must preserve real Laravel login, reject hostile forms, and audit exactly once.
-    const noJs = await page.context().browser().newContext({ javaScriptEnabled: false, ignoreHTTPSErrors: true, serviceWorkers: 'block' })
+    const noJs = await page.context().browser().newContext({ javaScriptEnabled: false, ignoreHTTPSErrors: false, serviceWorkers: 'block' })
     let hostileForms = 0
     let opaqueNetworkBlocks = 0
     try {

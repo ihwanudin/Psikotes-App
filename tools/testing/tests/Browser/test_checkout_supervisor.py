@@ -2350,6 +2350,15 @@ class SupervisorTests(unittest.TestCase):
                 run._run_code = lambda code, left, result=result: result
                 run.smoke_request(3)
 
+    def test_participant_driver_never_bypasses_tls_errors_for_secondary_context(self):
+        driver = (Path(__file__).with_name("checkout-session.browser.mjs")).read_text("utf-8")
+        self.assertNotIn("ignoreHTTPSErrors: true", driver)
+        self.assertEqual(driver.count("ignoreHTTPSErrors: false"), 1)
+        self.assertIn(
+            "newContext({ javaScriptEnabled: false, ignoreHTTPSErrors: false, serviceWorkers: 'block' })",
+            driver,
+        )
+
     def test_full_matrix_result_requires_exact_ordered_canonical_envelope(self):
         driver = (Path(__file__).with_name("checkout-session.browser.mjs")).read_text("utf-8")
         def assert_exact_driver_return(source):
