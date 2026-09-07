@@ -1335,3 +1335,16 @@ manifest dengan omission, `.bak`, dan casefold refusal. Bukti root gabungan
 independent review **PASS** setelah seluruh P1/P2 ditutup. Tidak ada candidate,
 browser, install, config/env, service, payment, deploy, atau activation. P15,
 P16, P17c, P18 dan progres formal tetap **173/220 = 78.6%**.
+
+### Checkpoint I23 cryptography host observation — accepted sebagai chain `c3ed244` -> `82765ae` -> `59af0dd` -> `f3ee01f`
+
+Tiga commit pertama masih memerlukan koreksi P1/P2; hanya chain lengkap sampai
+`f3ee01f` yang diterima bersama. Hasil final **22/22 tests**, `py_compile`,
+`diff-check`, dan independent review **PASS** tanpa P1/P2 tersisa.
+
+Scope tetap supplied-manifest/adapter observation only. Ini bukan bukti archive
+atau acquisition yang accepted/authenticated, native efficacy, identitas system
+DLL aktual, resolusi API-set, dynamic import/load, atau admission. Tidak ada
+install, native execution, browser, deploy, provider, atau activation. P15,
+P16, P17c, dan P18 tetap unchecked; checklist serta progres tidak berubah pada
+**173/220 = 78.6%**, dan seluruh gate/payment tetap default OFF.

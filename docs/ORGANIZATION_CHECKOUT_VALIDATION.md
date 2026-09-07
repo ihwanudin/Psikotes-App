@@ -1388,3 +1388,20 @@ loopback branch-only dan UI peserta pada secure candidate ADR-021/022 belum
 dijalankan. Karena itu P15, P16, P17c, P18, checklist/progress, serta seluruh
 gate/payment tetap terbuka dan default OFF pada **173/220 = 78.6%**. Tidak ada
 deploy, provider nyata, outbound nyata, atau aktivasi source/gate/writer.
+
+## Checkpoint observasi host cryptography I23 — 2026-09-07
+
+Rangkaian commit `c3ed244` -> `82765ae` -> `59af0dd` -> `f3ee01f` diterima
+sebagai satu kesatuan setelah tiga commit pertama masih memerlukan koreksi
+P1/P2. Commit terakhir menutup capability-registry isolation; hasil final lulus
+**22/22 tests**, `py_compile`, `diff-check`, serta review independen **PASS**
+tanpa P1/P2 tersisa.
+
+Bukti ini hanya observasi supplied-manifest melalui adapter yang disegel pada
+boundary sintetis: bytes, file identity, PE metadata, inventory, dan digest
+dibandingkan pada sampled boundaries. Bukti ini bukan archive/acquisition yang
+telah diterima atau diautentikasi dan tidak membuktikan native adapter efficacy,
+identitas system DLL aktual, resolusi API-set, dynamic import/load, maupun
+admission. Tidak ada install, native execution, browser, provider, deploy, atau
+aktivasi. P15/P16/P17c/P18 tetap unchecked, progres formal tetap **173/220 =
+78.6%**, dan seluruh gate/payment tetap default OFF.
