@@ -52,7 +52,10 @@ final class CheckoutPrivacyHeadersTest extends OrganizationPaymentTestCase
             'allowed_payer_types' => ['self', 'organization']]);
         $package = TestPackage::create(['code' => 'PRIVATE_PACKAGE', 'name' => 'Synthetic Privacy',
             'amount' => 1000, 'currency' => 'IDR', 'is_active' => true]);
-        $package->items()->create(['test_type' => 'ist', 'sort_order' => 1]);
+        $package->items()->createMany([
+            ['test_type' => 'ist', 'sort_order' => 1],
+            ['test_type' => 'dass21', 'sort_order' => 2],
+        ]);
         config()->set('assessment_integration.credentials.privacy-test', self::SECRET);
         config()->set('assessment_integration.checkout.enabled', true);
         // Explicit test-only order is part of the boundary contract. Neither route is registered in production.
