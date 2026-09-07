@@ -15,6 +15,7 @@ use App\Services\Notifications\N8nNotifier;
 use App\Services\Payments\XenditProvider;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -42,6 +43,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Model::preventLazyLoading($this->app->environment('testing'));
+
         $this->configureDefaults();
 
         if (config('app.env') !== 'production') {
