@@ -3032,3 +3032,17 @@ cleanup/lineage masih unprovable; candidate invalid tidak reusable/rearmable.
 Native provider, sealed input authority, dan browser P17c tetap blocker. Tidak
 ada candidate/browser/server/database/native/provider/env/network/deploy atau
 kill. Checklist/progress serta P15/P16/P17c/P18 tidak berubah/default OFF.
+
+### Checkpoint ADR authority persiapan release/TLS — Proposed `e550227`
+
+`e550227` menambahkan ADR-021 dan ADR-022 berstatus **Proposed** untuk desain
+authority persiapan release kandidat dan material TLS sintetis. Independent
+review **PASS** tanpa P1/P2. Ini hanya keputusan desain: tidak ada implementasi,
+runtime, certificate/key generation, candidate build, deployment, atau
+activation yang diterima.
+
+Signer/trust roots, role separation, revocation authority/storage/clock, TLS
+issuer, browser trust, private-key custody, consumer mechanism, dan runtime
+budget tetap memerlukan keputusan pengguna. P15/P16/P17c/P18 tetap terbuka,
+gate tetap default OFF, serta checklist/progress tidak berubah pada
+**173/220 = 78.6%**.

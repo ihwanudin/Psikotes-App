@@ -1089,3 +1089,17 @@ atau di-rearm. Native provider, sealed input authority, dan browser P17c tetap
 blocker. Tidak ada candidate/browser/server/database/native/provider/env/network/
 deploy atau kill. Checklist/progress dan P15/P16/P17c/P18 tidak berubah/default
 OFF.
+
+### Checkpoint authority persiapan release dan TLS sintetis — Proposed `e550227`
+
+Commit `e550227` merekam ADR-021 dan ADR-022 sebagai desain **Proposed** untuk
+authority persiapan release kandidat serta material TLS sintetis. Independent
+review **PASS** tanpa P1/P2. Checkpoint ini design-only: tidak menerima
+implementasi atau runtime, tidak membuat certificate/key maupun candidate, dan
+tidak mengizinkan deployment atau activation.
+
+Keputusan pengguna masih diperlukan untuk signer/trust roots, pemisahan role,
+revocation authority beserta storage dan clock, serta TLS issuer, browser trust,
+private-key custody, consumer mechanism, dan runtime budget. P15/P16/P17c/P18
+tetap terbuka, seluruh gate tetap default OFF, dan checklist/progress tidak
+berubah pada **173/220 = 78.6%**.
