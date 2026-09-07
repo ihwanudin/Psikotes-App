@@ -1,8 +1,10 @@
 /**
  * Static, report-only inventory of the repository's current cache and unique
- * job lock declarations. It reads a fixed allowlist and never reads .env,
- * vendor, generated output, or a live cache. The result is not evidence of
- * Redis availability, hit rates, invalidation behavior, or lock efficacy.
+ * job lock declarations. It is restricted to a fixed allowlist in a trusted,
+ * quiescent working tree and never intentionally selects .env, vendor,
+ * generated output, or a live cache. Path checks are defense in depth, not a
+ * race-proof filesystem authority. The result is not evidence of Redis
+ * availability, hit rates, invalidation behavior, or lock efficacy.
  */
 
 import { lstat, readFile, realpath, stat } from 'node:fs/promises';
@@ -71,50 +73,89 @@ function sameIdentity(left, right) {
     );
 }
 
-function stripComments(source) {
-    let output = '';
+function scanSource(source) {
+    let code = '';
+    const tokens = [];
     let index = 0;
-    let quote = null;
 
     while (index < source.length) {
         const current = source[index];
         const next = source[index + 1];
 
-        if (quote !== null) {
-            output += current;
-
-            if (current === '\\') {
-                if (index + 1 >= source.length) {
-                    refuse();
-                }
-
-                output += source[index + 1];
-                index += 2;
-                continue;
-            }
-
-            if (current === quote) {
-                quote = null;
-            }
-
-            index += 1;
-            continue;
+        if (source.startsWith('<<<', index)) {
+            refuse();
         }
 
-        if (current === "'" || current === '"') {
-            quote = current;
-            output += current;
+        if (current === "'" || current === '"' || current === '`') {
+            const quote = current;
+            let value = '';
+            let simple = quote !== '`';
+            let closed = false;
+            code += ' ';
             index += 1;
+
+            while (index < source.length) {
+                const character = source[index];
+
+                if (character === '\n' || character === '\r') {
+                    simple = false;
+                    code += character;
+                    index += 1;
+                    continue;
+                }
+
+                code += ' ';
+
+                if (character === quote) {
+                    closed = true;
+                    index += 1;
+                    break;
+                }
+
+                if (character === '\\') {
+                    if (index + 1 >= source.length) {
+                        refuse();
+                    }
+
+                    const escaped = source[index + 1];
+                    code +=
+                        escaped === '\n' || escaped === '\r' ? escaped : ' ';
+
+                    if (
+                        quote === "'" &&
+                        (escaped === "'" || escaped === '\\')
+                    ) {
+                        value += escaped;
+                    } else {
+                        simple = false;
+                    }
+
+                    index += 2;
+                    continue;
+                }
+
+                if (quote === '"' && character === '$') {
+                    simple = false;
+                }
+
+                value += character;
+                index += 1;
+            }
+
+            if (!closed) {
+                refuse();
+            }
+
+            tokens.push({ kind: 'string', value: simple ? value : null });
             continue;
         }
 
         if (current === '/' && next === '/') {
             while (index < source.length && source[index] !== '\n') {
+                code += ' ';
                 index += 1;
             }
 
-            output += '\n';
-            index += 1;
             continue;
         }
 
@@ -125,30 +166,206 @@ function stripComments(source) {
                 refuse();
             }
 
-            output += ' ';
-            index = end + 2;
+            while (index < end + 2) {
+                code += source[index] === '\n' ? '\n' : ' ';
+                index += 1;
+            }
+
             continue;
         }
 
         if (current === '#' && next !== '[') {
             while (index < source.length && source[index] !== '\n') {
+                code += ' ';
                 index += 1;
             }
 
-            output += '\n';
-            index += 1;
             continue;
         }
 
-        output += current;
+        if (/[A-Za-z_]/.test(current)) {
+            let end = index + 1;
+
+            while (end < source.length && /[A-Za-z0-9_\\]/.test(source[end])) {
+                end += 1;
+            }
+
+            const value = source.slice(index, end);
+            tokens.push({ kind: 'identifier', value });
+            code += value;
+            index = end;
+            continue;
+        }
+
+        if (/[0-9]/.test(current)) {
+            let end = index + 1;
+
+            while (end < source.length && /[0-9]/.test(source[end])) {
+                end += 1;
+            }
+
+            const value = source.slice(index, end);
+            tokens.push({ kind: 'number', value });
+            code += value;
+            index = end;
+            continue;
+        }
+
+        const operator = source.startsWith('===', index)
+            ? '==='
+            : source.startsWith('=>', index)
+              ? '=>'
+              : null;
+
+        if (operator !== null) {
+            tokens.push({ kind: 'symbol', value: operator });
+            code += operator;
+            index += operator.length;
+            continue;
+        }
+
+        if ('()[],.'.includes(current)) {
+            tokens.push({ kind: 'symbol', value: current });
+        }
+
+        code += current;
         index += 1;
     }
 
-    if (quote !== null) {
+    return { code, tokens };
+}
+
+function tokenIs(token, kind, value) {
+    return token?.kind === kind && token.value === value;
+}
+
+function keyedValues(tokens, key, topLevelOnly = true) {
+    const values = [];
+    let depth = 0;
+
+    for (let index = 0; index + 1 < tokens.length; index += 1) {
+        if (tokenIs(tokens[index], 'symbol', '[')) {
+            depth += 1;
+            continue;
+        }
+
+        if (tokenIs(tokens[index], 'symbol', ']')) {
+            depth -= 1;
+
+            if (depth < 0) {
+                refuse();
+            }
+
+            continue;
+        }
+
+        if (
+            (!topLevelOnly || depth === 0) &&
+            tokenIs(tokens[index], 'string', key) &&
+            tokenIs(tokens[index + 1], 'symbol', '=>')
+        ) {
+            values.push(index + 2);
+        }
+    }
+
+    return values;
+}
+
+function exactlyOneKey(tokens, key, topLevelOnly = true) {
+    const values = keyedValues(tokens, key, topLevelOnly);
+
+    if (values.length !== 1) {
         refuse();
     }
 
-    return output;
+    return values[0];
+}
+
+function returnedArray(tokens) {
+    const starts = [];
+
+    for (let index = 0; index + 1 < tokens.length; index += 1) {
+        if (
+            tokenIs(tokens[index], 'identifier', 'return') &&
+            tokenIs(tokens[index + 1], 'symbol', '[')
+        ) {
+            starts.push(index + 1);
+        }
+    }
+
+    if (starts.length !== 1) {
+        refuse();
+    }
+
+    let depth = 0;
+
+    for (let index = starts[0]; index < tokens.length; index += 1) {
+        if (tokenIs(tokens[index], 'symbol', '[')) {
+            depth += 1;
+        } else if (tokenIs(tokens[index], 'symbol', ']')) {
+            depth -= 1;
+
+            if (depth === 0) {
+                return tokens.slice(starts[0] + 1, index);
+            }
+        }
+    }
+
+    refuse();
+}
+
+function arrayForKey(tokens, key) {
+    const start = exactlyOneKey(tokens, key);
+
+    if (!tokenIs(tokens[start], 'symbol', '[')) {
+        refuse();
+    }
+
+    let depth = 0;
+
+    for (let index = start; index < tokens.length; index += 1) {
+        if (tokenIs(tokens[index], 'symbol', '[')) {
+            depth += 1;
+        } else if (tokenIs(tokens[index], 'symbol', ']')) {
+            depth -= 1;
+
+            if (depth === 0) {
+                return tokens.slice(start + 1, index);
+            }
+        }
+    }
+
+    refuse();
+}
+
+function requireEnvKey(tokens, key, environment) {
+    const start = exactlyOneKey(tokens, key);
+
+    if (
+        !tokenIs(tokens[start], 'identifier', 'env') ||
+        !tokenIs(tokens[start + 1], 'symbol', '(') ||
+        !tokenIs(tokens[start + 2], 'string', environment) ||
+        (!tokenIs(tokens[start + 3], 'symbol', ',') &&
+            !tokenIs(tokens[start + 3], 'symbol', ')'))
+    ) {
+        refuse();
+    }
+}
+
+function requireStringKey(tokens, key, expected) {
+    const start = exactlyOneKey(tokens, key);
+
+    if (!tokenIs(tokens[start], 'string', expected)) {
+        refuse();
+    }
+}
+
+function requireFalseKey(tokens, key) {
+    const start = exactlyOneKey(tokens, key);
+
+    if (!tokenIs(tokens[start], 'identifier', 'false')) {
+        refuse();
+    }
 }
 
 function matches(source, pattern) {
@@ -228,52 +445,45 @@ function uniqueJob(source, path, expectedClass, expectedTtl) {
     };
 }
 
-function validateProductionRequirement(source) {
-    exactlyOne(
-        source,
-        /['"]CACHE_STORE_REDIS['"]\s*=>\s*config\(\s*['"]cache\.default['"]\s*\)\s*===\s*['"]redis['"]/g,
-    );
-}
+function validateProductionRequirement(tokens) {
+    const start = exactlyOneKey(tokens, 'CACHE_STORE_REDIS', false);
 
-function validateCacheConfig(source) {
-    exactlyOne(
-        source,
-        /['"]default['"]\s*=>\s*env\(\s*['"]CACHE_STORE['"]\s*,/g,
-    );
-    exactlyOne(
-        source,
-        /['"]prefix['"]\s*=>\s*env\(\s*['"]CACHE_PREFIX['"]\s*,/g,
-    );
-    exactlyOne(source, /['"]serializable_classes['"]\s*=>\s*false\b/g);
-
-    for (const [store, driver] of [
-        ['database', 'database'],
-        ['redis', 'redis'],
-    ]) {
-        exactlyOne(
-            source,
-            new RegExp(
-                `['"]${store}['"]\\s*=>\\s*\\[[\\s\\S]{0,700}?['"]driver['"]\\s*=>\\s*['"]${driver}['"]`,
-                'g',
-            ),
-        );
-    }
-
-    for (const environment of [
-        'DB_CACHE_LOCK_CONNECTION',
-        'DB_CACHE_LOCK_TABLE',
-        'REDIS_CACHE_CONNECTION',
-        'REDIS_CACHE_LOCK_CONNECTION',
-    ]) {
-        exactlyOne(source, new RegExp(`env\\(\\s*['"]${environment}['"]`, 'g'));
+    if (
+        !tokenIs(tokens[start], 'identifier', 'config') ||
+        !tokenIs(tokens[start + 1], 'symbol', '(') ||
+        !tokenIs(tokens[start + 2], 'string', 'cache.default') ||
+        !tokenIs(tokens[start + 3], 'symbol', ')') ||
+        !tokenIs(tokens[start + 4], 'symbol', '===') ||
+        !tokenIs(tokens[start + 5], 'string', 'redis')
+    ) {
+        refuse();
     }
 }
 
-function validateDatabaseConfig(source) {
-    exactlyOne(
-        source,
-        /['"]cache['"]\s*=>\s*\[[\s\S]{0,1200}?['"]database['"]\s*=>\s*env\(\s*['"]REDIS_CACHE_DB['"]\s*,/g,
-    );
+function validateCacheConfig(tokens) {
+    const root = returnedArray(tokens);
+
+    requireEnvKey(root, 'default', 'CACHE_STORE');
+    requireEnvKey(root, 'prefix', 'CACHE_PREFIX');
+    requireFalseKey(root, 'serializable_classes');
+
+    const stores = arrayForKey(root, 'stores');
+    const database = arrayForKey(stores, 'database');
+    const redis = arrayForKey(stores, 'redis');
+
+    requireStringKey(database, 'driver', 'database');
+    requireEnvKey(database, 'lock_connection', 'DB_CACHE_LOCK_CONNECTION');
+    requireEnvKey(database, 'lock_table', 'DB_CACHE_LOCK_TABLE');
+    requireStringKey(redis, 'driver', 'redis');
+    requireEnvKey(redis, 'connection', 'REDIS_CACHE_CONNECTION');
+    requireEnvKey(redis, 'lock_connection', 'REDIS_CACHE_LOCK_CONNECTION');
+}
+
+function validateDatabaseConfig(tokens) {
+    const redis = arrayForKey(returnedArray(tokens), 'redis');
+    const cache = arrayForKey(redis, 'cache');
+
+    requireEnvKey(cache, 'database', 'REDIS_CACHE_DB');
 }
 
 async function readAllowlisted(root, relativePath, rootIdentity, identities) {
@@ -338,7 +548,7 @@ async function readAllowlisted(root, relativePath, rootIdentity, identities) {
         refuse();
     }
 
-    return { source: stripComments(source), size: bytes.length };
+    return { scanned: scanSource(source), size: bytes.length };
 }
 
 export async function inspectCacheLockInventory(sourceRoot) {
@@ -391,7 +601,7 @@ export async function inspectCacheLockInventory(sourceRoot) {
                 refuse();
             }
 
-            sources.set(relativePath, item.source);
+            sources.set(relativePath, item.scanned);
         }
 
         const cachePath =
@@ -402,7 +612,8 @@ export async function inspectCacheLockInventory(sourceRoot) {
             'app/Jobs/DeliverOutboxMessage.php',
         ]);
 
-        for (const [relativePath, source] of sources) {
+        for (const [relativePath, scanned] of sources) {
+            const source = scanned.code;
             const cacheReferences = matches(
                 source,
                 /\bCache\s*::\s*[A-Za-z_][A-Za-z0-9_]*\s*\(/g,
@@ -422,25 +633,25 @@ export async function inspectCacheLockInventory(sourceRoot) {
         }
 
         const cacheFacadeOperations = [
-            cacheOperation(sources.get(cachePath), cachePath),
+            cacheOperation(sources.get(cachePath).code, cachePath),
         ];
         const uniqueJobLocks = [
             uniqueJob(
                 sources.get(
                     'app/Jobs/DispatchGenericAssessmentResultCallback.php',
-                ),
+                ).code,
                 'app/Jobs/DispatchGenericAssessmentResultCallback.php',
                 'DispatchGenericAssessmentResultCallback',
                 300,
             ),
             uniqueJob(
-                sources.get('app/Jobs/DeliverIntegrationCallbackJob.php'),
+                sources.get('app/Jobs/DeliverIntegrationCallbackJob.php').code,
                 'app/Jobs/DeliverIntegrationCallbackJob.php',
                 'DeliverIntegrationCallbackJob',
                 900,
             ),
             uniqueJob(
-                sources.get('app/Jobs/DeliverOutboxMessage.php'),
+                sources.get('app/Jobs/DeliverOutboxMessage.php').code,
                 'app/Jobs/DeliverOutboxMessage.php',
                 'DeliverOutboxMessage',
                 900,
@@ -448,10 +659,10 @@ export async function inspectCacheLockInventory(sourceRoot) {
         ];
 
         validateProductionRequirement(
-            sources.get('app/Providers/AppServiceProvider.php'),
+            sources.get('app/Providers/AppServiceProvider.php').tokens,
         );
-        validateCacheConfig(sources.get('config/cache.php'));
-        validateDatabaseConfig(sources.get('config/database.php'));
+        validateCacheConfig(sources.get('config/cache.php').tokens);
+        validateDatabaseConfig(sources.get('config/database.php').tokens);
 
         return freeze({
             version: 1,
@@ -469,6 +680,8 @@ export async function inspectCacheLockInventory(sourceRoot) {
             },
             limitations: [
                 'allowlisted_source_only',
+                'trusted_quiescent_working_tree_only',
+                'concurrent_filesystem_mutation_or_reparse_race_not_excluded',
                 'no_runtime_store_proof',
                 'no_hit_rate_proof',
                 'no_invalidation_proof',

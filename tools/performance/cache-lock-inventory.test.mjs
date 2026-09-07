@@ -146,6 +146,8 @@ await withFixture(async (root) => {
         },
         limitations: [
             'allowlisted_source_only',
+            'trusted_quiescent_working_tree_only',
+            'concurrent_filesystem_mutation_or_reparse_race_not_excluded',
             'no_runtime_store_proof',
             'no_hit_rate_proof',
             'no_invalidation_proof',
@@ -167,6 +169,14 @@ for (const [, mutate] of [
         'extra cache operation',
         (source) => `${source}\nCache::get('not-a-secret');`,
     ],
+    [
+        'cache operation only in a string decoy',
+        (source) =>
+            source.replace(
+                "if (! Cache::add($signalKey.':logged', true, 70)) { return; }",
+                "$decoy = 'Cache::add($signalKey, true, 70)';",
+            ),
+    ],
 ]) {
     await withFixture(async (root) => {
         const target = join(
@@ -185,6 +195,20 @@ for (const [, relative, mutate] of [
         'missing unique job',
         'app/Jobs/DeliverOutboxMessage.php',
         (source) => source.replace('ShouldBeUnique, ', ''),
+    ],
+    [
+        'unique job declaration only in a string decoy',
+        'app/Jobs/DeliverOutboxMessage.php',
+        (source) =>
+            source
+                .replace(
+                    'final class DeliverOutboxMessage implements ShouldBeUnique, ShouldQueue',
+                    'final class DeliverOutboxMessage',
+                )
+                .replace(
+                    '{\n public function uniqueId',
+                    "{\n private const DECOY = 'class DeliverOutboxMessage implements ShouldBeUnique {';\n public function uniqueId",
+                ),
     ],
     [
         'unique ttl drift',
@@ -216,6 +240,15 @@ for (const [, relative, mutate] of [
         'prefix declaration drift',
         'config/cache.php',
         (source) => source.replace("env('CACHE_PREFIX'", "env('OTHER_PREFIX'"),
+    ],
+    [
+        'cache default declaration only in a string decoy',
+        'config/cache.php',
+        (source) =>
+            source.replace(
+                "'default' => env('CACHE_STORE', 'database'),",
+                "'other' => \"'default' => env('CACHE_STORE', 'database'),\",",
+            ),
     ],
     [
         'database declaration drift',
