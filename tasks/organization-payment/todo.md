@@ -604,7 +604,8 @@ provider atau menjadi authority sampai acquisition/validator berikutnya direview
 
 **Files likely touched:** `app/Http/Controllers/IntegratedCheckoutController.php`, `app/Http/Requests/ConsumeCheckoutHandoffRequest.php`, `app/Http/Middleware/AuthenticateCheckoutSession.php`, `routes/web.php`, `tests/Feature/Integrations/CheckoutSummaryTest.php`.
 
-**Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Integrations/CheckoutSummaryTest.php`
+**Verification:**
+`php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Integrations/CheckoutSessionEstablishmentTest.php tests/Feature/Integrations/CheckoutSessionLifecycleTest.php tests/Feature/Integrations/CheckoutSessionHttpTest.php tests/Feature/Integrations/CheckoutSummaryComposerTest.php tests/Feature/Integrations/CheckoutSummaryHttpTest.php tests/Feature/Integrations/CheckoutSummaryLifecycleTest.php tests/Feature/Integrations/CheckoutPrivacyHeadersTest.php tests/Feature/Integrations/CheckoutProductionWiringTest.php`
 
 **Bukti core lokal:** sesi/cookie/CSRF, proyeksi ringkasan milik attempt, privacy
 headers, lifecycle, dan route canonical default-off sudah terintegrasi. Acceptance
@@ -645,7 +646,11 @@ acceptance tidak ditutup sebelum browser/checkpoint.
 
 **Files likely touched:** `resources/js/pages/integrated-checkout.tsx`, `resources/js/types/integrated-checkout.ts`, `app/Http/Controllers/IntegratedCheckoutController.php`, `tests/Feature/Integrations/IntegratedCheckoutPageTest.php`.
 
-**Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Integrations/IntegratedCheckoutPageTest.php`
+**Verification:**
+`php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Integrations/CheckoutProductionWiringTest.php tests/Feature/Integrations/CheckoutMandatoryDassHttpPresentationTest.php tests/Feature/Integrations/CheckoutPaymentActionProjectorTest.php tests/Feature/Integrations/CheckoutPaymentHttpTest.php tests/Feature/Integrations/CheckoutPaymentHttpBoundaryTest.php tests/Feature/Integrations/CheckoutZeroPriceSettlementTest.php`
+`node --test tests/Frontend/IntegratedCheckout/checkout-summary-v2.test.mjs tests/Frontend/IntegratedCheckout/confirmation-transport.test.mjs tests/Frontend/IntegratedCheckout/payment-transport.test.mjs`
+`php tests/Frontend/IntegratedCheckout/summary-render.test.php`
+`php tests/Frontend/IntegratedCheckout/summary-mandatory-dass-render.test.php`
 
 **Bukti parsial lokal:** Blade branded/no-JS, form injected fail-closed, transport
 JSON same-origin, session-authorized writer self/gratis, proyeksi URL persisted,
