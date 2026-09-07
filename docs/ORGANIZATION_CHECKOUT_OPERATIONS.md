@@ -329,6 +329,23 @@ Menonaktifkan checkout setelah cutover dapat membuat layanan sementara tidak
 tersedia; itu perilaku yang benar. Availability tidak boleh dipulihkan dengan
 fallback legacy yang dapat menggandakan attempt atau tagihan.
 
+## Catatan bukti runtime parsial P17c cabang
+
+Bukti awal commit `22a15a1` ditahan setelah review menemukan P1/P2 pada custody
+capability fixture dan scope postcondition. Koreksi `764e95b` lulus review
+independen tanpa P1/P2: run fresh profil consent lengkap menghasilkan tepat
+1 bill, 10/10 allocation settled, 10 READY, dan 20 entitlement; profil consent
+tertunda menghasilkan tepat 1 bill, 10/10 allocation settled, 9 READY, dan
+18 entitlement. Kedua profil lulus **9/9 postcondition** organization-scoped,
+mencatat zero capability/private-marker leak, menyelesaikan cleanup, dan
+melepaskan port loopback sesudah run.
+
+Ini hanya bukti HTTP loopback branch-only dengan provider/notifier fake dan data
+disposable. Secure participant candidate belum dijalankan, sehingga catatan ini
+tidak menutup P15, P16, P17c, atau P18 dan tidak mengizinkan aktivasi. Seluruh
+gate/payment tetap OFF; tidak ada provider nyata, deploy, source opt-in, atau
+outbound nyata.
+
 ## Gate serah-terima P18
 
 Dokumen ini tetap provisional sampai seluruh kondisi berikut dipenuhi:

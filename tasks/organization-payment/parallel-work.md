@@ -3357,11 +3357,19 @@ formal tetap **173/220 = 78.6%**.
 
 Root menghubungkan fixture browser cabang dengan claim, satu invoice
 `FakePaymentProvider`, finalizer, dan replay pada graph 10 pilihan yang sama.
-Profil consent lengkap serta 9/10, expired/reload, IDOR, stale preview,
-keyboard/responsive, secrecy report, dan regresi P12b lulus pada fixture
-disposable. Detail bukti ada di `docs/ORGANIZATION_CHECKOUT_VALIDATION.md`.
+Bukti awal `22a15a1` tidak diterima setelah review menemukan P1/P2 pada custody
+capability fixture dan scope postcondition. Koreksi `764e95b` menutup keduanya
+dan mendapat independent **PASS** tanpa P1/P2: run fresh lengkap menghasilkan
+tepat 1 bill, 10/10 settled, 10 READY/20 entitlement; run fresh consent tertunda
+menghasilkan tepat 1 bill, 10/10 settled, 9 READY/18 entitlement. Masing-masing
+lulus **9/9 postcondition** organization-scoped, zero capability/private-marker
+leak, cleanup selesai, dan port loopback bebas. Expired/reload, IDOR, stale
+preview, keyboard/responsive, secrecy report, serta regresi P12b tetap lulus
+pada fixture disposable. Detail bukti ada di
+`docs/ORGANIZATION_CHECKOUT_VALIDATION.md`.
 
 Ini tidak mengambil alih lane frontend/backend/tagihan lain dan tidak mengubah
-production source. UI peserta pada secure candidate ADR-021/022 masih residual;
-P15/P16/P17c/P18 tetap unchecked, progress **173/220 = 78.6%**, dan seluruh
-gate/payment tetap default OFF tanpa deploy/push/migrasi aktif.
+production source. Bukti masih HTTP loopback branch-only; UI peserta pada secure
+candidate ADR-021/022 masih residual. P15/P16/P17c/P18 tetap unchecked, progress
+**173/220 = 78.6%**, dan seluruh gate/payment tetap default OFF tanpa provider
+nyata, deploy, push, migrasi aktif, atau activation.
