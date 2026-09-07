@@ -2993,3 +2993,16 @@ Suite codec lokal gabungan **56/56**, `py_compile`, `diff-check`, dan review
 provider, cache, dan runtime. Tidak ada instalasi, service, environment, network,
 deployment, atau activation. P15/P16/P17c/P18, progress/checklist, gates, dan
 payment tetap terbuka/tidak berubah/default OFF.
+
+### Checkpoint statis confirmation P17c — accepted `81c6cc6`, `42201b0`, `b7a0e95`, `06864b3`
+
+Lane P17c menerima persiapan confirmation sintetis berikut: fixture/driver
+confirmation (`81c6cc6`), integrity closure dan parity route (`42201b0`), exact
+retensi audit (`b7a0e95`), serta regresi leap-day (`06864b3`). Bukti terbaru:
+self-test **75**, contract **31**, asset-pure **284**, integrity **52 cases / 161
+assertions**, confirmation transport **4/4**, dan supervisor exact envelope
+**1/1**.
+
+Acceptance ini statis/pure saja: tidak ada browser, native, provider, database,
+atau runtime. P15/P16/P17c/P18 tetap terbuka; checklist/progress tidak berubah,
+dan gate/fitur terkait tetap default OFF.

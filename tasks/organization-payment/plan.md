@@ -1049,3 +1049,17 @@ dan review **PASS**. Successful `attest`/`load` tetap disabled sampai native
 authority/provider/cache/runtime diterima. Tidak ada instalasi, service,
 environment, network, deployment, atau activation. Plan/progress/checklist,
 P15/P16/P17c/P18, gates, dan payment tetap terbuka/tidak berubah/default OFF.
+
+### Checkpoint statis confirmation P17c — accepted `81c6cc6`, `42201b0`, `b7a0e95`, `06864b3`
+
+Empat commit ini menyiapkan fixture dan driver confirmation sintetis, menutup
+integrity closure beserta parity route, memvalidasi envelope dan retensi audit
+`checkout.confirmed`, serta menambahkan regresi retensi leap-day. Bukti terbaru:
+self-test **75**, contract **31**, asset-pure **284**, integrity **52 cases / 161
+assertions**, confirmation transport **4/4**, dan supervisor exact envelope
+**1/1**.
+
+Checkpoint ini hanya bukti statis/pure. Tidak ada browser, native, provider,
+database, ataupun runtime yang dijalankan. P15/P16/P17c/P18 tetap terbuka;
+checklist/progress tidak berubah, dan seluruh gate/fitur terkait tetap default
+OFF.
