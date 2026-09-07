@@ -1198,3 +1198,22 @@ protected high-water, replay consumption, pembuatan destination, penerapan
 ACL, admission, atau runtime. P15/P16/P17c/P18 tetap terbuka, seluruh
 gate/payment tetap default OFF, dan formal checklist/progress tidak berubah
 pada **173/220 = 78.6%**.
+
+### Checkpoint I10 final composition-admission artifact — accepted `57215af`
+
+`57215af` menerima pure structural composition-admission artifact I10 dengan
+exact cross-binding release/source, vendor, asset review, tool/runtime closure,
+runtime-configuration policy, preparation authorization, preparation ACL
+evidence, public TLS certificate evidence, final manifest, dan
+`finalConfigBinding`. Artifact juga mengikat canonical destination/run
+identities, distinct `requestedGeneration`, lease ADR-016 identity/generation,
+serta exact ordered sebelas namespace revocation termasuk `preparation-acl`
+dan `tls-material`. Tiga P1 dan satu gap P2 review telah ditutup. Bukti focused
+**12/12**, regresi I1 **17/17**, `py_compile`, `diff-check`, dan independent
+review **PASS**.
+
+Codec ini structural-only. Tidak ada signature/trust verification, current
+freshness, protected high-water, replay consumption, TLS capability
+validation, actual admission, atau runtime authority. P15/P16/P17c/P18 tetap
+terbuka, gate/payment tetap default OFF, dan formal checklist/progress tidak
+berubah pada **173/220 = 78.6%**.
