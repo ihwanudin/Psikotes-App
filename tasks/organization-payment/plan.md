@@ -1295,3 +1295,15 @@ copy provenance, provider/native behavior, crypto/signature, trust/bootstrap,
 persistence/atomicity/rollback, replay consumption, admission, atau runtime
 authority. P15/P16/P17c/P18 tetap terbuka, gate/payment tetap default OFF, dan
 formal checklist/progress tidak berubah pada **173/220 = 78.6%**.
+
+### Checkpoint packaging codec I1–I19 — accepted `36eca53`
+
+`36eca53` menambahkan exact **38** path module/test I1–I19 yang committed ke
+required dan allowed candidate manifest. Regresi membuktikan omission, suffix
+`.bak`, dan collision casefold fail closed. Bukti focused **1/1**,
+`py_compile`, `diff-check`, dan independent review **PASS**.
+
+Checkpoint ini packaging-only: candidate tidak dibangun dan tidak ada full
+suite, runtime, native evidence, dependency acquisition, atau activation.
+P15/P16/P17c/P18 tetap terbuka, gate/payment tetap default OFF, dan formal
+checklist/progress tidak berubah pada **173/220 = 78.6%**.
