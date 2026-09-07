@@ -26,6 +26,23 @@ def digest(value):
     return hashlib.sha256(value).hexdigest()
 
 
+def static_fixed_dependencies(source, filename="authority.py"):
+    tree = ast.parse(source, filename)
+    calls = tuple(
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_load_fixed"
+    )
+    for call in calls:
+        if len(call.args) != 2 or call.keywords \
+                or any(not isinstance(argument, ast.Constant)
+                       or type(argument.value) is not str
+                       for argument in call.args):
+            raise AssertionError("unsupported direct _load_fixed call")
+    return tuple(call.args[1].value for call in calls)
+
+
 def static_config_keys(module, tool_keys):
     def targets_config_keys(target):
         return any(isinstance(item, ast.Name) and item.id == "CONFIG_KEYS"
@@ -653,16 +670,8 @@ class CandidateBuilderTests(unittest.TestCase):
 
     def test_packaged_privilege_authority_has_exact_transitive_source_closure(self):
         authority = HERE / "checkout-ordinary-privilege-authority.py"
-        tree = ast.parse(authority.read_text(encoding="utf-8"), authority.name)
-        dependencies = tuple(
-            node.args[1].value
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == "_load_fixed"
-            and len(node.args) == 2
-            and isinstance(node.args[1], ast.Constant)
-            and type(node.args[1].value) is str
+        dependencies = static_fixed_dependencies(
+            authority.read_text(encoding="utf-8"), authority.name,
         )
         self.assertEqual(dependencies, (
             "checkout-ordinary-authority-manifest.py",
@@ -699,6 +708,14 @@ class CandidateBuilderTests(unittest.TestCase):
                         m._validated_manifest(
                             omitted, Path("C:/reviewed-source"), Guard(),
                         )
+
+    def test_transitive_source_scan_refuses_unsupported_direct_load_shape(self):
+        source = """
+_load_fixed("first", "first.py")
+_load_fixed(label="hidden", filename="unpackaged.py")
+"""
+        with self.assertRaises(AssertionError):
+            static_fixed_dependencies(source)
 
     def test_refuses_omitted_or_changed_reviewed_source_before_destination(self):
         with tempfile.TemporaryDirectory(prefix="candidate-builder-test-") as directory:
