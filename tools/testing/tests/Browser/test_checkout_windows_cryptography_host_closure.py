@@ -3,6 +3,7 @@ import csv
 import hashlib
 import importlib.util
 import io
+import gc
 import unittest
 from types import MappingProxyType
 
@@ -170,7 +171,6 @@ class HostClosureTest(unittest.TestCase):
     def setUp(self):
         self.files, self.identities, self.imports, self.manifest = fixture()
         self.adapter = FakeAdapter(self.files, self.identities, self.imports)
-        self.capability = host.seal_adapter(self.adapter)
 
     def observe(self, manifest=None):
         return host.observe(
@@ -251,7 +251,7 @@ class HostClosureTest(unittest.TestCase):
                          "c:/isolated", "C:/isolated. "):
             changed = copy.deepcopy(self.manifest); changed["root"]["path"] = bad_root
             self.refused(lambda changed=changed, bad_root=bad_root:
-                         host.observe(self.capability, bad_root, changed))
+                         host.observe(host.seal_adapter(self.adapter), bad_root, changed))
 
     def test_hash_record_and_size_tampering_refuse(self):
         changed = copy.deepcopy(self.manifest)
@@ -328,7 +328,7 @@ class HostClosureTest(unittest.TestCase):
     def test_adapter_is_sealed_and_replacement_does_not_execute(self):
         original = FakeAdapter.read
         calls = []
-        capability = self.capability
+        capability = host.seal_adapter(self.adapter)
         try:
             FakeAdapter.read = lambda *_: calls.append(True) or b""
             self.refused(lambda: host.observe(capability, "C:/isolated", self.manifest))
@@ -337,7 +337,7 @@ class HostClosureTest(unittest.TestCase):
             FakeAdapter.read = original
 
     def test_capability_state_cannot_bless_replacement_and_is_one_shot(self):
-        capability = self.capability
+        capability = host.seal_adapter(self.adapter)
         original = FakeAdapter.read
         calls = []
         replacement = lambda *_: calls.append(True) or b""
@@ -442,6 +442,43 @@ class HostClosureTest(unittest.TestCase):
         self.assertEqual(host.__all__, ("HostClosureRefused", "seal_adapter", "observe"))
         for name in ("install", "import_runtime", "execute", "admit", "acquire"):
             self.assertFalse(hasattr(host, name))
+
+    def test_dropped_unconsumed_capabilities_are_reclaimed_but_live_are_bounded(self):
+        for _index in range(host.MAX_CAPABILITIES + 8):
+            capability = host.seal_adapter(self.adapter)
+            del capability
+        gc.collect()
+        capability = host.seal_adapter(self.adapter)
+        self.assertTrue(host.observe(capability, "C:/isolated", self.manifest)[
+            "hostClosureObservationOnly"
+        ])
+        retained = [host.seal_adapter(self.adapter) for _ in range(host.MAX_CAPABILITIES)]
+        self.refused(lambda: host.seal_adapter(self.adapter))
+        retained.clear(); gc.collect()
+        capability = host.seal_adapter(self.adapter)
+        self.assertTrue(host.observe(capability, "C:/isolated", self.manifest)[
+            "hostClosureObservationOnly"
+        ])
+
+    def test_invalid_or_hostile_token_refuses_before_hash_or_equality(self):
+        self.refused(lambda: host.observe([], "C:/isolated", self.manifest))
+        calls = []
+        class Hostile:
+            def __hash__(self):
+                calls.append("hash"); raise AssertionError("hash")
+            def __eq__(self, _other):
+                calls.append("eq"); raise AssertionError("eq")
+        self.refused(lambda: host.observe(Hostile(), "C:/isolated", self.manifest))
+        self.assertEqual(calls, [])
+        capability = host.seal_adapter(self.adapter)
+        token_type = type(capability)
+        original = token_type.__dict__["__hash__"]
+        try:
+            token_type.__hash__ = lambda _self: calls.append("token-hash") or 1
+            self.refused(lambda: host.observe(capability, "C:/isolated", self.manifest))
+            self.assertEqual(calls, [])
+        finally:
+            token_type.__hash__ = original
 
     def test_pe_import_names_are_unique_ascii_basenames(self):
         path = "cryptography/hazmat/bindings/_rust.pyd"

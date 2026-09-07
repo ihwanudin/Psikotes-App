@@ -19,6 +19,7 @@ import io
 import json
 import re
 import types
+import weakref
 from types import MappingProxyType
 
 
@@ -76,7 +77,15 @@ def _make_api():
     types_module = types
     function_type = types.FunctionType
     module_globals = globals()
-    capabilities = {}
+    class CapabilityToken:
+        __slots__ = ("__weakref__",)
+        __hash__ = object.__hash__
+        __eq__ = object.__eq__
+
+    capability_type = CapabilityToken
+    token_hash = CapabilityToken.__dict__["__hash__"]
+    token_eq = CapabilityToken.__dict__["__eq__"]
+    capabilities = weakref.WeakKeyDictionary()
     maximum_file = MAX_FILE_BYTES
     maximum_files = MAX_FILES
     maximum_path = MAX_PATH_BYTES
@@ -138,6 +147,7 @@ def _make_api():
         ("__all__", surface), ("json", json_module), ("hashlib", hashlib_module),
         ("csv", csv_module), ("io", io_module), ("base64", base64_module), ("re", re_module),
         ("types", types),
+        ("weakref", weakref),
     )
 
     def authority():
@@ -522,12 +532,16 @@ def _make_api():
                 if type(function) is not function_type:
                     raise ValueError("adapter")
                 methods.append((name, function, method_state(function)))
-            capability = object()
+            capability = capability_type()
             capabilities[capability] = (adapter, cls, cls.__mro__, tuple(methods))
             return capability
         return invoke(operation)
 
     def public_observe(capability, root, manifest):
+        if type(capability) is not capability_type \
+                or capability_type.__dict__.get("__hash__") is not token_hash \
+                or capability_type.__dict__.get("__eq__") is not token_eq:
+            raise refusal("host_closure")
         sealed = capabilities.pop(capability, None)
         if sealed is None:
             raise refusal("host_closure")
