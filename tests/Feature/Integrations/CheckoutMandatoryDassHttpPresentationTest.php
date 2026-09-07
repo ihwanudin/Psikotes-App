@@ -147,7 +147,7 @@ final class CheckoutMandatoryDassHttpPresentationTest extends OrganizationPaymen
         config()->set('consent.legal_review_pending', false);
         DB::table('consent_records')->where('consent_type', 'psychotest')->update(['status' => 'declined']);
         $captured = null;
-        Route::post('/checkout/test-confirm', function (Request $request) use (&$captured) {
+        Route::post('/checkout/confirm', function (Request $request) use (&$captured) {
             $captured = $request->request->all();
 
             return response('Synthetic presentation callback', 204);
@@ -163,7 +163,7 @@ final class CheckoutMandatoryDassHttpPresentationTest extends OrganizationPaymen
                 $document = ConsentDocument::for($type);
                 $consents[$type] = ['documentVersion' => $document->version, 'documentHash' => $document->hash];
             }
-            $view->with('confirmationForm', ['action' => '/checkout/test-confirm', 'profile' => $profile,
+            $view->with('confirmationForm', ['action' => '/checkout/confirm', 'profile' => $profile,
                 'consents' => $consents]);
         });
 
@@ -172,7 +172,7 @@ final class CheckoutMandatoryDassHttpPresentationTest extends OrganizationPaymen
         $xpath = $this->dom($page);
         $form = $xpath->query('//form[@data-checkout-confirmation]')->item(0);
         $this->assertNotNull($form);
-        $this->assertSame('/checkout/test-confirm', $form->getAttribute('action'));
+        $this->assertSame('/checkout/confirm', $form->getAttribute('action'));
         $this->assertSame(['profile[fullName]', 'profile[phone]'], array_values(array_map(
             static fn ($node): string => $node->getAttribute('name'),
             iterator_to_array($xpath->query('.//*[starts-with(@name, "profile[")]', $form)),
@@ -192,7 +192,7 @@ final class CheckoutMandatoryDassHttpPresentationTest extends OrganizationPaymen
                 'dass' => ['accepted' => 'true', 'documentVersion' => $dass->version, 'documentHash' => $dass->hash],
             ],
         ];
-        $this->call('POST', '/checkout/test-confirm', $payload, $this->cookies, [], $this->server('https://psikotes.oncam.id'))
+        $this->call('POST', '/checkout/confirm', $payload, $this->cookies, [], $this->server('https://psikotes.oncam.id'))
             ->assertNoContent();
 
         $this->assertSame($payload, $captured);
