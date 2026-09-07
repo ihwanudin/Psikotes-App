@@ -68,7 +68,9 @@ Dedicated journal/time local Windows user:
 
 Raw `TokenPrivileges` service v1 wajib memiliki tepat dua entry sebagai exact
 set menurut fixed locally resolved LUID, tanpa entry ketiga. Urutan native bukan
-authority; canonical evidence mengurutkan kedua nama dalam urutan berikut:
+authority: setiap permutasi dinormalisasi dan diterima hanya bila menghasilkan
+exact semantic two-entry set+attributes yang sama serta snapshot pre/post
+exact-equal. Canonical evidence saja yang mengurutkan kedua nama sebagai berikut:
 
 1. `SeChangeNotifyPrivilege` dengan attributes exact
    `SE_PRIVILEGE_ENABLED_BY_DEFAULT | SE_PRIVILEGE_ENABLED` (`0x00000003`); dan
@@ -81,8 +83,8 @@ authority; canonical evidence mengurutkan kedua nama dalam urutan berikut:
 `SeDebugPrivilege`, `SeTcbPrivilege`, `SeAssignPrimaryTokenPrivilege`, dan
 seluruh privilege lain wajib **absent**, bukan sekadar disabled. LUID ketiga,
 attribute tambahan termasuk `SE_PRIVILEGE_REMOVED` atau
-`SE_PRIVILEGE_USED_FOR_ACCESS`, duplicate LUID, perubahan order, atau drift
-menolak start/request.
+`SE_PRIVILEGE_USED_FOR_ACCESS`, duplicate LUID, perubahan set/attributes, atau
+drift pre/post menolak start/request; permutasi raw saja bukan drift.
 Required-privilege list, local security policy, group membership, token groups,
 restricting SID, AppContainer state, dan privilege attributes dibaca ulang pada
 setiap start dan sebelum/sesudah request. Extra atau drift menolak request.
@@ -130,11 +132,21 @@ trailing byte, second frame, oversize, duplicate/in-flight request, disconnect,
 atau timeout menolak seluruh operasi.
 
 Security descriptor pipe wajib protected, tanpa inherited/default DACL. Owner
-adalah exact service SID. DACL v1 memiliki tepat dua allow principals:
+adalah exact service SID. DACL v1 memiliki tepat dua allow principals dan exact
+specific access masks:
 
-- service SID journal/time: full control atas pipe instance miliknya; dan
-- exact checkout-client account SID dari manifest: hanya create/connect,
-  read-data, write-data, read-attributes, dan synchronize yang diperlukan.
+- service SID journal/time: `FILE_ALL_ACCESS` exact `0x001F01FF` atas pipe
+  instance miliknya; dan
+- exact checkout-client account SID dari manifest: exact
+  `FILE_READ_DATA | FILE_WRITE_DATA | FILE_READ_ATTRIBUTES |
+  FILE_WRITE_ATTRIBUTES | SYNCHRONIZE`, yaitu `0x00100183`.
+
+Client ACE tidak memuat `FILE_CREATE_PIPE_INSTANCE`/`FILE_APPEND_DATA`
+(`0x00000004`), `GENERIC_WRITE` (`0x40000000`), `GENERIC_READ`
+(`0x80000000`), `WRITE_DAC`, `WRITE_OWNER`, `DELETE`, generic bit lain, atau
+specific right tambahan. Server dan client mask tidak dapat dipertukarkan;
+native effective-access tests wajib membuktikan client tetap dapat connect serta
+read/write exact frame tanpa memperoleh create-instance/append atau control.
 
 Tidak ada ACE untuk Everyone, Authenticated Users, Anonymous Logon, Network,
 Users, interactive user lain, atau arbitrary group. Remote rejection tetap
@@ -186,10 +198,25 @@ baru memerlukan authority dan challenge baru.
 
 Response hanya `refused`, `observed`, atau `committed`. `refused` memuat fixed
 redacted code dan seluruh request binding tanpa native detail. `observed` hanya
-untuk read yang tidak mengubah state. `committed` hanya untuk successful
-compare-and-append yang telah melewati journal, DPAPI, flush, witness, time, dan
-post-validation. `time.validate` hanya menghasilkan bounded interval result;
-ia tidak mengubah journal dan tidak membuat artifact menjadi trusted sendiri.
+untuk `journal.read` yang tidak mengubah state. `committed` hanya untuk:
+
+- `journal.compare-and-append`, setelah journal, DPAPI, flush, witness, trusted
+  time, dan post-validation lulus;
+- `time.challenge`, setelah pending challenge CAS dan witness menjadi accepted
+  pair; exact result hanya `signerRequest`, `signerRequestDigest`,
+  `pendingRecordDigest`, `pendingWitnessDigest`, dan
+  `timeoutMilliseconds=300000`; atau
+- `time.validate`, setelah exact pending challenge dikonsumsi, terminal CAS dan
+  witness menjadi accepted pair; exact result hanya `intervalLower`,
+  `intervalUpper`, `signedResponseDigest`, `consumedPendingRecordDigest`,
+  `terminalRecordDigest`, dan `terminalWitnessDigest`.
+
+Setiap method/status pairing lain, missing/extra result key, `observed` untuk
+method waktu, atau time result sebelum corresponding journal+witness commit
+menolak. Interval atau signed response sendiri bukan trusted-time capability dan
+tidak boleh diekspos/dipakai; hanya exact `time.validate` committed result yang
+masih terikat ke current request, service start, journal, witness, trust,
+revocation, dan lifecycle dapat menjadi candidate interval untuk composition.
 
 ### 5. Protected append/CAS journal
 
@@ -503,6 +530,7 @@ terbuka; checklist serta progres tidak berubah.
 - [Microsoft Learn: Privilege constants](https://learn.microsoft.com/en-us/windows/win32/secauthz/privilege-constants)
 - [Microsoft Learn: SERVICE_SID_INFO](https://learn.microsoft.com/en-us/windows/win32/api/winsvc/ns-winsvc-service_sid_info)
 - [Microsoft Learn: Named pipe security and access rights](https://learn.microsoft.com/en-us/windows/win32/ipc/named-pipe-security-and-access-rights)
+- [Microsoft Learn: File access-right constants](https://learn.microsoft.com/en-us/windows/win32/fileio/file-access-rights-constants)
 - [Microsoft Learn: CreateNamedPipeW](https://learn.microsoft.com/en-us/windows/win32/api/namedpipeapi/nf-namedpipeapi-createnamedpipew)
 - [Microsoft Learn: ImpersonateNamedPipeClient](https://learn.microsoft.com/en-us/windows/win32/api/namedpipeapi/nf-namedpipeapi-impersonatenamedpipeclient)
 - [Microsoft Learn: GetNamedPipeClientProcessId](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getnamedpipeclientprocessid)
