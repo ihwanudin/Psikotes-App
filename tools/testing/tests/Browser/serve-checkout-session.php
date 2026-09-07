@@ -83,6 +83,17 @@ if (PHP_SAPI === 'cli' && ($argv[1] ?? '') === '--self-test') {
     $checks[] = ! checkoutBrowserConfirmationParticipantMatches($participantBefore,
         [json_encode($tamperedParticipant, JSON_THROW_ON_ERROR)], 7);
     $checks[] = ! checkoutBrowserConfirmationParticipantMatches($participantBefore, $participantAfter, 8);
+    $auditSession = (object) ['public_id' => '01AAAAAAAAAAAAAAAAAAAAAAAA',
+        'established_at' => '2026-01-01 00:00:00', 'absolute_expires_at' => '2026-01-01 01:00:00'];
+    $auditRequest = ['consents' => [], 'profile' => ['birthDate' => '2000-02-29', 'educationLevel' => 'S1',
+        'gender' => 'FEMALE', 'intendedField' => 'KAIGO']];
+    $audit = (object) ['actor_type' => 'checkout_session', 'actor_id' => $auditSession->public_id,
+        'context' => json_encode(['version' => 2, 'generation' => 1, 'sessionPublicId' => $auditSession->public_id,
+            'requestHash' => hash('sha256', json_encode($auditRequest, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES))], JSON_THROW_ON_ERROR),
+        'occurred_at' => '2026-01-01 00:30:00'];
+    $checks[] = checkoutBrowserConfirmationAuditMatches($audit, $auditSession);
+    $audit->actor_id = '01BBBBBBBBBBBBBBBBBBBBBBBB';
+    $checks[] = ! checkoutBrowserConfirmationAuditMatches($audit, $auditSession);
     foreach ([
         'aa_ER@saaho.php', 'be_BY@latin.php', 'ks_IN@devanagari.php', 'nan_TW@latin.php',
         'sd_IN@devanagari.php', 'sr_RS@latin.php', 'tt_RU@iqtelif.php', 'uz_UZ@cyrillic.php',
@@ -663,7 +674,7 @@ function checkoutBrowserIntegrityCriticalFiles(): array
         'vendor/composer/autoload_namespaces.php', 'vendor/composer/autoload_psr4.php',
         'vendor/composer/ClassLoader.php', 'vendor/composer/platform_check.php',
         'vendor/composer/installed.php', 'vendor/composer/installed.json',
-        'bootstrap/app.php', 'bootstrap/providers.php',
+        'bootstrap/app.php', 'bootstrap/providers.php', 'routes/web.php',
         'config/app.php', 'config/assessment_billing.php', 'config/assessment_integration.php',
         'config/auth.php', 'config/cache.php', 'config/consent.php', 'config/database.php',
         'config/filesystems.php', 'config/fortify.php', 'config/identity.php', 'config/inertia.php',
@@ -679,6 +690,27 @@ function checkoutBrowserIntegrityCriticalFiles(): array
         'app/Data/Integrations/IntegratedCheckoutConfirmationInput.php',
         'app/Actions/Registration/ConfirmIntegratedCheckout.php',
         'app/Actions/Payments/ActivateSettledAssessment.php',
+        'app/Actions/Notifications/EnqueueAssessmentActivation.php',
+        'app/Contracts/RunsRlsContext.php',
+        'app/Http/Controllers/Controller.php',
+        'app/Models/AssessmentCharge.php',
+        'app/Models/AssessmentEntitlement.php',
+        'app/Models/AssessmentParticipant.php',
+        'app/Models/Branch.php',
+        'app/Models/CheckoutHandoff.php',
+        'app/Models/CheckoutSession.php',
+        'app/Models/ConsentRecord.php',
+        'app/Models/IntegrationClient.php',
+        'app/Models/IntegrationSource.php',
+        'app/Models/PackageItem.php',
+        'app/Models/Participant.php',
+        'app/Models/TestPackage.php',
+        'app/Security/RlsContext.php',
+        'app/Security/RlsContextRunner.php',
+        'app/Services/ParticipantAuth/AssessmentPrerequisiteFrame.php',
+        'app/Services/ParticipantAuth/AssessmentPrincipal.php',
+        'app/Services/ParticipantAuth/Exceptions/EntitlementLocked.php',
+        'app/Services/Payments/AssessmentPriceSnapshot.php',
         'app/Services/Integrations/CheckoutConfirmationFormPresenter.php',
         'app/Registration/ConsentDocument.php',
         'resources/views/checkout/private.blade.php',
@@ -1310,6 +1342,42 @@ function checkoutBrowserConfirmationParticipantMatches(array $before, array $aft
         && $beforeRow === $afterRow;
 }
 
+/** Exact v2 audit envelope for the single synthetic first-participant confirmation. */
+function checkoutBrowserConfirmationAuditMatches(object $audit, object $session): bool
+{
+    $timestamp = static function (mixed $value): ?DateTimeImmutable {
+        if (! is_string($value) || preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/D', $value) !== 1) {
+            return null;
+        }
+        $parsed = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $value, new DateTimeZone('UTC'));
+
+        return $parsed !== false && $parsed->format('Y-m-d H:i:s') === $value ? $parsed : null;
+    };
+    try {
+        $context = json_decode((string) ($audit->context ?? ''), true, 16, JSON_THROW_ON_ERROR);
+        $occurredAt = $timestamp($audit->occurred_at ?? null);
+        $establishedAt = $timestamp($session->established_at ?? null);
+        $absoluteExpiresAt = $timestamp($session->absolute_expires_at ?? null);
+    } catch (Throwable) {
+        return false;
+    }
+    $expectedRequest = ['consents' => [], 'profile' => [
+        'birthDate' => '2000-02-29',
+        'educationLevel' => 'S1',
+        'gender' => 'FEMALE',
+        'intendedField' => 'KAIGO',
+    ]];
+    $expectedHash = hash('sha256', json_encode($expectedRequest, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
+
+    return ($audit->actor_type ?? null) === 'checkout_session'
+        && is_string($audit->actor_id ?? null) && preg_match('/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/D', $audit->actor_id) === 1
+        && $audit->actor_id === ($session->public_id ?? null)
+        && is_array($context) && array_keys($context) === ['version', 'generation', 'sessionPublicId', 'requestHash']
+        && $context === ['version' => 2, 'generation' => 1, 'sessionPublicId' => $audit->actor_id, 'requestHash' => $expectedHash]
+        && $occurredAt !== null && $establishedAt !== null && $absoluteExpiresAt !== null
+        && $occurredAt >= $establishedAt && $occurredAt < $absoluteExpiresAt;
+}
+
 function checkoutBrowserVerify(array $baseline, array $fixtures): void
 {
     $actual = checkoutBrowserRows();
@@ -1355,6 +1423,12 @@ function checkoutBrowserVerify(array $baseline, array $fixtures): void
         'checkout_session.established', 'checkout_session.revoked', 'checkout_session.expired', 'checkout.confirmed'];
     foreach (DB::table('audit_logs')->get() as $audit) {
         $own = array_values(array_filter($fixtures, static fn ($row) => (string) $row['attempt'] === $audit->subject_id));
+        if ($audit->action === 'checkout.confirmed') {
+            $session = DB::table('checkout_sessions')->where('public_id', $audit->actor_id)->first();
+            if ($session === null || ! checkoutBrowserConfirmationAuditMatches($audit, $session)) {
+                throw new RuntimeException('Unexpected confirmation audit envelope.');
+            }
+        }
         if (count($own) !== 1 || $audit->branch_id !== $own[0]['organization']
             || $audit->subject_type !== AssessmentParticipant::class || ! in_array($audit->action, $allowedActions, true)
             || preg_match('/och1_|ocs1_|ocsrf1_|PRIVATE_/', $audit->context)) {

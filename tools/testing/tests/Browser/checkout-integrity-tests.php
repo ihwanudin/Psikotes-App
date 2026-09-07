@@ -633,7 +633,7 @@ function checkoutAssetTests(bool $includeOsJunctions): void
         'Content-Type' => 'text/plain; charset=UTF-8', 'Cache-Control' => 'no-store, private',
         'X-Content-Type-Options' => 'nosniff', 'Referrer-Policy' => 'no-referrer',
     ]);
-    foreach ([
+    $confirmationClosure = [
         'app/Http/Controllers/IntegratedCheckoutConfirmationController.php',
         'app/Http/Middleware/VerifyCheckoutSessionJsonMutation.php',
         'app/Services/Integrations/StrictCheckoutJson.php',
@@ -641,13 +641,51 @@ function checkoutAssetTests(bool $includeOsJunctions): void
         'app/Data/Integrations/IntegratedCheckoutConfirmationInput.php',
         'app/Actions/Registration/ConfirmIntegratedCheckout.php',
         'app/Actions/Payments/ActivateSettledAssessment.php',
+        'app/Actions/Notifications/EnqueueAssessmentActivation.php',
+        'app/Contracts/RunsRlsContext.php',
+        'app/Data/Integrations/CheckoutSessionPrincipal.php',
+        'app/Http/Controllers/Controller.php',
+        'app/Models/AssessmentCharge.php',
+        'app/Models/AssessmentEntitlement.php',
+        'app/Models/AssessmentParticipant.php',
+        'app/Models/Branch.php',
+        'app/Models/CheckoutHandoff.php',
+        'app/Models/CheckoutSession.php',
+        'app/Models/ConsentRecord.php',
+        'app/Models/IntegrationClient.php',
+        'app/Models/IntegrationSource.php',
+        'app/Models/PackageItem.php',
+        'app/Models/Participant.php',
+        'app/Models/TestPackage.php',
+        'app/Security/RlsContext.php',
+        'app/Security/RlsContextRunner.php',
+        'app/Services/Integrations/CheckoutHandoffHistoryValidator.php',
+        'app/Services/Integrations/CheckoutSessionHttpContract.php',
         'app/Services/Integrations/CheckoutConfirmationFormPresenter.php',
+        'app/Services/ParticipantAuth/AssessmentAccessPrerequisites.php',
+        'app/Services/ParticipantAuth/AssessmentPrerequisiteFrame.php',
+        'app/Services/ParticipantAuth/AssessmentPrincipal.php',
+        'app/Services/ParticipantAuth/AcceptedConsentReader.php',
+        'app/Services/ParticipantAuth/Exceptions/EntitlementLocked.php',
+        'app/Services/Payments/AssessmentPriceSnapshot.php',
+        'app/Services/Payments/AssessmentSettlementReader.php',
         'app/Registration/ConsentDocument.php',
-    ] as $confirmationFile) {
+        'routes/web.php',
+    ];
+    foreach ($confirmationClosure as $confirmationFile) {
         $assert(in_array($confirmationFile, checkoutBrowserIntegrityCriticalFiles(), true));
     }
-    $assert(count(checkoutBrowserIntegrityCriticalFiles()) === 82);
-    $expectedAssertions = $includeOsJunctions ? 229 : 219;
+    $assert(count(checkoutBrowserIntegrityCriticalFiles()) === 104);
+    $closureFixture = $fixture();
+    $completeManifest = json_decode((string) file_get_contents($closureFixture->directory.'/source-manifest.json'), true, 512, JSON_THROW_ON_ERROR);
+    foreach ($confirmationClosure as $confirmationFile) {
+        $missingManifest = $completeManifest;
+        unset($missingManifest[$confirmationFile]);
+        $closureFixture->put('source-manifest.json', json_encode($missingManifest, JSON_THROW_ON_ERROR));
+        $missingDigest = hash_file('sha256', $closureFixture->directory.'/source-manifest.json');
+        $denied(fn () => checkoutBrowserIntegrityLight($closureFixture->directory, $missingDigest));
+    }
+    $expectedAssertions = $includeOsJunctions ? 294 : 284;
     if ($assertions !== $expectedAssertions) {
         throw new RuntimeException('Asset synthetic assertion count changed');
     }
@@ -670,6 +708,10 @@ function checkoutContractTests(): void
     $fixtureSource = file_get_contents(__DIR__.'/serve-checkout-session.php');
     if (! is_string($fixtureSource)) {
         throw new RuntimeException('Browser fixture source unavailable.');
+    }
+    $productionRoutes = file_get_contents(dirname(__DIR__, 4).'/routes/web.php');
+    if (! is_string($productionRoutes)) {
+        throw new RuntimeException('Production routes source unavailable.');
     }
 
     $required = [
@@ -717,9 +759,23 @@ function checkoutContractTests(): void
             throw new RuntimeException('Browser confirmation fixture marker missing.');
         }
     }
+    $routeShape = static function (string $routeSource, string $boundary, string $name, bool $withoutWeb): bool {
+        $without = $withoutWeb ? "\\s*->withoutMiddleware\\('web'\\)" : '';
+        $spreadBoundary = preg_quote('...$'.$boundary, '~');
+        $pattern = "~Route::post\\('/checkout/confirm',\\s*IntegratedCheckoutConfirmationController::class\\)"
+            .$without."\\s*->middleware\\(\\[{$spreadBoundary},\\s*AuthenticateCheckoutSession::class,"
+            ."\\s*VerifyCheckoutSessionJsonMutation::class\\]\\)\\s*->name\\('".preg_quote($name, '~')."'\\);~";
+
+        return preg_match_all($pattern, $routeSource) === 1
+            && substr_count($routeSource, "Route::post('/checkout/confirm'") === 1;
+    };
+    if (! $routeShape($productionRoutes, 'checkoutBoundary', 'checkout.confirm', true)
+        || ! $routeShape($fixtureSource, 'boundary', 'browser.checkout.confirm', false)) {
+        throw new RuntimeException('Production and synthetic confirmation route shapes differ.');
+    }
 
     echo json_encode([
-        'contractAssertions' => count($required) + count($fixtureRequired) + 1,
+        'contractAssertions' => count($required) + count($fixtureRequired) + 3,
         'passed' => true,
         'browserStarted' => false,
         'serviceStarted' => false,

@@ -257,7 +257,7 @@ class SupervisorTests(unittest.TestCase):
                 "two controlled cross-site origins and exact body-only exchange",
                 "real Laravel Lax login cookie omitted on POST and authority preserved",
                 "exact host-only Secure HttpOnly Lax checkout cookies and private headers",
-                "exact inert checkout-summary-v2, mandatory DASS-21, escaped DOM and CSP without executable application script in the default-off checkout state",
+                "exact inert checkout-summary-v2, mandatory DASS-21, escaped DOM and CSP; executable confirmation module only with exact server capability",
                 "own frozen amount and partial access without parent/peer/invoice disclosure",
                 "fixation/replay/history/refresh/shared-tab stale-CSRF/recovery fenced",
                 "CSRF projection, invalid channels, progressive and no-JS logout",

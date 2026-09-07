@@ -890,6 +890,16 @@ async (page) => {
         && summary.access.state === 'partial' && summary.consents.dass.state === 'required', 'Own frozen/partial summary mismatch')
     assert(summary.consents.dass.document.text === 'Synthetic DASS </script><img src=x onerror="alert(1)"> & 日本語',
         'Escaped legal text did not roundtrip exactly')
+    const dassConfirmation = page.locator('form[data-checkout-confirmation]')
+    const dassConsentNames = await dassConfirmation.locator('[name^="consents["]').evaluateAll((elements) => elements.map((element) => element.name).sort())
+    assert(await dassConfirmation.count() === 1
+        && await dassConfirmation.locator('[name^="profile["]').count() === 0
+        && JSON.stringify(dassConsentNames) === JSON.stringify([
+            'consents[dass][accepted]', 'consents[dass][documentHash]', 'consents[dass][documentVersion]',
+        ])
+        && await page.locator('script[type="module"][src="/js/checkout-confirmation-v1.js"]').count() === 1,
+        'Required DASS consent did not expose its exact bounded confirmation capability')
+    assert(confirmationPosts === 4, 'Required DASS capability submitted without explicit participant action')
     assert(!(await page.content()).includes('PRIVATE_CHANGED_CATALOG'), 'Changed catalogue replaced frozen summary')
     const verified = await control('verify', 'first')
     assert(verified.businessMatchesFixedPlan === true, 'Full business postcondition with exact fixture-control deltas failed')
@@ -909,7 +919,7 @@ async (page) => {
             'two controlled cross-site origins and exact body-only exchange',
             'real Laravel Lax login cookie omitted on POST and authority preserved',
             'exact host-only Secure HttpOnly Lax checkout cookies and private headers',
-            'exact inert checkout-summary-v2, mandatory DASS-21, escaped DOM and CSP without executable application script in the default-off checkout state',
+            'exact inert checkout-summary-v2, mandatory DASS-21, escaped DOM and CSP; executable confirmation module only with exact server capability',
             'own frozen amount and partial access without parent/peer/invoice disclosure',
             'fixation/replay/history/refresh/shared-tab stale-CSRF/recovery fenced',
             'CSRF projection, invalid channels, progressive and no-JS logout',
