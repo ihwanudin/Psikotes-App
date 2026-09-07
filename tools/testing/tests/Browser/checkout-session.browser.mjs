@@ -24,6 +24,7 @@ async (page) => {
     let checkoutDocumentResponses = 0
     let exchangePosts = 0
     let paymentPosts = 0
+    let confirmationPosts = 0
     const listenerTasks = new Set()
     const observe = (work) => {
         const task = work().catch(() => violations.push('browser observation failed'))
@@ -99,6 +100,15 @@ async (page) => {
             }
             if (url.origin === appOrigin && url.pathname === '/checkout/payment' && request.method() === 'POST') {
                 paymentPosts++
+            }
+            if (url.origin === appOrigin && url.pathname === '/checkout/confirm' && request.method() === 'POST') {
+                confirmationPosts++
+                const headers = await request.allHeaders()
+                const body = request.postData() || ''
+                if (url.search !== '' || headers['content-type'] !== 'application/json'
+                    || /payer|payment|package|amount/i.test(body)) {
+                    violations.push('confirmation transport exceeded its exact JSON boundary')
+                }
             }
         }))
         context.on('response', (response) => observe(async () => {
@@ -315,8 +325,11 @@ async (page) => {
         const hidden = await targetPage.locator('input[name="_checkout_csrf"]').getAttribute('value')
         assert(typeof meta === 'string' && meta === hidden && /^ocsrf1_[0-9a-f]{64}$/.test(meta), 'CSRF projection mismatch')
         const scripts = targetPage.locator('script')
-        assert(await scripts.count() === 1, 'Summary must contain one inert script only')
-        const script = scripts.first()
+        const confirmationForm = targetPage.locator('form[data-checkout-confirmation]')
+        const hasConfirmation = await confirmationForm.count() === 1
+        assert(await scripts.count() === (hasConfirmation ? 2 : 1), 'Summary script set differs from server capability')
+        const script = targetPage.locator('script#checkout-summary-v2')
+        assert(await script.count() === 1, 'Summary JSON script is not unique')
         assert(await script.getAttribute('type') === 'application/json'
             && await script.getAttribute('id') === 'checkout-summary-v2'
             && await script.getAttribute('src') === null, 'Summary JSON is not inert')
@@ -324,8 +337,12 @@ async (page) => {
         validateSummary(summary)
         assert(summary.payment.actionAvailable === false && summary.payment.action === null,
             'Default-off synthetic fixture exposed payment authority')
-        assert(await targetPage.locator('script:not([type="application/json"]), script[src], [onerror], img').count() === 0,
-            'Summary created executable content')
+        const moduleScripts = targetPage.locator('script[type="module"][src="/js/checkout-confirmation-v1.js"]')
+        assert(await moduleScripts.count() === (hasConfirmation ? 1 : 0), 'Confirmation module did not match server capability')
+        assert(await targetPage.locator('script[src="/js/checkout-payment-v1.js"], [onerror], img').count() === 0,
+            'Summary created unapproved executable content')
+        assert(await targetPage.locator('script:not([type="application/json"]):not([type="module"]), script[type="module"]:not([src="/js/checkout-confirmation-v1.js"])').count() === 0,
+            'Summary created an unknown executable script')
         const body = await targetPage.locator('body').innerText()
         for (const forbidden of ['PRIVATE_OTHER_PROFILE', 'PRIVATE_GATEWAY', 'PRIVATE_INVOICE', 'ocs1_', 'ocsrf1_', 'och1_']) {
             assert(!body.includes(forbidden), 'Summary exposed a forbidden marker')
@@ -531,6 +548,53 @@ async (page) => {
     let summary = await assertCheckoutPage(page)
     assert(summary.payment.amountIdr === null && summary.payment.consultationRequested === null
         && summary.payment.state === 'unselected' && summary.access.state === 'locked', 'No-charge summary invented payment/access')
+    const confirmationForm = page.locator('form[data-checkout-confirmation]')
+    const expectedConfirmationNames = ['profile[birthDate]', 'profile[educationLevel]', 'profile[gender]', 'profile[intendedField]']
+    const actualConfirmationNames = await confirmationForm.locator('[name^="profile["]').evaluateAll((elements) => elements.map((element) => element.name).sort())
+    assert(JSON.stringify(actualConfirmationNames) === JSON.stringify(expectedConfirmationNames), 'Confirmation did not expose the exact missing profile subset')
+    assert(await confirmationForm.locator('[name^="consents["]').count() === 0, 'Current consents were redundantly submitted')
+    assert(summary.consents.psychotest.state === 'accepted' && summary.consents.dass.state === 'accepted',
+        'Current mandatory DASS and psychotest consent were not retained')
+    const confirmationCsrf = await page.locator('meta[name="checkout-csrf-token"]').getAttribute('content')
+    const rejectedConfirmations = await page.evaluate(async ({ csrf }) => {
+        const post = async (body, token = csrf) => {
+            const response = await fetch('/checkout/confirm', { method: 'POST', credentials: 'same-origin',
+                headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Checkout-CSRF': token }, body })
+            return response.status
+        }
+        return [
+            await post('{'),
+            await post(JSON.stringify({ profile: {}, consents: {} }), `ocsrf1_${'0'.repeat(64)}`),
+            await post(JSON.stringify({ profile: {}, consents: {} })),
+        ]
+    }, { csrf: confirmationCsrf })
+    assert(JSON.stringify(rejectedConfirmations) === JSON.stringify([422, 419, 409]), 'Confirmation fail-closed status matrix differs')
+    await drainObservations()
+    assert(confirmationPosts === 3, 'Rejected confirmation request count differs')
+    await confirmationForm.locator('[name="profile[birthDate]"]').fill('2000-02-29')
+    await confirmationForm.locator('[name="profile[educationLevel]"]').fill('S1')
+    await confirmationForm.locator('[name="profile[gender]"]').selectOption('FEMALE')
+    await confirmationForm.locator('[name="profile[intendedField]"]').selectOption('KAIGO')
+    await confirmationForm.locator('button[type="submit"]:not([disabled])').waitFor()
+    const confirmationResponse = page.waitForResponse((response) => parseUrl(response.url()).pathname === '/checkout/confirm'
+        && response.request().method() === 'POST' && response.status() === 200)
+    await confirmationForm.evaluate((form) => {
+        const button = form.querySelector('button[type="submit"]')
+        form.requestSubmit(button)
+        form.dispatchEvent(new SubmitEvent('submit', { bubbles: true, cancelable: true, submitter: button }))
+    })
+    const confirmed = await confirmationResponse
+    const confirmationEnvelope = await confirmed.json()
+    assert(JSON.stringify(confirmationEnvelope) === JSON.stringify({ data: { confirmed: true, replayed: false } }),
+        'Confirmation success envelope differs')
+    await drainObservations()
+    assert(confirmationPosts === 4, 'Duplicate confirmation submit emitted more than one request')
+    assert(await confirmationForm.locator('button[type="submit"]').isDisabled(), 'Successful confirmation did not remain locked')
+    await page.reload()
+    summary = await assertCheckoutPage(page)
+    assert(await page.locator('form[data-checkout-confirmation]').count() === 0
+        && summary.profile.filter((field) => field.required).every((field) => field.state === 'locked')
+        && summary.consents.dass.state === 'accepted', 'Confirmed profile/DASS state did not persist on reload')
     let credentials = await checkoutCookies(page.context())
     assertCookieContract(credentials)
     assert(credentials.every((cookie) => ![fixedSelector, fixedCsrf].includes(cookie.value)), 'Fixation cookie survived exchange')
@@ -833,6 +897,7 @@ async (page) => {
     assert(exchangePosts === 11, 'Browser did not exercise all canonical exchanges')
     assert(hostileForms === 6, 'Browser did not complete the hostile native forms')
     assert(paymentPosts === 0, 'Default-off synthetic fixture attempted payment/provider transport')
+    assert(confirmationPosts === 4, 'Browser did not exercise the exact confirmation request matrix')
     assert(violations.length === 0, `Browser boundary violations: ${JSON.stringify(violations)}`)
     assert(consoleMessages.length === 0, `Browser console was not clean: ${JSON.stringify(consoleMessages)}`)
     assert(expectedHttpConsole.every((status) => rejectedHttpStatuses.has(status)), 'Unexplained HTTP console error')

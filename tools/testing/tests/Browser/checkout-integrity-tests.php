@@ -633,8 +633,21 @@ function checkoutAssetTests(bool $includeOsJunctions): void
         'Content-Type' => 'text/plain; charset=UTF-8', 'Cache-Control' => 'no-store, private',
         'X-Content-Type-Options' => 'nosniff', 'Referrer-Policy' => 'no-referrer',
     ]);
-    $assert(count(checkoutBrowserIntegrityCriticalFiles()) === 73);
-    $expectedAssertions = $includeOsJunctions ? 220 : 210;
+    foreach ([
+        'app/Http/Controllers/IntegratedCheckoutConfirmationController.php',
+        'app/Http/Middleware/VerifyCheckoutSessionJsonMutation.php',
+        'app/Services/Integrations/StrictCheckoutJson.php',
+        'app/Http/Requests/ConfirmIntegratedCheckoutRequest.php',
+        'app/Data/Integrations/IntegratedCheckoutConfirmationInput.php',
+        'app/Actions/Registration/ConfirmIntegratedCheckout.php',
+        'app/Actions/Payments/ActivateSettledAssessment.php',
+        'app/Services/Integrations/CheckoutConfirmationFormPresenter.php',
+        'app/Registration/ConsentDocument.php',
+    ] as $confirmationFile) {
+        $assert(in_array($confirmationFile, checkoutBrowserIntegrityCriticalFiles(), true));
+    }
+    $assert(count(checkoutBrowserIntegrityCriticalFiles()) === 82);
+    $expectedAssertions = $includeOsJunctions ? 229 : 219;
     if ($assertions !== $expectedAssertions) {
         throw new RuntimeException('Asset synthetic assertion count changed');
     }
@@ -654,6 +667,10 @@ function checkoutContractTests(): void
     if (! is_string($source)) {
         throw new RuntimeException('Browser harness source unavailable.');
     }
+    $fixtureSource = file_get_contents(__DIR__.'/serve-checkout-session.php');
+    if (! is_string($fixtureSource)) {
+        throw new RuntimeException('Browser fixture source unavailable.');
+    }
 
     $required = [
         "contractVersion: 'checkout-summary-v2'",
@@ -668,6 +685,13 @@ function checkoutContractTests(): void
         "'dass-only-package'",
         'summary.payment.actionAvailable === false && summary.payment.action === null',
         'paymentPosts === 0',
+        "url.pathname === '/checkout/confirm'",
+        'confirmationPosts === 4',
+        'JSON.stringify([422, 419, 409])',
+        "['profile[birthDate]', 'profile[educationLevel]', 'profile[gender]', 'profile[intendedField]']",
+        "summary.consents.dass.state === 'accepted'",
+        "targetPage.locator('form[data-checkout-confirmation]')",
+        "confirmationForm.locator('[name^=\"consents[\"]')",
         'PRIVATE_OTHER_PROFILE|PRIVATE_GATEWAY|PRIVATE_INVOICE',
         "page.keyboard.press('Tab')",
     ];
@@ -679,9 +703,23 @@ function checkoutContractTests(): void
     if (str_contains($source, 'checkout-summary-v1')) {
         throw new RuntimeException('Stale summary-v1 browser contract remains.');
     }
+    $fixtureRequired = [
+        'IntegratedCheckoutConfirmationController::class',
+        'VerifyCheckoutSessionJsonMutation::class',
+        "Route::post('/checkout/confirm'",
+        "'confirmation' => [",
+        "'writer_enabled' => true",
+        'checkoutBrowserConfirmationParticipantMatches(',
+        "'checkout.confirmed'",
+    ];
+    foreach ($fixtureRequired as $needle) {
+        if (! str_contains($fixtureSource, $needle)) {
+            throw new RuntimeException('Browser confirmation fixture marker missing.');
+        }
+    }
 
     echo json_encode([
-        'contractAssertions' => count($required) + 1,
+        'contractAssertions' => count($required) + count($fixtureRequired) + 1,
         'passed' => true,
         'browserStarted' => false,
         'serviceStarted' => false,

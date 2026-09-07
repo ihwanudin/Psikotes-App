@@ -8,8 +8,10 @@ use App\Contracts\PaymentProvider;
 use App\Data\Integrations\CheckoutHandoffIssueInput;
 use App\Enums\CheckoutHandoffIntent;
 use App\Http\Controllers\CheckoutSessionController;
+use App\Http\Controllers\IntegratedCheckoutConfirmationController;
 use App\Http\Middleware\AuthenticateCheckoutSession;
 use App\Http\Middleware\ProtectCheckoutSessionHttpBoundary;
+use App\Http\Middleware\VerifyCheckoutSessionJsonMutation;
 use App\Http\Middleware\VerifyCheckoutSessionMutation;
 use App\Models\AssessmentCharge;
 use App\Models\AssessmentParticipant;
@@ -71,6 +73,16 @@ if (PHP_SAPI === 'cli' && ($argv[1] ?? '') === '--self-test') {
         ! checkoutBrowserControlAllowed(['HTTP_X_BROWSER_HARNESS' => 'synthetic-only', 'REQUEST_METHOD' => 'POST', 'HTTP_SEC_FETCH_MODE' => 'navigate']),
         ! checkoutBrowserControlAllowed(['HTTP_X_BROWSER_HARNESS' => 'synthetic-only', 'REQUEST_METHOD' => 'POST', 'HTTP_COOKIE' => 'synthetic']),
     ];
+    $participantBefore = [json_encode(['id' => 7, 'birth_date' => null, 'gender' => null, 'education_level' => null,
+        'intended_field' => null, 'full_name' => 'Synthetic', 'updated_at' => '2026-01-01 00:00:00'], JSON_THROW_ON_ERROR)];
+    $participantAfter = [json_encode(['id' => 7, 'birth_date' => '2000-02-29', 'gender' => 'female', 'education_level' => 'S1',
+        'intended_field' => 'KAIGO', 'full_name' => 'Synthetic', 'updated_at' => '2026-01-01 00:00:01'], JSON_THROW_ON_ERROR)];
+    $checks[] = checkoutBrowserConfirmationParticipantMatches($participantBefore, $participantAfter, 7);
+    $tamperedParticipant = json_decode($participantAfter[0], true, 512, JSON_THROW_ON_ERROR);
+    $tamperedParticipant['full_name'] = 'Changed';
+    $checks[] = ! checkoutBrowserConfirmationParticipantMatches($participantBefore,
+        [json_encode($tamperedParticipant, JSON_THROW_ON_ERROR)], 7);
+    $checks[] = ! checkoutBrowserConfirmationParticipantMatches($participantBefore, $participantAfter, 8);
     foreach ([
         'aa_ER@saaho.php', 'be_BY@latin.php', 'ks_IN@devanagari.php', 'nan_TW@latin.php',
         'sd_IN@devanagari.php', 'sr_RS@latin.php', 'tt_RU@iqtelif.php', 'uz_UZ@cyrillic.php',
@@ -348,6 +360,11 @@ $app->afterBootstrapping(LoadConfiguration::class, function (Application $app) u
             'exchange_per_minute' => 60,
             'hydrate_per_minute' => 120,
             'mutation_per_minute' => 60,
+            'confirmation' => [
+                'enabled' => true,
+                'writer_enabled' => true,
+                'max_body_bytes' => 4096,
+            ],
         ],
     ]);
 });
@@ -436,6 +453,9 @@ Route::get('/checkout', [CheckoutSessionController::class, 'summary'])
 Route::post('/checkout/logout', [CheckoutSessionController::class, 'logout'])
     ->middleware([...$boundary, AuthenticateCheckoutSession::class, VerifyCheckoutSessionMutation::class])
     ->name('browser.checkout.logout');
+Route::post('/checkout/confirm', IntegratedCheckoutConfirmationController::class)
+    ->middleware([...$boundary, AuthenticateCheckoutSession::class, VerifyCheckoutSessionJsonMutation::class])
+    ->name('browser.checkout.confirm');
 Route::get('/checkout/unavailable', [CheckoutSessionController::class, 'unavailable'])
     ->middleware($boundary)->name('browser.checkout.unavailable');
 Route::get('/__browser/login', function (Request $request) {
@@ -566,6 +586,19 @@ $app->handleRequest(Request::capture());
 $diagnostic('request_handle_end');
 $diagnostic('postconditions_start');
 $requestAfter = checkoutBrowserRows();
+$confirmationSucceeded = $path === '/checkout/confirm' && ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST'
+    && http_response_code() === 200;
+if ($confirmationSucceeded) {
+    if (! checkoutBrowserConfirmationParticipantMatches(
+        $requestBaseline['participants'] ?? [],
+        $requestAfter['participants'] ?? [],
+        (int) $fixtures['first']['participant'],
+    )) {
+        file_put_contents($directory.'/violations.txt', "CONFIRMATION_POSTCONDITION\n", FILE_APPEND | LOCK_EX);
+        throw new RuntimeException('Confirmation participant postcondition mismatch.');
+    }
+    unset($requestBaseline['participants'], $requestAfter['participants']);
+}
 foreach (['checkout_sessions', 'checkout_handoffs', 'audit_logs'] as $lifecycle) {
     unset($requestBaseline[$lifecycle], $requestAfter[$lifecycle]);
 }
@@ -639,6 +672,15 @@ function checkoutBrowserIntegrityCriticalFiles(): array
         'config/referral.php', 'config/selection_integration.php', 'config/services.php', 'config/session.php',
         'app/Providers/AppServiceProvider.php',
         'app/Http/Controllers/CheckoutSessionController.php', 'resources/views/checkout/summary.blade.php',
+        'app/Http/Controllers/IntegratedCheckoutConfirmationController.php',
+        'app/Http/Middleware/VerifyCheckoutSessionJsonMutation.php',
+        'app/Services/Integrations/StrictCheckoutJson.php',
+        'app/Http/Requests/ConfirmIntegratedCheckoutRequest.php',
+        'app/Data/Integrations/IntegratedCheckoutConfirmationInput.php',
+        'app/Actions/Registration/ConfirmIntegratedCheckout.php',
+        'app/Actions/Payments/ActivateSettledAssessment.php',
+        'app/Services/Integrations/CheckoutConfirmationFormPresenter.php',
+        'app/Registration/ConsentDocument.php',
         'resources/views/checkout/private.blade.php',
         'public/css/checkout-summary-v1.css', 'public/brand/oncam-logo-full-color.png',
         'public/js/checkout-confirmation-v1.js', 'public/js/checkout-payment-v1.js',
@@ -1187,8 +1229,10 @@ function checkoutBrowserSeed(): array
             DB::table('assessment_bill_items')->where('charge_id', $row['charge'])->delete();
             DB::table('assessment_charges')->where('id', $row['charge'])->delete();
             DB::table('assessment_bills')->where('id', $row['bill'])->delete();
-            DB::table('participants')->where('id', $row['participant'])->update(['birth_date' => null, 'gender' => null,
-                'education_level' => null, 'intended_field' => null, 'email' => null]);
+            if ($alias === 'first') {
+                DB::table('participants')->where('id', $row['participant'])->update(['birth_date' => null, 'gender' => null,
+                    'education_level' => null, 'intended_field' => null, 'email' => null]);
+            }
         }
         $fixtures[$alias] = [...$row, 'client' => $attempt->integration_client_id, 'source' => $source,
             'attemptPublicId' => $attempt->assessment_attempt_id, 'sourceSystem' => $attempt->source_system];
@@ -1212,6 +1256,58 @@ function checkoutBrowserSeed(): array
     DB::table('participants')->where('id', $price['participant'])->update(['full_name' => 'Person price </script><img src=x onerror="alert(1)"> & 日本語']);
 
     return $fixtures;
+}
+
+/** Allows only the fixed synthetic first participant's missing confirmation fields and timestamp to change. */
+function checkoutBrowserConfirmationParticipantMatches(array $before, array $after, int $participantId): bool
+{
+    $index = static function (array $rows): ?array {
+        $indexed = [];
+        foreach ($rows as $serialized) {
+            if (! is_string($serialized)) {
+                return null;
+            }
+            try {
+                $row = json_decode($serialized, true, 512, JSON_THROW_ON_ERROR);
+            } catch (Throwable) {
+                return null;
+            }
+            if (! is_array($row) || ! is_int($row['id'] ?? null) || isset($indexed[$row['id']])) {
+                return null;
+            }
+            $indexed[$row['id']] = $row;
+        }
+        ksort($indexed);
+
+        return $indexed;
+    };
+    $beforeById = $index($before);
+    $afterById = $index($after);
+    if ($beforeById === null || $afterById === null || array_keys($beforeById) !== array_keys($afterById)
+        || ! isset($beforeById[$participantId], $afterById[$participantId])) {
+        return false;
+    }
+    foreach ($beforeById as $id => $row) {
+        if ($id !== $participantId && $row !== $afterById[$id]) {
+            return false;
+        }
+    }
+    $expected = ['birth_date' => '2000-02-29', 'gender' => 'female', 'education_level' => 'S1', 'intended_field' => 'KAIGO'];
+    $beforeRow = $beforeById[$participantId];
+    $afterRow = $afterById[$participantId];
+    foreach ($expected as $column => $value) {
+        if (! array_key_exists($column, $beforeRow) || $beforeRow[$column] !== null
+            || ($afterRow[$column] ?? null) !== $value) {
+            return false;
+        }
+        unset($beforeRow[$column], $afterRow[$column]);
+    }
+    $beforeUpdated = $beforeRow['updated_at'] ?? null;
+    $afterUpdated = $afterRow['updated_at'] ?? null;
+    unset($beforeRow['updated_at'], $afterRow['updated_at']);
+
+    return is_string($afterUpdated) && $afterUpdated !== '' && (is_string($beforeUpdated) || $beforeUpdated === null)
+        && $beforeRow === $afterRow;
 }
 
 function checkoutBrowserVerify(array $baseline, array $fixtures): void
@@ -1238,6 +1334,14 @@ function checkoutBrowserVerify(array $baseline, array $fixtures): void
     }
     unset($serialized);
     sort($baseline['assessment_participants'], SORT_STRING);
+    if (! checkoutBrowserConfirmationParticipantMatches(
+        $baseline['participants'],
+        $actual['participants'],
+        (int) $fixtures['first']['participant'],
+    )) {
+        throw new RuntimeException('Confirmation participant delta mismatch.');
+    }
+    unset($baseline['participants'], $actual['participants']);
     foreach (['checkout_handoffs', 'checkout_sessions', 'audit_logs'] as $lifecycle) {
         if ($baseline[$lifecycle] !== []) {
             throw new RuntimeException('Lifecycle baseline was not empty.');
@@ -1248,7 +1352,7 @@ function checkoutBrowserVerify(array $baseline, array $fixtures): void
         throw new RuntimeException('Business rows changed.');
     }
     $allowedActions = ['checkout_handoff.issued', 'checkout_handoff.consumed', 'checkout_handoff.recovery_reissued',
-        'checkout_session.established', 'checkout_session.revoked', 'checkout_session.expired'];
+        'checkout_session.established', 'checkout_session.revoked', 'checkout_session.expired', 'checkout.confirmed'];
     foreach (DB::table('audit_logs')->get() as $audit) {
         $own = array_values(array_filter($fixtures, static fn ($row) => (string) $row['attempt'] === $audit->subject_id));
         if (count($own) !== 1 || $audit->branch_id !== $own[0]['organization']
@@ -1265,13 +1369,15 @@ function checkoutBrowserVerify(array $baseline, array $fixtures): void
     }
     if (DB::table('checkout_sessions')->count() !== 9
         || DB::table('checkout_handoffs')->count() !== 11
-        || DB::table('audit_logs')->count() !== 34
+        || DB::table('audit_logs')->count() !== 35
         || DB::table('audit_logs')->where('action', 'checkout_handoff.consumed')->count() !== 9
         || DB::table('audit_logs')->where('action', 'checkout_session.revoked')->count() !== 4
         || DB::table('audit_logs')->where('action', 'checkout_session.expired')->count() !== 1
         || DB::table('audit_logs')->where('action', 'checkout_session.established')->count() !== 9
         || DB::table('audit_logs')->where('action', 'checkout_handoff.issued')->count() !== 10
-        || DB::table('audit_logs')->where('action', 'checkout_handoff.recovery_reissued')->count() !== 1) {
+        || DB::table('audit_logs')->where('action', 'checkout_handoff.recovery_reissued')->count() !== 1
+        || DB::table('audit_logs')->where('action', 'checkout.confirmed')
+            ->where('subject_id', (string) $fixtures['first']['attempt'])->count() !== 1) {
         throw new RuntimeException('Lifecycle count mismatch.');
     }
     $states = ['first' => ['ACTIVE'], 'second' => ['REVOKED'], 'expiry' => ['EXPIRED'], 'revoke' => ['REVOKED'],
