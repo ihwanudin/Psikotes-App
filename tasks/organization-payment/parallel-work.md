@@ -1,5 +1,27 @@
 # Koordinasi task paralel organization-payment
 
+## Checkpoint runtime security composition `58fcbe6` — 2026-09-07
+
+Empat increment lokal yang tidak saling tumpang tindih telah direview dan
+diterima. `e7bd6b6` menerima header kosong `TokenRestrictedSids` berukuran
+native-aligned tanpa melonggarkan ukuran arbitrer; `1b6f54d` memverifikasi
+closure struktural arsip wheel resmi `cffi 2.1.1` dan `pycparser 3.0` tanpa
+install/import; `94f7b75` mengomposisikan request/verifier menjadi evidence I17
+one-shot; dan `58fcbe6` mengobservasi kestabilan identity, descriptor, serta
+profil token di sekitar primitive journal native. Review terakhir menghapus
+parser restricting-SID duplikat agar seluruh ukuran buffer memakai boundary ACL
+canonical yang fail-closed.
+
+Bukti root: ACL fokus **67/67**, regresi candidate-builder + ACL **98/98**,
+verifier composition gabungan **56/56**, journal/provider **18/18**, dan regresi
+akhir lintas increment **101/101**; `py_compile` serta `diff-check` lulus. Hash
+dua wheel juga diverifikasi ulang dari download PyPI tanpa instalasi atau
+eksekusi paket. Semua hasil tetap structural/observation-only: belum ada trust,
+freshness, protected replay/high-water persistence, I18 final, runtime
+authority, candidate build, browser, deploy, atau activation. P15/P16/P17c/P18,
+payment, provider/outbound, dan seluruh gate tetap terbuka/default **OFF**;
+progress formal tidak berubah pada **173/220 = 78.6%**.
+
 ## Checkpoint baseline root `149a5da` — 2026-09-07
 
 Rangkaian `7a39213` baru dapat diterima setelah hardening `28b25fb` dan
