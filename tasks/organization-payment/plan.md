@@ -1103,3 +1103,16 @@ revocation authority beserta storage dan clock, serta TLS issuer, browser trust,
 private-key custody, consumer mechanism, dan runtime budget. P15/P16/P17c/P18
 tetap terbuka, seluruh gate tetap default OFF, dan checklist/progress tidak
 berubah pada **173/220 = 78.6%**.
+
+### Checkpoint I1 structural preparation artifact envelope — accepted `f3f8135`
+
+`f3f8135` menerima codec envelope artefak persiapan yang hanya memvalidasi
+struktur. Hasilnya berupa `MappingProxyType` immutable dengan exact sembilan key;
+pinning callable ekspor `decode`/`canonical_envelope` tetap menjadi tanggung
+jawab composition boundary. Bukti focused **17/17**, `py_compile`, dan final
+independent review **PASS** tanpa P1/P2.
+
+Acceptance ini tidak membuktikan signature, trust, quorum, TTL, revocation,
+replay, admission, ataupun runtime authority. P15/P16/P17c/P18 tetap terbuka,
+seluruh gate tetap default OFF, dan checklist/progress tidak berubah pada
+**173/220 = 78.6%**.

@@ -3046,3 +3046,15 @@ issuer, browser trust, private-key custody, consumer mechanism, dan runtime
 budget tetap memerlukan keputusan pengguna. P15/P16/P17c/P18 tetap terbuka,
 gate tetap default OFF, serta checklist/progress tidak berubah pada
 **173/220 = 78.6%**.
+
+### Checkpoint I1 structural preparation artifact envelope — accepted `f3f8135`
+
+`f3f8135` menerima pure structural-only preparation artifact envelope codec.
+Narrow result memakai `MappingProxyType` immutable dengan exact sembilan key;
+composition tetap wajib memiliki dan mem-pin callable ekspor
+`decode`/`canonical_envelope`. Evidence: focused **17/17**, `py_compile`, serta
+final independent review **PASS** tanpa P1/P2.
+
+Tidak ada authority untuk signature, trust, quorum, TTL, revocation, replay,
+admission, atau runtime. P15/P16/P17c/P18 tetap open, gates tetap default OFF,
+dan formal checklist/progress tetap **173/220 = 78.6%**.
