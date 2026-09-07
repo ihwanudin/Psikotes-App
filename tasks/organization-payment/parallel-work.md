@@ -3176,3 +3176,40 @@ high-water atau rollback protection, replay consumption, signature/trust,
 freshness, admission, maupun runtime authority. P15/P16/P17c/P18 tetap terbuka,
 gate/payment tetap default OFF, dan formal checklist/progress tidak berubah
 pada **173/220 = 78.6%**.
+
+### Checkpoint I14 acquisition evidence dan I15 verifier request — accepted `11926e8`, `71e49ef`
+
+`11926e8` menerima pure structural cryptography-acquisition evidence I14
+setelah binding CPython interpreter tag/version, `abi3`, `win_amd64`, dan
+arsitektur `amd64` serta batas versi pra-konversi diperbaiki. Bukti focused
+**14/14**, `py_compile`, `diff-check`, dan independent review **PASS** tanpa
+P1/P2. Cryptography ambient **46.0.6** tetap bukan authority atau acceptance
+evidence.
+
+`71e49ef` menerima pure structural verifier request I15 setelah binding
+generation/digest dan hardening dependency diperbaiki. Bukti focused **17/17**,
+`py_compile`, `diff-check`, dan independent review **PASS**.
+
+Keduanya hanya memvalidasi supplied canonical data. Tidak ada actual
+acquisition, import, install, atau filesystem verification; tidak ada eksekusi
+crypto, verifikasi signature/trust, current freshness, protected high-water
+persistence, replay consumption, admission, maupun runtime authority.
+P15/P16/P17c/P18 tetap terbuka, seluruh gate/payment tetap default OFF, dan
+formal checklist/progress tidak berubah pada **173/220 = 78.6%**.
+
+### Checkpoint I16 protected-journal request — accepted `545c6de`
+
+`545c6de` menerima pure structural protected-journal request codec I16 untuk
+exact compare-and-swap binding dua jenis jurnal. Setelah dua P1 ditutup,
+generation one-shot ledger wajib exact `current + 1`, sedangkan revocation
+high-water wajib bootstrap `0 -> 1` lalu strictly lebih besar dari current.
+Collision policy juga menurunkan internal exact digest tiga sensitive run-child
+path untuk `runtime.ini`, `supervisor-config.json`, dan `tls/server.key`, lalu
+mewajibkan set tersebut pada request. Bukti focused **12/12**, `py_compile`,
+`diff-check`, dan independent review **PASS**.
+
+Request ini structural-only. Tidak ada journal I/O, ACL/DPAPI/TPM, persistence,
+atomicity, actual rollback protection, replay consumption, admission, runtime,
+atau private-key metadata. P15/P16/P17c/P18 tetap terbuka, gate/payment tetap
+default OFF, dan formal checklist/progress tidak berubah pada
+**173/220 = 78.6%**.
