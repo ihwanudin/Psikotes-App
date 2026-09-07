@@ -29,6 +29,16 @@ outbound, browser, Cloudflare, deploy, atau activation yang disentuh. P15/P16/
 P17c/P18 tetap terbuka, seluruh gate/payment tetap default **OFF**, dan progress
 formal tetap **173/220 = 78.6%**.
 
+Verifikasi lanjutan mempertahankan batas tersebut. Full suite dengan guard
+lazy-loading testing lulus **75 tes / 414 assertions** tanpa violation tak
+terduga. `ffc7205` membuktikan 19 modul page/component di manifest hanya reachable
+melalui dynamic edge dan tidak masuk initial static graph; output tetap
+`manifestEvidenceOnly` dan `browserRuntimeObserved=false`. `290a687` menambah
+functional EXPLAIN untuk actual collective preview berukuran 10 dan maksimum
+100; masing-masing menangkap 12 SELECT, memvalidasi context RLS canonical, dan
+lulus full PostgreSQL disposable **405 tes / 4.459 assertions**. Bukti tambahan
+ini tetap tidak mengubah checkbox, gate, atau klaim produksi.
+
 ## Checkpoint baseline performa terjaga `d0909d7` — 2026-09-07
 
 Tiga lane performa lokal yang tidak overlap telah direview dan diterima.

@@ -2,7 +2,7 @@
 
 Tanggal observasi awal: 2026-09-07 16:34 ICT
 
-Revisi sumber awal: `35a8ed9`; checkpoint kode terverifikasi terakhir: `0309aae`.
+Revisi sumber awal: `35a8ed9`; checkpoint kode terverifikasi terakhir: `290a687`.
 Lingkup: audit read-only atas kode/config, build sintetis lokal, tes SQLite
 terisolasi, EXPLAIN fungsional pada PostgreSQL disposable, analyzer snapshot queue
 sintetis, dan request pasif terhadap header publik. Tidak ada optimasi, migrasi,
@@ -25,11 +25,11 @@ yang sama dengan worktree ini.
 
 | Area                                    | Status      | Bukti angka utama                                                                                                                               | Risiko utama                                                                                                                           | Eksperimen berikutnya                                                                                       |
 | --------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| N+1 dan query budget                    | **PARTIAL** | Portal SQLite 10/25/50 masing-masing **7 query** pada guard `<=20` (`f4b4cbe`); `4d1cd35` menolak lazy load Eloquent di environment testing     | Guard lazy-load belum aktif pada local/production dan query count bukan latency/plan                                                   | Perluas coverage route sintetis, lalu pertimbangkan guard local setelah smoke test                          |
-| PostgreSQL indexing dan EXPLAIN         | **PARTIAL** | `649ceb9` menjalankan `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` SELECT-only untuk 10/50/500 row dan page 10/25/50 sebagai role runtime ber-RLS  | Statistik planner belum di-refresh; hasil bukan klaim index, latency, atau produksi                                                    | Tambahkan `ANALYZE` disposable yang terkontrol lalu ulangi plan dan simpan metrik per shape                 |
+| N+1 dan query budget                    | **PARTIAL** | Portal SQLite 10/25/50 masing-masing **7 query**; guard testing `4d1cd35` lulus full suite **75 tes / 414 assertions** tanpa violation          | Guard lazy-load belum aktif pada local/production dan query count bukan latency/plan                                                   | Perluas coverage route sintetis, lalu pertimbangkan guard local setelah smoke test                          |
+| PostgreSQL indexing dan EXPLAIN         | **PARTIAL** | List 10/50/500 (`649ceb9`/`0309aae`) dan collective preview 10/100 (`290a687`) punya functional SELECT-only EXPLAIN sebagai role runtime+RLS    | Statistik planner belum di-refresh; hasil bukan klaim index, latency, atau produksi                                                    | Tambahkan `ANALYZE` disposable yang terkontrol lalu ulangi plan dan simpan metrik per shape                 |
 | Cache dan invalidation                  | **MISSING** | `c248366` + `360f84d`: inventory statis menemukan 1 `Cache::add` TTL 70 serta 3 unique-job lock TTL 300/900/900                                 | Hanya source allowlist pada working tree tepercaya/quiescent; tidak ada hit/miss, invalidation, Redis runtime, atau bukti lock efektif | Ukur Redis runtime sintetis dan definisikan inventory key/invalidation terpisah                             |
 | Queue, jobs, backlog observability      | **PARTIAL** | `1b8da17` + `260ee18`: analyzer snapshot sintetis menghitung depth, oldest eligible age, leased/stale, retry/terminal, dan status SLO per queue | Tidak membaca Redis/DB, tidak menjalankan worker/outbound, dan belum membuktikan throughput/alert runtime                              | Ambil snapshot teredaksi melalui collector read-only yang direview, lalu korelasikan dengan worker sintetis |
-| Route dan image lazy loading            | **PARTIAL** | Build menghasilkan 19 dynamic page/component imports; 45 JS chunks; image statis terbesar 53.281 B                                              | Tidak ada Lighthouse/RUM; avatar remote tidak menyatakan lazy/decoding; initial shell masih besar                                      | Jalankan Lighthouse terkontrol per route dan waterfall untuk welcome/registration/lobby                     |
+| Route dan image lazy loading            | **PARTIAL** | `ffc7205` membuktikan 19 modul page/component dynamic dan tidak masuk initial static graph pada manifest; image terbesar 53.281 B               | Bukti hanya manifest; belum ada Lighthouse/RUM, avatar metadata, atau browser waterfall                                                | Jalankan Lighthouse terkontrol per route dan waterfall untuk welcome/registration/lobby                     |
 | Vite minification dan bundle size       | **PARTIAL** | Guard `d0909d7`: initial JS **166.533 B gzip**, CSS **17.429 B gzip**, raw warning **520.428 B**, dan 19 dynamic imports                        | Minification teramati, tetapi variasi build dan enforcement package/CI belum dibuktikan                                                | Jalankan guard terhadap tiga build identik dan ukur variasi sebelum optimasi                                |
 | Cloudflare/CDN headers dan cache policy | **PARTIAL** | HTTPS 200; HTTP→HTTPS 308; Brotli aktif; asset JS `HIT`, age 1.390 s, `max-age=14400`                                                           | Preload dari HTML HTTPS memakai URL `http://`; HSTS/immutable tidak terlihat; policy tidak versioned di repo                           | Reproduksi origin-vs-edge header matrix dan telusuri forwarding scheme/config sebelum perubahan             |
 
@@ -84,6 +84,8 @@ yang sama dengan worktree ini.
   `testing`. Tes memakai sedikitnya dua model persisted agar mekanisme Laravel
   benar-benar aktif, membuktikan lazy relation ditolak dan eager load diterima;
   regresi billing lulus **28 tes / 409 assertions** dengan query portal tetap 7.
+  Full suite organization-payment kemudian lulus **75 tes / 414 assertions**
+  tanpa lazy-loading violation tak terduga.
 
 ### Gap dan risiko
 
@@ -126,6 +128,10 @@ yang sama dengan worktree ini.
 JSON)` untuk list bill tenant pada 10/50/500 row dan page 10/25/50. Tes memakai
   role `psikotes_runtime` non-superuser/non-bypass RLS, memastikan node tetap
   SELECT-only, row hasil tetap tenant-scoped, dan jumlah row tidak berubah.
+- `290a687` menerapkan batas yang sama pada actual collective preview untuk 10
+  dan maksimum 100 pilihan. Masing-masing menangkap 12 plan SELECT; statement
+  context RLS divalidasi exact, output tidak memuat SQL/binding/identifier, dan
+  full runner disposable lulus **405 tes / 4.459 assertions**.
 
 ### Gap dan risiko
 
@@ -245,6 +251,10 @@ setelah worker restart. Tetapkan SLO/alert hanya dari hasil itu.
 - `@inertiajs/vite` 3.7.0 default `lazy: true`; build manifest membuktikan
   **19 dynamic imports** untuk page/component Inertia. Build menghasilkan
   **45 JS chunks**, bukan satu bundle semua halaman.
+- Guard `ffc7205` memastikan 19 module di `resources/js/pages/**` merupakan
+  dynamic entry yang reachable melalui dynamic edge dan tidak masuk initial
+  static graph. Missing/orphan, eager import, duplikat casefold, dan path escape
+  ditolak. Ini hanya evidence manifest; `browserRuntimeObserved` tetap false.
 - Source mempunyai 19 file di `resources/js/pages`; manifest memisahkan welcome,
   registration, auth, settings, dashboard, dan participant lobby.
 - Aset raster statis terbesar hanya logo PNG **53.281 byte**; seluruh gambar
