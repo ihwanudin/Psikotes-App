@@ -2,10 +2,12 @@
 
 ## Status
 
-Proposed. ADR ini hanya mengusulkan contract authority, policy sertifikat, dan
-batas acceptance. ADR ini tidak memilih teknologi issuer atau dependency,
-tidak menerima implementasi, dan tidak mengotorisasi pembuatan sertifikat,
-candidate, browser, service, native Windows, deployment, atau activation.
+Accepted-for-contract. ADR ini menerima pilihan desain authority, issuer,
+policy sertifikat, transport exception browser, custody key, budget, dan
+consumer handoff yang dijelaskan di bawah. Status ini tidak menerima
+implementasi atau bukti runtime dan tidak mengotorisasi acquisition dependency,
+pembuatan sertifikat, candidate, browser, service, native Windows, deployment,
+atau activation.
 
 ## Date
 
@@ -69,9 +71,15 @@ fallback, discovery dari environment, permissive retry, reseal, cloning, atau
 operation baru. Capability hanya berlaku untuk satu run, session, lease, dan
 candidate generation; reference atau hasilnya tidak dapat dipakai ulang.
 
-Successful `materialize` tetap disabled sampai issuer technology, artifact
-acquisition, preparation ACL, final ACL admission, material consumer, browser
-trust, dan native acceptance yang disebut ADR ini diterima.
+Successful `materialize` tetap disabled sampai exact issuer artifact
+acquisition, preparation ACL, material consumer, browser transport exception,
+serta contract dan implementasi final composition admission ADR-021 dan final
+ADR-017 tersedia serta diterima. Prasyarat ini berarti mekanisme final-admission
+siap dipakai, bukan bahwa final admission untuk run tersebut sudah sukses
+sebelum materialization. Per-run final composition admission dan fresh final
+ADR-017 tetap terjadi sesudah materialization dan finalisasi config sesuai
+urutan di bawah. Native acceptance yang relevan juga tetap wajib sebelum
+runtime.
 
 ### Request dan lifecycle binding
 
@@ -95,13 +103,15 @@ final `configBinding`. Composition lebih dahulu menurunkan exact
 
 Preparation ACL adalah capability/extension terpisah yang masih **Proposed**. Ia
 bukan capability yang sudah diterima ADR-017, bukan final ADR-017 admission, dan
-belum diterima oleh ADR Proposed ini. Implementasi saat ini tidak mempunyai
-authority tersebut dan tetap unusable. Kontrak berikutnya wajib mensyaratkan
+tidak diterima sebagai implementasi oleh ADR ini. Implementasi saat ini tidak
+mempunyai authority tersebut dan tetap unusable. Kontrak berikutnya wajib mensyaratkan
 native handle/identity continuity, owner-only protected DACL, no-reparse, serta
 ordinary-principal denial yang setara dengan policy ADR-017, tetapi terikat ke
 preparation policy dan state karena final config belum ada.
 
-Schema request version pertama sekurang-kurangnya mengikat exact:
+ADR ini belum menetapkan nama key, nesting, tipe, byte limit, dan exact closed
+key set untuk request v1. Daftar berikut adalah semantic binding yang seluruhnya
+wajib dibawa, bukan schema yang dapat langsung diimplementasikan:
 
 - `version` dan fresh random `challenge` per invocation;
 - `run`, `session`, `preparationBinding`, dan `leaseBinding`;
@@ -113,10 +123,12 @@ Schema request version pertama sekurang-kurangnya mengikat exact:
 - certificate-policy artifact bytes dan digest;
 - issuer artifact manifest bytes, digest, dan generation;
 - exact ordered DNS names;
-- issuance timestamp dan maximum lifetime;
-- required minimum remaining lifetime yang berasal dari runtime budget plus
-  cleanup budget; dan
-- requested algorithm profile.
+- issuance timestamp, exact `notBefore=issuance-5m`, exact
+  `notAfter<=issuance+23h55m`, dan canonical validity interval tidak lebih dari
+  24 jam;
+- exact maximum run 15 menit, cleanup allowance 2 menit, dan required minimum
+  remaining lifetime 30 menit pada handoff; dan
+- exact RSA-3072/SHA-256 algorithm profile.
 
 Caller tidak boleh memilih path output, issuer executable, dependency root,
 trust bypass, subject content, serial, key bytes, atau entropy source.
@@ -126,6 +138,14 @@ Request digest memakai domain separation dan exact canonical request bytes.
 Replay request, challenge reuse, binding drift, generation drift, atau request
 yang tidak cocok dengan held lifecycle lease wajib ditolak sebelum material
 dibuat.
+
+Sebelum implementasi, ADR/codec Accepted berikutnya wajib menetapkan satu exact
+request-v1 closed schema: nama dan urutan key, tipe/nesting, bounds, canonical
+ASCII serialization, domain separator, dan digest. Extra/missing/duplicate key,
+alternate spelling/representation, trailing byte, nonfinite number, dan
+bool-as-int wajib ditolak. Sampai codec tersebut diterima, `materialize` tetap
+non-implementable dan disabled; implementer tidak boleh menafsirkan daftar
+semantic di atas sebagai schema extensible.
 
 Setelah materialization, composition memvalidasi certificate evidence, menyalin
 source/vendor yang telah diautentikasi, memilih dan memfinalisasi browser trust
@@ -149,7 +169,8 @@ evidence tidak dapat direplay atau dinaikkan menjadi salah satu admission final.
 
 Current candidate builder tidak dapat langsung dipakai untuk urutan ini karena
 ia mewajibkan cert/key sebagai caller-supplied runtime files dan memasukkan
-path/hash key ke config. Sebelum acceptance, preparation wajib dipisah menjadi:
+path/hash key ke config. Sebelum implementation/native acceptance, preparation
+wajib dipisah menjadi:
 
 1. validasi artifact source/vendor/tools/asset-review, runtime-configuration
    policy, preparation policy, dan revocation snapshots tanpa mengonsumsi
@@ -172,8 +193,10 @@ path/hash key ke config. Sebelum acceptance, preparation wajib dipisah menjadi:
    ke protected run root;
 8. validasi public certificate evidence, copy/finalisasi authenticated source
    dan vendor, pilih trust mechanism yang sudah diterima, finalisasi runtime dan
-   public browser config tanpa key path/hash/identity, lalu segel final manifest
-   dan hitung final `configBinding`;
+   public browser config yang hanya mengikat evidence digest dan chosen public
+   SPKI/transport configuration—tanpa certificate path/identity/size atau key
+   path/hash/identity—lalu segel final manifest dan hitung final
+   `configBinding`;
 9. terbitkan dan verifikasi exact ADR-021 final composition admission untuk
    seluruh public final state, lalu bind exact capability object/type/
    implementation/lifecycle identity hanya di private composition state;
@@ -189,12 +212,15 @@ belum mendefinisikan handle-relative lease setelah empty-root creation; karena
 itu extension tersebut masih Proposed dan current lease implementation tidak
 dapat dipakai untuk flow ini sampai diterima terpisah.
 
-Final serialized config hanya boleh memuat public certificate evidence dan
-chosen public trust configuration. Ia tidak boleh memuat capability identifier,
-reference, lookup key, object metadata, atau private binding dalam bentuk apa
-pun. Exact capability object/type/implementation/lifecycle identity hanya dipin
-di private composition admission/state, tidak caller-addressable atau
-retrievable. Key metadata dan handles tetap eksklusif di capability.
+Full public certificate evidence adalah separate internal serialized object;
+ia bukan bagian dari final config. Final serialized config hanya boleh memuat
+digest exact canonical public certificate-evidence object dan chosen public
+SPKI/transport-exception configuration. Certificate path, filesystem identity,
+byte size, full evidence fields, capability identifier/reference/lookup key,
+object metadata, atau private binding tidak boleh masuk final config. Exact
+capability object/type/implementation/lifecycle identity hanya dipin di private
+composition admission/state, tidak caller-addressable atau retrievable. Key
+metadata dan handles tetap eksklusif di capability.
 Root/skeleton preparation, capability, final composition admission, atau final
 ADR-017 admission yang gagal masuk terminal cleanup tanpa fallback ke current
 builder path.
@@ -225,35 +251,57 @@ yang non-inheritable. Authority wajib:
 
 Proxy saat ini menerima path melalui argv lalu membuka ulang certificate/key.
 Mekanisme itu tidak dapat diterima karena key path melewati argv dan path reopen
-membuka replacement/identity race. Sebelum runtime acceptance, user harus
-memilih salah satu mekanisme consumer berikut:
+membuka replacement/identity race. Contract consumer yang dipilih adalah:
 
-1. supervisor mempertahankan exact certificate/key handles dengan share mode
-   yang menolak delete/rename selama umur proxy; child membuka canonical fixed
-   run-local names tanpa menerima key path lewat argv/environment, lalu memberi
-   acknowledgment terikat bahwa exact final path, volume/file identity, size,
-   dan hash cocok sebelum TLS listen; supervisor memvalidasi ulang melalui held
-   handles sebelum dan sesudah acknowledgment; atau
-2. explicit Windows handle transfer dengan noninheritability, least privilege,
-   exact child/process binding, acknowledgment, cleanup, dan replay contract
-   yang diputuskan melalui ADR berikutnya.
+1. certificate dan key memakai fixed canonical run-local names yang diturunkan
+   child hanya dari pinned run layout/current working directory; path, hash,
+   identity, atau bytes key tidak masuk argv, environment, serialized config,
+   output, atau log;
+2. supervisor membuka dan mempertahankan exact certificate/key handles read-only
+   dengan sharing yang hanya mengizinkan read, tidak write atau delete/rename,
+   dari sebelum child launch sampai proxy benar-benar terminal;
+3. private key adalah encrypted PKCS#8 PEM. Authority membuat random one-shot
+   passphrase dan menyimpannya hanya dalam private `TlsMaterialCapability`;
+4. supervisor membuat anonymous pipe khusus password dan pipe acknowledgment.
+   Hanya exact endpoint yang diperlukan child yang dibuat inheritable sesaat
+   dan dimasukkan ke `STARTUPINFOEX` handle list dengan `close_fds=true`.
+   `STARTF_USESTDHANDLES` memasang password-read endpoint sebagai dedicated child
+   `hStdInput` dan acknowledgment-write endpoint sebagai dedicated child
+   `hStdOutput`; nilai handle tidak masuk argv/environment. Endpoint lain tidak
+   diwariskan, tidak ada process launch paralel selama inheritance window,
+   password dikirim sebagai one-shot bounded frame, dan kedua sisi menutup
+   endpoint sesuai ownership;
+5. child yang exact PID dan process-start identity-nya telah dipin membuka fixed
+   names dengan no-reparse policy, memvalidasi final path, volume/file identity,
+   size, hash, canonical PEM, serta certificate/key match sebelum
+   `SSLContext.load_cert_chain`; password callback memakai exact one-shot bytes
+   dari pipe dan tidak melakukan prompt atau fallback;
+6. child memvalidasi ulang identity/hash/key-match setelah load, lalu mengirim
+   bounded private acknowledgment yang terikat ke challenge, PID/start identity,
+   certificate fingerprint, SPKI, dan exact privately-held file identities.
+   Acknowledgment tidak dipublikasikan atau dicatat; dan
+7. supervisor memvalidasi ulang kedua retained handles sebelum dan sesudah
+   acknowledgment. Drift, timeout, pipe replay/extra byte, child mismatch,
+   exception, interruption, atau cleanup failure menolak sebelum TLS listen dan
+   tidak pernah jatuh kembali ke argv/path lama.
 
-Tidak satu pun dipilih oleh ADR ini. Current proxy path-reopen interface tetap
-unusable. Unencrypted PKCS#8 hanya dapat dipertimbangkan setelah user menerima
-open decision terkait, native ACL efficacy terbukti, dan consumer mechanism
-diterima. Encrypted key memerlukan contract password channel terpisah; password
-tidak boleh diselundupkan melalui argv, environment, JSON, stdin umum, atau log.
+`SSLContext.load_cert_chain` menerima nama file, bukan Win32 file handle, sehingga
+retained-parent-handle + exact child-open acknowledgment dipilih daripada raw
+handle transfer. Current proxy path-reopen/argv interface tetap unusable sampai
+contract ini diimplementasikan dan lulus native acceptance.
 
 ### Policy X.509 minimum
 
 Material hanya untuk host sintetis checkout dan wajib memenuhi exact policy:
 
-- tepat satu self-signed end-entity certificate, tanpa chain tambahan;
-- RSA minimal 2048 bit dengan signature SHA-256, sampai algorithm profile lain
-  diputuskan melalui ADR;
+- tepat satu self-signed, one-run end-entity certificate dan fresh private key
+  yang tidak pernah dipakai pada run lain, tanpa chain tambahan;
+- exact RSA 3072 bit dengan signature SHA-256;
 - `BasicConstraints` critical dan exact `CA=false`;
 - SAN berisi tepat dua `dNSName`, `psikotes.oncam.id` dan `oncam.id`, dalam
   canonical order, tanpa wildcard, IP address, URI, atau nama tambahan;
+- hanya SAN tersebut yang menjadi hostname authority; Common Name tidak menjadi
+  authority dan tidak boleh menambah nama;
 - EKU exact hanya `serverAuth`;
 - Key Usage critical dan, untuk RSA profile, exact `digitalSignature` serta
   `keyEncipherment` tanpa bit tambahan;
@@ -261,52 +309,59 @@ Material hanya untuk host sintetis checkout dan wajib memenuhi exact policy:
   username, machine name, atau environment name;
 - positive random serial yang memenuhi batas X.509/RFC dan tidak berasal dari
   timestamp, PID, session, atau identifier bisnis;
-- `notBefore` UTC tidak lebih lambat dari issuance time dan hanya memakai skew
-  mundur terbatas yang ditetapkan policy;
-- `notAfter` UTC tidak melebihi issuance time plus 24 jam; dan
-- saat handoff, sisa masa berlaku minimal harus mencakup exact runtime budget
-  ditambah cleanup budget.
+- `notBefore` UTC exact issuance time dikurangi 5 menit;
+- `notAfter` UTC tidak melebihi issuance time plus 23 jam 55 menit, sehingga
+  interval canonical dari `notBefore=issuance-5m` sampai `notAfter` tidak lebih
+  dari 24 jam;
+- maximum run duration exact 15 menit dan cleanup allowance exact 2 menit; dan
+- saat handoff, sisa masa berlaku wajib sekurang-kurangnya 30 menit.
 
 Certificate file wajib memuat tepat satu canonical PEM certificate. Key file
-wajib memuat tepat satu unencrypted PKCS#8 PEM private key bila keputusan
-tersebut kelak diterima. Extra PEM block, comment, prefix/suffix, chain, legacy
-key label, encrypted-key ambiguity, atau trailing noncanonical content ditolak.
-Public key certificate wajib exact cocok dengan private key.
+wajib memuat tepat satu encrypted PKCS#8 PEM private key menggunakan exact
+serialization policy dari pinned issuer version. Extra PEM block, comment,
+prefix/suffix, chain, legacy key label, unencrypted key, unexpected encryption
+profile, atau trailing noncanonical content ditolak. Public key certificate
+wajib exact cocok dengan private key.
 
 Issuer dan consumer wajib parse ulang policy dari bytes yang tersimpan; boolean
 `policySatisfied` dari producer tidak menjadi authority.
 
-### Trust browser tetap keputusan terbuka
+### Transport exception browser yang dipilih
 
-Trust tidak boleh memakai `ignoreHTTPSErrors`, global
-`--ignore-certificate-errors`, disable hostname verification, perubahan system
-trust store, atau fallback ke trust host yang tidak dipin.
+Playwright tidak menyediakan documented per-context server custom-CA trust;
+`clientCertificates` adalah TLS client authentication dan
+`ignoreHTTPSErrors` adalah bypass umum. Browser contract karena itu memakai satu
+disposable Chromium process dengan run-local user-data-dir dan tepat satu launch
+argument `--ignore-certificate-errors-spki-list=<base64 SHA-256 leaf SPKI>`.
+`ignoreHTTPSErrors` wajib exact `false`; global `--ignore-certificate-errors`,
+disable hostname verification, tambahan SPKI, trust-store mutation, profile
+reuse, atau fallback ke ambient host trust ditolak.
 
-Authority menerbitkan public SPKI SHA-256 digest dari leaf certificate sebagai
-salah satu input kandidat trust. Mekanisme trust browser belum dipilih oleh ADR
-ini. Leaf-SPKI pin dapat dipertimbangkan hanya bila browser/CLI yang dipin
-membuktikan semantics tepatnya dan composition mengikat exact digest serta dua
-synthetic host ke final config.
+Ini disebut **transport exception**, bukan browser trust atau certificate
+validation. Implementasi Chromium yang didokumentasikan mengembalikan success
+ketika SPKI mana pun dalam chain cocok, sehingga Chromium sendiri tidak boleh
+diklaim memvalidasi wrong-host, expiry, EKU, Key Usage, chain, atau seluruh
+certificate policy pada run ini. Sebelum browser launch, composition wajib
+melakukan independent full validation terhadap exact stored leaf certificate,
+exact two-host SAN, validity, algorithm/extensions, certificate/key match, dan
+exact certificate/SPKI/evidence/config digests. Exact public SPKI dan certificate
+digest wajib terikat ke final config, final ADR-021 admission, dan fresh final
+ADR-017 admission.
 
-SPKI pin adalah public metadata, bukan secret. Namun caller tidak boleh memilih
-atau menggantinya. SPKI match saja tidak boleh diklaim membuktikan hostname,
-validity, EKU, Key Usage, atau seluruh certificate policy; beberapa browser flag
-dapat mengubah semantics validasi yang tersisa. Semua sifat tersebut wajib diuji
-terpisah setelah mekanisme trust dipilih. Perubahan pin setelah materialization,
-context tambahan yang memakai bypass luas, atau browser yang tidak membuktikan
-dukungan dan semantics pin wajib menolak runtime.
-
-Jika mekanisme browser yang dipilih tidak dapat memberi trust host-scoped atau
-SPKI-scoped dengan bukti yang cukup, keputusan trust harus kembali ke status
-open. ADR ini tidak mengotorisasi perubahan trust store mesin.
+SPKI adalah public metadata tetapi caller tidak boleh memilih atau menggantinya.
+Perubahan certificate/SPKI setelah materialization, argumen flag kedua, missing
+run-local user-data-dir, context `ignoreHTTPSErrors=true`, atau browser/tool
+identity yang tidak tepat wajib menolak sebelum launch. Negative runtime proof
+untuk wrong host dan expired certificate harus menguji validator independen;
+successful Chromium navigation di bawah SPKI exception bukan bukti kedua sifat
+tersebut. ADR ini tidak mengotorisasi perubahan trust store mesin.
 
 ### Acquisition dan supply-chain issuer
 
-Rekomendasi awal adalah helper issuer milik repository yang memakai dependency
-cryptographic dari offline artifact bundle. Teknologi dan versi dependency
-tetap open sampai user memilih dan review menerima authority-nya.
-
-Jika `cryptography` dipilih, acceptance acquisition sekurang-kurangnya wajib:
+Issuer yang dipilih adalah repository-owned Python helper yang memakai exact
+pinned `cryptography` offline wheel closure. Exact wheel filenames, versions,
+hashes, dan generation bukan caller input; semuanya berasal dari accepted
+artifact authority ADR-021. Acceptance acquisition sekurang-kurangnya wajib:
 
 - exact offline wheel filenames dan SHA-256 yang direview;
 - exact wheel RECORD, package file inventory, native extension, dependent DLL,
@@ -322,16 +377,22 @@ Tidak boleh ada `pip install`, package resolution, download, online revocation,
 PATH lookup, implicit DLL search, atau fallback ke package host. Installed
 package version string tidak cukup.
 
-OpenSSL CLI bukan default karena executable saja tidak mengikat config file,
+OpenSSL CLI bukan authority karena executable saja tidak mengikat config file,
 provider modules, DLL search, entropy/runtime behavior, dan seluruh distribution
-closure. OpenSSL hanya dapat dipilih bila authority lengkap tersebut diputuskan
-dan dibuktikan terpisah.
+closure. Tidak ada fallback dari pinned helper ke OpenSSL, installed
+`cryptography`, PowerShell PKI cmdlet, atau ambient host tool.
 
 ### Public certificate evidence dan private capability
 
-Public certificate evidence adalah satu-satunya bagian yang boleh diserialisasi.
-Ia hanya memuat data publik dan immutable yang diperlukan untuk cross-binding.
-Exact schema version pertama sekurang-kurangnya memuat:
+Public certificate evidence adalah separate internal serialized object dan
+satu-satunya material object yang boleh diserialisasi. Ia tidak masuk final
+config; hanya exact canonical evidence digest dan chosen public SPKI/transport
+configuration yang masuk config. Evidence hanya memuat data publik dan
+immutable yang diperlukan untuk cross-binding.
+
+ADR ini belum menetapkan nama key, nesting, tipe, byte limit, dan exact closed
+key set evidence v1. Daftar berikut adalah semantic evidence yang seluruhnya
+wajib tersedia, bukan schema yang dapat langsung diimplementasikan:
 
 - request digest dan challenge;
 - run/session/preparation/lease bindings;
@@ -339,8 +400,16 @@ Exact schema version pertama sekurang-kurangnya memuat:
 - certificate SHA-256 fingerprint dan SPKI SHA-256 digest;
 - parsed algorithm, key size, serial policy result, subject/issuer profile,
   SAN, EKU, Key Usage, Basic Constraints, dan validity timestamps;
-- certificate file canonical path, filesystem identity, byte size, dan hash;
+- fixed-layout certificate role, filesystem identity, byte size, dan hash,
+  tanpa menyerialisasikan certificate path;
 - minimum-remaining-lifetime check terhadap runtime dan cleanup budget.
+
+Sebelum implementasi, ADR/codec Accepted berikutnya wajib menetapkan satu exact
+evidence-v1 closed schema beserta canonical ASCII bytes dan domain-separated
+digest. Extra/missing/duplicate key, alternate representation, trailing byte,
+nonfinite number, dan bool-as-int wajib ditolak. Sampai codec itu diterima,
+successful evidence publication dan `materialize` tetap non-implementable dan
+disabled.
 
 Key path, key hash, key filesystem identity, key size, private key bytes,
 password, entropy, dan raw handles tidak boleh muncul dalam serialized evidence.
@@ -354,8 +423,9 @@ juga tidak pernah menjadi evidence serialized.
 Evidence wajib dihasilkan dari independent parse terhadap exact stored bytes
 dan exact held certificate identity. Private capability secara terpisah
 memvalidasi exact held key identity dan certificate/key match. Final browser
-config mengikat digest public evidence; final `configBinding` baru dihitung
-setelah itu dan diverifikasi oleh fresh final ADR-017 admission. Output error
+config mengikat hanya digest exact canonical public evidence dan chosen public
+SPKI/transport configuration; final `configBinding` baru dihitung setelah itu
+dan diverifikasi oleh fresh final ADR-017 admission. Output error
 menggunakan fixed redacted codes tanpa memasukkan request, path, certificate
 content, key data, atau native message.
 
@@ -395,9 +465,9 @@ tidak membuktikannya.
 Tidak ada secret pada argv, environment, stdout, stderr, JSON, audit log,
 exception text, command history, atau browser config. Private key tidak pernah
 dikembalikan oleh authority. Current proxy path-reopen interface tidak boleh
-dipakai. Consumer yang kelak dipilih hanya boleh memperoleh private material
-melalui exact capability/handle contract, sementara path tetap tidak boleh masuk
-user-facing diagnostics.
+dipakai. Implementasi consumer yang dipilih hanya boleh memperoleh private
+material melalui exact capability/pipe contract, sementara path tetap tidak
+boleh masuk user-facing diagnostics.
 
 Public certificate, certificate fingerprint, dan SPKI digest boleh dipakai oleh
 internal verifier. Logging tetap menggunakan fixed status/refusal code dan
@@ -414,10 +484,13 @@ Pure tests dapat membuktikan:
 - primary `BaseException` precedence dan fixed error vocabulary;
 - artifact-manifest closure serta no-discovery policy;
 - X.509 policy evaluation terhadap synthetic parsed fixtures; dan
-- static absence of private-key transport dan broad trust-bypass switches.
+- static absence of private-key transport, `ignoreHTTPSErrors`, dan broad
+  trust-bypass switches; exact single-SPKI transport exception diuji sebagai
+  satu-satunya pengecualian.
 
-Pure tests tidak membuktikan issuer cryptography, CSPRNG, native key protection,
-Windows ACL efficacy, file identity durability, browser trust behavior, TLS
+Pure tests tidak membuktikan actual pinned `cryptography` execution, CSPRNG,
+native key protection, Windows ACL efficacy, file identity durability, browser
+trust behavior, TLS
 hostname/SPKI validation, crash cleanup, reparse/rename resistance, atau actual
 candidate execution.
 
@@ -425,12 +498,22 @@ Native/runtime acceptance kelak wajib membuktikan sekurang-kurangnya:
 
 - offline pinned dependency acquisition pada target host;
 - real native ACL/access denial dan noninheritability sebelum key generation;
-- actual key generation, X.509 parse, entropy behavior, dan file revalidation;
-- primary browser context memakai exact trust mechanism yang dipilih dan terikat
-  ke final public evidence/config tanpa broad bypass;
-- successful TLS handshake, ditambah separate negative proof untuk wrong host,
-  wrong trust material, expired, not-yet-valid, extra SAN, dan broad bypass;
-  hasil tersebut tidak boleh diasumsikan berasal dari SPKI match saja;
+- actual key generation, X.509 parse, exact `notBefore=issuance-5m`, exact
+  `notAfter<=issuance+23h55m`, canonical interval maksimal 24 jam, entropy
+  behavior, dan file revalidation;
+- disposable browser memakai exact run-local user-data-dir, tepat satu
+  `--ignore-certificate-errors-spki-list` value yang cocok dengan final public
+  evidence/config, dan `ignoreHTTPSErrors=false`, tanpa broad bypass;
+- process evidence membuktikan exact effective browser args/profile dan wrong
+  SPKI ditolak; successful TLS handshake di bawah SPKI exception hanya
+  membuktikan transport dengan key yang dipin;
+- independent validator memberi separate negative proof untuk wrong host,
+  expired, not-yet-valid, extra SAN/EKU/Key Usage, wrong trust material, dan
+  broad bypass; hasil tersebut tidak boleh diasumsikan berasal dari Chromium
+  SPKI match;
+- password-pipe inheritance hanya mencakup exact handles, frame one-shot,
+  PID/start identity dan acknowledgment terikat, serta retained file handles
+  menolak write/delete/rename sepanjang proxy lifetime;
 - cleanup normal, failure, interruption, crash, stale process, dan replay; dan
 - independent adversarial review tanpa blocker P1/P2.
 
@@ -462,8 +545,10 @@ installation, rollback, dan native trust-store authority terpisah.
 
 ### Memakai bypass certificate validation browser
 
-Ditolak. `ignoreHTTPSErrors` dan broad certificate-error flags membuat test
-tidak membuktikan hostname, chain, validity, atau trust material yang dipilih.
+`ignoreHTTPSErrors` dan global `--ignore-certificate-errors` ditolak karena
+menghapus pembatas material. Exact one-SPKI Chromium exception diterima hanya
+sebagai transport exception di disposable process; ia tidak menjadi bukti
+hostname, chain, validity, EKU, Key Usage, atau certificate policy.
 
 ### Memakai OpenSSL dari PATH
 
@@ -473,7 +558,8 @@ DLL, dependency, atau artifact acquisition.
 ### Mengirim encrypted-key password melalui argv atau environment
 
 Ditolak. Kedua channel mudah diwariskan atau diobservasi dan memperluas secret
-surface. Password-bearing design memerlukan ADR dan sealed channel tersendiri.
+surface. Contract memilih bounded one-shot anonymous pipe dengan exact inherited
+handle list; stdin umum, stdout, JSON, config, dan log tetap dilarang.
 
 ## Consequences
 
@@ -486,50 +572,45 @@ surface. Password-bearing design memerlukan ADR dan sealed channel tersendiri.
   verified final composition admission ADR-021, lalu fresh final ADR-017
   admission sebelum proxy/browser launch. Current monolithic builder dan lease
   path tetap unusable.
-- Trust browser tetap open. Mekanisme yang dipilih harus mengikat final public
-  evidence/config dan membuktikan hostname/validity/policy secara terpisah;
-  broad bypass menjadi pelanggaran contract.
+- Browser memakai exact one-SPKI transport exception pada disposable run-local
+  profile. Independent full certificate validation sebelum launch tetap wajib;
+  Chromium tidak diklaim membuktikan hostname/validity/policy di bawah flag itu.
 - Offline dependency closure menambah artifact review dan rotasi, tetapi
   menghilangkan ambient installed-package authority.
-- Unencrypted run-local key mungkin tetap diperlukan oleh proxy sekarang,
-  tetapi tidak diterima sampai open decision dan native ACL evidence selesai.
+- Encrypted PKCS#8 dan one-shot password pipe mempersempit exposure, tetapi
+  retained-handle, pipe inheritance, callback, memory cleanup, dan Windows ACL
+  efficacy tetap membutuhkan implementasi serta native evidence.
 - Failure lebih awal akan menahan launch daripada memakai material fallback.
 - Tidak ada code, dependency, certificate, candidate, native operation,
   runtime, configuration, deployment, payment, atau gate activation yang
-  diterima oleh ADR Proposed ini.
+  diterima oleh status Accepted-for-contract ini.
 - P15, P16, P17c, dan P18 tetap terbuka. Semua checkout/payment gates tetap
   default OFF dan checklist/progress tidak berubah.
 
-## Open Decisions Requiring User Approval
+## Keputusan implementasi dan runtime yang tetap terbuka
 
-ADR ini tidak boleh dipindahkan ke Accepted sampai user memilih:
+Pilihan kontrak di atas sudah diterima. Hal berikut belum diterima dan tidak
+boleh diinferensikan dari status ADR:
 
-1. **Teknologi issuer dan acquisition authority** — repository-owned helper
-   dengan pinned offline `cryptography` wheel closure, atau alternatif dengan
-   supply-chain closure yang setara.
-2. **Mekanisme trust browser** — exact leaf-SPKI binding yang benar-benar
-   didukung toolchain browser, atau authority trust terisolasi lain; broad
-   certificate bypass dan system-store mutation tetap tidak boleh dipilih.
-3. **Allowance private key** — apakah unencrypted PKCS#8 diizinkan hanya di
-   owner-only protected run directory setelah native ACL gate, atau proxy dan
-   password channel harus didesain ulang lebih dahulu.
-4. **Runtime budget** — maximum run duration, cleanup allowance, clock-skew
-   allowance, dan minimum remaining certificate lifetime pada handoff.
-5. **Consumer mechanism** — retained supervisor handles dengan exact child-open
-   acknowledgment, atau explicit handle transfer yang memiliki ownership,
-   identity, cleanup, dan replay contract lengkap.
-
-Keputusan user atas item tersebut hanya menerima design. Pembuatan artifact,
-dependency acquisition, native test, candidate execution, atau activation
-tetap memerlukan authority dan acceptance terpisah.
+1. exact wheel filenames, versions, SHA-256, RECORD/native-extension/DLL
+   inventory, license, dan generation pada acquisition evidence;
+2. implementasi preparation authorization/ACL, handle-relative lease,
+   `TlsMaterialCapability`, issuer helper, consumer proxy, password pipe,
+   acknowledgment, dan final composition wiring;
+3. native Windows evidence untuk ACL, retained sharing semantics, no-reparse,
+   file/process identity, handle inheritance, crash cleanup, dan secret-memory
+   lifetime;
+4. actual pinned Chromium/Playwright evidence bahwa exact SPKI flag serta
+   run-local user-data-dir efektif dan tidak ada argumen/context tambahan; dan
+5. explicit authority untuk melakukan dependency acquisition, certificate
+   generation, native tests, candidate/browser execution, atau activation.
 
 ## Acceptance Criteria
 
-ADR dapat dipindahkan ke Accepted-for-contract hanya setelah:
+Contract ini diterima dengan syarat implementasi berikut tetap menjadi gate:
 
-- seluruh open decision di atas dipilih secara eksplisit;
-- issuer artifact/dependency authority dan trust consumer memiliki exact
-  implementable contract tanpa discovery atau fallback;
+- issuer artifact/dependency authority dan transport-exception consumer
+  memiliki exact implementable contract tanpa discovery atau fallback;
 - ADR-021 preparation authorization, atomic protected empty root, proposed
   handle-relative ADR-016 lease sebagai first child/write, skeleton/marker,
   separately accepted preparation ACL, `preparationBinding`, final config,
@@ -537,6 +618,9 @@ ADR dapat dipindahkan ke Accepted-for-contract hanya setelah:
   admission memiliki exact ordered composition;
 - private-key custody dimulai setelah accepted native preparation-ACL
   prerequisite dan tidak masuk serialized config/evidence;
+- separate Accepted request/evidence codec menetapkan exact closed v1 key sets,
+  canonical bounds/serialization, domain-separated digests, dan fail-closed
+  rejection sebelum `materialize` dapat diimplementasikan;
 - consumer mengganti current proxy argv/path-reopen interface serta mempertahankan
   exact handle/path/identity continuity sampai proxy terminal;
 - request/evidence, one-shot lifecycle, cleanup, privacy, dan redacted failure
@@ -556,4 +640,15 @@ config/environment changes, deployment, payment, atau gate activation.
 - [ADR-020: Authority validasi evidence ordinary Windows](0020-ordinary-evidence-validation-authority.md)
 - [RFC 5280: Internet X.509 Public Key Infrastructure Certificate and CRL Profile](https://www.rfc-editor.org/rfc/rfc5280)
 - [RFC 6125: Service Identity in TLS](https://www.rfc-editor.org/rfc/rfc6125)
+- [`cryptography` X.509 tutorial](https://cryptography.io/en/45.0.6/x509/tutorial/)
+- [`cryptography` X.509 reference](https://cryptography.io/en/latest/x509/reference/)
+- [`cryptography` key serialization](https://cryptography.io/en/latest/hazmat/primitives/asymmetric/serialization/)
 - [Python `SSLContext.load_cert_chain`](https://docs.python.org/3/library/ssl.html#ssl.SSLContext.load_cert_chain)
+- [Python Windows `STARTUPINFO` handle list](https://docs.python.org/3/library/subprocess.html#subprocess.STARTUPINFO)
+- [Playwright `Browser.newContext` options](https://playwright.dev/docs/api/class-browser#browser-new-context)
+- [Playwright persistent browser context](https://playwright.dev/docs/api/class-browsertype#browser-type-launch-persistent-context)
+- [Chromium SPKI ignore-errors verifier](https://chromium.googlesource.com/chromium/src/+/HEAD/services/network/ignore_errors_cert_verifier.cc)
+- [Chromium SPKI switch definition](https://chromium.googlesource.com/chromium/src/+/HEAD/services/network/public/cpp/network_switches.cc)
+- [Microsoft `CreateFileW`](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew)
+- [Microsoft process handle inheritance](https://learn.microsoft.com/en-us/windows/win32/procthread/inheritance)
+- [Microsoft `PROC_THREAD_ATTRIBUTE_HANDLE_LIST`](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-updateprocthreadattribute)
