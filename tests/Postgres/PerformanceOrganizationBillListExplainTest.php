@@ -15,7 +15,10 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Tests\Support\AssessmentBillingFixture as Fixture;
 
-/** Disposable PostgreSQL plan evidence only; no production latency or index claim. */
+/**
+ * Disposable functional EXPLAIN execution evidence only. Planner statistics are
+ * intentionally not refreshed; this makes no index, latency, or production claim.
+ */
 final class PerformanceOrganizationBillListExplainTest extends TestCase
 {
     private array $own;
@@ -54,8 +57,8 @@ final class PerformanceOrganizationBillListExplainTest extends TestCase
         parent::tearDown();
     }
 
-    #[DataProvider('cardinalities')]
-    public function test_tenant_bill_list_plan_is_bounded_select_evidence(
+    #[DataProvider('functionalCardinalities')]
+    public function test_tenant_bill_list_functional_explain_shape_is_select_only(
         int $rowCount,
         int $pageSize,
     ): void {
@@ -129,15 +132,30 @@ final class PerformanceOrganizationBillListExplainTest extends TestCase
                     && $bill->payer_type === 'organization',
             ));
 
+            $buffers = $this->rootBufferTotals($plan);
+            foreach (array_keys($buffers) as $key) {
+                $this->assertSame((int) ($plan[$key] ?? 0), $buffers[$key]);
+            }
+
             $metrics = [
-                'syntheticRows' => $rowCount,
+                'fixtureOwnTenantRows' => $rowCount,
                 'pageSize' => $pageSize,
                 'actualRows' => (int) $plan['Actual Rows'],
                 'planningMs' => (float) ($root['Planning Time'] ?? 0.0),
                 'executionMs' => (float) ($root['Execution Time'] ?? 0.0),
-                'buffers' => $this->bufferTotals($nodes),
+                'buffers' => $buffers,
                 'nodes' => $nodeTypes,
+                'functionalPlanShapeOnly' => true,
+                'plannerStatisticsRefreshed' => false,
+                'indexClaim' => false,
+                'latencyClaim' => false,
+                'productionClaim' => false,
             ];
+            $this->assertTrue($metrics['functionalPlanShapeOnly']);
+            $this->assertFalse($metrics['plannerStatisticsRefreshed']);
+            $this->assertFalse($metrics['indexClaim']);
+            $this->assertFalse($metrics['latencyClaim']);
+            $this->assertFalse($metrics['productionClaim']);
             fwrite(STDERR, "\nPortal PG EXPLAIN ".json_encode(
                 $metrics,
                 JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES,
@@ -145,7 +163,7 @@ final class PerformanceOrganizationBillListExplainTest extends TestCase
         });
     }
 
-    public static function cardinalities(): iterable
+    public static function functionalCardinalities(): iterable
     {
         yield 'ten rows, ten visible' => [10, 10];
         yield 'fifty rows, twenty-five visible' => [50, 25];
@@ -194,18 +212,18 @@ final class PerformanceOrganizationBillListExplainTest extends TestCase
     }
 
     /** @return array<string, int> */
-    private function bufferTotals(array $nodes): array
+    private function rootBufferTotals(array $root): array
     {
         $keys = [
             'Shared Hit Blocks', 'Shared Read Blocks', 'Shared Dirtied Blocks',
             'Shared Written Blocks', 'Local Hit Blocks', 'Local Read Blocks',
             'Temp Read Blocks', 'Temp Written Blocks',
         ];
-        $totals = array_fill_keys($keys, 0);
-        foreach ($nodes as $node) {
-            foreach ($keys as $key) {
-                $totals[$key] += (int) ($node[$key] ?? 0);
-            }
+
+        $totals = [];
+        foreach ($keys as $key) {
+            // PostgreSQL root BUFFERS already include every child plan node.
+            $totals[$key] = (int) ($root[$key] ?? 0);
         }
 
         return $totals;
