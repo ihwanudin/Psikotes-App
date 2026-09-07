@@ -783,6 +783,56 @@ class CandidateBuilderTests(unittest.TestCase):
                             changed, Path("C:/reviewed-source"), Guard(),
                         )
 
+    def test_runtime_composition_sources_are_exact_required_manifest_members(self):
+        accepted = frozenset({
+            "tools/testing/tests/Browser/checkout-cryptography-runtime-closure.py",
+            "tools/testing/tests/Browser/test_checkout_cryptography_runtime_closure.py",
+            "tools/testing/tests/Browser/checkout-cryptography-runtime-closure-v1.json",
+            "tools/testing/tests/Browser/checkout-repository-verifier-composition.py",
+            "tools/testing/tests/Browser/test_checkout_repository_verifier_composition.py",
+            "tools/testing/tests/Browser/checkout-windows-journal-stability-boundary.py",
+            "tools/testing/tests/Browser/test_checkout_windows_journal_stability_boundary.py",
+        })
+        self.assertEqual(len(accepted), 7)
+        self.assertTrue(accepted <= m.BROWSER_TOOLS)
+        self.assertTrue(accepted <= m.REQUIRED_SOURCE)
+        self.assertTrue(all(m._allowed_source(relative) for relative in accepted))
+
+        class Guard:
+            def validate(self):
+                return None
+
+        manifest = {
+            relative: "a" * 64 for relative in sorted(m.REQUIRED_SOURCE)
+        }
+        with patch.object(m, "_inventory", return_value=set(manifest)), \
+                patch.object(m, "_hash_verified"):
+            self.assertEqual(
+                m._validated_manifest(
+                    manifest, Path("C:/reviewed-source"), Guard(),
+                ),
+                manifest,
+            )
+        for relative in sorted(accepted):
+            with self.subTest(omitted=relative):
+                omitted = dict(manifest)
+                omitted.pop(relative)
+                with patch.object(m, "_inventory", return_value=set(omitted)), \
+                        patch.object(m, "_hash_verified"):
+                    with self.assertRaisesRegex(
+                            m.CandidateRefused, "^manifest_inventory$"):
+                        m._validated_manifest(
+                            omitted, Path("C:/reviewed-source"), Guard(),
+                        )
+            for lookalike in (relative + ".bak", relative.upper()):
+                with self.subTest(lookalike=lookalike):
+                    changed = {**manifest, lookalike: "b" * 64}
+                    with self.assertRaisesRegex(
+                            m.CandidateRefused, "^manifest_shape$"):
+                        m._validated_manifest(
+                            changed, Path("C:/reviewed-source"), Guard(),
+                        )
+
     def test_packaged_privilege_authority_has_exact_transitive_source_closure(self):
         authority = HERE / "checkout-ordinary-privilege-authority.py"
         dependencies = static_fixed_dependencies(
