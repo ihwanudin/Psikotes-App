@@ -85,3 +85,22 @@ This report does not implement that design.
 
 No next runtime or cleanup attempt is assumed. Git cached diff check passed with
 only this report staged. Stop for coordinator review and resource-safety decision.
+
+## Bounded read-only recheck — 2026-09-07
+
+The initial literal-path probe matched its own census command. That result was
+contaminated by the observer and is discarded as non-evidence. The corrected
+split-literal probe avoided embedding the candidate path in the census command;
+two consecutive snapshots both reported candidate-referencing process count
+**0**. The probes themselves succeeded. All-family listener counts were also
+**0** on port **443** and **0** on port **8126**.
+
+The exact candidate directory still exists and its `integrity-invalid` latch is
+present. This closes only the point-in-time resource blocker. Historical cleanup
+and lineage remain unprovable; the candidate is invalid and must never be reused,
+rearmed, or treated as recoverable. Native provider, sealed input authority, and
+browser P17c remain blockers.
+
+This recheck did not build a candidate, start a browser/server, inspect a
+database, invoke native/provider behavior, read environment configuration, use
+outbound network access, deploy, or kill any process.

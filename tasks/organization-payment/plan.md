@@ -1075,3 +1075,17 @@ Checkpoint ini packaging-only: candidate tidak dibangun dan prior
 host-process confirmation tetap blocker. Tidak ada browser, native, provider,
 database, runtime, environment, network, atau deployment. Checklist/progress
 serta P15/P16/P17c/P18 tidak berubah, tetap terbuka/default OFF.
+
+### Checkpoint bounded resource recheck — 2026-09-07
+
+Probe literal-path awal terkontaminasi oleh command census sendiri dan dibuang
+sebagai non-evidence. Probe split-literal yang dikoreksi berhasil; dua snapshot
+berturut-turut mencatat process count **0**, sementara all-family listeners
+**443=0** dan **8126=0**. Exact candidate masih ada dengan `integrity-invalid`.
+
+Hanya blocker resource point-in-time yang tertutup. Historical cleanup/lineage
+tetap tidak dapat dibuktikan; candidate invalid tidak boleh digunakan kembali
+atau di-rearm. Native provider, sealed input authority, dan browser P17c tetap
+blocker. Tidak ada candidate/browser/server/database/native/provider/env/network/
+deploy atau kill. Checklist/progress dan P15/P16/P17c/P18 tidak berubah/default
+OFF.

@@ -3018,3 +3018,17 @@ Acceptance hanya packaging: candidate belum dibangun dan prior host-process
 confirmation masih blocker. Tidak ada browser, native, provider, database,
 runtime, environment, network, atau deployment. Checklist/progress dan
 P15/P16/P17c/P18 tidak berubah, tetap terbuka/default OFF.
+
+### Checkpoint bounded resource recheck — 2026-09-07
+
+Hasil literal-path awal dibuang sebagai non-evidence karena command census
+sendiri ikut terhitung. Corrected split-literal probe berhasil dan menghasilkan
+dua snapshot berturut-turut dengan process count **0**; all-family listener
+counts juga **443=0** dan **8126=0**. Exact candidate tetap ada dan
+`integrity-invalid` tetap present.
+
+Keputusan lane hanya menutup resource blocker point-in-time. Historical
+cleanup/lineage masih unprovable; candidate invalid tidak reusable/rearmable.
+Native provider, sealed input authority, dan browser P17c tetap blocker. Tidak
+ada candidate/browser/server/database/native/provider/env/network/deploy atau
+kill. Checklist/progress serta P15/P16/P17c/P18 tidak berubah/default OFF.
