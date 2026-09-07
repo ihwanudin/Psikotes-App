@@ -26,6 +26,8 @@ use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Bootstrap\LoadConfiguration;
+use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Http\UploadedFile;
@@ -70,7 +72,7 @@ if ($mode === 'http') {
         }
     }
     // No other application, admin, integration, payment or storage routes are reachable.
-    if (! in_array($path, ['/preview', '/action-probe', '/fixture-control', '/fixture.css', '/fixture-livewire.js', '/fixture-update', '/livewire/upload-file', '/favicon.ico'], true)
+    if (! in_array($path, ['/preview', '/fixture-bootstrap', '/action-probe', '/fixture-control', '/fixture.css', '/fixture-livewire.js', '/fixture-update', '/livewire/upload-file', '/favicon.ico'], true)
         && ! preg_match('#^/(?:admin/organization-bills/[0-9]+|fixture-proof/[1-9][0-9]*|livewire-[a-f0-9]+/upload-file)$#D', (string) $path)) {
         http_response_code(404);
         exit;
@@ -332,10 +334,13 @@ if (in_array($mode, ['verify', 'verify-p17c'], true)) {
     if ($mode === 'verify-p17c') {
         $profile = $manifest['profile'] ?? null;
         $readyCount = $profile === 'p17c-complete' ? 10 : ($profile === 'p17c-pending' ? 9 : null);
-        $paidBill = DB::table('assessment_bills')->where('id', '!=', $manifest['baselineBill'])->sole();
+        $organizationBills = DB::table('assessment_bills')
+            ->where('organization_id', $manifest['organization'])
+            ->where('id', '!=', $manifest['baselineBill']);
+        $paidBill = (clone $organizationBills)->sole();
         $checks = [
             'profileValid' => $readyCount !== null,
-            'oneCollectiveBill' => DB::table('assessment_bills')->where('id', '!=', $manifest['baselineBill'])->count() === 1,
+            'oneCollectiveBill' => (clone $organizationBills)->count() === 1,
             'paid' => $paidBill->status === 'paid' && $paidBill->paid_at !== null,
             'tenAllocationsSettled' => DB::table('assessment_bill_items')->where('bill_id', $paidBill->id)->count() === 10
                 && DB::table('assessment_bill_items')->where('bill_id', $paidBill->id)->whereNotNull('settled_at')->count() === 10,
@@ -461,7 +466,7 @@ Livewire::component('collective-page-fixture', CreateCollectiveBill::class);
 Livewire::component('minimal-filament-action-fixture', MinimalFilamentActionFixture::class);
 Livewire::setUpdateRoute(fn ($handler) => Route::post('/fixture-update', $handler)->middleware('web'));
 Livewire::setScriptRoute(fn ($handler) => Route::get('/fixture-livewire.js', $handler));
-Route::middleware('web')->get('/preview', function () use ($adminId): string {
+Route::middleware('web')->get('/preview', function () use ($adminId, $control): Response {
     $as = request()->query('as', 'branch');
     if ($as !== 'branch') {
         Filament::auth()->logout();
@@ -471,7 +476,7 @@ Route::middleware('web')->get('/preview', function () use ($adminId): string {
     abort_unless($admin->email === 'collective-browser@example.test', 403);
     Filament::auth()->login($admin);
 
-    return Blade::render(<<<'BLADE'
+    $html = Blade::render(<<<'BLADE'
         <!doctype html><html lang="id"><head><meta charset="utf-8">
         <meta name="viewport" content="width=device-width,initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -481,6 +486,22 @@ Route::middleware('web')->get('/preview', function () use ($adminId): string {
         <style>body.fixture-body{font-family:system-ui,sans-serif;margin:0}.fixture-main{box-sizing:border-box;max-width:60rem;margin:auto;padding:1rem}</style>
         </head><body class="fixture-body"><main class="fixture-main"><livewire:collective-page-fixture /></main>@filamentScripts(withCore: true)</body></html>
         BLADE, deleteCachedView: true);
+
+    return response($html)->cookie(
+        'oncam_fixture_control', $control, 0, '/fixture-control', null, false, true, false, 'strict'
+    );
+});
+Route::middleware('web')->get('/fixture-bootstrap', function () use ($adminId, $manifest): JsonResponse {
+    $admin = Filament::auth()->user();
+    abort_unless($admin instanceof Admin && $admin->getKey() === $adminId
+        && $admin->email === 'collective-browser@example.test', 404);
+
+    return response()->json([
+        'foreignBill' => $manifest['foreignBill'],
+        'baselineBill' => $manifest['baselineBill'],
+        'profile' => $manifest['profile'] ?? 'p12b',
+        'privateMarker' => 'PRIVATE-SENTINEL',
+    ])->header('Cache-Control', 'no-store');
 });
 Route::middleware('web')->get('/action-probe', function () use ($adminId): string {
     $admin = Admin::findOrFail($adminId);
@@ -521,7 +542,7 @@ Route::middleware('web')->get('/fixture-proof/{alias}', function (string $alias)
     ]);
 });
 Route::post('/fixture-control', function () use ($manifest, $control, $directory): array {
-    abort_unless(request()->header('X-Oncam-Fixture') === $control, 404);
+    abort_unless(request()->cookie('oncam_fixture_control') === $control, 404);
 
     return match (request()->string('action')->toString()) {
         'settle-current' => (function () use ($manifest): array {
@@ -610,7 +631,7 @@ Route::post('/fixture-control', function () use ($manifest, $control, $directory
         })(),
         default => abort(422),
     };
-});
+})->middleware('web')->withoutMiddleware(ValidateCsrfToken::class);
 header('Cache-Control: no-store');
 header('Referrer-Policy: no-referrer');
 header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; font-src 'self'; frame-src 'none'; form-action 'self'");

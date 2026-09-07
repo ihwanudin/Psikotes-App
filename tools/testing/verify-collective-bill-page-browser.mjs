@@ -70,8 +70,43 @@ if (process.argv[2] === 'assets') {
     const manifest = JSON.parse(
         readFileSync(join(directory, 'manifest.json'), 'utf8'),
     );
+
+    if (!/^[a-f0-9]{48}$/.test(manifest.control ?? '')) {
+        throw new Error('Invalid synthetic fixture capability.');
+    }
+
+    const sensitiveValues = [manifest.control, 'PRIVATE-SENTINEL'];
+    const redactSensitive = (value) => {
+        let redacted = value;
+        let found = false;
+
+        for (const sensitive of sensitiveValues) {
+            if (redacted.includes(sensitive)) {
+                found = true;
+                redacted = redacted.replaceAll(sensitive, '[REDACTED]');
+            }
+        }
+
+        return { found, redacted };
+    };
+    const persistText = (name, value) => {
+        const { found, redacted } = redactSensitive(value);
+        writeFileSync(join(artifacts, name), redacted);
+
+        if (found) {
+            throw new Error(
+                'Sensitive fixture value appeared in browser output.',
+            );
+        }
+    };
     const session = `oncam-p12b-${basename(directory).slice(-8)}`;
     const run = (...args) => {
+        if (args.some((argument) => redactSensitive(argument).found)) {
+            throw new Error(
+                'Sensitive fixture value appeared in browser command.',
+            );
+        }
+
         const result = spawnSync(
             process.execPath,
             [cli, `-s=${session}`, ...args],
@@ -83,7 +118,7 @@ if (process.argv[2] === 'assets') {
             },
         );
         const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
-        writeFileSync(join(artifacts, `${args[0]}-${Date.now()}.txt`), output);
+        persistText(`${args[0]}-${Date.now()}.txt`, output);
 
         if (
             result.error ||
@@ -98,10 +133,7 @@ if (process.argv[2] === 'assets') {
 
     try {
         run('open', 'about:blank', '--browser', 'chrome');
-        run(
-            'run-code',
-            `async (page) => (${prepare.toString()})(page, ${JSON.stringify(manifest)})`,
-        );
+        run('run-code', `async (page) => (${prepare.toString()})(page)`);
         const phases = {};
 
         for (const phase of ['selection-preview', 'confirm', 'authorization']) {
@@ -109,7 +141,7 @@ if (process.argv[2] === 'assets') {
                 'run-code',
                 `async (page) => (${verifyPhase.toString()})(page, ${JSON.stringify(phase)})`,
             );
-            writeFileSync(join(artifacts, `phase-${phase}.txt`), output);
+            persistText(`phase-${phase}.txt`, output);
             const match = output.match(
                 /### Result\s*\n([\s\S]*?)\n### Ran Playwright code/,
             );
@@ -133,13 +165,10 @@ if (process.argv[2] === 'assets') {
             );
         }
 
-        writeFileSync(
-            join(
-                artifacts,
-                manifest.profile?.startsWith('p17c')
-                    ? 'p17c-report.json'
-                    : 'p12b-report.json',
-            ),
+        persistText(
+            manifest.profile?.startsWith('p17c')
+                ? 'p17c-report.json'
+                : 'p12b-report.json',
             JSON.stringify(report, null, 2),
         );
         console.log(JSON.stringify(report));
@@ -152,12 +181,8 @@ if (process.argv[2] === 'assets') {
     throw new Error('Use assets or verify.');
 }
 
-async function prepare(page, manifest) {
+async function prepare(page) {
     page.p12b = {
-        control: manifest.control,
-        foreignBill: manifest.foreignBill,
-        baselineBill: manifest.baselineBill,
-        profile: manifest.profile ?? 'p12b',
         errors: [],
         responses: [],
         blocked: [],
@@ -209,6 +234,38 @@ async function prepare(page, manifest) {
     });
     await page.goto('http://127.0.0.1:8012/preview');
     await page.waitForFunction(() => Boolean(window.Livewire));
+    const state = await page.evaluate(async () => {
+        const response = await fetch('/fixture-bootstrap', {
+            cache: 'no-store',
+            credentials: 'same-origin',
+        });
+
+        if (!response.ok) {
+            throw new Error('Fixture bootstrap failed');
+        }
+
+        return response.json();
+    });
+
+    if (
+        !state ||
+        typeof state !== 'object' ||
+        Array.isArray(state) ||
+        !Number.isSafeInteger(state.foreignBill) ||
+        state.foreignBill < 1 ||
+        !Number.isSafeInteger(state.baselineBill) ||
+        state.baselineBill < 1 ||
+        !['p12b', 'p17c-complete', 'p17c-pending'].includes(state.profile) ||
+        typeof state.privateMarker !== 'string' ||
+        state.privateMarker.length < 1
+    ) {
+        throw new Error('Invalid fixture bootstrap response');
+    }
+
+    page.p12b.foreignBill = state.foreignBill;
+    page.p12b.baselineBill = state.baselineBill;
+    page.p12b.profile = state.profile;
+    page.p12b.privateMarker = state.privateMarker;
     page.p12b.bootstrapDiagnostics = {
         errors: page.p12b.errors.slice(),
         failures: page.p12b.failures.slice(),
@@ -260,16 +317,20 @@ async function verifyPhase(page, phase) {
         page.p12b.native.push(key);
     };
     const control = async (action) => {
-        const response = await page.request.post(
-            'http://127.0.0.1:8012/fixture-control',
-            {
-                headers: { 'X-Oncam-Fixture': page.p12b.control },
-                form: { action },
-            },
-        );
-        ok(response.status() === 200, `Control ${action} failed`);
+        return page.evaluate(async (requestedAction) => {
+            const response = await fetch('/fixture-control', {
+                body: new URLSearchParams({ action: requestedAction }),
+                cache: 'no-store',
+                credentials: 'same-origin',
+                method: 'POST',
+            });
 
-        return response.json();
+            if (!response.ok) {
+                throw new Error('Fixture control failed');
+            }
+
+            return response.json();
+        }, action);
     };
     const reviewSelection = async (button) => {
         await pressRequest(button, 'Enter');
@@ -277,7 +338,25 @@ async function verifyPhase(page, phase) {
             .getByRole('heading', { name: 'Konfirmasi tinjauan' })
             .waitFor({ state: 'visible' });
     };
+    const publicBodyText = async () => {
+        const text = await page.locator('body').innerText();
+
+        for (const forbidden of [
+            page.p12b.privateMarker,
+            'proof_object_key',
+            'gateway_ref',
+        ]) {
+            ok(
+                !text.includes(forbidden),
+                'Secret/clinical value leaked into browser output',
+            );
+        }
+
+        return text;
+    };
     const measure = async (state) => {
+        await publicBodyText();
+
         for (const width of [320, 390, 1280]) {
             await page.setViewportSize({ width, height: 800 });
             const result = await page.evaluate(() => ({
@@ -468,19 +547,7 @@ async function verifyPhase(page, phase) {
         throw new Error(`Unknown browser verification phase: ${phase}`);
     }
 
-    const secretText = await page.locator('body').innerText();
-
-    for (const forbidden of [
-        'PRIVATE-SENTINEL',
-        'proof_object_key',
-        'gateway_ref',
-        page.p12b.control,
-    ]) {
-        ok(
-            !secretText.includes(forbidden),
-            `Secret/clinical leak: ${forbidden}`,
-        );
-    }
+    const secretText = await publicBodyText();
 
     let expiry = null;
 
