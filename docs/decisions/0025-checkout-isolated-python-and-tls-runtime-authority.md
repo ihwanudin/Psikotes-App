@@ -7,10 +7,11 @@
 
 ADR-021 mensyaratkan verifier artifact Ed25519 yang berjalan pada Python dan
 dependency kriptografi yang diperoleh secara offline, dipin, dan ditutup sampai
-dependency native. ADR-022 menetapkan authority material TLS sintetis per-run.
-Keduanya sengaja belum memilih satu kontrak executable yang menghubungkan
-akuisisi archive, instalasi terisolasi, loader Windows, custody private key,
-consumer proxy, dan browser.
+dependency native. ADR-022 menetapkan authority material TLS sintetis per-run,
+sedangkan ADR-023 menetapkan atomic protected root dan handle-relative lease
+sebagai prasyarat normatif. Ketiganya sengaja belum memilih satu kontrak
+executable yang menghubungkan bootstrap verifier, akuisisi archive, instalasi
+terisolasi, loader Windows, custody private key, consumer proxy, dan browser.
 
 Repository sekarang memiliki structural wheel locks dan host-closure observer
 untuk `cryptography`, `cffi`, dan `pycparser`. Bukti tersebut memvalidasi data
@@ -61,7 +62,83 @@ site`, dan tidak menerima path absolut atau parent traversal. `PYTHONHOME`,
 input. Environment yang memengaruhi Python/loader harus ditolak, bukan
 disanitasi lalu dilanjutkan.
 
-### 2. Acquisition dan loader authority
+### 2. Bootstrap verifier yang tidak sirkular
+
+Archive target tidak boleh menjalankan verifier yang mengautentikasi archive itu
+sendiri. Default adalah external verified-capability handoff dari satu
+`BootstrapRuntimeAuthority` yang telah diprovision dan diautentikasi sebelum run,
+di luar candidate dan di luar empat target archives. Tidak ada local fallback
+yang mengeksekusi target `python.exe`, module, wheel, extracted byte, atau helper
+untuk membuat capability bootstrap.
+
+Interface konseptualnya exact:
+
+```text
+handoff(
+  bootstrapManifestBytes,
+  bootstrapAcquisitionEvidenceBytes,
+  bootstrapObservationBytes,
+  twoOperatorCeremonyCapability
+) -> BootstrapVerifierRuntimeCapability
+
+verify_artifact(
+  BootstrapVerifierRuntimeCapability,
+  artifactBytes,
+  envelopeBytes,
+  trustBundleBytes,
+  revocationSnapshotBytes,
+  trustedTimeCapability
+) -> VerifiedArtifactCapability
+
+promote_target(
+  BootstrapVerifierRuntimeCapability,
+  VerifiedArtifactCapability[],
+  IsolatedRuntimeCapability,
+  targetNativeObservationBytes,
+  challenge
+) -> RuntimeVerifierCapability
+
+discard(BootstrapVerifierRuntimeCapability) -> terminal
+```
+
+Bootstrap manifest mengikat exact external provider/broker process identity,
+source/binary digest, already-installed runtime-root identity, interpreter,
+verifier source, public trust keys, every loaded module, loader policy, system
+DLL/API-set resolution, acquisition issuer/generation, dan expiry/revocation.
+Bootstrap root, process, files, keys, dan object identities wajib pairwise
+distinct dari target isolated runtime yang diverifikasi. Capability hanya dapat
+memverifikasi; ia tidak dapat extract/install, menandatangani, membuat key/cert,
+memilih artifact, atau menerbitkan admission.
+
+Authority bootstrap berasal dari two-operator/two-channel fingerprint ceremony
+ADR-021 atas exact bootstrap manifest/verifier bundle, kemudian native observer
+yang independen membuktikan process dan loader closure yang sama sebelum handoff.
+Hasil ceremony structural yang supplied sendiri tidak cukup. Exact provisioning,
+operator authentication, protected transport, native observer, trusted time,
+revocation, dan provider process identity masih acceptance gates; sampai semuanya
+diterima, `handoff` harus disabled.
+
+Capability mengikat exact method/object/type/implementation, manifest/evidence
+bytes and digests, provider PID/start identity, loader closure, generation,
+challenge, dan one-shot state. Semua binding direvalidasi sebelum dan sesudah
+setiap verify. Mutation, replacement, equal-looking capability, request/evidence
+drift, replay, provider restart, loader drift, expiry/revocation, partial result,
+atau unavailable authority mengonsumsi attempt dan menolak. Cleanup mencoba
+seluruh resource tanpa menutupi primary `KeyboardInterrupt`/`SystemExit`.
+
+Hanya `VerifiedArtifactCapability` dari bootstrap boundary ini yang dapat
+mengizinkan preparation authorization dan target runtime acquisition. Setelah
+target runtime berhasil dibangun serta native closure-nya dibandingkan dengan
+artifact yang sudah diverifikasi, bootstrap authority memanggil
+`promote_target` sekali untuk exact artifact-capability set, target runtime,
+native observation, dan fresh challenge. Output `RuntimeVerifierCapability`
+mengikat bootstrap evidence digest, seluruh target artifact digest/generation,
+target process/start and loaded-module identity, loader closure, serta challenge.
+Baru output itu dapat menggantikan bootstrap verifier untuk operasi berikutnya.
+Promotion dan bootstrap discard bersifat one-way; target tidak pernah menjadi
+authority bagi acquisition atau promotion dirinya sendiri.
+
+### 3. Acquisition dan loader authority
 
 `IsolatedRuntimeAuthority` adalah capability sealed dan single-use. Composition
 memberikan hanya canonical acquisition request yang sudah diverifikasi; caller
@@ -106,7 +183,7 @@ memverifikasi loaded module path/identity sesudah process start. Tidak ada
 fallback ke search order default. Dynamic loading dan actual loaded-module
 closure adalah runtime gate; structural PE inventory tidak membuktikannya.
 
-### 3. Evidence runtime yang boleh diserialisasi
+### 4. Evidence runtime yang boleh diserialisasi
 
 Public runtime evidence adalah canonical artifact role
 `tool-runtime-closure`, dibungkus dan diverifikasi menurut ADR-021. Karena codec
@@ -138,7 +215,7 @@ acquisition mechanism, host identity producer, native loader observer, protected
 journal, clock, trust roots, revocation, dan verifier composition semuanya harus
 diterima dan dipin secara terpisah sebelum evidence menjadi admission input.
 
-### 4. Profile TLS dan supersesi sempit ADR-022
+### 5. Profile TLS dan origin ADR-022
 
 Algoritme tidak boleh disamakan lintas boundary:
 
@@ -147,12 +224,19 @@ Algoritme tidak boleh disamakan lintas boundary:
   **SHA-256**, sesuai ADR-022; dan
 - ECDSA atau Ed25519 certificate/key bukan fallback dan memerlukan ADR baru.
 
-Untuk isolated loopback checkout runtime saja, ADR ini **mensupersesi secara
-sempit** daftar SAN ADR-022. Certificate mempunyai exact ordered SAN
-`dNSName:localhost`, lalu `iPAddress:127.0.0.1`, tanpa domain lain, wildcard,
-IPv6, URI, atau email. Browser dan proxy wajib memakai origin exact
-`https://localhost:<accepted-port>`; direct `127.0.0.1` navigation bukan origin
-alternatif. Common Name tidak menjadi hostname authority.
+Baseline v1 tetap sama dengan ADR-022 dan runtime-configuration-policy yang sudah
+diterima: certificate mempunyai exact ordered SAN `dNSName:psikotes.oncam.id`,
+lalu `dNSName:oncam.id`, tanpa IP address, `localhost`, wildcard, URI, email,
+atau nama lain. Browser dan proxy memakai public origin exact
+`https://psikotes.oncam.id` pada port `443`, dengan exact host-resolver policy
+yang memetakan kedua nama tersebut ke `127.0.0.1` dan menolak semua nama lain.
+Common Name tidak menjadi hostname authority.
+
+Loopback SAN `localhost`/`127.0.0.1` bukan alias yang diterima. Migrasi ke SAN
+tersebut kelak memerlukan version baru yang mengganti certificate-policy,
+runtime-configuration-policy, browser launch policy, public-origin binding,
+negative tests, artifact/evidence digest, dan seluruh consumer secara atomik.
+Tidak ada silent dual-stack, alternate origin, atau fallback antarversi.
 
 Semua policy ADR-022 lain tetap berlaku: satu fresh self-signed end-entity leaf
 per run; `BasicConstraints` critical `CA=false`; EKU exact `serverAuth`; Key
@@ -162,7 +246,7 @@ menit sebelum issuance; `notAfter` tidak melebihi issuance plus 23 jam 55 menit;
 canonical interval maksimum 24 jam; maximum run 15 menit; cleanup allowance dua
 menit; dan minimum remaining lifetime 30 menit saat handoff.
 
-### 5. Custody, consumer, dan transport secret
+### 6. Custody, consumer, dan transport secret
 
 `TlsMaterialAuthority` menerima exact pinned `IsolatedRuntimeCapability`, final
 preparation binding, protected-root capability, run/lease identities, generation,
@@ -199,7 +283,7 @@ tidak boleh mengklaim kontrak ini terpenuhi dengan memanggil API itu pada path
 key yang dapat dibuka ulang. Exact handle-to-consumer adapter dan bukti bahwa
 library tidak melakukan reopen tetap native acceptance gate.
 
-### 6. Browser trust yang sempit
+### 7. Browser trust yang sempit
 
 Browser hanya satu disposable Chromium process dengan exact run-local
 user-data-dir dan tepat satu
@@ -215,7 +299,7 @@ hostname, validity, EKU, Key Usage, CA/chain, private-key custody, atau policy.
 Independent validator wajib membuktikan policy tersebut sebelum launch dan
 negative runtime tests wajib membuktikan wrong SPKI/host/time/policy ditolak.
 
-### 7. Public TLS evidence dan pemisahan role
+### 8. Public TLS evidence dan pemisahan role
 
 `TlsMaterialCapability` tetap privat. Satu-satunya output serializable adalah
 canonical public artifact role `tls-material` dengan exact v1 fields:
@@ -226,12 +310,12 @@ requestDigest, preparationBindingDigest, runtimeEvidenceDigest,
 runtimeConfigurationPolicyDigest, runIdentityDigest, leaseIdentityDigest,
 certificateSha256, spkiSha256, serialHex, publicKeyAlgorithm,
 signatureAlgorithm, subjectDigest, sanPolicy, notBefore, notAfter,
-certificatePolicyDigest, consumerAcknowledgmentDigest, evidenceDigest
+certificatePolicyDigest, evidenceDigest
 ```
 
 `version` exact `1`, `role` exact `tls-material`, algorithms exact
 `rsa-3072`/`sha256WithRSAEncryption`, `sanPolicy` exact
-`localhost-and-ipv4-loopback-v1`, digests lowercase SHA-256, serial positive
+`psikotes-two-dns-v1`, digests lowercase SHA-256, serial positive
 canonical lowercase hex, timestamps canonical UTC, dan identifiers bounded
 lowercase ASCII. `evidenceDigest` memakai domain
 `oncam.checkout.tls-material-evidence.v1\0` plus canonical bytes seluruh field
@@ -254,29 +338,71 @@ composition issuer, dan private-key cleanup custodian tidak boleh merupakan
 object/key identity yang sama. Exact operator assignment, key provisioning, dan
 custody evidence tetap acceptance gate; pemisahan nama role saja bukan bukti.
 
-### 8. Lifecycle exact
+Pre-launch public TLS artifact tidak memuat atau mengikat consumer acknowledgment:
+artifact harus tersedia sebelum final composition admission, sedangkan
+acknowledgment baru dapat lahir setelah admission mengizinkan child start.
+
+### 9. Post-load execution observation
+
+Proxy dimulai dalam state suspended/non-listening setelah final composition dan
+fresh ADR-017 execution admission. Setelah exact child memuat key, private
+acknowledgment divalidasi dan dicatat sebagai satu protected-journal transition
+`proxy-key-load-v1` sebelum socket bind/listen atau browser launch. Record exact
+memiliki field berikut dan tidak boleh memiliki field lain:
+
+```text
+version, kind, generation, observedAt, previousJournalDigest,
+runIdentityDigest, leaseIdentityDigest, sessionBindingDigest,
+compositionAdmissionDigest, aclExecutionAdmissionDigest,
+tlsMaterialEvidenceDigest, proxyProcessIdentityDigest, challengeDigest,
+certificateSha256, spkiSha256, consumerAcknowledgmentDigest, recordDigest
+```
+
+`version` exact `1`, `kind` exact `proxy-key-load`, generation mengikuti exact
+protected compare-and-swap predecessor, `observedAt` canonical trusted UTC, dan
+seluruh digest lowercase SHA-256. `recordDigest` memakai domain
+`oncam.checkout.proxy-key-load.v1\0` plus canonical bytes seluruh field
+sebelumnya. Record tidak memuat private-key path/hash/identity/size, password,
+handle, raw acknowledgment, SID, atau certificate bytes. Exact private
+`TlsMaterialCapability` dan source-handle identities tetap dibandingkan in-memory
+sebelum dan sesudah journal commit.
+
+Setelah commit, supervisor merevalidasi current composition, lease, journal,
+runtime/TLS capabilities, process identity, retained handles, dan fresh ACL
+execution context. Baru kemudian satu one-shot release pipe mengizinkan proxy
+bind/listen; browser launch menyusul setelah listener identity terbukti. Missing,
+failed, ambiguous, replayed, stale, atau unpersisted record membuat child
+diterminalkan. Observation ini bukan pengganti signed pre-launch TLS artifact,
+final composition admission, atau ADR-017.
+
+### 10. Lifecycle exact
 
 Urutan lifecycle tidak dapat dipertukarkan:
 
-1. verifikasi trust bootstrap, current revocation/high-water, runtime acquisition
-   artifact, archive hashes, dan seluruh static preparation artifacts read-only;
-2. consume preparation authorization one-shot ADR-021;
-3. atomic create protected run root, tahan handle/identity, lalu create/acquire
-   handle-relative ADR-016 lease sebagai first child/write;
-4. buat incomplete marker/skeleton dan lulus separately accepted preparation-ACL;
-5. prepare isolated runtime dari exact offline archives, lalu buktikan extracted,
-   loader, system-DLL/API-set, dan loaded-module closure;
-6. buat `TlsMaterialCapability`, generate material per-run, validasi X.509 dua
-   kali dari held bytes/handles, lalu terbitkan signed public evidence;
-7. finalisasi source/vendor/runtime config/browser config/manifest dan exact
+1. autentikasi external bootstrap verifier/runtime melalui exact ceremony,
+   provider observation, dan capability handoff; target archives belum dieksekusi;
+2. gunakan bootstrap capability untuk memverifikasi trust/revocation/high-water,
+   target runtime acquisition, archive hashes, dan static preparation artifacts;
+3. consume preparation authorization one-shot ADR-021;
+4. melalui required ADR-023 authority, atomic create protected run root, tahan
+   handle/identity, lalu create/acquire handle-relative ADR-016 lease sebagai
+   first child/write;
+5. buat incomplete marker/skeleton dan lulus separately accepted preparation-ACL;
+6. prepare target isolated runtime dari exact verified offline archives, buktikan
+   extracted/loader/system-DLL/API-set/loaded-module closure, lalu lakukan one-way
+   replacement bootstrap capability;
+7. buat `TlsMaterialCapability`, generate material per-run, validasi X.509 dua
+   kali dari held bytes/handles, lalu terbitkan signed pre-launch public evidence;
+8. finalisasi source/vendor/runtime config/browser config/manifest dan exact
    `configBinding` tanpa private metadata;
-8. verifikasi final composition admission yang mengikat runtime evidence, TLS
+9. verifikasi final composition admission yang mengikat runtime evidence, TLS
    public evidence, exact private capability identity, run/lease, dan config;
-9. lulus fresh final ADR-017 anchor/execution admission;
-10. launch proxy melalui exact inherited-handle/pipe contract, validasi private
-    acknowledgment, lalu launch browser dengan exact one-SPKI exception;
-11. sepanjang run revalidasi retained capabilities/identities dan budget; dan
-12. pada success, refusal, interruption, atau crash, terminalkan child lalu
+10. lulus fresh final ADR-017 anchor/execution admission;
+11. start proxy non-listening melalui exact inherited-handle/pipe contract,
+    validasi private acknowledgment, commit `proxy-key-load-v1`, revalidasi semua
+    authority, lalu release listener dan launch browser dengan one-SPKI exception;
+12. sepanjang run revalidasi retained capabilities/identities dan budget; dan
+13. pada success, refusal, interruption, atau crash, terminalkan child lalu
     discard/close/zeroize seluruh capability dan held resource dalam reverse
     ownership order.
 
@@ -284,7 +410,7 @@ Evidence atau capability dari run/generation/challenge lain, langkah yang
 dilewati, retry materialization, attach kedua, stale evidence, atau cleanup
 uncertainty wajib menolak tanpa fallback atau auto-repair.
 
-### 9. Failure, cleanup, dan privacy
+### 11. Failure, cleanup, dan privacy
 
 Seluruh ordinary failure menjadi fixed redacted refusal per boundary. Error
 tidak memuat path, archive name yang berasal dari input, certificate detail,
@@ -305,6 +431,9 @@ rollback memerlukan native evidence terpisah.
 
 Contract dianggap implemented hanya jika seluruh hal berikut diterima bersama:
 
+- separately authenticated external bootstrap verifier/runtime capability,
+  two-operator/two-channel ceremony, protected handoff, exact independent loader
+  closure, and proof that target archives are not executed before verification;
 - signed acquisition/provenance untuk exact empat archives, termasuk CPython
   archive SHA-256 yang belum tersedia, beserta issuer/trust/revocation/replay;
 - bounded extraction membuktikan exact ZIP/RECORD/resources/licenses/native
@@ -314,17 +443,22 @@ Contract dianggap implemented hanya jika seluruh hal berikut diterima bersama:
   DLL/API-set resolution, loaded module set, dan tidak ada dynamic-load fallback;
 - real isolated CPython starts dengan exact flags/path set dan membuktikan tidak
   ada environment, registry, site, CWD, `PATH`, network, atau ambient import;
-- preparation ACL dan protected journal/clock/revocation prerequisites ADR-021
-  lulus sebelum runtime/TLS materialization;
+- atomic protected root dan handle-relative lease capability ADR-023,
+  preparation ACL, serta protected journal/clock/revocation prerequisites
+  ADR-021 lulus sebelum runtime/TLS materialization;
 - real key generation dan independent X.509 validation membuktikan exact
-  RSA/SHA-256, loopback SAN, extensions, time bounds, key match, and fresh-run
-  uniqueness;
+  RSA/SHA-256, ordered two-domain SAN, extensions, time bounds, key match, dan
+  fresh-run uniqueness;
 - native handle inheritance membuktikan exact handles, noninheritability,
   one-shot passphrase, child identity, acknowledgment binding, no path reopen,
   retained identity stability, timeout, dan reverse cleanup;
+- proxy tidak bind/listen sebelum exact acknowledgment, protected
+  `proxy-key-load-v1` compare-and-swap, full context revalidation, dan one-shot
+  listener release berhasil;
 - disposable Chromium membuktikan exact single-SPKI arg, run-local profile,
   `ignoreHTTPSErrors=false`, effective process args, successful expected
-  loopback transport, dan negative wrong-SPKI/host/time/policy cases;
+  `https://psikotes.oncam.id` transport, exact resolver rules, dan negative
+  wrong-SPKI/host/time/policy cases;
 - public runtime/TLS evidence mempunyai accepted canonical codecs, detached
   Ed25519 verification, distinct role authorities/custodians, current trusted
   time, revocation/high-water, replay consumption, dan final composition binding;
@@ -341,10 +475,11 @@ Host-closure observation saat ini tidak memenuhi acceptance di atas.
 - Default dependency dan TLS profile tidak lagi boleh dipilih caller atau host
   ambient; failure menahan candidate sebelum launch.
 - ADR ini menutup pilihan versi/archive dan interface desain, tetapi menambah
-  pekerjaan acquisition, native loader observation, protected lifecycle,
-  evidence signing, handle consumer, dan browser runtime yang wajib dituntaskan.
-- SAN domain pada ADR-022 tidak berlaku untuk isolated loopback runtime ini;
-  supersesi hanya mencakup SAN/origin, bukan policy atau custody lainnya.
+  pekerjaan bootstrap verifier handoff, acquisition, native loader observation,
+  protected lifecycle, evidence signing, handle consumer, post-load journal, dan
+  browser runtime yang wajib dituntaskan.
+- Baseline SAN/origin ADR-022 dan runtime-configuration-policy v1 tetap berlaku;
+  ADR ini tidak membuat alternate localhost/IP origin.
 - Tidak ada existing candidate yang menjadi reusable atau accepted karena ADR
   ini. P15, P16, P17c, P18, checklist/progress, dan seluruh payment/checkout gates
   tetap terbuka/default OFF.
@@ -380,17 +515,21 @@ transport exception, bukan certificate-policy authority.
 
 ## Dependencies dan keputusan lanjutan
 
-ADR ini bergantung pada ADR-016, ADR-017, ADR-021, dan ADR-022. Implementasi juga
-bergantung pada accepted authority untuk offline acquisition/signing, exact
-CPython archive digest, atomic protected root, handle-relative lease,
-preparation ACL, protected journal/trusted clock/revocation, TLS evidence signer,
-native system-DLL/API-set producer, inherited-handle consumer, dan final
-composition wiring.
+ADR ini bergantung secara normatif pada ADR-016, ADR-017, ADR-021, ADR-022, dan
+ADR-023. `PinnedPreparationParentCapability`,
+`HeldPreparationRootCapability`, dan `HeldPreparationLeaseCapability` ADR-023
+wajib tersedia dan tetap exact sebelum runtime root, extracted file, TLS key,
+atau certificate dibuat. Implementasi juga bergantung pada accepted external
+bootstrap runtime authority, offline acquisition/signing, exact CPython archive
+digest, preparation ACL, protected journal/trusted clock/revocation, TLS evidence
+signer, native system-DLL/API-set producer, inherited-handle consumer,
+post-load journal/release boundary, dan final composition wiring.
 
 Material user/operations decisions yang belum tersedia adalah operator/key
 assignment dan custody, offline archive transfer/storage, accepted CPython
 archive digest/source, machine/OS image policy and update cadence, evidence
-signer service boundary, crash/remanence response, serta runtime test budget.
+signer service boundary, bootstrap provider/protected handoff, post-load journal
+producer, crash/remanence response, serta runtime test budget.
 Tidak ada dependency tersebut boleh dipenuhi secara implisit oleh developer
 machine atau fake adapter.
 
@@ -400,6 +539,7 @@ machine atau fake adapter.
 - [ADR-017: Attestation ACL Windows checkout](0017-checkout-windows-acl-attestation.md)
 - [ADR-021: Authority persiapan release kandidat checkout](0021-checkout-release-preparation-authority.md)
 - [ADR-022: Synthetic TLS material authority](0022-checkout-synthetic-tls-material-authority.md)
+- [ADR-023: Authority root persiapan dan lease handle-relative checkout](0023-checkout-preparation-root-and-lease-authority.md)
 - [Python embeddable package](https://docs.python.org/3/using/windows.html#the-embeddable-package)
 - [Python isolated mode](https://docs.python.org/3/using/cmdline.html#cmdoption-I)
 - [Python path configuration files](https://docs.python.org/3/using/windows.html#finding-modules)
