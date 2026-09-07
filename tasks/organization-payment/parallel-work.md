@@ -3116,3 +3116,25 @@ Tidak ada crypto verification, quorum, bootstrap, current freshness,
 revocation, replay, admission, runtime authority, ataupun private keys.
 P15/P16/P17c/P18 tetap open, gate/payment tetap default OFF, dan formal
 checklist/progress tetap **173/220 = 78.6%**.
+
+### Checkpoint I8 vendor-build dan I9 preparation authorization — accepted `b0ae28e`, `8784215`
+
+`b0ae28e` menerima pure structural vendor-build artifact I8 yang mengikat
+release/source artifact dan `composer.lock`, bounded package/file inventory,
+runtime metadata, serta supplied build provenance. Evidence: focused
+**11/11**, `py_compile`, `diff-check`, dan independent review **PASS** tanpa
+P1/P2.
+
+`8784215` menerima pure structural preparation-authorization artifact I9 yang
+mengikat exact lima artifact statis pra-TLS, revocation-snapshot references,
+dan destination/ACL intent dengan lifetime positif maksimum 10 menit. P2 path
+sudah ditutup dengan batas komponen 255 byte, depth 64, dan penolakan alias
+perangkat Win32. Evidence: focused **14/14**, `py_compile`, `diff-check`, dan
+independent review **PASS**.
+
+Scope kedua checkpoint hanya supplied canonical data. Tidak ada Composer/
+filesystem/reproducibility authority, signature/trust, current freshness,
+protected high-water, replay consumption, destination creation, ACL
+application, admission, atau runtime authority. P15/P16/P17c/P18 tetap open,
+gate/payment tetap default OFF, dan formal checklist/progress tidak berubah
+pada **173/220 = 78.6%**.
