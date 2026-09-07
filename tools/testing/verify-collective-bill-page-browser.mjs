@@ -121,9 +121,25 @@ if (process.argv[2] === 'assets') {
             phases[phase] = JSON.parse(match[1]);
         }
 
-        const report = { phases };
+        const report = { profile: manifest.profile ?? 'p12b', phases };
+        const serializedReport = JSON.stringify(report);
+
+        if (
+            serializedReport.includes(manifest.control) ||
+            serializedReport.includes('PRIVATE-SENTINEL')
+        ) {
+            throw new Error(
+                'Credential/private marker leaked into browser report.',
+            );
+        }
+
         writeFileSync(
-            join(artifacts, 'p12b-report.json'),
+            join(
+                artifacts,
+                manifest.profile?.startsWith('p17c')
+                    ? 'p17c-report.json'
+                    : 'p12b-report.json',
+            ),
             JSON.stringify(report, null, 2),
         );
         console.log(JSON.stringify(report));
@@ -140,6 +156,8 @@ async function prepare(page, manifest) {
     page.p12b = {
         control: manifest.control,
         foreignBill: manifest.foreignBill,
+        baselineBill: manifest.baselineBill,
+        profile: manifest.profile ?? 'p12b',
         errors: [],
         responses: [],
         blocked: [],
@@ -250,6 +268,8 @@ async function verifyPhase(page, phase) {
             },
         );
         ok(response.status() === 200, `Control ${action} failed`);
+
+        return response.json();
     };
     const reviewSelection = async (button) => {
         await pressRequest(button, 'Enter');
@@ -398,11 +418,41 @@ async function verifyPhase(page, phase) {
         const detailText = await page.locator('body').innerText();
 
         ok(
-            detailText.includes('2,040'),
+            /Rp\s*2[.,]040/.test(detailText),
             `Detail total mismatch: ${detailText}`,
         );
+        let lifecycle = null;
+
+        if (page.p12b.profile.startsWith('p17c')) {
+            lifecycle = await control('settle-current');
+            ok(lifecycle.billCount === 1, 'Expected one collective bill');
+            ok(
+                lifecycle.itemCount === 10 && lifecycle.settledItemCount === 10,
+                'Expected ten exactly settled allocations',
+            );
+            ok(
+                lifecycle.issuedDecision === 'issued' &&
+                    lifecycle.settled?.decision === 'settled' &&
+                    lifecycle.replayed?.decision === 'replayed',
+                'Invoice/finalizer lifecycle mismatch',
+            );
+            ok(
+                lifecycle.readyCount ===
+                    (page.p12b.profile === 'p17c-complete' ? 10 : 9),
+                'Consent-aware participant projection mismatch',
+            );
+        }
+
         await page.reload();
         ok(page.url() === detailUrl, 'Reload changed canonical bill');
+
+        if (page.p12b.profile.startsWith('p17c')) {
+            ok(
+                (await page.locator('body').innerText()).includes('Lunas'),
+                'Paid bill projection missing after reload',
+            );
+        }
+
         await measure('detail');
 
         return {
@@ -410,6 +460,7 @@ async function verifyPhase(page, phase) {
             detailUrl,
             nativeActions: page.p12b.native.length,
             trustedEvents: page.p12b.trustedEvents.length,
+            lifecycle,
         };
     }
 
@@ -429,6 +480,24 @@ async function verifyPhase(page, phase) {
             !secretText.includes(forbidden),
             `Secret/clinical leak: ${forbidden}`,
         );
+    }
+
+    let expiry = null;
+
+    if (page.p12b.profile.startsWith('p17c')) {
+        await control('bill-expired');
+        const expiredUrl = `http://127.0.0.1:8012/admin/organization-bills/${page.p12b.baselineBill}`;
+        await page.goto(expiredUrl);
+        const expiredText = await page.locator('body').innerText();
+        ok(
+            expiredText.includes('Kedaluwarsa') &&
+                expiredText.includes('Hubungi petugas ONCAM'),
+            'Expired recovery projection mismatch',
+        );
+        await page.reload();
+        ok(page.url() === expiredUrl, 'Expired bill reload changed URL');
+        expiry = { status: 'expired', reloadStable: true };
+        await page.goto(page.p12b.detailUrl);
     }
 
     const ownDetail = page.p12b.detailUrl;
@@ -507,6 +576,7 @@ async function verifyPhase(page, phase) {
         responses: page.p12b.responses.length,
         detailUrl: page.p12b.detailUrl,
         phase,
+        expiry,
         errorSamples: page.p12b.errors.slice(0, 5),
         detailAndDenialDiagnostics: {
             errors: page.p12b.errors.length,

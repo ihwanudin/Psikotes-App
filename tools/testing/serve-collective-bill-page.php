@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+use App\Actions\Payments\ClaimAssessmentBillInvoice;
+use App\Actions\Payments\FinalizeAssessmentBill;
+use App\Actions\Payments\IssueAssessmentBillInvoice;
 use App\Actions\Payments\StoreAssessmentBillProof;
 use App\Contracts\Notifier;
 use App\Contracts\PaymentProvider;
@@ -11,6 +14,9 @@ use App\Filament\Actions\CreateCollectiveBillAction;
 use App\Filament\Resources\AssessmentParticipants\Pages\CreateCollectiveBill;
 use App\Models\Admin;
 use App\Models\AssessmentBill;
+use App\Models\OutboxMessage;
+use App\Registration\ConsentDocument;
+use App\Security\RlsContextRunner;
 use App\Services\Notifications\FakeNotifier;
 use App\Services\Payments\AssessmentBillProofIdentity;
 use App\Services\Payments\FakePaymentProvider;
@@ -30,6 +36,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Livewire\Livewire;
 use Tests\Support\AssessmentPreviewFixture as Fixture;
 use Tests\Support\MinimalFilamentActionFixture;
@@ -43,8 +50,8 @@ if (! is_string($directory) || realpath(dirname($directory)) !== realpath(sys_ge
     throw new RuntimeException('A new dedicated oncam-collective temporary directory without .env is required.');
 }
 $mode = PHP_SAPI === 'cli' ? ($argv[1] ?? '') : 'http';
-if (! in_array($mode, ['init', 'verify', 'http'], true)) {
-    throw new RuntimeException('Use init, verify, or the loopback PHP development server.');
+if (! in_array($mode, ['init', 'init-p17c-complete', 'init-p17c-pending', 'verify', 'verify-p17c', 'http'], true)) {
+    throw new RuntimeException('Use an init/verify profile or the loopback PHP development server.');
 }
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
 if ($mode === 'http') {
@@ -84,7 +91,7 @@ if ($mode === 'http') {
     }
 }
 $database = $directory.'/browser.sqlite';
-if ($mode === 'init') {
+if (str_starts_with($mode, 'init')) {
     if (file_exists($database) || file_exists($directory.'/manifest.json')) {
         throw new RuntimeException('Refusing to replace an existing fixture.');
     }
@@ -142,7 +149,7 @@ $app = require $root.'/bootstrap/app.php';
 $app->addAbsoluteCachePathPrefix($directory);
 $app->useEnvironmentPath($directory);
 $app->useStoragePath($directory.'/storage');
-$app->afterBootstrapping(LoadConfiguration::class, function (Application $app) use ($database, $directory): void {
+$app->afterBootstrapping(LoadConfiguration::class, function (Application $app) use ($database, $directory, $mode): void {
     $config = $app->make('config');
     if ($app->configurationIsCached() || $config->get('app.env') !== 'testing'
         || $config->get('database.default') !== 'sqlite'
@@ -162,9 +169,18 @@ $app->afterBootstrapping(LoadConfiguration::class, function (Application $app) u
     $config->set('livewire.temporary_file_upload.disk', 'tmp-for-tests');
     $config->set('payments.manual_proof_disk', 'payment-proofs');
     $config->set('payments.manual_proof_temporary_url_minutes', 15);
+    $profile = is_file($directory.'/manifest.json')
+        ? json_decode((string) file_get_contents($directory.'/manifest.json'), true)
+        : null;
+    if (str_starts_with($mode, 'init-p17c-')
+        || (is_array($profile) && in_array($profile['profile'] ?? null, ['p17c-complete', 'p17c-pending'], true))) {
+        $config->set('assessment_integration.checkout.enabled', true);
+    }
 });
 $app->booting(function (Application $app): void {
-    $app->instance(PaymentProvider::class, new FakePaymentProvider);
+    $provider = new FakePaymentProvider;
+    $app->instance(PaymentProvider::class, $provider);
+    $app->instance(FakePaymentProvider::class, $provider);
     $app->instance(Notifier::class, new FakeNotifier);
     Http::preventStrayRequests();
     Mail::fake();
@@ -184,7 +200,7 @@ Storage::disk('payment-proofs')->buildTemporaryUrlsUsing(function (string $key, 
     return '/fixture-proof/'.$id;
 });
 
-if ($mode === 'init') {
+if (str_starts_with($mode, 'init')) {
     if (Artisan::call('migrate', ['--force' => true, '--no-interaction' => true]) !== 0) {
         throw new RuntimeException('Disposable migration failed.');
     }
@@ -205,7 +221,7 @@ if ($mode === 'init') {
             'package_id' => $packages[$group], 'assessment_attempt_id' => 'ATTEMPT-SYN-'.($index + 1),
             'external_candidate_id' => 'KANDIDAT-'.($index + 1).($index === 2 ? '-'.str_repeat('X', 64) : ''),
             'assessment_round_id' => 'Periode sintetis September',
-            'metadata' => $group === 'LEGACY' ? null : '{"checkout_contract_version":"checkout-v2","private":"PRIVATE-SENTINEL"}',
+            'metadata' => $group === 'LEGACY' ? null : '{"checkout_contract_version":"checkout-v2","checkout_initial_funding_mode":null,"private":"PRIVATE-SENTINEL"}',
         ]);
         DB::table('participants')->where('id', $fixture['participant'])->update([
             'full_name' => $index === 1 ? null : 'Peserta Sintetis '.($index + 1),
@@ -219,7 +235,51 @@ if ($mode === 'init') {
     $admin = Admin::create(['name' => 'Admin sintetis', 'email' => 'collective-browser@example.test',
         'password' => bin2hex(random_bytes(24)), 'role' => AdminRole::BranchAdmin,
         'branch_id' => $organization, 'can_verify_payments' => false]);
-    $method = DB::table('payment_methods')->insertGetId(['code' => 'manual_transfer', 'display_name' => 'Transfer sintetis', 'is_active' => true]);
+    $p17cProfile = str_starts_with($mode, 'init-p17c-');
+    $baselineMethod = DB::table('payment_methods')->insertGetId([
+        'code' => 'manual_transfer', 'display_name' => 'Transfer sintetis', 'is_active' => true,
+    ]);
+    foreach (array_unique(array_map(
+        fn (int $attempt): int => (int) DB::table('assessment_participants')->where('id', $attempt)->value('package_id'),
+        $ids,
+    )) as $packageId) {
+        DB::table('package_items')->insert(['package_id' => $packageId, 'test_type' => 'dass21', 'sort_order' => 2]);
+    }
+    if ($p17cProfile) {
+        foreach (array_slice($ids, 0, 10) as $index => $attempt) {
+            $participant = (int) DB::table('assessment_participants')->where('id', $attempt)->value('participant_id');
+            DB::table('assessment_participants')->where('id', $attempt)->update([
+                'funding_mode' => 'INVOICED_TO_ORGANIZATION',
+            ]);
+            DB::table('participants')->where('id', $participant)->update([
+                'full_name' => 'Peserta P17c '.($index + 1),
+            ]);
+            $consentAccepted = $mode === 'init-p17c-complete' || $index !== 9;
+            if ($consentAccepted) {
+                foreach (['psychotest', 'dass'] as $consentType) {
+                    $document = ConsentDocument::for($consentType);
+                    DB::table('consent_records')->insert([
+                        'participant_id' => $participant, 'consent_type' => $consentType,
+                        'status' => 'accepted', 'document_version' => $document->version,
+                        'document_hash' => $document->hash, 'consented_at' => now(),
+                    ]);
+                }
+            }
+            foreach (['identity_document', 'initial_selfie'] as $type) {
+                $evidenceId = (string) Str::ulid();
+                DB::table('identity_evidence')->insert([
+                    'public_id' => $evidenceId, 'participant_id' => $participant, 'type' => $type,
+                    'disk' => 'local', 'object_key' => 'synthetic/'.$evidenceId,
+                    'mime_type' => 'image/jpeg', 'size_bytes' => 100, 'width' => 10, 'height' => 10,
+                    'checksum_sha256' => hash('sha256', $evidenceId), 'created_at' => now(), 'updated_at' => now(),
+                ]);
+            }
+            DB::table('identity_verifications')->insert([
+                'participant_id' => $participant, 'matcher' => 'synthetic', 'outcome' => 'match',
+                'manual_status' => 'pending', 'checked_at' => now(),
+            ]);
+        }
+    }
     Filament::setCurrentPanel(Filament::getPanel('admin'));
     Filament::auth()->login($admin);
     DB::table('assessment_participants')->where('id', $ids[13])->update([
@@ -232,10 +292,17 @@ if ($mode === 'init') {
     ]);
     $claimedSelection = [['assessmentParticipantId' => $ids[13], 'consultationRequested' => false]];
     $claimedPreview = app(CreateCollectiveBillAction::class)->preview($claimedSelection);
-    $claimedBill = app(CreateCollectiveBillAction::class)->confirm($claimedSelection, $method, $claimedPreview['selectionHash']);
+    $claimedBill = app(CreateCollectiveBillAction::class)->confirm($claimedSelection, $baselineMethod, $claimedPreview['selectionHash']);
     DB::table('assessment_bills')->where('id', $claimedBill->id)->update([
         'status' => 'pending', 'expires_at' => now()->addHour(),
     ]);
+    $method = $baselineMethod;
+    if ($p17cProfile) {
+        DB::table('payment_methods')->where('id', $baselineMethod)->update(['is_active' => false]);
+        $method = DB::table('payment_methods')->insertGetId([
+            'code' => 'xendit', 'display_name' => 'Invoice sintetis P17c', 'is_active' => true,
+        ]);
+    }
     Filament::auth()->logout();
     $foreign = Fixture::create();
     $foreignAdmin = Admin::create(['name' => 'Admin cabang asing', 'email' => 'foreign-browser@example.test',
@@ -245,11 +312,12 @@ if ($mode === 'init') {
     file_put_contents($directory.'/manifest.json', json_encode(['admin' => $admin->id, 'foreignAdmin' => $foreignAdmin->id,
         'organization' => $organization, 'foreignOrganization' => $foreign['organization'], 'ids' => $ids,
         'method' => $method, 'control' => $control, 'baselineBill' => $claimedBill->id,
+        'profile' => $p17cProfile ? ($mode === 'init-p17c-complete' ? 'p17c-complete' : 'p17c-pending') : 'p12b',
         'foreignBill' => $foreign['bill']], JSON_THROW_ON_ERROR));
     echo "Disposable synthetic fixture initialized; no login to real accounts.\n";
     exit;
 }
-if ($mode === 'verify') {
+if (in_array($mode, ['verify', 'verify-p17c'], true)) {
     $counts = [];
     foreach (['assessment_charges', 'assessment_bills', 'assessment_bill_items', 'assessment_entitlements',
         'audit_logs', 'outbox_messages', 'orders', 'entitlements', 'consent_records', 'identity_verifications'] as $table) {
@@ -260,6 +328,28 @@ if ($mode === 'verify') {
         || ! is_int($manifest['organization'] ?? null) || ! is_int($manifest['baselineBill'] ?? null)
         || ! is_string($manifest['control'] ?? null)) {
         throw new RuntimeException('Invalid synthetic manifest for verification.');
+    }
+    if ($mode === 'verify-p17c') {
+        $profile = $manifest['profile'] ?? null;
+        $readyCount = $profile === 'p17c-complete' ? 10 : ($profile === 'p17c-pending' ? 9 : null);
+        $paidBill = DB::table('assessment_bills')->where('id', '!=', $manifest['baselineBill'])->sole();
+        $checks = [
+            'profileValid' => $readyCount !== null,
+            'oneCollectiveBill' => DB::table('assessment_bills')->where('id', '!=', $manifest['baselineBill'])->count() === 1,
+            'paid' => $paidBill->status === 'paid' && $paidBill->paid_at !== null,
+            'tenAllocationsSettled' => DB::table('assessment_bill_items')->where('bill_id', $paidBill->id)->count() === 10
+                && DB::table('assessment_bill_items')->where('bill_id', $paidBill->id)->whereNotNull('settled_at')->count() === 10,
+            'readyProjection' => $readyCount !== null
+                && DB::table('assessment_participants')->whereIn('id', array_slice($manifest['ids'], 0, 10))
+                    ->where('assessment_status', 'READY')->count() === $readyCount,
+            'entitlementsExact' => $readyCount !== null
+                && DB::table('assessment_entitlements')->where('status', 'ready')->count() === $readyCount * 2,
+            'oneInvoiceIntent' => DB::table('outbox_messages')->where('topic', 'assessment.bill.invoice-issuance')->count() === 1,
+            'onePaidAudit' => DB::table('audit_logs')->where('action', 'assessment_bill.paid')->count() === 1,
+            'noLegacyWrites' => DB::table('orders')->count() === 0 && DB::table('entitlements')->count() === 0,
+        ];
+        echo json_encode(['profile' => $profile, 'counts' => $counts, 'checks' => $checks], JSON_THROW_ON_ERROR)."\n";
+        exit(! in_array(false, $checks, true) ? 0 : 1);
     }
     $accessAction = 'assessment_bill.branch_proof_temporary_url_issued';
     $accessAudits = DB::table('audit_logs')->where('action', $accessAction)->get();
@@ -434,6 +524,36 @@ Route::post('/fixture-control', function () use ($manifest, $control, $directory
     abort_unless(request()->header('X-Oncam-Fixture') === $control, 404);
 
     return match (request()->string('action')->toString()) {
+        'settle-current' => (function () use ($manifest): array {
+            abort_unless(in_array($manifest['profile'] ?? null, ['p17c-complete', 'p17c-pending'], true), 422);
+            $bill = AssessmentBill::query()->where('organization_id', $manifest['organization'])
+                ->whereKeyNot($manifest['baselineBill'])->sole();
+            abort_unless($bill->status === 'reserved' && $bill->paid_at === null
+                && DB::table('assessment_bill_items')->where('bill_id', $bill->id)->count() === 10, 422);
+
+            app(RlsContextRunner::class)->runAsService(
+                fn (): array => app(ClaimAssessmentBillInvoice::class)->execute($manifest['organization'], $bill->id),
+            );
+            $intent = OutboxMessage::query()->where('topic', 'assessment.bill.invoice-issuance')
+                ->where('aggregate_id', (string) $bill->id)->sole();
+            $issued = app(IssueAssessmentBillInvoice::class)->execute($intent->message_id);
+            $bill->refresh();
+            $provider = app(FakePaymentProvider::class);
+            abort_unless(is_string($bill->gateway_ref), 500);
+            $paidEvent = $provider->markPaid($bill->gateway_ref, 'p17c-paid-'.$bill->id);
+            $settled = app(FinalizeAssessmentBill::class)->execute($paidEvent);
+            $replayed = app(FinalizeAssessmentBill::class)->execute($paidEvent);
+
+            return [
+                'issuedDecision' => $issued['decision'], 'settled' => $settled, 'replayed' => $replayed,
+                'billCount' => AssessmentBill::query()->where('organization_id', $manifest['organization'])
+                    ->whereKeyNot($manifest['baselineBill'])->count(),
+                'itemCount' => DB::table('assessment_bill_items')->where('bill_id', $bill->id)->count(),
+                'settledItemCount' => DB::table('assessment_bill_items')->where('bill_id', $bill->id)->whereNotNull('settled_at')->count(),
+                'readyCount' => DB::table('assessment_participants')->whereIn('id', array_slice($manifest['ids'], 0, 10))
+                    ->where('assessment_status', 'READY')->count(),
+            ];
+        })(),
         'price-up' => tap(['ok' => true], fn () => DB::table('packages')->where('id',
             DB::table('assessment_participants')->where('id', $manifest['ids'][0])->value('package_id'))->update(['amount' => 999])),
         'price-restore' => tap(['ok' => true], fn () => DB::table('packages')->where('id',
