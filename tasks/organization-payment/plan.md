@@ -1148,3 +1148,19 @@ atau filesystem; I3 tidak membuktikan signature, trust, quorum, live freshness,
 protected high-water, rollback/replay acceptance, admission, maupun authority
 runtime. P15/P16/P17c/P18 tetap terbuka, seluruh gate/payment tetap default
 OFF, dan formal checklist/progress tetap **173/220 = 78.6%**.
+
+### Checkpoint I5 asset review dan I7 tool/runtime closure — accepted `96d5076`, `3fe523f`
+
+Commit `96d5076` menerima codec struktural asset-review I5 yang mengikat exact
+enam path/digest ADR-021 serta release/source artifact digest; focused **11/11**
+dan independent review **PASS**. Commit `3fe523f` menerima codec struktural
+tool/runtime-closure I7 untuk exact enam tool, resource-category inventory,
+host digest, path/object identity/digest/version, serta bounded
+`closureComplete`; focused **10/10** dan independent review **PASS**. Keduanya
+lulus `py_compile` dan `diff-check`.
+
+Checkpoint ini hanya supplied-data structure. Tidak ada file/host inspection,
+bukti closure transitif aktual, reviewer/signature/trust, current freshness,
+revocation, replay acceptance, admission, ataupun runtime authority.
+P15/P16/P17c/P18 tetap terbuka, gate/payment tetap default OFF, dan formal
+checklist/progress tidak berubah pada **173/220 = 78.6%**.

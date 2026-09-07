@@ -3087,3 +3087,19 @@ signature, trust, quorum, live freshness, protected high-water, rollback/replay
 acceptance, admission, atau runtime authority. P15/P16/P17c/P18 tetap terbuka,
 seluruh gate/payment tetap default OFF, dan formal checklist/progress tetap
 **173/220 = 78.6%**.
+
+### Checkpoint I5 asset review dan I7 tool/runtime closure — accepted `96d5076`, `3fe523f`
+
+`96d5076` menerima pure structural asset-review artifact I5 dengan exact enam
+path/digest ADR-021 dan release/source binding; focused **11/11** serta
+independent review **PASS**. `3fe523f` menerima pure structural
+tool/runtime-closure artifact I7 dengan exact enam tool, bounded resource
+inventory/`closureComplete`, host digest, dan path/object
+identity/digest/version; focused **10/10** serta independent review **PASS**.
+Kedua lane lulus `py_compile` dan `diff-check`.
+
+Scope hanya supplied-data structure: tidak ada file/host inspection, actual
+transitive closure proof, reviewer/signature/trust, current freshness,
+revocation, replay acceptance, admission, atau runtime authority. P15/P16/P17c/
+P18 tetap open, gate/payment tetap default OFF, dan formal checklist/progress
+tetap **173/220 = 78.6%**.
