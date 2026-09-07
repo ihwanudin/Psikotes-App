@@ -1376,7 +1376,10 @@ def _token_restricted_sids_snapshot(functions, handle):
     base = ctypes.addressof(buffer)
     sid_count = DWORD.from_buffer(buffer).value
     if sid_count == 0:
-        if required.value != ctypes.sizeof(DWORD):
+        empty_lengths = {
+            ctypes.sizeof(DWORD), TOKEN_GROUPS.Groups.offset,
+        }
+        if required.value not in empty_lengths:
             raise WindowsAclRefused("acl_attestation")
         snapshot = _RestrictedSidsSnapshot((), required.value)
     else:

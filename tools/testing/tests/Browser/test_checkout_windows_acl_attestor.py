@@ -1,4 +1,4 @@
-"""Pure ABI tests for the lazy Windows ACL native boundary."""
+"""ABI tests and bounded native evidence for the Windows ACL boundary."""
 
 import ctypes
 import hashlib
@@ -1794,6 +1794,73 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
             names.index("IsTokenRestricted"),
         )
 
+    def test_restricting_sid_snapshot_accepts_empty_native_sized_header(self):
+        module = load_module()
+        harness = NativeDirectoryHarness(module)
+        harness.token_restricted_required_override = (
+            module.TOKEN_GROUPS.Groups.offset
+        )
+        with module._open_current_process_token(harness.bundle()) as token:
+            snapshot = token._restricted_sids_snapshot()
+        self.assertEqual(snapshot.values(), (
+            (), False, module.TOKEN_GROUPS.Groups.offset,
+        ))
+
+    @unittest.skipUnless(os.name == "nt", "native Windows evidence only")
+    def test_native_unrestricted_token_buffer_is_temporary_point_in_time_evidence(self):
+        module = load_module("checkout_windows_acl_attestor_native_evidence")
+        bundle = module._load_native()
+        functions = module._resolve_token_user_functions(bundle)
+        handle = module.HANDLE()
+        opened = functions["OpenProcessToken"](
+            functions["GetCurrentProcess"](), module.TOKEN_QUERY,
+            ctypes.byref(handle),
+        )
+        self.assertEqual(type(opened), int)
+        self.assertNotEqual(opened, 0)
+        try:
+            self.assertNotEqual(functions["SetHandleInformation"](
+                handle, module.HANDLE_FLAG_INHERIT, 0,
+            ), 0)
+            flags = module.DWORD()
+            self.assertNotEqual(functions["GetHandleInformation"](
+                handle, ctypes.byref(flags),
+            ), 0)
+            self.assertEqual(flags.value & module.HANDLE_FLAG_INHERIT, 0)
+
+            required = module.DWORD()
+            module.ctypes.set_last_error(0)
+            self.assertEqual(functions["GetTokenInformation"](
+                handle, module.TokenRestrictedSids, None, 0,
+                ctypes.byref(required),
+            ), 0)
+            self.assertEqual(
+                module.ctypes.get_last_error(), module.ERROR_INSUFFICIENT_BUFFER,
+            )
+            self.assertGreaterEqual(
+                required.value, module.TOKEN_GROUPS.Groups.offset,
+            )
+            buffer = ctypes.create_string_buffer(required.value)
+            returned = module.DWORD()
+            self.assertNotEqual(functions["GetTokenInformation"](
+                handle, module.TokenRestrictedSids, buffer, required.value,
+                ctypes.byref(returned),
+            ), 0)
+            self.assertEqual(returned.value, required.value)
+            if module.DWORD.from_buffer(buffer).value != 0:
+                self.skipTest("current process token is restricted")
+            self.assertGreater(
+                returned.value, ctypes.sizeof(module.DWORD),
+            )
+        finally:
+            module._checked_close(bundle, functions["CloseHandle"], handle)
+
+        with module._open_current_process_token(bundle) as token:
+            first = token._restricted_sids_snapshot()
+            second = token._restricted_sids_snapshot()
+        self.assertEqual(first, second)
+        self.assertEqual(first.values(), ((), False, returned.value))
+
     def test_restricted_parity_uses_authoritative_list_and_strict_bool_contract(self):
         module = load_module()
         sid = bytes.fromhex("010100000000000515000000")
@@ -1895,8 +1962,10 @@ class CheckoutWindowsAclNativeBoundaryTests(unittest.TestCase):
                 h, "token_restricted_required_override",
                 module.MAX_TOKEN_RESTRICTED_SIDS_BYTES + 1,
             )),
-            ("empty_not_four", lambda h: setattr(
-                h, "token_restricted_required_override", 8,
+            ("empty_trailing", lambda h: setattr(
+                h, "token_restricted_required_override",
+                module.TOKEN_GROUPS.Groups.offset
+                + ctypes.alignment(module.SID_AND_ATTRIBUTES),
             )),
             ("fill_false", lambda h: setattr(
                 h, "token_restricted_fill_result", 0,
