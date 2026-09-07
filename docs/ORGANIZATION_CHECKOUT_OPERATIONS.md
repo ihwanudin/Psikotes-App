@@ -17,6 +17,12 @@ tetap berada di:
 - [kontrak reservasi tagihan](ASSESSMENT_BILL_RESERVATION.md); dan
 - [catatan validasi](ORGANIZATION_CHECKOUT_VALIDATION.md).
 
+Persiapan kandidat browser juga tunduk pada
+[ADR-021](decisions/0021-checkout-release-preparation-authority.md) dan
+[ADR-022](decisions/0022-checkout-synthetic-tls-material-authority.md). Keduanya
+berstatus **Accepted-for-contract**, bukan bukti implementasi, native runtime,
+browser, deployment, atau izin aktivasi.
+
 Dokumen ini tidak mengizinkan edit langsung database, penghapusan histori,
 reinvoice otomatis, deploy, migrasi database aktif, pengiriman notifikasi, atau
 transaksi provider nyata. Jangan salin secret, token, bukti transfer, URL
@@ -52,10 +58,45 @@ sementara, atau data pribadi ke log maupun tiket insiden.
 | SuperAdmin reviewer | Memeriksa bukti transfer melalui URL sementara dan memilih APPROVE atau REJECT beserta kode penolakan yang tersedia. |
 | Engineer aplikasi | Menilai invariant, log/audit/outbox, kompatibilitas rollback, dan menyiapkan perbaikan melalui review kode. |
 | Pemilik produk/operasi | Menyetujui sumber organisasi yang ikut cutover dan komunikasi kepada cabang/peserta. |
+| Evidence custodian | Menjaga indeks bukti yang redacted, provenance pemeriksaan, hasil verifikasi, dan persetujuan; tidak menyalin payload, URL sementara, token, signature, atau data peserta. |
+| Rollback owner | Memutuskan containment atau rollback aplikasi/traffic, memastikan versi target kompatibel dan fail closed terhadap marker v2, serta menyetujui resume bersama incident commander. |
 
 Tidak satu pun peran boleh memperbaiki state dengan `UPDATE` manual. Jika alat
 operasional canonical belum mempunyai wiring yang ditinjau, eskalasikan; jangan
 menggantikannya dengan console interaktif pada produksi.
+
+Nama pemegang peran, jalur on-call/escalation, dan pemisahan tugas final belum
+ditetapkan di dokumen ini. Ketiganya adalah **keputusan produksi yang masih
+menunggu**; source tidak boleh diaktifkan sebelum setiap peran mempunyai owner
+yang disetujui dan pengganti yang tercatat di change record.
+
+## Hold point dan evidence yang belum tersedia
+
+Runbook ini tidak mengubah bukti persiapan statis menjadi bukti operasi. Hold
+point berikut tetap fail closed:
+
+- **Menunggu P17c:** bukti browser desktop/mobile/keyboard pada origin test-only,
+  database disposable, data sintetis, fake provider, dan outbound-deny belum
+  tersedia. Evidence custodian harus mengindeks hasil, source revision,
+  environment sintetis, waktu UTC, hasil state/consent/IDOR, serta gap yang masih
+  terbuka tanpa merekam token, URL sementara, atau payload sensitif.
+- **Menunggu acceptance runtime ADR-021/022:** authority, artifact, dan primitive
+  struktural yang telah diterima tidak membuktikan candidate build, native
+  Windows/ACL, custody material TLS, browser trust, lifecycle/crash recovery,
+  atau runtime. Jangan membuat atau memakai material TLS/candidate berdasarkan
+  runbook ini.
+- **Menunggu keputusan produksi:** owner bernama untuk seluruh peran di atas,
+  wiring rekonsiliasi canonical, permukaan read-only operator, dashboard/alert,
+  provider dan outbound control, credential custody, backup/restore, versi
+  rollback kompatibel, sumber canary, serta change approval belum ditetapkan di
+  sini. Nilai konfigurasi, endpoint, secret, kontak, dan target waktu sengaja
+  tidak dicantumkan.
+
+Evidence untuk change approval harus menunjuk artifact yang telah direview,
+hasil pemeriksaan yang dapat diulang, owner pemeriksaan, keputusan PASS/FAIL,
+dan gap residual. Klaim lisan, screenshot tanpa provenance, atau keberadaan kode
+tidak boleh dipakai untuk menutup hold point. Sampai seluruh hold point yang
+relevan diterima, checkout, writer, provider, outbound, dan source tetap OFF.
 
 ## Triage berdasarkan state bill
 
