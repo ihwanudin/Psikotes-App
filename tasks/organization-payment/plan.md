@@ -1217,3 +1217,22 @@ freshness, protected high-water, replay consumption, TLS capability
 validation, actual admission, atau runtime authority. P15/P16/P17c/P18 tetap
 terbuka, gate/payment tetap default OFF, dan formal checklist/progress tidak
 berubah pada **173/220 = 78.6%**.
+
+### Checkpoint trusted-time dan transition planners I11–I13 — accepted `eec87c4`, `fc584c5`, `756ac00`, `3a15fd5`
+
+`eec87c4` menetapkan lifetime maksimum trust-root bundle **366 hari**.
+`fc584c5` menerima structural trusted-time interval policy I11 untuk exact
+artifact/revocation role sets, half-open interval, no-regression input, dan
+domain-separated exact input-set binding; focused **13/13** dan independent
+review **PASS**. `756ac00` menerima structural revocation high-water transition
+planner I12; focused **18/18** dan independent review **PASS**. `3a15fd5`
+menerima structural one-shot ledger transition planner I13 untuk preparation
+authorization dan composition admission; focused **12/12** dan independent
+review **PASS**. Seluruh lane lulus `py_compile` dan `diff-check`.
+
+Semua hasil ini supplied/proposed-only. Tidak ada real-clock atau trusted-time
+evidence authentication, protected storage/DPAPI/TPM/atomicity, actual
+high-water atau rollback protection, replay consumption, signature/trust,
+freshness, admission, maupun runtime authority. P15/P16/P17c/P18 tetap terbuka,
+gate/payment tetap default OFF, dan formal checklist/progress tidak berubah
+pada **173/220 = 78.6%**.
