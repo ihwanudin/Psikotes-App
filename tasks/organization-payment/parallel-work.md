@@ -3213,3 +3213,25 @@ atomicity, actual rollback protection, replay consumption, admission, runtime,
 atau private-key metadata. P15/P16/P17c/P18 tetap terbuka, gate/payment tetap
 default OFF, dan formal checklist/progress tidak berubah pada
 **173/220 = 78.6%**.
+
+### Checkpoint I19, I16 pairing fix, I18, dan I17 — accepted `590da62`, `31c61d8`, `84b0e40`, `d39e935`
+
+`590da62` menerima structural trust-bootstrap evidence I19 untuk exact dua
+operator, dua channel, issuer/custodian sets yang disjoint, serta distinct
+source-copy ID dan provenance digest; focused **12/12** dan independent review
+**PASS**. `31c61d8` menambahkan exact positive `providerGeneration` ke request
+protected-journal I16 dan seluruh binding/result digest; focused **12/12** dan
+independent review **PASS**. `84b0e40` menerima structural protected-journal
+evidence I18 dengan exact pairing seluruh request I16, termasuk jalur refused
+dan `providerGeneration`; focused **15/15** plus I16 **12/12** dan independent
+review **PASS**. `d39e935` menerima structural verifier evidence I17 dengan
+exact ordinary 1-of-1, asset-review 2-of-2 beserta release-key exclusion,
+revocation 2-of-3 beserta issuer separation, trust bootstrap 2-of-3, serta
+rotation 2-of-3 old dan 2-of-3 new; focused **15/15** plus I15 **17/17** dan
+independent review **PASS**. Seluruh lane lulus `py_compile` dan `diff-check`.
+
+Semua output tetap `evidenceStructuralOnly`: tidak ada autentikasi operator,
+copy provenance, provider/native behavior, crypto/signature, trust/bootstrap,
+persistence/atomicity/rollback, replay consumption, admission, atau runtime
+authority. P15/P16/P17c/P18 tetap terbuka, gate/payment tetap default OFF, dan
+formal checklist/progress tidak berubah pada **173/220 = 78.6%**.
