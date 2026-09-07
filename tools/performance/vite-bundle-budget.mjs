@@ -30,6 +30,7 @@ const MAX_MANIFEST_BYTES = 2 * 1024 * 1024;
 const MAX_ASSET_BYTES = 64 * 1024 * 1024;
 const MAX_TOTAL_ASSET_BYTES = 256 * 1024 * 1024;
 const MAX_ENTRIES = 4096;
+const PAGE_PREFIX = 'resources/js/pages/';
 const RECORD_KEYS = new Set([
     'assets',
     'css',
@@ -108,9 +109,19 @@ function validateManifest(value) {
 
     let entryKey;
     const cssEntries = [];
+    const keyCasefold = new Set();
+    const pageCasefold = new Set();
+    const pageModuleDynamicEntryPaths = [];
 
     for (const key of keys) {
         safeRelative(key.startsWith('_') ? key.slice(1) : key);
+        const foldedKey = key.toLowerCase();
+
+        if (keyCasefold.has(foldedKey)) {
+            refuse();
+        }
+
+        keyCasefold.add(foldedKey);
         const record = value[key];
 
         if (
@@ -137,6 +148,10 @@ function validateManifest(value) {
             ) {
                 refuse();
             }
+        }
+
+        if ('src' in record) {
+            safeRelative(record.src);
         }
 
         for (const field of ['isEntry', 'isDynamicEntry']) {
@@ -167,6 +182,33 @@ function validateManifest(value) {
             }
         }
 
+        const keyIsPage =
+            key.startsWith(PAGE_PREFIX) && key.toLowerCase().endsWith('.tsx');
+        const sourceIsPage =
+            typeof record.src === 'string' &&
+            record.src.startsWith(PAGE_PREFIX) &&
+            record.src.toLowerCase().endsWith('.tsx');
+
+        if (keyIsPage !== sourceIsPage) {
+            refuse();
+        }
+
+        if (keyIsPage) {
+            const foldedPage = key.toLowerCase();
+
+            if (
+                record.src !== key ||
+                record.isDynamicEntry !== true ||
+                record.isEntry === true ||
+                pageCasefold.has(foldedPage)
+            ) {
+                refuse();
+            }
+
+            pageCasefold.add(foldedPage);
+            pageModuleDynamicEntryPaths.push(key);
+        }
+
         if (record.isEntry === true) {
             const extension = extname(record.file).toLowerCase();
 
@@ -184,11 +226,19 @@ function validateManifest(value) {
         }
     }
 
-    if (entryKey === undefined || cssEntries.length !== 1) {
+    if (
+        entryKey === undefined ||
+        cssEntries.length !== 1 ||
+        pageModuleDynamicEntryPaths.length < 1
+    ) {
         refuse();
     }
 
-    return { entryKey, cssEntryKey: cssEntries[0] };
+    return {
+        entryKey,
+        cssEntryKey: cssEntries[0],
+        pageModuleDynamicEntryPaths: pageModuleDynamicEntryPaths.sort(),
+    };
 }
 
 async function directoryState(buildReal) {
@@ -280,6 +330,7 @@ function frozenReport(value) {
     Object.freeze(value.budgets);
     Object.freeze(value.policy);
     Object.freeze(value.warnings);
+    Object.freeze(value.pageModuleDynamicEntryPaths);
 
     return Object.freeze(value);
 }
@@ -324,7 +375,8 @@ export async function measureBundle(buildDirectory) {
             refuse();
         }
 
-        const { entryKey, cssEntryKey } = validateManifest(manifest);
+        const { entryKey, cssEntryKey, pageModuleDynamicEntryPaths } =
+            validateManifest(manifest);
         const initialKeys = new Set();
         const pending = [entryKey];
 
@@ -337,6 +389,33 @@ export async function measureBundle(buildDirectory) {
 
             initialKeys.add(key);
             pending.push(...(manifest[key].imports ?? []));
+        }
+
+        const lazyKeys = new Set();
+        const lazyPending = [...initialKeys].flatMap(
+            (key) => manifest[key].dynamicImports ?? [],
+        );
+
+        while (lazyPending.length > 0) {
+            const key = lazyPending.pop();
+
+            if (initialKeys.has(key) || lazyKeys.has(key)) {
+                continue;
+            }
+
+            lazyKeys.add(key);
+            lazyPending.push(
+                ...(manifest[key].imports ?? []),
+                ...(manifest[key].dynamicImports ?? []),
+            );
+        }
+
+        if (
+            pageModuleDynamicEntryPaths.some(
+                (path) => initialKeys.has(path) || !lazyKeys.has(path),
+            )
+        ) {
+            refuse();
         }
 
         const initialJs = new Set();
@@ -424,6 +503,10 @@ export async function measureBundle(buildDirectory) {
             ),
             fontImageCount: media.length,
             dynamicImportCount: dynamicImports.size,
+            manifestEvidenceOnly: true,
+            browserRuntimeObserved: false,
+            pageModuleDynamicEntryCount: pageModuleDynamicEntryPaths.length,
+            pageModuleDynamicEntryPaths,
             budgets: { ...BUDGETS },
             policy: {
                 initialJsGzip: 'fail',

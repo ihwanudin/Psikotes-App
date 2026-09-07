@@ -86,6 +86,10 @@ await withFixture(async ({ build }) => {
         'fontImageRawBytes',
         'fontImageCount',
         'dynamicImportCount',
+        'manifestEvidenceOnly',
+        'browserRuntimeObserved',
+        'pageModuleDynamicEntryCount',
+        'pageModuleDynamicEntryPaths',
         'budgets',
         'policy',
         'passed',
@@ -105,6 +109,13 @@ await withFixture(async ({ build }) => {
     assert.equal(report.fontImageRawBytes, 72);
     assert.equal(report.fontImageCount, 2);
     assert.equal(report.dynamicImportCount, 1);
+    assert.equal(report.manifestEvidenceOnly, true);
+    assert.equal(report.browserRuntimeObserved, false);
+    assert.equal(report.pageModuleDynamicEntryCount, 1);
+    assert.deepEqual(report.pageModuleDynamicEntryPaths, [
+        'resources/js/pages/one.tsx',
+    ]);
+    assert.equal(Object.isFrozen(report.pageModuleDynamicEntryPaths), true);
     assert.deepEqual(report.budgets, BUDGETS);
     assert.deepEqual(report.policy, {
         initialJsGzip: 'fail',
@@ -121,9 +132,38 @@ await withFixture(async ({ build }) => {
 
 await withFixture(async ({ build }) => {
     const value = manifest();
-    value['resources/js/app.tsx'].imports.push('resources/js/pages/one.tsx');
-    value['resources/js/pages/one.tsx'].imports = ['_shared.js'];
-    value['resources/js/pages/one.tsx'].dynamicImports = ['_shared.js'];
+
+    for (const name of ['zeta', 'alpha']) {
+        const path = `resources/js/pages/${name}.tsx`;
+        value[path] = {
+            file: 'assets/page.js',
+            name,
+            src: path,
+            isDynamicEntry: true,
+        };
+        value['resources/js/app.tsx'].dynamicImports.push(path);
+    }
+
+    await writeFile(join(build, 'manifest.json'), canonicalManifest(value));
+    const report = await measureBundle(build);
+    assert.equal(report.pageModuleDynamicEntryCount, 3);
+    assert.deepEqual(report.pageModuleDynamicEntryPaths, [
+        'resources/js/pages/alpha.tsx',
+        'resources/js/pages/one.tsx',
+        'resources/js/pages/zeta.tsx',
+    ]);
+});
+
+await withFixture(async ({ build }) => {
+    const value = manifest();
+    value['_feature.js'] = {
+        file: 'assets/page.js',
+        name: 'feature',
+        imports: ['_shared.js'],
+        dynamicImports: ['_shared.js'],
+    };
+    value['resources/js/app.tsx'].imports.push('_feature.js');
+    value['resources/js/app.tsx'].dynamicImports.push('_shared.js');
     await writeFile(join(build, 'manifest.json'), canonicalManifest(value));
     const report = await measureBundle(build);
     assert.equal(report.dynamicImportCount, 2);
@@ -134,6 +174,57 @@ await withFixture(async ({ build }) => {
             gzipSync(Buffer.from('dynamic'.repeat(50)), { level: 9 }).length,
     );
 });
+
+for (const mutate of [
+    (value) => {
+        delete value['resources/js/pages/one.tsx'].isDynamicEntry;
+    },
+    (value) => {
+        value['resources/js/app.tsx'].dynamicImports = [];
+    },
+    (value) => {
+        value['resources/js/app.tsx'].imports.push(
+            'resources/js/pages/one.tsx',
+        );
+    },
+    (value) => {
+        value['resources/js/pages/two.tsx'] = {
+            ...value['resources/js/pages/one.tsx'],
+        };
+        value['resources/js/app.tsx'].dynamicImports.push(
+            'resources/js/pages/two.tsx',
+        );
+    },
+    (value) => {
+        value['resources/js/pages/ONE.tsx'] = {
+            file: 'assets/page.js',
+            name: 'upper-page',
+            src: 'resources/js/pages/ONE.tsx',
+            isDynamicEntry: true,
+        };
+        value['resources/js/app.tsx'].dynamicImports.push(
+            'resources/js/pages/ONE.tsx',
+        );
+    },
+    (value) => {
+        value['resources/js/pages/../escape.tsx'] = {
+            file: 'assets/page.js',
+            name: 'escape',
+            src: 'resources/js/pages/../escape.tsx',
+            isDynamicEntry: true,
+        };
+        value['resources/js/app.tsx'].dynamicImports.push(
+            'resources/js/pages/../escape.tsx',
+        );
+    },
+]) {
+    await withFixture(async ({ build }) => {
+        const value = manifest();
+        mutate(value);
+        await writeFile(join(build, 'manifest.json'), canonicalManifest(value));
+        await assert.rejects(() => measureBundle(build), BundleBudgetRefused);
+    });
+}
 
 await withFixture(async ({ build }) => {
     const value = manifest();
