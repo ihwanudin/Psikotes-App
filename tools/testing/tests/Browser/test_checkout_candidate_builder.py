@@ -668,6 +668,79 @@ class CandidateBuilderTests(unittest.TestCase):
         with self.assertRaisesRegex(m.CandidateRefused, "^manifest_shape$"):
             m._validated_manifest(collision, Path("C:/reviewed-source"), Guard())
 
+    def test_adr021_structural_codecs_are_exact_required_manifest_members(self):
+        accepted = frozenset({
+            "tools/testing/tests/Browser/checkout-preparation-artifact-envelope.py",
+            "tools/testing/tests/Browser/test_checkout_preparation_artifact_envelope.py",
+            "tools/testing/tests/Browser/checkout-release-source-artifact.py",
+            "tools/testing/tests/Browser/test_checkout_release_source_artifact.py",
+            "tools/testing/tests/Browser/checkout-revocation-snapshot.py",
+            "tools/testing/tests/Browser/test_checkout_revocation_snapshot.py",
+            "tools/testing/tests/Browser/checkout-runtime-configuration-policy-artifact.py",
+            "tools/testing/tests/Browser/test_checkout_runtime_configuration_policy_artifact.py",
+            "tools/testing/tests/Browser/checkout-asset-review-artifact.py",
+            "tools/testing/tests/Browser/test_checkout_asset_review_artifact.py",
+            "tools/testing/tests/Browser/checkout-tool-runtime-closure-artifact.py",
+            "tools/testing/tests/Browser/test_checkout_tool_runtime_closure_artifact.py",
+            "tools/testing/tests/Browser/checkout-trust-root-bundle.py",
+            "tools/testing/tests/Browser/test_checkout_trust_root_bundle.py",
+            "tools/testing/tests/Browser/checkout-vendor-build-artifact.py",
+            "tools/testing/tests/Browser/test_checkout_vendor_build_artifact.py",
+            "tools/testing/tests/Browser/checkout-preparation-authorization-artifact.py",
+            "tools/testing/tests/Browser/test_checkout_preparation_authorization_artifact.py",
+            "tools/testing/tests/Browser/checkout-composition-admission-artifact.py",
+            "tools/testing/tests/Browser/test_checkout_composition_admission_artifact.py",
+            "tools/testing/tests/Browser/checkout-one-shot-ledger-transition.py",
+            "tools/testing/tests/Browser/test_checkout_one_shot_ledger_transition.py",
+            "tools/testing/tests/Browser/checkout-trusted-time-policy.py",
+            "tools/testing/tests/Browser/test_checkout_trusted_time_policy.py",
+            "tools/testing/tests/Browser/checkout-revocation-high-water-transition.py",
+            "tools/testing/tests/Browser/test_checkout_revocation_high_water_transition.py",
+            "tools/testing/tests/Browser/checkout-cryptography-acquisition-evidence.py",
+            "tools/testing/tests/Browser/test_checkout_cryptography_acquisition_evidence.py",
+            "tools/testing/tests/Browser/checkout-verifier-request.py",
+            "tools/testing/tests/Browser/test_checkout_verifier_request.py",
+            "tools/testing/tests/Browser/checkout-protected-journal-request.py",
+            "tools/testing/tests/Browser/test_checkout_protected_journal_request.py",
+            "tools/testing/tests/Browser/checkout-trust-bootstrap-evidence.py",
+            "tools/testing/tests/Browser/test_checkout_trust_bootstrap_evidence.py",
+            "tools/testing/tests/Browser/checkout-protected-journal-evidence.py",
+            "tools/testing/tests/Browser/test_checkout_protected_journal_evidence.py",
+            "tools/testing/tests/Browser/checkout-verifier-evidence.py",
+            "tools/testing/tests/Browser/test_checkout_verifier_evidence.py",
+        })
+        self.assertEqual(len(accepted), 38)
+        self.assertTrue(accepted <= m.BROWSER_TOOLS)
+        self.assertTrue(accepted <= m.REQUIRED_SOURCE)
+        self.assertTrue(all(m._allowed_source(relative) for relative in accepted))
+
+        class Guard:
+            def validate(self):
+                return None
+
+        manifest = {
+            relative: "a" * 64 for relative in sorted(m.REQUIRED_SOURCE)
+        }
+        for relative in sorted(accepted):
+            with self.subTest(omitted=relative):
+                omitted = dict(manifest)
+                omitted.pop(relative)
+                with patch.object(m, "_inventory", return_value=set(omitted)), \
+                        patch.object(m, "_hash_verified"):
+                    with self.assertRaisesRegex(
+                            m.CandidateRefused, "^manifest_inventory$"):
+                        m._validated_manifest(
+                            omitted, Path("C:/reviewed-source"), Guard(),
+                        )
+            for lookalike in (relative + ".bak", relative.upper()):
+                with self.subTest(lookalike=lookalike):
+                    changed = {**manifest, lookalike: "b" * 64}
+                    with self.assertRaisesRegex(
+                            m.CandidateRefused, "^manifest_shape$"):
+                        m._validated_manifest(
+                            changed, Path("C:/reviewed-source"), Guard(),
+                        )
+
     def test_packaged_privilege_authority_has_exact_transitive_source_closure(self):
         authority = HERE / "checkout-ordinary-privilege-authority.py"
         dependencies = static_fixed_dependencies(
