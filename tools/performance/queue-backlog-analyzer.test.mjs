@@ -116,10 +116,8 @@ test('reports deterministic per-queue backlog metrics and SLO breaches', () => {
     assert.deepEqual(report, {
         version: 1,
         reportOnly: true,
-        redacted: true,
+        identifiersExcluded: true,
         observedAt: now,
-        scopeDigest:
-            'a40215ee1fcb0961c7b9deb4225e9b41fc5f6da3d6543c96b585c303dd36bea1',
         overallStatus: 'breach',
         queues: [
             {
@@ -159,6 +157,7 @@ test('uses deterministic clock and exact inclusive SLO boundaries', () => {
             item('msg-0002', {
                 status: 'processing',
                 attempts: 1,
+                availableAt: '2026-09-07T11:49:00Z',
                 updatedAt: '2026-09-07T11:50:00Z',
                 leaseExpiresAt: '2026-09-07T12:00:00Z',
             }),
@@ -223,9 +222,47 @@ test('rejects malformed and noncanonical timestamps', () => {
     }
 });
 
-test('rejects negative eligible age and inconsistent state timestamps', () => {
+test('keeps delayed pending and retry items in depth but not eligibility age', () => {
+    const report = analyze([
+        item('msg-0001', {
+            availableAt: '2026-09-07T12:05:00Z',
+            updatedAt: '2026-09-07T11:59:00Z',
+        }),
+        item('msg-0002', {
+            status: 'failed',
+            attempts: 2,
+            availableAt: '2026-09-07T12:10:00Z',
+            updatedAt: '2026-09-07T11:58:00Z',
+        }),
+    ]);
+
+    assert.equal(report.queues[0].depth, 2);
+    assert.equal(report.queues[0].eligibleCount, 0);
+    assert.equal(report.queues[0].oldestEligibleAgeSeconds, null);
+    assert.equal(report.queues[0].retryCount, 1);
+});
+
+test('rejects impossible processing timestamp chronology', () => {
     refused(() =>
-        analyze([item('msg-0001', { availableAt: '2026-09-07T12:00:01Z' })]),
+        analyze([
+            item('msg-0001', {
+                status: 'processing',
+                attempts: 1,
+                availableAt: '2026-09-07T11:59:30Z',
+                updatedAt: '2026-09-07T11:59:00Z',
+                leaseExpiresAt: '2026-09-07T12:01:00Z',
+            }),
+        ]),
+    );
+    refused(() =>
+        analyze([
+            item('msg-0001', {
+                status: 'processing',
+                attempts: 1,
+                updatedAt: '2026-09-07T11:59:00Z',
+                leaseExpiresAt: '2026-09-07T11:59:00Z',
+            }),
+        ]),
     );
     refused(() =>
         analyze([
@@ -343,6 +380,9 @@ test('does not mutate caller bytes and exposes no runtime or outbound surface', 
         'node:net',
         'node:http',
         'node:https',
+        'node:crypto',
+        'createHash',
+        'scopeDigest',
         'redis',
         'payload',
         'last_error',

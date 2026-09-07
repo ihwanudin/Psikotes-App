@@ -5,7 +5,6 @@
  * Tenant, topic, message identifiers, and error/body data are never returned.
  */
 
-import { createHash } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 
 const MAX_DOCUMENT_BYTES = 1024 * 1024;
@@ -269,12 +268,17 @@ function parseSnapshot(
                 ? null
                 : instant(entry.leaseExpiresAt);
 
-        if (availableAt > observedAt || updatedAt > observedAt) {
+        if (updatedAt > observedAt) {
             refuse();
         }
 
         if (entry.status === 'processing') {
-            if (leaseExpiresAt === null || attempts < 1) {
+            if (
+                leaseExpiresAt === null ||
+                attempts < 1 ||
+                availableAt > updatedAt ||
+                leaseExpiresAt <= updatedAt
+            ) {
                 refuse();
             }
         } else if (leaseExpiresAt !== null) {
@@ -305,22 +309,14 @@ function parseSnapshot(
     return Object.freeze({ tenant, topic, items: Object.freeze(items) });
 }
 
-function scopeDigest(tenant, topic) {
-    const bytes = Buffer.from(
-        `queue-backlog-scope-v1\0${JSON.stringify({ tenant, topic })}`,
-        'ascii',
-    );
-
-    return createHash('sha256').update(bytes).digest('hex');
-}
-
 function queueReport(policy, items, observedAt) {
     const selected = items.filter(({ queue }) => queue === policy.name);
     const outstanding = selected.filter(({ status }) => status !== 'processed');
     const eligible = selected.filter(
-        ({ status, attempts }) =>
-            status === 'pending' ||
-            (status === 'failed' && attempts < policy.retryAttemptLimit),
+        ({ status, attempts, availableAt }) =>
+            availableAt <= observedAt &&
+            (status === 'pending' ||
+                (status === 'failed' && attempts < policy.retryAttemptLimit)),
     );
     const leased = selected.filter(({ status }) => status === 'processing');
     const stale = leased.filter(
@@ -414,9 +410,8 @@ export function analyzeQueueBacklog(options) {
         return Object.freeze({
             version: 1,
             reportOnly: true,
-            redacted: true,
+            identifiersExcluded: true,
             observedAt,
-            scopeDigest: scopeDigest(snapshot.tenant, snapshot.topic),
             overallStatus: queues.some(
                 ({ sloStatus }) => sloStatus === 'breach',
             )
