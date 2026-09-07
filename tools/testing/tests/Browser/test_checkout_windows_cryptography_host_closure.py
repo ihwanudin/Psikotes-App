@@ -64,7 +64,7 @@ def fixture():
     packages = []
     for index, name in enumerate(("cryptography", "cffi", "pycparser"), 20):
         record_path = f"{name}-{versions[name]}.dist-info/RECORD"
-        files[record_path] = record(package_rows[name])
+        files[record_path] = record(package_rows[name]) + f"{record_path},,\n".encode("ascii")
         entries = []
         for path, raw in package_rows[name]:
             entries.append({"path": path, "sha256": digest(raw), "size": len(raw)})
@@ -132,7 +132,7 @@ class FakeAdapter:
         return self.root_chain
 
     def inventory(self, root):
-        return tuple(self.files)
+        return tuple(sorted(self.files, key=lambda path: (path.casefold(), path)))
 
     def open(self, root, path):
         handle = Handle(path)
@@ -174,15 +174,20 @@ class HostClosureTest(unittest.TestCase):
 
     def observe(self, manifest=None):
         return host.observe(
-            self.capability, "C:/isolated",
+            host.seal_adapter(self.adapter), "C:/isolated",
             self.manifest if manifest is None else manifest,
         )
+
+    @staticmethod
+    def function_state(function):
+        return (function, type(function), function.__code__, function.__defaults__,
+                function.__kwdefaults__, function.__closure__, function.__globals__)
 
     def refused(self, callback):
         with self.assertRaisesRegex(host.HostClosureRefused, "^host_closure$"):
             callback()
 
-    def test_exact_accepted_runtime_inventory_is_observed_immutably(self):
+    def test_exact_locked_versions_and_supplied_inventory_are_observed_immutably(self):
         result = self.observe()
         self.assertIs(type(result), MappingProxyType)
         self.assertEqual(set(result), {
@@ -259,6 +264,12 @@ class HostClosureTest(unittest.TestCase):
         files[manifest["packages"][0]["recordPath"]] += b"bad"
         self.refused(lambda: host.observe(host.seal_adapter(
             FakeAdapter(files, identities, imports)), "C:/isolated", manifest))
+        files, identities, imports, manifest = fixture()
+        record_path = manifest["packages"][0]["recordPath"]
+        files[record_path] = files[record_path].rsplit(b"\n", 2)[0] + b"\n"
+        manifest["packages"][0]["recordSha256"] = digest(files[record_path])
+        self.refused(lambda: host.observe(host.seal_adapter(
+            FakeAdapter(files, identities, imports)), "C:/isolated", manifest))
 
     def test_pre_and_post_identity_detect_swap(self):
         original = self.identities["python.exe"]
@@ -278,6 +289,16 @@ class HostClosureTest(unittest.TestCase):
                                   ("C:/isolated", "77", "1", False))
         adapter.after_read = drift
         self.refused(lambda: host.observe(host.seal_adapter(adapter), "C:/isolated", manifest))
+
+    def test_inventory_is_resampled_after_reads(self):
+        def add_extra(_handle):
+            if "evil.dll" not in self.adapter.files:
+                self.adapter.files["evil.dll"] = b"evil"
+                self.adapter.identities["evil.dll"] = (
+                    "77", "9999", False, "C:/isolated/evil.dll",
+                )
+        self.adapter.after_read = add_extra
+        self.refused(self.observe)
 
     def test_duplicate_file_object_identity_refuses(self):
         first, second = "python.exe", "python314.dll"
@@ -307,12 +328,52 @@ class HostClosureTest(unittest.TestCase):
     def test_adapter_is_sealed_and_replacement_does_not_execute(self):
         original = FakeAdapter.read
         calls = []
+        capability = self.capability
         try:
             FakeAdapter.read = lambda *_: calls.append(True) or b""
-            self.refused(self.observe)
+            self.refused(lambda: host.observe(capability, "C:/isolated", self.manifest))
             self.assertEqual(calls, [])
         finally:
             FakeAdapter.read = original
+
+    def test_capability_state_cannot_bless_replacement_and_is_one_shot(self):
+        capability = self.capability
+        original = FakeAdapter.read
+        calls = []
+        replacement = lambda *_: calls.append(True) or b""
+        try:
+            FakeAdapter.read = replacement
+            # This reproduces the old capability's caller-owned dictionaries.
+            if hasattr(capability, "_methods"):
+                capability._methods["read"] = self.function_state(replacement)
+                capability._descriptors["read"] = (FakeAdapter, replacement)
+            self.refused(lambda: host.observe(
+                capability, "C:/isolated", self.manifest,
+            ))
+            self.assertEqual(calls, [])
+        finally:
+            FakeAdapter.read = original
+        capability = host.seal_adapter(self.adapter)
+        self.assertTrue(host.observe(capability, "C:/isolated", self.manifest)[
+            "hostClosureObservationOnly"
+        ])
+        self.refused(lambda: host.observe(capability, "C:/isolated", self.manifest))
+        with self.assertRaises((AttributeError, TypeError)):
+            object.__setattr__(capability, "_methods", {})
+
+    def test_in_place_json_defaults_mutation_refuses_before_execution(self):
+        defaults = host.json.dumps.__kwdefaults__
+        original = dict(defaults)
+        calls = []
+        class Decoder:
+            def __init__(self, *_args, **_kwargs):
+                calls.append(True)
+        try:
+            defaults["cls"] = Decoder
+            self.refused(self.observe)
+            self.assertEqual(calls, [])
+        finally:
+            defaults.clear(); defaults.update(original)
 
     def test_post_open_authority_drift_closes_handle_once(self):
         original = FakeAdapter.identity
@@ -374,9 +435,22 @@ class HostClosureTest(unittest.TestCase):
         self.refused(lambda: self.observe(changed))
         self.files["python.exe"] = b"x" * (host.MAX_FILE_BYTES + 1)
         self.refused(self.observe)
+        for path in ("a" * 256, "bad\x7f.dat", "café.dat"):
+            changed = copy.deepcopy(self.manifest)
+            changed["packages"][2]["files"][0]["path"] = path
+            self.refused(lambda changed=changed: self.observe(changed))
         self.assertEqual(host.__all__, ("HostClosureRefused", "seal_adapter", "observe"))
         for name in ("install", "import_runtime", "execute", "admit", "acquire"):
             self.assertFalse(hasattr(host, name))
+
+    def test_pe_import_names_are_unique_ascii_basenames(self):
+        path = "cryptography/hazmat/bindings/_rust.pyd"
+        for imports in (
+            ("KERNEL32.dll", "kernel32.DLL"),
+            ("../KERNEL32.dll",), ("C:\\KERNEL32.dll",), ("café.dll",),
+        ):
+            self.imports[path] = {"normal": imports, "delay": ()}
+            self.refused(self.observe)
 
 
 if __name__ == "__main__":

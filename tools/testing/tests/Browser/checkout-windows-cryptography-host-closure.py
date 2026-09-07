@@ -2,9 +2,12 @@
 
 This module performs no installation, import, execution, acquisition, or
 admission.  Its immutable result only says that a sealed descriptor adapter
-reported bytes, identities, PE imports, and an inventory matching the supplied
-manifest at the observation boundary.  Authentication of that manifest and
-native efficacy of the adapter remain composition responsibilities.
+reported bytes, identities, PE metadata, and an inventory matching the
+supplied manifest at sampled boundaries.  The supplied manifest is not the
+accepted wheel authority: composition must separately authenticate and bind
+the public wheel/runtime/acquisition/tool-descriptor results.  Native adapter
+efficacy, delay-import enumeration, dynamic loading, API-set resolution, and
+actual system-DLL identity remain runtime responsibilities.
 """
 
 from __future__ import annotations
@@ -15,12 +18,14 @@ import hashlib
 import io
 import json
 import re
+import types
 from types import MappingProxyType
 
 
 MAX_FILE_BYTES = 16 * 1024 * 1024
 MAX_FILES = 8192
 MAX_PATH_BYTES = 4096
+MAX_CAPABILITIES = 64
 ACCEPTED_CRYPTOGRAPHY_IMPORTS = (
     "python3.dll", "api-ms-win-core-synch-l1-2-0.dll", "bcryptprimitives.dll",
     "USER32.dll", "CRYPT32.dll", "WS2_32.dll", "ADVAPI32.dll", "KERNEL32.dll",
@@ -65,31 +70,17 @@ class HostClosureRefused(Exception):
 __all__ = ("HostClosureRefused", "seal_adapter", "observe")
 
 
-class _Capability:
-    __slots__ = ("_adapter", "_type", "_mro", "_methods", "_descriptors", "_token", "_locked")
-
-    def __init__(self, adapter, cls, methods, descriptors, token):
-        object.__setattr__(self, "_adapter", adapter)
-        object.__setattr__(self, "_type", cls)
-        object.__setattr__(self, "_mro", cls.__mro__)
-        object.__setattr__(self, "_methods", methods)
-        object.__setattr__(self, "_descriptors", descriptors)
-        object.__setattr__(self, "_token", token)
-        object.__setattr__(self, "_locked", True)
-
-    def __setattr__(self, name, value):
-        raise HostClosureRefused("host_closure")
-
-
 def _make_api():
     refusal = HostClosureRefused
-    capability_type = _Capability
     mapping_proxy = MappingProxyType
+    types_module = types
+    function_type = types.FunctionType
     module_globals = globals()
-    token = object()
+    capabilities = {}
     maximum_file = MAX_FILE_BYTES
     maximum_files = MAX_FILES
     maximum_path = MAX_PATH_BYTES
+    maximum_capabilities = MAX_CAPABILITIES
     packages = _PACKAGES
     adapter_methods = _ADAPTER_METHODS
     result_keys = _RESULT_KEYS
@@ -104,10 +95,24 @@ def _make_api():
         base64.urlsafe_b64decode, base64.urlsafe_b64encode, re.fullmatch,
     )
 
+    def freeze(value, depth=0):
+        if depth > 8:
+            raise ValueError("metadata")
+        if value is None or type(value) in (bool, int, str, bytes):
+            return (type(value).__name__, value)
+        if type(value) is tuple:
+            return ("tuple", tuple(freeze(item, depth + 1) for item in value))
+        if type(value) is dict and all(type(key) is str for key in value):
+            return ("dict", tuple((key, freeze(item, depth + 1))
+                                  for key, item in value.items()))
+        raise ValueError("metadata")
+
     def state(function):
+        defaults = getattr(function, "__defaults__", None)
+        kwdefaults = getattr(function, "__kwdefaults__", None)
         return (
             function, type(function), getattr(function, "__code__", None),
-            getattr(function, "__defaults__", None), getattr(function, "__kwdefaults__", None),
+            defaults, freeze(defaults), kwdefaults, freeze(kwdefaults),
             getattr(function, "__closure__", None), getattr(function, "__globals__", None),
         )
 
@@ -123,73 +128,81 @@ def _make_api():
     global_pins = (
         ("MAX_FILE_BYTES", maximum_file), ("MAX_FILES", maximum_files),
         ("MAX_PATH_BYTES", maximum_path), ("_PACKAGES", packages),
+        ("MAX_CAPABILITIES", maximum_capabilities),
         ("ACCEPTED_CRYPTOGRAPHY_IMPORTS", ACCEPTED_CRYPTOGRAPHY_IMPORTS),
         ("ACCEPTED_CFFI_IMPORTS", ACCEPTED_CFFI_IMPORTS),
         ("ACCEPTED_SYSTEM_DLLS", ACCEPTED_SYSTEM_DLLS),
         ("_ADAPTER_METHODS", adapter_methods), ("_RESULT_KEYS", result_keys),
         ("_RESERVED", reserved), ("HostClosureRefused", refusal),
-        ("MappingProxyType", mapping_proxy), ("_Capability", capability_type),
+        ("MappingProxyType", mapping_proxy),
         ("__all__", surface), ("json", json_module), ("hashlib", hashlib_module),
         ("csv", csv_module), ("io", io_module), ("base64", base64_module), ("re", re_module),
+        ("types", types),
     )
 
     def authority():
         for name, expected in global_pins:
             if module_globals.get(name) is not expected:
                 raise ValueError("authority")
+        if types_module.FunctionType is not function_type:
+            raise ValueError("dependency")
         for owner, name, expected in dependency_pins:
             current = getattr(owner, name, None)
+            if current is not expected[0] or type(current) is not expected[1]:
+                raise ValueError("dependency")
             observed = state(current)
-            if current is not expected[0] or type(current) is not expected[1] \
-                    or observed[2] is not expected[2] or observed[3] is not expected[3] \
-                    or observed[4] is not expected[4] or observed[5] is not expected[5] \
-                    or observed[6] is not expected[6]:
+            if observed[2] is not expected[2] or observed[3] is not expected[3] \
+                    or observed[4] != expected[4] or observed[5] is not expected[5] \
+                    or observed[6] != expected[6] or observed[7] is not expected[7] \
+                    or observed[8] is not expected[8]:
                 raise ValueError("dependency")
 
-    def method_state(method):
-        function = getattr(method, "__func__", None)
-        if getattr(method, "__self__", None) is None or function is None:
+    def method_state(function):
+        if type(function) is not function_type:
             raise ValueError("adapter")
         observed = state(function)
-        if observed[3] is not None or observed[4] is not None or observed[5] is not None:
+        if observed[3] is not None or observed[5] is not None or observed[7] is not None:
             raise ValueError("adapter")
         return observed
 
-    def adapter_guard(capability):
-        if type(capability) is not capability_type or capability._token is not token:
-            raise ValueError("capability")
-        adapter = capability._adapter
+    def adapter_guard(sealed):
+        adapter, expected_cls, mro, methods = sealed
         cls = type(adapter)
-        if cls is not capability._type or cls.__mro__ is not capability._mro:
+        if cls is not expected_cls or type(cls) is not type or cls.__mro__ is not mro:
             raise ValueError("adapter")
-        for name, expected in capability._methods.items():
-            owner, descriptor = capability._descriptors[name]
-            if owner is not cls or owner.__dict__.get(name) is not descriptor:
+        for name, function, expected in methods:
+            if cls.__dict__.get(name) is not function:
                 raise ValueError("adapter")
-            current = getattr(adapter, name)
-            observed = method_state(current)
-            if current.__self__ is not adapter or observed[0] is not expected[0] \
-                    or observed[1] is not expected[1] or observed[2] is not expected[2] \
-                    or observed[3] is not expected[3] or observed[4] is not expected[4] \
-                    or observed[5] is not expected[5] or observed[6] is not expected[6]:
+            observed = method_state(function)
+            if observed[0] is not expected[0] or observed[1] is not expected[1] \
+                    or observed[2] is not expected[2] or observed[3] is not expected[3] \
+                    or observed[4] != expected[4] or observed[5] is not expected[5] \
+                    or observed[6] != expected[6] or observed[7] is not expected[7] \
+                    or observed[8] is not expected[8]:
                 raise ValueError("adapter")
         return adapter
 
-    def call(capability, name, *arguments):
+    def callback_for(sealed, name):
+        for observed_name, function, _state in sealed[3]:
+            if observed_name == name:
+                return function
+        raise ValueError("adapter")
+
+    def call(sealed, name, *arguments):
         authority()
-        adapter_guard(capability)
-        callback = capability._methods[name][0]
+        adapter = adapter_guard(sealed)
+        callback = callback_for(sealed, name)
         try:
-            result = callback(adapter_guard(capability), *arguments)
+            result = callback(adapter, *arguments)
         except BaseException as primary:
             try:
                 authority()
-                adapter_guard(capability)
+                adapter_guard(sealed)
             except BaseException:
                 pass
             raise primary
         authority()
-        adapter_guard(capability)
+        adapter_guard(sealed)
         return result
 
     def exact_dict(value, keys):
@@ -210,8 +223,10 @@ def _make_api():
         if len(parts) > 64:
             return False
         for part in parts:
-            if not part or part in (".", "..") or part[-1] in " ." \
-                    or any(character in '<>"|?*' or ord(character) < 32 for character in part):
+            if not part or len(part.encode("ascii", "strict")) > 255 \
+                    or part in (".", "..") or part[-1] in " ." \
+                    or any(character in '<>"|?*' or not 32 <= ord(character) <= 126
+                           for character in part):
                 return False
             base = part.rstrip(" .").split(".", 1)[0].casefold()
             if base in reserved:
@@ -307,9 +322,9 @@ def _make_api():
         text = raw.decode("ascii", "strict")
         rows = list(csv_reader(string_io(text, newline="")))
         expected = package["files"]
-        if len(rows) != len(expected):
+        if len(rows) != len(expected) + 1 or rows[-1] != [package["recordPath"], "", ""]:
             raise ValueError("record")
-        for row, entry in zip(rows, expected):
+        for row, entry in zip(rows[:-1], expected):
             if len(row) != 3 or row[0] != entry["path"] or row[2] != str(entry["size"]) \
                     or not row[1].startswith("sha256="):
                 raise ValueError("record")
@@ -321,9 +336,9 @@ def _make_api():
                     or b64encode(observed).decode("ascii").rstrip("=") != encoded:
                 raise ValueError("record")
 
-    def cleanup(capability, handle):
-        adapter = capability._adapter
-        callback = capability._methods["close"][0]
+    def cleanup(sealed, handle):
+        adapter = sealed[0]
+        callback = callback_for(sealed, "close")
         primary = None
         try:
             callback(adapter, handle)
@@ -331,46 +346,46 @@ def _make_api():
             primary = error
         try:
             authority()
-            adapter_guard(capability)
+            adapter_guard(sealed)
         except BaseException as error:
             if primary is None:
                 primary = error
         if primary is not None:
             raise primary
 
-    def open_handle(capability, root, path):
+    def open_handle(sealed, root, path):
         authority()
-        adapter = adapter_guard(capability)
-        callback = capability._methods["open"][0]
+        adapter = adapter_guard(sealed)
+        callback = callback_for(sealed, "open")
         handle = callback(adapter, root, path)
         try:
             authority()
-            adapter_guard(capability)
+            adapter_guard(sealed)
         except BaseException as primary:
             try:
-                cleanup(capability, handle)
+                cleanup(sealed, handle)
             except BaseException:
                 pass
             raise primary
         return handle
 
-    def read_file(capability, root, path):
-        handle = open_handle(capability, root, path)
+    def read_file(sealed, root, path):
+        handle = open_handle(sealed, root, path)
         primary = None
         result = None
         try:
-            before = call(capability, "identity", handle)
-            raw = call(capability, "read", handle, maximum_file + 1)
-            after = call(capability, "identity", handle)
-            imports = call(capability, "pe_imports", handle)
-            final = call(capability, "identity", handle)
+            before = call(sealed, "identity", handle)
+            raw = call(sealed, "read", handle, maximum_file + 1)
+            after = call(sealed, "identity", handle)
+            imports = call(sealed, "pe_imports", handle)
+            final = call(sealed, "identity", handle)
             if before != after or before != final or type(raw) is not bytes or len(raw) > maximum_file:
                 raise ValueError("identity")
             result = (raw, before, imports)
         except BaseException as error:
             primary = error
         try:
-            cleanup(capability, handle)
+            cleanup(sealed, handle)
         except BaseException as error:
             if primary is None:
                 primary = error
@@ -378,14 +393,15 @@ def _make_api():
             raise primary
         return result
 
-    def inspect(capability, root, manifest):
+    def inspect(sealed, root, manifest):
         root_value, python, loader, runtime, parsed_packages, allowlist, expected_paths = validate_manifest(manifest, root)
-        before_root = call(capability, "root_identity", root)
-        inventory = call(capability, "inventory", root)
+        before_root = call(sealed, "root_identity", root)
+        inventory = call(sealed, "inventory", root)
+        canonical_inventory = tuple(sorted(expected_paths, key=lambda item: (item.casefold(), item)))
         if type(inventory) is not tuple or any(type(path) is not str for path in inventory) \
                 or len(inventory) > maximum_files or any(not safe_relative(path) for path in inventory) \
                 or len({path.casefold() for path in inventory}) != len(inventory) \
-                or set(inventory) != set(expected_paths):
+                or inventory != canonical_inventory:
             raise ValueError("inventory")
         root_parts = root[3:].split("/")
         expected_chain_paths = ("C:/",) + tuple(
@@ -415,7 +431,7 @@ def _make_api():
         identities = []
         observed_raw = {}
         for path in sorted(expected_paths, key=lambda item: (item.casefold(), item)):
-            raw, identity, imports = read_file(capability, root, path)
+            raw, identity, imports = read_file(sealed, root, path)
             observed_raw[path] = raw
             if sha256(raw).hexdigest() != specifications[path] or type(identity) is not tuple \
                     or len(identity) != 4 or not decimal(identity[0]) or not decimal(identity[1]) \
@@ -429,6 +445,11 @@ def _make_api():
                     or imports["delay"]:
                 raise ValueError("imports")
             imports = imports["normal"]
+            if any(not 1 <= len(name) <= 260 or not name.isascii()
+                   or fullmatch(r"[A-Za-z0-9._-]+\.dll", name) is None
+                   for name in imports) \
+                    or len({name.casefold() for name in imports}) != len(imports):
+                raise ValueError("imports")
             is_pe = path == "python.exe" or path.lower().endswith((".pyd", ".dll"))
             if not is_pe and imports:
                 raise ValueError("imports")
@@ -447,8 +468,9 @@ def _make_api():
             raise ValueError("identity")
         for package in parsed_packages:
             parse_record(observed_raw[package["recordPath"]], package)
-        after_root = call(capability, "root_identity", root)
-        if after_root != before_root:
+        after_inventory = call(sealed, "inventory", root)
+        after_root = call(sealed, "root_identity", root)
+        if after_root != before_root or after_inventory != inventory:
             raise ValueError("root")
         manifest_raw = canonical(manifest)
         inventory_raw = canonical(identities)
@@ -489,21 +511,27 @@ def _make_api():
 
     def seal(adapter):
         def operation():
+            if len(capabilities) >= maximum_capabilities:
+                raise ValueError("capability")
             cls = type(adapter)
-            methods = {}
-            descriptors = {}
+            if type(cls) is not type:
+                raise ValueError("adapter")
+            methods = []
             for name in adapter_methods:
-                if name not in cls.__dict__:
+                function = cls.__dict__.get(name)
+                if type(function) is not function_type:
                     raise ValueError("adapter")
-                method = getattr(adapter, name)
-                observed = method_state(method)
-                methods[name] = observed
-                descriptors[name] = (cls, cls.__dict__[name])
-            return capability_type(adapter, cls, methods, descriptors, token)
+                methods.append((name, function, method_state(function)))
+            capability = object()
+            capabilities[capability] = (adapter, cls, cls.__mro__, tuple(methods))
+            return capability
         return invoke(operation)
 
     def public_observe(capability, root, manifest):
-        return invoke(lambda: inspect(capability, root, manifest))
+        sealed = capabilities.pop(capability, None)
+        if sealed is None:
+            raise refusal("host_closure")
+        return invoke(lambda: inspect(sealed, root, manifest))
 
     return seal, public_observe
 
