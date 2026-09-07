@@ -17,13 +17,16 @@ lease dimiliki authority native yang sempit. ADR ini menerima kontrak desain
 authority tersebut. Ia tidak menerima implementasi, native execution, runtime,
 candidate build, browser/service launch, deployment, atau activation.
 
-Review setelah penerimaan awal menemukan dua ambiguity yang keputusan ini
+Review setelah penerimaan awal menemukan tiga ambiguity yang keputusan ini
 hilangkan. Pertama, “owner/admin” tidak boleh dibaca sebagai dua ACE: root
 preparation mengikuti exact one-ACE `PROCESS_TOKEN_USER` policy target `run`
 ADR-017. Administrator tetap recovery authority di luar threat model, bukan
-trustee DACL. Kedua, preparation process bukan checkout application atau broker
-ordinary ADR-019; ia adalah dedicated, restricted-purpose native service dengan
-identity dan token yang berbeda.
+trustee DACL. Kedua, preparation process bukan broker ordinary ADR-019 atau
+participant browser; ia adalah dedicated, restricted-purpose native service.
+Ketiga, tidak ada owner handoff: final supervisor/runtime berjalan sebagai satu
+child yang disahkan di bawah primary principal dedicated yang sama. Dengan itu
+fresh final ADR-017 melihat `PROCESS_TOKEN_USER` yang identik dengan owner/trustee
+root, tanpa interval ubah-owner atau ubah-DACL.
 
 Threat model tetap writer ordinary/non-admin. Administrator, kernel compromise,
 dan offline disk rollback berada di luar jaminan software ini dan tetap mengikuti
@@ -93,14 +96,17 @@ mengonsumsi transisi terkait. Tidak ada reset, retry, rearm, conversion ke path,
 atau peminjaman raw handle. Object identity capability dipin di seluruh operasi;
 serialized digest atau supplied object yang tampak sama tidak dapat menggantinya.
 
-### 2. Dedicated preparation principal
+### 2. Dedicated preparation dan final-supervisor principal
 
 Preparation authority berjalan sebagai single-instance
 `SERVICE_WIN32_OWN_PROCESS` demand-only di bawah dedicated local non-admin service
-account. Account dan service hanya dipakai untuk preparation-root/descendant I/O,
-berbeda dari checkout application account, current coordinator account, ordinary
-principal/broker ADR-018/019, LocalSystem, LocalService, NetworkService, virtual
-account, dan setiap account service lain.
+account. Exact account yang sama dipakai hanya oleh service persiapan dan satu
+final supervisor/runtime child untuk run yang sedang dipegang. Account tetap
+berbeda dari current coordinator, ordinary principal/broker ADR-018/019,
+participant browser identity, LocalSystem, LocalService, NetworkService, virtual
+account, dan setiap account service lain. Tidak ada application process lain,
+helper, scheduled task, interactive shell, atau concurrent run yang boleh logon
+sebagai account tersebut.
 
 Provisioning admin-owned wajib menolak interactive, remote-interactive, network,
 batch, scheduled-task, desktop, share, delegation, SPN, dan outbound-network use.
@@ -117,9 +123,8 @@ wajib membuktikan:
 - primary `TokenUser` exact account SID dari admin-owned manifest dan berbeda
   dari seluruh application/ordinary/built-in SID;
 - exact service SID hadir dengan SCM attributes
-  `SE_GROUP_ENABLED_BY_DEFAULT|SE_GROUP_OWNER (0x0000000A)`, process
-  image/service/PID/start/token identity stabil, dan hanya satu live process/token
-  instance account tersebut yang dapat menggunakan authority;
+  `SE_GROUP_ENABLED_BY_DEFAULT|SE_GROUP_OWNER (0x0000000A)`, serta process
+  image/service/PID/start/token identity stabil;
 - account bukan anggota Administrators atau privileged group, tidak restricted,
   bukan AppContainer, dan exact ordered groups/attributes cocok manifest; serta
 - raw `TokenPrivileges` hanya memuat `SeChangeNotifyPrivilege` dengan exact
@@ -131,9 +136,24 @@ wajib membuktikan:
 Parent DACL yang dipin memberi exact account tersebut hanya hak yang dibutuhkan
 untuk membuat satu authorized child. Tidak ada credential, token, service
 selector, service-control right, atau capability constructor pada aplikasi.
-Kegagalan membuktikan singleton process/token census atau setiap field di atas
-menolak sebelum root create. Karena process lain dengan owner SID yang sama akan
-merusak klaim first-child/write, kondisi itu bukan residual yang diterima.
+Sebelum root create sampai finalization, census wajib berisi tepat satu process
+untuk account tersebut: service authority yang dipin. Setelah finalization,
+composition admission, dan fresh pre-launch validation, authority boleh membuat
+tepat satu supervisor child dalam suspended state. Child memakai primary token
+dengan exact `TokenUser`, group/attribute, privilege, restriction, AppContainer,
+authentication, dan token-type policy yang sama; hanya per-process/token identity
+yang secara kontrak memang baru boleh berbeda dan wajib diikat ke handoff
+evidence. Setelah child tervalidasi dan handoff berhasil, census wajib berisi
+tepat service parent dan satu supervisor child dengan exact parent/child PID,
+creation-time, image, token, session, run, dan generation relation. Process ketiga,
+child tak dikenal, token/profile drift, atau process account tersebut sebelum
+authorized launch menolak dan membuat lifecycle terminal.
+
+Supervisor child bukan preparation authority: ia tidak dapat membuat root atau
+lease, menerbitkan capability, mengulang finalization, atau meluncurkan sibling.
+Participant browser dan ordinary broker tidak berjalan dengan token dedicated
+ini. Browser menerima hanya endpoint/public TLS evidence yang telah disahkan;
+broker ordinary tetap memiliki principal dan transport terpisah ADR-018/019.
 
 ### 3. Atomic protected root
 
@@ -251,7 +271,43 @@ Capability descendant tidak memberi authority baru. Ia hanya hidup selama exact
 root dan lease capability tetap held dan hanya dapat digunakan oleh phase,
 session, generation, role, serta write authority yang terikat.
 
-### 6. Lifecycle wajib
+### 6. Handoff ke final supervisor tanpa owner change
+
+Tidak ada pergantian owner, DACL, trustee, atau principal pada handoff. Setelah
+finalization dan composition admission, service membuat exact supervisor child
+suspended dengan token dedicated yang memenuhi profil di atas. Tidak ada root,
+lease, descendant, credential, token, atau ambient inheritable handle pada child.
+`bInheritHandles=FALSE` dan inherited-handle list kosong wajib dibuktikan.
+
+Handle minimum yang memang diperlukan supervisor diduplikasi secara eksplisit
+ke exact suspended target process memakai versioned private handoff capability;
+setiap source handle, target-process handle, duplicated handle, access mask,
+object type, identity, non-reparse state, dan lifecycle binding divalidasi
+pre/post. Duplicated handles tidak memberi create/write authority setelah
+finalization kecuali operasi runtime sempit yang dinyatakan exact oleh capability
+terpisah. Child tidak menerima raw path sebagai authority dan tidak boleh membuka
+ulang root atau descendant melalui path. Kebutuhan library yang hanya menerima
+path tetap blocker sampai ada adapter/capability dan native evidence terpisah;
+tidak ada fallback path-open.
+
+Untuk secure candidate lifecycle, keputusan ini mempersempit ADR-022 yang masih
+menggambarkan retained-parent plus child path-open acknowledgment: child-open
+berbasis nama itu tidak cukup dan tidak boleh dipakai. Demikian pula, ownership
+lease ADR-016 harus dipertahankan atau dipindahkan melalui exact handle-bound
+protocol yang diterima tanpa unlock gap; kesamaan account bukan pengganti bukti
+lock/handle ownership. Sampai adapter TLS dan transfer/retention lease tersebut
+diterima secara native, supervisor tidak dapat diluncurkan.
+
+Sebelum child dilanjutkan, ia melakukan fresh final ADR-017 anchor terhadap exact
+coordinator/run/source objects melalui handle-bound internal composition dan
+token current-process miliknya. Karena child `TokenUser` sama dengan owner/trustee
+yang tidak pernah berubah, exact one-owner policy ADR-017 dapat lulus. Execution
+boundary diulang tepat sebelum supervisor berjalan. Kedua boundary juga mengikat
+service-parent/child relation, duplicated-handle identities, dan absence of
+inherited handles. Failure menutup duplicated handles, menghentikan suspended
+child, dan membuat run terminal; service tidak mencoba launch atau handoff ulang.
+
+### 7. Lifecycle wajib
 
 Urutan berikut tidak dapat dipertukarkan:
 
@@ -269,14 +325,18 @@ Urutan berikut tidak dapat dipertukarkan:
 8. jalankan ADR-022 TLS materialization hanya setelah preparation ACL diterima;
 9. finalisasi source/vendor/config/manifest dan seluruh binding ADR-021;
 10. issue dan verify final composition admission;
-11. lakukan fresh final ADR-017 anchor dan execution admission; lalu
-12. handoff hanya setelah seluruh state final tervalidasi.
+11. create exact supervisor child suspended di bawah dedicated principal yang
+    sama, buktikan process/token graph, lalu duplicate hanya exact runtime handles
+    melalui private handoff capability tanpa path reopen atau inheritance;
+12. di dalam child, lakukan fresh final ADR-017 anchor dan execution admission
+    dengan current `PROCESS_TOKEN_USER` yang sama dengan root owner/trustee; lalu
+13. resume supervisor hanya setelah seluruh state final dan handoff tervalidasi.
 
 Root capability berpindah monotonic melalui `fresh-authorized`, `root-held`,
 `lease-held`, `preparing`, `finalized-handoff`, atau `terminal`. Tidak ada jalur
 dari `terminal`/`finalized-handoff` kembali ke state writable sebelumnya.
 
-### 7. Failure dan cleanup
+### 8. Failure dan cleanup
 
 Authority menolak tanpa fallback pada sekurang-kurangnya kondisi berikut:
 
@@ -286,6 +346,9 @@ Authority menolak tanpa fallback pada sekurang-kurangnya kondisi berikut:
   lease;
 - preparation account/process/token tidak dedicated/singleton/stabil, berbagi SID
   dengan application/ordinary principal, atau privilege/group policy berbeda;
+- final supervisor tidak memakai exact dedicated principal/profile, process graph
+  bukan tepat service-parent plus satu authorized child, inherited handle ada,
+  duplicated-handle identity/access berbeda, atau child mencoba path reopen;
 - `NtCreateFile` ABI/constant/support berbeda, returned handle/status/information
   tidak exact, atau implementasi mencoba alternate API;
 - atomic security descriptor tidak dapat diterapkan pada create yang sama;
@@ -297,11 +360,13 @@ Authority menolak tanpa fallback pada sekurang-kurangnya kondisi berikut:
 - dependency Proposed atau bukti native yang belum diterima diperlakukan sebagai
   authority aktif.
 
-Cleanup berjalan best-effort dalam urutan kebalikan ownership: descendant/private
-material, preparation/TLS child handles, lease lock dan lease handle, root handle,
-lalu parent handle. Primary exception, termasuk `KeyboardInterrupt` dan
-`SystemExit`, selalu menang; cleanup failure hanya menghasilkan fixed redacted
-terminal state dan tidak mengizinkan retry atau launch.
+Cleanup berjalan best-effort dalam urutan kebalikan ownership: terminate/wait
+suspended child bila handoff belum committed, close duplicated target handles,
+close source/runtime descendant handles, preparation/TLS child handles, lease
+lock dan lease handle, root handle, lalu parent handle. Primary exception,
+termasuk `KeyboardInterrupt` dan `SystemExit`, selalu menang; cleanup failure hanya
+menghasilkan fixed redacted terminal state dan tidak mengizinkan retry atau
+launch.
 
 Cleanup tidak boleh melakukan recursive delete melalui reconstructed path. Stable
 lease tidak di-unlink. Root incomplete atau material yang tidak dapat dihapus
@@ -309,7 +374,7 @@ melalui retained exact handles tetap quarantined/incomplete untuk recovery autho
 yang diterima terpisah. ADR ini tidak mengklaim crash, reboot, power-loss,
 filesystem durability, atau deletion semantics telah terbukti.
 
-### 8. Privacy dan observability
+### 9. Privacy dan observability
 
 Raw handle, SID, absolute path, descriptor bytes, ACL, native error, token/process
 identity, private-key metadata, artifact content, dan credential tidak boleh masuk
@@ -324,6 +389,8 @@ Pure/synthetic tests kelak hanya dapat membuktikan:
 
 - exact capability type/ownership, one-shot transitions, lease-first ordering,
   no caller-selected policy/path/handle, dan immutable narrow outputs;
+- exact service-parent/supervisor-child state machine, same-principal token-profile
+  relation, empty inheritance set, dan one-shot handoff ordering;
 - refusal terhadap wrong phase/session/generation, alias, path fallback intent,
   duplicate operation, mutation, retry, serta forged capability;
 - reverse cleanup order dan primary `BaseException` precedence; dan
@@ -343,6 +410,9 @@ Native acceptance pada disposable Windows host wajib membuktikan sekurang-kurang
 - retained parent/root handle, final path, identity, noninheritance, share-mode
   rename/delete resistance, dan reparse/link refusal di bawah adversarial races;
 - root kosong sebelum lease dan exact lease merupakan child/write pertama;
+- pre-launch census tepat service parent plus satu supervisor child, exact
+  same-principal token/profile relation, zero inherited handles, bounded explicit
+  handle duplication, dan refusal terhadap third process/path reopen;
 - cross-process exclusive nonblocking lock, stable no-unlink lease, process-exit
   release, stale/replay refusal, serta exact ADR-016 schema/content;
 - every descendant operation truly relative to retained handles, with instrumented
@@ -357,9 +427,9 @@ return pada filesystem/build yang disahkan, serta failure tanpa fallback pada
 unsupported status/semantics.
 
 Acceptance juga memerlukan versioned exact preparation-root/ACL policy artifact,
-native API/ABI design, refactor ADR-016 dan builder/supervisor composition, serta
-bounded recovery/retirement procedure. Tidak ada pure test yang dapat menggantikan
-bukti tersebut.
+native API/ABI dan suspended-child/handle-handoff design, refactor ADR-016 dan
+builder/supervisor composition, serta bounded recovery/retirement procedure.
+Tidak ada pure test yang dapat menggantikan bukti tersebut.
 
 ## Dependency dan urutan implementasi
 
@@ -374,9 +444,12 @@ bukti tersebut.
    `HeldPreparationRootCapability`; implementation path-based tetap unusable.
 5. Refactor builder/supervisor agar seluruh child I/O menggunakan lease-bound
    capability dan lifecycle di atas.
-6. Baru kemudian implementasikan ADR-022 native materialization, final ADR-021
+6. Implementasikan exact suspended supervisor creation, same-principal token
+   profile/census, explicit non-inherited handle duplication, dan child-side
+   ADR-017 boundary tanpa path reopen.
+7. Baru kemudian implementasikan ADR-022 native materialization, final ADR-021
    composition admission, dan fresh ADR-017 admission.
-7. Jalankan pure, native disposable-host, crash/race, browser/service, dan full
+8. Jalankan pure, native disposable-host, crash/race, browser/service, dan full
    candidate acceptance secara terpisah sebelum mempertimbangkan activation.
 
 ## Alternatif yang dipertimbangkan
@@ -409,6 +482,19 @@ diikat ke satu preparation authorization one-shot.
 Ditolak. Komponen harus menerima capability/handle contract yang disahkan atau
 persiapan berhenti; compatibility fallback bukan authority.
 
+### Mengganti owner/DACL dari preparation service ke supervisor lain
+
+Ditolak. Handoff security descriptor membuka interval policy dan memerlukan
+versioned evidence baru untuk owner, trustee, handle, token, dan denial. Satu
+dedicated principal untuk service authority dan exact supervisor child membuat
+final `PROCESS_TOKEN_USER` sama dengan owner/trustee ADR-017 tanpa mutation.
+
+### Menjalankan browser atau broker sebagai dedicated principal
+
+Ditolak. Kesamaan principal hanya mencakup preparation service dan satu final
+supervisor/runtime child. Participant browser dan broker ordinary tetap berada di
+batas identity/transport terpisah dan tidak menerima handle atau credential root.
+
 ### Menghapus dan membuat ulang lease/root saat gagal
 
 Ditolak. Ini merusak stable lease semantics, membuka race, dan dapat menyamarkan
@@ -429,7 +515,8 @@ filesystem, process, atau race semantics.
 - Retained handles mempersempit namespace race tetapi menambah lifecycle,
   cleanup, crash-recovery, dan native-test complexity.
 - Dedicated preparation-service provisioning/evidence, preparation-ACL
-  authority, native API/ABI, ordinary-principal evidence,
+  authority, native API/ABI, same-principal supervisor launch/handle-handoff,
+  ordinary-principal evidence,
   recovery authority, ADR-022 implementation, serta final composition masih
   dependency terpisah.
 - Status ini tidak menerima atau menjalankan code, native call, candidate,
