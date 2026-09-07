@@ -3006,3 +3006,15 @@ assertions**, confirmation transport **4/4**, dan supervisor exact envelope
 Acceptance ini statis/pure saja: tidak ada browser, native, provider, database,
 atau runtime. P15/P16/P17c/P18 tetap terbuka; checklist/progress tidak berubah,
 dan gate/fitur terkait tetap default OFF.
+
+### Checkpoint packaging manifest/start dan AST scanner — accepted `4ec606a`, `0aca8ff`
+
+`4ec606a` memperbaiki P1 closure dengan memaketkan module dan test manifest/
+start yang dipin; `0aca8ff` memperbaiki P2 melalui AST scanner fail-closed.
+Bukti lane: RED/GREEN, focused **3/3**, `py_compile`, `diff-check`, dan
+independent review **PASS**.
+
+Acceptance hanya packaging: candidate belum dibangun dan prior host-process
+confirmation masih blocker. Tidak ada browser, native, provider, database,
+runtime, environment, network, atau deployment. Checklist/progress dan
+P15/P16/P17c/P18 tidak berubah, tetap terbuka/default OFF.

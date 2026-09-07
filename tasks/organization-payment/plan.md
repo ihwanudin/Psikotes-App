@@ -1063,3 +1063,15 @@ Checkpoint ini hanya bukti statis/pure. Tidak ada browser, native, provider,
 database, ataupun runtime yang dijalankan. P15/P16/P17c/P18 tetap terbuka;
 checklist/progress tidak berubah, dan seluruh gate/fitur terkait tetap default
 OFF.
+
+### Checkpoint packaging manifest/start dan AST scanner — accepted `4ec606a`, `0aca8ff`
+
+Commit `4ec606a` menutup P1 closure dengan memasukkan module dan test manifest/
+start ke packaging yang dipin. Commit `0aca8ff` menutup P2 dengan AST scanner
+fail-closed. Bukti mencakup RED/GREEN, focused **3/3**, `py_compile`,
+`diff-check`, dan independent review **PASS**.
+
+Checkpoint ini packaging-only: candidate tidak dibangun dan prior
+host-process confirmation tetap blocker. Tidak ada browser, native, provider,
+database, runtime, environment, network, atau deployment. Checklist/progress
+serta P15/P16/P17c/P18 tidak berubah, tetap terbuka/default OFF.
