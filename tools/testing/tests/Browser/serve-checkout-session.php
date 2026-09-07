@@ -104,6 +104,17 @@ if (PHP_SAPI === 'cli' && ($argv[1] ?? '') === '--self-test') {
     $changedExpiryAudit = clone $audit;
     $changedExpiryAudit->expires_at = '2028-01-01 00:30:01';
     $checks[] = ! checkoutBrowserConfirmationAuditMatches($changedExpiryAudit, $auditSession);
+    $leapSession = clone $auditSession;
+    $leapSession->established_at = '2024-02-29 00:00:00';
+    $leapSession->absolute_expires_at = '2024-03-01 00:00:00';
+    $leapAudit = clone $audit;
+    $leapAudit->occurred_at = '2024-02-29 00:30:00';
+    $leapAudit->expires_at = '2026-02-28 00:30:00';
+    $checks[] = checkoutBrowserConfirmationAuditMatches($leapAudit, $leapSession);
+    $leapAudit->expires_at = '2026-03-01 00:30:00';
+    $checks[] = ! checkoutBrowserConfirmationAuditMatches($leapAudit, $leapSession);
+    $leapAudit->expires_at = '2026-02-29 00:30:00';
+    $checks[] = ! checkoutBrowserConfirmationAuditMatches($leapAudit, $leapSession);
     foreach ([
         'aa_ER@saaho.php', 'be_BY@latin.php', 'ks_IN@devanagari.php', 'nan_TW@latin.php',
         'sd_IN@devanagari.php', 'sr_RS@latin.php', 'tt_RU@iqtelif.php', 'uz_UZ@cyrillic.php',
