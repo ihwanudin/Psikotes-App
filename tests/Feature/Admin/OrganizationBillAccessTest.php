@@ -249,9 +249,13 @@ final class OrganizationBillAccessTest extends OrganizationPaymentTestCase
     private function validSnapshot(array $fixture, string $label): void
     {
         DB::table('packages')->where('id', $fixture['package'])->update(['name' => 'Paket snapshot '.$label, 'is_active' => true]);
-        DB::table('package_items')->insert(['package_id' => $fixture['package'], 'test_type' => 'ist', 'sort_order' => 1]);
+        DB::table('package_items')->insert([
+            ['package_id' => $fixture['package'], 'test_type' => 'dass21', 'sort_order' => 1],
+            ['package_id' => $fixture['package'], 'test_type' => 'ist', 'sort_order' => 2],
+        ]);
         $snapshots = app(AssessmentPriceSnapshot::class);
         $snapshot = $snapshots->capture(TestPackage::with('items')->findOrFail($fixture['package']), false);
+        $this->assertSame(['dass21', 'ist'], $snapshot['testTypes']);
         AssessmentCharge::findOrFail($fixture['charge'])->update(['price_snapshot' => $snapshot]);
         $this->assertSame($snapshot, $snapshots->fromCharge(AssessmentCharge::findOrFail($fixture['charge']), false));
     }
