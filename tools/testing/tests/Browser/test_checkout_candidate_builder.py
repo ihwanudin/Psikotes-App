@@ -651,6 +651,55 @@ class CandidateBuilderTests(unittest.TestCase):
         with self.assertRaisesRegex(m.CandidateRefused, "^manifest_shape$"):
             m._validated_manifest(collision, Path("C:/reviewed-source"), Guard())
 
+    def test_packaged_privilege_authority_has_exact_transitive_source_closure(self):
+        authority = HERE / "checkout-ordinary-privilege-authority.py"
+        tree = ast.parse(authority.read_text(encoding="utf-8"), authority.name)
+        dependencies = tuple(
+            node.args[1].value
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "_load_fixed"
+            and len(node.args) == 2
+            and isinstance(node.args[1], ast.Constant)
+            and type(node.args[1].value) is str
+        )
+        self.assertEqual(dependencies, (
+            "checkout-ordinary-authority-manifest.py",
+            "checkout-ordinary-broker-start-identity.py",
+            "checkout-ordinary-access-request.py",
+        ))
+
+        required = frozenset(
+            f"tools/testing/tests/Browser/{filename}"
+            for filename in dependencies
+        ) | frozenset(
+            f"tools/testing/tests/Browser/test_{filename.replace('-', '_')}"
+            for filename in dependencies
+        )
+        self.assertTrue(required <= m.BROWSER_TOOLS)
+        self.assertTrue(required <= m.REQUIRED_SOURCE)
+        self.assertTrue(all(m._allowed_source(relative) for relative in required))
+
+        class Guard:
+            def validate(self):
+                return None
+
+        manifest = {
+            relative: "a" * 64 for relative in sorted(m.REQUIRED_SOURCE)
+        }
+        for relative in sorted(required):
+            with self.subTest(omitted=relative):
+                omitted = dict(manifest)
+                omitted.pop(relative)
+                with patch.object(m, "_inventory", return_value=set(omitted)), \
+                        patch.object(m, "_hash_verified"):
+                    with self.assertRaisesRegex(
+                            m.CandidateRefused, "^manifest_inventory$"):
+                        m._validated_manifest(
+                            omitted, Path("C:/reviewed-source"), Guard(),
+                        )
+
     def test_refuses_omitted_or_changed_reviewed_source_before_destination(self):
         with tempfile.TemporaryDirectory(prefix="candidate-builder-test-") as directory:
             base = self.fixture(directory)
