@@ -1117,6 +1117,23 @@ replay, admission, ataupun runtime authority. P15/P16/P17c/P18 tetap terbuka,
 seluruh gate tetap default OFF, dan checklist/progress tidak berubah pada
 **173/220 = 78.6%**.
 
+### Checkpoint I6 runtime-configuration policy artifact — accepted `9ff3404`
+
+`9ff3404` menerima codec structural-only untuk runtime-configuration-policy
+artifact yang exact dan lengkap: identity/generation, klasifikasi environment,
+constraint variabel presence/type/format, digest beserta schema/version
+`runtime.ini` dan browser-config template, launch arguments, public HTTPS
+origin/port, offline/network policy, execution/recovery budget, output names,
+serta interval UTC positif maksimum tujuh hari. Bukti focused **17/17**,
+`py_compile`, `diff-check`, dan final independent review **PASS** setelah dua P1
+ditutup.
+
+Artifact tidak memuat values, secrets, credentials, atau path/hash/metadata
+private key. Codec ini juga bukan authority signature, trust, current freshness,
+revocation, replay, admission, maupun runtime. P15/P16/P17c/P18 tetap terbuka,
+gate/payment tetap default OFF, dan checklist/progress formal tidak berubah pada
+**173/220 = 78.6%**.
+
 ### Checkpoint I2 release/source dan I3 revocation snapshot — accepted `0416cd1`, `8741ef0`
 
 Commit `0416cd1` menerima codec struktural release/source I2 setelah dua P2

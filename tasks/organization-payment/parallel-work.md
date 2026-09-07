@@ -3059,6 +3059,21 @@ Tidak ada authority untuk signature, trust, quorum, TTL, revocation, replay,
 admission, atau runtime. P15/P16/P17c/P18 tetap open, gates tetap default OFF,
 dan formal checklist/progress tetap **173/220 = 78.6%**.
 
+### Checkpoint I6 runtime-configuration policy artifact — accepted `9ff3404`
+
+`9ff3404` menerima pure structural runtime-configuration-policy artifact codec
+dengan exact identity/generation, environment classification, variable
+presence/type/format constraints, `runtime.ini` dan browser-template
+digest/schema/version, launch args, public HTTPS origin/port, offline/network
+policy, execution/recovery budgets, output names, serta positive UTC lifetime
+maksimum tujuh hari. Evidence: focused **17/17**, `py_compile`, `diff-check`, dan
+final independent review **PASS** setelah dua P1 ditutup.
+
+Tidak ada values, secrets, credentials, private-key path/hash/metadata, ataupun
+authority signature, trust, current freshness, revocation, replay, admission,
+dan runtime. P15/P16/P17c/P18 tetap open, gate/payment tetap default OFF, dan
+formal checklist/progress tetap **173/220 = 78.6%**.
+
 ### Checkpoint I2 release/source dan I3 revocation snapshot — accepted `0416cd1`, `8741ef0`
 
 `0416cd1` menerima pure structural release/source codec I2 setelah dua P2 path
