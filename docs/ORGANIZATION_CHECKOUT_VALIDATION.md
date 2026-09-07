@@ -1343,3 +1343,34 @@ gabungan **122/122 tests**, focused packaging **1/1**, `py_compile`,
 `diff-check`, dan independent review **PASS** setelah P1/P2 ditutup. Tidak ada
 candidate/browser/install/service/config/env/payment/deploy/activation. P15,
 P16, P17c, P18 serta progres formal tetap **173/220 = 78.6%**.
+
+## Checkpoint runtime parsial P17c cabang — 2026-09-07
+
+Harness `serve-collective-bill-page.php` mempunyai dua profil P17c terisolasi:
+consent lengkap dan satu peserta terakhir masih menunggu consent. Keduanya
+memakai SQLite disposable baru, origin literal `127.0.0.1:8012`,
+`FakePaymentProvider`, `FakeNotifier`, `Http::preventStrayRequests()`, serta
+payment/checkout config-memory khusus `APP_ENV=testing`; workspace `.env`, akun,
+provider, dan data nyata tidak dibaca.
+
+Run browser fresh membuktikan satu graph cabang dari 10 multi-select menjadi satu
+bill, satu invoice fake, 10 item settled, dan replay finalizer tanpa settlement
+kedua. Profil lengkap menghasilkan 10 READY/20 entitlement; profil consent
+tertunda menghasilkan 9 READY/18 entitlement sementara seluruh 10 item tetap
+settled. Browser juga memeriksa alasan empat row disabled, stale preview,
+paid/reload, expired/reload beserta recovery text, guest/wrong-role/stale-tenant/
+foreign IDOR, 20 aksi keyboard native, 488 trusted events, dan sembilan geometry
+check pada 320/390/1280. Console error tak terduga, outbound terblokir, dan
+request failure bernilai nol. Postcondition menegaskan tepat satu intent invoice,
+satu audit paid, serta nol write ke tabel order/entitlement legacy. Report
+menolak control token dan private sentinel sebelum disimpan.
+
+Regresi P12b pada fixture fresh tetap lulus dengan 20 aksi native, 488 trusted
+events, sembilan geometry check, 85 response, diagnostic nol, dan postcondition
+baseline exact. Lifecycle backend tetap lulus **5 tes / 1.256 assertions**.
+
+Checkpoint ini menutup gap browser cabang `10 -> satu invoice fake -> seluruh
+alokasi paid`, tetapi bukan acceptance P17c penuh. Origin masih HTTP loopback dan
+UI peserta pada secure candidate ADR-021/022 belum dijalankan. Karena itu P15,
+P16, P17c, P18, checklist/progress, serta seluruh gate/payment tetap terbuka dan
+default OFF pada **173/220 = 78.6%**.

@@ -3353,3 +3353,15 @@ I18; descriptor/token snapshot, ACL efficacy, DPAPI/TPM, reboot/power-loss/
 offline rollback masih terbuka. Tidak ada install, candidate, browser, service,
 config/env, payment, deploy, atau activation. P15/P16/P17c/P18 dan progres
 formal tetap **173/220 = 78.6%**.
+## Checkpoint runtime parsial P17c cabang — 2026-09-07
+
+Root menghubungkan fixture browser cabang dengan claim, satu invoice
+`FakePaymentProvider`, finalizer, dan replay pada graph 10 pilihan yang sama.
+Profil consent lengkap serta 9/10, expired/reload, IDOR, stale preview,
+keyboard/responsive, secrecy report, dan regresi P12b lulus pada fixture
+disposable. Detail bukti ada di `docs/ORGANIZATION_CHECKOUT_VALIDATION.md`.
+
+Ini tidak mengambil alih lane frontend/backend/tagihan lain dan tidak mengubah
+production source. UI peserta pada secure candidate ADR-021/022 masih residual;
+P15/P16/P17c/P18 tetap unchecked, progress **173/220 = 78.6%**, dan seluruh
+gate/payment tetap default OFF tanpa deploy/push/migrasi aktif.

@@ -724,6 +724,15 @@ event, bukan diklaim concurrency.
 Verifikasi UI desktop/mobile/keyboard hanya berada pada P17c dan masih terbuka;
 hasil backend P17b tidak menggantikannya.
 
+**Bukti runtime parsial 2026-09-07:** harness cabang pada loopback test-only kini
+menghubungkan satu graph yang sama dari multi-select 10, reservation, satu
+invoice `FakePaymentProvider`, settlement 10 item, replay idempoten, reload
+status paid, dan proyeksi consent 10/10 maupun 9/10. Run juga mencakup alasan
+disabled, stale preview, expired/reload, IDOR, keyboard native, serta geometry
+320/390/1280 tanpa console/network failure. Regresi profil P12b tetap lulus.
+Acceptance tetap unchecked: ini browser cabang berbasis HTTP loopback dan belum
+membuktikan UI peserta pada secure test-only origin/candidate ADR-021/022.
+
 ## P18: Runbook dan serah-terima
 
 **Acceptance:**

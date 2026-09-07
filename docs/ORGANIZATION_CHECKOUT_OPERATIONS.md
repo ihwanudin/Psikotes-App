@@ -75,11 +75,14 @@ yang disetujui dan pengganti yang tercatat di change record.
 Runbook ini tidak mengubah bukti persiapan statis menjadi bukti operasi. Hold
 point berikut tetap fail closed:
 
-- **Menunggu P17c:** bukti browser desktop/mobile/keyboard pada origin test-only,
-  database disposable, data sintetis, fake provider, dan outbound-deny belum
-  tersedia. Evidence custodian harus mengindeks hasil, source revision,
-  environment sintetis, waktu UTC, hasil state/consent/IDOR, serta gap yang masih
-  terbuka tanpa merekam token, URL sementara, atau payload sensitif.
+- **Menunggu sisa P17c:** browser cabang HTTP-loopback dengan database disposable,
+  data sintetis, fake provider, dan outbound-deny telah membuktikan satu graph
+  10 pilihan menjadi satu invoice dan 10 settlement, termasuk consent 10/10 dan
+  9/10, expired/reload, keyboard/responsive, serta IDOR. Bukti itu belum
+  menggantikan UI peserta pada secure test-only origin/candidate ADR-021/022.
+  Evidence custodian harus mengindeks source revision, environment sintetis,
+  waktu UTC, hasil state/consent/IDOR, serta gap residual tanpa merekam token, URL
+  sementara, message ID internal, atau payload sensitif.
 - **Menunggu acceptance runtime ADR-021/022:** authority, artifact, dan primitive
   struktural yang telah diterima tidak membuktikan candidate build, native
   Windows/ACL, custody material TLS, browser trust, lifecycle/crash recovery,
