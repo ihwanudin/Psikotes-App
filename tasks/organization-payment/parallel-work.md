@@ -3103,3 +3103,16 @@ transitive closure proof, reviewer/signature/trust, current freshness,
 revocation, replay acceptance, admission, atau runtime authority. P15/P16/P17c/
 P18 tetap open, gate/payment tetap default OFF, dan formal checklist/progress
 tetap **173/220 = 78.6%**.
+
+### Checkpoint I4 structural trust-root bundle — accepted `1c56cca`
+
+`1c56cca` menerima pure structural trust-root bundle codec dengan exact
+key-role/custodian inventory serta rotation old/new threshold-set references.
+P2 uniqueness envelope digest di dalam dan lintas rotation set telah ditutup.
+Evidence: focused **15/15**, `py_compile`, `diff-check`, dan independent review
+**PASS**.
+
+Tidak ada crypto verification, quorum, bootstrap, current freshness,
+revocation, replay, admission, runtime authority, ataupun private keys.
+P15/P16/P17c/P18 tetap open, gate/payment tetap default OFF, dan formal
+checklist/progress tetap **173/220 = 78.6%**.

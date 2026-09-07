@@ -1164,3 +1164,16 @@ bukti closure transitif aktual, reviewer/signature/trust, current freshness,
 revocation, replay acceptance, admission, ataupun runtime authority.
 P15/P16/P17c/P18 tetap terbuka, gate/payment tetap default OFF, dan formal
 checklist/progress tidak berubah pada **173/220 = 78.6%**.
+
+### Checkpoint I4 structural trust-root bundle — accepted `1c56cca`
+
+Commit `1c56cca` menerima codec struktural trust-root bundle untuk exact
+key-role/custodian inventory dan referensi rotation old/new threshold sets.
+P2 envelope-digest uniqueness di dalam maupun lintas rotation set telah
+ditutup. Bukti focused **15/15**, `py_compile`, `diff-check`, dan independent
+review **PASS**.
+
+Codec tidak memverifikasi crypto, quorum, bootstrap, current freshness,
+revocation, replay, admission, atau runtime dan tidak memuat private key.
+P15/P16/P17c/P18 tetap terbuka, gate/payment tetap default OFF, dan formal
+checklist/progress tidak berubah pada **173/220 = 78.6%**.
