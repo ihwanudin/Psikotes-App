@@ -2352,12 +2352,30 @@ class SupervisorTests(unittest.TestCase):
 
     def test_participant_driver_never_bypasses_tls_errors_for_secondary_context(self):
         driver = (Path(__file__).with_name("checkout-session.browser.mjs")).read_text("utf-8")
-        self.assertNotIn("ignoreHTTPSErrors: true", driver)
-        self.assertEqual(driver.count("ignoreHTTPSErrors: false"), 1)
-        self.assertIn(
-            "newContext({ javaScriptEnabled: false, ignoreHTTPSErrors: false, serviceWorkers: 'block' })",
-            driver,
-        )
+        def assert_tls_contract(source):
+            exact = (
+                "    const noJs = await page.context().browser().newContext({ javaScriptEnabled: false, "
+                "ignoreHTTPSErrors: false, serviceWorkers: 'block' })"
+            )
+            self.assertEqual(source.count("newContext"), 1)
+            self.assertEqual(source.count("ignoreHTTPSErrors"), 1)
+            self.assertEqual(source.splitlines().count(exact), 1)
+
+        assert_tls_contract(driver)
+        mutations = {
+            "no_space_true": driver + (
+                "\npage.context().browser().newContext({ javaScriptEnabled: false, "
+                "ignoreHTTPSErrors:true, serviceWorkers: 'block' })\n"
+            ),
+            "spread_bypass": driver + "\npage.context().browser().newContext({ ...tlsBypass })\n",
+            "variable_value": driver.replace(
+                "ignoreHTTPSErrors: false", "ignoreHTTPSErrors: tlsBypass", 1
+            ),
+            "additional_context": driver + "\npage.context().browser().newContext({ javaScriptEnabled: false })\n",
+        }
+        for label, mutation in mutations.items():
+            with self.subTest(label=label), self.assertRaises(AssertionError):
+                assert_tls_contract(mutation)
 
     def test_full_matrix_result_requires_exact_ordered_canonical_envelope(self):
         driver = (Path(__file__).with_name("checkout-session.browser.mjs")).read_text("utf-8")
