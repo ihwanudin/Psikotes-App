@@ -64,8 +64,9 @@ final class InspectAssessmentInvoiceRecoveryCommand extends Command
     private function evidence(string $reference): array
     {
         $bill = DB::table('assessment_bills')->where('public_reference', $reference)->first([
-            'id', 'organization_id', 'public_reference', 'status', 'gateway_ref', 'invoice_url', 'expires_at',
-            'paid_at', 'proof_object_key', 'proof_uploaded_at',
+            'id', 'organization_id', 'payer_type', 'payer_participant_id', 'public_reference', 'amount', 'currency',
+            'item_count', 'selection_hash', 'idempotency_key', 'request_hash', 'status', 'payment_method_id',
+            'gateway_ref', 'invoice_url', 'expires_at', 'paid_at', 'proof_object_key', 'proof_uploaded_at',
         ]);
         if ($bill === null) {
             return ['bill' => null, 'intents' => [], 'claimedCount' => 0, 'claimed' => null,
@@ -77,9 +78,10 @@ final class InspectAssessmentInvoiceRecoveryCommand extends Command
         $intentRows = DB::table('outbox_messages')
             ->where('topic', self::TOPIC)->where('aggregate_type', AssessmentBill::class)
             ->where('aggregate_id', $subject)->orderBy('id')->limit(2)->get([
-                'id', 'message_id', 'aggregate_type', 'aggregate_id', 'payload', 'status', 'attempts',
-                'processed_at', 'last_error', 'reconciliation_lease_token', 'reconciliation_lease_expires_at',
-                'reconciliation_next_at', 'reconciliation_lookup_attempts',
+                'id', 'message_id', 'deduplication_key', 'aggregate_type', 'aggregate_id', 'payload', 'status',
+                'attempts', 'available_at', 'processed_at', 'expires_at', 'last_error', 'created_at',
+                'reconciliation_lease_token', 'reconciliation_lease_expires_at', 'reconciliation_next_at',
+                'reconciliation_lookup_attempts',
             ]);
         $intents = [];
         foreach ($intentRows as $intentRow) {
@@ -90,8 +92,9 @@ final class InspectAssessmentInvoiceRecoveryCommand extends Command
         foreach (['assessment_bill.invoice_claimed', 'assessment_bill.invoice_unknown', 'assessment_bill.invoice_issued'] as $action) {
             $query = DB::table('audit_logs')->where('branch_id', $billRow['organization_id'])
                 ->where('subject_type', AssessmentBill::class)->where('subject_id', $subject)->where('action', $action);
-            $count = $query->count();
-            $row = $count === 1 ? $query->first(['actor_type', 'actor_id', 'context', 'occurred_at']) : null;
+            $rows = $query->orderBy('id')->limit(2)->get(['actor_type', 'actor_id', 'context', 'occurred_at']);
+            $count = $rows->count();
+            $row = $count === 1 ? $rows->first() : null;
             $audits[$action] = ['count' => $count, 'row' => $row === null ? null : (array) $row];
         }
 
@@ -124,7 +127,7 @@ final class InspectAssessmentInvoiceRecoveryCommand extends Command
             $violations[] = 'BILL_PROVIDER_STATE_INVALID';
         }
 
-        $snapshotValid = $intent !== null && $this->snapshotBindingValid($bill, $intent, $evidence['claimed']);
+        $snapshotValid = $intent !== null && $this->canonicalIntentValid($bill, $intent, $evidence['claimed'], $observedAt);
         if (! $snapshotValid) {
             $violations[] = 'SNAPSHOT_BINDING_INVALID';
         }
@@ -170,6 +173,10 @@ final class InspectAssessmentInvoiceRecoveryCommand extends Command
                 ? 'wait_for_cooldown' : 'await_reviewed_reconciliation_wiring',
         };
 
+        $messageId = $intent['message_id'] ?? null;
+        $safeMessageId = is_string($messageId) && preg_match('/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/D', $messageId) === 1
+            ? $messageId : null;
+
         return [
             'version' => 1,
             'result' => 'consistent',
@@ -177,7 +184,7 @@ final class InspectAssessmentInvoiceRecoveryCommand extends Command
             'reference' => $bill['public_reference'],
             'organizationId' => (int) $bill['organization_id'],
             'billState' => $state,
-            'messageId' => $intent['message_id'] ?? null,
+            'messageId' => $safeMessageId,
             'intentState' => $intent['status'] ?? null,
             'attempts' => $intent['attempts'] ?? null,
             'reconciliationLookupAttempts' => $intent['reconciliation_lookup_attempts'] ?? null,
@@ -197,26 +204,134 @@ final class InspectAssessmentInvoiceRecoveryCommand extends Command
      * @param  array<string, mixed>  $intent
      * @param  array<string, mixed>|null  $claimed
      */
-    private function snapshotBindingValid(array $bill, array $intent, ?array $claimed): bool
+    private function canonicalIntentValid(array $bill, array $intent, ?array $claimed, CarbonImmutable $observedAt): bool
     {
         $payload = $this->decodeObject($intent['payload'] ?? null);
-        $snapshot = $payload['snapshot'] ?? null;
-        $snapshotHash = $payload['snapshotHash'] ?? null;
         $messageId = $intent['message_id'] ?? null;
-        if (! is_array($snapshot) || array_is_list($snapshot) || ! is_string($snapshotHash)
-            || ! preg_match('/^[a-f0-9]{64}$/D', $snapshotHash) || ! is_string($messageId)
-            || ! preg_match('/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/D', $messageId)
-            || ($payload['messageId'] ?? null) !== $messageId
-            || ($payload['version'] ?? null) !== 1
-            || ($snapshot['billId'] ?? null) !== $bill['id']
-            || ($snapshot['organizationId'] ?? null) !== $bill['organization_id']
-            || ($snapshot['publicReference'] ?? null) !== $bill['public_reference']
-            || hash('sha256', $this->canonical($snapshot)) !== $snapshotHash) {
+        $claimedAt = $this->exactStamp($payload['claimedAt'] ?? null);
+        $hours = $payload['invoiceDurationHours'] ?? null;
+        $snapshot = $this->canonicalSnapshot($bill);
+        if ($snapshot === null || $claimedAt === null || $claimedAt->greaterThan($observedAt)
+            || ! is_int($hours) || $hours < 1 || $hours > 876_000 || ! is_string($messageId)
+            || preg_match('/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/D', $messageId) !== 1) {
+            return false;
+        }
+        try {
+            $requestedExpiry = $claimedAt->addHours($hours);
+            $retentionExpiry = $claimedAt->addYearsNoOverflow(2);
+        } catch (Throwable) {
+            return false;
+        }
+        $expected = [
+            'version' => 1,
+            'messageId' => $messageId,
+            'snapshot' => $snapshot,
+            'snapshotHash' => hash('sha256', $this->canonical($snapshot)),
+            'claimedAt' => $this->stamp($claimedAt),
+            'invoiceDurationHours' => $hours,
+            'requestedExpiresAt' => $this->stamp($requestedExpiry),
+            'description' => 'Psikotes LSI '.$bill['public_reference'],
+        ];
+        if ($this->canonical($payload) !== $this->canonical($expected)
+            || $intent['deduplication_key'] !== hash('sha256', self::TOPIC.':v1:'.$bill['organization_id'].':'.$bill['id'])
+            || ! $this->timeEquals($intent['available_at'], $claimedAt)
+            || ! $this->timeEquals($intent['created_at'], $claimedAt)
+            || ! $this->timeEquals($intent['expires_at'], $retentionExpiry)) {
             return false;
         }
         $context = $this->decodeObject($claimed['context'] ?? null);
 
-        return $context === ['messageId' => $messageId, 'reference' => $bill['public_reference'], 'snapshotHash' => $snapshotHash];
+        return $context === ['messageId' => $messageId, 'reference' => $bill['public_reference'],
+            'snapshotHash' => $expected['snapshotHash']]
+            && $this->timeEquals($claimed['occurred_at'] ?? null, $claimedAt);
+    }
+
+    /** @param array<string, mixed> $bill
+     * @return array<string, mixed>|null
+     */
+    private function canonicalSnapshot(array $bill): ?array
+    {
+        if (! is_int($bill['id']) || ! is_int($bill['organization_id']) || ! is_int($bill['item_count'])
+            || $bill['item_count'] < 1 || $bill['item_count'] > 500) {
+            return null;
+        }
+        $items = DB::table('assessment_bill_items')->where('bill_id', $bill['id'])->orderBy('id')->limit(501)->get();
+        if ($items->count() !== $bill['item_count']) {
+            return null;
+        }
+        $chargeIds = $items->pluck('charge_id')->all();
+        $charges = DB::table('assessment_charges')->whereIn('id', $chargeIds)->get()->keyBy('id');
+        $attemptIds = $charges->pluck('assessment_participant_id')->all();
+        $attempts = DB::table('assessment_participants')->whereIn('id', $attemptIds)->get()->keyBy('id');
+        $participantIds = $items->pluck('participant_id')->all();
+        $packageIds = $attempts->pluck('package_id')->all();
+        $clientIds = $attempts->pluck('integration_client_id')->all();
+        $participants = DB::table('participants')->whereIn('id', $participantIds)->get()->keyBy('id');
+        $packages = DB::table('packages')->whereIn('id', $packageIds)->get()->keyBy('id');
+        $clients = DB::table('integration_clients')->whereIn('id', $clientIds)->get()->keyBy('id');
+        $sources = DB::table('integration_sources')->whereIn('integration_client_id', $clientIds)->get()
+            ->keyBy(static fn (object $source): string => $source->integration_client_id.':'.$source->source_system);
+        $method = DB::table('payment_methods')->where('id', $bill['payment_method_id'])->first();
+        if ($charges->count() !== count(array_unique($chargeIds))
+            || $attempts->count() !== count(array_unique($attemptIds))
+            || $participants->count() !== count(array_unique($participantIds))
+            || $packages->count() !== count(array_unique($packageIds))
+            || $clients->count() !== count(array_unique($clientIds))
+            || $method === null || $method->code !== 'xendit') {
+            return null;
+        }
+
+        $links = [];
+        $total = 0;
+        foreach ($items as $item) {
+            $charge = $charges->get($item->charge_id);
+            $attempt = $charge === null ? null : $attempts->get($charge->assessment_participant_id);
+            $participant = $participants->get($item->participant_id);
+            $package = $attempt === null ? null : $packages->get($attempt->package_id);
+            $client = $attempt === null ? null : $clients->get($attempt->integration_client_id);
+            $source = $attempt === null ? null : $sources->get($attempt->integration_client_id.':'.$attempt->source_system);
+            $metadata = $attempt === null ? null : $this->decodeObject($attempt->metadata);
+            $price = $charge === null ? [] : $this->decodeObject($charge->price_snapshot);
+            $policy = $charge === null ? [] : $this->decodeObject($charge->policy_snapshot);
+            if ($charge === null || $attempt === null || $participant === null || $package === null || $client === null
+                || $source === null || $price === [] || $policy === []
+                || ! array_key_exists('checkout_initial_funding_mode', $metadata)
+                || ! in_array($metadata['checkout_initial_funding_mode'], [null, 'COMMERCIAL_SELF_PAY', 'INVOICED_TO_ORGANIZATION'], true)
+                || $item->organization_id !== $bill['organization_id'] || $charge->organization_id !== $bill['organization_id']
+                || $item->participant_id !== $participant->id || $charge->participant_id !== $participant->id
+                || $charge->package_id !== $package->id || $item->charge_id !== $charge->id
+                || $item->payer_type !== $bill['payer_type'] || $charge->payer_type !== $bill['payer_type']
+                || $item->payer_participant_id !== $bill['payer_participant_id']
+                || $item->amount !== $charge->amount || $item->currency !== $charge->currency
+                || $item->amount < 1 || $item->currency !== 'IDR' || $item->settled_at !== null
+                || $charge->free_settled_at !== null || $total > PHP_INT_MAX - $item->amount) {
+                return null;
+            }
+            $total += $item->amount;
+            $links[] = [
+                'itemId' => $item->id, 'chargeId' => $charge->id, 'assessmentParticipantId' => $attempt->id,
+                'participantId' => $participant->id, 'packageId' => $package->id, 'integrationClientId' => $client->id,
+                'sourceId' => $source->id, 'sourceSystem' => $source->source_system, 'amount' => $item->amount,
+                'currency' => $item->currency, 'initialFundingMode' => $metadata['checkout_initial_funding_mode'],
+                'attemptIdentityHash' => hash('sha256', $this->canonical([$attempt->assessment_attempt_id,
+                    $attempt->external_candidate_id, $attempt->external_process_id, $attempt->external_registration_id,
+                    $attempt->assessment_round_id, $attempt->logical_assessment_key, $attempt->idempotency_key,
+                    $attempt->request_hash])),
+                'priceSnapshot' => $price, 'policySnapshot' => $policy,
+            ];
+        }
+        if ($total !== $bill['amount']) {
+            return null;
+        }
+
+        return [
+            'organizationId' => $bill['organization_id'], 'billId' => $bill['id'],
+            'publicReference' => $bill['public_reference'], 'payerType' => $bill['payer_type'],
+            'payerParticipantId' => $bill['payer_participant_id'], 'paymentMethodId' => $bill['payment_method_id'],
+            'providerCode' => $method->code, 'amount' => $bill['amount'], 'currency' => $bill['currency'],
+            'itemCount' => $bill['item_count'], 'selectionHash' => $bill['selection_hash'],
+            'requestHash' => $bill['request_hash'], 'idempotencyKey' => $bill['idempotency_key'], 'items' => $links,
+        ];
     }
 
     /** @param array<string, mixed>|null $audit
@@ -262,6 +377,32 @@ final class InspectAssessmentInvoiceRecoveryCommand extends Command
         } catch (Throwable) {
             return false;
         }
+    }
+
+    private function timeEquals(mixed $value, CarbonImmutable $expected): bool
+    {
+        if (! is_string($value) && ! $value instanceof \DateTimeInterface) {
+            return false;
+        }
+        try {
+            return CarbonImmutable::parse($value)->utc()->equalTo($expected);
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    private function exactStamp(mixed $value): ?CarbonImmutable
+    {
+        if (! is_string($value) || preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/D', $value) !== 1) {
+            return null;
+        }
+        try {
+            $parsed = CarbonImmutable::createFromFormat('!Y-m-d\TH:i:s\Z', $value, 'UTC');
+        } catch (Throwable) {
+            return null;
+        }
+
+        return $parsed !== null && $this->stamp($parsed) === $value ? $parsed : null;
     }
 
     /** @return array<string, mixed> */
