@@ -90,10 +90,20 @@ if (PHP_SAPI === 'cli' && ($argv[1] ?? '') === '--self-test') {
     $audit = (object) ['actor_type' => 'checkout_session', 'actor_id' => $auditSession->public_id,
         'context' => json_encode(['version' => 2, 'generation' => 1, 'sessionPublicId' => $auditSession->public_id,
             'requestHash' => hash('sha256', json_encode($auditRequest, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES))], JSON_THROW_ON_ERROR),
-        'occurred_at' => '2026-01-01 00:30:00'];
+        'occurred_at' => '2026-01-01 00:30:00', 'expires_at' => '2028-01-01 00:30:00'];
     $checks[] = checkoutBrowserConfirmationAuditMatches($audit, $auditSession);
-    $audit->actor_id = '01BBBBBBBBBBBBBBBBBBBBBBBB';
-    $checks[] = ! checkoutBrowserConfirmationAuditMatches($audit, $auditSession);
+    $changedActorAudit = clone $audit;
+    $changedActorAudit->actor_id = '01BBBBBBBBBBBBBBBBBBBBBBBB';
+    $checks[] = ! checkoutBrowserConfirmationAuditMatches($changedActorAudit, $auditSession);
+    $missingExpiryAudit = clone $audit;
+    unset($missingExpiryAudit->expires_at);
+    $checks[] = ! checkoutBrowserConfirmationAuditMatches($missingExpiryAudit, $auditSession);
+    $arbitraryExpiryAudit = clone $audit;
+    $arbitraryExpiryAudit->expires_at = 'arbitrary';
+    $checks[] = ! checkoutBrowserConfirmationAuditMatches($arbitraryExpiryAudit, $auditSession);
+    $changedExpiryAudit = clone $audit;
+    $changedExpiryAudit->expires_at = '2028-01-01 00:30:01';
+    $checks[] = ! checkoutBrowserConfirmationAuditMatches($changedExpiryAudit, $auditSession);
     foreach ([
         'aa_ER@saaho.php', 'be_BY@latin.php', 'ks_IN@devanagari.php', 'nan_TW@latin.php',
         'sd_IN@devanagari.php', 'sr_RS@latin.php', 'tt_RU@iqtelif.php', 'uz_UZ@cyrillic.php',
@@ -1356,6 +1366,7 @@ function checkoutBrowserConfirmationAuditMatches(object $audit, object $session)
     try {
         $context = json_decode((string) ($audit->context ?? ''), true, 16, JSON_THROW_ON_ERROR);
         $occurredAt = $timestamp($audit->occurred_at ?? null);
+        $expiresAt = $timestamp($audit->expires_at ?? null);
         $establishedAt = $timestamp($session->established_at ?? null);
         $absoluteExpiresAt = $timestamp($session->absolute_expires_at ?? null);
     } catch (Throwable) {
@@ -1368,13 +1379,26 @@ function checkoutBrowserConfirmationAuditMatches(object $audit, object $session)
         'intendedField' => 'KAIGO',
     ]];
     $expectedHash = hash('sha256', json_encode($expectedRequest, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
+    $targetYear = $occurredAt === null ? 0 : (int) $occurredAt->format('Y') + 2;
+    $targetMonth = $occurredAt === null ? 0 : (int) $occurredAt->format('m');
+    $targetDay = $occurredAt === null ? 0 : (int) $occurredAt->format('d');
+    if ($targetMonth === 2 && $targetDay === 29
+        && ($targetYear % 4 !== 0 || ($targetYear % 100 === 0 && $targetYear % 400 !== 0))) {
+        $targetDay = 28;
+    }
+    $expectedExpiry = $occurredAt?->setDate(
+        $targetYear,
+        $targetMonth,
+        $targetDay,
+    );
 
     return ($audit->actor_type ?? null) === 'checkout_session'
         && is_string($audit->actor_id ?? null) && preg_match('/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/D', $audit->actor_id) === 1
         && $audit->actor_id === ($session->public_id ?? null)
         && is_array($context) && array_keys($context) === ['version', 'generation', 'sessionPublicId', 'requestHash']
         && $context === ['version' => 2, 'generation' => 1, 'sessionPublicId' => $audit->actor_id, 'requestHash' => $expectedHash]
-        && $occurredAt !== null && $establishedAt !== null && $absoluteExpiresAt !== null
+        && $occurredAt !== null && $expiresAt !== null && $expectedExpiry !== null && $expiresAt == $expectedExpiry
+        && $establishedAt !== null && $absoluteExpiresAt !== null
         && $occurredAt >= $establishedAt && $occurredAt < $absoluteExpiresAt;
 }
 
