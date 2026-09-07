@@ -7,6 +7,8 @@ delete, lock, protect, or persist state; call DPAPI/TPM/ACL/native APIs; prove
 atomicity or rollback protection; consume replay; grant admission; or run a
 candidate.  Path-digest exclusions are supplied bindings, not filesystem
 evidence.  A composition boundary must pin the exported callables.
+The provider generation is supplied structural binding data, not proof of
+provider freshness, identity, or trust authority.
 """
 
 from __future__ import annotations
@@ -57,7 +59,8 @@ def _make_codec():
         "currentState", "expectedFileIdentity", "forbiddenPathDigests",
         "journalKind", "namespace", "operation", "policyDigest",
         "proposedState", "providerAuthorityDigest", "providerEvidenceDigest",
-        "rebootState", "runIdentity", "securityDescriptorDigest", "version",
+        "providerGeneration", "rebootState", "runIdentity",
+        "securityDescriptorDigest", "version",
     })
     current_keys = frozenset({"generation", "rawDigest"})
     proposed_keys = frozenset({"generation", "previousDigest", "rawDigest"})
@@ -297,6 +300,8 @@ def _make_codec():
                     "providerEvidenceDigest", "securityDescriptorDigest"):
             if not digest(value[key]):
                 raise ValueError("digest")
+        if not positive_int63(value["providerGeneration"]):
+            raise ValueError("provider_generation")
         run = identity(value["runIdentity"])
         journal = identity(value["expectedFileIdentity"])
         if run[1] != journal[1] or run[2] == journal[2] \
@@ -353,6 +358,7 @@ def _make_codec():
             "currentStateDigest": value["currentState"]["rawDigest"],
             "proposedStateDigest": value["proposedState"]["rawDigest"],
             "previousStateDigest": value["proposedState"]["previousDigest"],
+            "providerGeneration": value["providerGeneration"],
             "journalPathDigest": journal_path_digest,
             "requestDigest": sha256(raw).hexdigest(),
         })

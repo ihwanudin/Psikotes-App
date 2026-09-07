@@ -19,7 +19,8 @@ ZERO_DIGEST = "0" * 64
 RESULT_FIELDS = (
     "structuralOnly", "journalKind", "namespace", "currentGeneration",
     "proposedGeneration", "currentStateDigest", "proposedStateDigest",
-    "previousStateDigest", "journalPathDigest", "requestDigest",
+    "previousStateDigest", "providerGeneration", "journalPathDigest",
+    "requestDigest",
 )
 
 
@@ -62,6 +63,7 @@ def fixture(kind="one-shot-ledger", current_generation=7):
         },
         "providerAuthorityDigest": "4" * 64,
         "providerEvidenceDigest": "5" * 64,
+        "providerGeneration": 6,
         "rebootState": "certain",
         "runIdentity": {
             "fileId": "101", "path": "C:/oncam/runs/oncam-checkout-a",
@@ -90,9 +92,10 @@ class ProtectedJournalRequestTests(unittest.TestCase):
         self.assertIs(type(result), MappingProxyType)
         self.assertEqual(tuple(result), RESULT_FIELDS)
         self.assertIs(result["structuralOnly"], True)
+        self.assertEqual(result["providerGeneration"], 6)
         self.assertEqual(
             result["requestDigest"],
-            "0f4201d050c5d6e1f36854e8ffb696984840c6fe2d62e8d272f8104bf8c46df5",
+            "453b167e9494ca194c9dccbbb2cdf03827622c5b97059380ae61362b1c78ace3",
         )
         with self.assertRaises(TypeError):
             result["persisted"] = True
@@ -179,6 +182,9 @@ class ProtectedJournalRequestTests(unittest.TestCase):
                     "providerEvidenceDigest", "securityDescriptorDigest"):
             for bad in ("A" * 64, "0" * 63, True, None):
                 changed = fixture(); changed[key] = bad; self.assert_refused(changed)
+        for bad in (0, True, 1 << 63, "6", None):
+            changed = fixture(); changed["providerGeneration"] = bad
+            self.assert_refused(changed)
 
     def test_run_and_expected_file_identity_are_canonical_related_and_distinct(self):
         value = fixture()
@@ -237,6 +243,7 @@ class ProtectedJournalRequestTests(unittest.TestCase):
         mutations = []
         changed = copy.deepcopy(value); changed["namespace"] = "preparation-authorization"; mutations.append(changed)
         changed = copy.deepcopy(value); changed["providerEvidenceDigest"] = "7" * 64; mutations.append(changed)
+        changed = copy.deepcopy(value); changed["providerGeneration"] += 1; mutations.append(changed)
         changed = copy.deepcopy(value); changed["proposedState"]["rawDigest"] = "8" * 64; mutations.append(changed)
         changed = copy.deepcopy(value); changed["expectedFileIdentity"]["fileId"] = "103"; mutations.append(changed)
         for changed in mutations:
