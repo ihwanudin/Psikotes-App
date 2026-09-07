@@ -17,6 +17,14 @@ lease dimiliki authority native yang sempit. ADR ini menerima kontrak desain
 authority tersebut. Ia tidak menerima implementasi, native execution, runtime,
 candidate build, browser/service launch, deployment, atau activation.
 
+Review setelah penerimaan awal menemukan dua ambiguity yang keputusan ini
+hilangkan. Pertama, “owner/admin” tidak boleh dibaca sebagai dua ACE: root
+preparation mengikuti exact one-ACE `PROCESS_TOKEN_USER` policy target `run`
+ADR-017. Administrator tetap recovery authority di luar threat model, bukan
+trustee DACL. Kedua, preparation process bukan checkout application atau broker
+ordinary ADR-019; ia adalah dedicated, restricted-purpose native service dengan
+identity dan token yang berbeda.
+
 Threat model tetap writer ordinary/non-admin. Administrator, kernel compromise,
 dan offline disk rollback berada di luar jaminan software ini dan tetap mengikuti
 batas ADR-021.
@@ -26,7 +34,9 @@ batas ADR-021.
 ### 1. Authority dan interface privat
 
 Satu `PreparationRootAuthority` privat menjadi satu-satunya komponen yang boleh
-membuat root persiapan dan child bootstrap-nya. Interface konseptual exact adalah:
+membuat root persiapan dan child bootstrap-nya. Authority terikat pada exact
+dedicated service instance saat construction; service/account/manifest tidak
+menjadi parameter operasi. Interface konseptual exact adalah:
 
 ```text
 create_root(
@@ -63,6 +73,10 @@ tidak mengekspos handle atau pointer:
 - `VerifiedPreparationAuthorizationCapability` adalah one-shot authority hasil
   verifikasi ADR-021 dan mengikat exact destination leaf, generation, security
   policy, artifact set, serta revocation state;
+- `PinnedPreparationServiceCapability` dibuat internal dari manifest
+  admin-owned serta live SCM/process/token capture dan tidak pernah diterima dari
+  caller; ia mengikat exact service instance, account SID, service SID, PID/start
+  identity, binary identity/digest, primary token, serta token policy;
 - `HeldPreparationRootCapability` dimiliki authority sejak native create sampai
   handoff atau terminal cleanup dan menahan retained parent/root handles, root
   identity, serta evidence descriptor internal;
@@ -79,30 +93,110 @@ mengonsumsi transisi terkait. Tidak ada reset, retry, rearm, conversion ke path,
 atau peminjaman raw handle. Object identity capability dipin di seluruh operasi;
 serialized digest atau supplied object yang tampak sama tidak dapat menggantinya.
 
-### 2. Atomic protected root
+### 2. Dedicated preparation principal
+
+Preparation authority berjalan sebagai single-instance
+`SERVICE_WIN32_OWN_PROCESS` demand-only di bawah dedicated local non-admin service
+account. Account dan service hanya dipakai untuk preparation-root/descendant I/O,
+berbeda dari checkout application account, current coordinator account, ordinary
+principal/broker ADR-018/019, LocalSystem, LocalService, NetworkService, virtual
+account, dan setiap account service lain.
+
+Provisioning admin-owned wajib menolak interactive, remote-interactive, network,
+batch, scheduled-task, desktop, share, delegation, SPN, dan outbound-network use.
+Account hanya memiliki logon grant `SeServiceLogonRight` serta exact deny rights
+untuk interactive, remote-interactive, network, dan batch logon; conflicting
+local/domain policy atau inability to prove effective rights menolak readiness.
+Service memakai unique `SERVICE_SID_TYPE_UNRESTRICTED` SID untuk mengikat live
+instance; ini bukan `SERVICE_SID_TYPE_RESTRICTED` token dan service SID bukan
+owner/trustee root. Exact root owner/trustee adalah `TokenUser` service account.
+
+Token readiness sebelum authority tersedia dan sebelum/sesudah setiap operasi
+wajib membuktikan:
+
+- primary `TokenUser` exact account SID dari admin-owned manifest dan berbeda
+  dari seluruh application/ordinary/built-in SID;
+- exact service SID hadir dengan SCM attributes
+  `SE_GROUP_ENABLED_BY_DEFAULT|SE_GROUP_OWNER (0x0000000A)`, process
+  image/service/PID/start/token identity stabil, dan hanya satu live process/token
+  instance account tersebut yang dapat menggunakan authority;
+- account bukan anggota Administrators atau privileged group, tidak restricted,
+  bukan AppContainer, dan exact ordered groups/attributes cocok manifest; serta
+- raw `TokenPrivileges` hanya memuat `SeChangeNotifyPrivilege` dengan exact
+  accepted attributes. `SeImpersonatePrivilege`, `SeBackupPrivilege`,
+  `SeRestorePrivilege`, `SeTakeOwnershipPrivilege`, `SeDebugPrivilege`,
+  `SeTcbPrivilege`, `SeAssignPrimaryTokenPrivilege`, dan privilege lain wajib
+  absent, bukan sekadar disabled.
+
+Parent DACL yang dipin memberi exact account tersebut hanya hak yang dibutuhkan
+untuk membuat satu authorized child. Tidak ada credential, token, service
+selector, service-control right, atau capability constructor pada aplikasi.
+Kegagalan membuktikan singleton process/token census atau setiap field di atas
+menolak sebelum root create. Karena process lain dengan owner SID yang sama akan
+merusak klaim first-child/write, kondisi itu bukan residual yang diterima.
+
+### 3. Atomic protected root
 
 Authority harus memvalidasi ulang retained parent handle dan identity tepat
 sebelum create. Root wajib fresh; existing object, collision, ambiguity, atau
-replacement menolak. Directory dibuat oleh satu native create operation yang
-sekaligus menerima exact security descriptor. Urutan `CreateDirectory` lalu
-`SetACL`, inherited-default ACL sementara, atau post-create repair dilarang.
+replacement menolak. Exact user-mode ABI adalah `NtCreateFile` dari pinned
+`ntdll.dll`/`winternl.h`; tidak ada `CreateDirectoryW`, `CreateFileW`, path-based,
+atau alternate-API fallback.
+
+Satu pemanggilan `NtCreateFile` sekaligus membuat directory, menerapkan security
+descriptor, dan mengembalikan held handle. Parameter normatifnya:
+
+- `DesiredAccess=FILE_ALL_ACCESS (0x001F01FF)`;
+- `OBJECT_ATTRIBUTES.RootDirectory` adalah retained parent handle;
+- `ObjectName` adalah tepat satu canonical leaf component hasil authorization;
+- `OBJECT_ATTRIBUTES.Attributes=OBJ_CASE_INSENSITIVE|OBJ_DONT_REPARSE`
+  (`0x00000040|0x00001000`), tanpa `OBJ_INHERIT`, `OBJ_OPENIF`, atau absolute
+  object name;
+- `OBJECT_ATTRIBUTES.SecurityDescriptor` menunjuk exact self-relative descriptor
+  policy di bawah dan `SecurityQualityOfService=NULL`;
+- `AllocationSize=NULL`, `FileAttributes=FILE_ATTRIBUTE_NORMAL`;
+- `ShareAccess=FILE_SHARE_READ|FILE_SHARE_WRITE (0x00000003)`, tanpa
+  `FILE_SHARE_DELETE`;
+- `CreateDisposition=FILE_CREATE (0x00000002)`;
+- `CreateOptions=FILE_DIRECTORY_FILE|FILE_SYNCHRONOUS_IO_NONALERT`
+  (`0x00000001|0x00000020`); dan
+- `EaBuffer=NULL`, `EaLength=0`.
+
+Hanya exact `STATUS_SUCCESS`, non-NULL/non-invalid returned handle,
+`IO_STATUS_BLOCK.Status=STATUS_SUCCESS`, dan
+`IO_STATUS_BLOCK.Information=FILE_CREATED (0x00000002)` diterima. Symbol, module,
+ABI widths/layout/signature, constants, supported Windows build/filesystem, dan
+input/output buffers dipin serta divalidasi pre/post. Handle ditutup dengan exact
+checked `CloseHandle` dan tidak diwariskan. Nilai NTSTATUS/native error hanya
+menjadi fixed redacted refusal.
+
+Urutan `CreateDirectory` lalu `SetACL`, inherited-default ACL sementara,
+post-create repair, call kedua untuk memperoleh handle, atau library yang membuka
+ulang name dilarang. Jika exact ABI/support matrix tersebut tidak dapat dibuktikan,
+operation tetap unavailable; kontrak tidak turun ke fallback.
 
 Default security descriptor root adalah self-relative dan canonical:
 
-- owner exact SID current authorized preparation process yang telah dipin;
+- owner exact `PROCESS_TOKEN_USER` dari dedicated preparation service primary
+  token yang telah dipin;
 - DACL present, non-NULL, protected, dan tidak auto-inherited;
 - tidak ada inherited ACE;
-- tepat dua non-inherited `ACCESS_ALLOWED_ACE` berurutan untuk owner dan
-  `BUILTIN\\Administrators` (`S-1-5-32-544`), dengan inheritance flags
-  object-and-container `3` dan exact directory full-control mask `0x001F01FF`;
-  dan
+- tepat satu non-inherited `ACCESS_ALLOWED_ACE` untuk SID owner yang sama, dengan
+  inheritance flags object-and-container `3` dan exact directory full-control
+  mask `0x001F01FF`; dan
 - tidak ada ACE, trustee, deny/allow variant, generic/unmapped bit, atau alternate
   owner lain.
 
-Exact mask bytes dan canonical descriptor bytes bukan caller input. Implementasi
-kelak harus mengikat kontrak tersebut ke satu versioned policy artifact dan
-menolak bila policy artifact, generated descriptor, atau live descriptor berbeda
-byte/semantik.
+Ini exact semantics target `run` pada canonical ADR-017 policy digest
+`a63c221764f73a54e87513fc91cded6b3fa16825138f6b24b6118132829f4eeb`;
+ADR ini tidak mengubah policy ADR-017 atau menambah Administrators ACE. Ia
+menyempitkan kata “owner-only” ADR-021/022 menjadi bentuk biner/semantik tersebut.
+Implementasi preparation memakai schema/domain terpisah
+`oncam.checkout.preparation-root-evidence.v1` karena final `configBinding` belum
+ada; evidence itu wajib mengikat canonical ADR-017 policy digest, exact live
+descriptor bytes/semantics, service/token identity, parent/root identity,
+authorization, dan lease-first state. Evidence preparation tidak dapat
+menggantikan final ADR-017 request/evidence/admission.
 
 Segera setelah create dan sebelum child/write apa pun, authority menahan root
 handle non-inheritable dengan sharing yang menahan rename/delete. Melalui handle
@@ -119,7 +213,7 @@ Validation atau access evidence yang masih Proposed tidak boleh diganti oleh
 supplied booleans, pure fixtures, atau hash saja. Sampai preparation-ACL
 capability dan native evidence diterima, operasi ini tidak implementable.
 
-### 3. Lease sebagai child dan write pertama
+### 4. Lease sebagai child dan write pertama
 
 Setelah root terverifikasi, authority membuktikan root kosong. Satu-satunya
 operasi child pertama dan write pertama adalah pembuatan lalu perolehan lock
@@ -136,7 +230,7 @@ Schema dan semantic lease ADR-016 tetap berlaku. ADR ini hanya menerima extensio
 bootstrap handle-relative dan ordering lease-first; ia tidak mengaktifkan
 implementasi ADR-016 yang ada sebagai preparation authority.
 
-### 4. Semua descendant tetap handle-relative
+### 5. Semua descendant tetap handle-relative
 
 Setelah lease dipegang, marker incomplete, skeleton, source, vendor, runtime
 configuration, TLS material, manifest, dan output hanya boleh dibuat atau dibuka
@@ -157,15 +251,16 @@ Capability descendant tidak memberi authority baru. Ia hanya hidup selama exact
 root dan lease capability tetap held dan hanya dapat digunakan oleh phase,
 session, generation, role, serta write authority yang terikat.
 
-### 5. Lifecycle wajib
+### 6. Lifecycle wajib
 
 Urutan berikut tidak dapat dipertukarkan:
 
 1. autentikasi artifact statis dan revalidasi protected revocation/high-water
    state sesuai ADR-021, seluruhnya read-only;
 2. validasi dan consume one-shot preparation authorization;
-3. validasi retained parent capability;
-4. atomic create fresh protected root, retain handle, lalu complete root identity,
+3. validasi dedicated preparation service/token dan retained parent capability;
+4. atomic `NtCreateFile` fresh protected root, retain returned handle, lalu
+   complete root identity,
    descriptor, no-reparse, dan access validation;
 5. buktikan root kosong, lalu create/acquire ADR-016 lease handle-relative sebagai
    child/write pertama;
@@ -181,7 +276,7 @@ Root capability berpindah monotonic melalui `fresh-authorized`, `root-held`,
 `lease-held`, `preparing`, `finalized-handoff`, atau `terminal`. Tidak ada jalur
 dari `terminal`/`finalized-handoff` kembali ke state writable sebelumnya.
 
-### 6. Failure dan cleanup
+### 7. Failure dan cleanup
 
 Authority menolak tanpa fallback pada sekurang-kurangnya kondisi berikut:
 
@@ -189,6 +284,10 @@ Authority menolak tanpa fallback pada sekurang-kurangnya kondisi berikut:
   generation, session, lease, atau capability tidak exact;
 - root sudah ada, root tidak kosong sebelum lease, atau operasi apa pun mendahului
   lease;
+- preparation account/process/token tidak dedicated/singleton/stabil, berbagi SID
+  dengan application/ordinary principal, atau privilege/group policy berbeda;
+- `NtCreateFile` ABI/constant/support berbeda, returned handle/status/information
+  tidak exact, atau implementasi mencoba alternate API;
 - atomic security descriptor tidak dapat diterapkan pada create yang sama;
 - handle inheritance, share mode, reparse, link, alias, collision, atau path reopen
   terdeteksi;
@@ -210,7 +309,7 @@ melalui retained exact handles tetap quarantined/incomplete untuk recovery autho
 yang diterima terpisah. ADR ini tidak mengklaim crash, reboot, power-loss,
 filesystem durability, atau deletion semantics telah terbukti.
 
-### 7. Privacy dan observability
+### 8. Privacy dan observability
 
 Raw handle, SID, absolute path, descriptor bytes, ACL, native error, token/process
 identity, private-key metadata, artifact content, dan credential tidak boleh masuk
@@ -239,7 +338,7 @@ Native acceptance pada disposable Windows host wajib membuktikan sekurang-kurang
 
 - root security descriptor berlaku dari operasi create pertama, tanpa observable
   permissive interval dan tanpa create-then-ACL call;
-- exact owner/admin protected DACL, current-principal access, ordinary-principal
+- exact one-owner-ACE protected DACL, current-principal access, ordinary-principal
   denial, dan double descriptor/token stability;
 - retained parent/root handle, final path, identity, noninheritance, share-mode
   rename/delete resistance, dan reparse/link refusal di bawah adversarial races;
@@ -252,6 +351,11 @@ Native acceptance pada disposable Windows host wajib membuktikan sekurang-kurang
   create/write, cleanup failure, dan reverse cleanup behavior; dan
 - independent adversarial review tanpa P1/P2.
 
+Native evidence juga wajib membuktikan exact pinned `NtCreateFile` user-mode ABI,
+`RootDirectory` relative resolution, atomic descriptor application dan handle
+return pada filesystem/build yang disahkan, serta failure tanpa fallback pada
+unsupported status/semantics.
+
 Acceptance juga memerlukan versioned exact preparation-root/ACL policy artifact,
 native API/ABI design, refactor ADR-016 dan builder/supervisor composition, serta
 bounded recovery/retirement procedure. Tidak ada pure test yang dapat menggantikan
@@ -261,15 +365,18 @@ bukti tersebut.
 
 1. Pertahankan artifact/verifier/revocation/high-water dan preparation authorization
    ADR-021 sebagai prerequisite; structural codecs saja bukan authority.
-2. Terima exact native parent/root creation API, security policy artifact, retained
-   handle model, dan ordinary-principal preparation-ACL attestation.
-3. Refactor ADR-016 menjadi bootstrap lease handle-relative yang hanya menerima
+2. Provision dan terima dedicated preparation service/account manifest serta
+   native evidence untuk exact token/group/privilege/singleton policy.
+3. Terima exact pinned `NtCreateFile` ABI/support matrix, retained handle model,
+   preparation evidence schema, dan ordinary-principal preparation-ACL
+   attestation.
+4. Refactor ADR-016 menjadi bootstrap lease handle-relative yang hanya menerima
    `HeldPreparationRootCapability`; implementation path-based tetap unusable.
-4. Refactor builder/supervisor agar seluruh child I/O menggunakan lease-bound
+5. Refactor builder/supervisor agar seluruh child I/O menggunakan lease-bound
    capability dan lifecycle di atas.
-5. Baru kemudian implementasikan ADR-022 native materialization, final ADR-021
+6. Baru kemudian implementasikan ADR-022 native materialization, final ADR-021
    composition admission, dan fresh ADR-017 admission.
-6. Jalankan pure, native disposable-host, crash/race, browser/service, dan full
+7. Jalankan pure, native disposable-host, crash/race, browser/service, dan full
    candidate acceptance secara terpisah sebelum mempertimbangkan activation.
 
 ## Alternatif yang dipertimbangkan
@@ -278,6 +385,14 @@ bukti tersebut.
 
 Ditolak. Ada interval ketika object dapat diwarisi atau diakses dengan ACL yang
 belum disahkan.
+
+### `CreateDirectoryW` lalu membuka handle
+
+Ditolak walaupun `SECURITY_ATTRIBUTES` dapat memasang descriptor pada create.
+API tersebut tidak mengembalikan directory handle, sehingga call berikut untuk
+membuka name menyisakan replacement/rename interval. Exact `NtCreateFile`
+relative-handle ABI di atas dipilih karena create menghasilkan held handle yang
+sama.
 
 ### Memakai ADR-016 path-based tanpa perubahan
 
@@ -313,7 +428,8 @@ filesystem, process, atau race semantics.
   unusable untuk jalur yang disahkan.
 - Retained handles mempersempit namespace race tetapi menambah lifecycle,
   cleanup, crash-recovery, dan native-test complexity.
-- Preparation-ACL authority, native API/ABI, ordinary-principal evidence,
+- Dedicated preparation-service provisioning/evidence, preparation-ACL
+  authority, native API/ABI, ordinary-principal evidence,
   recovery authority, ADR-022 implementation, serta final composition masih
   dependency terpisah.
 - Status ini tidak menerima atau menjalankan code, native call, candidate,
@@ -330,6 +446,10 @@ filesystem, process, atau race semantics.
 - [ADR-021: Release preparation authority](0021-checkout-release-preparation-authority.md)
 - [ADR-022: Synthetic TLS material authority](0022-checkout-synthetic-tls-material-authority.md)
 - [Microsoft `CreateDirectoryW`](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createdirectoryw)
+- [Microsoft user-mode `NtCreateFile`](https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntcreatefile)
+- [Microsoft `OBJECT_ATTRIBUTES`](https://learn.microsoft.com/en-us/windows/win32/api/ntdef/ns-ntdef-_object_attributes)
+- [Microsoft `SERVICE_SID_INFO`](https://learn.microsoft.com/en-us/windows/win32/api/winsvc/ns-winsvc-service_sid_info)
+- [Microsoft `SERVICE_REQUIRED_PRIVILEGES_INFO`](https://learn.microsoft.com/en-us/windows/win32/api/winsvc/ns-winsvc-service_required_privileges_infow)
 - [Microsoft `SECURITY_ATTRIBUTES`](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/legacy/aa379560(v=vs.85))
 - [Microsoft Security Descriptors](https://learn.microsoft.com/en-us/windows/win32/secauthz/security-descriptors)
 - [Microsoft DACLs and ACEs](https://learn.microsoft.com/en-us/windows/win32/secauthz/dacls-and-aces)
