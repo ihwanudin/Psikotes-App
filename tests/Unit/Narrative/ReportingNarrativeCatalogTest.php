@@ -81,6 +81,9 @@ final class ReportingNarrativeCatalogTest extends TestCase
             case 'unexpected narrative key':
                 $raw['narratives'][0]['extra'] = true;
                 break;
+            case 'missing narrative field':
+                unset($raw['narratives'][0]['jp']);
+                break;
             case 'missing narrative pair':
                 array_pop($raw['narratives']);
                 break;
@@ -115,6 +118,9 @@ final class ReportingNarrativeCatalogTest extends TestCase
                 break;
             case 'unexpected connector key':
                 $raw['connectors'][0]['key'] = 'invented';
+                break;
+            case 'missing connector field':
+                unset($raw['connectors'][0]['text']);
                 break;
             case 'unknown connector group':
                 $raw['connectors'][0]['group'] = 'LAIN';
@@ -160,6 +166,7 @@ final class ReportingNarrativeCatalogTest extends TestCase
             'narratives not list',
             'narrative item not array',
             'unexpected narrative key',
+            'missing narrative field',
             'missing narrative pair',
             'duplicate narrative pair',
             'duplicate narrative key',
@@ -171,6 +178,7 @@ final class ReportingNarrativeCatalogTest extends TestCase
             'connectors not list',
             'connector item not array',
             'unexpected connector key',
+            'missing connector field',
             'unknown connector group',
             'missing connector group',
             'duplicate connector order',
