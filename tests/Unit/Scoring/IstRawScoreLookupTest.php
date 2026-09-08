@@ -19,6 +19,13 @@ final class IstRawScoreLookupTest extends TestCase
         $this->assertSame(131, $lookup->standardScore('SE', 16));
     }
 
+    public function test_standard_score_comes_from_the_injected_norm(): void
+    {
+        $lookup = new IstRawScoreLookup(['SE' => [16 => 999]]);
+
+        $this->assertSame(999, $lookup->standardScore('SE', 16));
+    }
+
     #[DataProvider('canonicalGeEdges')]
     public function test_ge_domain_edges_map_through_the_canonical_lookup(int $rawScore, int $standardScore): void
     {
