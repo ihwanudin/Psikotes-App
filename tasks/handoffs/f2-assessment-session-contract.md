@@ -39,7 +39,7 @@ The persisted generic session states are:
 | `in_progress` | Server deadline fixed; answers may be accepted within the write window | `submitted`, `expired`, `void` |
 | `submitted` | Answer set sealed; scoring may be completed or safely retried | `scored`, `void` only by an authorized recovery decision |
 | `scored` | Scoring result durably committed | none |
-| `expired` | Deadline/grace elapsed without successful submit | `void` only by an authorized administrative decision |
+| `expired` | Deadline elapsed without successful submit | `void` only by an authorized administrative decision |
 | `void` | Attempt administratively invalidated with an audit reason | none |
 
 `scored`, `expired`, and `void` are terminal for participant actions. A client
@@ -50,10 +50,10 @@ All transitions use a row lock or an equivalent conditional update in one short
 transaction. Identity, test type, attempt number, `started_at`, and `ends_at`
 are immutable after creation; replaying start cannot extend the deadline.
 
-### Exact deadline and grace rule
+### Exact deadline rule
 
 Let `received_at` be the authoritative database/server receipt instant and let
-`write_deadline = ends_at + 10 seconds`.
+`write_deadline = ends_at`.
 
 - An answer batch is eligible only when the locked session is `in_progress` and
   `received_at <= write_deadline`.
@@ -231,7 +231,7 @@ Every failure uses:
 | 409 | `ATTEMPT_ALREADY_EXISTS` | Another attempt/session already owns the invariant |
 | 409 | `SESSION_NOT_STARTED` | Operation requires `in_progress` |
 | 409 | `SESSION_CLOSED` | Session is submitted, scored, expired, or void |
-| 409 | `DEADLINE_EXCEEDED` | Server receipt is later than the inclusive grace deadline |
+| 409 | `DEADLINE_EXCEEDED` | Server receipt is later than `ends_at` |
 | 409 | `AUTOSAVE_STALE_REVISION` | A different mutation uses an already-consumed revision |
 | 409 | `AUTOSAVE_REVISION_GAP` | Revision skips one or more unacknowledged batches |
 | 422 | `MUTATION_PAYLOAD_MISMATCH` | Existing mutation ID was reused with different canonical content |
@@ -315,7 +315,7 @@ real `psikotes_runtime` role proves all of the following:
    isolated schema and invisible to non-psychologist admins.
 6. Two concurrent start/allocation requests yield one authorized attempt and one
    durable deadline. Resume does not extend it.
-7. Receipt at exactly `ends_at + 10s` is accepted; one microsecond later is
+7. Receipt at exactly `ends_at` is accepted; one microsecond later is
    rejected with zero batch/revision/ledger writes and the session expires.
 8. Autosave same-mutation replay is a no-op with the identical receipt; payload
    mismatch, stale revision, gap revision, and two concurrent next revisions
