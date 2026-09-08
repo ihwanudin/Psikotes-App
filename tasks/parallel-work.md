@@ -174,7 +174,7 @@ and test evidence is recorded in
 | Task | Active agent | Exclusive ownership | Current increment | Review status |
 |---|---|---|---|---|
 | F5 signing prerequisites | `/root/review_ist` | New `app/Domain/Review/ReportSigningPrerequisitePolicy.php` and `tests/Unit/Review/ReportSigningPrerequisitePolicyTest.php` only | Implement the pure G3/G5/G7/G9 signature gate and exact reason codes; no persistence/state transition | queued after accepted G7 `eb5e946`; review pending |
-| F4 deterministic cluster narrative | `/root/review_session` | New `app/Domain/Narrative/ClusterNarrativeAssembler.php` and `tests/Unit/Narrative/ClusterNarrativeAssemblerTest.php` only | Assemble deterministic ID cluster narrative from injected data, rotate connectors without repetition, and omit review-required aspects | active from baseline `91e76ed`; review pending |
+| F4 canonical narrative catalog | `/root/review_session` | New `app/Domain/Narrative/ReportingNarrativeCatalog.php` and `tests/Unit/Narrative/ReportingNarrativeCatalogTest.php` only | Adapt and validate injected canonical narrative/connector data for the accepted assembler | active after accepted assembler `457c8b6`; review pending |
 | Recommendation acceptance evidence | `/root/review_p17c` | New `tests/Integration/Psychometric/RecommendationGuardrailsAcceptanceTest.php` only | Add explicit T-12/T-13/T-14/T-19 boundary evidence against accepted zone/label services | queued after accepted T-07 `3c5b164`; review pending |
 
 The recommendation-label policy `7334fa0`, session submit action `87b6346`, and
@@ -192,3 +192,5 @@ Behavioral T-07 is accepted as `3c5b164` (1 test, 10 assertions), with the
 architecture guard still passing 3 tests and 19 assertions. G7 source-spread
 policy is accepted as `eb5e946` (Eligibility suite 70 tests, 239 assertions).
 Both increments passed independent Pint, scoped PHPStan, and diff checks.
+The deterministic ID cluster assembler is accepted as `457c8b6` (35 tests,
+44 assertions); canonical data adaptation is the active next F4 increment.

@@ -183,6 +183,12 @@ or change P17c/P18 status.
 All three increments start from coordination baseline `6fb0700` and have
 disjoint exclusive files.
 
+The first F4 slice is accepted as `457c8b6`: its injected-data ID cluster
+assembler is deterministic, rotates direction-appropriate connectors, and
+omits unresolved G7 aspects from automatic narrative. The Narrative suite
+passed 35 tests/44 assertions with Pint, scoped PHPStan, and diff checks. The
+active next slice owns only a new canonical reporting-data adapter and test.
+
 ## Preserved user-owned work
 
 `docs/decisions/0026-checkout-secure-composition-launcher-authority.md` was
