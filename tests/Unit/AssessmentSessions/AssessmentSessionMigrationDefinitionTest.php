@@ -30,6 +30,15 @@ final class AssessmentSessionMigrationDefinitionTest extends TestCase
         self::assertStringContainsString('assessment_autosave_mutations_session_mutation_unique', $sql);
         self::assertStringContainsString('assessment_autosave_mutations_session_revision_unique', $sql);
         self::assertStringContainsString('test_sessions_identity_revision_guard', $sql);
+        self::assertStringContainsString("OLD.status = 'submitted' AND NEW.status IN ('scored','void')", $sql);
+        self::assertStringContainsString("OLD.status = 'expired' AND NEW.status = 'void'", $sql);
+        self::assertStringContainsString("OLD.status = 'created' AND NEW.status = 'in_progress'", $sql);
+        self::assertStringContainsString("OLD.status = 'in_progress' AND NEW.status IN ('submitted','expired','void')", $sql);
+        self::assertStringContainsString('NEW.ends_at IS DISTINCT FROM OLD.ends_at', $sql);
+        self::assertStringContainsString('NEW.submitted_at IS DISTINCT FROM OLD.submitted_at', $sql);
+        self::assertStringContainsString('NEW.expired_at IS DISTINCT FROM OLD.expired_at', $sql);
+        self::assertStringContainsString('answers_identity_revision_guard', $sql);
+        self::assertStringContainsString('NEW.revision <= OLD.revision', $sql);
         self::assertStringContainsString('assessment_autosave_mutations_append_only', $sql);
         self::assertStringContainsString('restrictOnDelete()', $sql);
         self::assertStringNotContainsString('ENABLE ROW LEVEL SECURITY', $sql);

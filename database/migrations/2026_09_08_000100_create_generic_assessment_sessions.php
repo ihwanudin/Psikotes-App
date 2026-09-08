@@ -89,6 +89,7 @@ return new class extends Migration
 
         if (DB::getDriverName() === 'pgsql') {
             DB::statement('DROP FUNCTION IF EXISTS guard_assessment_autosave_mutations_append_only()');
+            DB::statement('DROP FUNCTION IF EXISTS guard_answers_identity_revision()');
             DB::statement('DROP FUNCTION IF EXISTS guard_test_sessions_identity_revision()');
         }
     }
@@ -133,11 +134,17 @@ return new class extends Migration
                     OR (status = 'expired' AND started_at IS NOT NULL AND ends_at > started_at
                         AND submitted_at IS NULL AND scored_at IS NULL AND expired_at > ends_at
                         AND voided_at IS NULL AND void_reason IS NULL)
-                    OR (status = 'void' AND submitted_at IS NULL AND scored_at IS NULL
-                        AND expired_at IS NULL AND voided_at IS NOT NULL
+                    OR (status = 'void' AND scored_at IS NULL AND voided_at IS NOT NULL
                         AND length(btrim(void_reason)) > 0
-                        AND ((started_at IS NULL AND ends_at IS NULL)
-                            OR (started_at IS NOT NULL AND ends_at > started_at)))
+                        AND (
+                            (started_at IS NULL AND ends_at IS NULL
+                                AND submitted_at IS NULL AND expired_at IS NULL)
+                            OR (started_at IS NOT NULL AND ends_at > started_at AND (
+                                (submitted_at IS NULL AND expired_at IS NULL)
+                                OR (submitted_at BETWEEN started_at AND ends_at AND expired_at IS NULL)
+                                OR (submitted_at IS NULL AND expired_at > ends_at)
+                            ))
+                        ))
                 )
             SQL);
         DB::statement(<<<'SQL'
@@ -162,9 +169,39 @@ return new class extends Migration
                     OR NEW.test_type IS DISTINCT FROM OLD.test_type
                     OR NEW.attempt_no IS DISTINCT FROM OLD.attempt_no
                     OR NEW.authorization_id IS DISTINCT FROM OLD.authorization_id
-                    OR NEW.allocation_intent_id IS DISTINCT FROM OLD.allocation_intent_id
-                    OR NEW.answers_revision < OLD.answers_revision THEN
+                OR NEW.allocation_intent_id IS DISTINCT FROM OLD.allocation_intent_id
+                OR NEW.answers_revision < OLD.answers_revision THEN
                     RAISE EXCEPTION 'test session identity or revision contract violation';
+                END IF;
+                IF NEW.status IS DISTINCT FROM OLD.status AND NOT (
+                    (OLD.status = 'created' AND NEW.status IN ('in_progress','void'))
+                    OR (OLD.status = 'in_progress' AND NEW.status IN ('submitted','expired','void'))
+                    OR (OLD.status = 'submitted' AND NEW.status IN ('scored','void'))
+                    OR (OLD.status = 'expired' AND NEW.status = 'void')
+                ) THEN
+                    RAISE EXCEPTION 'illegal test session state transition';
+                END IF;
+                IF NOT (OLD.status = 'created' AND NEW.status = 'in_progress')
+                    AND (NEW.started_at IS DISTINCT FROM OLD.started_at
+                        OR NEW.ends_at IS DISTINCT FROM OLD.ends_at) THEN
+                    RAISE EXCEPTION 'test session timing window is immutable';
+                END IF;
+                IF NEW.submitted_at IS DISTINCT FROM OLD.submitted_at
+                    AND NOT (OLD.status = 'in_progress' AND NEW.status = 'submitted') THEN
+                    RAISE EXCEPTION 'submitted evidence is immutable';
+                END IF;
+                IF NEW.scored_at IS DISTINCT FROM OLD.scored_at
+                    AND NOT (OLD.status = 'submitted' AND NEW.status = 'scored') THEN
+                    RAISE EXCEPTION 'scored evidence is immutable';
+                END IF;
+                IF NEW.expired_at IS DISTINCT FROM OLD.expired_at
+                    AND NOT (OLD.status = 'in_progress' AND NEW.status = 'expired') THEN
+                    RAISE EXCEPTION 'expired evidence is immutable';
+                END IF;
+                IF (NEW.voided_at IS DISTINCT FROM OLD.voided_at
+                    OR NEW.void_reason IS DISTINCT FROM OLD.void_reason)
+                    AND NOT (OLD.status <> 'void' AND NEW.status = 'void') THEN
+                    RAISE EXCEPTION 'void evidence is immutable';
                 END IF;
                 RETURN NEW;
             END;
@@ -172,6 +209,21 @@ return new class extends Migration
             CREATE TRIGGER test_sessions_identity_revision_guard
                 BEFORE UPDATE ON test_sessions FOR EACH ROW
                 EXECUTE FUNCTION guard_test_sessions_identity_revision();
+            SQL);
+        DB::unprepared(<<<'SQL'
+            CREATE FUNCTION guard_answers_identity_revision() RETURNS trigger AS $$
+            BEGIN
+                IF NEW.session_id IS DISTINCT FROM OLD.session_id
+                    OR NEW.item_no IS DISTINCT FROM OLD.item_no
+                    OR NEW.revision <= OLD.revision THEN
+                    RAISE EXCEPTION 'answer identity or revision contract violation';
+                END IF;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
+            CREATE TRIGGER answers_identity_revision_guard
+                BEFORE UPDATE ON answers FOR EACH ROW
+                EXECUTE FUNCTION guard_answers_identity_revision();
             SQL);
         DB::unprepared(<<<'SQL'
             CREATE FUNCTION guard_assessment_autosave_mutations_append_only() RETURNS trigger AS $$
@@ -213,11 +265,18 @@ return new class extends Migration
                 OR (NEW.status = 'expired' AND NEW.started_at IS NOT NULL AND NEW.ends_at > NEW.started_at
                     AND NEW.submitted_at IS NULL AND NEW.scored_at IS NULL AND NEW.expired_at > NEW.ends_at
                     AND NEW.voided_at IS NULL AND NEW.void_reason IS NULL)
-                OR (NEW.status = 'void' AND NEW.submitted_at IS NULL AND NEW.scored_at IS NULL
-                    AND NEW.expired_at IS NULL AND NEW.voided_at IS NOT NULL
+                OR (NEW.status = 'void' AND NEW.scored_at IS NULL AND NEW.voided_at IS NOT NULL
                     AND length(trim(NEW.void_reason)) > 0
-                    AND ((NEW.started_at IS NULL AND NEW.ends_at IS NULL)
-                        OR (NEW.started_at IS NOT NULL AND NEW.ends_at > NEW.started_at)))
+                    AND (
+                        (NEW.started_at IS NULL AND NEW.ends_at IS NULL
+                            AND NEW.submitted_at IS NULL AND NEW.expired_at IS NULL)
+                        OR (NEW.started_at IS NOT NULL AND NEW.ends_at > NEW.started_at AND (
+                            (NEW.submitted_at IS NULL AND NEW.expired_at IS NULL)
+                            OR (NEW.submitted_at BETWEEN NEW.started_at AND NEW.ends_at
+                                AND NEW.expired_at IS NULL)
+                            OR (NEW.submitted_at IS NULL AND NEW.expired_at > NEW.ends_at)
+                        ))
+                    ))
             )
             SQL;
         foreach (['INSERT' => 'insert', 'UPDATE' => 'update'] as $operation => $suffix) {
@@ -236,6 +295,23 @@ return new class extends Migration
                 OR NEW.authorization_id IS NOT OLD.authorization_id
                 OR NEW.allocation_intent_id IS NOT OLD.allocation_intent_id
                 OR NEW.answers_revision < OLD.answers_revision
+                OR (NEW.status IS NOT OLD.status AND NOT (
+                    (OLD.status = 'created' AND NEW.status IN ('in_progress','void'))
+                    OR (OLD.status = 'in_progress' AND NEW.status IN ('submitted','expired','void'))
+                    OR (OLD.status = 'submitted' AND NEW.status IN ('scored','void'))
+                    OR (OLD.status = 'expired' AND NEW.status = 'void')
+                ))
+                OR (NOT (OLD.status = 'created' AND NEW.status = 'in_progress') AND (
+                    NEW.started_at IS NOT OLD.started_at OR NEW.ends_at IS NOT OLD.ends_at
+                ))
+                OR (NEW.submitted_at IS NOT OLD.submitted_at
+                    AND NOT (OLD.status = 'in_progress' AND NEW.status = 'submitted'))
+                OR (NEW.scored_at IS NOT OLD.scored_at
+                    AND NOT (OLD.status = 'submitted' AND NEW.status = 'scored'))
+                OR (NEW.expired_at IS NOT OLD.expired_at
+                    AND NOT (OLD.status = 'in_progress' AND NEW.status = 'expired'))
+                OR ((NEW.voided_at IS NOT OLD.voided_at OR NEW.void_reason IS NOT OLD.void_reason)
+                    AND NOT (OLD.status <> 'void' AND NEW.status = 'void'))
             BEGIN SELECT RAISE(ABORT, 'test session identity or revision contract violation'); END
             SQL);
 
@@ -245,6 +321,14 @@ return new class extends Migration
                 BEFORE {$operation} ON answers WHEN COALESCE(({$answer}), 0) = 0
                 BEGIN SELECT RAISE(ABORT, 'answer contract violation'); END");
         }
+        DB::unprepared(<<<'SQL'
+            CREATE TRIGGER answers_identity_revision_guard
+            BEFORE UPDATE ON answers
+            WHEN NEW.session_id IS NOT OLD.session_id
+                OR NEW.item_no IS NOT OLD.item_no
+                OR NEW.revision <= OLD.revision
+            BEGIN SELECT RAISE(ABORT, 'answer identity or revision contract violation'); END
+            SQL);
 
         $mutation = <<<'SQL'
             length(NEW.mutation_id) = 26

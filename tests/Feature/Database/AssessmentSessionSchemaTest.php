@@ -112,6 +112,112 @@ final class AssessmentSessionSchemaTest extends OrganizationPaymentTestCase
         $this->assertRejected(fn () => DB::table('test_sessions')->where('id', $session)->delete());
     }
 
+    public function test_state_graph_and_fixed_timing_window_are_enforced_by_the_database(): void
+    {
+        $created = DB::table('test_sessions')->insertGetId($this->sessionRow());
+        DB::table('test_sessions')->where('id', $created)->update([
+            'status' => 'in_progress', 'started_at' => '2026-09-08 03:00:00',
+            'ends_at' => '2026-09-08 04:00:00',
+        ]);
+        $this->assertRejected(fn () => DB::table('test_sessions')->where('id', $created)
+            ->update(['ends_at' => '2026-09-08 04:01:00']));
+        $this->assertRejected(fn () => DB::table('test_sessions')->where('id', $created)
+            ->update(['started_at' => '2026-09-08 02:59:00']));
+
+        $illegal = DB::table('test_sessions')->insertGetId($this->sessionRow());
+        $this->assertRejected(fn () => DB::table('test_sessions')->where('id', $illegal)->update([
+            'status' => 'submitted', 'started_at' => '2026-09-08 03:00:00',
+            'ends_at' => '2026-09-08 04:00:00', 'submitted_at' => '2026-09-08 04:00:00',
+        ]));
+
+        DB::table('test_sessions')->where('id', $created)->update([
+            'status' => 'submitted', 'submitted_at' => '2026-09-08 04:00:00',
+        ]);
+        $this->assertRejected(fn () => DB::table('test_sessions')->where('id', $created)->update([
+            'status' => 'expired', 'submitted_at' => null, 'expired_at' => '2026-09-08 04:00:01',
+        ]));
+
+        DB::table('test_sessions')->where('id', $created)->update([
+            'status' => 'scored', 'scored_at' => '2026-09-08 04:01:00',
+        ]);
+        $this->assertRejected(fn () => DB::table('test_sessions')->where('id', $created)->update([
+            'status' => 'void', 'voided_at' => '2026-09-08 04:02:00', 'void_reason' => 'not legal',
+        ]));
+
+        $expiring = DB::table('test_sessions')->insertGetId($this->sessionRow(null, 'in_progress'));
+        DB::table('test_sessions')->where('id', $expiring)->update([
+            'status' => 'expired', 'expired_at' => '2026-09-08 04:00:01',
+        ]);
+        $this->assertDatabaseHas('test_sessions', ['id' => $expiring, 'status' => 'expired']);
+
+        $voided = DB::table('test_sessions')->insertGetId($this->sessionRow(null, 'void'));
+        $this->assertRejected(fn () => DB::table('test_sessions')->where('id', $voided)->update([
+            'status' => 'created', 'voided_at' => null, 'void_reason' => null,
+        ]));
+    }
+
+    public function test_submitted_and_expired_sessions_can_be_voided_without_erasing_evidence(): void
+    {
+        $submitted = DB::table('test_sessions')->insertGetId($this->sessionRow(null, 'submitted'));
+        DB::table('test_sessions')->where('id', $submitted)->update([
+            'status' => 'void', 'voided_at' => '2026-09-08 04:02:00',
+            'void_reason' => 'authorized recovery',
+        ]);
+        $this->assertDatabaseHas('test_sessions', [
+            'id' => $submitted, 'status' => 'void', 'submitted_at' => '2026-09-08 04:00:00',
+        ]);
+
+        $expired = DB::table('test_sessions')->insertGetId($this->sessionRow(null, 'expired'));
+        DB::table('test_sessions')->where('id', $expired)->update([
+            'status' => 'void', 'voided_at' => '2026-09-08 04:02:00',
+            'void_reason' => 'authorized retest',
+        ]);
+        $this->assertDatabaseHas('test_sessions', [
+            'id' => $expired, 'status' => 'void', 'expired_at' => '2026-09-08 04:00:01',
+        ]);
+
+        $created = DB::table('test_sessions')->insertGetId($this->sessionRow());
+        DB::table('test_sessions')->where('id', $created)->update([
+            'status' => 'void', 'voided_at' => '2026-09-08 03:01:00',
+            'void_reason' => 'allocation cancelled',
+        ]);
+        $inProgress = DB::table('test_sessions')->insertGetId($this->sessionRow(null, 'in_progress'));
+        DB::table('test_sessions')->where('id', $inProgress)->update([
+            'status' => 'void', 'voided_at' => '2026-09-08 03:30:00',
+            'void_reason' => 'authorized recovery',
+        ]);
+        $this->assertDatabaseHas('test_sessions', ['id' => $created, 'status' => 'void', 'started_at' => null]);
+        $this->assertDatabaseHas('test_sessions', [
+            'id' => $inProgress, 'status' => 'void', 'started_at' => '2026-09-08 03:00:00',
+        ]);
+
+        $this->assertRejected(fn () => DB::table('test_sessions')->where('id', $submitted)
+            ->update(['submitted_at' => null]));
+        $this->assertRejected(fn () => DB::table('test_sessions')->where('id', $expired)
+            ->update(['expired_at' => null]));
+    }
+
+    public function test_answer_identity_is_immutable_and_updates_require_a_strictly_newer_revision(): void
+    {
+        $session = DB::table('test_sessions')->insertGetId($this->sessionRow(null, 'in_progress'));
+        $answer = DB::table('answers')->insertGetId($this->answerRow($session));
+
+        foreach ([
+            ['item_no' => 2, 'revision' => 2],
+            ['session_id' => DB::table('test_sessions')->insertGetId($this->sessionRow(null, 'submitted')), 'revision' => 2],
+            ['value' => json_encode(['choice' => 'B']), 'revision' => 1],
+            ['value' => json_encode(['choice' => 'B']), 'revision' => 0],
+        ] as $override) {
+            $this->assertRejected(fn () => DB::table('answers')->where('id', $answer)->update($override));
+        }
+
+        DB::table('answers')->where('id', $answer)->update([
+            'value' => json_encode(['choice' => 'B']), 'revision' => 2,
+            'answered_at' => '2026-09-08 03:06:00',
+        ]);
+        $this->assertDatabaseHas('answers', ['id' => $answer, 'revision' => 2]);
+    }
+
     public function test_populated_down_refuses_before_mutation_and_empty_up_down_up_is_recoverable(): void
     {
         DB::table('test_sessions')->insert($this->sessionRow());
