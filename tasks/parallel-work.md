@@ -165,7 +165,7 @@ Within a wave, prefer this reviewed merge order:
 
 Migrations are always integrated serially. Deployments, production migrations, active endpoints/gates, real payments, and outbound notifications require separate explicit authorization.
 
-## Active dispatch — 2026-09-08 F2 continuation
+## Active dispatch — 2026-09-09 F2/F3 continuation
 
 Coordinator branch: `codex/organization-payment-spec`. Detailed reviewed commit
 and test evidence is recorded in
@@ -173,9 +173,9 @@ and test evidence is recorded in
 
 | Task | Active agent | Exclusive ownership | Current increment | Review status |
 |---|---|---|---|---|
-| F1 closeout / decision evidence | `/root/review_p17c` | Assigned P17 evidence/report files only | Runtime gap `b0bc774` and non-authoritative TLS proposal `41eb486` completed; no active code increment | accepted as evidence/proposal; P17c/P18 open |
-| F2 session backend | `/root/review_session` | `app/Actions/AssessmentSessions/**` and narrowly scoped feature/PostgreSQL tests | Schema/RLS, autosave, and start/resume increments completed through `3cc0e82` | accepted; idle for next bounded increment |
-| F2/F3 psychometric and zone engine | `/root/review_ist` | `app/Services/Scoring/**`, `app/Domain/Eligibility/**`, related unit tests, and assigned evidence report; F0 data only under coordinator-owned contract changes | Normalization accepted through `10bc513`; versioned T-06 zone mapping accepted as `db459fe` | accepted; idle, next is recommendation-label guardrails then T-07 |
+| F3 recommendation label | `/root/review_ist` | New `app/Domain/Eligibility/RecommendationLabelPolicy.php` and `tests/Unit/Eligibility/RecommendationLabelPolicyTest.php` only | Implement G1/G2/G3/G4 label policy against the accepted T-06 output; no DASS input is permitted | active from baseline `e0e5e5f`; review pending |
+| F2 session submit action | `/root/review_session` | New submit action/result under `app/Actions/AssessmentSessions/**` and narrowly scoped feature/PostgreSQL tests | Implement participant-owned atomic submit/replay/expiry from the existing submit policy; no scoring, route, contract, or migration changes | active from baseline `e0e5e5f`; review pending |
+| T-07 architecture guard | `/root/review_p17c` | New `tests/Architecture/PsychometricEligibilitySeparationTest.php` only | Prove the DASS scorer/policy and eligibility domain remain dependency-separated; no production edits | active from baseline `e0e5e5f`; review pending |
 
 The assessment-session schema/RLS commits `bf72c29` and `2b3937a`, autosave
 action/evidence `4a73141` and `c070ba2`, and start/resume action `3cc0e82` are
