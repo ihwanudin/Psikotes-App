@@ -26,11 +26,11 @@ final class ClusterNarrativeAssemblerTest extends TestCase
             'type' => 'cluster_narrative',
             'language' => 'id',
             'cluster' => 'B',
-            'narrative' => 'Narasi B1 tingkat 2. Selain itu, Narasi B2 tingkat 3. Akan tetapi, Narasi B3 tingkat 1. Selain itu, Narasi B4 tingkat 1.',
+            'narrative' => 'Narasi B1 tingkat 2. Selain itu, Narasi B2 tingkat 3. Sebaliknya, Narasi B3 tingkat 1. Kemudian, Narasi B4 tingkat 1.',
             'review_required' => false,
             'omitted_aspects' => [],
             'provenance_keys' => ['bank.B1.2', 'bank.B2.3', 'bank.B3.1', 'bank.B4.1'],
-            'connector_sequence' => ['connector.add.1', 'connector.contrast.2', 'connector.add.1'],
+            'connector_sequence' => ['connector.add.1', 'connector.contrast.1', 'connector.add.2'],
         ], $result);
     }
 

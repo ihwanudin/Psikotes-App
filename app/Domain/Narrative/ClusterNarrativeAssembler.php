@@ -85,6 +85,7 @@ final readonly class ClusterNarrativeAssembler
         $parts = [];
         $provenanceKeys = [];
         $connectorSequence = [];
+        $connectorUseCounts = ['additive' => 0, 'contrast' => 0];
         $previousConnectorKey = null;
         $previousLevel = null;
 
@@ -93,11 +94,12 @@ final readonly class ClusterNarrativeAssembler
                 $kind = $entry['level'] >= $previousLevel ? 'additive' : 'contrast';
                 $connector = $this->connectorForTransition(
                     $this->connectorPools[$kind],
-                    $index - 1,
+                    $connectorUseCounts[$kind],
                     $previousConnectorKey,
                 );
                 $parts[] = $connector['text'];
                 $connectorSequence[] = $connector['key'];
+                $connectorUseCounts[$kind]++;
                 $previousConnectorKey = $connector['key'];
             }
 
@@ -263,7 +265,7 @@ final readonly class ClusterNarrativeAssembler
      * @param  list<array{key: string, text: string}>  $pool
      * @return array{key: string, text: string}
      */
-    private function connectorForTransition(array $pool, int $transitionPosition, ?string $previousKey): array
+    private function connectorForTransition(array $pool, int $poolPosition, ?string $previousKey): array
     {
         if ($pool === []) {
             throw new InvalidArgumentException('Narrative connector pool required by the level transition is empty.');
@@ -271,7 +273,7 @@ final readonly class ClusterNarrativeAssembler
 
         $count = count($pool);
         for ($offset = 0; $offset < $count; $offset++) {
-            $candidate = $pool[($transitionPosition + $offset) % $count];
+            $candidate = $pool[($poolPosition + $offset) % $count];
             if ($candidate['key'] !== $previousKey) {
                 return $candidate;
             }

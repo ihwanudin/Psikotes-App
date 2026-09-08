@@ -20,9 +20,11 @@ final class ConnectorRotationAcceptanceTest extends TestCase
         $inputs = $catalog->assemblerInputs();
         $assembler = new ClusterNarrativeAssembler($inputs['narrative_bank'], $inputs['connector_pools']);
         $input = $this->canonicalInput();
+        $clusterB = array_slice($input['aspects'], 2, 4);
         $clusterC = array_slice($input['aspects'], 6, 7);
         $clusterD = array_slice($input['aspects'], 13, 5);
 
+        $mixed = $assembler->assemble('B', $clusterB);
         $additive = $assembler->assemble('C', $clusterC);
         $contrast = $assembler->assemble('D', $clusterD);
 
@@ -30,6 +32,11 @@ final class ConnectorRotationAcceptanceTest extends TestCase
         $contrastPoolKeys = array_column($inputs['connector_pools']['contrast'], 'key');
         $this->assertCount(5, $additivePoolKeys);
         $this->assertCount(5, $contrastPoolKeys);
+        $this->assertSame(
+            [$contrastPoolKeys[0], $additivePoolKeys[0], $contrastPoolKeys[1]],
+            $mixed['connector_sequence'],
+            'Each direction must start and advance through its own independent pool.',
+        );
         $this->assertSame(
             [...$additivePoolKeys, $additivePoolKeys[0]],
             $additive['connector_sequence'],
@@ -48,6 +55,7 @@ final class ConnectorRotationAcceptanceTest extends TestCase
         $second = $composer->compose($input);
 
         $this->assertSame($first, $second);
+        $this->assertSame($mixed['connector_sequence'], $first['clusters']['B']['id']['connector_sequence']);
         $this->assertSame($additive['connector_sequence'], $first['clusters']['C']['id']['connector_sequence']);
         $this->assertSame($contrast['connector_sequence'], $first['clusters']['D']['id']['connector_sequence']);
         foreach ($first['clusters'] as $cluster => $languages) {
