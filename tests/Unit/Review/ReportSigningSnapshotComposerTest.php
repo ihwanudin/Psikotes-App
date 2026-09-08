@@ -91,6 +91,48 @@ final class ReportSigningSnapshotComposerTest extends TestCase
         self::assertNull($snapshot->prerequisiteInput()['label']);
     }
 
+    public function test_target_field_must_match_the_recommendation_field(): void
+    {
+        $input = $this->validInput();
+        $input['target_field'] = 'GAISHOKU';
+
+        $this->expectException(InvalidArgumentException::class);
+        ReportSigningSnapshotComposer::compose($input);
+    }
+
+    public function test_v3_target_field_must_match_the_blocked_recommendation_field(): void
+    {
+        $input = $this->validInput();
+        $input['recommendation'] = $this->v3Recommendation();
+        $input['target_field'] = 'GAISHOKU';
+
+        $this->expectException(InvalidArgumentException::class);
+        ReportSigningSnapshotComposer::compose($input);
+    }
+
+    public function test_invented_recommendation_field_fails_closed(): void
+    {
+        $input = $this->validInput();
+        $input['recommendation']['provenance']['field_code'] = 'INVENTED';
+        $input['target_field'] = 'INVENTED';
+
+        $this->expectException(InvalidArgumentException::class);
+        ReportSigningSnapshotComposer::compose($input);
+    }
+
+    public function test_missing_target_field_is_preserved_for_prerequisite_blocking(): void
+    {
+        foreach ([null, '', " \t\n "] as $targetField) {
+            $input = $this->validInput();
+            $input['target_field'] = $targetField;
+
+            self::assertSame(
+                $targetField,
+                ReportSigningSnapshotComposer::compose($input)->prerequisiteInput()['target_field'],
+            );
+        }
+    }
+
     public function test_internally_inconsistent_recommendation_output_fails_closed(): void
     {
         $input = $this->validInput();

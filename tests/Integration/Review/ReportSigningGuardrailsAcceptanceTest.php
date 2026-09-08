@@ -105,7 +105,7 @@ final class ReportSigningGuardrailsAcceptanceTest extends TestCase
             $reporting['standard_version'],
             $reporting['base_standards'],
             $reporting['fields'],
-        ))->calculate(array_fill_keys($this->aspectCodes(), 3), 'UMUM');
+        ))->calculate(array_fill_keys($this->aspectCodes(), 3), 'KAIGO');
         $recommendation = (new RecommendationLabelPolicy)->decide($zone, 100, 'V3');
         $input = $this->completeInput();
         $input['validity'] = $recommendation['provenance']['validity'];
@@ -211,7 +211,7 @@ final class ReportSigningGuardrailsAcceptanceTest extends TestCase
             $reporting['standard_version'],
             $reporting['base_standards'],
             $reporting['fields'],
-        ))->calculate(array_fill_keys($this->aspectCodes(), 3), 'UMUM');
+        ))->calculate(array_fill_keys($this->aspectCodes(), 3), 'KAIGO');
         $recommendation ??= (new RecommendationLabelPolicy)->decide($zone, 100, $input['validity']);
 
         $discrepancies = [];

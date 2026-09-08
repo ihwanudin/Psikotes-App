@@ -14,6 +14,9 @@ final readonly class ReportSigningSnapshotComposer
     /** @var list<string> */
     private const LABELS = ['DISARANKAN', 'DIPERTIMBANGKAN', 'TIDAK_DISARANKAN'];
 
+    /** @var list<string> */
+    private const TARGET_FIELDS = ['KAIGO', 'KENSETSU', 'NOUGYOU', 'SEIZOU', 'GAISHOKU', 'UMUM'];
+
     /**
      * @param  array<mixed>  $prerequisiteInput
      * @param  array<mixed>  $snapshotProvenance
@@ -54,7 +57,11 @@ final readonly class ReportSigningSnapshotComposer
             }
         }
 
-        [$validity, $label, $recommendationType] = self::validateRecommendation($input['recommendation']);
+        [$validity, $label, $recommendationType, $recommendationField] = self::validateRecommendation($input['recommendation']);
+        $targetField = $input['target_field'];
+        if (is_string($targetField) && trim($targetField) !== '' && $targetField !== $recommendationField) {
+            throw new InvalidArgumentException('Report target field does not match the recommendation field.');
+        }
         [$unresolvedAspects, $discrepancyAspects] = self::validateDiscrepancies($input['discrepancies']);
         [$overrides, $finalLabel] = self::validateOverrides($input['overrides'], $validity, $label);
 
@@ -94,7 +101,7 @@ final readonly class ReportSigningSnapshotComposer
 
     /**
      * @param  array<mixed>  $recommendation
-     * @return array{0: 'V1'|'V2'|'V3', 1: 'DISARANKAN'|'DIPERTIMBANGKAN'|'TIDAK_DISARANKAN'|null, 2: 'recommendation_label'|'publication_blocked'}
+     * @return array{0: 'V1'|'V2'|'V3', 1: 'DISARANKAN'|'DIPERTIMBANGKAN'|'TIDAK_DISARANKAN'|null, 2: 'recommendation_label'|'publication_blocked', 3: string}
      */
     private static function validateRecommendation(array $recommendation): array
     {
@@ -108,7 +115,7 @@ final readonly class ReportSigningSnapshotComposer
                 throw new InvalidArgumentException('Blocked recommendation output is invalid.');
             }
 
-            return ['V3', null, 'publication_blocked'];
+            return ['V3', null, 'publication_blocked', $recommendation['provenance']['field_code']];
         }
 
         if (! self::hasExactKeys($recommendation, [
@@ -171,7 +178,7 @@ final readonly class ReportSigningSnapshotComposer
             throw new InvalidArgumentException('Recommendation label output is inconsistent.');
         }
 
-        return [$validity, $recommendation['label'], 'recommendation_label'];
+        return [$validity, $recommendation['label'], 'recommendation_label', $recommendation['provenance']['field_code']];
     }
 
     /** @param array<mixed> $provenance */
@@ -180,7 +187,7 @@ final readonly class ReportSigningSnapshotComposer
         if (! is_string($provenance['standard_version'] ?? null)
             || trim($provenance['standard_version']) === ''
             || ! is_string($provenance['field_code'] ?? null)
-            || trim($provenance['field_code']) === ''
+            || ! in_array($provenance['field_code'], self::TARGET_FIELDS, true)
             || ! is_int($provenance['iq'] ?? null)
             || $provenance['iq'] < 1
             || ($provenance['validity'] ?? null) !== $validity) {
