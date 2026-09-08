@@ -41,7 +41,10 @@ final class TestPackage extends Model
             ->where('amount', '>=', 0)
             ->where('currency', 'IDR')
             ->whereHas('items', fn (Builder $items): Builder => $items->where('test_type', 'dass21'))
-            ->whereHas('items', fn (Builder $items): Builder => $items->where('test_type', '!=', 'dass21'));
+            ->where(function (Builder $packages): void {
+                $packages->where('code', 'DASS21')
+                    ->orWhereHas('items', fn (Builder $items): Builder => $items->where('test_type', '!=', 'dass21'));
+            });
     }
 
     /**

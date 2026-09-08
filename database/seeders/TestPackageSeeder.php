@@ -13,11 +13,6 @@ final class TestPackageSeeder extends Seeder
 {
     public function run(): void
     {
-        DB::table('packages')->where('code', 'DASS21')->update([
-            'is_active' => false,
-            'updated_at' => now(),
-        ]);
-
         $catalog = json_decode(
             File::get(database_path('seeders/data/service-catalog.json')),
             true,
@@ -35,6 +30,13 @@ final class TestPackageSeeder extends Seeder
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
+
+            DB::table('packages')
+                ->where('code', $definition['code'])
+                ->update([
+                    'name' => $definition['name'],
+                    'updated_at' => now(),
+                ]);
 
             DB::table('packages')
                 ->where('code', $definition['code'])

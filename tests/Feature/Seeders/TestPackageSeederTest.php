@@ -18,6 +18,7 @@ final class TestPackageSeederTest extends TestCase
         $this->seed(TestPackageSeeder::class);
 
         $expected = [
+            'DASS21' => ['amount' => 0, 'items' => ['dass21']],
             'IST' => ['amount' => 99000, 'items' => ['ist', 'dass21']],
             'PAPI' => ['amount' => 99000, 'items' => ['papi', 'dass21']],
             'RMIB' => ['amount' => 99000, 'items' => ['rmib', 'dass21']],
@@ -26,8 +27,7 @@ final class TestPackageSeederTest extends TestCase
         ];
 
         $this->assertDatabaseCount('packages', count($expected));
-        $this->assertDatabaseCount('package_items', 13);
-        $this->assertDatabaseMissing('packages', ['code' => 'DASS21']);
+        $this->assertDatabaseCount('package_items', 14);
 
         foreach ($expected as $code => $definition) {
             $package = DB::table('packages')->where('code', $code)->sole();
@@ -52,7 +52,26 @@ final class TestPackageSeederTest extends TestCase
         $this->seed(TestPackageSeeder::class);
         $this->seed(TestPackageSeeder::class);
 
-        $this->assertDatabaseCount('packages', 5);
-        $this->assertDatabaseCount('package_items', 13);
+        $this->assertDatabaseCount('packages', 6);
+        $this->assertDatabaseCount('package_items', 14);
+    }
+
+    public function test_reseeding_removes_old_bundle_copy_without_overwriting_admin_price_or_activation(): void
+    {
+        $this->seed(TestPackageSeeder::class);
+        DB::table('packages')->where('code', 'IST')->update([
+            'name' => 'Tes Inteligensi (IST) + DASS-21',
+            'amount' => 150000,
+            'is_active' => true,
+        ]);
+
+        $this->seed(TestPackageSeeder::class);
+
+        $this->assertDatabaseHas('packages', [
+            'code' => 'IST',
+            'name' => 'Tes Inteligensi (IST)',
+            'amount' => 150000,
+            'is_active' => true,
+        ]);
     }
 }

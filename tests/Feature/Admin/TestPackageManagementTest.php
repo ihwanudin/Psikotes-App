@@ -106,12 +106,16 @@ final class TestPackageManagementTest extends TestCase
         ]);
     }
 
-    public function test_dass_is_not_available_as_a_standalone_admin_package(): void
+    public function test_dass_standalone_remains_available_and_main_packages_include_it(): void
     {
-        $this->assertDatabaseMissing('packages', ['code' => 'DASS21']);
+        $dass = $this->package('DASS21')->load('items');
 
-        foreach (TestPackage::query()->with('items')->get() as $package) {
+        $this->assertSame(0, $dass->amount);
+        $this->assertSame(['dass21'], $dass->items->pluck('test_type')->all());
+
+        foreach (TestPackage::query()->with('items')->where('code', '!=', 'DASS21')->get() as $package) {
             $this->assertContains('dass21', $package->items->pluck('test_type')->all());
+            $this->assertNotSame(['dass21'], $package->items->pluck('test_type')->all());
         }
     }
 

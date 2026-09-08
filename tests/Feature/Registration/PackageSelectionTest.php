@@ -150,6 +150,29 @@ final class PackageSelectionTest extends TestCase
         $this->assertDatabaseCount('participants', 0);
     }
 
+    public function test_active_dass_standalone_is_available_and_activates_without_payment(): void
+    {
+        $this->branch();
+        $packageId = $this->package('DASS21', 0, true, ['dass21']);
+        $token = (string) Str::uuid();
+
+        $this->get('/register')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('packages', 1)
+                ->where('packages.0.code', 'DASS21')
+                ->where('packages.0.amount', 0)
+                ->where('packages.0.testTypes', ['dass21'])
+            );
+
+        $this->withSession(['registration.token' => $token])
+            ->post('/registrations', $this->validPayload($token, $packageId))
+            ->assertRedirect('/registration/received');
+
+        $this->assertDatabaseHas('orders', ['amount' => 0, 'status' => 'paid']);
+        $this->assertDatabaseHas('entitlements', ['test_type' => 'dass21', 'status' => 'ready']);
+    }
+
     public function test_registration_rejects_inactive_unpriced_and_unknown_packages(): void
     {
         $this->branch();
