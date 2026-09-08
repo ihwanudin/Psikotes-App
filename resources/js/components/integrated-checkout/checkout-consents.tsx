@@ -69,14 +69,7 @@ export function CheckoutConsents({
                 )}
             </div>
             <div className="space-y-3 border-t pt-5">
-                <h3 className="font-semibold">
-                    DASS-21 · persetujuan wajib terpisah
-                </h3>
-                <p className="text-sm leading-6 text-slate-600">
-                    DASS-21 merupakan bagian wajib psikotes. Hasilnya tidak
-                    menentukan kelayakan kerja dan data klinis tidak dibagikan
-                    kepada cabang pembayar.
-                </p>
+                <h3 className="font-semibold">DASS-21</h3>
                 {consents.dass.state === 'required' ? (
                     <>
                         <ConsentText document={consents.dass.document} />
@@ -89,7 +82,6 @@ export function CheckoutConsents({
                                     onDass(event.target.checked)
                                 }
                                 required
-                                aria-describedby="checkout-dass-help"
                                 className="mt-1 size-5 shrink-0 accent-brand-green focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-green"
                             />
                             <span className="text-sm leading-6">
@@ -97,14 +89,6 @@ export function CheckoutConsents({
                                 DASS-21. *
                             </span>
                         </label>
-                        <p
-                            id="checkout-dass-help"
-                            className="text-sm text-slate-600"
-                        >
-                            Persetujuan DASS-21 dicatat terpisah dari
-                            persetujuan psikotes utama dan wajib diberikan
-                            secara eksplisit.
-                        </p>
                     </>
                 ) : consents.dass.state === 'accepted' ? (
                     <p className="text-sm text-slate-600">
@@ -113,8 +97,8 @@ export function CheckoutConsents({
                     </p>
                 ) : (
                     <p className="text-sm text-slate-600" role="alert">
-                        Persetujuan DASS-21 wajib belum tersedia untuk
-                        dikonfirmasi. Muat ulang halaman atau hubungi petugas.
+                        Persetujuan DASS-21 belum tersedia untuk dikonfirmasi.
+                        Muat ulang halaman atau hubungi petugas.
                     </p>
                 )}
             </div>

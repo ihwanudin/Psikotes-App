@@ -49,7 +49,7 @@ function mandatoryDassFixture(): array
         'consents' => [
             'psychotest' => ['state' => 'accepted', 'version' => 'synthetic-psychotest-v1'],
             'dass' => ['state' => 'required', 'document' => ['version' => 'synthetic-dass-v1',
-                'title' => 'Persetujuan skrining DASS-21 sebagai bagian psikotes', 'text' => 'Fixture sintetis, bukan teks legal.']],
+                'title' => 'Persetujuan skrining DASS-21', 'text' => 'Fixture sintetis, bukan teks legal.']],
             'legalReviewPending' => false,
         ]];
 }
@@ -169,16 +169,17 @@ $cases['accepted psychotest consent permits a DASS-only confirmation descriptor'
     mandatoryDassCheck($xpath->query('//form[@data-checkout-confirmation]//input[@type="checkbox" and @name="consents[dass][accepted]"]')->length === 1, 'Only required DASS consent is submitted');
     mandatoryDassCheck($xpath->query('//form[@data-checkout-confirmation]//*[@name="consents[psychotest][accepted]"]')->length === 0, 'Accepted psychotest consent is not requested again');
 };
-$cases['missing required profile and required DASS are explicit'] = function (): void {
+$cases['missing required profile and DASS consent are explicit without package-choice narration'] = function (): void {
     [$xpath] = renderMandatoryDass(mandatoryDassFixture());
     $steps = mandatoryDassText($xpath, '//section[@aria-labelledby="requirements-heading"]');
     mandatoryDassCheck(str_contains($steps, '6 data profil wajib belum lengkap'), 'Required count is server-projected profile state');
     mandatoryDassCheck(str_contains($steps, 'Nama lengkap') && str_contains($steps, 'Nomor telepon'), 'Missing labels remain visible');
     mandatoryDassCheck(! str_contains($steps, 'Email'), 'Optional email is not called required');
-    mandatoryDassCheck(str_contains($steps, 'Persetujuan DASS-21 wajib belum tercatat'), 'DASS requirement is explicit');
+    mandatoryDassCheck(str_contains($steps, 'Persetujuan DASS-21 belum tercatat'), 'DASS consent state is explicit');
     $consent = mandatoryDassText($xpath, '//section[@aria-labelledby="consent-heading"]');
-    mandatoryDassCheck(str_contains($consent, 'DASS-21 (wajib untuk paket ini)'), 'DASS is not labelled optional');
+    mandatoryDassCheck(str_contains($consent, 'DASS-21'), 'DASS consent remains visible');
     mandatoryDassCheck(str_contains($consent, 'Hasil DASS-21 tidak memengaruhi kelayakan'), 'Eligibility separation is explicit');
+    mandatoryDassCheck(! str_contains($consent, 'bagian wajib') && ! str_contains($consent, 'wajib untuk paket'), 'Package-choice narration is absent');
     mandatoryDassCheck($xpath->query('//input[@type="checkbox" or @type="radio"]')->length === 0, 'Readonly summary offers no yes/no choice');
     mandatoryDassCheck($xpath->query('//form')->length === 1 && $xpath->query('//button')->length === 1, 'Logout remains the only action');
 };

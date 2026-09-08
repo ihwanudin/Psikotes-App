@@ -92,7 +92,7 @@
 
 - [ ] Foreign keys, enum/check constraints, indeks, dan unique/partial unique constraints sesuai SPEC.
 - [x] `payment_methods` menyimpan kode stabil dan `is_active`; semua metode default nonaktif.
-- [x] Consent A/B versioned; consent B nullable/declined tanpa memblokir psikotes.
+- [x] Consent A/B versioned dan dicatat terpisah; riwayat consent B yang ditarik/ditolak tetap fail-closed tanpa mengubah hasil psikotes utama.
 - [x] Role migration dan runtime database terpisah.
 
 **Verification:**
@@ -195,17 +195,17 @@
 
 **Acceptance criteria:**
 
-- [x] Consent A wajib; consent B dapat ditolak; versi teks dan timestamp disimpan.
+- [x] Consent A serta Consent B dicatat terpisah; versi teks dan timestamp disimpan.
 - [x] Bidang kerja dan atribusi cabang ditentukan server-side.
 - [x] Validasi panjang/format dan rate limit registrasi aktif.
 - [x] `package_id` terhubung ke katalog per jenis tes dengan harga IDR dan sakelar aktivasi default OFF; backend memvalidasi ulang paket saat transaksi.
 - [x] Panel `super_admin` dapat mengisi harga dan mengatur paket ON/OFF; role lain serta URL langsung ditolak, dan paket tidak dapat diaktifkan tanpa harga terkonfigurasi (Rp0 sah untuk layanan gratis).
-- [x] Harga IDR disimpan di katalog database: IST/PAPI/RMIB/Kraepelin + DASS-21 Rp99.000, paket semua tes Rp200.000, dan konsultasi psikolog opsional Rp50.000; tidak ada paket DASS mandiri.
+- [x] Harga IDR disimpan di katalog database: IST/PAPI/RMIB/Kraepelin masing-masing Rp99.000 dan menyertakan DASS-21 otomatis, paket semua tes Rp200.000, paket DASS-21 mandiri gratis, dan konsultasi psikolog opsional Rp50.000.
 
 **Verification:**
 
-- [x] Feature tests mencakup input valid, invalid, duplikat, consent B ditolak, dan mass-assignment abuse.
-- [x] Browser smoke test mobile registration lulus (390×844; DASS ditolak; POST 302 → konfirmasi 200; console bersih).
+- [x] Feature tests mencakup input valid, invalid, duplikat, consent B yang tidak diterima, dan mass-assignment abuse.
+- [x] Browser smoke test mobile registration lulus (390×844; kedua consent diterima; POST 302 → konfirmasi 200; console bersih).
 - [x] Feature tests panel paket mencakup batas role, akses URL langsung, update harga/aktivasi, harga gratis, dan validasi harga kosong.
 - [x] Browser smoke katalog lulus: enam paket dan add-on berasal dari database, DASS menampilkan Gratis, konsultasi mengubah total menjadi Rp50.000, dan console bersih.
 
@@ -370,7 +370,7 @@
 - [x] Manual: aktifkan metode -> daftar -> upload bukti -> admin verifikasi -> notifikasi -> login berhasil.
 - [ ] Xendit: aktifkan metode -> invoice -> webhook terverifikasi -> entitlement ready -> notifikasi -> login berhasil.
 - [x] Metode yang dimatikan hilang dari pilihan dan order baru ditolak tanpa mengganggu order historis.
-- [x] RLS, consent B decline, webhook replay, upload abuse, dan auth brute force tetap hijau.
+- [x] RLS, riwayat consent B nonaktif, webhook replay, upload abuse, dan auth brute force tetap hijau.
 
 **Verification:**
 

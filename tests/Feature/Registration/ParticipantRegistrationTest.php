@@ -36,7 +36,7 @@ final class ParticipantRegistrationTest extends TestCase
                 ->component('registration/create')
                 ->where('assignedBranch.name', $branch->name)
                 ->where('consents.psychotest.version', 'draft-2026-08-25.2')
-                ->where('consents.dass.version', 'draft-2026-09-05')
+                ->where('consents.dass.version', 'draft-2026-09-08')
                 ->where('consents.legalReviewPending', true)
                 ->has('registrationToken')
             );
@@ -80,7 +80,7 @@ final class ParticipantRegistrationTest extends TestCase
             'participant_id' => $participant->id,
             'consent_type' => 'dass',
             'status' => 'accepted',
-            'document_version' => 'draft-2026-09-05',
+            'document_version' => 'draft-2026-09-08',
             'consented_at' => '2026-08-25 10:00:00',
         ]);
     }

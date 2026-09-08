@@ -109,10 +109,12 @@ final class CheckoutMandatoryDassHttpPresentationTest extends OrganizationPaymen
         $this->assertStringContainsString('Nama lengkap', $requirements);
         $this->assertStringContainsString('Nomor telepon', $requirements);
         $this->assertStringNotContainsString('Email', $requirements);
-        $this->assertStringContainsString('Persetujuan DASS-21 wajib belum tercatat', $requirements);
+        $this->assertStringContainsString('Persetujuan DASS-21 belum tercatat', $requirements);
         $consent = trim($xpath->query('//section[@aria-labelledby="consent-heading"]')->item(0)->textContent);
-        $this->assertStringContainsString('DASS-21 (wajib untuk paket ini)', $consent);
+        $this->assertStringContainsString('DASS-21', $consent);
         $this->assertStringContainsString('Hasil DASS-21 tidak memengaruhi kelayakan', $consent);
+        $this->assertStringNotContainsString('bagian wajib', $consent);
+        $this->assertStringNotContainsString('wajib untuk paket', $consent);
         $this->assertSame($hostile, $xpath->query('//section[@aria-labelledby="consent-heading"]//h4')->item(0)->textContent);
         $this->assertSame(0, $xpath->query('//img[@src="x"] | //*[@onerror]')->length);
         $this->assertStringNotContainsString($hostile, $response->getContent());
@@ -251,8 +253,10 @@ final class CheckoutMandatoryDassHttpPresentationTest extends OrganizationPaymen
         foreach (['PRIVATE_INVOICE', 'PRIVATE_PROVIDER_REFERENCE', 'PRIVATE_PROOF_KEY', 'provider.invalid'] as $private) {
             $this->assertStringNotContainsString($private, $response->getContent());
         }
-        $this->assertStringContainsString('DASS-21 (wajib untuk paket ini)', $response->getContent());
+        $this->assertStringContainsString('DASS-21', $response->getContent());
         $this->assertStringContainsString('Hasil DASS-21 tidak memengaruhi kelayakan', $response->getContent());
+        $this->assertStringNotContainsString('bagian wajib', $response->getContent());
+        $this->assertStringNotContainsString('wajib untuk paket', $response->getContent());
         $this->assertSame('required', $payload['consents']['dass']['state']);
         $this->assertSame('locked', $payload['access']['state']);
         $this->assertFalse($payload['access']['startAvailable']);

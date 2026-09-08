@@ -37,9 +37,9 @@ final class CheckoutProductionWiringTest extends OrganizationPaymentTestCase
         URL::forceRootUrl('https://psikotes.oncam.id');
         URL::forceScheme('https');
         config()->set('consent.documents.dass', [
-            'version' => 'draft-2026-09-05',
-            'title' => 'Persetujuan skrining DASS-21 sebagai bagian psikotes',
-            'text' => 'DASS-21 wajib dalam rangkaian, diproses terpisah, dan bukan diagnosis.',
+            'version' => 'draft-2026-09-08',
+            'title' => 'Persetujuan skrining DASS-21',
+            'text' => 'DASS-21 diproses terpisah dan bukan diagnosis.',
         ]);
     }
 

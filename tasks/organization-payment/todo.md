@@ -1,6 +1,6 @@
 # Tugas: organization-payment
 
-Status: **P1–P13b, core privat P14/P15, dan P17a–P17b selesai lokal. P16-pay-a–i, binding Blade/UI summary-v2, subset consent current, serta privacy audit selesai lokal dan default OFF; DASS-21 wajib pada ingress/snapshot/handoff/session/form. Bukti terbaru: Blade 19+7, Node 4, PHP/HTTP 38/684, PostgreSQL fresh 400/3.950, beserta PHPStan/ESLint/Prettier/Pint/diff-check. Runtime browser/P17c dan finalisasi P18 masih terbuka; checkbox P15/P16 belum ditutup. Tidak deploy, tidak migrasi DB aktif, dan tidak menyalakan sumber/feature flag, provider, atau outbound nyata.**
+Status: **P1–P13b, core privat P14/P15, dan P17a–P17b selesai lokal. P16-pay-a–i, binding Blade/UI summary-v2, subset consent current, serta privacy audit selesai lokal dan default OFF; paket psikotes utama membawa DASS-21 otomatis pada ingress/snapshot/handoff/session/form, sedangkan paket DASS-21 mandiri tetap tersedia lewat registrasi langsung. Bukti terbaru: Blade 19+7, Node 4, PHP/HTTP 38/684, PostgreSQL fresh 400/3.950, beserta PHPStan/ESLint/Prettier/Pint/diff-check. Runtime browser/P17c dan finalisasi P18 masih terbuka; checkbox P15/P16 belum ditutup. Tidak deploy, tidak migrasi DB aktif, dan tidak menyalakan sumber/feature flag, provider, atau outbound nyata.**
 
 ## Gerbang revisi kolektif
 
@@ -615,7 +615,7 @@ tetap unchecked sampai browser dan checkpoint lintas tahap selesai.
 
 **Acceptance:**
 
-- [ ] Hanya field kurang boleh diisi; cabang/payer/paket/nominal locked tidak dapat diganti. Consent versioned dan pilihan DASS tanpa duplikasi; sudah settled dapat aktif setelah syarat lengkap tanpa invoice baru.
+- [ ] Hanya field kurang boleh diisi; cabang/payer/paket/nominal locked tidak dapat diganti. Consent versioned dicatat terpisah tanpa duplikasi; sudah settled dapat aktif setelah syarat lengkap tanpa invoice baru.
 
 **Dependencies:** P14. **Scope:** M.
 
@@ -624,7 +624,7 @@ tetap unchecked sampai browser dan checkpoint lintas tahap selesai.
 **Verification:** `php vendor/bin/phpunit --configuration phpunit.organization-payment.xml tests/Feature/Registration/IntegratedCheckoutConsentTest.php`
 
 **Bukti core lokal:** request/DTO/action writer, HTTP adapter JSON, idempotensi,
-rollback, profil missing-only, serta consent psikotes dan DASS-21 wajib telah
+rollback, profil missing-only, serta consent psikotes dan DASS-21 terpisah telah
 terintegrasi. Subset requirement current, withdrawal/re-consent, rotasi dokumen,
 histori bergenerasi, actor sesi, interval waktu, rollback, dan privacy audit RLS
 telah dibuktikan pada `918eb93`/`ae54cd6`. Route writer tetap default OFF;
@@ -655,9 +655,10 @@ acceptance tidak ditutup sebelum browser/checkpoint.
 **Bukti parsial lokal:** Blade branded/no-JS, form injected fail-closed, transport
 JSON same-origin, session-authorized writer self/gratis, proyeksi URL persisted,
 boundary HTTP, controller, dan route pembayaran default-off sudah terintegrasi.
-DASS-21 wajib pada provisioning, snapshot harga, issuance/consume/recovery
-handoff, serta graph session. Kontrak strict TypeScript summary-v2, fixture DASS
-bersama, evidence pembayaran canonical, dan proyeksi action server telah diterima
+DASS-21 otomatis pada paket psikotes utama untuk provisioning, snapshot harga,
+issuance/consume/recovery handoff, serta graph session; paket mandiri tetap lewat
+registrasi langsung. Kontrak strict TypeScript summary-v2, fixture DASS bersama,
+evidence pembayaran canonical, dan proyeksi action server telah diterima
 melalui `cac65f1`, `04e1499`, `ce036bb`, `edebc7c`, dan `1547501`. Bukti terbaru:
 root **207/2.189**, handoff **29/385**, frontend **8/8** plus TS/lint/format.
 Binding Blade/UI summary-v2 telah selesai lokal melalui `4110213`, `cc69179`,

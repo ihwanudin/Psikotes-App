@@ -180,8 +180,7 @@
                 @endif
                 @if ($dassConsentRequired)
                     <li>
-                        <strong>Persetujuan DASS-21 wajib belum tercatat.</strong>
-                        <span>DASS-21 merupakan bagian wajib paket, tetapi hasilnya tidak memengaruhi kelayakan.</span>
+                        <strong>Persetujuan DASS-21 belum tercatat.</strong>
                     </li>
                 @endif
             </ul>
@@ -272,7 +271,7 @@
             <p class="notice">Dokumen persetujuan masih menunggu tinjauan legal.</p>
         @endif
         @foreach (['psychotest', 'dass'] as $key)
-            @php($label = $key === 'psychotest' ? 'Psikotes' : 'DASS-21 (wajib untuk paket ini)')
+            @php($label = $key === 'psychotest' ? 'Psikotes' : 'DASS-21')
             <h3>{{ $label }}</h3>
             @if ($summary['consents'][$key]['state'] === 'accepted')
                 <p>Persetujuan tercatat. Versi: {{ $summary['consents'][$key]['version'] }}</p>
@@ -326,7 +325,7 @@
                     @foreach ($requiredConsentTypes as $type)
                         @php($label = $type === 'psychotest'
                             ? 'Saya menyetujui pelaksanaan psikotes sesuai dokumen di atas.'
-                            : 'Saya menyetujui DASS-21 sebagai bagian wajib paket sesuai dokumen di atas.')
+                            : 'Saya menyetujui pelaksanaan DASS-21 sesuai dokumen di atas.')
                     <input type="hidden" name="consents[{{ $type }}][documentVersion]" value="{{ $confirmation['consents'][$type]['documentVersion'] }}">
                     <input type="hidden" name="consents[{{ $type }}][documentHash]" value="{{ $confirmation['consents'][$type]['documentHash'] }}">
                     <label class="consent-choice" for="checkout-consent-{{ $type }}">

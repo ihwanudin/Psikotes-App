@@ -110,8 +110,8 @@ export default function CreateRegistration({
                                 <div className="flex gap-3">
                                     <ShieldCheck className="mt-0.5 size-5 shrink-0 text-brand-gold" />
                                     <p>
-                                        DASS-21 termasuk dalam setiap paket dan
-                                        hasilnya tidak memengaruhi kelayakan.
+                                        Hasil asesmen dilindungi dan hanya dapat
+                                        diakses oleh pihak yang berwenang.
                                     </p>
                                 </div>
                                 <div className="flex gap-3">
@@ -571,8 +571,8 @@ export default function CreateRegistration({
                                                             className="text-sm leading-6"
                                                         >
                                                             Saya menyetujui
-                                                            DASS-21 sebagai
-                                                            bagian psikotes *
+                                                            pelaksanaan DASS-21
+                                                            *
                                                         </Label>
                                                         <p
                                                             id="dass-copy"

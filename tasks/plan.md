@@ -9,7 +9,7 @@ F1 membangun satu aplikasi Laravel dengan dua permukaan: Inertia.js + React untu
 - `SPEC.md` v4 menang atas bagian lama `PANDUAN-EKSEKUSI.md` dan `SECURITY.md` yang masih menyebut Supabase, Workers, atau memindahkan Xendit ke fase lain.
 - Xendit Invoice termasuk F1; transfer manual tetap tersedia berdampingan.
 - Auth peserta memakai nomor tes + tanggal lahir dengan JWT kustom TTL 12 jam. Filament memakai sesi Laravel.
-- DASS menjadi komponen wajib setiap paket psikotes dengan consent B wajib, tetapi tetap disimpan dalam schema/tabel dan policy terpisah serta tidak memengaruhi kelayakan.
+- DASS-21 tetap tersedia sebagai paket mandiri; setiap paket psikotes utama menyertakannya otomatis tanpa pilihan tambah/hapus. Consent B, schema/tabel, dan policy tetap terpisah serta DASS tidak memengaruhi kelayakan.
 - Nomor tes, status pembayaran, entitlement, dan atribusi referral ditetapkan server-side.
 - Pencocokan wajah memakai interface `IdentityMatcher`. Penyimpanan foto dan alur tinjauan manual dapat dibangun sekarang; implementasi otomatis tidak dipilih sampai provider/algoritme disetujui.
 - JSON F0 adalah sumber seed yang sah. Angka instrumen tidak disalin ke kode aplikasi.
@@ -64,7 +64,7 @@ Toolchain + repository
 - Referral kedua menimpa referral first-touch.
 - Brute force nomor tes + tanggal lahir.
 - File berkedok gambar/PDF atau file terlalu besar lolos upload.
-- Consent B ditolak tetapi psikotes ikut terblokir.
+- Paket DASS mandiri atau komposisi paket psikotes utama dimanipulasi melalui request klien.
 - Job queue membawa konteks tenant yang salah atau menulis PII ke log.
 
 ## Task list

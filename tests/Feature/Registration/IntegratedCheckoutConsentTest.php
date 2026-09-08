@@ -58,9 +58,9 @@ final class IntegratedCheckoutConsentTest extends OrganizationPaymentTestCase
         ]);
         config()->set('assessment_integration.checkout_session.http.confirmation.writer_enabled', true);
         config()->set('consent.documents.dass', [
-            'version' => 'draft-2026-09-05',
-            'title' => 'Persetujuan skrining DASS-21 sebagai bagian psikotes',
-            'text' => 'DASS-21 wajib dalam rangkaian, diproses terpisah, dan bukan diagnosis.',
+            'version' => 'draft-2026-09-08',
+            'title' => 'Persetujuan skrining DASS-21',
+            'text' => 'DASS-21 diproses terpisah dan bukan diagnosis.',
         ]);
 
         RateLimiter::for(CheckoutSessionHttpContract::LIMITER,
@@ -813,7 +813,7 @@ final class IntegratedCheckoutConsentTest extends OrganizationPaymentTestCase
             'profile' => ['fullName' => 'Synthetic Person'],
             'consents' => [
                 'psychotest' => ['accepted' => true, 'documentVersion' => 'draft-2026-08-25.2'],
-                'dass' => ['accepted' => true, 'documentVersion' => 'draft-2026-09-05'],
+                'dass' => ['accepted' => true, 'documentVersion' => 'draft-2026-09-08'],
             ],
         ], JSON_THROW_ON_ERROR);
     }

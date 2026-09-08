@@ -46,7 +46,7 @@ export const dassOnlySummary: CheckoutSummaryV2 = {
     ...summary,
     access: {
         ...summary.access,
-        // @ts-expect-error A package requires DASS-21 and at least one non-DASS test.
+        // @ts-expect-error An integrated psychotest package requires DASS-21 and at least one primary test.
         tests: [{ testType: 'dass21', state: 'locked' }],
     },
 };

@@ -8,7 +8,7 @@ export const summary: CheckoutSummary = {
     formKey: 'synthetic-attempt-1-draft-v1',
     sourceName: 'Portal Seleksi Contoh',
     branchName: 'LPK Contoh — Cabang Bandung',
-    packageName: 'Psikotes utama + DASS-21 wajib',
+    packageName: 'Psikotes utama',
     attemptLabel: 'Seleksi September 2026 · Attempt 1',
     profile: [
         {
@@ -81,7 +81,7 @@ export const summary: CheckoutSummary = {
             document: {
                 version: 'contoh-dass-v1',
                 title: 'Baca persetujuan DASS-21',
-                text: 'NASKAH SINTETIS. DASS merupakan bagian wajib psikotes, tidak menentukan kelayakan kerja, dan data klinis tidak dibagikan kepada cabang pembayar.',
+                text: 'NASKAH SINTETIS. Hasil DASS tidak menentukan kelayakan kerja dan data klinis tidak dibagikan kepada cabang pembayar.',
             },
         },
     },

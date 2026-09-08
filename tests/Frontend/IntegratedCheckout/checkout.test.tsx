@@ -97,14 +97,14 @@ test('optional email does not hide required consent confirmation', () => {
     assert.match(html, /persetujuan psikotes utama/);
 });
 
-test('DASS is a separate mandatory acceptance with no reject control or optional copy', () => {
+test('DASS acceptance is separate without package-choice narration', () => {
     const html = render();
     const consent = html.match(
         /<section aria-labelledby="checkout-consent-title"[\s\S]*?<\/section>/,
     )?.[0];
     assert.ok(consent);
     assert.doesNotMatch(html, /checked=""/);
-    assert.match(consent, /DASS-21 · persetujuan wajib terpisah/);
+    assert.match(consent, /<h3[^>]*>DASS-21<\/h3>/);
     assert.match(
         consent,
         /Saya telah membaca dan menyetujui persetujuan DASS-21/,
@@ -117,11 +117,11 @@ test('DASS is a separate mandatory acceptance with no reject control or optional
     assert.match(dassInput, /required=""/);
     assert.doesNotMatch(
         consent,
-        /type="radio"|opsional|menolak|tidak ingin|tidak setuju/i,
+        /type="radio"|opsional|menolak|tidak ingin|tidak setuju|bagian wajib|wajib terpisah/i,
     );
 });
 
-test('legacy nonaccepted DASS props stay visibly mandatory and cannot disable the section', () => {
+test('legacy nonaccepted DASS props stay unavailable without package-choice narration', () => {
     for (const dass of [
         { state: 'declined' as const, version: 'legacy-v1' },
         { state: 'not_applicable' as const },
@@ -139,11 +139,11 @@ test('legacy nonaccepted DASS props stay visibly mandatory and cannot disable th
             /<section aria-labelledby="checkout-consent-title"[\s\S]*?<\/section>/,
         )?.[0];
         assert.ok(consent);
-        assert.match(consent, /DASS-21 · persetujuan wajib terpisah/);
-        assert.match(consent, /Persetujuan DASS-21 wajib belum tersedia/);
+        assert.match(consent, /<h3[^>]*>DASS-21<\/h3>/);
+        assert.match(consent, /Persetujuan DASS-21 belum tersedia/);
         assert.doesNotMatch(
             consent,
-            /opsional|menolak|tidak ingin|tidak setuju/i,
+            /opsional|menolak|tidak ingin|tidak setuju|bagian wajib|wajib terpisah/i,
         );
     }
 });
