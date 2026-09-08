@@ -10,6 +10,7 @@ Stack: Laravel · Inertia.js+React (peserta) · Filament/Livewire (admin/staf/ps
 | SPEC.md | Spesifikasi fungsional (sumber kebenaran) |
 | PANDUAN-EKSEKUSI.md | Urutan fase dan gerbang; SPEC.md menang bila ada konflik versi |
 | CLAUDE.md | Aturan kerja AI — dibaca otomatis Claude Code |
+| tasks/parallel-work.md | Acuan kanonik pembagian F1-F9, ownership paralel, handoff, dan resume setelah sesi terhenti |
 | SCORING_ALGORITHM.md | Semua logika skor (kanonik) — status draft/final per bagian |
 | ARCHITECTURE / DATABASE_SCHEMA / API_CONTRACT / SECURITY | Teknis |
 | DEPLOYMENT / PRIVACY_POLICY / CHANGELOG | Operasional |

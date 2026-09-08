@@ -4,6 +4,8 @@
 
 F1 membangun satu aplikasi Laravel dengan dua permukaan: Inertia.js + React untuk peserta dan Filament/Livewire untuk admin, staf, dan psikolog. Hasil F0 dimuat sebagai data read-only. Jalur lengkap yang harus hidup adalah referral first-touch, registrasi dan consent, verifikasi identitas awal, pembayaran Xendit atau transfer manual, aktivasi entitlement, notifikasi, lalu login peserta. PostgreSQL RLS menjadi batas keamanan utama dan wajib diuji dari awal.
 
+Koordinasi lintas fase F1-F9, batas ownership task paralel, urutan dependensi, dan prosedur melanjutkan pekerjaan setelah sesi terhenti ditetapkan secara kanonik di [`tasks/parallel-work.md`](parallel-work.md). Dokumen tersebut wajib dibaca sebelum membuat, melanjutkan, atau mengintegrasikan task paralel.
+
 ## Source-of-truth decisions
 
 - `SPEC.md` v4 menang atas bagian lama `PANDUAN-EKSEKUSI.md` dan `SECURITY.md` yang masih menyebut Supabase, Workers, atau memindahkan Xendit ke fase lain.
