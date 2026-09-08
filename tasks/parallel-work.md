@@ -174,8 +174,8 @@ and test evidence is recorded in
 | Task | Active agent | Exclusive ownership | Current increment | Review status |
 |---|---|---|---|---|
 | F1 closeout / decision evidence | `/root/review_p17c` | Assigned P17 evidence/report files only | Runtime gap `b0bc774` and non-authoritative TLS proposal `41eb486` completed; no active code increment | accepted as evidence/proposal; P17c/P18 open |
-| F2 session backend | `/root/review_session` | `app/Actions/AssessmentSessions/**` and narrowly scoped feature tests; no migration ownership in this increment | Atomic generic-session autosave action using the accepted schema and frozen v4.2 contract | running — review required |
-| F2 psychometric engine | `/root/review_ist` | `app/Services/Scoring/**` and `tests/Unit/Scoring/**`; F0 data read-only | DASS scorer `1bbbb70` and screening policy `39836d7` completed; conflicting normalization paused | accepted; idle pending expert decisions |
+| F2 session backend | `/root/review_session` | `app/Actions/AssessmentSessions/**` and narrowly scoped feature tests; no migration ownership in this increment | Participant-owned start/resume action; no scoring, route, migration, or UI | running — review required |
+| F2 psychometric engine | `/root/review_ist` | `app/Services/Scoring/**`, `tests/Unit/Scoring/**`, and assigned evidence report; F0 data read-only | DASS work accepted; T-01–T-11 evidence matrix `c8c6d28` completed; conflicting normalization paused | accepted; idle pending expert decisions |
 
 The assessment-session schema/RLS commits `bf72c29` and `2b3937a` are accepted;
 there is no active migration owner while the autosave action is in progress.

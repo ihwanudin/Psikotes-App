@@ -64,6 +64,27 @@ The DASS output remains separate from eligibility, zone, label, diagnosis, and
 user-facing narrative. Package inclusion and consent orchestration are outside
 these scorer classes.
 
+The point-in-time T-01 through T-11 status/evidence mapping is recorded by
+accepted docs-only commit `c8c6d28` in
+`tasks/handoffs/f2-t01-t11-evidence-matrix.md`. It marks T-02 and T-08 through
+T-11 pass, T-07 partial, and keeps T-01/T-03 through T-06 blocked at their exact
+authority/dependency boundaries. This matrix is evidence, not a new checklist.
+
+### Assessment-session application action
+
+Atomic autosave is accepted as action commit `4a73141` plus direct PostgreSQL
+verification commit `c070ba2`.
+
+- SQLite action plus session unit gate: 79 tests, 289 assertions, all passed.
+- Direct/full PostgreSQL disposable gate: 416 tests, 4,595 assertions, all
+  passed.
+- Race evidence used two forked runtime NOBYPASSRLS backends, observed an
+  actual row-lock waiter, and produced exactly one commit plus one exact replay.
+- Scoped PHPStan, Pint, and diff checks passed.
+
+The test-only owner cleanup is bound to the exact disposable database marker
+and exact synthetic IDs. It does not weaken the append-only production ledger.
+
 ### P17c synthetic verification
 
 Accepted commits include `fee63d4`, `ef2a2be`, `4326bda`, `f189ad1`,
@@ -82,7 +103,7 @@ or change P17c/P18 status.
 
 | Agent | Ownership | Increment | Next coordinator action |
 |---|---|---|---|
-| `/root/review_session` | New assessment-session action and narrowly scoped feature tests | Atomic autosave orchestration; no routes, migrations, UI, or shared contract edits | Inspect transaction/idempotency/authorization delta and rerun SQLite/PostgreSQL gates |
+| `/root/review_session` | New assessment-session action and narrowly scoped feature tests | Participant-owned start/resume orchestration; no routes, migrations, scoring, UI, or shared contract edits | Inspect authorization/idempotency/deadline delta and require concurrency evidence before accepting a race claim |
 
 `/root/review_ist` is idle after accepted DASS work. Conflicting IQ/PAPI/RMIB
 normalization and Kraepelin wording/rounding remain paused pending the decision
