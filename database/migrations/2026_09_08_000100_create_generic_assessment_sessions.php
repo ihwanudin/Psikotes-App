@@ -1,0 +1,273 @@
+<?php
+
+declare(strict_types=1);
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('test_sessions', function (Blueprint $table): void {
+            $table->id();
+            $table->ulid('public_id')->unique();
+            $table->foreignId('participant_id')->constrained()->restrictOnDelete();
+            $table->string('test_type', 24);
+            $table->unsignedInteger('attempt_no');
+            $table->string('authorization_id', 100);
+            $table->string('allocation_intent_id', 100);
+            $table->string('status', 24)->default('created');
+            $table->unsignedInteger('answers_revision')->default(0);
+            $table->timestampTz('started_at')->nullable();
+            $table->timestampTz('ends_at')->nullable();
+            $table->timestampTz('submitted_at')->nullable();
+            $table->timestampTz('scored_at')->nullable();
+            $table->timestampTz('expired_at')->nullable();
+            $table->timestampTz('voided_at')->nullable();
+            $table->text('void_reason')->nullable();
+            $table->timestampsTz();
+
+            $table->unique(['participant_id', 'test_type', 'attempt_no'], 'test_sessions_attempt_unique');
+            $table->unique(['participant_id', 'test_type', 'authorization_id'], 'test_sessions_authorization_unique');
+            $table->unique(['participant_id', 'test_type', 'allocation_intent_id'], 'test_sessions_allocation_intent_unique');
+            $table->index(['status', 'ends_at', 'id'], 'test_sessions_deadline_idx');
+            $table->index(['participant_id', 'test_type', 'status', 'id'], 'test_sessions_participant_state_idx');
+        });
+
+        Schema::create('answers', function (Blueprint $table): void {
+            $table->id();
+            $table->foreignId('session_id')->constrained('test_sessions')->restrictOnDelete();
+            $table->unsignedInteger('item_no');
+            $table->json('value');
+            $table->unsignedInteger('revision');
+            $table->timestampTz('answered_at');
+            $table->timestampsTz();
+
+            $table->unique(['session_id', 'item_no'], 'answers_session_item_unique');
+            $table->index(['session_id', 'revision'], 'answers_session_revision_idx');
+        });
+
+        Schema::create('assessment_autosave_mutations', function (Blueprint $table): void {
+            $table->id();
+            $table->foreignId('session_id')->constrained('test_sessions')->restrictOnDelete();
+            $table->ulid('mutation_id');
+            $table->unsignedInteger('revision');
+            $table->char('request_hash', 64);
+            $table->json('accepted_item_numbers');
+            $table->timestampTz('received_at');
+            $table->timestampTz('created_at');
+
+            $table->unique(['session_id', 'mutation_id'], 'assessment_autosave_mutations_session_mutation_unique');
+            $table->unique(['session_id', 'revision'], 'assessment_autosave_mutations_session_revision_unique');
+        });
+
+        DB::statement(<<<'SQL'
+            CREATE UNIQUE INDEX test_sessions_one_active_attempt_unique
+                ON test_sessions (participant_id, test_type)
+                WHERE status IN ('created','in_progress')
+            SQL);
+
+        if (DB::getDriverName() === 'pgsql') {
+            $this->addPostgresContract();
+        } elseif (DB::getDriverName() === 'sqlite') {
+            $this->addSqliteContract();
+        }
+    }
+
+    public function down(): void
+    {
+        if ($this->historyExists()) {
+            throw new RuntimeException('Assessment session history prevents rollback.');
+        }
+
+        Schema::dropIfExists('assessment_autosave_mutations');
+        Schema::dropIfExists('answers');
+        Schema::dropIfExists('test_sessions');
+
+        if (DB::getDriverName() === 'pgsql') {
+            DB::statement('DROP FUNCTION IF EXISTS guard_assessment_autosave_mutations_append_only()');
+            DB::statement('DROP FUNCTION IF EXISTS guard_test_sessions_identity_revision()');
+        }
+    }
+
+    private function historyExists(): bool
+    {
+        foreach (['assessment_autosave_mutations', 'answers', 'test_sessions'] as $table) {
+            if (Schema::hasTable($table) && DB::table($table)->exists()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function addPostgresContract(): void
+    {
+        DB::statement(<<<'SQL'
+            ALTER TABLE test_sessions
+                ADD CONSTRAINT test_sessions_contract_check CHECK (
+                    public_id ~ '^[0-7][0-9A-HJKMNP-TV-Z]{25}$'
+                    AND test_type IN ('ist','papi','rmib','kraepelin')
+                    AND status IN ('created','in_progress','submitted','scored','expired','void')
+                    AND attempt_no > 0
+                    AND answers_revision >= 0
+                    AND length(btrim(authorization_id)) > 0
+                    AND length(btrim(allocation_intent_id)) > 0
+                ),
+                ADD CONSTRAINT test_sessions_lifecycle_check CHECK (
+                    (status = 'created' AND started_at IS NULL AND ends_at IS NULL
+                        AND submitted_at IS NULL AND scored_at IS NULL AND expired_at IS NULL
+                        AND voided_at IS NULL AND void_reason IS NULL)
+                    OR (status = 'in_progress' AND started_at IS NOT NULL AND ends_at > started_at
+                        AND submitted_at IS NULL AND scored_at IS NULL AND expired_at IS NULL
+                        AND voided_at IS NULL AND void_reason IS NULL)
+                    OR (status = 'submitted' AND started_at IS NOT NULL AND ends_at > started_at
+                        AND submitted_at BETWEEN started_at AND ends_at AND scored_at IS NULL
+                        AND expired_at IS NULL AND voided_at IS NULL AND void_reason IS NULL)
+                    OR (status = 'scored' AND started_at IS NOT NULL AND ends_at > started_at
+                        AND submitted_at BETWEEN started_at AND ends_at AND scored_at >= submitted_at
+                        AND expired_at IS NULL AND voided_at IS NULL AND void_reason IS NULL)
+                    OR (status = 'expired' AND started_at IS NOT NULL AND ends_at > started_at
+                        AND submitted_at IS NULL AND scored_at IS NULL AND expired_at > ends_at
+                        AND voided_at IS NULL AND void_reason IS NULL)
+                    OR (status = 'void' AND submitted_at IS NULL AND scored_at IS NULL
+                        AND expired_at IS NULL AND voided_at IS NOT NULL
+                        AND length(btrim(void_reason)) > 0
+                        AND ((started_at IS NULL AND ends_at IS NULL)
+                            OR (started_at IS NOT NULL AND ends_at > started_at)))
+                )
+            SQL);
+        DB::statement(<<<'SQL'
+            ALTER TABLE answers
+                ADD CONSTRAINT answers_contract_check CHECK (item_no > 0 AND revision > 0)
+            SQL);
+        DB::statement(<<<'SQL'
+            ALTER TABLE assessment_autosave_mutations
+                ADD CONSTRAINT assessment_autosave_mutations_contract_check CHECK (
+                    mutation_id ~ '^[0-7][0-9A-HJKMNP-TV-Z]{25}$'
+                    AND revision > 0
+                    AND request_hash ~ '^[0-9a-f]{64}$'
+                    AND jsonb_typeof(accepted_item_numbers::jsonb) = 'array'
+                    AND jsonb_array_length(accepted_item_numbers::jsonb) > 0
+                )
+            SQL);
+        DB::unprepared(<<<'SQL'
+            CREATE FUNCTION guard_test_sessions_identity_revision() RETURNS trigger AS $$
+            BEGIN
+                IF NEW.public_id IS DISTINCT FROM OLD.public_id
+                    OR NEW.participant_id IS DISTINCT FROM OLD.participant_id
+                    OR NEW.test_type IS DISTINCT FROM OLD.test_type
+                    OR NEW.attempt_no IS DISTINCT FROM OLD.attempt_no
+                    OR NEW.authorization_id IS DISTINCT FROM OLD.authorization_id
+                    OR NEW.allocation_intent_id IS DISTINCT FROM OLD.allocation_intent_id
+                    OR NEW.answers_revision < OLD.answers_revision THEN
+                    RAISE EXCEPTION 'test session identity or revision contract violation';
+                END IF;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
+            CREATE TRIGGER test_sessions_identity_revision_guard
+                BEFORE UPDATE ON test_sessions FOR EACH ROW
+                EXECUTE FUNCTION guard_test_sessions_identity_revision();
+            SQL);
+        DB::unprepared(<<<'SQL'
+            CREATE FUNCTION guard_assessment_autosave_mutations_append_only() RETURNS trigger AS $$
+            BEGIN
+                RAISE EXCEPTION 'assessment autosave mutations are append only';
+            END;
+            $$ LANGUAGE plpgsql;
+            CREATE TRIGGER assessment_autosave_mutations_append_only
+                BEFORE UPDATE OR DELETE ON assessment_autosave_mutations FOR EACH ROW
+                EXECUTE FUNCTION guard_assessment_autosave_mutations_append_only();
+            SQL);
+    }
+
+    private function addSqliteContract(): void
+    {
+        $session = <<<'SQL'
+            length(NEW.public_id) = 26
+            AND substr(NEW.public_id, 1, 1) GLOB '[0-7]'
+            AND NEW.public_id NOT GLOB '*[^0-9A-HJKMNP-TV-Z]*'
+            AND NEW.test_type IN ('ist','papi','rmib','kraepelin')
+            AND NEW.status IN ('created','in_progress','submitted','scored','expired','void')
+            AND NEW.attempt_no > 0 AND NEW.answers_revision >= 0
+            AND length(trim(NEW.authorization_id)) > 0
+            AND length(trim(NEW.allocation_intent_id)) > 0
+            AND (
+                (NEW.status = 'created' AND NEW.started_at IS NULL AND NEW.ends_at IS NULL
+                    AND NEW.submitted_at IS NULL AND NEW.scored_at IS NULL AND NEW.expired_at IS NULL
+                    AND NEW.voided_at IS NULL AND NEW.void_reason IS NULL)
+                OR (NEW.status = 'in_progress' AND NEW.started_at IS NOT NULL AND NEW.ends_at > NEW.started_at
+                    AND NEW.submitted_at IS NULL AND NEW.scored_at IS NULL AND NEW.expired_at IS NULL
+                    AND NEW.voided_at IS NULL AND NEW.void_reason IS NULL)
+                OR (NEW.status = 'submitted' AND NEW.started_at IS NOT NULL AND NEW.ends_at > NEW.started_at
+                    AND NEW.submitted_at BETWEEN NEW.started_at AND NEW.ends_at AND NEW.scored_at IS NULL
+                    AND NEW.expired_at IS NULL AND NEW.voided_at IS NULL AND NEW.void_reason IS NULL)
+                OR (NEW.status = 'scored' AND NEW.started_at IS NOT NULL AND NEW.ends_at > NEW.started_at
+                    AND NEW.submitted_at BETWEEN NEW.started_at AND NEW.ends_at
+                    AND NEW.scored_at >= NEW.submitted_at AND NEW.expired_at IS NULL
+                    AND NEW.voided_at IS NULL AND NEW.void_reason IS NULL)
+                OR (NEW.status = 'expired' AND NEW.started_at IS NOT NULL AND NEW.ends_at > NEW.started_at
+                    AND NEW.submitted_at IS NULL AND NEW.scored_at IS NULL AND NEW.expired_at > NEW.ends_at
+                    AND NEW.voided_at IS NULL AND NEW.void_reason IS NULL)
+                OR (NEW.status = 'void' AND NEW.submitted_at IS NULL AND NEW.scored_at IS NULL
+                    AND NEW.expired_at IS NULL AND NEW.voided_at IS NOT NULL
+                    AND length(trim(NEW.void_reason)) > 0
+                    AND ((NEW.started_at IS NULL AND NEW.ends_at IS NULL)
+                        OR (NEW.started_at IS NOT NULL AND NEW.ends_at > NEW.started_at)))
+            )
+            SQL;
+        foreach (['INSERT' => 'insert', 'UPDATE' => 'update'] as $operation => $suffix) {
+            DB::unprepared("CREATE TRIGGER test_sessions_contract_{$suffix}
+                BEFORE {$operation} ON test_sessions
+                WHEN COALESCE(({$session}), 0) = 0
+                BEGIN SELECT RAISE(ABORT, 'test session contract violation'); END");
+        }
+        DB::unprepared(<<<'SQL'
+            CREATE TRIGGER test_sessions_identity_revision_guard
+            BEFORE UPDATE ON test_sessions
+            WHEN NEW.public_id IS NOT OLD.public_id
+                OR NEW.participant_id IS NOT OLD.participant_id
+                OR NEW.test_type IS NOT OLD.test_type
+                OR NEW.attempt_no IS NOT OLD.attempt_no
+                OR NEW.authorization_id IS NOT OLD.authorization_id
+                OR NEW.allocation_intent_id IS NOT OLD.allocation_intent_id
+                OR NEW.answers_revision < OLD.answers_revision
+            BEGIN SELECT RAISE(ABORT, 'test session identity or revision contract violation'); END
+            SQL);
+
+        $answer = 'NEW.item_no > 0 AND NEW.revision > 0 AND json_valid(NEW.value)';
+        foreach (['INSERT' => 'insert', 'UPDATE' => 'update'] as $operation => $suffix) {
+            DB::unprepared("CREATE TRIGGER answers_contract_{$suffix}
+                BEFORE {$operation} ON answers WHEN COALESCE(({$answer}), 0) = 0
+                BEGIN SELECT RAISE(ABORT, 'answer contract violation'); END");
+        }
+
+        $mutation = <<<'SQL'
+            length(NEW.mutation_id) = 26
+            AND substr(NEW.mutation_id, 1, 1) GLOB '[0-7]'
+            AND NEW.mutation_id NOT GLOB '*[^0-9A-HJKMNP-TV-Z]*'
+            AND NEW.revision > 0
+            AND length(NEW.request_hash) = 64
+            AND NEW.request_hash NOT GLOB '*[^0-9a-f]*'
+            AND json_valid(NEW.accepted_item_numbers)
+            AND json_type(NEW.accepted_item_numbers) = 'array'
+            AND json_array_length(NEW.accepted_item_numbers) > 0
+            SQL;
+        DB::unprepared("CREATE TRIGGER assessment_autosave_mutations_contract_insert
+            BEFORE INSERT ON assessment_autosave_mutations
+            WHEN COALESCE(({$mutation}), 0) = 0
+            BEGIN SELECT RAISE(ABORT, 'assessment autosave mutation contract violation'); END");
+        DB::unprepared(<<<'SQL'
+            CREATE TRIGGER assessment_autosave_mutations_append_only
+            BEFORE UPDATE ON assessment_autosave_mutations
+            BEGIN SELECT RAISE(ABORT, 'assessment autosave mutations are append only'); END;
+            CREATE TRIGGER assessment_autosave_mutations_no_delete
+            BEFORE DELETE ON assessment_autosave_mutations
+            BEGIN SELECT RAISE(ABORT, 'assessment autosave mutations are append only'); END
+            SQL);
+    }
+};
