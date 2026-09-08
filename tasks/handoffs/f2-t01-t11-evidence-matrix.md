@@ -38,7 +38,7 @@ complete.
 | T-04 | PAPI white-zone-distance normalization; W raw 0/5/9 produces 1/5/3 | `pass` | `PapiLevelCalculatorTest` exercises all 200 dimension/raw combinations, exact W acceptance values, exclusions G/I/X/Z, and invalid inputs against versioned `papi.json` (`10bc513`). | Pure transform is complete; HPP composition remains later work. |
 | T-05 | RMIB rank to level 1–5 | `pass` | `RmibRankLevelCalculatorTest` covers all ranks 1–12. `RmibRawScoreCalculatorTest` proves Excel-compatible competition ranking for tied totals while preserving 108 inputs and sums 78/702 (`10bc513`). | Pure transform is complete; normalized-result composition remains later work. |
 | T-06 | Compare 18 normalized aspect levels with a versioned job-field standard to produce zone | `pass` | `EligibilityZoneCalculatorTest` covers all six fields, all 18 aspects, base/raised/required-interest standards, OK/GREY/BELUM boundaries, unassessed interests, provenance, and invalid payloads (`db459fe`). | Zone calculation is complete; recommendation-label guardrails remain the next F3 boundary. |
-| T-07 | DASS Normal versus Sangat Parah must leave otherwise-identical zone and eligibility label unchanged | `partial` | The DASS policy emits no eligibility output (`1bbbb70`, `39836d7`); the accepted architecture guard scans both boundaries for forbidden dependencies/keys (`549b2e4`); the label policy accepts only the exact T-06 zone payload, IQ, and validity (`7334fa0`). | Structural separation now passes, but the required behavioral comparison of two otherwise-identical cases is the next test-only increment. Do not mark pass until that comparison succeeds. |
+| T-07 | DASS Normal versus Sangat Parah must leave otherwise-identical zone and eligibility label unchanged | `pass` | Canonical DASS scoring produces genuinely different Normal and Sangat Parah cases, while otherwise-identical psychometric input produces exact-identical T-06 zone and recommendation-label output (`3c5b164`). Static separation remains enforced by `549b2e4`. | Domain integration acceptance is complete. Persistence/HTTP/report E2E remains later system integration and is not claimed here. |
 | T-08 | Score all 21 canonical DASS responses into D/A/S raw scores and apply the canonical multiplier | `pass` | `Dass21ScorerTest::test_scores_three_subscales_and_uses_worst_level_as_general_category` proves injected item mapping, raw sums, multiplier, per-item provenance, and all three outputs. Config proves exactly 21 item IDs and seven items per scale (`1bbbb70`). | No calculation gap observed in the pure scorer. |
 | T-09 | Apply inclusive DASS-42 cutoff bands to the multiplied subscale scores | `pass` | `Dass21ScorerTest::test_canonical_cutoff_boundaries_are_inclusive` exercises reachable boundaries across D/A/S. Config tests reject malformed ranges, missing levels, category conflicts, and cutoff gaps (`1bbbb70`). | No cutoff gap observed for current canonical data. |
 | T-10 | General DASS category is the most severe of D/A/S | `pass` | The main DASS scorer test proves a single worst scale; `test_equal_worst_levels_preserve_every_basis_scale` proves a three-way tie. Screening policy tests also preserve a two-way worst-level tie (`1bbbb70`, `39836d7`). | No pure calculation gap observed. Narrative and report visibility are explicitly outside these classes. |
@@ -76,9 +76,10 @@ zone/label engine exists, that comparison remains unavailable and T-07 remains
 
 The prior psychometric authority blockers are resolved by ADR-0028 and
 `10bc513`; T-06 is implemented by `db459fe`, and its label boundary by
-`7334fa0`. The smallest next dependency-safe increment is the behavioral T-07
-comparison of two otherwise-identical cases whose DASS results differ from
-Normal to Sangat Parah while zone and eligibility label remain identical.
+`7334fa0`. Behavioral T-07 is accepted as `3c5b164`. The next F3 evidence slice
+is the explicit recommendation/validity boundary suite (T-12 through T-14 and
+T-19), while G7 proceeds through its accepted policy `eb5e946` into the later
+review/signature composition.
 
 T-01 through T-05 and T-08 through T-11 have no remaining pure-scoring gap in
 this snapshot. Their next work is integration through the coordinator-frozen

@@ -173,9 +173,9 @@ and test evidence is recorded in
 
 | Task | Active agent | Exclusive ownership | Current increment | Review status |
 |---|---|---|---|---|
-| F3 G7 discrepancy policy | `/root/review_ist` | New `app/Domain/Eligibility/AspectSourceDiscrepancyPolicy.php` and `tests/Unit/Eligibility/AspectSourceDiscrepancyPolicyTest.php` only | Mark an aspect review-required when its source-level spread is at least two; emit no narrative and remain independent of DASS | queued from baseline `6fb0700`; review pending |
-| F4 deterministic cluster narrative | `/root/review_session` | New `app/Domain/Narrative/ClusterNarrativeAssembler.php` and `tests/Unit/Narrative/ClusterNarrativeAssemblerTest.php` only | Assemble deterministic ID cluster narrative from injected data, rotate connectors without repetition, and omit review-required aspects | queued from baseline `6fb0700`; review pending |
-| T-07 behavioral non-interference | `/root/review_p17c` | New `tests/Integration/Psychometric/DassEligibilityNonInterferenceTest.php` only | Compare otherwise-identical Normal and Sangat Parah DASS cases and prove identical zone and recommendation label | queued from baseline `6fb0700`; review pending |
+| F5 signing prerequisites | `/root/review_ist` | New `app/Domain/Review/ReportSigningPrerequisitePolicy.php` and `tests/Unit/Review/ReportSigningPrerequisitePolicyTest.php` only | Implement the pure G3/G5/G7/G9 signature gate and exact reason codes; no persistence/state transition | queued after accepted G7 `eb5e946`; review pending |
+| F4 deterministic cluster narrative | `/root/review_session` | New `app/Domain/Narrative/ClusterNarrativeAssembler.php` and `tests/Unit/Narrative/ClusterNarrativeAssemblerTest.php` only | Assemble deterministic ID cluster narrative from injected data, rotate connectors without repetition, and omit review-required aspects | active from baseline `91e76ed`; review pending |
+| Recommendation acceptance evidence | `/root/review_p17c` | New `tests/Integration/Psychometric/RecommendationGuardrailsAcceptanceTest.php` only | Add explicit T-12/T-13/T-14/T-19 boundary evidence against accepted zone/label services | queued after accepted T-07 `3c5b164`; review pending |
 
 The recommendation-label policy `7334fa0`, session submit action `87b6346`, and
 static separation guard `549b2e4` are accepted after independent coordinator
@@ -187,3 +187,8 @@ accepted. ADR-0028 resolves the former IQ/PAPI/RMIB/Kraepelin authority
 conflicts. There is no active migration owner. Do not dispatch overlapping work
 when a lane becomes active again. The former client setup IDs are historical
 only; they must not receive continuation prompts.
+
+Behavioral T-07 is accepted as `3c5b164` (1 test, 10 assertions), with the
+architecture guard still passing 3 tests and 19 assertions. G7 source-spread
+policy is accepted as `eb5e946` (Eligibility suite 70 tests, 239 assertions).
+Both increments passed independent Pint, scoped PHPStan, and diff checks.

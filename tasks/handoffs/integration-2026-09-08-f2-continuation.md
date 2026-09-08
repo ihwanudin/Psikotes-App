@@ -130,6 +130,18 @@ rejects extra input fields, and therefore has no DASS input boundary.
 The static separation guard itself is accepted as `549b2e4`; it is deliberately
 structural and does not yet close the behavioral two-session requirement T-07.
 
+Behavioral T-07 is now accepted as `3c5b164`. Canonical DASS scoring produces
+distinct Normal and Sangat Parah results while the otherwise-identical
+psychometric input produces exact-identical zone and recommendation outputs.
+The focused integration test passed 1 test/10 assertions; the architecture
+regression passed 3 tests/19 assertions. This is an in-process domain integration
+boundary, not a persistence/HTTP/report E2E claim.
+
+G7 source discrepancy is accepted as `eb5e946`. A source-level spread of at
+least two emits a deterministic review-required result and blocks automatic
+narration for that aspect. The full Eligibility suite passed 70 tests/239
+assertions; architecture separation, Pint, PHPStan, and diff checks passed.
+
 ### Assessment-session submit action
 
 Participant-owned atomic submit/replay/expiry is accepted as `87b6346`.
