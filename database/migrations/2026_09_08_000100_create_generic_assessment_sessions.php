@@ -201,8 +201,7 @@ return new class extends Migration
                     OR NEW.attempt_no IS DISTINCT FROM OLD.attempt_no
                     OR NEW.authorization_id IS DISTINCT FROM OLD.authorization_id
                     OR NEW.allocation_intent_id IS DISTINCT FROM OLD.allocation_intent_id
-                    OR NEW.duration_seconds IS DISTINCT FROM OLD.duration_seconds
-                    OR NEW.answers_revision < OLD.answers_revision THEN
+                    OR NEW.duration_seconds IS DISTINCT FROM OLD.duration_seconds THEN
                     RAISE EXCEPTION 'test session identity or revision contract violation';
                 END IF;
                 IF NEW.status IS DISTINCT FROM OLD.status AND NOT (
@@ -227,6 +226,16 @@ return new class extends Migration
                     ELSE
                         NEW.submitted_at := statement_timestamp();
                     END IF;
+                END IF;
+                IF NEW.answers_revision IS DISTINCT FROM OLD.answers_revision AND (
+                    NEW.answers_revision <> OLD.answers_revision + 1
+                    OR NOT EXISTS (
+                        SELECT 1 FROM assessment_autosave_mutations mutation
+                        WHERE mutation.session_id = NEW.id
+                            AND mutation.revision = NEW.answers_revision
+                    )
+                ) THEN
+                    RAISE EXCEPTION 'test session revision requires its exact mutation receipt';
                 END IF;
                 IF NOT (OLD.status = 'created' AND NEW.status = 'in_progress')
                     AND (NEW.started_at IS DISTINCT FROM OLD.started_at
@@ -326,9 +335,6 @@ return new class extends Migration
         DB::unprepared(<<<'SQL'
             CREATE FUNCTION guard_assessment_autosave_mutations_append_only() RETURNS trigger AS $$
             BEGIN
-                IF TG_OP = 'DELETE' AND app_private.app_role() = 'service' THEN
-                    RETURN OLD;
-                END IF;
                 RAISE EXCEPTION 'assessment autosave mutations are append only';
             END;
             $$ LANGUAGE plpgsql;
@@ -347,7 +353,7 @@ return new class extends Migration
                 assessment_autosave_mutations_id_seq FROM psikotes_runtime;
             GRANT SELECT, INSERT, UPDATE, DELETE ON test_sessions TO psikotes_runtime;
             GRANT SELECT, INSERT, UPDATE, DELETE ON answers TO psikotes_runtime;
-            GRANT SELECT, INSERT, DELETE ON assessment_autosave_mutations TO psikotes_runtime;
+            GRANT SELECT, INSERT ON assessment_autosave_mutations TO psikotes_runtime;
             GRANT USAGE, SELECT ON SEQUENCE test_sessions_id_seq, answers_id_seq,
                 assessment_autosave_mutations_id_seq TO psikotes_runtime;
 
@@ -409,8 +415,6 @@ return new class extends Migration
                 );
             CREATE POLICY assessment_autosave_mutations_service_insert ON assessment_autosave_mutations
                 FOR INSERT TO psikotes_runtime WITH CHECK (app_private.app_role() = 'service');
-            CREATE POLICY assessment_autosave_mutations_service_delete ON assessment_autosave_mutations
-                FOR DELETE TO psikotes_runtime USING (app_private.app_role() = 'service');
             SQL);
     }
 
@@ -473,7 +477,14 @@ return new class extends Migration
                 OR NEW.authorization_id IS NOT OLD.authorization_id
                 OR NEW.allocation_intent_id IS NOT OLD.allocation_intent_id
                 OR NEW.duration_seconds IS NOT OLD.duration_seconds
-                OR NEW.answers_revision < OLD.answers_revision
+                OR (NEW.answers_revision IS NOT OLD.answers_revision AND (
+                    NEW.answers_revision <> OLD.answers_revision + 1
+                    OR NOT EXISTS (
+                        SELECT 1 FROM assessment_autosave_mutations mutation
+                        WHERE mutation.session_id = NEW.id
+                            AND mutation.revision = NEW.answers_revision
+                    )
+                ))
                 OR (NEW.status IS NOT OLD.status AND NOT (
                     (OLD.status = 'created' AND NEW.status IN ('in_progress','void'))
                     OR (OLD.status = 'in_progress' AND NEW.status IN ('submitted','expired','void'))

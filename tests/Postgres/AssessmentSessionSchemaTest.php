@@ -70,7 +70,7 @@ final class AssessmentSessionSchemaTest extends TestCase
         $this->assertSame('{psikotes_runtime}', $participantPolicy->roles);
         $this->assertFalse(DB::selectOne("SELECT has_table_privilege('psikotes_runtime',
             'assessment_autosave_mutations', 'UPDATE') AS allowed")->allowed);
-        $this->assertTrue(DB::selectOne("SELECT has_table_privilege('psikotes_runtime',
+        $this->assertFalse(DB::selectOne("SELECT has_table_privilege('psikotes_runtime',
             'assessment_autosave_mutations', 'DELETE') AS allowed")->allowed);
     }
 
@@ -219,6 +219,32 @@ final class AssessmentSessionSchemaTest extends TestCase
                 $this->assertNotNull(DB::table('test_sessions')->where('id', $graph['session'])->value('submitted_at'));
             },
         );
+    }
+
+    public function test_service_revision_bump_requires_exact_receipt_and_ledger_delete_is_denied(): void
+    {
+        app(RlsContextRunner::class)->runAsService(function (): void {
+            $session = DB::table('test_sessions')->insertGetId($this->sessionRow(null, 'in_progress'));
+            $this->assertSqlState('P0001', fn () => DB::table('test_sessions')->where('id', $session)
+                ->update(['answers_revision' => 1]));
+
+            $other = DB::table('test_sessions')->insertGetId($this->sessionRow(null, 'in_progress'));
+            DB::table('assessment_autosave_mutations')->insert($this->mutationRow($other));
+            $this->assertSqlState('P0001', fn () => DB::table('test_sessions')->where('id', $session)
+                ->update(['answers_revision' => 1]));
+
+            DB::table('assessment_autosave_mutations')->insert($this->mutationRow($session));
+            $this->assertSqlState('P0001', fn () => DB::table('test_sessions')->where('id', $session)
+                ->update(['answers_revision' => 2]));
+            DB::table('answers')->insert($this->answerRow($session));
+            DB::table('test_sessions')->where('id', $session)->update(['answers_revision' => 1]);
+            DB::statement('SET CONSTRAINTS answers_ledger_guard IMMEDIATE');
+            DB::statement('SET CONSTRAINTS answers_ledger_guard DEFERRED');
+            $this->assertSqlState('P0001', fn () => DB::table('test_sessions')->where('id', $session)
+                ->update(['answers_revision' => 3]));
+            $this->assertSqlState('42501', fn () => DB::table('assessment_autosave_mutations')
+                ->where('session_id', $session)->delete());
+        });
     }
 
     public function test_owner_empty_roundtrip_and_populated_rollback_are_guarded(): void

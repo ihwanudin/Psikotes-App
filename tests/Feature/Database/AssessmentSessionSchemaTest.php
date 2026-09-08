@@ -56,9 +56,8 @@ final class AssessmentSessionSchemaTest extends OrganizationPaymentTestCase
     public function test_active_attempt_and_allocation_identities_are_unique_and_session_identity_is_immutable(): void
     {
         $participant = $this->participant();
-        $first = $this->sessionRow($participant, 'submitted');
+        $first = [...$this->sessionRow($participant, 'submitted'), 'answers_revision' => 1];
         $firstId = DB::table('test_sessions')->insertGetId($first);
-        DB::table('test_sessions')->where('id', $firstId)->update(['answers_revision' => 1]);
 
         foreach ([
             ['public_id' => $first['public_id']],
@@ -211,12 +210,32 @@ final class AssessmentSessionSchemaTest extends OrganizationPaymentTestCase
             $this->assertRejected(fn () => DB::table('answers')->where('id', $answer)->update($override));
         }
 
+        DB::table('assessment_autosave_mutations')->insert($this->mutationRow($session));
         DB::table('test_sessions')->where('id', $session)->update(['answers_revision' => 1]);
         DB::table('answers')->where('id', $answer)->update([
             'value' => json_encode(['choice' => 'B']), 'revision' => 2,
             'answered_at' => '2026-09-08 03:06:00',
         ]);
         $this->assertDatabaseHas('answers', ['id' => $answer, 'revision' => 2]);
+    }
+
+    public function test_session_revision_requires_the_exact_matching_mutation_receipt(): void
+    {
+        $session = DB::table('test_sessions')->insertGetId($this->sessionRow(null, 'in_progress'));
+        $this->assertRejected(fn () => DB::table('test_sessions')->where('id', $session)
+            ->update(['answers_revision' => 1]));
+
+        $other = DB::table('test_sessions')->insertGetId($this->sessionRow(null, 'in_progress'));
+        DB::table('assessment_autosave_mutations')->insert($this->mutationRow($other));
+        $this->assertRejected(fn () => DB::table('test_sessions')->where('id', $session)
+            ->update(['answers_revision' => 1]));
+
+        DB::table('assessment_autosave_mutations')->insert($this->mutationRow($session));
+        $this->assertRejected(fn () => DB::table('test_sessions')->where('id', $session)
+            ->update(['answers_revision' => 2]));
+        DB::table('test_sessions')->where('id', $session)->update(['answers_revision' => 1]);
+        $this->assertRejected(fn () => DB::table('test_sessions')->where('id', $session)
+            ->update(['answers_revision' => 3]));
     }
 
     public function test_populated_down_refuses_before_mutation_and_empty_up_down_up_is_recoverable(): void

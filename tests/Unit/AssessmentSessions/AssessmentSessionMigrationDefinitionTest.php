@@ -55,7 +55,10 @@ final class AssessmentSessionMigrationDefinitionTest extends TestCase
         self::assertStringNotContainsString('test_sessions_participant_update ON test_sessions FOR ALL', $sql);
         self::assertStringContainsString('CREATE POLICY answers_service_insert', $sql);
         self::assertStringContainsString('CREATE POLICY assessment_autosave_mutations_service_insert', $sql);
-        self::assertStringContainsString('CREATE POLICY assessment_autosave_mutations_service_delete', $sql);
+        self::assertStringNotContainsString('CREATE POLICY assessment_autosave_mutations_service_delete', $sql);
+        self::assertStringNotContainsString('GRANT SELECT, INSERT, DELETE ON assessment_autosave_mutations', $sql);
+        self::assertStringContainsString('NEW.answers_revision <> OLD.answers_revision + 1', $sql);
+        self::assertStringContainsString('mutation.revision = NEW.answers_revision', $sql);
         self::assertStringContainsString('LOCK TABLE test_sessions, answers, assessment_autosave_mutations', $sql);
         self::assertStringContainsString('IN ACCESS EXCLUSIVE MODE', $sql);
     }
