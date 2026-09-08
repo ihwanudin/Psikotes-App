@@ -95,6 +95,7 @@ final class IstRawScoreCalculatorTest extends TestCase
         ], $calculator->calculate($responses));
     }
 
+    /** @param array<mixed> $responses */
     #[DataProvider('invalidResponses')]
     public function test_invalid_response_contract_is_rejected(array $responses, string $message): void
     {
@@ -130,6 +131,10 @@ final class IstRawScoreCalculatorTest extends TestCase
         ], 'IST response item is outside the supplied scoring data.'];
     }
 
+    /**
+     * @param  array<mixed>  $keys
+     * @param  array<mixed>  $geDictionary
+     */
     #[DataProvider('invalidScoringData')]
     public function test_invalid_scoring_data_is_rejected(array $keys, array $geDictionary): void
     {
