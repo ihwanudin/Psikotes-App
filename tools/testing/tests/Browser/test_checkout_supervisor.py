@@ -2123,7 +2123,21 @@ class SupervisorTests(unittest.TestCase):
         run = m.WindowsRun({"directory": str(Path.cwd()), "powershell": "C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"})
         run.env = {key: os.environ[key] for key in ("SystemRoot", "TEMP", "TMP")}
         run.io_deadline = float("inf")
+        production_acl_gate = m.WindowsRun._require_acl_active
+        acl_phases = []
+        acl_token = object()
+
+        def require_test_fresh_acl(phase):
+            self.assertIs(type(phase), str)
+            self.assertEqual(phase, "fresh")
+            acl_phases.append(phase)
+            return acl_token
+
+        run._require_acl_active = require_test_fresh_acl
+        self.assertIs(run._require_acl_active, require_test_fresh_acl)
+        self.assertIs(m.WindowsRun._require_acl_active, production_acl_gate)
         if run._listeners():
+            self.assertEqual(acl_phases, ["fresh", "fresh"])
             self.skipTest("controlled ports are occupied")
         sockets = []
         try:
@@ -2141,6 +2155,7 @@ class SupervisorTests(unittest.TestCase):
         except OSError:
             for owned in sockets:
                 owned.close()
+            self.assertEqual(acl_phases, ["fresh", "fresh"])
             self.skipTest("controlled IPv4/IPv6 wildcard listeners could not both bind")
         try:
             rows = run._listeners()
@@ -2152,6 +2167,8 @@ class SupervisorTests(unittest.TestCase):
             for owned in sockets:
                 owned.close()
         self.assertEqual(run._listeners(), [])
+        self.assertEqual(acl_phases, ["fresh"] * 6)
+        self.assertIs(m.WindowsRun._require_acl_active, production_acl_gate)
 
     def test_smoke_exact_three_only_after_start_and_never_accepts(self):
         f = Fake()
