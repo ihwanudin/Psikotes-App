@@ -14,7 +14,6 @@ final class ReportSigningTransitionPolicy
     ) {}
 
     /**
-     * @param  array<mixed>  $prerequisiteInput
      * @return array{
      *     can_sign: bool,
      *     current_state: string,
@@ -39,7 +38,7 @@ final class ReportSigningTransitionPolicy
      *     }|null
      * }
      */
-    public function attempt(string $currentState, array $prerequisiteInput): array
+    public function attempt(string $currentState, ReportSigningSnapshotComposer $snapshot): array
     {
         if ($currentState !== 'UNDER_REVIEW') {
             $this->stateMachine->transition($currentState, 'SIGNED');
@@ -47,7 +46,7 @@ final class ReportSigningTransitionPolicy
             throw new DomainException('Signing is only permitted from UNDER_REVIEW.');
         }
 
-        $prerequisiteResult = $this->prerequisites->evaluate($prerequisiteInput);
+        $prerequisiteResult = $this->prerequisites->evaluate($snapshot->prerequisiteInput());
         $transition = null;
 
         if ($prerequisiteResult['can_sign']) {

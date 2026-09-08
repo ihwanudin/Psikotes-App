@@ -4,15 +4,20 @@ declare(strict_types=1);
 
 namespace Tests\Integration\Review;
 
+use App\Domain\Eligibility\AspectSourceDiscrepancyPolicy;
 use App\Domain\Eligibility\EligibilityZoneCalculator;
 use App\Domain\Eligibility\RecommendationLabelPolicy;
+use App\Domain\Review\ProfessionalOverridePolicy;
 use App\Domain\Review\ReportReviewStateMachine;
 use App\Domain\Review\ReportSigningPrerequisitePolicy;
+use App\Domain\Review\ReportSigningSnapshotComposer;
 use App\Domain\Review\ReportSigningTransitionPolicy;
 use DomainException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use ReflectionMethod;
 use RuntimeException;
+use TypeError;
 
 final class ReportSigningGuardrailsAcceptanceTest extends TestCase
 {
@@ -23,7 +28,7 @@ final class ReportSigningGuardrailsAcceptanceTest extends TestCase
         $transitionPolicy = new ReportSigningTransitionPolicy($prerequisites, $stateMachine);
 
         $prerequisiteResult = $prerequisites->evaluate($this->completeInput());
-        $signing = $transitionPolicy->attempt('UNDER_REVIEW', $this->completeInput());
+        $signing = $transitionPolicy->attempt('UNDER_REVIEW', $this->snapshot($this->completeInput()));
 
         self::assertTrue($prerequisiteResult['can_sign']);
         self::assertSame([], $prerequisiteResult['blocking_reason_codes']);
@@ -52,7 +57,7 @@ final class ReportSigningGuardrailsAcceptanceTest extends TestCase
     {
         $this->expectException(DomainException::class);
 
-        (new ReportSigningTransitionPolicy)->attempt($state, $this->completeInput());
+        (new ReportSigningTransitionPolicy)->attempt($state, $this->snapshot($this->completeInput()));
     }
 
     /** @return iterable<string, array{string}> */
@@ -85,7 +90,7 @@ final class ReportSigningGuardrailsAcceptanceTest extends TestCase
         $input = $this->completeInput();
         $input['target_field'] = null;
 
-        $result = (new ReportSigningTransitionPolicy)->attempt('UNDER_REVIEW', $input);
+        $result = (new ReportSigningTransitionPolicy)->attempt('UNDER_REVIEW', $this->snapshot($input));
 
         self::assertFalse($result['can_sign']);
         self::assertSame(['TARGET_FIELD_REQUIRED'], $result['blocking_reason_codes']);
@@ -106,7 +111,7 @@ final class ReportSigningGuardrailsAcceptanceTest extends TestCase
         $input['validity'] = $recommendation['provenance']['validity'];
         $input['label'] = $recommendation['label'] ?? null;
 
-        $result = (new ReportSigningTransitionPolicy)->attempt('UNDER_REVIEW', $input);
+        $result = (new ReportSigningTransitionPolicy)->attempt('UNDER_REVIEW', $this->snapshot($input, $recommendation));
 
         self::assertArrayNotHasKey('label', $recommendation);
         self::assertFalse($result['can_sign']);
@@ -125,7 +130,7 @@ final class ReportSigningGuardrailsAcceptanceTest extends TestCase
         $transitionPolicy = new ReportSigningTransitionPolicy($prerequisites, new ReportReviewStateMachine);
 
         $prerequisiteResult = $prerequisites->evaluate($input);
-        $signing = $transitionPolicy->attempt('UNDER_REVIEW', $input);
+        $signing = $transitionPolicy->attempt('UNDER_REVIEW', $this->snapshot($input));
 
         self::assertFalse($prerequisiteResult['can_sign']);
         self::assertSame(['ACCOMPANIMENT_CONDITIONS_REQUIRED'], $prerequisiteResult['blocking_reason_codes']);
@@ -151,7 +156,7 @@ final class ReportSigningGuardrailsAcceptanceTest extends TestCase
         $transitionPolicy = new ReportSigningTransitionPolicy($prerequisites, new ReportReviewStateMachine);
 
         $prerequisiteResult = $prerequisites->evaluate($input);
-        $signing = $transitionPolicy->attempt('UNDER_REVIEW', $input);
+        $signing = $transitionPolicy->attempt('UNDER_REVIEW', $this->snapshot($input));
 
         self::assertTrue($prerequisiteResult['can_sign']);
         self::assertTrue($prerequisiteResult['provenance']['accompaniment_conditions_present']);
@@ -159,6 +164,14 @@ final class ReportSigningGuardrailsAcceptanceTest extends TestCase
         self::assertSame([], $signing['blocking_reason_codes']);
         self::assertNotNull($signing['transition']);
         self::assertSame('SIGNED', $signing['transition']['to_state']);
+    }
+
+    public function test_raw_prerequisite_array_is_rejected_at_the_signing_boundary(): void
+    {
+        $this->expectException(TypeError::class);
+
+        $policy = new ReportSigningTransitionPolicy;
+        (new ReflectionMethod($policy, 'attempt'))->invoke($policy, 'UNDER_REVIEW', $this->completeInput());
     }
 
     /** @return array<mixed> */
@@ -185,6 +198,56 @@ final class ReportSigningGuardrailsAcceptanceTest extends TestCase
     private function aspectCodes(): array
     {
         return ['A1', 'A2', 'B1', 'B2', 'B3', 'B4', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'D1', 'D2', 'D3', 'D4', 'D5'];
+    }
+
+    /**
+     * @param  array<mixed>  $input
+     * @param  array<mixed>|null  $recommendation
+     */
+    private function snapshot(array $input, ?array $recommendation = null): ReportSigningSnapshotComposer
+    {
+        $reporting = $this->canonicalReporting();
+        $zone = (new EligibilityZoneCalculator(
+            $reporting['standard_version'],
+            $reporting['base_standards'],
+            $reporting['fields'],
+        ))->calculate(array_fill_keys($this->aspectCodes(), 3), 'UMUM');
+        $recommendation ??= (new RecommendationLabelPolicy)->decide($zone, 100, $input['validity']);
+
+        $discrepancies = [];
+        foreach ($this->aspectCodes() as $aspect) {
+            $discrepancies[] = [
+                'result' => (new AspectSourceDiscrepancyPolicy)->evaluate([
+                    'aspect' => $aspect,
+                    'sources' => [['source' => 'CANONICAL_SOURCE', 'level' => 3]],
+                ]),
+                'review_resolved' => false,
+            ];
+        }
+
+        $overrides = [];
+        $recommendationLabel = $recommendation['label'] ?? null;
+        if ($input['validity'] !== 'V3' && $input['label'] !== $recommendationLabel) {
+            $overrides[] = [
+                'result' => (new ProfessionalOverridePolicy)->labelOverride([
+                    'system_label' => $recommendationLabel,
+                    'final_label' => $input['label'],
+                    'reason' => 'Pertimbangan profesional telah dicatat secara lengkap.',
+                ]),
+                'audit_recorded' => true,
+                'recalculation_completed' => false,
+            ];
+        }
+
+        return ReportSigningSnapshotComposer::compose([
+            'recommendation' => $recommendation,
+            'discrepancies' => $discrepancies,
+            'overrides' => $overrides,
+            'procedure_note' => $input['procedure_note'],
+            'accompaniment_conditions' => $input['accompaniment_conditions'],
+            'target_field' => $input['target_field'],
+            'narrative_clusters' => $input['narrative_clusters'],
+        ]);
     }
 
     /** @return array{standard_version: string, base_standards: array<mixed>, fields: array<mixed>} */
