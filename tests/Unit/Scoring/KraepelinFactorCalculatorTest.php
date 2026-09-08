@@ -22,6 +22,8 @@ final class KraepelinFactorCalculatorTest extends TestCase
         $this->assertSame(7, $result['tianker']);
         $this->assertSame(-0.622, $result['hanker']);
         $this->assertSame(7, $result['janker']);
+        $this->assertFalse($result['review_required']);
+        $this->assertNull($result['review_reason']);
         $this->assertSame([
             'column_count' => 50,
             'sum_achievement' => 793,
@@ -46,12 +48,47 @@ final class KraepelinFactorCalculatorTest extends TestCase
         $this->assertSame(5, $result['tianker']);
         $this->assertSame(5.032, $result['hanker']);
         $this->assertSame(6, $result['janker']);
+        $this->assertFalse($result['review_required']);
+        $this->assertNull($result['review_reason']);
         $this->assertSame(656, $result['provenance']['sum_achievement']);
         $this->assertSame(652, $result['provenance']['sum_correct']);
         $this->assertSame(4, $result['provenance']['sum_incorrect']);
         $this->assertSame(1, $result['provenance']['sum_skipped']);
         $this->assertSame(17776, $result['provenance']['sum_xy']);
         $this->assertSame(0.100648, $result['provenance']['slope']);
+    }
+
+    public function test_column_capacity_boundary_accepts_complete_and_partial_columns(): void
+    {
+        $columns = self::columns(array_fill(0, 50, 10));
+        $columns[0] = ['achievement' => 27, 'correct' => 27, 'incorrect' => 0, 'skipped' => 0];
+        $columns[1] = ['achievement' => 26, 'correct' => 25, 'incorrect' => 1, 'skipped' => 1];
+
+        $result = (new KraepelinFactorCalculator)->calculate($columns);
+
+        $this->assertSame(53, $result['provenance']['sum_achievement'] - 48 * 10);
+        $this->assertSame(1, $result['provenance']['sum_skipped']);
+    }
+
+    public function test_hanker_above_janker_exposes_machine_readable_review_flag(): void
+    {
+        $columns = self::columns([...array_fill(0, 25, 0), ...array_fill(0, 25, 27)]);
+
+        $result = (new KraepelinFactorCalculator)->calculate($columns);
+
+        $this->assertGreaterThan($result['janker'], abs($result['hanker']));
+        $this->assertTrue($result['review_required']);
+        $this->assertSame('absolute_hanker_exceeds_janker', $result['review_reason']);
+    }
+
+    public function test_hanker_not_above_janker_does_not_require_review(): void
+    {
+        $result = (new KraepelinFactorCalculator)->calculate(self::columns(array_fill(0, 50, 10)));
+
+        $this->assertSame(0.0, $result['hanker']);
+        $this->assertSame(0, $result['janker']);
+        $this->assertFalse($result['review_required']);
+        $this->assertNull($result['review_reason']);
     }
 
     /** @param array<mixed> $columns */
@@ -95,6 +132,10 @@ final class KraepelinFactorCalculatorTest extends TestCase
         $inconsistent = $valid;
         $inconsistent[0]['incorrect'] = 1;
         yield 'inconsistent achievement' => [$inconsistent, 'Kraepelin correct plus incorrect must equal achievement.'];
+
+        $overCapacity = $valid;
+        $overCapacity[0] = ['achievement' => 27, 'correct' => 27, 'incorrect' => 0, 'skipped' => 1];
+        yield 'achievement plus skipped above capacity' => [$overCapacity, 'Kraepelin achievement plus skipped cannot exceed 27.'];
     }
 
     /**

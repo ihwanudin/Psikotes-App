@@ -19,6 +19,8 @@ final class KraepelinFactorCalculator
      *     tianker: int,
      *     hanker: float,
      *     janker: int,
+     *     review_required: bool,
+     *     review_reason: string|null,
      *     provenance: array{
      *         column_count: int,
      *         sum_achievement: int,
@@ -71,6 +73,10 @@ final class KraepelinFactorCalculator
                 throw new InvalidArgumentException('Kraepelin achievement cannot exceed 27.');
             }
 
+            if ($column['achievement'] + $column['skipped'] > self::MAX_ACHIEVEMENT) {
+                throw new InvalidArgumentException('Kraepelin achievement plus skipped cannot exceed 27.');
+            }
+
             if ($column['achievement'] !== $column['correct'] + $column['incorrect']) {
                 throw new InvalidArgumentException('Kraepelin correct plus incorrect must equal achievement.');
             }
@@ -89,12 +95,17 @@ final class KraepelinFactorCalculator
 
         $slope = (self::COLUMN_COUNT * $sumXy - $sumX * $sumAchievement)
             / (self::COLUMN_COUNT * $sumXSquared - $sumX * $sumX);
+        $hanker = round($slope * self::COLUMN_COUNT, 3);
+        $janker = max($achievementValues) - min($achievementValues);
+        $reviewRequired = abs($hanker) > $janker;
 
         return [
             'panker' => round($sumAchievement / self::COLUMN_COUNT, 3),
             'tianker' => $sumIncorrect + $sumSkipped,
-            'hanker' => round($slope * self::COLUMN_COUNT, 3),
-            'janker' => max($achievementValues) - min($achievementValues),
+            'hanker' => $hanker,
+            'janker' => $janker,
+            'review_required' => $reviewRequired,
+            'review_reason' => $reviewRequired ? 'absolute_hanker_exceeds_janker' : null,
             'provenance' => [
                 'column_count' => self::COLUMN_COUNT,
                 'sum_achievement' => $sumAchievement,
