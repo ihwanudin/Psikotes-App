@@ -91,6 +91,130 @@ final class EligibilityZoneCalculatorTest extends TestCase
         }
     }
 
+    #[DataProvider('invalidConfigurationCases')]
+    public function test_noncanonical_configuration_fails_closed(string $case): void
+    {
+        $data = $this->canonicalData();
+        $version = $data['standard_version'];
+        $baseStandards = $data['base_standards'];
+        $fields = $data['fields'];
+
+        switch ($case) {
+            case 'blank version':
+                $version = ' ';
+                break;
+            case 'untrimmed version':
+                $version = ' '.$version;
+                break;
+            case 'fields not list':
+                $fields = [1 => $fields[0]];
+                break;
+            case 'missing field':
+                array_pop($fields);
+                break;
+            case 'extra field':
+                $extra = $fields[5];
+                $extra['code'] = 'EXTRA';
+                $fields[] = $extra;
+                break;
+            case 'invented field':
+                $fields[5]['code'] = 'EXTRA';
+                break;
+            case 'duplicate field':
+                $fields[5]['code'] = $fields[0]['code'];
+                break;
+            case 'field item not array':
+                $fields[0] = 'invalid';
+                break;
+            case 'extra field record key':
+                $fields[0]['extra'] = true;
+                break;
+            case 'missing field record key':
+                unset($fields[0]['raised_to_4']);
+                break;
+            case 'untrimmed field code':
+                $fields[0]['code'] = ' KAIGO';
+                break;
+            case 'raised list not list':
+                $fields[0]['raised_to_4'] = [1 => 'C2'];
+                break;
+            case 'duplicate raised list aspect':
+                $fields[0]['raised_to_4'][1] = $fields[0]['raised_to_4'][0];
+                break;
+            case 'raised list and map mismatch':
+                array_pop($fields[0]['raised_to_4']);
+                break;
+            case 'raised list and map order mismatch':
+                [$fields[0]['raised_to_4'][0], $fields[0]['raised_to_4'][1]] = [$fields[0]['raised_to_4'][1], $fields[0]['raised_to_4'][0]];
+                break;
+            case 'raised map value not four':
+                $fields[0]['raised_standards']['C2'] = 3;
+                break;
+            case 'required interest missing standard':
+                $fields[0]['required_interest_standard'] = null;
+                break;
+            case 'required interest unknown':
+                $fields[0]['required_interest'] = 'D6';
+                break;
+            case 'required interest is ability aspect':
+                $fields[0]['required_interest'] = 'A1';
+                break;
+            case 'null interest with standard':
+                $fields[5]['required_interest_standard'] = 3;
+                break;
+            case 'non-UMUM field has no interest':
+                $fields[0]['required_interest'] = null;
+                $fields[0]['required_interest_standard'] = null;
+                break;
+            case 'UMUM field has an interest':
+                $fields[5]['required_interest'] = 'D1';
+                $fields[5]['required_interest_standard'] = 3;
+                break;
+            case 'UMUM has raised standards':
+                $fields[5]['raised_to_4'] = ['A1'];
+                $fields[5]['raised_standards'] = ['A1' => 4];
+                break;
+        }
+
+        $this->expectException(InvalidArgumentException::class);
+
+        new EligibilityZoneCalculator($version, $baseStandards, $fields);
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function invalidConfigurationCases(): iterable
+    {
+        $cases = [
+            'blank version',
+            'untrimmed version',
+            'fields not list',
+            'missing field',
+            'extra field',
+            'invented field',
+            'duplicate field',
+            'field item not array',
+            'extra field record key',
+            'missing field record key',
+            'untrimmed field code',
+            'raised list not list',
+            'duplicate raised list aspect',
+            'raised list and map mismatch',
+            'raised list and map order mismatch',
+            'raised map value not four',
+            'required interest missing standard',
+            'required interest unknown',
+            'required interest is ability aspect',
+            'null interest with standard',
+            'non-UMUM field has no interest',
+            'UMUM field has an interest',
+            'UMUM has raised standards',
+        ];
+
+        foreach ($cases as $case) {
+            yield $case => [$case];
+        }
+    }
+
     private function calculator(): EligibilityZoneCalculator
     {
         $data = $this->canonicalData();
