@@ -173,9 +173,10 @@ and test evidence is recorded in
 
 | Task | Active agent | Exclusive ownership | Current increment | Review status |
 |---|---|---|---|---|
-| F5 report review state machine | `/root/review_ist` | New `app/Domain/Review/ReportReviewStateMachine.php` and `tests/Unit/Review/ReportReviewStateMachineTest.php` only | Encode the exact review/sign/publish/revoke/void transition graph with no draft-to-publish shortcut | queued after accepted signing gate `4933c12`; review pending |
-| F4 canonical narrative catalog | `/root/review_session` | New `app/Domain/Narrative/ReportingNarrativeCatalog.php` and `tests/Unit/Narrative/ReportingNarrativeCatalogTest.php` only | Adapt and validate injected canonical narrative/connector data for the accepted assembler | active after accepted assembler `457c8b6`; review pending |
-| F5 professional override policy | `/root/review_p17c` | New `app/Domain/Review/ProfessionalOverridePolicy.php` and `tests/Unit/Review/ProfessionalOverridePolicyTest.php` only | Implement pure G6 level/label override validation, audit provenance, and level-recalculation signal | queued after accepted recommendation evidence `f981c92`; review pending |
+| F5 authoritative signing snapshot | unassigned | New Review snapshot composer/policy and isolated tests only | Derive signing prerequisites from typed policy outcomes instead of trusting caller-supplied empty summaries | dependency-unblocked; next implementation increment |
+| F5 signing bypass + V3 repair | `/root/review_ist` | Assigned existing Review state/signing policy tests plus the Review acceptance test only | Remove raw UNDER_REVIEW-to-SIGNED bypass and make V3 no-label output composable while deterministically blocked | accepted `44d047e` |
+| F3 exact field configuration repair | `/root/review_session` | `app/Domain/Eligibility/EligibilityZoneCalculator.php` and `tests/Unit/Eligibility/EligibilityZoneCalculatorTest.php` only | Require exact six canonical fields and exact field-record schema | accepted `34f35c1` |
+| F3 G7 single-source repair | `/root/review_p17c` | `app/Domain/Eligibility/AspectSourceDiscrepancyPolicy.php` and `tests/Unit/Eligibility/AspectSourceDiscrepancyPolicyTest.php` only | Accept valid one-source aspects as spread zero while preserving multi-source behavior | accepted `5caba7c` |
 
 The recommendation-label policy `7334fa0`, session submit action `87b6346`, and
 static separation guard `549b2e4` are accepted after independent coordinator
@@ -193,7 +194,29 @@ architecture guard still passing 3 tests and 19 assertions. G7 source-spread
 policy is accepted as `eb5e946` (Eligibility suite 70 tests, 239 assertions).
 Both increments passed independent Pint, scoped PHPStan, and diff checks.
 The deterministic ID cluster assembler is accepted as `457c8b6` (35 tests,
-44 assertions); canonical data adaptation is the active next F4 increment.
+44 assertions); canonical data adaptation is accepted across `c327f2b` and
+`c7618b9` (Narrative suite 62 tests, 80 assertions). The latter split was a
+shared-index coordination race recovered without reset or lost changes.
+The standalone JP assembler is accepted as `7eb1fdc` (Narrative suite 92 tests,
+118 assertions); it emits no additive/contrast connectors and omits unresolved
+G7 aspects.
+Canonical JP projection is accepted as `c1e8b93` (Narrative suite 94 tests,
+126 assertions) without changing the existing ID assembler input contract.
+The F5 state machine is accepted as `74b92ca` (81/81 focused; Review suite
+165/199) and the G6 override policy as `204c226` (50/68 focused; Review suite
+165/199). Both passed independent formatter, static-analysis, architecture,
+and diff gates.
+G6 behavioral recalculation evidence is accepted as `49c9c4c` (2 tests,
+27 assertions; combined relevant suite 260/514). Signing transition composition
+is accepted as `b6bdfbc` (23/49 focused; Review suite 188/248).
+The bilingual F4 composer is accepted as `6187b9b` (Narrative 112/178), and
+F5 guardrail evidence as `e3200f8` (12/37; Review+acceptance 200/285).
+Adversarial review then found one P1 signing bypass and four P2 contract gaps.
+The bypass/V3 repair `44d047e`, exact field configuration repair `34f35c1`,
+and G7 single-source repair `5caba7c` are independently accepted. Their combined
+gate passed 440 tests/1,059 assertions, Pint, scoped PHPStan, architecture, and
+diff checks. The authoritative derived signing snapshot is the remaining P2
+implementation boundary and is now dependency-unblocked.
 Recommendation acceptance evidence is accepted as `f981c92` (7 focused tests,
 49 assertions; combined Eligibility 77/288). The pure F5 signing prerequisite
 gate is accepted as `4933c12` (34 tests, 50 assertions). Both passed independent

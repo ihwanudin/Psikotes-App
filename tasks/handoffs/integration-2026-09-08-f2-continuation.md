@@ -189,6 +189,25 @@ omits unresolved G7 aspects from automatic narrative. The Narrative suite
 passed 35 tests/44 assertions with Pint, scoped PHPStan, and diff checks. The
 active next slice owns only a new canonical reporting-data adapter and test.
 
+The canonical reporting-data adapter is accepted across `c327f2b` and
+follow-up `c7618b9`. It validates all 90 ID/JP bank entries and the canonical
+5 additive, 5 contrast, and 2 ending connectors, then supplies deterministic
+ID assembler inputs. The Narrative suite passed 62 tests/80 assertions. A
+shared-index race placed the first code snapshot in the coordinator docs commit;
+the final regression delta was committed separately without reset, amendment,
+or data loss.
+
+The standalone Japanese cluster assembler is accepted as `7eb1fdc`. It emits
+ordered independent JP sentences without additive/contrast connectors, remains
+deterministic, and omits unresolved G7 aspects. The Narrative suite passed 92
+tests/118 assertions with Pint, PHPStan, and diff checks. The next F4 slice is
+limited to exposing the already-validated canonical JP bank from the catalog.
+
+Canonical JP projection is accepted as `c1e8b93`: all 90 Japanese entries are
+preserved exactly and feed the JP assembler, while the established Indonesian
+catalog contract remains unchanged. The Narrative suite passed 94 tests/126
+assertions with formatter, static-analysis, and diff gates.
+
 Explicit recommendation guardrail acceptance evidence is accepted as
 `f981c92`: T-12/G1, T-13/G2, T-14/G3, and T-19 boundaries pass against canonical
 reporting data and the real zone/label services (7 tests/49 assertions).
@@ -199,6 +218,56 @@ override-reason, target-field, and A-D narrative prerequisites. It does not
 claim persistence, signatures, publication, or state transitions; those remain
 separate increments.
 
+The exhaustive pure report lifecycle is accepted as `74b92ca`: all 81 state
+pairs/validation cases pass, no draft-to-publish shortcut exists, and REVOKED
+and VOID are terminal. The pure G6 override policy is accepted as `204c226`
+(50 tests/68 assertions): changed levels/labels require a Unicode-aware
+20-character reason, preserve system/final values, and emit audit/recalculation
+signals. Persistence, audit writing, and actual recalculation remain separate.
+
+Pure G6 recalculation composition evidence is accepted as `49c9c4c`: a changed
+critical level is applied to a fresh zone/label calculation while the system
+value is preserved; label-only override leaves zones unchanged. The focused
+integration passed 2 tests/27 assertions.
+
+Signing transition composition is accepted as `b6bdfbc` (23 tests/49
+assertions; full Review 188/248). It preserves all prerequisite blockers with
+no transition and permits only the exact UNDER_REVIEW-to-SIGNED transition.
+Persistence and real signing remain outside this boundary.
+
+The bilingual four-cluster composer is accepted as `6187b9b` (Narrative suite
+112 tests/178 assertions). F5 T-15/G5 and T-22/G9 integration evidence is
+accepted as test commit `e3200f8` (12 tests/37 assertions), but the subsequent
+adversarial review reopened the implementation boundary before persistence.
+
+Adversarial findings requiring repair:
+
+- P1: the raw state machine still permits UNDER_REVIEW-to-SIGNED without the
+  prerequisite wrapper;
+- P2: V3 recommendation output has no label but signing input requires one;
+- P2: G7 rejects valid one-source aspect provenance;
+- P2: eligibility configuration accepts invented fields and extra keys;
+- P2: signing trusts caller-supplied empty G7/override summaries instead of an
+  authoritative derived snapshot.
+
+The first four findings are repaired and independently accepted:
+
+- `44d047e` makes the generic lifecycle state machine reject every direct
+  transition to `SIGNED`, confines signing to the prerequisite policy, and
+  composes canonical V3 output with `label=null` while still blocking signing;
+- `5caba7c` accepts a valid single-source aspect as spread zero while preserving
+  empty-source rejection and all multi-source discrepancy thresholds;
+- `34f35c1` requires the exact six canonical field codes, exact field-record
+  keys, canonical required-interest structure, and consistent raised-to-four
+  representations.
+
+Independent combined verification passed Eligibility 101/280,
+Review/Psychometric/Review-integration 215/380, Narrative 112/178, and
+Architecture 12/221: 440 tests and 1,059 assertions total. Pint, scoped PHPStan,
+and Git diff checks also passed. The authoritative derived signing snapshot is
+the remaining P2 implementation boundary. No persistence or publish path is
+accepted yet.
+
 ## Preserved user-owned work
 
 `docs/decisions/0026-checkout-secure-composition-launcher-authority.md` was
@@ -208,10 +277,11 @@ must not be edited, deleted, or included in coordinator commits.
 ## Resume order
 
 1. Preserve the user-owned ADR and inspect `git status --short`.
-2. Snapshot the two active agents; do not resend either active increment.
-3. Review and test each result before recording it as accepted.
+2. Snapshot existing agents; do not resend an increment to a running task.
+3. Implement and review the authoritative derived signing snapshot before any
+   persistence or publication work.
 4. Keep migrations serial. Do not close PostgreSQL/RLS acceptance without a
    disposable PostgreSQL runtime pass.
 5. Choose the next dependency-unblocked increment from `tasks/parallel-work.md`;
-   prioritize F3 recommendation-label guardrails, then close T-07 with the
-   DASS non-interference comparison.
+   keep architecture enforcement and deterministic narrative acceptance in
+   separate non-overlapping test-only lanes when they can run in parallel.
