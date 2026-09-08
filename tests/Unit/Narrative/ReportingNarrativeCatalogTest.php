@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Narrative;
 
 use App\Domain\Narrative\ClusterNarrativeAssembler;
+use App\Domain\Narrative\JapaneseClusterNarrativeAssembler;
 use App\Domain\Narrative\ReportingNarrativeCatalog;
 use InvalidArgumentException;
 use JsonException;
@@ -21,6 +22,7 @@ final class ReportingNarrativeCatalogTest extends TestCase
 
         $inputs = $catalog->assemblerInputs();
 
+        $this->assertSame(['narrative_bank', 'connector_pools'], array_keys($inputs));
         $this->assertCount(90, $inputs['narrative_bank']);
         $this->assertCount(5, $inputs['connector_pools']['additive']);
         $this->assertCount(5, $inputs['connector_pools']['contrast']);
@@ -39,6 +41,35 @@ final class ReportingNarrativeCatalogTest extends TestCase
             'key' => 'connector.PENUTUP.1',
             'text' => $raw['connectors'][10]['text'],
         ], $catalog->endingPool()[0]);
+    }
+
+    /** @throws JsonException */
+    public function test_it_exposes_all_canonical_japanese_entries_without_changing_indonesian_inputs(): void
+    {
+        $raw = $this->canonicalData();
+        $catalog = new ReportingNarrativeCatalog($raw['narratives'], $raw['connectors']);
+        $expected = array_map(
+            static fn (array $entry): array => [
+                'key' => $entry['key'],
+                'aspect' => $entry['aspect'],
+                'level' => $entry['level'],
+                'text' => $entry['jp'],
+            ],
+            $raw['narratives'],
+        );
+        $expectedIndonesian = array_map(
+            static fn (array $entry): array => [
+                'key' => $entry['key'],
+                'aspect' => $entry['aspect'],
+                'level' => $entry['level'],
+                'text' => $entry['id'],
+            ],
+            $raw['narratives'],
+        );
+
+        $this->assertCount(90, $catalog->japaneseBank());
+        $this->assertSame($expected, $catalog->japaneseBank());
+        $this->assertSame($expectedIndonesian, $catalog->assemblerInputs()['narrative_bank']);
     }
 
     /** @throws JsonException */
@@ -63,6 +94,26 @@ final class ReportingNarrativeCatalogTest extends TestCase
         );
         $this->assertSame(['A1-L1', 'A2-L2'], $first['provenance_keys']);
         $this->assertSame(['connector.ADITIF.1'], $first['connector_sequence']);
+    }
+
+    /** @throws JsonException */
+    public function test_canonical_japanese_data_assembles_a_real_cluster_without_connectors(): void
+    {
+        $raw = $this->canonicalData();
+        $catalog = new ReportingNarrativeCatalog($raw['narratives'], $raw['connectors']);
+        $assembler = new JapaneseClusterNarrativeAssembler($catalog->japaneseBank());
+        $aspects = [
+            ['aspect' => 'A1', 'level' => 1, 'review_required' => false],
+            ['aspect' => 'A2', 'level' => 2, 'review_required' => false],
+        ];
+
+        $first = $assembler->assemble('A', $aspects);
+        $second = $assembler->assemble('A', $aspects);
+
+        $this->assertSame($first, $second);
+        $this->assertSame($raw['narratives'][0]['jp'].' '.$raw['narratives'][6]['jp'], $first['narrative']);
+        $this->assertSame(['A1-L1', 'A2-L2'], $first['provenance_keys']);
+        $this->assertSame([], $first['connector_sequence']);
     }
 
     /** @throws JsonException */

@@ -22,6 +22,9 @@ final readonly class ReportingNarrativeCatalog
     /** @var list<array{key: string, aspect: string, level: int, text: string}> */
     private array $narrativeBank;
 
+    /** @var list<array{key: string, aspect: string, level: int, text: string}> */
+    private array $japaneseBank;
+
     /** @var array{additive: list<array{key: string, text: string}>, contrast: list<array{key: string, text: string}>} */
     private array $connectorPools;
 
@@ -34,7 +37,9 @@ final readonly class ReportingNarrativeCatalog
      */
     public function __construct(array $narratives, array $connectors)
     {
-        $this->narrativeBank = $this->adaptNarratives($narratives);
+        $adaptedNarratives = $this->adaptNarratives($narratives);
+        $this->narrativeBank = $adaptedNarratives['indonesian'];
+        $this->japaneseBank = $adaptedNarratives['japanese'];
         $adaptedConnectors = $this->adaptConnectors($connectors);
         $this->connectorPools = [
             'additive' => $adaptedConnectors['ADITIF'],
@@ -66,9 +71,18 @@ final readonly class ReportingNarrativeCatalog
         return $this->endingPool;
     }
 
+    /** @return list<array{key: string, aspect: string, level: int, text: string}> */
+    public function japaneseBank(): array
+    {
+        return $this->japaneseBank;
+    }
+
     /**
      * @param  array<mixed>  $narratives
-     * @return list<array{key: string, aspect: string, level: int, text: string}>
+     * @return array{
+     *     indonesian: list<array{key: string, aspect: string, level: int, text: string}>,
+     *     japanese: list<array{key: string, aspect: string, level: int, text: string}>
+     * }
      */
     private function adaptNarratives(array $narratives): array
     {
@@ -76,7 +90,8 @@ final readonly class ReportingNarrativeCatalog
             throw new InvalidArgumentException('Reporting narratives must be a list.');
         }
 
-        $adapted = [];
+        $indonesian = [];
+        $japanese = [];
         $seenKeys = [];
         $seenPairs = [];
 
@@ -111,11 +126,17 @@ final readonly class ReportingNarrativeCatalog
 
             $seenKeys[$key] = true;
             $seenPairs[$pair] = true;
-            $adapted[] = [
+            $indonesian[] = [
                 'key' => $key,
                 'aspect' => $aspect,
                 'level' => $level,
                 'text' => $id,
+            ];
+            $japanese[] = [
+                'key' => $key,
+                'aspect' => $aspect,
+                'level' => $level,
+                'text' => $jp,
             ];
         }
 
@@ -132,7 +153,7 @@ final readonly class ReportingNarrativeCatalog
             throw new InvalidArgumentException('Reporting narratives must contain every aspect and level exactly once.');
         }
 
-        return $adapted;
+        return ['indonesian' => $indonesian, 'japanese' => $japanese];
     }
 
     /**
