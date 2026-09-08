@@ -14,24 +14,42 @@ final readonly class IstIqCalculator
     /** @var list<string> */
     private array $subtests;
 
-    private int $maximumTotal;
+    /** @var array<string, int> */
+    private array $maximumRawScores;
 
     /**
      * @param  array<mixed>  $iqRanges
-     * @param  array<mixed>  $subtests
+     * @param  array<mixed>  $subtestNorms
      */
-    public function __construct(array $iqRanges, array $subtests)
+    public function __construct(array $iqRanges, array $subtestNorms)
     {
-        if (! array_is_list($subtests)
-            || count($subtests) !== 9
-            || count(array_unique($subtests, SORT_REGULAR)) !== 9) {
-            throw new InvalidArgumentException('IST IQ calculation requires nine unique subtests.');
+        if (count($subtestNorms) !== 9) {
+            throw new InvalidArgumentException('IST IQ calculation requires norms for exactly nine subtests.');
         }
 
-        foreach ($subtests as $subtest) {
-            if (! is_string($subtest) || $subtest === '') {
-                throw new InvalidArgumentException('IST IQ subtest names must be non-empty strings.');
+        $subtests = [];
+        $maximumRawScores = [];
+
+        foreach ($subtestNorms as $subtest => $norm) {
+            if (! is_string($subtest) || $subtest === '' || ! is_array($norm) || $norm === []) {
+                throw new InvalidArgumentException('IST IQ subtest norm configuration is invalid.');
             }
+
+            $rawScoreDomain = array_keys($norm);
+            sort($rawScoreDomain);
+
+            if ($rawScoreDomain !== range(0, count($norm) - 1)) {
+                throw new InvalidArgumentException('IST IQ subtest norm domain must be contiguous from zero.');
+            }
+
+            foreach ($norm as $standardScore) {
+                if (! is_int($standardScore)) {
+                    throw new InvalidArgumentException('IST IQ subtest standard scores must be integers.');
+                }
+            }
+
+            $subtests[] = $subtest;
+            $maximumRawScores[$subtest] = $rawScoreDomain[count($rawScoreDomain) - 1];
         }
 
         if (! array_is_list($iqRanges) || $iqRanges === []) {
@@ -71,7 +89,7 @@ final readonly class IstIqCalculator
 
         $this->iqLookup = $lookup;
         $this->subtests = $subtests;
-        $this->maximumTotal = $domain[count($domain) - 1];
+        $this->maximumRawScores = $maximumRawScores;
     }
 
     /** @param array<mixed> $rawScores */
@@ -98,8 +116,8 @@ final readonly class IstIqCalculator
                 throw new InvalidArgumentException('IST raw scores must contain exactly the nine supplied subtests.');
             }
 
-            if ($rawScores[$subtest] > $this->maximumTotal) {
-                throw new InvalidArgumentException('IST raw-score sum is outside the supplied IQ lookup.');
+            if ($rawScores[$subtest] > $this->maximumRawScores[$subtest]) {
+                throw new InvalidArgumentException('IST raw score is outside the supplied subtest norm domain.');
             }
 
             $total += $rawScores[$subtest];
