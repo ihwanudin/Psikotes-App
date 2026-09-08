@@ -189,6 +189,16 @@ omits unresolved G7 aspects from automatic narrative. The Narrative suite
 passed 35 tests/44 assertions with Pint, scoped PHPStan, and diff checks. The
 active next slice owns only a new canonical reporting-data adapter and test.
 
+Explicit recommendation guardrail acceptance evidence is accepted as
+`f981c92`: T-12/G1, T-13/G2, T-14/G3, and T-19 boundaries pass against canonical
+reporting data and the real zone/label services (7 tests/49 assertions).
+
+The pure F5 signing prerequisite gate is accepted as `4933c12` (34 tests/50
+assertions). It enforces the V3, V2-note, G7-resolution, G9 conditions,
+override-reason, target-field, and A-D narrative prerequisites. It does not
+claim persistence, signatures, publication, or state transitions; those remain
+separate increments.
+
 ## Preserved user-owned work
 
 `docs/decisions/0026-checkout-secure-composition-launcher-authority.md` was

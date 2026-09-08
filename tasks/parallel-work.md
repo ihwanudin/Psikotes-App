@@ -173,9 +173,9 @@ and test evidence is recorded in
 
 | Task | Active agent | Exclusive ownership | Current increment | Review status |
 |---|---|---|---|---|
-| F5 signing prerequisites | `/root/review_ist` | New `app/Domain/Review/ReportSigningPrerequisitePolicy.php` and `tests/Unit/Review/ReportSigningPrerequisitePolicyTest.php` only | Implement the pure G3/G5/G7/G9 signature gate and exact reason codes; no persistence/state transition | queued after accepted G7 `eb5e946`; review pending |
+| F5 report review state machine | `/root/review_ist` | New `app/Domain/Review/ReportReviewStateMachine.php` and `tests/Unit/Review/ReportReviewStateMachineTest.php` only | Encode the exact review/sign/publish/revoke/void transition graph with no draft-to-publish shortcut | queued after accepted signing gate `4933c12`; review pending |
 | F4 canonical narrative catalog | `/root/review_session` | New `app/Domain/Narrative/ReportingNarrativeCatalog.php` and `tests/Unit/Narrative/ReportingNarrativeCatalogTest.php` only | Adapt and validate injected canonical narrative/connector data for the accepted assembler | active after accepted assembler `457c8b6`; review pending |
-| Recommendation acceptance evidence | `/root/review_p17c` | New `tests/Integration/Psychometric/RecommendationGuardrailsAcceptanceTest.php` only | Add explicit T-12/T-13/T-14/T-19 boundary evidence against accepted zone/label services | queued after accepted T-07 `3c5b164`; review pending |
+| F5 professional override policy | `/root/review_p17c` | New `app/Domain/Review/ProfessionalOverridePolicy.php` and `tests/Unit/Review/ProfessionalOverridePolicyTest.php` only | Implement pure G6 level/label override validation, audit provenance, and level-recalculation signal | queued after accepted recommendation evidence `f981c92`; review pending |
 
 The recommendation-label policy `7334fa0`, session submit action `87b6346`, and
 static separation guard `549b2e4` are accepted after independent coordinator
@@ -194,3 +194,7 @@ policy is accepted as `eb5e946` (Eligibility suite 70 tests, 239 assertions).
 Both increments passed independent Pint, scoped PHPStan, and diff checks.
 The deterministic ID cluster assembler is accepted as `457c8b6` (35 tests,
 44 assertions); canonical data adaptation is the active next F4 increment.
+Recommendation acceptance evidence is accepted as `f981c92` (7 focused tests,
+49 assertions; combined Eligibility 77/288). The pure F5 signing prerequisite
+gate is accepted as `4933c12` (34 tests, 50 assertions). Both passed independent
+Pint, scoped PHPStan, architecture, and diff checks.
