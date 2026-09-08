@@ -6,7 +6,7 @@ Date: 2026-09-08
 
 Branch: `codex/organization-payment-spec`
 
-Latest reviewed scoring implementation: `10bc513`
+Latest reviewed scoring/zone implementations: `10bc513`, `db459fe`
 
 ## Scope and status rules
 
@@ -37,7 +37,7 @@ complete.
 | T-03 | PAPI raw-score calculation | `pass` | `PapiRawScoreCalculatorTest` proves the injected 90-item choice mapping, exactly 20 raw dimensions, ROLE/NEED totals, 0–9 raw domain, and fail-closed payload/config behavior (`9145c9d`). | Pure raw scoring is complete; normalized-result composition remains separate. |
 | T-04 | PAPI white-zone-distance normalization; W raw 0/5/9 produces 1/5/3 | `pass` | `PapiLevelCalculatorTest` exercises all 200 dimension/raw combinations, exact W acceptance values, exclusions G/I/X/Z, and invalid inputs against versioned `papi.json` (`10bc513`). | Pure transform is complete; HPP composition remains later work. |
 | T-05 | RMIB rank to level 1–5 | `pass` | `RmibRankLevelCalculatorTest` covers all ranks 1–12. `RmibRawScoreCalculatorTest` proves Excel-compatible competition ranking for tied totals while preserving 108 inputs and sums 78/702 (`10bc513`). | Pure transform is complete; normalized-result composition remains later work. |
-| T-06 | Compare 18 normalized aspect levels with a versioned job-field standard to produce zone | `not-started` | T-01 through T-05 normalization inputs are now stable and versioned; no zone/eligibility implementation or direct T-06 test exists yet. | Implement the F3 eligibility boundary against the frozen normalized result contract and versioned job-field standards. |
+| T-06 | Compare 18 normalized aspect levels with a versioned job-field standard to produce zone | `pass` | `EligibilityZoneCalculatorTest` covers all six fields, all 18 aspects, base/raised/required-interest standards, OK/GREY/BELUM boundaries, unassessed interests, provenance, and invalid payloads (`db459fe`). | Zone calculation is complete; recommendation-label guardrails remain the next F3 boundary. |
 | T-07 | DASS Normal versus Sangat Parah must leave otherwise-identical zone and eligibility label unchanged | `partial` | `Dass21ScreeningPolicyTest::test_tied_worst_subscales_are_preserved_without_eligibility_output` proves the DASS policy emits no `eligibility`, `zone`, `label`, or `recommendation`; `Dass21Scorer` and `Dass21ScreeningPolicy` are isolated pure classes (`1bbbb70`, `39836d7`). | This is structural separation inside the scorer, not the required two-session architectural comparison. The latter cannot run until the T-06 zone/label boundary exists. DASS calculation pass status must not be used to claim T-07 pass. |
 | T-08 | Score all 21 canonical DASS responses into D/A/S raw scores and apply the canonical multiplier | `pass` | `Dass21ScorerTest::test_scores_three_subscales_and_uses_worst_level_as_general_category` proves injected item mapping, raw sums, multiplier, per-item provenance, and all three outputs. Config proves exactly 21 item IDs and seven items per scale (`1bbbb70`). | No calculation gap observed in the pure scorer. |
 | T-09 | Apply inclusive DASS-42 cutoff bands to the multiplied subscale scores | `pass` | `Dass21ScorerTest::test_canonical_cutoff_boundaries_are_inclusive` exercises reachable boundaries across D/A/S. Config tests reject malformed ranges, missing levels, category conflicts, and cutoff gaps (`1bbbb70`). | No cutoff gap observed for current canonical data. |
@@ -75,11 +75,11 @@ zone/label engine exists, that comparison remains unavailable and T-07 remains
 ## Smallest next executable increments
 
 The prior psychometric authority blockers are resolved by ADR-0028 and
-`10bc513`. The smallest next dependency-safe increment is T-06: compose the 18
-normalized aspect levels against versioned job-field standards in the F3
-eligibility boundary. Once T-06 exists, complete T-07 with two otherwise
-identical sessions whose DASS results differ from Normal to Sangat Parah and
-assert identical zone and eligibility label outputs.
+`10bc513`; T-06 is implemented by `db459fe`. The smallest next dependency-safe
+increment is the recommendation-label policy and guardrails. Once that boundary
+exists, complete T-07 with two otherwise identical sessions whose DASS results
+differ from Normal to Sangat Parah and assert identical zone and eligibility
+label outputs.
 
 T-01 through T-05 and T-08 through T-11 have no remaining pure-scoring gap in
 this snapshot. Their next work is integration through the coordinator-frozen
@@ -98,7 +98,7 @@ $env:APP_ENV='testing'; php vendor/bin/phpstan analyse --no-progress app/Service
 
 Observed results:
 
-- scoring PHPUnit: 194 tests, 875 assertions, all passed;
+- scoring plus eligibility PHPUnit: 203 tests, 1,016 assertions, all passed;
 - F0 unittest: 11 tests, all passed;
 - Pint: passed;
 - scoped PHPStan: passed with zero errors.

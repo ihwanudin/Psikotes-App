@@ -1,6 +1,7 @@
 # CHANGELOG
 
 ## [Unreleased] — F1 fondasi
+- Tambahkan pemetaan zona T-06 berbasis data `GA-2026.08` untuk 18 aspek dan enam bidang kerja, termasuk standar dasar, kenaikan khusus bidang, minat wajib, serta keluaran provenance versi.
 - Rekonsiliasi kontrak psikometri ke SCORING-4.3.0/F2-2026.09: IQ dan RMIB mengikuti tabel lookup v1.1, PAPI memakai jarak dari zona putih, RMIB memakai competition ranking, serta faktor Kraepelin dibulatkan half-up tiga desimal sebelum lookup.
 - Ganti halaman awal bawaan Laravel dengan landing page ONCAM Psikotes yang responsif, berfokus pada alur asesmen CPMI Jepang, tinjauan psikolog, privasi, dan pendaftaran peserta.
 - Pertahankan paket DASS-21 mandiri gratis; setiap paket psikotes utama menyertakan DASS-21 secara otomatis tanpa kontrol tambah/hapus pada pilihan paket. Narasi pilihan paket disederhanakan, sementara isolasi hasil DASS dari kelayakan tetap berlaku.

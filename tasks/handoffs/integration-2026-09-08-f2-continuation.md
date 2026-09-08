@@ -73,9 +73,9 @@ user-facing narrative. Package inclusion and consent orchestration are outside
 these scorer classes.
 
 The T-01 through T-11 evidence matrix is updated with the new evidence: T-01
-through T-05 and T-08 through T-11 pass, T-06 is now dependency-unblocked but
-not started, and T-07 remains partial until the T-06 architectural comparison
-can run. This matrix is evidence, not a new checklist.
+through T-06 and T-08 through T-11 pass. T-07 remains partial until the
+recommendation-label boundary can run the architectural comparison. This matrix
+is evidence, not a new checklist.
 
 ### Assessment-session application action
 
@@ -104,6 +104,21 @@ Participant-owned start/resume is accepted as `3cc0e82`.
   expires without extending the deadline; closed states remain closed.
 - Scoped PHPStan, Pint, and diff checks passed.
 
+### F3 versioned zone boundary
+
+T-06 is accepted as `db459fe`. It extracts the 18 base standards, field-specific
+raised standards, and required-interest standard from the authoritative Grey
+Area worksheet, then applies them in a fail-closed pure eligibility service.
+
+- Scoring plus eligibility suite: 203 tests, 1,016 assertions, all passed.
+- All six job fields and all 18 aspects are covered.
+- F0 extraction gate: 11 tests, all passed.
+- Instrument seeder integration: 3 tests, 47 assertions, all passed.
+- Pint, scoped PHPStan, diff check, and staged secret scan passed.
+
+The next F3 increment is recommendation-label guardrails. T-07 remains partial
+until that label boundary exists and can prove DASS non-interference end to end.
+
 ### P17c synthetic verification
 
 Accepted commits include `fee63d4`, `ef2a2be`, `4326bda`, `f189ad1`,
@@ -124,9 +139,8 @@ or change P17c/P18 status.
 |---|---|---|---|
 | `/root/review_session` | Session schema/RLS, autosave, start/resume and their isolated tests | idle; all dispatched increments reviewed | Choose the next internal status or submit/scoring-recovery boundary without contradicting synchronous `status: scored` |
 
-`/root/review_ist` is idle after accepted DASS work and the now-resolved
-normalization increment. The psychometric lane no longer has an authority
-blocker; its next safe dependency is normalized-result composition or F3/T-06
+`/root/review_ist` is idle after accepted DASS, normalization, and T-06 zone
+work. The next safe dependency is the recommendation-label guardrail policy
 under exclusive eligibility ownership. `/root/review_p17c` is idle after its
 accepted evidence/proposal work.
 
@@ -144,5 +158,5 @@ must not be edited, deleted, or included in coordinator commits.
 4. Keep migrations serial. Do not close PostgreSQL/RLS acceptance without a
    disposable PostgreSQL runtime pass.
 5. Choose the next dependency-unblocked increment from `tasks/parallel-work.md`;
-   prioritize normalized-result composition followed by F3/T-06. T-07's final
-   non-interference test follows the existence of that boundary.
+   prioritize F3 recommendation-label guardrails, then close T-07 with the
+   DASS non-interference comparison.

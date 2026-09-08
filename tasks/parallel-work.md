@@ -175,7 +175,7 @@ and test evidence is recorded in
 |---|---|---|---|---|
 | F1 closeout / decision evidence | `/root/review_p17c` | Assigned P17 evidence/report files only | Runtime gap `b0bc774` and non-authoritative TLS proposal `41eb486` completed; no active code increment | accepted as evidence/proposal; P17c/P18 open |
 | F2 session backend | `/root/review_session` | `app/Actions/AssessmentSessions/**` and narrowly scoped feature/PostgreSQL tests | Schema/RLS, autosave, and start/resume increments completed through `3cc0e82` | accepted; idle for next bounded increment |
-| F2 psychometric engine | `/root/review_ist` | `app/Services/Scoring/**`, `tests/Unit/Scoring/**`, and assigned evidence report; F0 data only under coordinator-owned contract changes | DASS work and normalization reconciliation accepted through `10bc513`; T-01–T-05 and T-08–T-11 pass | accepted; idle, next is normalized-result composition or F3/T-06 |
+| F2/F3 psychometric and zone engine | `/root/review_ist` | `app/Services/Scoring/**`, `app/Domain/Eligibility/**`, related unit tests, and assigned evidence report; F0 data only under coordinator-owned contract changes | Normalization accepted through `10bc513`; versioned T-06 zone mapping accepted as `db459fe` | accepted; idle, next is recommendation-label guardrails then T-07 |
 
 The assessment-session schema/RLS commits `bf72c29` and `2b3937a`, autosave
 action/evidence `4a73141` and `c070ba2`, and start/resume action `3cc0e82` are
