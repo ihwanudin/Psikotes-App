@@ -24,7 +24,7 @@ final class ReportSigningPrerequisitePolicy
      *     blocking_reason_codes: list<string>,
      *     provenance: array{
      *         validity: 'V1'|'V2'|'V3',
-     *         label: 'DISARANKAN'|'DIPERTIMBANGKAN'|'TIDAK_DISARANKAN',
+     *         label: 'DISARANKAN'|'DIPERTIMBANGKAN'|'TIDAK_DISARANKAN'|null,
      *         procedure_note_present: bool,
      *         accompaniment_conditions_present: bool,
      *         unresolved_g7_aspects: list<string>,
@@ -103,7 +103,7 @@ final class ReportSigningPrerequisitePolicy
      * @return array{
      *     validity: 'V1'|'V2'|'V3',
      *     procedure_note: string|null,
-     *     label: 'DISARANKAN'|'DIPERTIMBANGKAN'|'TIDAK_DISARANKAN',
+     *     label: 'DISARANKAN'|'DIPERTIMBANGKAN'|'TIDAK_DISARANKAN'|null,
      *     accompaniment_conditions: string|null,
      *     unresolved_g7_aspects: list<string>,
      *     overrides: list<array{type: 'level'|'label', aspect: string|null, reason: string|null}>,
@@ -126,8 +126,6 @@ final class ReportSigningPrerequisitePolicy
             || ! is_string($input['validity'])
             || ! in_array($input['validity'], ['V1', 'V2', 'V3'], true)
             || ($input['procedure_note'] !== null && ! is_string($input['procedure_note']))
-            || ! is_string($input['label'])
-            || ! in_array($input['label'], ['DISARANKAN', 'DIPERTIMBANGKAN', 'TIDAK_DISARANKAN'], true)
             || ($input['accompaniment_conditions'] !== null && ! is_string($input['accompaniment_conditions']))
             || ! is_array($input['unresolved_g7_aspects'])
             || ! array_is_list($input['unresolved_g7_aspects'])
@@ -137,6 +135,14 @@ final class ReportSigningPrerequisitePolicy
             || ! is_array($input['narrative_clusters'])
             || ! $this->hasExactKeys($input['narrative_clusters'], self::CLUSTERS)) {
             throw new InvalidArgumentException('Report signing prerequisite input is invalid.');
+        }
+
+        $label = $input['label'];
+        if (($input['validity'] === 'V3' && $label !== null)
+            || ($input['validity'] !== 'V3'
+                && (! is_string($label)
+                    || ! in_array($label, ['DISARANKAN', 'DIPERTIMBANGKAN', 'TIDAK_DISARANKAN'], true)))) {
+            throw new InvalidArgumentException('Report signing validity and label are inconsistent.');
         }
 
         $targetField = $input['target_field'];
@@ -205,7 +211,7 @@ final class ReportSigningPrerequisitePolicy
         return [
             'validity' => $input['validity'],
             'procedure_note' => $input['procedure_note'],
-            'label' => $input['label'],
+            'label' => $label,
             'accompaniment_conditions' => $input['accompaniment_conditions'],
             'unresolved_g7_aspects' => $unresolvedAspects,
             'overrides' => $overrides,

@@ -25,7 +25,7 @@ final class ReportReviewStateMachine
     private const STANDARD_TRANSITIONS = [
         'DRAFT_SCORED' => ['DRAFT_NARRATED'],
         'DRAFT_NARRATED' => ['UNDER_REVIEW'],
-        'UNDER_REVIEW' => ['REVISED', 'SIGNED'],
+        'UNDER_REVIEW' => ['REVISED'],
         'REVISED' => ['UNDER_REVIEW'],
         'SIGNED' => ['PUBLISHED'],
         'PUBLISHED' => ['REVOKED'],

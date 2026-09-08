@@ -155,7 +155,7 @@ final class ReportSigningTransitionPolicyTest extends TestCase
     private function applyMutation(array &$input, string $mutation): void
     {
         match ($mutation) {
-            'v3' => $input['validity'] = 'V3',
+            'v3' => [$input['validity'], $input['label']] = ['V3', null],
             'v2_note' => [$input['validity'], $input['procedure_note']] = ['V2', null],
             'conditions' => [$input['label'], $input['accompaniment_conditions']] = ['DIPERTIMBANGKAN', null],
             'g7' => $input['unresolved_g7_aspects'] = ['C4'],

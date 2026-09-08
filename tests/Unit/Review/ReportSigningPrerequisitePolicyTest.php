@@ -59,6 +59,7 @@ final class ReportSigningPrerequisitePolicyTest extends TestCase
         switch ($mutation) {
             case 'v3':
                 $input['validity'] = 'V3';
+                $input['label'] = null;
                 break;
             case 'v2_note':
                 $input['validity'] = 'V2';
@@ -162,6 +163,9 @@ final class ReportSigningPrerequisitePolicyTest extends TestCase
         yield 'extra top-level key' => [[...$valid, 'signed' => false]];
         yield 'unknown validity' => [[...$valid, 'validity' => 'V4']];
         yield 'unknown label' => [[...$valid, 'label' => 'LAINNYA']];
+        yield 'V3 cannot retain a recommendation label' => [[...$valid, 'validity' => 'V3']];
+        yield 'V1 requires a recommendation label' => [[...$valid, 'label' => null]];
+        yield 'V2 requires a recommendation label' => [[...$valid, 'validity' => 'V2', 'label' => null]];
         yield 'unknown target field' => [[...$valid, 'target_field' => 'TOKUTEI']];
         yield 'invalid procedure note type' => [[...$valid, 'procedure_note' => 1]];
         yield 'invalid condition type' => [[...$valid, 'accompaniment_conditions' => []]];

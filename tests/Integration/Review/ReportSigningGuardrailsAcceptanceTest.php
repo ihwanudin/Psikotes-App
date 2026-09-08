@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace Tests\Integration\Review;
 
+use App\Domain\Eligibility\EligibilityZoneCalculator;
+use App\Domain\Eligibility\RecommendationLabelPolicy;
 use App\Domain\Review\ReportReviewStateMachine;
 use App\Domain\Review\ReportSigningPrerequisitePolicy;
 use App\Domain\Review\ReportSigningTransitionPolicy;
 use DomainException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 
 final class ReportSigningGuardrailsAcceptanceTest extends TestCase
 {
@@ -90,6 +93,28 @@ final class ReportSigningGuardrailsAcceptanceTest extends TestCase
         self::assertNull($result['prerequisite_provenance']['target_field']);
     }
 
+    public function test_v3_recommendation_without_a_label_cannot_transition_to_signed(): void
+    {
+        $reporting = $this->canonicalReporting();
+        $zone = (new EligibilityZoneCalculator(
+            $reporting['standard_version'],
+            $reporting['base_standards'],
+            $reporting['fields'],
+        ))->calculate(array_fill_keys($this->aspectCodes(), 3), 'UMUM');
+        $recommendation = (new RecommendationLabelPolicy)->decide($zone, 100, 'V3');
+        $input = $this->completeInput();
+        $input['validity'] = $recommendation['provenance']['validity'];
+        $input['label'] = $recommendation['label'] ?? null;
+
+        $result = (new ReportSigningTransitionPolicy)->attempt('UNDER_REVIEW', $input);
+
+        self::assertArrayNotHasKey('label', $recommendation);
+        self::assertFalse($result['can_sign']);
+        self::assertSame(['VALIDITY_V3'], $result['blocking_reason_codes']);
+        self::assertNull($result['prerequisite_provenance']['label']);
+        self::assertNull($result['transition']);
+    }
+
     #[DataProvider('missingConditions')]
     public function test_t22_g9_considered_report_without_meaningful_conditions_cannot_sign(?string $conditions): void
     {
@@ -153,6 +178,35 @@ final class ReportSigningGuardrailsAcceptanceTest extends TestCase
                 'C' => 'Kepribadian telah dirangkum.',
                 'D' => 'Minat kerja telah dirangkum.',
             ],
+        ];
+    }
+
+    /** @return list<string> */
+    private function aspectCodes(): array
+    {
+        return ['A1', 'A2', 'B1', 'B2', 'B3', 'B4', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'D1', 'D2', 'D3', 'D4', 'D5'];
+    }
+
+    /** @return array{standard_version: string, base_standards: array<mixed>, fields: array<mixed>} */
+    private function canonicalReporting(): array
+    {
+        $contents = file_get_contents(dirname(__DIR__, 3).'/database/seeders/data/reporting.json');
+        if (! is_string($contents)) {
+            throw new RuntimeException('Canonical reporting data could not be read.');
+        }
+
+        $data = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
+        if (! is_array($data)
+            || ! is_string($data['standard_version'] ?? null)
+            || ! is_array($data['base_standards'] ?? null)
+            || ! is_array($data['fields'] ?? null)) {
+            throw new RuntimeException('Canonical reporting data is invalid.');
+        }
+
+        return [
+            'standard_version' => $data['standard_version'],
+            'base_standards' => $data['base_standards'],
+            'fields' => $data['fields'],
         ];
     }
 }

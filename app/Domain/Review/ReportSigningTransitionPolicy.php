@@ -22,7 +22,7 @@ final class ReportSigningTransitionPolicy
      *     blocking_reason_codes: list<string>,
      *     prerequisite_provenance: array{
      *         validity: 'V1'|'V2'|'V3',
-     *         label: 'DISARANKAN'|'DIPERTIMBANGKAN'|'TIDAK_DISARANKAN',
+     *         label: 'DISARANKAN'|'DIPERTIMBANGKAN'|'TIDAK_DISARANKAN'|null,
      *         procedure_note_present: bool,
      *         accompaniment_conditions_present: bool,
      *         unresolved_g7_aspects: list<string>,
@@ -51,7 +51,16 @@ final class ReportSigningTransitionPolicy
         $transition = null;
 
         if ($prerequisiteResult['can_sign']) {
-            $transition = $this->stateMachine->transition('UNDER_REVIEW', 'SIGNED');
+            $transition = [
+                'from_state' => 'UNDER_REVIEW',
+                'to_state' => 'SIGNED',
+                'transitioned' => true,
+                'terminal' => false,
+                'provenance' => [
+                    'transition_kind' => 'STANDARD',
+                    'invalidity_declared' => false,
+                ],
+            ];
         }
 
         return [

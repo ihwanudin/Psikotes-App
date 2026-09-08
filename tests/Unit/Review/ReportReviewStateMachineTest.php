@@ -125,6 +125,13 @@ final class ReportReviewStateMachineTest extends TestCase
         (new ReportReviewStateMachine)->transition('DRAFT_SCORED', 'DRAFT_NARRATED', true);
     }
 
+    public function test_raw_state_machine_cannot_sign_an_under_review_report(): void
+    {
+        $this->expectException(DomainException::class);
+
+        (new ReportReviewStateMachine)->transition('UNDER_REVIEW', 'SIGNED');
+    }
+
     /** @return list<array{string, string}> */
     private static function standardTransitions(): array
     {
@@ -133,7 +140,6 @@ final class ReportReviewStateMachineTest extends TestCase
             ['DRAFT_NARRATED', 'UNDER_REVIEW'],
             ['UNDER_REVIEW', 'REVISED'],
             ['REVISED', 'UNDER_REVIEW'],
-            ['UNDER_REVIEW', 'SIGNED'],
             ['SIGNED', 'PUBLISHED'],
             ['PUBLISHED', 'REVOKED'],
         ];
