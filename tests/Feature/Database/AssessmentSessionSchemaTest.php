@@ -30,7 +30,7 @@ final class AssessmentSessionSchemaTest extends OrganizationPaymentTestCase
     {
         $this->assertTrue(Schema::hasColumns('test_sessions', [
             'id', 'public_id', 'participant_id', 'test_type', 'attempt_no', 'authorization_id',
-            'allocation_intent_id', 'status', 'answers_revision', 'started_at', 'ends_at',
+            'allocation_intent_id', 'duration_seconds', 'status', 'answers_revision', 'started_at', 'ends_at',
             'submitted_at', 'scored_at', 'expired_at', 'voided_at', 'void_reason',
             'created_at', 'updated_at',
         ]));
@@ -211,6 +211,7 @@ final class AssessmentSessionSchemaTest extends OrganizationPaymentTestCase
             $this->assertRejected(fn () => DB::table('answers')->where('id', $answer)->update($override));
         }
 
+        DB::table('test_sessions')->where('id', $session)->update(['answers_revision' => 1]);
         DB::table('answers')->where('id', $answer)->update([
             'value' => json_encode(['choice' => 'B']), 'revision' => 2,
             'answered_at' => '2026-09-08 03:06:00',
@@ -247,7 +248,8 @@ final class AssessmentSessionSchemaTest extends OrganizationPaymentTestCase
             'public_id' => (string) Str::ulid(), 'participant_id' => $participant ?? $this->participant(),
             'test_type' => 'ist', 'attempt_no' => ++$this->attemptSequence,
             'authorization_id' => (string) Str::ulid(), 'allocation_intent_id' => (string) Str::ulid(),
-            'status' => $status, 'answers_revision' => 0, 'started_at' => $started, 'ends_at' => $ends,
+            'duration_seconds' => 3600, 'status' => $status, 'answers_revision' => 0,
+            'started_at' => $started, 'ends_at' => $ends,
             'submitted_at' => in_array($status, ['submitted', 'scored'], true) ? '2026-09-08 04:00:00' : null,
             'scored_at' => $status === 'scored' ? '2026-09-08 04:01:00' : null,
             'expired_at' => $status === 'expired' ? '2026-09-08 04:00:01' : null,

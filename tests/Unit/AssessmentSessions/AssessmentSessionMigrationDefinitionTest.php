@@ -12,7 +12,7 @@ final class AssessmentSessionMigrationDefinitionTest extends TestCase
     private const string MIGRATION = __DIR__.'/../../../database/migrations/2026_09_08_000100_create_generic_assessment_sessions.php';
 
     #[Test]
-    public function it_declares_the_frozen_postgresql_schema_contract_without_rls(): void
+    public function it_declares_the_frozen_postgresql_schema_and_rls_contract(): void
     {
         $sql = file_get_contents(self::MIGRATION);
 
@@ -40,8 +40,23 @@ final class AssessmentSessionMigrationDefinitionTest extends TestCase
         self::assertStringContainsString('answers_identity_revision_guard', $sql);
         self::assertStringContainsString('NEW.revision <= OLD.revision', $sql);
         self::assertStringContainsString('assessment_autosave_mutations_append_only', $sql);
+        self::assertStringContainsString('assessment_autosave_mutations_parent_guard', $sql);
+        self::assertStringContainsString('NEW.received_at <= session.ends_at', $sql);
         self::assertStringContainsString('restrictOnDelete()', $sql);
-        self::assertStringNotContainsString('ENABLE ROW LEVEL SECURITY', $sql);
-        self::assertStringNotContainsString('CREATE POLICY', $sql);
+        self::assertStringContainsString("timestampTz('ends_at', 6)", $sql);
+        self::assertStringContainsString("timestampTz('received_at', 6)", $sql);
+        self::assertStringContainsString('submitted_at IS NOT NULL', $sql);
+        self::assertStringContainsString('scored_at IS NOT NULL', $sql);
+        self::assertStringContainsString('expired_at IS NOT NULL', $sql);
+        self::assertStringContainsString('void_reason IS NOT NULL', $sql);
+        self::assertSame(3, substr_count($sql, 'ENABLE ROW LEVEL SECURITY'));
+        self::assertSame(3, substr_count($sql, 'FORCE ROW LEVEL SECURITY'));
+        self::assertStringContainsString('CREATE POLICY test_sessions_participant_update', $sql);
+        self::assertStringNotContainsString('test_sessions_participant_update ON test_sessions FOR ALL', $sql);
+        self::assertStringContainsString('CREATE POLICY answers_service_insert', $sql);
+        self::assertStringContainsString('CREATE POLICY assessment_autosave_mutations_service_insert', $sql);
+        self::assertStringContainsString('CREATE POLICY assessment_autosave_mutations_service_delete', $sql);
+        self::assertStringContainsString('LOCK TABLE test_sessions, answers, assessment_autosave_mutations', $sql);
+        self::assertStringContainsString('IN ACCESS EXCLUSIVE MODE', $sql);
     }
 }
