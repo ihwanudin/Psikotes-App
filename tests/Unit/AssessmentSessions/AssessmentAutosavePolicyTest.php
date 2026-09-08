@@ -9,6 +9,7 @@ use App\Domain\AssessmentSessions\AssessmentAutosavePolicy;
 use App\Domain\AssessmentSessions\AssessmentSessionErrorCode;
 use App\Domain\AssessmentSessions\AssessmentSessionStatus;
 use DateTimeImmutable;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class AssessmentAutosavePolicyTest extends TestCase
@@ -120,6 +121,31 @@ final class AssessmentAutosavePolicyTest extends TestCase
         $this->assertSame(AssessmentSessionErrorCode::InvalidAnswerBatch, $decision->errorCode);
     }
 
+    /** @param array<int, mixed> $items */
+    #[DataProvider('malformedBatches')]
+    public function test_malformed_item_shapes_and_values_are_rejected_without_uncontrolled_errors(array $items): void
+    {
+        $decision = $this->decide(currentRevision: 0, proposedRevision: 1, items: $items);
+
+        $this->assertFalse($decision->accepted);
+        $this->assertFalse($decision->shouldPersist);
+        $this->assertSame(AssessmentSessionErrorCode::InvalidAnswerBatch, $decision->errorCode);
+    }
+
+    /** @return iterable<string, array{array<int, mixed>}> */
+    public static function malformedBatches(): iterable
+    {
+        yield 'item is not an array' => [['not-an-item']];
+        yield 'missing item number' => [[['value' => 'A']]];
+        yield 'missing value' => [[['item_no' => 1]]];
+        yield 'string item number' => [[['item_no' => '1', 'value' => 'A']]];
+        yield 'boolean item number' => [[['item_no' => true, 'value' => 'A']]];
+        yield 'non-positive item number' => [[['item_no' => 0, 'value' => 'A']]];
+        yield 'extra key' => [[['item_no' => 1, 'value' => 'A', 'client_time' => 123]]];
+        yield 'nested NAN' => [[['item_no' => 1, 'value' => ['nested' => ['score' => NAN]]]]];
+        yield 'nested infinity' => [[['item_no' => 1, 'value' => ['nested' => [INF]]]]];
+    }
+
     public function test_new_mutation_after_deadline_is_rejected_and_expires_session(): void
     {
         $decision = $this->decide(
@@ -135,7 +161,7 @@ final class AssessmentAutosavePolicyTest extends TestCase
     }
 
     /**
-     * @param  list<array{item_no: int, value: mixed}>  $items
+     * @param  array<int, mixed>  $items
      */
     private function decide(
         int $currentRevision,

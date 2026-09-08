@@ -10,7 +10,7 @@ use JsonException;
 final class AssessmentAutosavePolicy
 {
     /**
-     * @param  list<array{item_no: int, value: mixed}>  $items
+     * @param  array<int, mixed>  $items
      */
     public function decide(
         AssessmentSessionStatus $status,
@@ -91,7 +91,7 @@ final class AssessmentAutosavePolicy
     }
 
     /**
-     * @param  list<array{item_no: int, value: mixed}>  $items
+     * @param  array<int, mixed>  $items
      * @return array{hash: string, item_numbers: list<int>}|null
      */
     private function canonicalize(string $sessionId, int $revision, array $items): ?array
@@ -102,7 +102,13 @@ final class AssessmentAutosavePolicy
 
         $normalized = [];
         foreach ($items as $item) {
-            if ($item['item_no'] < 1 || array_key_exists($item['item_no'], $normalized)) {
+            if (! is_array($item)
+                || count($item) !== 2
+                || ! array_key_exists('item_no', $item)
+                || ! array_key_exists('value', $item)
+                || ! is_int($item['item_no'])
+                || $item['item_no'] < 1
+                || array_key_exists($item['item_no'], $normalized)) {
                 return null;
             }
 
