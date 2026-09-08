@@ -132,6 +132,16 @@ final class KraepelinBandMapperTest extends TestCase
         $overlap[$index]['lo'] = 15.484;
         yield 'overlap' => [$overlap, [], 'Kraepelin bands must cover their domain without gaps or overlaps.'];
 
+        $lowerEdgeDrift = $bands;
+        $index = self::bandIndex($lowerEdgeDrift, 'Panker', 'SMA/SMK', 1);
+        $lowerEdgeDrift[$index]['lo'] = 0;
+        yield 'lower edge drifts in one group' => [$lowerEdgeDrift, [], 'Kraepelin lower domain edge must be consistent for each factor across norm groups.'];
+
+        $missingUpperEdge = $bands;
+        $index = self::bandIndex($missingUpperEdge, 'Panker', 'SMA/SMK', 10);
+        $missingUpperEdge[$index]['hi'] = 100;
+        yield 'missing unbounded upper edge' => [$missingUpperEdge, [], 'Kraepelin upper domain edge must be unbounded for every factor and norm group.'];
+
         $unorderedScores = $bands;
         $index = self::bandIndex($unorderedScores, 'Panker', 'SMA/SMK', 8);
         $unorderedScores[$index]['score'] = 7;

@@ -87,6 +87,8 @@ final class KraepelinBandMapper
             $levelCategories[$level] = $category;
         }
 
+        $factorLowerEdges = [];
+
         foreach ($this->bands as $group => $factorBands) {
             $configuredFactors = array_keys($factorBands);
             sort($configuredFactors);
@@ -118,6 +120,14 @@ final class KraepelinBandMapper
                 if ($levels !== range(1, 5)) {
                     throw new InvalidArgumentException('Each Kraepelin factor must cover derived levels one through five.');
                 }
+
+                $lowerEdge = $bands[0]['lo'];
+
+                if (array_key_exists($factor, $factorLowerEdges) && $factorLowerEdges[$factor] !== $lowerEdge) {
+                    throw new InvalidArgumentException('Kraepelin lower domain edge must be consistent for each factor across norm groups.');
+                }
+
+                $factorLowerEdges[$factor] = $lowerEdge;
 
                 $this->bands[$group][$factor] = $bands;
                 $this->directions[$group][$factor] = $direction;
@@ -202,6 +212,14 @@ final class KraepelinBandMapper
      */
     private function validateCoverage(array $bands): void
     {
+        if ($bands === []) {
+            throw new InvalidArgumentException('Kraepelin bands must cover their domain without gaps or overlaps.');
+        }
+
+        if ($bands[array_key_last($bands)]['hi'] !== null) {
+            throw new InvalidArgumentException('Kraepelin upper domain edge must be unbounded for every factor and norm group.');
+        }
+
         $precision = 0;
 
         foreach ($bands as $band) {
