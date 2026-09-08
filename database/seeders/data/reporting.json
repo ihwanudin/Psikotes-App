@@ -1,53 +1,103 @@
 {
   "standard_version": "GA-2026.08",
+  "base_standards": {
+    "A1": 3,
+    "A2": 3,
+    "B1": 3,
+    "B2": 3,
+    "B3": 3,
+    "B4": 3,
+    "C1": 3,
+    "C2": 3,
+    "C3": 3,
+    "C4": 3,
+    "C5": 3,
+    "C6": 3,
+    "C7": 3,
+    "D1": null,
+    "D2": null,
+    "D3": null,
+    "D4": null,
+    "D5": null
+  },
   "fields": [
     {
       "code": "KAIGO",
       "required_interest": "D4",
+      "required_interest_standard": 3,
       "raised_to_4": [
         "C2",
         "C3",
         "C4"
-      ]
+      ],
+      "raised_standards": {
+        "C2": 4,
+        "C3": 4,
+        "C4": 4
+      }
     },
     {
       "code": "KENSETSU",
       "required_interest": "D3",
+      "required_interest_standard": 3,
       "raised_to_4": [
         "B2",
         "C5"
-      ]
+      ],
+      "raised_standards": {
+        "B2": 4,
+        "C5": 4
+      }
     },
     {
       "code": "NOUGYOU",
       "required_interest": "D1",
+      "required_interest_standard": 3,
       "raised_to_4": [
         "C5",
         "C6"
-      ]
+      ],
+      "raised_standards": {
+        "C5": 4,
+        "C6": 4
+      }
     },
     {
       "code": "SEIZOU",
       "required_interest": "D2",
+      "required_interest_standard": 3,
       "raised_to_4": [
         "B1",
         "B2",
         "B4"
-      ]
+      ],
+      "raised_standards": {
+        "B1": 4,
+        "B2": 4,
+        "B4": 4
+      }
     },
     {
       "code": "GAISHOKU",
       "required_interest": "D5",
+      "required_interest_standard": 3,
       "raised_to_4": [
         "B2",
         "C2",
         "C3"
-      ]
+      ],
+      "raised_standards": {
+        "B2": 4,
+        "C2": 4,
+        "C3": 4
+      }
     },
     {
       "code": "UMUM",
       "required_interest": null,
-      "raised_to_4": []
+      "required_interest_standard": null,
+      "raised_to_4": [],
+      "raised_standards": {}
     }
   ],
   "critical": [
