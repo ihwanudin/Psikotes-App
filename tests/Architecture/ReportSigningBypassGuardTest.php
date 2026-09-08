@@ -6,6 +6,8 @@ namespace Tests\Architecture;
 
 use PhpParser\Node;
 use PhpParser\Node\Arg;
+use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\NullsafeMethodCall;
 use PhpParser\Node\Expr\StaticCall;
@@ -67,6 +69,61 @@ PHP;
             ['app/Actions/NamedBypass.php:3'],
             $this->violationsForFile('app/Actions/NamedBypass.php', $source),
         );
+    }
+
+    public function test_control_fixture_detects_a_literal_successful_signed_transition_result(): void
+    {
+        $source = <<<'PHP'
+<?php
+
+$result = [
+    'from_state' => 'UNDER_REVIEW',
+    'to_state' => 'SIGNED',
+    'transitioned' => true,
+];
+PHP;
+
+        self::assertSame(
+            ['app/Actions/ManualSigningBypass.php:3'],
+            $this->violationsForFile('app/Actions/ManualSigningBypass.php', $source),
+        );
+    }
+
+    public function test_control_fixture_detects_a_nested_long_array_signed_transition_result(): void
+    {
+        $source = <<<'PHP'
+<?php
+
+return array(
+    'can_sign' => true,
+    'transition' => array(
+        'transitioned' => true,
+        'to_state' => 'SIGNED',
+        'from_state' => 'UNDER_REVIEW',
+    ),
+);
+PHP;
+
+        self::assertSame(
+            ['app/Actions/NestedManualSigningBypass.php:5'],
+            $this->violationsForFile('app/Actions/NestedManualSigningBypass.php', $source),
+        );
+    }
+
+    public function test_control_fixture_ignores_non_successful_or_non_literal_signed_result_text(): void
+    {
+        $source = <<<'PHP'
+<?php
+
+const SIGNED_STATE = 'SIGNED';
+$denied = ['to_state' => 'SIGNED', 'transitioned' => false];
+$incomplete = ['to_state' => 'SIGNED'];
+$dynamic = ['to_state' => SIGNED_STATE, 'transitioned' => true];
+$other = ['to_state' => 'PUBLISHED', 'transitioned' => true];
+$description = "['to_state' => 'SIGNED', 'transitioned' => true]";
+PHP;
+
+        self::assertSame([], $this->violationsForFile('app/Actions/NotSuccessfulSigning.php', $source));
     }
 
     public function test_control_fixture_allows_non_signed_transitions_and_non_call_text(): void
@@ -150,7 +207,35 @@ PHP;
             }
         }
 
+        $arrays = (new NodeFinder)->findInstanceOf($statements, Array_::class);
+        foreach ($arrays as $array) {
+            $targetState = $this->literalArrayValue($array, 'to_state');
+            $transitioned = $this->literalArrayValue($array, 'transitioned');
+
+            if ($targetState instanceof String_
+                && $targetState->value === 'SIGNED'
+                && $transitioned instanceof ConstFetch
+                && strtolower($transitioned->name->toString()) === 'true') {
+                $violations[] = $normalizedPath.':'.$array->getStartLine();
+            }
+        }
+
+        $violations = array_values(array_unique($violations));
+        sort($violations);
+
         return $violations;
+    }
+
+    private function literalArrayValue(Array_ $array, string $key): ?Node\Expr
+    {
+        foreach ($array->items as $item) {
+            if ($item->key instanceof String_
+                && $item->key->value === $key) {
+                return $item->value;
+            }
+        }
+
+        return null;
     }
 
     /**
