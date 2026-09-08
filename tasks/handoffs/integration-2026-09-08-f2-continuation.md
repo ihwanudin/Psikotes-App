@@ -47,11 +47,19 @@ Independent coordinator verification after the RMIB/Kraepelin repairs:
 - Pint on scoring source/tests: passed.
 - Commit-range diff check: passed.
 
-The following transforms remain blocked on authoritative psychometric decisions
-and must not be guessed: IQ-to-level, PAPI normalized level, RMIB rank-to-level,
-Kraepelin Panker wording, and Kraepelin rounding mode. The exact conflicts and
-minimum expert questions are recorded by accepted docs-only commit `31acac9` in
-`tasks/handoffs/f2-psychometric-data-conflicts.md`.
+The former IQ/PAPI/RMIB/Kraepelin authority conflicts are resolved by ADR-0028
+and accepted implementation `10bc513`. Versioned data now defines IST
+IQ-to-level, PAPI white-zone-distance normalization, RMIB rank-to-level with
+competition ties, Kraepelin Panker semantics, and half-up three-decimal band
+lookup.
+
+Independent coordinator verification for `10bc513`:
+
+- Full scoring suite: 194 tests, 875 assertions, all passed.
+- F0 extraction gate: 11 tests, all passed.
+- Instrument seeder integration: 3 tests, 47 assertions, all passed.
+- Pint and scoped PHPStan: passed with zero errors.
+- Staged secret scan and diff check: passed.
 
 DASS-21 pure scoring is accepted as `1bbbb70`; screening follow-up and validity
 metadata are accepted as `39836d7`. Coordinator verification after both commits:
@@ -64,11 +72,10 @@ The DASS output remains separate from eligibility, zone, label, diagnosis, and
 user-facing narrative. Package inclusion and consent orchestration are outside
 these scorer classes.
 
-The point-in-time T-01 through T-11 status/evidence mapping is recorded by
-accepted docs-only commit `c8c6d28` in
-`tasks/handoffs/f2-t01-t11-evidence-matrix.md`. It marks T-02 and T-08 through
-T-11 pass, T-07 partial, and keeps T-01/T-03 through T-06 blocked at their exact
-authority/dependency boundaries. This matrix is evidence, not a new checklist.
+The T-01 through T-11 evidence matrix is updated with the new evidence: T-01
+through T-05 and T-08 through T-11 pass, T-06 is now dependency-unblocked but
+not started, and T-07 remains partial until the T-06 architectural comparison
+can run. This matrix is evidence, not a new checklist.
 
 ### Assessment-session application action
 
@@ -117,10 +124,11 @@ or change P17c/P18 status.
 |---|---|---|---|
 | `/root/review_session` | Session schema/RLS, autosave, start/resume and their isolated tests | idle; all dispatched increments reviewed | Choose the next internal status or submit/scoring-recovery boundary without contradicting synchronous `status: scored` |
 
-`/root/review_ist` is idle after accepted DASS work and evidence matrix.
-Conflicting IQ/PAPI/RMIB
-normalization and Kraepelin wording/rounding remain paused pending the decision
-brief. `/root/review_p17c` is idle after its accepted evidence/proposal work.
+`/root/review_ist` is idle after accepted DASS work and the now-resolved
+normalization increment. The psychometric lane no longer has an authority
+blocker; its next safe dependency is normalized-result composition or F3/T-06
+under exclusive eligibility ownership. `/root/review_p17c` is idle after its
+accepted evidence/proposal work.
 
 ## Preserved user-owned work
 
@@ -136,5 +144,5 @@ must not be edited, deleted, or included in coordinator commits.
 4. Keep migrations serial. Do not close PostgreSQL/RLS acceptance without a
    disposable PostgreSQL runtime pass.
 5. Choose the next dependency-unblocked increment from `tasks/parallel-work.md`;
-   keep all conflicting psychometric normalization work paused pending the
-   decisions in the conflict brief.
+   prioritize normalized-result composition followed by F3/T-06. T-07's final
+   non-interference test follows the existence of that boundary.

@@ -1,12 +1,32 @@
 # F2 psychometric data conflict decision brief
 
-Status: **Decision required — this brief does not choose a psychometric result**
+Status: **Resolved — superseded by ADR-0028 and implementation `10bc513`**
 
 Scope: the minimum source-of-truth decisions required before implementing the
 IQ, PAPI, and RMIB normalized scoring boundaries. This brief also records two
 Kraepelin ambiguities that affect reproducibility. It does not amend
 `SPEC.md`, `SCORING_ALGORITHM.md`, extracted JSON, acceptance checklists, or
-runtime code.
+runtime code. It is retained as the historical conflict record.
+
+## Resolution recorded on 2026-09-08
+
+The supporting workbooks, final psychologist confirmation, current PRD, and
+golden fixtures supplied enough evidence to resolve these items without a new
+product decision. ADR-0028 freezes the source precedence and the resulting
+versioned rules in `F2-2026.09`:
+
+- IST IQ uses sheet 04 collapsed in adjacent score pairs: `<=90 -> 1`,
+  `91–102 -> 2`, `103–114 -> 3`, `115–126 -> 4`, `>=127 -> 5`.
+- PAPI uses distance from each dimension's white zone. W `0/5/9` therefore
+  maps to `1/5/3`; dimensions G/I/X/Z remain stored but are excluded from HPP.
+- RMIB uses sheet 11 collapsed to levels and Excel-compatible competition
+  ranking for equal totals.
+- Kraepelin Panker is `correct + incorrect`; factors are rounded half-up to
+  three decimals before band lookup; Hanker remains `b×50`.
+
+`SPEC.md` v4.3, `SCORING_ALGORITHM.md` SCORING-4.3.0, PRD v1.3, extraction
+scripts, canonical JSON, and automated tests were updated together. The
+decision questions below are historical and no longer block T-01/T-03–T-06.
 
 ## Decision rule for this checkpoint
 

@@ -1,8 +1,8 @@
-# SPEC v4.0 — Sistem Psikotes Daring CPMI · psikotes.oncam.id
+# SPEC v4.3 — Sistem Psikotes Daring CPMI · psikotes.oncam.id
 
 Status: FINAL — acuan pembangunan
 Menggabungkan: **Spesifikasi Teknis HPP CPMI v2.3** (Rizqi Ulin Nuha, S.Psi. — psikometri, skoring, laporan, tata kelola data) + kerangka infrastruktur (alur bayar, fee cabang, proctoring teknis). **Stack final: Laravel + Inertia.js/React + Filament + PostgreSQL** — menggantikan draf arsitektur Cloudflare/Supabase dari versi SPEC paling awal (lihat CHANGELOG).
-Prinsip rekonsiliasi: **untuk skoring, laporan, dan etika, HPP v2.3 adalah sumber kebenaran**; SPEC lama menyediakan lapisan engineering yang tidak disentuh HPP v2.3. Bila bertentangan, HPP v2.3 menang dan konfliknya dicatat.
+Prinsip rekonsiliasi: kebutuhan produk mengikuti PRD terbaru; metode psikometri mengikuti konfirmasi akhir psikolog, lalu tabel lookup v1.1 dan golden test sebagai bukti numerik. HPP v2.3 tetap menjadi sumber laporan dan etika. Dokumen atau tabel acceptance lama yang bertentangan dianggap disupersesi oleh urutan ini dan konfliknya dicatat dalam ADR.
 
 > Perubahan besar dari v3.0 (WAJIB dibaca): skala laporan **1–5** (bukan 1–10); kelayakan memakai **model Grey Area terhadap standar bidang kerja** (bukan knockout+ambang total); aspek kritis **A1/B2/C4/C5** (bukan 13 aspek); **dua dokumen keluaran** (HPP + Lembar Kerja Internal); **DASS-21 jalur terpisah mutlak**; **wajib tinjau+tanda tangan psikolog** sebelum terbit. Rincian di §5–§9.
 
@@ -80,9 +80,7 @@ Sumber semua angka: empat berkas master psikolog (Tabel Lookup, Bank Narasi, Con
 Kategori 5 taraf (berlaku sama untuk 9 subtes) → level aspek:
 `SW ≥119 Baik(5) · 105–118 Cukup Baik(4) · 95–104 Sedang(3) · 81–94 Agak Kurang(2) · ≤80 Kurang(1)`
 
-**IQ (aspek A1):** ΣRW 9 subtes → IQ (tabel terima RW 28–151 → IQ 77–132) → 7 taraf pada **nilai IQ**:
-`67–78→1 · 79–90→2 · 91–102→3 · 103–114→4 · 115–126→5 lihat catatan` — dipetakan ke level 1–5 via T-01: `IQ<79→1 · 79–89→2 · 90–109→3 · 110–119→4 · ≥120→5`.
-Catatan master: kolom "Rentang Jumlah (RW)" pada Kamus 7 Kategori IQ sebenarnya rentang IQ — psikolog akan betulkan judulnya; sistem memperlakukannya sebagai IQ.
+**IQ (aspek A1):** ΣRW 9 subtes → IQ (sheet 03) → skor 1–10 (sheet 04) → level 1–5 dengan pasangan skor `[1,2]→1 · [3,4]→2 · [5,6]→3 · [7,8]→4 · [9,10]→5`. Batas final pada nilai IQ: `≤90→1 · 91–102→2 · 103–114→3 · 115–126→4 · ≥127→5`. Mapping eksplisit dan versinya disimpan sebagai data; aplikasi tidak menghitungnya dari angka yang ditanam di kode.
 
 ### 4.2 PAPI Kostick — 20 dimensi, metode OPTIMAL (jarak dari zona Putih)
 Konversi memakai **jarak langkah dari tepi zona PUTIH** (optimal/adaptif), bukan nilai warna tetap:
@@ -90,7 +88,7 @@ Konversi memakai **jarak langkah dari tepi zona PUTIH** (optimal/adaptif), bukan
 jarak = skor<lo ? lo−skor : (skor>hi ? skor−hi : 0)
 level = max(1, 5 − min(jarak, 4))   // dalam Putih→5 · 1→4 · 2→3 · 3→2 · ≥4→1
 ```
-Penyimpangan ke atas & ke bawah setara. Batas zona Putih BERBEDA tiap dimensi (tabel 20 dimensi di berkas data). **16 skala dipakai** (A,B,C,D,E,F,K,L,N,O,P,R,S,T,V,W); **4 tidak** (G,I,X,Z) — tetap diskor & tampil ke psikolog sebagai bahan kualitatif. (Uji T-04: skala W skor 0/5/9 → level 2/5/2.)
+Penyimpangan ke atas & ke bawah setara. Batas zona Putih BERBEDA tiap dimensi (tabel 20 dimensi di berkas data). **16 skala dipakai** (A,B,C,D,E,F,K,L,N,O,P,R,S,T,V,W); **4 tidak** (G,I,X,Z) — tetap diskor & tampil ke psikolog sebagai bahan kualitatif. (Uji T-04: zona W `[4,7]`, sehingga skor 0/5/9 → level 1/5/3.)
 Catatan kalibrasi: zona Putih ≈39% rentang → Klaster C cenderung berkumpul di level 4–5; bila setelah 100 kasus Klaster C hampir seluruhnya Terpenuhi, yang ditinjau adalah **letak standar minimum**, bukan tabel PAPI (§13 Tahap 1).
 
 ### 4.3 Kraepelin — 4 faktor
@@ -98,10 +96,10 @@ Catatan kalibrasi: zona Putih ≈39% rentang → Klaster C cenderung berkumpul d
 ```
 Panker  = rata-rata capaian (benar+salah) per lajur atas 50 lajur   [besar=baik]
 Tianker = Σsalah + Σterlewat                                          [kecil=baik]
-Hanker  = kemiringan b regresi linear capaian per lajur (b, TANPA ×50) [besar=baik]
+Hanker  = kemiringan b regresi linear capaian per lajur ×50             [besar=baik]
 Janker  = max(capaian) − min(capaian) antarlajur                      [kecil=baik]
 ```
-> **DIKONFIRMASI PSIKOLOG (20 Agu 2026): Hanker = b×50.** Terverifikasi pada DUA golden test independen: peserta S1/S2 (b×50 = −0,62) dan peserta SMA/SMK (b×50 = 5,032, slope 0,100648) — keduanya cocok sampai desimal terakhir terhadap data mentah 50 lajur dan tabel cutoff. Butir tidak lagi memblokir.
+> **DIKONFIRMASI PSIKOLOG (20 Agu 2026): Hanker = b×50.** Terverifikasi pada DUA golden test independen: peserta S1/S2 (b×50 = −0,62) dan peserta SMA/SMK (b×50 = 5,032, slope 0,100648) — keduanya cocok sampai desimal terakhir terhadap data mentah 50 lajur dan tabel cutoff. Panker memakai seluruh capaian yang dikerjakan (`benar+salah`). Faktor dibulatkan half-up ke 3 desimal sebelum lookup cutoff; nilai sebelum dan sesudah pembulatan disimpan untuk audit.
 
 Cutoff per grup norma (6 grup; CPMI SLTA → SMA/SMK). Contoh SMA/SMK:
 `Panker: ≤7,871→1 · –9,994→2 · –13,055→3 · –15,484→4 · ≥15,485→5`
@@ -114,7 +112,7 @@ Golden test (fixture F0 wajib, DUA peserta terverifikasi independen):
   • SMA/SMK: ΣY 656 · Panker 13,12 · Tianker 5 · Janker 6 · slope b 0,100648 · Hanker 5,032 → Baik/Baik/Baik/Baik Sekali (4/4/4/5)
 
 ### 4.4 RMIB
-9 kelompok × 12 pekerjaan; kategori posisi p kelompok j = `MOD(p+j−2,12)+1`. Skor kategori = Σ rank pada 9 sel; makin kecil makin diminati. Validasi wajib: Σ rank=702, tiap kelompok=78, 108 baris input. Rank → level: `1–2→5 · 3–4→4 · 5–6→3 · 7–8→2 · 9–12→1` (dari Skor HPP 1–10 dipadatkan). 5 kategori dipakai di HPP (Out/Mech/Prac/Med/SocSvc → D1–D5); 7 lain tersimpan untuk psikolog.
+9 kelompok × 12 pekerjaan; kategori posisi p kelompok j = `MOD(p+j−2,12)+1`. Skor kategori = Σ rank pada 9 sel; makin kecil makin diminati. Validasi wajib: Σ rank=702, tiap kelompok=78, 108 baris input. Rank kategori memakai competition ranking seperti rumus Excel `RANK(...,1)`: total sama mendapat rank sama dan rank berikutnya terlewati. Rank → skor 1–10 mengikuti sheet 11, lalu level: `1–2→5 · 3–4→4 · 5–8→3 · 9–10→2 · 11–12→1`. 5 kategori dipakai di HPP (Out/Mech/Prac/Med/SocSvc → D1–D5); 7 lain tersimpan untuk psikolog.
 
 ## 5. Agregasi Sub-Aspek & Skala Formula
 
@@ -241,7 +239,7 @@ Sebelum mulai, peserta diberi tahu jelas: kamera akan mengambil gambar berkala, 
 
 ## 9. Tinjau, Tanda Tangan & State Machine
 
-Layar tinjauan (satu layar): data mentah tiap instrumen · level tiap aspek + rincian sumber/jangkar · standar & zona berwarna · nama bidang + versi standar · penanda G7 menonjol · daftar guardrail aktif · draf narasi bisa disunting (bertanda hasil rakitan) · 5 skala PAPI tak-terpakai (K,O,P,R,X) · DASS lengkap di panel terpisah visual · catatan prosedur + validitas.
+Layar tinjauan (satu layar): data mentah tiap instrumen · level tiap aspek + rincian sumber/jangkar · standar & zona berwarna · nama bidang + versi standar · penanda G7 menonjol · daftar guardrail aktif · draf narasi bisa disunting (bertanda hasil rakitan) · 4 skala PAPI tak-terpakai (G,I,X,Z) · DASS lengkap di panel terpisah visual · catatan prosedur + validitas.
 
 Override G6: `PATCH /laporan/{id}/level/{aspek}` & `/rekomendasi` — alasan wajib ≥20 karakter; simpan `level_sistem` & `level_final` berdampingan (jangan timpa); ubah level → hitung ulang zona & label.
 
@@ -270,9 +268,9 @@ Matriks akses: Peserta (HPP penuh, internal ringkasan bila diminta, DASS penuh a
 
 Consent A (psikotes, wajib) + Consent B (DASS, wajib-terpisah; memuat penegasan hasil tak menentukan kelulusan). Retensi: HPP & Lembar Internal & data mentah psikotes 5 th · **respons item DASS 2 th** · skor/kategori DASS 2 th (bagian kesehatan mental di arsip laporan ikut disunting) · rekaman video 90 hari (hanya ringkasan peristiwa bertahan) · jejak audit 5 th tanpa PII. Hak peserta di antarmuka: penjelasan lisan gratis, koreksi identitas, tarik consent DASS + hapus datanya tanpa memengaruhi hasil psikotes utama, salinan laporan, tahu siapa mengakses.
 
-## 13. Uji Penerimaan (24 uji; T-07 mutlak)
+## 13. Uji Penerimaan (28 uji; T-07 mutlak)
 
-T-01 IQ→level · T-02 SW→level · T-03 PAPI linear · T-04 PAPI optimal (W 0/5/9→2/5/2) · T-05 RMIB→level · T-06 zona · **T-07 DASS tak memengaruhi kelayakan (dua sesi psikotes identik, DASS Normal vs Sangat Parah → zona & label IDENTIK; MUTLAK)** · T-08..T-11 DASS skoring/ambang/umum/tak-lengkap · T-12..T-17 guardrail G1/G2/G3/G5/G7/G8 · T-18 standar per bidang · T-19 batas aspek non-kritis · T-20 determinisme narasi · T-21 konektor tak berulang · T-22 DIPERTIMBANGKAN wajib bersyarat · T-23 matriks akses · T-24 paket DASS mandiri tersedia dan paket psikotes utama selalu memuat entitlement DASS · T-25 izin kamera ditolak → V2 (mode wajib → tak boleh mulai) · T-26 stream kamera mati di tengah (mobile app-switch) → dicatat, dicoba aktif ulang, gap>ambang → V2 · T-27 visibilitychange terekam dengan durasi; akumulasi menaikkan keparahan validitas · T-28 pencocokan wajah berkala gagal → penanda, bukan penghentian otomatis.
+T-01 IQ→level sesuai sheet 04 · T-02 SW→level · T-03 PAPI raw (90 item, 20 dimensi, ROLE/NEED seimbang) · T-04 PAPI optimal (zona W `[4,7]`; 0/5/9→1/5/3; seluruh nilai 0–9 pada 20 dimensi) · T-05 RMIB→level + competition tie · T-06 zona · **T-07 DASS tak memengaruhi kelayakan (dua sesi psikotes identik, DASS Normal vs Sangat Parah → zona & label IDENTIK; MUTLAK)** · T-08..T-11 DASS skoring/ambang/umum/tak-lengkap · T-12..T-17 guardrail G1/G2/G3/G5/G7/G8 · T-18 standar per bidang · T-19 batas aspek non-kritis · T-20 determinisme narasi · T-21 konektor tak berulang · T-22 DIPERTIMBANGKAN wajib bersyarat · T-23 matriks akses · T-24 paket DASS mandiri tersedia dan paket psikotes utama selalu memuat entitlement DASS · T-25 izin kamera ditolak → V2 (mode wajib → tak boleh mulai) · T-26 stream kamera mati di tengah (mobile app-switch) → dicatat, dicoba aktif ulang, gap>ambang → V2 · T-27 visibilitychange terekam dengan durasi; akumulasi menaikkan keparahan validitas · T-28 pencocokan wajah berkala gagal → penanda, bukan penghentian otomatis.
 
 ## 14. Fase Build
 
@@ -298,7 +296,7 @@ F6  Dokumen: HPP dwibahasa (template v2.3) + Lembar Internal; Browser Rendering;
 F7  Dashboard admin/cabang + fee cabang + proctoring view. Matriks akses T-23.
 F8  (Opsional) gateway tambahan / Midtrans via adapter yang sama, bila diperlukan.
 F9  Hardening: uji beban Kraepelin, retensi cron, backup, validasi psikometrik Tahap 0,
-    review terjemahan JP, seluruh 24 uji penerimaan hijau termasuk T-07.
+    review terjemahan JP, seluruh 28 uji penerimaan hijau termasuk T-07.
 ```
 
 ## 15. Butir Terbuka (dari HPP §14 + rekonsiliasi)

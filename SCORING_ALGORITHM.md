@@ -1,107 +1,121 @@
-# SCORING_ALGORITHM.md — psikotes.oncam.id (v3.0 FINAL)
+# SCORING ALGORITHM — psikotes.oncam.id
 
-Dokumen kanonik logika skoring. Setiap perubahan di sini WAJIB: bump `engine_version`, entri CHANGELOG.md, dan lulus ulang TEST_PLAN.md §unit-scoring. Instrumen yang dipakai: **IST, PAPI Kostick, RMIB, Kraepelin** (bukan MBTI/DISC/Big Five — koreksi atas draft list arsitektur).
+Versi kontrak: **SCORING-4.3.0**
+Versi data normalisasi: **F2-2026.09**
+Status: FINAL untuk implementasi F2
 
-Status legenda: ✅ FINAL — semua metode disahkan psikolog (Rizqi Ulin Nuha, S.Psi.) via balasan + Tabel Lookup v1.1. Tidak ada lagi butir menggantung yang memblokir skoring.
+Dokumen ini adalah kontrak kanonik algoritme skoring. Perubahan metode wajib menaikkan versi kontrak dan data, dicatat di `CHANGELOG.md`, serta mengulang uji unit skoring dan golden F0. Seluruh norma, kunci, cutoff, zona optimal, dan mapping level dibaca dari data berversi; angka psikometri tidak disalin ke kode aplikasi.
 
-## 1. Pipeline
+## 1. Urutan sumber keputusan
 
-```
-jawaban mentah → skor alat tes (per instrumen, §2–5)
-             → normalisasi ke skala 1–10 per sumber (§6.2)
-             → agregasi per aspek (§6.3, tabel aspect_formulas)
-             → band narasi Poor…Excellent (§6.7)
-             → laporan Format Serbaindo (18 aspek + IQ + INTEGRATION)
-```
+Jika sumber lama bertentangan, gunakan urutan berikut:
 
-Semua tabel norma/kamus adalah **data** (hasil ekstraksi F0), bukan kode. Engine murni-fungsional di `packages/scoring`, tanpa I/O.
+1. keputusan produk pada PRD terbaru;
+2. konfirmasi akhir psikolog untuk metode;
+3. Tabel Lookup Skoring Psikotes v1.1 untuk angka dan band;
+4. golden test sebagai bukti reproduksi;
+5. dokumen teknis lama hanya untuk bagian yang tidak bertentangan.
 
-## 2. IST ✅ FINAL
-- 9 subtes, 176 item: SE20 WA20 AN20 GE16 RA20 ZR20 FA20 WU20 ME20. Durasi: SE6′ WA6′ AN7′ GE8′ RA10′ ZR10′ FA7′ WU9′ ME 3′+6′.
-- Non-GE: benar=1 via `ist_keys`. GE: normalisasi (trim/lowercase) → `ist_ge_keys` 0/1/2; miss=0; miss dicatat ke `ist_ge_unknown`.
-- RW subtes → SW: **sheet 01 Tabel Lookup** (tabel tunggal tanpa usia; kolom GE terpisah, skala RW 0–32). SE RW16=131 (koreksi terverifikasi). Parser F0 wajib menangani dua blok kolom berdampingan (GE di kolom A–B, 8 subtes lain di kolom C+).
-- RW subtes → skor 1–10: sheet 02 (belah-dua kategori).
-- IQ: ΣRW → IQ (sheet 03) → skor 1–10 (sheet 04). Clamp: RW<28→IQ77, RW>151→IQ132.
+Keputusan dan konsekuensi rekonsiliasi dicatat dalam ADR-0028.
 
-## 3. PAPI Kostick ✅ FINAL
-- 90 forced-choice (45 ROLE + 45 NEED) → 20 dimensi via `Dimensi Mapping`. Invarian: ΣROLE=45, ΣNEED=45; skor dimensi 0–9.
-- **Untuk HPP**: tiap dimensi → pita warna (sheet 08) → skor 1–10 (Putih=8, Biru=7, Kuning-bawah=3, Kuning-atas=5) → rata-rata ke sub-aspek. Sheet 08 menutup 0–9 penuh, tanpa celah/overlap (terverifikasi 20 dimensi).
-- Sheet 09 (keadaptifan 7 aspek) = arsip profil wawancara, BUKAN input HPP.
-- 4 dimensi (G, I, X, Z) tak masuk sub-aspek HPP.
+## 2. Pipeline final
 
-## 4. RMIB ✅
-
-- 9 kelompok (A–I) × 12 pekerjaan, daftar L/P terpisah; UI drag-and-drop (ranking unik by design). Skor kategori = Σ ranking lintas kelompok (9–108, kecil = diminati). Invarian: Σ 12 kategori = 702.
-- Ranking kategori 1–12 → minat tertinggi 1–3 + interpretasi.
-
-## 5. Kraepelin ✅ FINAL
-Format: 50 kolom × 15 dtk = 12,5 mnt, 27 penjumlahan/kolom (28 angka), penjumlahan bawah→atas, auto-advance, tak bisa kembali. "Dilewati" = sel dilompati di tengah (bukan sisa kolom karena waktu habis).
-
-```
-Panker : RS = ΣY / 50               (Y = capaian benar per lajur)
-Tianker: RS = Σsalah + Σdilewati
-Janker : RS = max(Y) − min(Y)
-Hanker : b × 50, b = (N·ΣXY − ΣX·ΣY)/(N·ΣX² − (ΣX)²)   ← FINAL, 2 golden test (S1/S2 & SMA/SMK)
-```
-Tiap RS → kategori & skor 1–10 per **grup norma** (sheet 06; pemetaan grup sheet 07, cadangan SMA/SMK bila profil tak lengkap). Aturan tepi: capaian lajur>27 atau benar+salah≠capaian → TOLAK; |Hanker|>Janker → CURIGA HITUNG (tahan laporan). Golden test §6.6.
-
-Norma disusun dari peserta tulis-tangan; sistem mengetik → perlu uji kesetaraan (≥100 peserta digital/grup; tinjau Panker & Tianker; psikolog memvalidasi; cutoff dapat diganti tanpa rilis). Laporan sementara pakai cutoff kertas; keterbatasan dicatat di lampiran metodologi.
-
-## 6. Agregasi 18 Sub-Aspek 1–10 — ✅ FINAL v3.0 (sumber: balasan psikolog + Tabel Lookup v1.1 + Manual Skoring HPP)
-
-Menggantikan seluruh draf sebelumnya. Struktur final **18 sub-aspek** yang dinilai & dinarasikan (bukan 26). "26" versi lama mencampur skor alat mentah dengan sub-aspek agregat — diluruskan: skor alat mentah tetap dihitung namun turun status jadi **lampiran skor rinci**, bukan tubuh laporan. Semua parameter (bobot, ambang, daftar knockout, pita) dibaca dari **Tabel Lookup v1.1** sebagai data, bukan hardcode.
-
-### 6.1 Tiga lapis
-```
-Lapis 1  jawaban → skor alat (kunci/kamus dari Penilaian_*.xlsx)
-Lapis 2  skor alat → norma → skor 1–10 per SUMBER (tabel Lookup)
-Lapis 3  rata-rata sederhana → 18 sub-aspek → Total HPP → rekomendasi
+```text
+jawaban mentah
+  -> skor mentah instrumen
+  -> skor sumber / level 1–5 berversi
+  -> agregasi 18 aspek
+  -> standar bidang GA-2026.08
+  -> zona dan guardrail
+  -> draf narasi
+  -> tinjau dan tanda tangan psikolog
 ```
 
-### 6.2 Konversi tiap sumber ke 1–10
-- **IST subtes**: RW→SW (sheet 01, tabel tunggal tanpa usia; GE skala 0–32) → skor 1–10 (sheet 02, **belah-dua kategori**, BUKAN interpolasi — SW berjenjang, bukan kontinu; koreksi atas usul interpolasi saya).
-- **IST General Intelligence**: ΣRW 9 subtes → IQ (sheet 03; skala mean 100 SD 15, beda dari SW SD 10 — jangan dipertukarkan) → skor 1–10 (sheet 04).
-- **Kraepelin**: nilai faktor → kategori & skor per **grup norma** (sheet 06; grup dari sheet 07). Hanker = regresi b×50 (FINAL, bukan (P+J)/2).
-- **PAPI (untuk HPP)**: tiap dimensi → pita warna (sheet 08) → skor 1–10 via tabel warna Manual: **Putih=8, Biru=7, Kuning ujung-bawah=3, Kuning ujung-atas=5**; skor per dimensi dirata-ratakan ke sub-aspek. **Sheet 09 (keadaptifan 7 aspek) TIDAK dipakai HPP** — arsip profil wawancara. Draf lama berbasis sheet 09 DIBATALKAN atas ketentuan psikolog.
-- **RMIB**: rank kategori 1–12 → skor 1–10 (sheet 11: 1→10 … 12→1).
+DASS-21 berjalan pada jalur terpisah dan tidak menjadi input zona atau label kelayakan.
 
-### 6.3 18 sub-aspek
+## 3. IST
+
+- Sembilan subtes dan 176 item: SE20, WA20, AN20, GE16, RA20, ZR20, FA20, WU20, ME20.
+- Non-GE: benar bernilai 1 dari `keys`. GE: jawaban dinormalisasi dan dicocokkan ke `ge_dictionary` dengan nilai 0/1/2; jawaban tidak dikenal bernilai 0 dan dicatat.
+- RW per subtes menjadi SW melalui tabel norma berversi. Batas domain mengikuti jumlah item; GE memiliki domain 0–32.
+- SW menjadi level melalui kategori sheet 02: `≤80→1`, `81–94→2`, `95–104→3`, `105–118→4`, `≥119→5`.
+- IQ: jumlah RW sembilan subtes menjadi IQ melalui sheet 03, kemudian skor 1–10 melalui sheet 04. Pasangan skor `[1,2]`, `[3,4]`, `[5,6]`, `[7,8]`, dan `[9,10]` masing-masing menjadi level 1–5. Mapping eksplisit `iq_level_bands` menghasilkan `IQ≤90→1`, `91–102→2`, `103–114→3`, `115–126→4`, `≥127→5`.
+- Semua lookup harus menyimpan band, skor sumber, level, kategori, dan versi yang digunakan untuk audit.
+
+## 4. PAPI Kostick
+
+- 90 forced-choice menghasilkan 20 dimensi pada domain 0–9. Invarian: 45 ROLE, 45 NEED, dan setiap dimensi memiliki sembilan peluang skor.
+- Normalisasi HPP memakai metode `distance_from_white_zone` dari konfirmasi akhir psikolog dan SPEC v4.3.
+- Untuk zona putih `[lo,hi]`, jarak adalah `lo-raw` bila raw di bawah zona, `raw-hi` bila di atas, dan 0 bila di dalam. Data `distance_to_level` menetapkan `0→5`, `1→4`, `2→3`, `3→2`, dan `≥4→1`.
+- Penyimpangan bawah dan atas simetris. Contoh acceptance W dengan zona `[4,7]`: raw 0/5/9 menghasilkan level 1/5/3.
+- Dimensi G, I, X, dan Z tetap dihitung dan terlihat oleh psikolog, tetapi tidak masuk agregasi HPP. Enam belas dimensi lain dapat menjadi sumber aspek.
+- Pita warna dan `band_scores` dari sheet 08 dipertahankan sebagai profil historis/visual, bukan input level HPP.
+
+## 5. RMIB
+
+- Sembilan kelompok masing-masing memakai rank unik 1–12; jumlah per kelompok 78 dan total seluruh respons 702.
+- Skor kategori adalah jumlah sembilan rank. Nilai lebih kecil berarti minat lebih tinggi.
+- Rank kategori memakai competition ranking setara formula Excel `RANK(...,1)`: total sama mendapat rank sama dan rank sesudahnya terlewati.
+- Sheet 11 memberi rank→skor: `1→10`, `2→9`, `3→8`, `4→7`, `5→6`, `6→6`, `7→5`, `8→5`, `9→4`, `10→3`, `11→2`, `12→1`.
+- Mapping `rank_to_level` memadatkan skor berpasangan: rank `1–2→5`, `3–4→4`, `5–8→3`, `9–10→2`, `11–12→1`.
+- Lima kategori bidang tujuan menjadi D1–D5; tujuh kategori lain disimpan untuk tinjauan psikolog.
+
+## 6. Kraepelin
+
+- 50 kolom, 27 penjumlahan per kolom, 15 detik per kolom. Capaian adalah jumlah yang dikerjakan: `benar+salah`.
+- `Panker = Σcapaian / 50`.
+- `Tianker = Σsalah + Σterlewat`.
+- `Janker = max(capaian) - min(capaian)`.
+- `Hanker = b × 50`, dengan `b = (NΣXY - ΣXΣY) / (NΣX² - (ΣX)²)`.
+- Sebelum lookup cutoff, setiap faktor dibulatkan ke tiga desimal dengan midpoint half-up. Nilai masukan dan nilai lookup setelah pembulatan disimpan bersama provenance.
+- Capaian di atas 27, capaian yang tidak sama dengan benar+salah, atau capaian+terlewat di atas 27 ditolak. `abs(Hanker)>Janker` menghasilkan penanda tinjauan.
+- Fallback S1/S2 IPS ke norma S1/S2 IPA hanya berlaku untuk Tianker dan Hanker, sesuai data.
+
+Golden wajib:
+
+- S1/S2: Σcapaian 793, salah 7, terlewat 0 → Panker 15,86; Tianker 7; Hanker -0,622; Janker 7.
+- SMA/SMK: Σcapaian 656, salah 4, terlewat 1 → Panker 13,12; Tianker 5; Hanker 5,032; Janker 6.
+
+## 7. DASS-21
+
+- Item D = 3,5,10,13,16,17,21; A = 2,4,7,9,15,19,20; S = 1,6,8,11,12,14,18.
+- Jumlah mentah setiap subskala dikali 2 lalu dibandingkan dengan cutoff DASS-42 yang inklusif.
+- Kategori umum adalah kategori terberat dari D/A/S; seri mempertahankan semua subskala dasar.
+- Input harus berisi tepat 21 respons integer 0–3. Set tidak lengkap, duplikat, item tidak dikenal, atau nilai di luar domain ditolak.
+- Keluaran scorer tidak memuat zona, eligibility, label, diagnosis, atau rekomendasi kerja.
+
+## 8. Agregasi 18 aspek
+
+Setiap sumber telah menjadi level 1–5. Level dikonversi ke jangkar `{1:1,2:3,3:5,4:7,5:9}`, dirata-ratakan tanpa bobot, lalu dibulatkan half-up dan di-clamp ke 1–10. Level aspek akhir adalah `ceil(skor/2)`. Rincian sumber, jangkar, nilai sebelum pembulatan, nilai akhir, dan versi aturan wajib disimpan.
+
+Komposisi aspek mengikuti SPEC v4.3 §5. D1–D5 memakai skor RMIB sheet 11 untuk kategori yang dipetakan. DASS-21 tidak memiliki jalur ke agregasi ini.
+
+## 9. Zona dan rekomendasi
+
+Level aspek dibandingkan dengan standar bidang berversi GA-2026.08:
+
+- `level ≥ standar` → Terpenuhi;
+- `level = standar-1` → Grey Area;
+- `level ≤ standar-2` → Belum Terpenuhi.
+
+Penetapan label dan guardrail G1–G9 mengikuti SPEC v4.3 §6. Aspek kritis adalah A1, B2, C4, dan C5. Standar, versi standar, level sistem, level final, zona, label sistem, label final, dan alasan override disimpan berdampingan.
+
+## 10. Uji wajib sebelum perubahan diterima
+
+- T-01 menguji seluruh batas IQ 90/91, 102/103, 114/115, dan 126/127.
+- T-02 menguji seluruh batas SW.
+- T-03 menguji 90 item PAPI, 20 dimensi, domain 0–9, serta invarian ROLE/NEED.
+- T-04 menguji semua nilai 0–9 pada seluruh dimensi PAPI dan fixture W 0/5/9→1/5/3.
+- T-05 menguji semua rank RMIB 1–12 dan competition tie.
+- Kraepelin menguji dua golden, midpoint half-up, batas cutoff, dan penanda `abs(Hanker)>Janker`.
+- T-07 membandingkan dua hasil psikotes identik dengan DASS Normal versus Sangat Parah dan mewajibkan zona serta label identik.
+- T-08–T-11 menguji mapping, cutoff, kategori terberat, dan input DASS fail-closed.
+
+Perintah minimum:
+
+```powershell
+php vendor/bin/phpunit --no-configuration --bootstrap vendor/autoload.php tests/Unit/Scoring
+python -m unittest tools.extract.tests.test_f0 -v
+php vendor/bin/pint --test app/Services/Scoring tests/Unit/Scoring
+$env:APP_ENV='testing'; php vendor/bin/phpstan analyse --no-progress app/Services/Scoring tests/Unit/Scoring
 ```
-A. Intellectual (2)      A1 General Intelligence · A2 Analysis-Synthesis
-B. Special Ability (4)   B1 Concentration&Memory · B2 Speed&Accuracy · B3 Comprehension · B4 Systematic
-C. Personality (7)       C1 Maturity&Self-Confidence · C2 Communication&Responsibility ·
-                         C3 Initiative-Social Adjusted · C4 Stress Resistance&Stability ·
-                         C5 Endurance · C6 Persistency · C7 Direction&Work Style
-D. Job Interest (5)      D1 Outdoor · D2 Mechanical · D3 Practical · D4 Medical · D5 Social Service
-```
-Tiap sub-aspek = **rata-rata sederhana** skor sumbernya (tanpa bobot), dibulatkan (≥0,5 ke atas) ke 1–10. Komposisi sumber dibaca dari Manual/Tabel Lookup. Empat dimensi PAPI (G, I, X, Z) tak masuk sub-aspek mana pun — konsekuensi rancangan; tetap dihitung untuk arsip.
-
-### 6.4 Total HPP & rekomendasi (sheet 12–13 FINAL v1.1)
-- **Bobot semua 1,0** (General Intelligence dikembalikan 2→1). `Total HPP = Σ(skor×bobot)÷Σbobot` = rata-rata 18 sub-aspek. Bobot dibaca dari kolom, bukan hardcode.
-- **Ambang resmi:** Disarankan ≥7,00 · Dipertimbangkan 5,00–6,99 · Tidak Disarankan <5,00. Batas **inklusif** (7,00→Disarankan; 5,00→Dipertimbangkan).
-- **Urutan evaluasi WAJIB:** (1) knockout dulu, (2) baru ambang total.
-
-### 6.5 Knockout — lapis agregat, 13 sub-aspek (KRITIS)
-Dievaluasi pada **18 sub-aspek hasil rata-rata**, BUKAN skor alat mentah. Cakupan **hanya 13 sub-aspek A+B+C**; **kelima D (Job Interest) DIKECUALIKAN** dari knockout & dari syarat Disarankan.
-- Alasan psikolog: RMIB forced-ranking — tiap peserta pasti taruh satu bidang di urutan 12 (skor 1). Tanpa pengecualian ~42% ter-knockout & ~68% mustahil Disarankan, semata minat bukan kemampuan.
-- A/B/C berskor **1** → override Tidak Disarankan, apa pun total.
-- A/B/C berskor **2** → gugurkan label Disarankan (turun Dipertimbangkan), tidak knockout.
-- Job Interest berskor 1 → skor rendah biasa; tak pengaruhi label.
-- Daftar tunduk-knockout dibaca dari kolom sheet 12.
-
-### 6.6 Golden test Kraepelin (fixture WAJIB F0) ✅ terverifikasi
-File `Contoh_Skoring_Kraeplin_by_Rizqi_v1_1.xlsx`, peserta S1/S2, 50 lajur: ΣY=793, salah=7, dilewati=0.
-```
-Panker 15,86 → S1/S2 IPA=7 (Baik) · S1/S2 IPS=8 (Baik)
-Tianker 7    → 6 (Sedang)
-Hanker −0,62 → 4 (Kurang)
-Janker 7     → 6 (Sedang)
-```
-Diverifikasi cocok terhadap tabel + percabangan grup. Engine WAJIB reproduksi persis. Golden kedua (non-S1/S2) menyusul; sementara pakai sintetis, jangan tahan build.
-
-### 6.7 Band narasi (Lampiran C psikolog)
-`1–2 Poor · 3–4 Marginal · 5–6 Average · 7–8 Good · 9–10 Excellent`. Narasi 5 tingkat untuk skor 10 tingkat → peserta skor 7 & 8 dapat kalimat sama pada sub-aspek itu; pembeda hanya letak centang. Wajar, bukan bug.
-
-## 7. Validasi (ringkas — detail di TEST_PLAN.md)
-
-Regresi wajib: (a) IST/PAPI/RMIB skor ulang sampel historis == sumber; (b) Kraepelin faktor == golden §6.6; (c) invarian PAPI ROLE=45/NEED=45, RMIB=702, per-kelompok=78; (d) agregasi selalu 1–10; (e) golden laporan per band; (f) **knockout**: A/B/C=1 → Tidak Disarankan meski total ≥7; Job Interest=1 → label tak berubah; sub-aspek=2 → maksimal Dipertimbangkan; (g) **urutan** knockout-dulu-baru-ambang; (h) **aturan tepi sheet 14**: clamp IQ 77/132; TOLAK TIDAK SAH bila RW subtes>butir, capaian lajur>27, benar+salah≠capaian, ΣROLE≠45, ΣNEED≠45, rank≠702, rank/kelompok≠78; **CURIGA HITUNG** bila |Hanker|>Janker → tahan laporan; (i) batas kategori inklusif dua sisi.

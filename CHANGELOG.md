@@ -1,6 +1,7 @@
 # CHANGELOG
 
 ## [Unreleased] — F1 fondasi
+- Rekonsiliasi kontrak psikometri ke SCORING-4.3.0/F2-2026.09: IQ dan RMIB mengikuti tabel lookup v1.1, PAPI memakai jarak dari zona putih, RMIB memakai competition ranking, serta faktor Kraepelin dibulatkan half-up tiga desimal sebelum lookup.
 - Ganti halaman awal bawaan Laravel dengan landing page ONCAM Psikotes yang responsif, berfokus pada alur asesmen CPMI Jepang, tinjauan psikolog, privasi, dan pendaftaran peserta.
 - Pertahankan paket DASS-21 mandiri gratis; setiap paket psikotes utama menyertakan DASS-21 secara otomatis tanpa kontrol tambah/hapus pada pilihan paket. Narasi pilihan paket disederhanakan, sementara isolasi hasil DASS dari kelayakan tetap berlaku.
 - Bootstrap Laravel 13 + Inertia 3/React 19 dengan lockfile PHP/frontend dan quality gate otomatis.
