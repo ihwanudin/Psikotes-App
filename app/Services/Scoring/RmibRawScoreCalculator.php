@@ -108,10 +108,13 @@ final readonly class RmibRawScoreCalculator
     /**
      * @param  array<mixed>  $responses
      * @return array{
-     *     categories: array<int, array{code: string, name: string, total: int, rank: int, cell_count: int}>,
+     *     categories: array<int, array{code: string, name: string, total: int, rank: int|null, cell_count: int}>,
      *     group_sums: array<int, int>,
      *     total_rank_sum: int,
-     *     response_count: int
+     *     response_count: int,
+     *     ranking_status: 'ranked'|'unranked',
+     *     review_required: bool,
+     *     review_reason: string|null
      * }
      */
     public function calculate(array $responses): array
@@ -173,18 +176,18 @@ final readonly class RmibRawScoreCalculator
             throw new InvalidArgumentException('RMIB total rank sum must equal 702.');
         }
 
-        if (count(array_unique($categoryTotals)) !== 12) {
-            throw new InvalidArgumentException('RMIB category totals contain a tie and require psychologist review.');
-        }
+        $hasTies = count(array_unique($categoryTotals)) !== 12;
+        $ranks = array_fill_keys(array_keys($categoryTotals), null);
 
-        $ranked = array_keys($categoryTotals);
-        usort($ranked, static function (int $left, int $right) use ($categoryTotals): int {
-            return $categoryTotals[$left] <=> $categoryTotals[$right];
-        });
-        $ranks = [];
+        if (! $hasTies) {
+            $ranked = array_keys($categoryTotals);
+            usort($ranked, static function (int $left, int $right) use ($categoryTotals): int {
+                return $categoryTotals[$left] <=> $categoryTotals[$right];
+            });
 
-        foreach ($ranked as $offset => $category) {
-            $ranks[$category] = $offset + 1;
+            foreach ($ranked as $offset => $category) {
+                $ranks[$category] = $offset + 1;
+            }
         }
 
         $results = [];
@@ -204,6 +207,9 @@ final readonly class RmibRawScoreCalculator
             'group_sums' => $groupSums,
             'total_rank_sum' => array_sum($categoryTotals),
             'response_count' => count($seen),
+            'ranking_status' => $hasTies ? 'unranked' : 'ranked',
+            'review_required' => $hasTies,
+            'review_reason' => $hasTies ? 'category_total_tie_requires_policy' : null,
         ];
     }
 

@@ -22,6 +22,9 @@ final class RmibRawScoreCalculatorTest extends TestCase
 
         $this->assertSame(108, $result['response_count']);
         $this->assertSame(702, $result['total_rank_sum']);
+        $this->assertSame('ranked', $result['ranking_status']);
+        $this->assertFalse($result['review_required']);
+        $this->assertNull($result['review_reason']);
         $this->assertSame(array_fill(1, 9, 78), $result['group_sums']);
         $this->assertSame(
             [1 => 9, 2 => 18, 3 => 27, 4 => 36, 5 => 45, 6 => 54, 7 => 63, 8 => 72, 9 => 81, 10 => 90, 11 => 99, 12 => 108],
@@ -36,7 +39,7 @@ final class RmibRawScoreCalculatorTest extends TestCase
         $this->assertSame(9, $result['categories'][1]['cell_count']);
     }
 
-    public function test_tied_category_totals_are_rejected_for_psychologist_review(): void
+    public function test_tied_category_totals_are_preserved_as_unranked_for_psychologist_review(): void
     {
         $data = $this->canonicalData();
         $calculator = new RmibRawScoreCalculator($data['categories'], $data['rotation']);
@@ -49,10 +52,16 @@ final class RmibRawScoreCalculatorTest extends TestCase
             $data['rotation'],
         );
 
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('RMIB category totals contain a tie and require psychologist review.');
+        $result = $calculator->calculate($responses);
 
-        $calculator->calculate($responses);
+        $this->assertSame(108, $result['response_count']);
+        $this->assertSame(702, $result['total_rank_sum']);
+        $this->assertSame(array_fill(1, 9, 78), $result['group_sums']);
+        $this->assertSame('unranked', $result['ranking_status']);
+        $this->assertTrue($result['review_required']);
+        $this->assertSame('category_total_tie_requires_policy', $result['review_reason']);
+        $this->assertLessThan(12, count(array_unique(array_column($result['categories'], 'total'))));
+        $this->assertSame(array_fill(0, 12, null), array_column($result['categories'], 'rank'));
     }
 
     /** @param array<mixed> $responses */
