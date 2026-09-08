@@ -1,5 +1,12 @@
 {
+  "version": "F2-2026.09",
   "hanker_formula": "slope_b_x_50",
+  "panker_achievement": "correct_plus_incorrect",
+  "factor_rounding": {
+    "stage": "before_band_lookup",
+    "precision": 3,
+    "mode": "half_up"
+  },
   "score_bands": [
     {
       "factor": "Panker",

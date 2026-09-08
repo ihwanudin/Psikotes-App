@@ -22,6 +22,10 @@ class F0GateTest(unittest.TestCase):
         self.assertTrue(all(item["answers"] for item in data["ge_dictionary"]))
         self.assertEqual(len(data["sw_score_bands"]), 10)
         self.assertEqual(len(data["iq_score_bands"]), 10)
+        self.assertEqual(
+            [(band["lo"], band["hi"], band["level"]) for band in data["iq_level_bands"]],
+            [(127, None, 5), (115, 126, 4), (103, 114, 3), (91, 102, 2), (None, 90, 1)],
+        )
         self.assertTrue(all(not item["key"].endswith(".0") for item in data["keys"]))
         ra1 = next(item for item in data["keys"] if item["subtest"] == "RA" and item["item"] == 1)
         self.assertEqual(ra1["key"], "3, 5")
@@ -74,12 +78,17 @@ class F0GateTest(unittest.TestCase):
             "white": 8, "blue_low": 7, "blue_high": 7,
             "yellow_low": 3, "yellow_high": 5,
         })
+        self.assertEqual(data["normalization"]["method"], "distance_from_white_zone")
+        self.assertEqual(data["normalization"]["distance_to_level"], {"0": 5, "1": 4, "2": 3, "3": 2, "4": 1})
+        self.assertEqual(data["normalization"]["excluded_from_hpp"], ["G", "I", "X", "Z"])
 
     def test_rmib_invariants(self):
         data = self.load("rmib.json")
         self.assertEqual(sum(range(1, 13)) * 9, 702)
         self.assertTrue(all(sum(range(1, 13)) == 78 for _ in range(9)))
         self.assertEqual(len(data["rotation"]), 108)
+        self.assertEqual(data["tie_policy"], "competition_ranking")
+        self.assertEqual(data["rank_to_level"], {str(rank): (score + 1) // 2 for rank, score in data["rank_to_score"].items()})
 
     def test_dass_invariants(self):
         data = self.load("dass21.json")
@@ -102,7 +111,10 @@ class F0GateTest(unittest.TestCase):
         self.assertEqual(kraepelin_factors(y, 4, 1), {"panker": 13.12, "tianker": 5, "hanker": 5.032, "janker": 6})
 
     def test_kraepelin_golden_scores(self):
-        bands = self.load("kraepelin.json")["score_bands"]
+        data = self.load("kraepelin.json")
+        bands = data["score_bands"]
+        self.assertEqual(data["panker_achievement"], "correct_plus_incorrect")
+        self.assertEqual(data["factor_rounding"], {"stage": "before_band_lookup", "precision": 3, "mode": "half_up"})
         first = [("Panker",15.86),("Tianker",7),("Hanker",-0.622),("Janker",7)]
         self.assertEqual([kraepelin_score(bands,f,"S1/S2 (IPA)",v) for f,v in first], [7,6,4,6])
         second = [("Panker",13.12),("Tianker",5),("Janker",6),("Hanker",5.032)]

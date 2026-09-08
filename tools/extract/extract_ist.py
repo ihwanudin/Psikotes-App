@@ -48,8 +48,16 @@ def extract(root):
           for ns2 in [lookup["03 IST RWtotal ke IQ"]] for r in range(6, 62)]
     sw_score_bands = score_bands(lookup["02 IST SW ke Skor"], include_split_status=True)
     iq_score_bands = score_bands(lookup["04 IST IQ ke Skor"])
-    data = {"version":"F0-2026.08", "keys":keys, "ge_dictionary":ge, "norms":norms, "iq_ranges":iq,
+    iq_level_bands = [
+        {"level": 5, "lo": 127, "hi": None, "source_scores": [9, 10], "category": "Baik hingga Baik Sekali"},
+        {"level": 4, "lo": 115, "hi": 126, "source_scores": [7, 8], "category": "Cukup Baik"},
+        {"level": 3, "lo": 103, "hi": 114, "source_scores": [5, 6], "category": "Sedang"},
+        {"level": 2, "lo": 91, "hi": 102, "source_scores": [3, 4], "category": "Agak Kurang"},
+        {"level": 1, "lo": None, "hi": 90, "source_scores": [1, 2], "category": "Kurang hingga Kurang Sekali"},
+    ]
+    data = {"version":"F2-2026.09", "keys":keys, "ge_dictionary":ge, "norms":norms, "iq_ranges":iq,
             "sw_score_bands":sw_score_bands, "iq_score_bands":iq_score_bands,
+            "iq_level_bands":iq_level_bands,
             "match_strategy":{"SE":"option_prefix","WA":"option_prefix","AN":"option_prefix",
                               "RA":"formula_character_membership","ZR":"formula_character_membership",
                               "FA":"exact","WU":"exact","ME":"option_prefix"}}

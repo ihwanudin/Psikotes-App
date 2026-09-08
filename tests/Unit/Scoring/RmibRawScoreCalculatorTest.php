@@ -39,7 +39,7 @@ final class RmibRawScoreCalculatorTest extends TestCase
         $this->assertSame(9, $result['categories'][1]['cell_count']);
     }
 
-    public function test_tied_category_totals_are_preserved_as_unranked_for_psychologist_review(): void
+    public function test_tied_category_totals_use_excel_compatible_competition_ranking(): void
     {
         $data = $this->canonicalData();
         $calculator = new RmibRawScoreCalculator($data['categories'], $data['rotation']);
@@ -57,11 +57,16 @@ final class RmibRawScoreCalculatorTest extends TestCase
         $this->assertSame(108, $result['response_count']);
         $this->assertSame(702, $result['total_rank_sum']);
         $this->assertSame(array_fill(1, 9, 78), $result['group_sums']);
-        $this->assertSame('unranked', $result['ranking_status']);
-        $this->assertTrue($result['review_required']);
-        $this->assertSame('category_total_tie_requires_policy', $result['review_reason']);
+        $this->assertSame('ranked_with_ties', $result['ranking_status']);
+        $this->assertFalse($result['review_required']);
+        $this->assertNull($result['review_reason']);
         $this->assertLessThan(12, count(array_unique(array_column($result['categories'], 'total'))));
-        $this->assertSame(array_fill(0, 12, null), array_column($result['categories'], 'rank'));
+        $totals = array_column($result['categories'], 'total');
+
+        foreach ($result['categories'] as $category) {
+            $expectedRank = 1 + count(array_filter($totals, static fn (int $total): bool => $total < $category['total']));
+            $this->assertSame($expectedRank, $category['rank']);
+        }
     }
 
     /** @param array<mixed> $responses */

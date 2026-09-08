@@ -20,12 +20,25 @@ final class KraepelinBandMapper
     /** @var array<string, array<string, string>> */
     private array $fallbacks;
 
+    private int $roundingPrecision;
+
     /**
      * @param  array<mixed>  $scoreBands
      * @param  array<mixed>  $groupFallbacks
+     * @param  array<mixed>  $factorRounding
      */
-    public function __construct(array $scoreBands, array $groupFallbacks = [])
+    public function __construct(array $scoreBands, array $groupFallbacks, array $factorRounding)
     {
+        if (($factorRounding['stage'] ?? null) !== 'before_band_lookup'
+            || ($factorRounding['mode'] ?? null) !== 'half_up'
+            || ! isset($factorRounding['precision'])
+            || ! is_int($factorRounding['precision'])
+            || $factorRounding['precision'] < 0
+            || $factorRounding['precision'] > 6) {
+            throw new InvalidArgumentException('Kraepelin factor rounding configuration is invalid.');
+        }
+
+        $this->roundingPrecision = $factorRounding['precision'];
         if (! array_is_list($scoreBands) || $scoreBands === []) {
             throw new InvalidArgumentException('Kraepelin score bands must be a non-empty list.');
         }
@@ -143,6 +156,7 @@ final class KraepelinBandMapper
      *     group: string,
      *     factors: array<string, array{
      *         raw_factor: int|float,
+     *         band_factor: float,
      *         requested_group: string,
      *         applied_group: string,
      *         direction: string,
@@ -177,12 +191,14 @@ final class KraepelinBandMapper
                 throw new InvalidArgumentException('Kraepelin factor values must be finite integers or floats.');
             }
 
+            $bandFactor = round((float) $value, $this->roundingPrecision, PHP_ROUND_HALF_UP);
+
             $appliedGroup = $this->fallbacks[$group][$factor] ?? $group;
             $matchedBand = null;
 
             foreach ($this->bands[$appliedGroup][$factor] as $band) {
-                if (($band['lo'] === null || $value >= $band['lo'])
-                    && ($band['hi'] === null || $value <= $band['hi'])) {
+                if (($band['lo'] === null || $bandFactor >= $band['lo'])
+                    && ($band['hi'] === null || $bandFactor <= $band['hi'])) {
                     $matchedBand = $band;
                     break;
                 }
@@ -194,6 +210,7 @@ final class KraepelinBandMapper
 
             $mapped[$factor] = [
                 'raw_factor' => $value,
+                'band_factor' => $bandFactor,
                 'requested_group' => $group,
                 'applied_group' => $appliedGroup,
                 'direction' => $this->directions[$appliedGroup][$factor],

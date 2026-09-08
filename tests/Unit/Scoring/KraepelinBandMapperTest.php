@@ -34,6 +34,7 @@ final class KraepelinBandMapperTest extends TestCase
         $this->assertSame(['Baik', 'Sedang', 'Kurang', 'Sedang'], array_column($result['factors'], 'category'));
         $this->assertSame([
             'raw_factor' => 15.86,
+            'band_factor' => 15.86,
             'requested_group' => 'S1/S2 (IPA)',
             'applied_group' => 'S1/S2 (IPA)',
             'direction' => 'higher_is_better',
@@ -108,7 +109,7 @@ final class KraepelinBandMapperTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage($message);
 
-        new KraepelinBandMapper($bands, $fallbacks);
+        new KraepelinBandMapper($bands, $fallbacks, self::loadCanonicalData()['factor_rounding']);
     }
 
     /** @return iterable<string, array{array<mixed>, array<mixed>, string}> */
@@ -166,11 +167,19 @@ final class KraepelinBandMapperTest extends TestCase
 
     private function mapper(): KraepelinBandMapper
     {
-        return new KraepelinBandMapper(self::loadCanonicalBands(), self::S1_S2_IPS_FALLBACKS);
+        $data = self::loadCanonicalData();
+
+        return new KraepelinBandMapper($data['score_bands'], self::S1_S2_IPS_FALLBACKS, $data['factor_rounding']);
     }
 
     /** @return array<mixed> */
     private static function loadCanonicalBands(): array
+    {
+        return self::loadCanonicalData()['score_bands'];
+    }
+
+    /** @return array<mixed> */
+    private static function loadCanonicalData(): array
     {
         $contents = file_get_contents(dirname(__DIR__, 3).'/database/seeders/data/kraepelin.json');
 
@@ -180,7 +189,25 @@ final class KraepelinBandMapperTest extends TestCase
 
         $data = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
 
-        return $data['score_bands'];
+        return $data;
+    }
+
+    public function test_factor_is_rounded_half_up_to_three_decimals_before_band_lookup(): void
+    {
+        $data = self::loadCanonicalData();
+        $mapper = new KraepelinBandMapper($data['score_bands'], self::S1_S2_IPS_FALLBACKS, $data['factor_rounding']);
+
+        $result = $mapper->map([
+            'Panker' => 15.4845,
+            'Tianker' => 3,
+            'Hanker' => 4.2215,
+            'Janker' => 3,
+        ], 'SMA/SMK');
+
+        $this->assertSame(15.485, $result['factors']['Panker']['band_factor']);
+        $this->assertSame(3.0, $result['factors']['Tianker']['band_factor']);
+        $this->assertSame(4.222, $result['factors']['Hanker']['band_factor']);
+        $this->assertSame(3.0, $result['factors']['Janker']['band_factor']);
     }
 
     /** @param array<mixed> $bands */
