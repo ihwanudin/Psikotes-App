@@ -1,15 +1,15 @@
 # F2 Assessment Session Contract Proposal
 
-Status: **Proposed — requires coordinator review before implementation**
+Status: **Accepted — canonical API amendment recorded in `API_CONTRACT.md` v4.2**
 
 Scope: generic IST, PAPI, RMIB, and Kraepelin assessment sessions
 
 Authority: `SPEC.md`, `API_CONTRACT.md`, `DATABASE_SCHEMA.md`, `SECURITY.md`, and accepted ADRs
 
-This document freezes a proposed boundary for the F2 session lane. It is not an
-amendment to the canonical API or schema documents and authorizes no migration,
-route, or production change. Implementation must wait until the coordinator
-accepts the contract and records any required canonical amendments.
+This document freezes the accepted boundary for the F2 session lane and expands
+the concise canonical surface in `API_CONTRACT.md` v4.2. It authorizes bounded
+test-driven implementation only; schema migrations, shared routes, and
+production changes still require explicit coordinator ownership.
 
 ## Non-negotiable boundaries
 

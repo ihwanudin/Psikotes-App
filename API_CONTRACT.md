@@ -1,4 +1,4 @@
-# API_CONTRACT.md (v4.1 — Laravel)
+# API_CONTRACT.md (v4.2 — Laravel)
 
 Base: `https://psikotes.oncam.id`. Rute peserta (Inertia+React) dan API internal dilayani Laravel yang sama. Auth header untuk panggilan API: `Authorization: Bearer <jwt>` (peserta = JWT custom TTL 12 jam via middleware kustom). Panel admin/staf/psikolog (Filament) memakai sesi Laravel standar, bukan token API terpisah. Semua input divalidasi lewat Form Request Laravel (server-side, setara peran zod di stack lama); error format seragam `{error:{code,message}}`; rate-limit via Laravel throttle middleware.
 
@@ -86,14 +86,22 @@ Fallback status: scheduler menjalankan `php artisan payments:reconcile-xendit --
 
 ## Peserta (JWT)
 - `GET  /api/me` · `GET /api/me/entitlements`
-- `POST /api/sessions/:test_type/start` → `{session_id, ends_at, config, seed?}`. **403 bila entitlement ≠ ready (belum bayar).** 409 bila sudah ada sesi aktif/one-attempt terkunci. Batas implementasi Task 12: entitlement `ready` mendapat 501 `SESSION_ENGINE_PENDING` tanpa perubahan state sampai engine sesi menyediakan durasi/config/seed dan one-attempt lock secara atomik.
-- `GET  /sessions/:id` → state + sisa waktu (resume)
-- `POST /sessions/:id/answers` — batch upsert `{items:[{item_no,value}]}` (IST/PAPI/RMIB; auto-save)
+- `POST /api/sessions/:test_type/start` hanya menerima `ist|papi|rmib|kraepelin`; `dass21` ditolak karena memakai penyimpanan dan alur terisolasi. Server menurunkan peserta, entitlement `ready`, konfigurasi, durasi, seed, dan nomor attempt dari state tepercaya. Alokasi/start bersifat atomik dan replay tidak memperpanjang `ends_at`; attempt yang telah dikonsumsi memerlukan otorisasi retest baru yang diaudit.
+- `GET  /sessions/:id` → `AssessmentSession` + waktu server (resume). State: `created|in_progress|submitted|scored|expired|void`; aksi peserta tertutup setelah `submitted`, `scored`, `expired`, atau `void`.
+- `POST /sessions/:id/answers` — autosave atomik `{mutation_id,revision,items:[{item_no,value}]}` untuk IST/PAPI/RMIB. `mutation_id` yang sama dan payload identik mengembalikan receipt semula; payload berbeda ditolak. Revisi baru wajib tepat `current_revision+1`, sehingga retry lama tidak dapat menimpa jawaban baru.
 - `POST /sessions/:id/events` — batch Kraepelin `{col,row,answer,client_ts_ms}[]` (insert-ignore per seq)
 - `POST /sessions/:id/subtest/next` (IST)
 - `POST /sessions/:id/proctor` — foto multipart | log event
-- `POST /sessions/:id/submit` → `{status:'scored'}`
+- `POST /sessions/:id/submit` menyegel revisi jawaban dan menghasilkan respons stabil `{session_id,status:'scored',submitted_at,answers_revision}`. Submit/recovery aman diulang dan tidak membuka kembali jawaban.
 - `GET  /reports/me/url` → `{url, expires_in:900}`
+
+`AssessmentSession` memuat `session_id`, `test_type`, `status`, `attempt_no`, `started_at`, `ends_at`, `write_deadline`, `submitted_at`, `server_time`, `remaining_seconds`, `answers_revision`, `config`, dan `seed`. Semua ID publik adalah ULID dan semua waktu adalah UTC RFC 3339 dengan offset eksplisit. `remaining_seconds` tidak pernah negatif.
+
+Deadline tulis persis `ends_at` berdasarkan waktu penerimaan server/database: request pada `ends_at` diterima, sedangkan request setelahnya ditolak atomik tanpa perubahan jawaban/revisi/ledger dan sesi aktif berubah menjadi `expired`. Waktu klien tidak memiliki otoritas. Autosave dan submit mengunci sesi atau memakai conditional update ekuivalen agar balapan menghasilkan satu urutan commit yang sah.
+
+Kode error sesi stabil: `ENTITLEMENT_NOT_READY`, `RETEST_NOT_AUTHORIZED`, `SESSION_NOT_FOUND`, `ATTEMPT_ALREADY_EXISTS`, `SESSION_NOT_STARTED`, `SESSION_CLOSED`, `DEADLINE_EXCEEDED`, `AUTOSAVE_STALE_REVISION`, `AUTOSAVE_REVISION_GAP`, `MUTATION_PAYLOAD_MISMATCH`, `INVALID_ANSWER_BATCH`, dan `INVALID_SESSION_TRANSITION`, dengan envelope `{error:{code,message,details}}`. Detail keberadaan resource lintas tenant tidak dibocorkan.
+
+Kontrak lengkap state, replay, RLS, migrasi, serta acceptance PostgreSQL dibekukan di `tasks/handoffs/f2-assessment-session-contract.md`. Generic session/answer/event tidak boleh menyimpan atau memproses respons DASS-21.
 
 ## Admin (sesi Laravel/Filament; scope RLS via middleware)
 - Peserta: `GET /admin/participants?status&branch` · `GET /admin/participants/:id` (detail + timeline + foto) · `POST /admin/participants/:id/void-session` · `POST /admin/orders/:id/activate-manual`
@@ -105,4 +113,4 @@ Fallback status: scheduler menjalankan `php artisan payments:reconcile-xendit --
 - Master: CRUD packages, branches, admins, psychologists; `POST /admin/ge-dictionary` (tambah kamus GE dr unknown); `GET /admin/audit-logs`
 - Ekspor: `GET /admin/export/participants.csv?branch&period`
 
-Idempoten ingest: `answers` upsert (session,item); `kraepelin_events` unique (session,seq). Webhook & submit aman diulang.
+Idempoten ingest: autosave jawaban memakai ledger unik `(session,mutation_id)`, revisi monotonik, dan item unik `(session,item)`; `kraepelin_events` unique `(session,seq)`. Webhook & submit aman diulang.
