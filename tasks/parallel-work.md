@@ -173,9 +173,9 @@ and test evidence is recorded in
 
 | Task | Active agent | Exclusive ownership | Current increment | Review status |
 |---|---|---|---|---|
-| F3 G7 discrepancy policy | `/root/review_ist` | New `app/Domain/Eligibility/AspectSourceDiscrepancyPolicy.php` and `tests/Unit/Eligibility/AspectSourceDiscrepancyPolicyTest.php` only | Mark an aspect review-required when its source-level spread is at least two; emit no narrative and remain independent of DASS | queued from baseline `7334fa0`; review pending |
-| F4 deterministic cluster narrative | `/root/review_session` | New `app/Domain/Narrative/ClusterNarrativeAssembler.php` and `tests/Unit/Narrative/ClusterNarrativeAssemblerTest.php` only | Assemble deterministic ID cluster narrative from injected data, rotate connectors without repetition, and omit review-required aspects | queued from baseline `7334fa0`; review pending |
-| T-07 behavioral non-interference | `/root/review_p17c` | New `tests/Integration/Psychometric/DassEligibilityNonInterferenceTest.php` only | Compare otherwise-identical Normal and Sangat Parah DASS cases and prove identical zone and recommendation label | queued from baseline `7334fa0`; review pending |
+| F3 G7 discrepancy policy | `/root/review_ist` | New `app/Domain/Eligibility/AspectSourceDiscrepancyPolicy.php` and `tests/Unit/Eligibility/AspectSourceDiscrepancyPolicyTest.php` only | Mark an aspect review-required when its source-level spread is at least two; emit no narrative and remain independent of DASS | queued from baseline `6fb0700`; review pending |
+| F4 deterministic cluster narrative | `/root/review_session` | New `app/Domain/Narrative/ClusterNarrativeAssembler.php` and `tests/Unit/Narrative/ClusterNarrativeAssemblerTest.php` only | Assemble deterministic ID cluster narrative from injected data, rotate connectors without repetition, and omit review-required aspects | queued from baseline `6fb0700`; review pending |
+| T-07 behavioral non-interference | `/root/review_p17c` | New `tests/Integration/Psychometric/DassEligibilityNonInterferenceTest.php` only | Compare otherwise-identical Normal and Sangat Parah DASS cases and prove identical zone and recommendation label | queued from baseline `6fb0700`; review pending |
 
 The recommendation-label policy `7334fa0`, session submit action `87b6346`, and
 static separation guard `549b2e4` are accepted after independent coordinator

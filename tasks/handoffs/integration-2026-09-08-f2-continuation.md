@@ -168,7 +168,8 @@ or change P17c/P18 status.
 
 `/root/review_ist` is queued for the isolated G7 source-discrepancy policy.
 `/root/review_p17c` is queued for the test-only behavioral T-07 comparison.
-All three increments start from `7334fa0` and have disjoint exclusive files.
+All three increments start from coordination baseline `6fb0700` and have
+disjoint exclusive files.
 
 ## Preserved user-owned work
 
