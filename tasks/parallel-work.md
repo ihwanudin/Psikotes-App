@@ -164,3 +164,15 @@ Within a wave, prefer this reviewed merge order:
 5. QA, validation evidence, and canonical checklist update.
 
 Migrations are always integrated serially. Deployments, production migrations, active endpoints/gates, real payments, and outbound notifications require separate explicit authorization.
+
+## Active dispatch — 2026-09-08 wave 1
+
+Baseline coordinator: `5d87d57` on `codex/organization-payment-spec`.
+
+| Task | Task setup ID | Ownership | Acceptance for this increment | Review status |
+|---|---|---|---|---|
+| Worker A — F1 Closeout P17c | `client-new-thread:25b43d81-bf9d-49d4-8a0c-59704f9c9804` | Browser/test-only P17c files and one new evidence report | Close one demonstrable residual P17c gap using synthetic loopback evidence, or produce a precise gap report; no production changes | pending |
+| Worker B — F2 Session Foundation | `client-new-thread:447d04f0-bb29-445a-9bdf-762bd1af3bab` | Sole migration owner; new F2 session schema/model/domain tests | TDD foundation for server-authoritative session, answer persistence, autosave identity, and idempotent submission; no route/UI/scoring | pending |
+| Worker C — F2 IST Scoring | `client-new-thread:86a12bb4-1741-42d3-a947-ec66939a48dd` | `app/Services/Scoring/**`, `tests/Unit/Scoring/**`; F0 data read-only | One complete smallest IST scoring slice using canonical lookup data and RED/GREEN evidence, or a documented canonical-data blocker | pending |
+
+All three were requested as fresh worktrees from the recorded baseline because the three historical checkout worktrees were detached, stale, or dirty and therefore were not safe to repurpose. Their older checkout assignments remain inactive and must not receive duplicate continuation prompts. Replace each setup ID with its final task ID when worktree setup completes, then record result commit, tests, blockers, and review verdict here or in a linked integration report.
