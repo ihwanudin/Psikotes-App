@@ -17,10 +17,19 @@ the complete PRD.
 - Coordinator SQLite verification before the PostgreSQL repair: 78 tests and
   282 assertions passed.
 
-The schema is not yet accepted for PostgreSQL. The active sole migration owner
-must repair explicit lifecycle nullability, microsecond timestamp precision,
-RLS/write enforcement, and populated rollback locking. PostgreSQL runtime
-evidence remains mandatory; SQLite/static evidence alone cannot close it.
+The PostgreSQL schema/RLS increment is accepted as `bf72c29` plus the
+coordinator-requested ledger/revision repair `2b3937a`. It now includes explicit
+lifecycle nullability, timestamp(6), ENABLE+FORCE RLS, operation-specific
+policies, server-authoritative participant start/submit timestamps, bounded
+answer writes, fully append-only mutation receipts, exact receipt-bound revision
+increments, and a locked populated-rollback refusal.
+
+Independent coordinator verification after the repair:
+
+- Full PostgreSQL disposable suite: 411 tests, 4,534 assertions, all passed.
+- Runtime role: non-owner, NOSUPERUSER, NOBYPASSRLS.
+- Focused SQLite schema/static gate: 9 tests, 107 assertions, all passed.
+- Disposable PostgreSQL container/network cleanup: confirmed.
 
 ### Pure psychometric scoring
 
@@ -44,6 +53,17 @@ Kraepelin Panker wording, and Kraepelin rounding mode. The exact conflicts and
 minimum expert questions are recorded by accepted docs-only commit `31acac9` in
 `tasks/handoffs/f2-psychometric-data-conflicts.md`.
 
+DASS-21 pure scoring is accepted as `1bbbb70`; screening follow-up and validity
+metadata are accepted as `39836d7`. Coordinator verification after both commits:
+
+- `tests/Unit/Scoring`: 168 tests, 408 assertions, all passed.
+- F0 extraction gate: 11 tests, all passed.
+- Pint and scoped PHPStan: passed.
+
+The DASS output remains separate from eligibility, zone, label, diagnosis, and
+user-facing narrative. Package inclusion and consent orchestration are outside
+these scorer classes.
+
 ### P17c synthetic verification
 
 Accepted commits include `fee63d4`, `ef2a2be`, `4326bda`, `f189ad1`,
@@ -52,15 +72,21 @@ and its three controls passed after the stale fixture repair. This does not
 close P17c/P18: real browser/native candidate and launch evidence are still
 absent, and the related gates remain default OFF.
 
+Commit `b0bc774` records the remaining participant secure-origin runtime gap;
+the coordinator independently reran its 66 pure/static tests successfully.
+Commit `41eb486` is accepted only as a non-authoritative contract proposal for
+review. It does not freeze trust/revocation policy, authorize TLS verification,
+or change P17c/P18 status.
+
 ## Active increments
 
 | Agent | Ownership | Increment | Next coordinator action |
 |---|---|---|---|
-| `/root/review_session` | Assessment-session migration/RLS and its tests; sole migration owner | PostgreSQL schema/RLS repair | Inspect delta and run disposable PostgreSQL tests before acceptance |
-| `/root/review_ist` | DASS-only scoring source/tests | Pure DASS-21 validation, subscale scoring, canonical categorization, and provenance | Inspect delta and rerun scoring/F0/static gates before acceptance |
+| `/root/review_session` | New assessment-session action and narrowly scoped feature tests | Atomic autosave orchestration; no routes, migrations, UI, or shared contract edits | Inspect transaction/idempotency/authorization delta and rerun SQLite/PostgreSQL gates |
 
-`/root/review_p17c` is idle after the accepted conflict brief and must not be
-given overlapping scoring or migration work.
+`/root/review_ist` is idle after accepted DASS work. Conflicting IQ/PAPI/RMIB
+normalization and Kraepelin wording/rounding remain paused pending the decision
+brief. `/root/review_p17c` is idle after its accepted evidence/proposal work.
 
 ## Preserved user-owned work
 

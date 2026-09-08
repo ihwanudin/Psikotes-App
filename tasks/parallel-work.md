@@ -173,10 +173,12 @@ and test evidence is recorded in
 
 | Task | Active agent | Exclusive ownership | Current increment | Review status |
 |---|---|---|---|---|
-| F1 closeout / decision evidence | `/root/review_p17c` | Assigned P17 evidence/report files only | Psychometric conflict brief `31acac9` completed; no active code increment | accepted |
-| F2 session backend | `/root/review_session` | Sole migration owner; assessment-session migration/RLS and its tests | Repair PostgreSQL lifecycle constraints, timestamp precision, RLS/write boundary, and rollback locking | running — review required |
-| F2 psychometric engine | `/root/review_ist` | `app/Services/Scoring/**` and `tests/Unit/Scoring/**`; F0 data read-only | Pure DASS-21 scoring; no package, eligibility, session, route, or UI changes | running — review required |
+| F1 closeout / decision evidence | `/root/review_p17c` | Assigned P17 evidence/report files only | Runtime gap `b0bc774` and non-authoritative TLS proposal `41eb486` completed; no active code increment | accepted as evidence/proposal; P17c/P18 open |
+| F2 session backend | `/root/review_session` | `app/Actions/AssessmentSessions/**` and narrowly scoped feature tests; no migration ownership in this increment | Atomic generic-session autosave action using the accepted schema and frozen v4.2 contract | running — review required |
+| F2 psychometric engine | `/root/review_ist` | `app/Services/Scoring/**` and `tests/Unit/Scoring/**`; F0 data read-only | DASS scorer `1bbbb70` and screening policy `39836d7` completed; conflicting normalization paused | accepted; idle pending expert decisions |
 
-Do not dispatch another migration or scoring increment while the corresponding
-row is running. The former client setup IDs are historical only; they must not
-receive continuation prompts.
+The assessment-session schema/RLS commits `bf72c29` and `2b3937a` are accepted;
+there is no active migration owner while the autosave action is in progress.
+Do not dispatch an overlapping session action or scoring increment while the
+corresponding row is running. The former client setup IDs are historical only;
+they must not receive continuation prompts.
