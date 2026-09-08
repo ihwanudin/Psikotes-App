@@ -119,6 +119,33 @@ Area worksheet, then applies them in a fail-closed pure eligibility service.
 The next F3 increment is recommendation-label guardrails. T-07 remains partial
 until that label boundary exists and can prove DASS non-interference end to end.
 
+Recommendation-label guardrails are now accepted as `7334fa0`. The policy
+implements the ordered G1/G2/G3 label rules against the exact T-06 payload,
+rejects extra input fields, and therefore has no DASS input boundary.
+
+- Eligibility suite: 34 tests, 198 assertions, all passed.
+- Static psychometric/eligibility separation: 3 tests, 17 assertions, passed.
+- Pint, scoped PHPStan, and diff check passed.
+
+The static separation guard itself is accepted as `549b2e4`; it is deliberately
+structural and does not yet close the behavioral two-session requirement T-07.
+
+### Assessment-session submit action
+
+Participant-owned atomic submit/replay/expiry is accepted as `87b6346`.
+It seals an accepted session at `submitted`, preserves exact replay state,
+expires late in-progress sessions, rejects cross-participant/missing resources
+without disclosure, and does not run scoring.
+
+- Focused submit/policy suite: 10 tests, 73 assertions, all passed.
+- Full disposable PostgreSQL suite: 419 tests, 4,640 assertions, all passed.
+- Disposable resources were cleaned; application containers were not targeted.
+- Pint, scoped PHPStan, and diff check passed.
+
+The frozen public contract still promises synchronous `status: scored`; bridging
+`submitted` to authoritative scoring/recovery is therefore an open coordinator
+integration boundary, not silently claimed by this increment.
+
 ### P17c synthetic verification
 
 Accepted commits include `fee63d4`, `ef2a2be`, `4326bda`, `f189ad1`,
@@ -137,12 +164,11 @@ or change P17c/P18 status.
 
 | Agent | Last accepted ownership | State | Next safe dependency |
 |---|---|---|---|
-| `/root/review_session` | Session schema/RLS, autosave, start/resume and their isolated tests | idle; all dispatched increments reviewed | Choose the next internal status or submit/scoring-recovery boundary without contradicting synchronous `status: scored` |
+| `/root/review_session` | Session schema/RLS, autosave, start/resume, submit and isolated tests | queued for F4 pure narrative slice | Implement only a deterministic injected-data cluster assembler; do not change session/API contracts |
 
-`/root/review_ist` is idle after accepted DASS, normalization, and T-06 zone
-work. The next safe dependency is the recommendation-label guardrail policy
-under exclusive eligibility ownership. `/root/review_p17c` is idle after its
-accepted evidence/proposal work.
+`/root/review_ist` is queued for the isolated G7 source-discrepancy policy.
+`/root/review_p17c` is queued for the test-only behavioral T-07 comparison.
+All three increments start from `7334fa0` and have disjoint exclusive files.
 
 ## Preserved user-owned work
 

@@ -165,7 +165,7 @@ Within a wave, prefer this reviewed merge order:
 
 Migrations are always integrated serially. Deployments, production migrations, active endpoints/gates, real payments, and outbound notifications require separate explicit authorization.
 
-## Active dispatch — 2026-09-09 F2/F3 continuation
+## Active dispatch — 2026-09-09 F2/F3/F4 continuation
 
 Coordinator branch: `codex/organization-payment-spec`. Detailed reviewed commit
 and test evidence is recorded in
@@ -173,11 +173,15 @@ and test evidence is recorded in
 
 | Task | Active agent | Exclusive ownership | Current increment | Review status |
 |---|---|---|---|---|
-| F3 recommendation label | `/root/review_ist` | New `app/Domain/Eligibility/RecommendationLabelPolicy.php` and `tests/Unit/Eligibility/RecommendationLabelPolicyTest.php` only | Implement G1/G2/G3/G4 label policy against the accepted T-06 output; no DASS input is permitted | active from baseline `e0e5e5f`; review pending |
-| F2 session submit action | `/root/review_session` | New submit action/result under `app/Actions/AssessmentSessions/**` and narrowly scoped feature/PostgreSQL tests | Implement participant-owned atomic submit/replay/expiry from the existing submit policy; no scoring, route, contract, or migration changes | active from baseline `e0e5e5f`; review pending |
-| T-07 architecture guard | `/root/review_p17c` | New `tests/Architecture/PsychometricEligibilitySeparationTest.php` only | Prove the DASS scorer/policy and eligibility domain remain dependency-separated; no production edits | active from baseline `e0e5e5f`; review pending |
+| F3 G7 discrepancy policy | `/root/review_ist` | New `app/Domain/Eligibility/AspectSourceDiscrepancyPolicy.php` and `tests/Unit/Eligibility/AspectSourceDiscrepancyPolicyTest.php` only | Mark an aspect review-required when its source-level spread is at least two; emit no narrative and remain independent of DASS | queued from baseline `7334fa0`; review pending |
+| F4 deterministic cluster narrative | `/root/review_session` | New `app/Domain/Narrative/ClusterNarrativeAssembler.php` and `tests/Unit/Narrative/ClusterNarrativeAssemblerTest.php` only | Assemble deterministic ID cluster narrative from injected data, rotate connectors without repetition, and omit review-required aspects | queued from baseline `7334fa0`; review pending |
+| T-07 behavioral non-interference | `/root/review_p17c` | New `tests/Integration/Psychometric/DassEligibilityNonInterferenceTest.php` only | Compare otherwise-identical Normal and Sangat Parah DASS cases and prove identical zone and recommendation label | queued from baseline `7334fa0`; review pending |
 
-The assessment-session schema/RLS commits `bf72c29` and `2b3937a`, autosave
+The recommendation-label policy `7334fa0`, session submit action `87b6346`, and
+static separation guard `549b2e4` are accepted after independent coordinator
+verification. The submit action deliberately seals at `submitted`; scoring and
+the public synchronous `status: scored` contract remain a later coordinator
+integration boundary. The assessment-session schema/RLS commits `bf72c29` and `2b3937a`, autosave
 action/evidence `4a73141` and `c070ba2`, and start/resume action `3cc0e82` are
 accepted. ADR-0028 resolves the former IQ/PAPI/RMIB/Kraepelin authority
 conflicts. There is no active migration owner. Do not dispatch overlapping work
