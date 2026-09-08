@@ -73,6 +73,72 @@ final class AspectSourceDiscrepancyPolicyTest extends TestCase
         $this->assertSame(0, $result['provenance']['spread']);
     }
 
+    #[DataProvider('canonicalSingleSources')]
+    public function test_canonical_single_source_aspect_has_zero_spread(
+        string $aspect,
+        string $source,
+        int $level,
+    ): void {
+        $result = (new AspectSourceDiscrepancyPolicy)->evaluate([
+            'aspect' => $aspect,
+            'sources' => [['source' => $source, 'level' => $level]],
+        ]);
+
+        $this->assertSame([
+            'type' => 'aspect_source_discrepancy',
+            'review_required' => false,
+            'automatic_narrative_allowed' => true,
+            'reason_code' => null,
+            'provenance' => [
+                'aspect' => $aspect,
+                'sources' => [['source' => $source, 'level' => $level]],
+                'minimum_level' => $level,
+                'maximum_level' => $level,
+                'spread' => 0,
+            ],
+        ], $result);
+    }
+
+    /** @return iterable<string, array{string, string, int}> */
+    public static function canonicalSingleSources(): iterable
+    {
+        yield 'A1 from total IST IQ' => ['A1', 'IST_IQ', 4];
+        yield 'D1 from RMIB Outdoor' => ['D1', 'RMIB_Out', 5];
+        yield 'D2 from RMIB Mechanical' => ['D2', 'RMIB_Me', 4];
+        yield 'D3 from RMIB Practical' => ['D3', 'RMIB_Prac', 3];
+        yield 'D4 from RMIB Medical' => ['D4', 'RMIB_Med', 2];
+        yield 'D5 from RMIB Persuasive' => ['D5', 'RMIB_Prs', 1];
+    }
+
+    #[DataProvider('minimalMultiSourceBoundaries')]
+    public function test_minimal_multi_source_spread_boundary_is_unchanged(
+        int $maximumLevel,
+        bool $reviewRequired,
+        ?string $reasonCode,
+    ): void {
+        $result = (new AspectSourceDiscrepancyPolicy)->evaluate([
+            'aspect' => 'C4',
+            'sources' => [
+                ['source' => 'SOURCE_LOW', 'level' => 2],
+                ['source' => 'SOURCE_HIGH', 'level' => $maximumLevel],
+            ],
+        ]);
+
+        $this->assertSame($reviewRequired, $result['review_required']);
+        $this->assertSame(! $reviewRequired, $result['automatic_narrative_allowed']);
+        $this->assertSame($reasonCode, $result['reason_code']);
+        $this->assertSame(2, $result['provenance']['minimum_level']);
+        $this->assertSame($maximumLevel, $result['provenance']['maximum_level']);
+        $this->assertSame($maximumLevel - 2, $result['provenance']['spread']);
+    }
+
+    /** @return iterable<string, array{int, bool, string|null}> */
+    public static function minimalMultiSourceBoundaries(): iterable
+    {
+        yield 'spread one remains below G7 threshold' => [3, false, null];
+        yield 'spread two remains at G7 threshold' => [4, true, 'SOURCE_LEVEL_SPREAD'];
+    }
+
     public function test_source_order_does_not_change_output(): void
     {
         $policy = new AspectSourceDiscrepancyPolicy;
@@ -148,9 +214,9 @@ final class AspectSourceDiscrepancyPolicyTest extends TestCase
             ...$valid,
             'sources' => ['first' => ['source' => 'SOURCE_A', 'level' => 3], 'second' => ['source' => 'SOURCE_B', 'level' => 4]],
         ]];
-        yield 'at least two sources' => [[
+        yield 'at least one source' => [[
             ...$valid,
-            'sources' => [['source' => 'SOURCE_A', 'level' => 3]],
+            'sources' => [],
         ]];
         yield 'duplicate source' => [[
             ...$valid,

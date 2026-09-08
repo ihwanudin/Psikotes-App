@@ -34,7 +34,7 @@ final class AspectSourceDiscrepancyPolicy
             || ! in_array($payload['aspect'], self::ASPECTS, true)
             || ! is_array($payload['sources'])
             || ! array_is_list($payload['sources'])
-            || count($payload['sources']) < 2) {
+            || count($payload['sources']) < 1) {
             throw new InvalidArgumentException('Aspect source discrepancy input is invalid.');
         }
 
