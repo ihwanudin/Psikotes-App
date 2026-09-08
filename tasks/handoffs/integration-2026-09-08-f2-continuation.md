@@ -268,6 +268,13 @@ and Git diff checks also passed. The authoritative derived signing snapshot is
 the remaining P2 implementation boundary. No persistence or publish path is
 accepted yet.
 
+Next parallel wave starts from `b79f2f3` with disjoint ownership: Review owns a
+new authoritative signing snapshot composer plus the existing transition
+adapter; Architecture owns only a new static direct-signing bypass guard; and
+Narrative owns only a new T-20 bilingual determinism acceptance test. No shared
+contracts, routes, migrations, lockfiles, production data, or active services
+are assigned.
+
 ## Preserved user-owned work
 
 `docs/decisions/0026-checkout-secure-composition-launcher-authority.md` was
