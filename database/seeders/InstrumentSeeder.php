@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
+use App\Security\RlsContextRunner;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
@@ -25,7 +26,7 @@ final class InstrumentSeeder extends Seeder
 
     public function run(): void
     {
-        DB::transaction(function (): void {
+        app(RlsContextRunner::class)->runAsService(function (): void {
             foreach (self::SOURCES as $code => $sourceFile) {
                 $this->seedSource($code, $sourceFile);
             }

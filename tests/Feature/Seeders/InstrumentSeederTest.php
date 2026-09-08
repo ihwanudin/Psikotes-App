@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Seeders;
 
+use App\Security\RlsContextRunner;
 use Database\Seeders\InstrumentSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -60,13 +61,33 @@ final class InstrumentSeederTest extends TestCase
 
     public function test_it_refuses_to_overwrite_an_existing_version_with_different_content(): void
     {
-        $this->seed(InstrumentSeeder::class);
-
-        DB::table('instrument_versions')->where('code', 'ist')->update(['checksum' => str_repeat('0', 64)]);
+        $payload = json_decode(
+            file_get_contents(database_path('seeders/data/ist.json')) ?: throw new LogicException('Missing IST fixture.'),
+            true,
+            flags: JSON_THROW_ON_ERROR,
+        );
+        DB::table('instrument_versions')->insert([
+            'code' => 'ist',
+            'version' => $payload['version'],
+            'source_file' => 'ist.json',
+            'checksum' => str_repeat('0', 64),
+            'payload' => '{}',
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
         $this->expectException(LogicException::class);
         $this->expectExceptionMessage('immutable');
 
         $this->seed(InstrumentSeeder::class);
+    }
+
+    public function test_it_is_safe_inside_an_existing_service_context(): void
+    {
+        app(RlsContextRunner::class)->runAsService(fn () => $this->seed(InstrumentSeeder::class));
+
+        $this->assertDatabaseCount('instrument_versions', count(self::SOURCES));
+        $this->assertNull(app(RlsContextRunner::class)->current());
     }
 }
