@@ -85,6 +85,18 @@ verification commit `c070ba2`.
 The test-only owner cleanup is bound to the exact disposable database marker
 and exact synthetic IDs. It does not weaken the append-only production ledger.
 
+Participant-owned start/resume is accepted as `3cc0e82`.
+
+- SQLite start/autosave plus session unit gate: 84 tests, 344 assertions, all
+  passed.
+- Full PostgreSQL disposable gate: 417 tests, 4,617 assertions, all passed.
+- Two non-owner NOBYPASSRLS processes demonstrated one start plus one replay,
+  with an observed row-lock waiter and an identical immutable 3,671-second
+  session window.
+- Missing/cross-participant and DASS identities fail closed; overdue resume
+  expires without extending the deadline; closed states remain closed.
+- Scoped PHPStan, Pint, and diff checks passed.
+
 ### P17c synthetic verification
 
 Accepted commits include `fee63d4`, `ef2a2be`, `4326bda`, `f189ad1`,
@@ -99,13 +111,14 @@ Commit `41eb486` is accepted only as a non-authoritative contract proposal for
 review. It does not freeze trust/revocation policy, authorize TLS verification,
 or change P17c/P18 status.
 
-## Active increments
+## Current lane state
 
-| Agent | Ownership | Increment | Next coordinator action |
+| Agent | Last accepted ownership | State | Next safe dependency |
 |---|---|---|---|
-| `/root/review_session` | New assessment-session action and narrowly scoped feature tests | Participant-owned start/resume orchestration; no routes, migrations, scoring, UI, or shared contract edits | Inspect authorization/idempotency/deadline delta and require concurrency evidence before accepting a race claim |
+| `/root/review_session` | Session schema/RLS, autosave, start/resume and their isolated tests | idle; all dispatched increments reviewed | Choose the next internal status or submit/scoring-recovery boundary without contradicting synchronous `status: scored` |
 
-`/root/review_ist` is idle after accepted DASS work. Conflicting IQ/PAPI/RMIB
+`/root/review_ist` is idle after accepted DASS work and evidence matrix.
+Conflicting IQ/PAPI/RMIB
 normalization and Kraepelin wording/rounding remain paused pending the decision
 brief. `/root/review_p17c` is idle after its accepted evidence/proposal work.
 
