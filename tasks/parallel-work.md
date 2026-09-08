@@ -165,14 +165,18 @@ Within a wave, prefer this reviewed merge order:
 
 Migrations are always integrated serially. Deployments, production migrations, active endpoints/gates, real payments, and outbound notifications require separate explicit authorization.
 
-## Active dispatch — 2026-09-08 wave 1
+## Active dispatch — 2026-09-08 F2 continuation
 
-Baseline coordinator: `5d87d57` on `codex/organization-payment-spec`.
+Coordinator branch: `codex/organization-payment-spec`. Detailed reviewed commit
+and test evidence is recorded in
+`tasks/handoffs/integration-2026-09-08-f2-continuation.md`.
 
-| Task | Task setup ID | Ownership | Acceptance for this increment | Review status |
+| Task | Active agent | Exclusive ownership | Current increment | Review status |
 |---|---|---|---|---|
-| Worker A — F1 Closeout P17c | `client-new-thread:25b43d81-bf9d-49d4-8a0c-59704f9c9804` | Browser/test-only P17c files and one new evidence report | Close one demonstrable residual P17c gap using synthetic loopback evidence, or produce a precise gap report; no production changes | pending |
-| Worker B — F2 Session Foundation | `client-new-thread:447d04f0-bb29-445a-9bdf-762bd1af3bab` | Sole migration owner; new F2 session schema/model/domain tests | TDD foundation for server-authoritative session, answer persistence, autosave identity, and idempotent submission; no route/UI/scoring | pending |
-| Worker C — F2 IST Scoring | `client-new-thread:86a12bb4-1741-42d3-a947-ec66939a48dd` | `app/Services/Scoring/**`, `tests/Unit/Scoring/**`; F0 data read-only | One complete smallest IST scoring slice using canonical lookup data and RED/GREEN evidence, or a documented canonical-data blocker | pending |
+| F1 closeout / decision evidence | `/root/review_p17c` | Assigned P17 evidence/report files only | Psychometric conflict brief `31acac9` completed; no active code increment | accepted |
+| F2 session backend | `/root/review_session` | Sole migration owner; assessment-session migration/RLS and its tests | Repair PostgreSQL lifecycle constraints, timestamp precision, RLS/write boundary, and rollback locking | running — review required |
+| F2 psychometric engine | `/root/review_ist` | `app/Services/Scoring/**` and `tests/Unit/Scoring/**`; F0 data read-only | Pure DASS-21 scoring; no package, eligibility, session, route, or UI changes | running — review required |
 
-All three were requested as fresh worktrees from the recorded baseline because the three historical checkout worktrees were detached, stale, or dirty and therefore were not safe to repurpose. Their older checkout assignments remain inactive and must not receive duplicate continuation prompts. Replace each setup ID with its final task ID when worktree setup completes, then record result commit, tests, blockers, and review verdict here or in a linked integration report.
+Do not dispatch another migration or scoring increment while the corresponding
+row is running. The former client setup IDs are historical only; they must not
+receive continuation prompts.
