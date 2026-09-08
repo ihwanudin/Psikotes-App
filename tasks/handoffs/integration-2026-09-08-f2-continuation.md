@@ -275,6 +275,87 @@ Narrative owns only a new T-20 bilingual determinism acceptance test. No shared
 contracts, routes, migrations, lockfiles, production data, or active services
 are assigned.
 
+The Review lane additionally owns
+`tests/Integration/Review/ReportSigningGuardrailsAcceptanceTest.php`: its legacy
+raw prerequisite calls conflict with the intentionally narrowed transition
+boundary and must be migrated to the real snapshot composer. Neither other
+active lane owns Integration/Review files.
+
+F4 T-20 bilingual determinism acceptance is independently accepted as
+`fc9e78c`: repeated canonical composition is byte-for-byte equal across ID/JP,
+all 18 aspects are accounted for, G7 omissions align across languages, and
+reordered input fails closed. Coordinator rerun passed Narrative 114 tests/202
+assertions. The same lane continues with a disjoint new T-21 connector-rotation
+acceptance test only.
+
+The static signing-bypass guard is independently accepted as `e6de244`. Its AST
+controls detect literal positional/named `SIGNED` transition calls outside the
+single allowlisted signing policy, while non-signing calls and string/comment
+text do not trigger it. Coordinator rerun passed Architecture 22 tests/1,763
+assertions. Dynamic/obfuscated target expressions remain explicitly outside
+this static proof. The lane continues with a new pure-domain G8 version-isolation
+acceptance test only; database persistence non-retroactivity is not claimed.
+
+F4 T-21 connector rotation is independently accepted as `28e2969`: the ID
+assembler exhausts canonical direction-specific connector pools before reuse,
+the bilingual rerun is identical, and JP output remains free of ID connectors.
+Coordinator rerun passed Narrative 115 tests/255 assertions. The lane now
+performs a read-only authority audit for the still-open seven-slot internal
+draft so no narrative template is invented.
+
+The subsequent source audit reopened full T-21 closure: supporting DOCX
+`Update DASS/Spesifikasi Tim Teknis - Engineer Sistem_Psikotes.docx` section
+8.1 specifies separate `dipakai.aditif` and `dipakai.kontras` counters, whereas
+the current assembler selects by global transition position. `28e2969` remains
+valid for homogeneous directions but does not cover the mixed-direction
+sequence; a bounded repair follows after the read-only audit completes.
+
+The read-only seven-slot authority audit found exact templates in workbook
+sheet `9. Integrasi`, support phrases in sheet `10. Saran Dukungan`, and ordering
+rules in the psychologist technical specification section 8.2. It also found
+unresolved authority for S1 averaging/rounding, S2/S3 selection counts and G7
+handling, S4 same-priority ties/OK filtering, S5 D-aspect support coverage, S6
+RMIB ties and UMUM, S7 wording/duration, JP slot bodies, system-versus-final G6
+levels, and any S1-S7-to-Uraian A-D summarization. No production slot prose or
+automatic summary is authorized until those gaps are decided. The current
+implementation wave therefore repairs only the independently specified
+connector counters.
+
+The connector-counter repair is independently accepted as `9675c4d`. Mixed
+direction tests first reproduced the global-position defect, then passed with
+separate additive/contrast pool counters. Coordinator rerun passed Narrative
+115 tests/257 assertions.
+
+The pure-domain G8 version-isolation acceptance is independently accepted as
+`8c7498b`. Old/new calculators and recommendation results retain exact standard
+version provenance and the old snapshot remains unchanged after the synthetic
+new-version calculation. Coordinator rerun passed Eligibility 102 tests/295
+assertions. This does not close database snapshot non-retroactivity; the lane
+now performs a read-only persistence gap audit while migration ownership remains
+unassigned.
+
+The authoritative pure signing snapshot is accepted across `a8fb562` and the
+coordinator-requested target-field repair `4ec39cf`. The transition boundary no
+longer accepts raw prerequisite arrays; it derives G7 and changed override
+projections from validated policy output shapes, requires structural audit and
+recalculation evidence, and binds the report target to one of the six canonical
+recommendation fields. Combined coordinator gates passed Eligibility 102/295,
+Narrative 115/257, Review/Psychometric 228/398, and Architecture 17/992. Pint,
+scoped PHPStan, and diff checks passed. Boolean resolution/audit evidence is
+still a pure structural claim, not database authority.
+
+The persistence audit confirms there is no durable report aggregate,
+eligibility snapshot, G6 override/recalculation ledger, G7 resolution ledger,
+or signing/publication ledger. The smallest independent prerequisite is source
+history hardening for `instrument_versions`. Coordinator freezes a fail-closed
+matrix for that slice: PostgreSQL login remains `psikotes_runtime`; only
+transaction-local application role `service` may SELECT/INSERT/deactivate;
+all admin, psychologist, branch, staff, participant, and missing contexts are
+denied; runtime DELETE is denied. The existing seeder must run inside
+`RlsContextRunner::runAsService`, never via a NULL-context policy exception.
+This slice is prerequisite evidence only and does not close G8 report snapshot
+non-retroactivity.
+
 ## Preserved user-owned work
 
 `docs/decisions/0026-checkout-secure-composition-launcher-authority.md` was
