@@ -111,8 +111,7 @@ final readonly class RmibRawScoreCalculator
      *     categories: array<int, array{code: string, name: string, total: int, rank: int, cell_count: int}>,
      *     group_sums: array<int, int>,
      *     total_rank_sum: int,
-     *     response_count: int,
-     *     ranking_tie_breaker: string
+     *     response_count: int
      * }
      */
     public function calculate(array $responses): array
@@ -174,9 +173,13 @@ final readonly class RmibRawScoreCalculator
             throw new InvalidArgumentException('RMIB total rank sum must equal 702.');
         }
 
+        if (count(array_unique($categoryTotals)) !== 12) {
+            throw new InvalidArgumentException('RMIB category totals contain a tie and require psychologist review.');
+        }
+
         $ranked = array_keys($categoryTotals);
         usort($ranked, static function (int $left, int $right) use ($categoryTotals): int {
-            return [$categoryTotals[$left], $left] <=> [$categoryTotals[$right], $right];
+            return $categoryTotals[$left] <=> $categoryTotals[$right];
         });
         $ranks = [];
 
@@ -201,7 +204,6 @@ final readonly class RmibRawScoreCalculator
             'group_sums' => $groupSums,
             'total_rank_sum' => array_sum($categoryTotals),
             'response_count' => count($seen),
-            'ranking_tie_breaker' => 'category_index',
         ];
     }
 

@@ -12,7 +12,31 @@ use RuntimeException;
 
 final class RmibRawScoreCalculatorTest extends TestCase
 {
-    public function test_canonical_position_rank_fixture_produces_category_totals_and_ordinal_ranks(): void
+    public function test_canonical_cyclic_rank_fixture_produces_category_totals_and_ordinal_ranks(): void
+    {
+        $data = $this->canonicalData();
+        $calculator = new RmibRawScoreCalculator($data['categories'], $data['rotation']);
+        $responses = self::completeResponses();
+
+        $result = $calculator->calculate($responses);
+
+        $this->assertSame(108, $result['response_count']);
+        $this->assertSame(702, $result['total_rank_sum']);
+        $this->assertSame(array_fill(1, 9, 78), $result['group_sums']);
+        $this->assertSame(
+            [1 => 9, 2 => 18, 3 => 27, 4 => 36, 5 => 45, 6 => 54, 7 => 63, 8 => 72, 9 => 81, 10 => 90, 11 => 99, 12 => 108],
+            array_map(static fn (array $category): int => $category['total'], $result['categories']),
+        );
+        $this->assertSame(
+            [1 => 1, 2 => 2, 3 => 3, 4 => 4, 5 => 5, 6 => 6, 7 => 7, 8 => 8, 9 => 9, 10 => 10, 11 => 11, 12 => 12],
+            array_map(static fn (array $category): int => $category['rank'], $result['categories']),
+        );
+        $this->assertSame('Out', $result['categories'][1]['code']);
+        $this->assertSame('Outdoor', $result['categories'][1]['name']);
+        $this->assertSame(9, $result['categories'][1]['cell_count']);
+    }
+
+    public function test_tied_category_totals_are_rejected_for_psychologist_review(): void
     {
         $data = $this->canonicalData();
         $calculator = new RmibRawScoreCalculator($data['categories'], $data['rotation']);
@@ -25,23 +49,10 @@ final class RmibRawScoreCalculatorTest extends TestCase
             $data['rotation'],
         );
 
-        $result = $calculator->calculate($responses);
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('RMIB category totals contain a tie and require psychologist review.');
 
-        $this->assertSame(108, $result['response_count']);
-        $this->assertSame(702, $result['total_rank_sum']);
-        $this->assertSame('category_index', $result['ranking_tie_breaker']);
-        $this->assertSame(array_fill(1, 9, 78), $result['group_sums']);
-        $this->assertSame(
-            [1 => 69, 2 => 66, 3 => 63, 4 => 60, 5 => 57, 6 => 54, 7 => 51, 8 => 48, 9 => 45, 10 => 54, 11 => 63, 12 => 72],
-            array_map(static fn (array $category): int => $category['total'], $result['categories']),
-        );
-        $this->assertSame(
-            [1 => 11, 2 => 10, 3 => 8, 4 => 7, 5 => 6, 6 => 4, 7 => 3, 8 => 2, 9 => 1, 10 => 5, 11 => 9, 12 => 12],
-            array_map(static fn (array $category): int => $category['rank'], $result['categories']),
-        );
-        $this->assertSame('Out', $result['categories'][1]['code']);
-        $this->assertSame('Outdoor', $result['categories'][1]['name']);
-        $this->assertSame(9, $result['categories'][1]['cell_count']);
+        $calculator->calculate($responses);
     }
 
     /** @param array<mixed> $responses */
@@ -116,7 +127,11 @@ final class RmibRawScoreCalculatorTest extends TestCase
 
         foreach (range(1, 9) as $group) {
             foreach (range(1, 12) as $position) {
-                $responses[] = ['group' => $group, 'position' => $position, 'rank' => $position];
+                $responses[] = [
+                    'group' => $group,
+                    'position' => $position,
+                    'rank' => (($position + $group - 2) % 12) + 1,
+                ];
             }
         }
 
