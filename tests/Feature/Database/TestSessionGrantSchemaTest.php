@@ -9,9 +9,11 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\DataProvider;
 use ReflectionMethod;
 use RuntimeException;
 use Tests\OrganizationPaymentTestCase;
+use Tests\Support\AssessmentBillingFixture as Fixture;
 
 final class TestSessionGrantSchemaTest extends OrganizationPaymentTestCase
 {
@@ -43,27 +45,120 @@ final class TestSessionGrantSchemaTest extends OrganizationPaymentTestCase
 
     public function test_shape_checks_reject_dass_polymorphic_or_mismatched_origin_grants(): void
     {
-        $session = $this->unboundSession();
+        $graph = $this->directGraph('dass-shape');
+        $session = $this->createDassSessionForConstraintProbe($graph['participant'], $graph['case']);
         $base = [
             'test_session_id' => $session,
-            'assessment_case_id' => 1,
-            'participant_id' => 1,
-            'organization_id' => 1,
+            'assessment_case_id' => $graph['case'],
+            'participant_id' => $graph['participant'],
+            'organization_id' => $graph['branch'],
             'test_type' => 'dass21',
             'origin' => 'DIRECT_PUBLIC',
             'grant_kind' => 'entitlement',
-            'order_id' => 1,
-            'entitlement_id' => 1,
+            'order_id' => $graph['order'],
+            'entitlement_id' => $graph['dass_entitlement'],
             'created_at' => now(),
         ];
 
-        $this->assertRejected(fn () => DB::table('test_session_grants')->insert($base));
+        $this->assertRejected(fn () => DB::table('test_session_grants')->insert($base), 'test_session_grants_instrument_check');
         $this->assertRejected(fn () => DB::table('test_session_grants')->insert([
-            ...$base,
-            'test_type' => 'ist',
+            ...$this->directGrant($graph),
             'grant_kind' => 'assessment_entitlement',
             'assessment_entitlement_id' => 1,
-        ]));
+        ]), 'test_session_grants_shape_check');
+    }
+
+    public function test_each_supported_origin_accepts_only_its_exact_ready_graph(): void
+    {
+        $direct = $this->directGraph('valid-direct');
+        $this->insertGrant($this->directGrant($direct));
+
+        $integrated = Fixture::create();
+        DB::table('assessment_participants')->where('id', $integrated['attempt'])->update(['assessment_status' => 'READY']);
+        $assessmentEntitlement = DB::table('assessment_entitlements')->insertGetId([
+            ...Fixture::entitlement($integrated), 'status' => 'ready', 'ready_at' => now(),
+        ]);
+        $integratedSession = $this->createBoundSession($integrated['participant'], (int) $integrated['case']);
+        $this->insertGrant([
+            'test_session_id' => $integratedSession, 'assessment_case_id' => $integrated['case'],
+            'participant_id' => $integrated['participant'], 'organization_id' => $integrated['organization'],
+            'test_type' => 'ist', 'origin' => 'INTEGRATED', 'grant_kind' => 'assessment_entitlement',
+            'assessment_participant_id' => $integrated['attempt'],
+            'assessment_entitlement_id' => $assessmentEntitlement, 'created_at' => now(),
+        ]);
+
+        $legacy = $this->legacyGraph('valid-legacy');
+        $this->insertGrant($this->legacyGrant($legacy));
+        $this->assertSame(3, DB::table('test_session_grants')->count());
+    }
+
+    public function test_direct_grant_rejects_extra_case_order_orderless_entitlement_and_composition_drift(): void
+    {
+        $extraCase = $this->directGraph('extra-case');
+        DB::table('assessment_cases')->insert([
+            'public_id' => (string) Str::ulid(), 'participant_id' => $extraCase['participant'],
+            'organization_id' => $extraCase['branch'], 'package_id' => $extraCase['package'],
+            'origin' => 'DIRECT_PUBLIC', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->assertRejected(fn () => $this->insertGrant($this->directGrant($extraCase)), 'exact authorization graph');
+
+        $extraOrder = $this->directGraph('extra-order');
+        $orderGuard = DB::selectOne("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='orders_direct_case_insert_guard'");
+        $this->assertNotNull($orderGuard);
+        DB::statement('DROP TRIGGER orders_direct_case_insert_guard');
+        try {
+            $secondPublicId = (string) Str::ulid();
+            $secondCase = DB::table('assessment_cases')->insertGetId(['public_id' => $secondPublicId,
+                'participant_id' => $extraOrder['participant'], 'organization_id' => $extraOrder['branch'],
+                'package_id' => $extraOrder['package'], 'origin' => 'DIRECT_PUBLIC',
+                'created_at' => now(), 'updated_at' => now()]);
+            DB::table('orders')->insert(['public_id' => $secondPublicId,
+                'participant_id' => $extraOrder['participant'], 'assessment_case_id' => $secondCase,
+                'payment_method_id' => $extraOrder['payment_method'], 'status' => 'paid', 'amount' => 99000,
+                'currency' => 'IDR', 'paid_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
+        } finally {
+            DB::statement((string) $orderGuard->sql);
+        }
+        $this->assertRejected(fn () => $this->insertGrant($this->directGrant($extraOrder)), 'exact authorization graph');
+
+        $orderless = $this->directGraph('orderless');
+        DB::table('package_items')->insert(['package_id' => $orderless['package'], 'test_type' => 'papi',
+            'sort_order' => 3, 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('entitlements')->insert(['participant_id' => $orderless['participant'], 'order_id' => null,
+            'test_type' => 'papi', 'status' => 'ready', 'ready_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
+        $this->assertRejected(fn () => $this->insertGrant($this->directGrant($orderless)), 'exact authorization graph');
+
+        $drift = $this->directGraph('composition-drift');
+        DB::table('package_items')->insert(['package_id' => $drift['package'], 'test_type' => 'papi',
+            'sort_order' => 3, 'created_at' => now(), 'updated_at' => now()]);
+        $this->assertRejected(fn () => $this->insertGrant($this->directGrant($drift)), 'exact authorization graph');
+    }
+
+    #[DataProvider('sqliteCorruptions')]
+    public function test_rerun_rejects_counterfeit_sqlite_state_without_delta(string $component): void
+    {
+        match ($component) {
+            'support_index' => DB::unprepared('DROP INDEX test_sessions_grant_scope_unique; CREATE INDEX test_sessions_grant_scope_unique ON test_sessions (id, assessment_case_id, participant_id, test_type)'),
+            'insert_guard' => DB::unprepared("DROP TRIGGER test_session_grants_insert_guard; CREATE TRIGGER test_session_grants_insert_guard BEFORE INSERT ON test_session_grants FOR EACH ROW BEGIN SELECT RAISE(ABORT, 'counterfeit'); END"),
+            'update_guard' => DB::unprepared("DROP TRIGGER test_session_grants_update_guard; CREATE TRIGGER test_session_grants_update_guard AFTER UPDATE ON test_session_grants FOR EACH ROW BEGIN SELECT RAISE(ABORT, 'Test session grant history is append-only'); END"),
+            default => throw new RuntimeException('Unknown synthetic corruption.'),
+        };
+        $before = DB::select("SELECT type,name,sql FROM sqlite_master WHERE name LIKE 'test_session_grants_%' OR name='test_sessions_grant_scope_unique' ORDER BY type,name");
+        try {
+            $this->migrate('up');
+            $this->fail('Counterfeit state was accepted.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('partial SQLite enforcement', $exception->getMessage());
+        }
+        $this->assertEquals($before, DB::select("SELECT type,name,sql FROM sqlite_master WHERE name LIKE 'test_session_grants_%' OR name='test_sessions_grant_scope_unique' ORDER BY type,name"));
+    }
+
+    /** @return iterable<string,array{string}> */
+    public static function sqliteCorruptions(): iterable
+    {
+        yield 'support index definition' => ['support_index'];
+        yield 'insert guard body' => ['insert_guard'];
+        yield 'update guard event' => ['update_guard'];
     }
 
     public function test_empty_down_up_is_safe_but_populated_down_refuses_without_delta(): void
@@ -72,7 +167,7 @@ final class TestSessionGrantSchemaTest extends OrganizationPaymentTestCase
         $this->migrate('up');
 
         $graph = $this->directGraph('populated');
-        $session = $this->createBoundSession($graph['participant'], $graph['case']);
+        $session = $graph['session'];
         DB::table('test_session_grants')->insert([
             'test_session_id' => $session,
             'assessment_case_id' => $graph['case'],
@@ -120,7 +215,7 @@ final class TestSessionGrantSchemaTest extends OrganizationPaymentTestCase
         ]);
     }
 
-    /** @return array{branch:int,participant:int,case:int,order:int,entitlement:int} */
+    /** @return array{branch:int,package:int,participant:int,case:int,payment_method:int,order:int,entitlement:int,dass_entitlement:int,session:int} */
     private function directGraph(string $suffix): array
     {
         $key = (string) Str::ulid();
@@ -167,21 +262,95 @@ final class TestSessionGrantSchemaTest extends OrganizationPaymentTestCase
             ]);
             if ($type === 'ist') {
                 $entitlement = $id;
+            } else {
+                $dass_entitlement = $id;
             }
         }
 
-        return compact('branch', 'participant', 'case', 'order', 'entitlement');
+        $session = $this->createBoundSession($participant, $case);
+
+        $payment_method = $paymentMethod;
+
+        return compact('branch', 'package', 'participant', 'case', 'payment_method', 'order', 'entitlement', 'dass_entitlement', 'session');
     }
 
-    private function createBoundSession(int $participant, int $case): int
+    private function createBoundSession(int $participant, int $case, string $testType = 'ist'): int
     {
         return DB::table('test_sessions')->insertGetId([
             'public_id' => (string) Str::ulid(), 'participant_id' => $participant,
-            'assessment_case_id' => $case, 'test_type' => 'ist', 'attempt_no' => 1,
+            'assessment_case_id' => $case, 'test_type' => $testType, 'attempt_no' => 1,
             'authorization_id' => (string) Str::ulid(), 'allocation_intent_id' => (string) Str::ulid(),
             'duration_seconds' => 3600, 'status' => 'created', 'answers_revision' => 0,
             'created_at' => now(), 'updated_at' => now(),
         ]);
+    }
+
+    private function createDassSessionForConstraintProbe(int $participant, int $case): int
+    {
+        $trigger = DB::selectOne("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='test_sessions_contract_insert'");
+        if ($trigger === null) {
+            throw new RuntimeException('Test session insert guard is unavailable.');
+        }
+        DB::statement('DROP TRIGGER test_sessions_contract_insert');
+        try {
+            return $this->createBoundSession($participant, $case, 'dass21');
+        } finally {
+            DB::statement((string) $trigger->sql);
+        }
+    }
+
+    /** @param array{branch:int,participant:int,case:int,order:int,entitlement:int,session:int} $graph
+     * @return array<string,mixed>
+     */
+    private function directGrant(array $graph): array
+    {
+        return ['test_session_id' => $graph['session'], 'assessment_case_id' => $graph['case'],
+            'participant_id' => $graph['participant'], 'organization_id' => $graph['branch'],
+            'test_type' => 'ist', 'origin' => 'DIRECT_PUBLIC', 'grant_kind' => 'entitlement',
+            'order_id' => $graph['order'], 'entitlement_id' => $graph['entitlement'], 'created_at' => now()];
+    }
+
+    /** @return array{branch:int,participant:int,case:int,selection:int,entitlement:int,session:int} */
+    private function legacyGraph(string $suffix): array
+    {
+        $key = (string) Str::ulid();
+        $branch = DB::table('branches')->insertGetId(['code' => $key, 'ref_code' => $key, 'name' => $suffix,
+            'organization_code' => $key, 'display_name' => $suffix]);
+        $participant = DB::table('participants')->insertGetId(['branch_id' => $branch,
+            'referral_branch_id' => $branch, 'referral_source' => 'manual', 'package_id' => null,
+            'source_system' => 'SELEKSI_BEASISWA_JEPANG', 'full_name' => $suffix, 'phone' => '620000000000']);
+        $case = DB::table('assessment_cases')->insertGetId(['public_id' => (string) Str::ulid(),
+            'participant_id' => $participant, 'organization_id' => $branch, 'package_id' => null,
+            'origin' => 'LEGACY_SELECTION', 'created_at' => now(), 'updated_at' => now()]);
+        $selection = DB::table('selection_participants')->insertGetId(['client_id' => 'client-'.$key,
+            'external_candidate_id' => 'candidate-'.$key, 'selection_round_id' => 'round-'.$key,
+            'registration_id' => 'registration-'.$key, 'participant_id' => $participant,
+            'assessment_case_id' => $case, 'idempotency_key' => 'key-'.$key,
+            'request_hash' => hash('sha256', $key), 'created_at' => now(), 'updated_at' => now()]);
+        $entitlement = DB::table('entitlements')->insertGetId(['participant_id' => $participant,
+            'order_id' => null, 'test_type' => 'ist', 'status' => 'ready', 'ready_at' => now(),
+            'created_at' => now(), 'updated_at' => now()]);
+        $session = $this->createBoundSession($participant, $case);
+
+        return compact('branch', 'participant', 'case', 'selection', 'entitlement', 'session');
+    }
+
+    /** @param array{branch:int,participant:int,case:int,selection:int,entitlement:int,session:int} $graph
+     * @return array<string,mixed>
+     */
+    private function legacyGrant(array $graph): array
+    {
+        return ['test_session_id' => $graph['session'], 'assessment_case_id' => $graph['case'],
+            'participant_id' => $graph['participant'], 'organization_id' => $graph['branch'],
+            'test_type' => 'ist', 'origin' => 'LEGACY_SELECTION', 'grant_kind' => 'entitlement',
+            'selection_participant_id' => $graph['selection'], 'entitlement_id' => $graph['entitlement'],
+            'created_at' => now()];
+    }
+
+    /** @param array<string,mixed> $grant */
+    private function insertGrant(array $grant): void
+    {
+        DB::table('test_session_grants')->insert($grant);
     }
 
     private function migrate(string $direction): void
@@ -194,13 +363,13 @@ final class TestSessionGrantSchemaTest extends OrganizationPaymentTestCase
         (new ReflectionMethod($migration, $direction))->invoke($migration);
     }
 
-    private function assertRejected(callable $operation): void
+    private function assertRejected(callable $operation, string $message): void
     {
         try {
             $operation();
             $this->fail('Expected database rejection.');
-        } catch (QueryException) {
-            $this->addToAssertionCount(1);
+        } catch (QueryException $exception) {
+            $this->assertStringContainsString($message, $exception->getMessage());
         }
     }
 }
