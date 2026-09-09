@@ -6,6 +6,11 @@ import process from 'node:process';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
+import {
+    extractDocxTextParts,
+    OoxmlContentError,
+} from './ooxml-content.mjs';
+
 const KINDS = new Set(['secret', 'pii']);
 const SYNTHETIC_PHONES = new Set([
     '620000000000',
@@ -160,8 +165,17 @@ export async function scanRepository({
             policy.max_blob_bytes,
         );
 
-        findings.push(...scanBlob(kind, displayPath, indexBytes));
-        findings.push(...scanBlob(kind, displayPath, bytes));
+        findings.push(
+            ...scanSnapshot(
+                kind,
+                displayPath,
+                indexBytes,
+                policy.max_blob_bytes,
+            ),
+        );
+        findings.push(
+            ...scanSnapshot(kind, displayPath, bytes, policy.max_blob_bytes),
+        );
     }
 
     const uniqueFindings = deduplicate(findings);
@@ -352,6 +366,28 @@ function scanBlob(kind, relativePath, bytes) {
     return kind === 'secret'
         ? scanSecrets(relativePath, content)
         : scanPii(relativePath, content);
+}
+
+function scanSnapshot(kind, relativePath, bytes, maximum) {
+    if (!relativePath.toLowerCase().endsWith('.docx')) {
+        return scanBlob(kind, relativePath, bytes);
+    }
+
+    try {
+        return extractDocxTextParts(bytes, {
+            maxTotalBytes: maximum,
+        }).flatMap(({ reportId, bytes: content }) =>
+            scanBlob(kind, `${relativePath}#${reportId}`, content),
+        );
+    } catch (error) {
+        if (error instanceof OoxmlContentError) {
+            throw new ScanFailure(
+                `Tracked DOCX is malformed or unsupported: ${relativePath}`,
+            );
+        }
+
+        throw error;
+    }
 }
 
 function decodeBlob(bytes, relativePath) {

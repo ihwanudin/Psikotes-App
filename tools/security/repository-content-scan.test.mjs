@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
+import { crc32, deflateRawSync } from 'node:zlib';
 
 import {
     parseTrackedEntries,
@@ -78,6 +79,96 @@ function privateKeyCanary() {
     return ['-----BEGIN ', 'PRIVATE ', 'KEY-----'].join('');
 }
 
+function zip(entries) {
+    const local = [];
+    const central = [];
+    let offset = 0;
+
+    for (const entry of entries) {
+        const name = Buffer.from(entry.name);
+        const content = Buffer.from(entry.content);
+        const method = entry.method ?? 8;
+        const compressed = method === 8 ? deflateRawSync(content) : content;
+        const checksum = crc32(content);
+        const flags = entry.flags ?? 0x0800;
+        const header = Buffer.alloc(30);
+        header.writeUInt32LE(0x04034b50, 0);
+        header.writeUInt16LE(20, 4);
+        header.writeUInt16LE(flags, 6);
+        header.writeUInt16LE(method, 8);
+        header.writeUInt32LE(checksum, 14);
+        header.writeUInt32LE(compressed.length, 18);
+        header.writeUInt32LE(content.length, 22);
+        header.writeUInt16LE(name.length, 26);
+        local.push(header, name, compressed);
+
+        const directory = Buffer.alloc(46);
+        directory.writeUInt32LE(0x02014b50, 0);
+        directory.writeUInt16LE(0x0314, 4);
+        directory.writeUInt16LE(20, 6);
+        directory.writeUInt16LE(flags, 8);
+        directory.writeUInt16LE(method, 10);
+        directory.writeUInt32LE(checksum, 16);
+        directory.writeUInt32LE(compressed.length, 20);
+        directory.writeUInt32LE(content.length, 24);
+        directory.writeUInt16LE(name.length, 28);
+        directory.writeUInt32LE(entry.externalAttributes ?? 0, 38);
+        directory.writeUInt32LE(offset, 42);
+        central.push(directory, name);
+        offset += header.length + name.length + compressed.length;
+    }
+
+    const centralBytes = Buffer.concat(central);
+    const end = Buffer.alloc(22);
+    end.writeUInt32LE(0x06054b50, 0);
+    end.writeUInt16LE(entries.length, 8);
+    end.writeUInt16LE(entries.length, 10);
+    end.writeUInt32LE(centralBytes.length, 12);
+    end.writeUInt32LE(offset, 16);
+
+    return Buffer.concat([...local, centralBytes, end]);
+}
+
+function docx(parts = [], { replace = true } = {}) {
+    const entries = [
+        {
+            name: '[Content_Types].xml',
+            content:
+                '<?xml version="1.0"?><Types><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>',
+        },
+        {
+            name: '_rels/.rels',
+            content:
+                '<?xml version="1.0"?><Relationships><Relationship Target="word/document.xml"/></Relationships>',
+        },
+        {
+            name: 'word/document.xml',
+            content: '<?xml version="1.0"?><w:document><w:t>safe</w:t></w:document>',
+        },
+    ];
+
+    for (const part of parts) {
+        const index = entries.findIndex(({ name }) => name === part.name);
+
+        if (index === -1 || !replace) {
+            entries.push(part);
+        } else {
+            entries[index] = part;
+        }
+    }
+
+    return zip(entries);
+}
+
+function mutate(bytes, signature, fieldOffset, size, value) {
+    const result = Buffer.from(bytes);
+    const offset = result.indexOf(signature);
+    assert.notEqual(offset, -1);
+    result[`writeUInt${size * 8}LE`](value, offset + fieldOffset);
+
+    return result;
+}
+
 test('clean tracked repository passes both independent profiles', async () => {
     await withRepository(
         { 'clean.txt': 'participant@example.test\nphone=620000000000\n' },
@@ -88,14 +179,277 @@ test('clean tracked repository passes both independent profiles', async () => {
     );
 });
 
+test('clean tracked DOCX scans all XML package parts in both profiles', async () => {
+    await withRepository(
+        {
+            'requirements.docx': docx([
+                {
+                    name: 'word/settings.xml',
+                    content: '<settings/>',
+                    method: 0,
+                },
+            ]),
+        },
+        async (root) => {
+            assert.deepEqual((await scan(root, 'secret')).findings, []);
+            assert.deepEqual((await scan(root, 'pii')).findings, []);
+        },
+        { max_blob_bytes: 1024 * 1024 },
+    );
+});
+
+test('DOCX logical text catches secret and PII split across Word runs', async () => {
+    const token = secretCanary();
+    const phone = ['+62', '81297538641'].join('');
+    const document = `<?xml version="1.0"?><w:document><w:t>${token.slice(0, 8)}</w:t><w:t>${token.slice(8)}</w:t><w:t>${phone.slice(0, 6)}</w:t><w:t>${phone.slice(6)}</w:t></w:document>`;
+
+    await withRepository(
+        {
+            'requirements.docx': docx([
+                { name: 'word/document.xml', content: document },
+            ]),
+        },
+        async (root) => {
+            await assert.rejects(scan(root, 'secret'), /redacted finding/i);
+            await assert.rejects(scan(root, 'pii'), /redacted finding/i);
+        },
+        { max_blob_bytes: 1024 * 1024 },
+    );
+});
+
+test('DOCX scans document metadata comments headers and relationships without exposing values or inner names', async () => {
+    const provider = ['xnd_', 'development_', 'A1b2C3d4E5f6G7h8'].join('');
+    const password = ['q9Vx', '2LmP', '7ZaN', '4RtK', '8WdH', '3CyF'].join('');
+    const email = ['person', '@', 'corp', '.', 'id'].join('');
+    const phone = ['+62', '81297538641'].join('');
+    const nik = ['327301', '150890', '0001'].join('');
+    const identity = ['P123', '4567', '890'].join('');
+    const file = docx([
+        {
+            name: 'word/_rels/document.xml.rels',
+            content: `<Relationships><Relationship Target="${provider}"/></Relationships>`,
+        },
+        {
+            name: 'docProps/core.xml',
+            content: `<core><creator>${email}</creator><value>password=&quot;${password}&quot;</value></core>`,
+        },
+        {
+            name: 'word/comments.xml',
+            content: `<comments><comment>${nik}</comment></comments>`,
+        },
+        {
+            name: 'word/header1.xml',
+            content: `<header>${phone}<w:t>passport_number = &quot;${identity}&quot;</w:t></header>`,
+        },
+    ]);
+
+    await withRepository(
+        { 'requirements.docx': file },
+        async (root) => {
+            for (const [kind, rules, values] of [
+                [
+                    'secret',
+                    ['credential_assignment', 'provider_token'],
+                    [provider, password],
+                ],
+                [
+                    'pii',
+                    ['email', 'identity_assignment', 'indonesian_phone', 'nik'],
+                    [email, identity, phone, nik],
+                ],
+            ]) {
+                await assert.rejects(scan(root, kind), (error) => {
+                    assert.deepEqual(
+                        [...new Set(error.findings.map(({ rule }) => rule))].sort(),
+                        rules,
+                    );
+                    const report = JSON.stringify(error);
+
+                    for (const value of values) {
+                        assert(!report.includes(value));
+                    }
+
+                    for (const inner of [
+                        'word/_rels/document.xml.rels',
+                        'docProps/core.xml',
+                        'word/comments.xml',
+                        'word/header1.xml',
+                    ]) {
+                        assert(!report.includes(inner));
+                    }
+
+                    return true;
+                });
+            }
+        },
+        { max_blob_bytes: 1024 * 1024 },
+    );
+});
+
+test('both staged and working-tree DOCX snapshots are scanned', async () => {
+    await withRepository(
+        { 'requirements.docx': docx() },
+        async (root) => {
+            await writeFile(
+                path.join(root, 'requirements.docx'),
+                docx([
+                    {
+                        name: 'word/document.xml',
+                        content: `<w:document><w:t>${secretCanary()}</w:t></w:document>`,
+                    },
+                ]),
+            );
+            git(root, ['add', 'requirements.docx']);
+            await writeFile(path.join(root, 'requirements.docx'), docx());
+            await assert.rejects(scan(root, 'secret'), /redacted finding/i);
+
+            git(root, ['add', 'requirements.docx']);
+            await writeFile(
+                path.join(root, 'requirements.docx'),
+                docx([
+                    {
+                        name: 'word/document.xml',
+                        content: `<w:document><w:t>${secretCanary()}</w:t></w:document>`,
+                    },
+                ]),
+            );
+            await assert.rejects(scan(root, 'secret'), /redacted finding/i);
+        },
+        { max_blob_bytes: 1024 * 1024 },
+    );
+});
+
+test('DOCX rejects malformed central records local mismatches CRC corruption and missing required parts', async () => {
+    const central = Buffer.from([0x50, 0x4b, 0x01, 0x02]);
+    const local = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
+    const clean = docx();
+    const corruptions = [
+        clean.subarray(0, clean.length - 1),
+        mutate(clean, central, 10, 2, 0),
+        mutate(mutate(clean, local, 14, 4, 1), central, 16, 4, 1),
+        zip([
+            { name: '[Content_Types].xml', content: '<Types/>' },
+            { name: '_rels/.rels', content: '<Relationships/>' },
+            { name: 'word/other.xml', content: '<other/>' },
+        ]),
+    ];
+
+    for (const file of corruptions) {
+        await withRepository(
+            { 'requirements.docx': file },
+            async (root) => {
+                await assert.rejects(
+                    scan(root, 'secret'),
+                    /malformed or unsupported/i,
+                );
+            },
+            { max_blob_bytes: 1024 * 1024 },
+        );
+    }
+});
+
+test('DOCX rejects traversal duplicate encrypted descriptor ZIP64 special-mode and unsupported-method entries', async () => {
+    const central = Buffer.from([0x50, 0x4b, 0x01, 0x02]);
+    const local = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
+    const encrypted = mutate(mutate(docx(), local, 6, 2, 1), central, 8, 2, 1);
+    const descriptor = mutate(
+        mutate(docx(), local, 6, 2, 0x0808),
+        central,
+        8,
+        2,
+        0x0808,
+    );
+    const zip64 = mutate(docx(), central, 24, 4, 0xffffffff);
+    const unsupportedMethod = mutate(
+        mutate(docx(), local, 8, 2, 99),
+        central,
+        10,
+        2,
+        99,
+    );
+    const scenarios = [
+        docx([{ name: '../hidden.xml', content: '<hidden/>' }]),
+        docx(
+            [{ name: 'word/document.xml', content: '<duplicate/>' }],
+            { replace: false },
+        ),
+        docx([
+            {
+                name: 'word/link.xml',
+                content: '<link/>',
+                externalAttributes: 0xa0000000,
+            },
+        ]),
+        encrypted,
+        descriptor,
+        zip64,
+        unsupportedMethod,
+    ];
+
+    for (const file of scenarios) {
+        await withRepository(
+            { 'requirements.docx': file },
+            async (root) =>
+                assert.rejects(scan(root, 'secret'), /malformed or unsupported/i),
+            { max_blob_bytes: 1024 * 1024 },
+        );
+    }
+});
+
+test('DOCX rejects decompression bombs unsupported media and unsafe XML without leaking inner names', async () => {
+    const secretName = ['word/', 'person', '@', 'corp', '.', 'id.xml'].join('');
+    const scenarios = [
+        docx([
+            {
+                name: 'word/document.xml',
+                content: `<w:document>${'x'.repeat(2048)}</w:document>`,
+            },
+        ]),
+        docx([{ name: 'word/media/image1.png', content: Buffer.from([0x89, 0x50]) }]),
+        docx([
+            {
+                name: 'word/document.xml',
+                content: '<!DOCTYPE x [<!ENTITY y "unsafe">]><w:document>&y;</w:document>',
+            },
+        ]),
+        docx([
+            {
+                name: 'word/document.xml',
+                content: '<w:document>&unknown;</w:document>',
+            },
+        ]),
+        docx([{ name: secretName, content: '<safe/>' }]),
+    ];
+
+    for (const file of scenarios) {
+        await withRepository(
+            { 'requirements.docx': file },
+            async (root) => {
+                await assert.rejects(scan(root, 'secret'), (error) => {
+                    assert.match(error.message, /malformed or unsupported/i);
+                    assert(!JSON.stringify(error).includes(secretName));
+
+                    return true;
+                });
+            },
+            { max_blob_bytes: 1024 },
+        );
+    }
+});
+
 test('scanner implementation and tests contain no detectable secret or PII literals', async () => {
     const scanner = await readFile(
         new URL('./repository-content-scan.mjs', import.meta.url),
     );
+    const ooxml = await readFile(new URL('./ooxml-content.mjs', import.meta.url));
     const tests = await readFile(new URL(import.meta.url));
 
     await withRepository(
-        { 'scanner.mjs': scanner, 'scanner.test.mjs': tests },
+        {
+            'ooxml.mjs': ooxml,
+            'scanner.mjs': scanner,
+            'scanner.test.mjs': tests,
+        },
         async (root) => {
             assert.deepEqual((await scan(root, 'secret')).findings, []);
             assert.deepEqual((await scan(root, 'pii')).findings, []);
