@@ -14,6 +14,7 @@
             <file>tests/Postgres/LegacySelectionCaseIdentityMigrationTest.php</file>
             <file>tests/Postgres/DirectPublicOrderCaseIdentityMigrationTest.php</file>
             <file>tests/Postgres/TestSessionGrantSecurityTest.php</file>
+            <file>tests/Postgres/TestSessionDefinitionSnapshotSecurityTest.php</file>
         </testsuite>
         <testsuite name="OrganizationPostgres">
             <directory>tests/Postgres</directory>
@@ -24,6 +25,7 @@
             <exclude>tests/Postgres/LegacySelectionCaseIdentityMigrationTest.php</exclude>
             <exclude>tests/Postgres/DirectPublicOrderCaseIdentityMigrationTest.php</exclude>
             <exclude>tests/Postgres/TestSessionGrantSecurityTest.php</exclude>
+            <exclude>tests/Postgres/TestSessionDefinitionSnapshotSecurityTest.php</exclude>
         </testsuite>
     </testsuites>
     <php>
