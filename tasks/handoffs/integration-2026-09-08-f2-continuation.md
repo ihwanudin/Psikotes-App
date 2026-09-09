@@ -773,3 +773,19 @@ explicitly unknown: two fresh disposable runners entered Docker bind-mount Linux
 D-state before useful PHPUnit execution and were removed by exact run label with
 no remaining container/network. No production migration or allocator wiring was
 performed; PostgreSQL catalog/RLS/race evidence and adversarial review remain open.
+
+Static and SQLite hardening of `000700` continued through `9a6b1ae`,
+`96a2c01`, `7d00402`, and `d9c0b55`. The ledger now mirrors durable resolver
+graph identity for all three origins, requires canonical DIRECT package
+composition including DASS plus a supported generic instrument, exact order and
+entitlement cardinality, LEGACY NULL package identity, and a canonical
+INTEGRATED attempt/package/charge/settlement graph. It explicitly does not claim
+immutable consent/identity prerequisite provenance; the future allocator must
+call the accepted resolver in the same transaction before dual-writing session
+and grant. Exact-state checks now compare canonical constraint and trigger
+definitions, owners, RLS/ACL state, trigger sets, and grant-option absence, with
+counterfeit-state regression coverage. Focused boundary evidence reached 57
+tests/305 assertions; scoped PHPStan, Pint, diff checks, and final static
+adversarial review found no remaining P1/P2. Status remains accepted-provisional
+only: the PostgreSQL definitions, RLS behavior, concurrency, and full suite must
+still execute successfully after Docker bind-mount I/O recovers.
