@@ -289,11 +289,12 @@ user-owned and is excluded from every worker scope and coordinator commit.
 
 | Task setup ID | Lane | Exclusive ownership | First increment | Status / next checkpoint |
 |---|---|---|---|---|
-| `01a0881b-8590-7123-a9ce-640f7cbf75c3` (`2469`) | F2 PostgreSQL `000700` | Sole migration owner for `000700` plus disposable PostgreSQL verification | Fix the proven `json`/`jsonb_array_elements_text` mismatch, rerun focused `TestSessionGrantSecurityTest`, then run the full PostgreSQL suite only after focused green | accepted as `b7e5c1b` (worker `cd5cf34`): focused PostgreSQL 12/59 and full PostgreSQL 488/5,334 green; independent SQLite boundary 57/305 and Pint green; disposable resources cleaned |
-| `01a0881b-86ec-7fc1-b0f3-99e1e5b99cb1` (`fa77`) | F2 allocator readiness | Read-only resolver/session-definition/session-writer inspection | Freeze the smallest resolver-backed session plus grant dual-write slice, exact files, lock order, idempotency, and acceptance matrix | active; waits for `000700` acceptance before implementation |
-| `01a0881b-85ce-7f43-91d5-dd84fe064064` (`13aa`) | F9 retention policy | `app/Domain/Retention/RetentionDataClass.php`, `RetentionPolicy.php`, and `tests/Unit/Retention/RetentionPolicyTest.php` only | Encode the PRD horizons as a pure deterministic calendar policy after the read-only audit found persistence/executor prerequisites incomplete | accepted as `8f2b5fe` (worker `7563b43`); independent focused 9/13 and relevant Unit 145/403 green, PHPStan/Pint/diff review clean |
+| `01a0881b-8590-7123-a9ce-640f7cbf75c3` (`2469`) | F2 PostgreSQL and snapshot migration | Sole migration owner plus disposable PostgreSQL verification | Revise snapshot migration `a0595a8` into an expand-only compatibility step; defer grant-required snapshot enforcement until the allocator switch | `000700` accepted as `b7e5c1b` (worker `cd5cf34`): focused PostgreSQL 12/59 and full PostgreSQL 488/5,334 green; snapshot commit not integrated because it broke existing grant writers, corrective increment active |
+| `01a0881b-86ec-7fc1-b0f3-99e1e5b99cb1` (`fa77`) | F2 allocator readiness | Pure SessionDefinition/session-grant identity contracts; no migration/action/route | Implement immutable origin-specific `SessionGrantIdentity` after freezing the allocator transaction/write/replay contract | canonical `SessionDefinition::toArray()` accepted as `f3a89f3` (worker `a925d6e`), independently verified 41/81 focused and 111/297 relevant Unit, PHPStan/Pint green; next pure-domain slice active |
+| `01a0881b-85ce-7f43-91d5-dd84fe064064` (`13aa`) | F9 retention policy | Retention policy and one audited writer at a time; no migration/delete/scheduler | Apply the accepted policy only where the existing horizon is already five years and privacy scope is proven | policy accepted as `8f2b5fe`; selection audit writer accepted as `f49ab2c` + `f1e038f` (workers `c1b3ef8` + `a5e3a56`), independently verified 13/82 + 9/13 with PHPStan/Pint green |
 
 The coordinator owns this canonical dispatch record and all acceptance updates.
-No migration owner may be assigned beyond PostgreSQL verification until the
-`000700` runtime result is reviewed. No worker may edit shared contracts,
-routes, lockfiles, ADR numbering, or canonical checklists in this wave.
+Only task `2469` may edit migrations. No worker may edit routes, lockfiles, ADR
+numbering, or canonical checklists in this wave. Shared contracts must use the
+exclusive ownership recorded above and be integrated by the coordinator before
+any dependent allocator slice begins.
