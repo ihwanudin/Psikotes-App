@@ -168,14 +168,24 @@ final class CheckoutHandoffSchemaTest extends TestCase
                 $this->assertSame(0, DB::table('checkout_handoffs')->count(), $label);
             }
 
+            $mismatchedAttemptPublicId = (string) Str::ulid();
+            $mismatchedTimestamp = now();
+            $mismatchedCase = DB::table('assessment_cases')->insertGetId([
+                'public_id' => $mismatchedAttemptPublicId, 'participant_id' => $foreign['participant'],
+                'organization_id' => $foreign['organization'], 'package_id' => $foreign['package'],
+                'origin' => 'INTEGRATED', 'intended_field_snapshot' => null,
+                'created_at' => $mismatchedTimestamp, 'updated_at' => $mismatchedTimestamp,
+            ]);
             $mismatchedClientAttempt = DB::table('assessment_participants')->insertGetId([
                 'organization_id' => $foreign['organization'], 'integration_client_id' => $graph['client'],
                 'participant_id' => $foreign['participant'], 'package_id' => $foreign['package'],
-                'assessment_attempt_id' => (string) Str::ulid(), 'source_system' => 'HANDOFF_SOURCE',
+                'assessment_case_id' => $mismatchedCase, 'assessment_attempt_id' => $mismatchedAttemptPublicId,
+                'source_system' => 'HANDOFF_SOURCE',
                 'external_candidate_id' => (string) Str::ulid(), 'funding_mode' => 'COMMERCIAL_SELF_PAY',
                 'assessment_status' => 'PROVISIONED', 'idempotency_key' => (string) Str::ulid(),
                 'request_hash' => hash('sha256', 'cross-organization-request'),
                 'logical_assessment_key' => hash('sha256', 'cross-organization-logical'),
+                'created_at' => $mismatchedTimestamp, 'updated_at' => $mismatchedTimestamp,
             ]);
             $mismatchedClientGraph = [
                 ...$foreign, 'attempt' => $mismatchedClientAttempt,
@@ -329,12 +339,20 @@ final class CheckoutHandoffSchemaTest extends TestCase
         $package = DB::table('packages')->insertGetId([
             'code' => $key, 'name' => 'Synthetic', 'amount' => 100, 'currency' => 'IDR',
         ]);
+        $timestamp = now();
+        $case = DB::table('assessment_cases')->insertGetId([
+            'public_id' => $key, 'participant_id' => $participant, 'organization_id' => $organization,
+            'package_id' => $package, 'origin' => 'INTEGRATED', 'intended_field_snapshot' => null,
+            'created_at' => $timestamp, 'updated_at' => $timestamp,
+        ]);
         $attempt = DB::table('assessment_participants')->insertGetId([
             'organization_id' => $organization, 'integration_client_id' => $client, 'participant_id' => $participant,
-            'package_id' => $package, 'assessment_attempt_id' => $key, 'source_system' => 'HANDOFF_SOURCE',
+            'package_id' => $package, 'assessment_case_id' => $case,
+            'assessment_attempt_id' => $key, 'source_system' => 'HANDOFF_SOURCE',
             'external_candidate_id' => $key, 'funding_mode' => 'COMMERCIAL_SELF_PAY',
             'assessment_status' => 'PROVISIONED', 'idempotency_key' => $key,
             'request_hash' => hash('sha256', $key), 'logical_assessment_key' => hash('sha256', 'logical'.$key),
+            'created_at' => $timestamp, 'updated_at' => $timestamp,
         ]);
 
         return compact('organization', 'participant', 'client', 'source', 'package', 'attempt');

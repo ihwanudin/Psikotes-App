@@ -284,13 +284,20 @@ final class CheckoutSessionSchemaTest extends TestCase
         $package = DB::table('packages')->insertGetId([
             'code' => $key, 'name' => 'Synthetic', 'amount' => 100, 'currency' => 'IDR',
         ]);
+        $timestamp = now();
+        $case = DB::table('assessment_cases')->insertGetId([
+            'public_id' => $key, 'participant_id' => $participant, 'organization_id' => $organization,
+            'package_id' => $package, 'origin' => 'INTEGRATED', 'intended_field_snapshot' => null,
+            'created_at' => $timestamp, 'updated_at' => $timestamp,
+        ]);
         $attempt = DB::table('assessment_participants')->insertGetId([
             'organization_id' => $organization, 'integration_client_id' => $client,
             'participant_id' => $participant, 'package_id' => $package,
-            'assessment_attempt_id' => $key, 'source_system' => 'CHECKOUT_SESSION_SOURCE',
+            'assessment_case_id' => $case, 'assessment_attempt_id' => $key, 'source_system' => 'CHECKOUT_SESSION_SOURCE',
             'external_candidate_id' => $key, 'funding_mode' => 'COMMERCIAL_SELF_PAY',
             'assessment_status' => 'PROVISIONED', 'idempotency_key' => $key,
             'request_hash' => hash('sha256', $key), 'logical_assessment_key' => hash('sha256', 'logical'.$key),
+            'created_at' => $timestamp, 'updated_at' => $timestamp,
         ]);
         $handoff = $this->consumedHandoff(compact(
             'organization', 'participant', 'client', 'source', 'package', 'attempt',

@@ -10,6 +10,7 @@ use App\Models\Branch;
 use App\Models\IntegrationClient;
 use App\Models\IntegrationSource;
 use App\Models\TestPackage;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Testing\TestResponse;
@@ -148,15 +149,19 @@ final class GenericAssessmentProvisioningTest extends TestCase
         $this->assertDatabaseCount('outbox_messages', 1);
     }
 
-    public function test_replay_fails_closed_when_the_assessment_case_binding_is_missing(): void
+    public function test_database_rejects_removing_the_case_binding_before_replay(): void
     {
         $key = 'assessment:v1:missing-case';
         $this->signedRequest($this->payload(), $key)->assertCreated();
-        AssessmentParticipant::query()->sole()->update(['assessment_case_id' => null]);
+        try {
+            AssessmentParticipant::query()->sole()->update(['assessment_case_id' => null]);
+            $this->fail('The immutable assessment case binding was removed.');
+        } catch (QueryException) {
+            $this->addToAssertionCount(1);
+        }
 
         $this->signedRequest($this->payload(), $key)
-            ->assertConflict()
-            ->assertJsonPath('error.code', 'IDEMPOTENCY_CONFLICT');
+            ->assertOk();
 
         $this->assertDatabaseCount('participants', 1);
         $this->assertDatabaseCount('assessment_participants', 1);

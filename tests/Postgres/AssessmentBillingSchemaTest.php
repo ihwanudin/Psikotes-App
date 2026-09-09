@@ -34,12 +34,20 @@ final class AssessmentBillingSchemaTest extends TestCase
             $client = DB::table('integration_clients')->insertGetId(['organization_id' => $organization,
                 'client_id' => 'p6a-client', 'credential_reference' => 'synthetic-only']);
             $package = DB::table('packages')->insertGetId(['code' => 'P6A', 'name' => 'Synthetic', 'amount' => 120000, 'currency' => 'IDR']);
+            $attemptPublicId = (string) Str::ulid();
+            $timestamp = now();
+            $case = DB::table('assessment_cases')->insertGetId([
+                'public_id' => $attemptPublicId, 'participant_id' => $participant,
+                'organization_id' => $organization, 'package_id' => $package, 'origin' => 'INTEGRATED',
+                'intended_field_snapshot' => null, 'created_at' => $timestamp, 'updated_at' => $timestamp,
+            ]);
             $attempt = DB::table('assessment_participants')->insertGetId(['organization_id' => $organization,
                 'integration_client_id' => $client, 'participant_id' => $participant, 'package_id' => $package,
-                'assessment_attempt_id' => (string) Str::ulid(), 'source_system' => 'P6A_SOURCE',
+                'assessment_case_id' => $case, 'assessment_attempt_id' => $attemptPublicId, 'source_system' => 'P6A_SOURCE',
                 'external_candidate_id' => 'P6A_CANDIDATE', 'funding_mode' => 'COMMERCIAL_SELF_PAY',
                 'assessment_status' => 'PROVISIONED', 'idempotency_key' => 'attempt:1',
-                'request_hash' => str_repeat('a', 64), 'logical_assessment_key' => str_repeat('b', 64)]);
+                'request_hash' => str_repeat('a', 64), 'logical_assessment_key' => str_repeat('b', 64),
+                'created_at' => $timestamp, 'updated_at' => $timestamp]);
             $method = DB::table('payment_methods')->insertGetId(['code' => 'p6a-test', 'display_name' => 'Synthetic']);
             $this->charge = ['organization_id' => $organization, 'participant_id' => $participant, 'package_id' => $package,
                 'assessment_participant_id' => $attempt, 'payer_type' => 'organization', 'base_amount' => 120000,

@@ -18,6 +18,7 @@ use App\Models\TestPackage;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
 use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -127,18 +128,24 @@ final class CheckoutProvisioningTest extends OrganizationPaymentTestCase
         $this->assertSame([null, null], AssessmentCase::query()->orderBy('id')->pluck('intended_field_snapshot')->all());
     }
 
-    public function test_replay_fails_closed_when_the_assessment_case_alias_is_inconsistent(): void
+    public function test_database_rejects_an_inconsistent_assessment_case_alias_before_replay(): void
     {
-        $this->provision();
-        AssessmentParticipant::sole()->update(['assessment_attempt_id' => (string) Str::ulid()]);
+        $first = $this->provision();
+        try {
+            AssessmentParticipant::sole()->update(['assessment_attempt_id' => (string) Str::ulid()]);
+            $this->fail('The immutable assessment case alias was changed.');
+        } catch (QueryException) {
+            $this->addToAssertionCount(1);
+        }
 
-        $this->expectException(IdempotencyConflict::class);
-        $this->provision();
+        $retry = $this->provision();
+        $this->assertTrue($retry['replayed']);
+        $this->assertSame($first['assessment_attempt_id'], $retry['assessment_attempt_id']);
     }
 
-    public function test_replay_fails_closed_when_bound_to_another_valid_case(): void
+    public function test_database_rejects_rebinding_to_another_valid_case_before_replay(): void
     {
-        $this->provision();
+        $first = $this->provision();
         $attempt = AssessmentParticipant::sole();
         $other = AssessmentCase::create([
             'public_id' => (string) Str::ulid(),
@@ -148,10 +155,16 @@ final class CheckoutProvisioningTest extends OrganizationPaymentTestCase
             'origin' => 'DIRECT_PUBLIC',
             'intended_field_snapshot' => null,
         ]);
-        $attempt->update(['assessment_case_id' => $other->id]);
+        try {
+            $attempt->update(['assessment_case_id' => $other->id]);
+            $this->fail('The immutable assessment case binding was changed.');
+        } catch (QueryException) {
+            $this->addToAssertionCount(1);
+        }
 
-        $this->expectException(IdempotencyConflict::class);
-        $this->provision();
+        $retry = $this->provision();
+        $this->assertTrue($retry['replayed']);
+        $this->assertSame($first['assessment_attempt_id'], $retry['assessment_attempt_id']);
     }
 
     #[DataProvider('conflicts')]

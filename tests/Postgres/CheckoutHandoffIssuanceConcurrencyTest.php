@@ -45,13 +45,8 @@ final class CheckoutHandoffIssuanceConcurrencyTest extends TestCase
                 ->whereIn('subject_id', DB::table('assessment_participants')
                     ->where('organization_id', $this->fixture['organization'])->selectRaw('id::text'))->delete();
             DB::table('checkout_handoffs')->where('organization_id', $this->fixture['organization'])->delete();
-            DB::table('assessment_participants')->where('organization_id', $this->fixture['organization'])->delete();
             DB::table('integration_sources')->where('integration_client_id', $this->fixture['client'])->delete();
-            DB::table('integration_clients')->where('id', $this->fixture['client'])->delete();
-            DB::table('participants')->where('branch_id', $this->fixture['organization'])->delete();
             DB::table('package_items')->where('package_id', $this->fixture['package'])->delete();
-            DB::table('packages')->where('id', $this->fixture['package'])->delete();
-            DB::table('branches')->where('id', $this->fixture['organization'])->delete();
         });
         parent::tearDown();
     }
@@ -226,16 +221,27 @@ final class CheckoutHandoffIssuanceConcurrencyTest extends TestCase
         $key = 'ih1_'.bin2hex(random_bytes(16));
         $issued = $this->issueDescriptor($this->fixture, $key, CheckoutHandoffIntent::Issue);
         $otherAttempt = app(RlsContextRunner::class)->runAsService(function (): AssessmentParticipant {
+            $attemptPublicId = (string) Str::ulid();
+            $timestamp = now();
+            $case = DB::table('assessment_cases')->insertGetId([
+                'public_id' => $attemptPublicId, 'participant_id' => $this->fixture['participant'],
+                'organization_id' => $this->fixture['organization'], 'package_id' => $this->fixture['package'],
+                'origin' => 'INTEGRATED', 'intended_field_snapshot' => null,
+                'created_at' => $timestamp, 'updated_at' => $timestamp,
+            ]);
+
             return AssessmentParticipant::query()->create([
                 'integration_client_id' => $this->fixture['client'], 'organization_id' => $this->fixture['organization'],
                 'participant_id' => $this->fixture['participant'], 'package_id' => $this->fixture['package'],
-                'assessment_attempt_id' => (string) Str::ulid(), 'source_system' => $this->fixture['sourceSystem'],
+                'assessment_case_id' => $case, 'assessment_attempt_id' => $attemptPublicId,
+                'source_system' => $this->fixture['sourceSystem'],
                 'external_candidate_id' => (string) Str::ulid(), 'funding_mode' => 'COMMERCIAL_SELF_PAY',
                 'assessment_status' => 'PROVISIONED', 'idempotency_key' => (string) Str::ulid(),
                 'request_hash' => hash('sha256', 'pg-other-request'),
                 'logical_assessment_key' => hash('sha256', 'pg-other-logical'),
                 'metadata' => ['checkout_contract_version' => 'checkout-v2',
                     'checkout_initial_funding_mode' => 'COMMERCIAL_SELF_PAY'],
+                'created_at' => $timestamp, 'updated_at' => $timestamp,
             ]);
         });
         try {
@@ -533,15 +539,22 @@ final class CheckoutHandoffIssuanceConcurrencyTest extends TestCase
             ['package_id' => $package, 'test_type' => 'dass21', 'sort_order' => 2],
         ]);
         $attemptPublicId = (string) Str::ulid();
+        $timestamp = now();
+        $case = DB::table('assessment_cases')->insertGetId([
+            'public_id' => $attemptPublicId, 'participant_id' => $participant,
+            'organization_id' => $organization, 'package_id' => $package, 'origin' => 'INTEGRATED',
+            'intended_field_snapshot' => null, 'created_at' => $timestamp, 'updated_at' => $timestamp,
+        ]);
         $attempt = DB::table('assessment_participants')->insertGetId([
             'organization_id' => $organization, 'integration_client_id' => $client,
             'participant_id' => $participant, 'package_id' => $package,
-            'assessment_attempt_id' => $attemptPublicId, 'source_system' => $sourceSystem,
+            'assessment_case_id' => $case, 'assessment_attempt_id' => $attemptPublicId, 'source_system' => $sourceSystem,
             'external_candidate_id' => $key, 'funding_mode' => 'COMMERCIAL_SELF_PAY',
             'assessment_status' => 'PROVISIONED', 'idempotency_key' => $key,
             'request_hash' => hash('sha256', $key), 'logical_assessment_key' => hash('sha256', 'logical'.$key),
             'metadata' => json_encode(['checkout_contract_version' => 'checkout-v2',
                 'checkout_initial_funding_mode' => 'COMMERCIAL_SELF_PAY'], JSON_THROW_ON_ERROR),
+            'created_at' => $timestamp, 'updated_at' => $timestamp,
         ]);
 
         return compact('organization', 'participant', 'client', 'source', 'package', 'attempt', 'attemptPublicId', 'sourceSystem');
@@ -555,13 +568,8 @@ final class CheckoutHandoffIssuanceConcurrencyTest extends TestCase
                 ->whereIn('subject_id', DB::table('assessment_participants')
                     ->where('organization_id', $fixture['organization'])->selectRaw('id::text'))->delete();
             DB::table('checkout_handoffs')->where('organization_id', $fixture['organization'])->delete();
-            DB::table('assessment_participants')->where('organization_id', $fixture['organization'])->delete();
             DB::table('integration_sources')->where('integration_client_id', $fixture['client'])->delete();
-            DB::table('integration_clients')->where('id', $fixture['client'])->delete();
-            DB::table('participants')->where('branch_id', $fixture['organization'])->delete();
             DB::table('package_items')->where('package_id', $fixture['package'])->delete();
-            DB::table('packages')->where('id', $fixture['package'])->delete();
-            DB::table('branches')->where('id', $fixture['organization'])->delete();
         });
     }
 

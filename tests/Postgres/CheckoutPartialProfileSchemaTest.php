@@ -141,9 +141,19 @@ final class CheckoutPartialProfileSchemaTest extends TestCase
             $f = Fixture::create();
             $row = (array) DB::table('assessment_participants')->find($f['attempt']);
             unset($row['id']);
-            DB::table('assessment_participants')->insert([...$row, 'assessment_attempt_id' => (string) Str::ulid(),
+            $attemptPublicId = (string) Str::ulid();
+            $timestamp = now();
+            $case = DB::table('assessment_cases')->insertGetId([
+                'public_id' => $attemptPublicId, 'participant_id' => $row['participant_id'],
+                'organization_id' => $row['organization_id'], 'package_id' => $row['package_id'],
+                'origin' => 'INTEGRATED', 'intended_field_snapshot' => null,
+                'created_at' => $timestamp, 'updated_at' => $timestamp,
+            ]);
+            DB::table('assessment_participants')->insert([...$row,
+                'assessment_case_id' => $case, 'assessment_attempt_id' => $attemptPublicId,
                 'idempotency_key' => 'p9a0-insert', 'logical_assessment_key' => hash('sha256', 'p9a0-insert'),
-                'funding_mode' => null, 'metadata' => null, 'assessment_status' => 'PROVISIONED']);
+                'funding_mode' => null, 'metadata' => null, 'assessment_status' => 'PROVISIONED',
+                'created_at' => $timestamp, 'updated_at' => $timestamp]);
         });
     }
 
@@ -164,11 +174,15 @@ final class CheckoutPartialProfileSchemaTest extends TestCase
         yield 'field enum' => ['participants', 'participant', ['intended_field' => 'unknown'], '23514'];
         yield 'name length' => ['participants', 'participant', ['full_name' => str_repeat('x', 201)], '22001'];
         yield 'phone length' => ['participants', 'participant', ['phone' => str_repeat('1', 33)], '22001'];
-        yield 'participant FK' => ['assessment_participants', 'attempt', ['participant_id' => 999999999], '23503'];
-        yield 'package FK' => ['assessment_participants', 'attempt', ['package_id' => 999999999], '23503'];
+        yield 'participant identity is immutable before its FK can be changed' => [
+            'assessment_participants', 'attempt', ['participant_id' => 999999999], 'P0001',
+        ];
+        yield 'package identity is immutable before its FK can be changed' => [
+            'assessment_participants', 'attempt', ['package_id' => 999999999], 'P0001',
+        ];
     }
 
-    public function test_owner_ddl_roundtrip_and_preflight_preserve_data_and_all_existing_controls(): void
+    public function test_owner_cannot_roll_back_partial_profiles_through_populated_case_history(): void
     {
         // DDL owner use is restricted to the disposable runner; authorization tests above use runtime.
         $this->assertFileExists('/.dockerenv');
@@ -192,31 +206,15 @@ final class CheckoutPartialProfileSchemaTest extends TestCase
             $participant = DB::table('participants')->find($f['participant']);
             $attempt = DB::table('assessment_participants')->find($f['attempt']);
             $structure = $this->structure();
-            $this->migration()->down();
-            $required = DB::select("SELECT column_name FROM information_schema.columns WHERE table_name = 'participants' AND is_nullable = 'NO'");
-            foreach (self::FIELDS as $field) {
-                $this->assertContains($field, array_column($required, 'column_name'));
+            try {
+                $this->migration()->down();
+                $this->fail('Rollback crossed populated assessment-case history.');
+            } catch (RuntimeException $exception) {
+                $this->assertStringContainsString('prevent rollback', $exception->getMessage());
             }
-            $this->assertSame('NO', DB::table('information_schema.columns')->where('table_name', 'assessment_participants')->where('column_name', 'funding_mode')->value('is_nullable'));
-            $this->migration()->up();
             $this->assertEquals($structure, $this->structure());
             $this->assertEquals($participant, DB::table('participants')->find($f['participant']));
             $this->assertEquals($attempt, DB::table('assessment_participants')->find($f['attempt']));
-            foreach ([...self::FIELDS, 'funding_mode'] as $field) {
-                $table = $field === 'funding_mode' ? 'assessment_participants' : 'participants';
-                $id = $field === 'funding_mode' ? $f['attempt'] : $f['participant'];
-                DB::table($table)->where('id', $id)->update([$field => null, ...($field === 'funding_mode' ? ['assessment_status' => 'PROVISIONED'] : [])]);
-                $before = DB::table($table)->find($id);
-                try {
-                    $this->migration()->down();
-                    $this->fail('Rollback changed incomplete data.');
-                } catch (RuntimeException $exception) {
-                    $this->assertStringContainsString('prevent rollback', $exception->getMessage());
-                }
-                $this->assertEquals($before, DB::table($table)->find($id));
-                $this->assertEquals($structure, $this->structure());
-                DB::table($table)->where('id', $id)->update([$field => ($field === 'funding_mode' ? $attempt : $participant)->{$field}]);
-            }
         } finally {
             if ($owner->transactionLevel() > 0) {
                 $owner->rollBack();
