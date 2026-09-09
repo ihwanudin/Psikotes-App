@@ -10,6 +10,10 @@ import {
     extractDocxTextParts,
     OoxmlContentError,
 } from './ooxml-content.mjs';
+import {
+    extractZipTextParts,
+    ZipTextContentError,
+} from './zip-text-content.mjs';
 
 const KINDS = new Set(['secret', 'pii']);
 const SYNTHETIC_PHONES = new Set([
@@ -369,20 +373,30 @@ function scanBlob(kind, relativePath, bytes) {
 }
 
 function scanSnapshot(kind, relativePath, bytes, maximum) {
-    if (!relativePath.toLowerCase().endsWith('.docx')) {
+    const lowerPath = relativePath.toLowerCase();
+
+    if (!lowerPath.endsWith('.docx') && !lowerPath.endsWith('.zip')) {
         return scanBlob(kind, relativePath, bytes);
     }
 
     try {
-        return extractDocxTextParts(bytes, {
-            maxTotalBytes: maximum,
-        }).flatMap(({ reportId, bytes: content }) =>
+        const parts = lowerPath.endsWith('.docx')
+            ? extractDocxTextParts(bytes, { maxTotalBytes: maximum })
+            : extractZipTextParts(bytes, { maxTotalBytes: maximum });
+
+        return parts.flatMap(({ reportId, bytes: content }) =>
             scanBlob(kind, `${relativePath}#${reportId}`, content),
         );
     } catch (error) {
         if (error instanceof OoxmlContentError) {
             throw new ScanFailure(
                 `Tracked DOCX is malformed or unsupported: ${relativePath}`,
+            );
+        }
+
+        if (error instanceof ZipTextContentError) {
+            throw new ScanFailure(
+                `Tracked ZIP is malformed or unsupported: ${relativePath}`,
             );
         }
 

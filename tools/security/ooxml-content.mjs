@@ -22,46 +22,14 @@ export function extractDocxTextParts(
     bytes,
     { maxTotalBytes, maxEntries = 256 },
 ) {
-    if (
-        !Buffer.isBuffer(bytes) ||
-        !Number.isSafeInteger(maxTotalBytes) ||
-        maxTotalBytes < 1 ||
-        !Number.isSafeInteger(maxEntries) ||
-        maxEntries < 3
-    ) {
-        reject();
-    }
-
-    const endOffset = findEndRecord(bytes);
-    const entryCount = bytes.readUInt16LE(endOffset + 10);
-    const centralSize = bytes.readUInt32LE(endOffset + 12);
-    const centralOffset = bytes.readUInt32LE(endOffset + 16);
-
-    if (
-        bytes.readUInt16LE(endOffset + 4) !== 0 ||
-        bytes.readUInt16LE(endOffset + 6) !== 0 ||
-        bytes.readUInt16LE(endOffset + 8) !== entryCount ||
-        entryCount < 3 ||
-        entryCount > maxEntries ||
-        entryCount === 0xffff ||
-        centralSize === 0xffffffff ||
-        centralOffset === 0xffffffff ||
-        centralOffset + centralSize !== endOffset
-    ) {
-        reject();
-    }
-
-    const entries = readCentralDirectory(
-        bytes,
-        centralOffset,
-        centralSize,
-        entryCount,
+    const entries = extractStrictZipEntries(bytes, {
         maxTotalBytes,
-    );
-    const parts = readLocalEntries(bytes, entries, centralOffset);
+        maxEntries,
+        minEntries: 3,
+    });
     assertDocxShape(entries);
 
-    const orderedParts = [...parts].sort((left, right) =>
+    const orderedParts = [...entries].sort((left, right) =>
         left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
     );
 
@@ -82,6 +50,64 @@ export function extractDocxTextParts(
             },
         ];
     });
+}
+
+/**
+ * Shared strict ZIP structure reader. Callers must keep entry names internal.
+ */
+export function extractStrictZipEntries(
+    bytes,
+    {
+        maxTotalBytes,
+        maxEntries = 256,
+        minEntries = 1,
+        maxCompressionRatio = 100,
+    },
+) {
+    if (
+        !Buffer.isBuffer(bytes) ||
+        !Number.isSafeInteger(maxTotalBytes) ||
+        maxTotalBytes < 1 ||
+        !Number.isSafeInteger(maxEntries) ||
+        maxEntries < 1 ||
+        !Number.isSafeInteger(minEntries) ||
+        minEntries < 1 ||
+        minEntries > maxEntries ||
+        !Number.isSafeInteger(maxCompressionRatio) ||
+        maxCompressionRatio < 1
+    ) {
+        reject();
+    }
+
+    const endOffset = findEndRecord(bytes);
+    const entryCount = bytes.readUInt16LE(endOffset + 10);
+    const centralSize = bytes.readUInt32LE(endOffset + 12);
+    const centralOffset = bytes.readUInt32LE(endOffset + 16);
+
+    if (
+        bytes.readUInt16LE(endOffset + 4) !== 0 ||
+        bytes.readUInt16LE(endOffset + 6) !== 0 ||
+        bytes.readUInt16LE(endOffset + 8) !== entryCount ||
+        entryCount < minEntries ||
+        entryCount > maxEntries ||
+        entryCount === 0xffff ||
+        centralSize === 0xffffffff ||
+        centralOffset === 0xffffffff ||
+        centralOffset + centralSize !== endOffset
+    ) {
+        reject();
+    }
+
+    const entries = readCentralDirectory(
+        bytes,
+        centralOffset,
+        centralSize,
+        entryCount,
+        maxTotalBytes,
+        maxCompressionRatio,
+    );
+
+    return readLocalEntries(bytes, entries, centralOffset);
 }
 
 function findEndRecord(bytes) {
@@ -114,6 +140,7 @@ function readCentralDirectory(
     centralSize,
     entryCount,
     maximum,
+    maxCompressionRatio,
 ) {
     const entries = [];
     const names = new Set();
@@ -152,6 +179,9 @@ function readCentralDirectory(
             ![0, 8].includes(method) ||
             compressedSize > maximum ||
             uncompressedSize > maximum ||
+            (compressedSize === 0 && uncompressedSize !== 0) ||
+            (compressedSize > 0 &&
+                uncompressedSize / compressedSize > maxCompressionRatio) ||
             (madeBy === 3 && fileType !== 0 && fileType !== 0x8000)
         ) {
             reject();

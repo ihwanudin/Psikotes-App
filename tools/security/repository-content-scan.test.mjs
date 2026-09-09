@@ -477,11 +477,133 @@ test('DOCX rejects decompression bombs unsupported media and unsafe XML without 
     }
 });
 
+test('tracked Markdown ZIP scans every entry with redacted ordinal identifiers', async () => {
+    const token = secretCanary();
+    const phone = ['+62', '81297538641'].join('');
+    const innerNames = ['notes/private.md', 'records/participants.md'];
+    const file = zip([
+        { name: innerNames[0], content: token },
+        { name: innerNames[1], content: phone },
+    ]);
+
+    await withRepository(
+        { 'files.zip': file },
+        async (root) => {
+            for (const [kind, rule] of [
+                ['secret', 'aws_access_key'],
+                ['pii', 'indonesian_phone'],
+            ]) {
+                await assert.rejects(scan(root, kind), (error) => {
+                    assert(error.findings.some((finding) => finding.rule === rule));
+                    const report = JSON.stringify(error);
+
+                    for (const innerName of innerNames) {
+                        const hashGuess = createHash('sha256')
+                            .update(innerName)
+                            .digest('hex');
+                        assert(!report.includes(innerName));
+                        assert(!report.includes(hashGuess));
+                    }
+
+                    assert.match(report, /files\.zip#part-\d{4}/);
+
+                    return true;
+                });
+            }
+        },
+        { max_blob_bytes: 1024 * 1024 },
+    );
+});
+
+test('both staged and working-tree Markdown ZIP snapshots are scanned', async () => {
+    await withRepository(
+        { 'files.zip': zip([{ name: 'clean.md', content: 'safe' }]) },
+        async (root) => {
+            await writeFile(
+                path.join(root, 'files.zip'),
+                zip([{ name: 'staged.md', content: secretCanary() }]),
+            );
+            git(root, ['add', 'files.zip']);
+            await writeFile(
+                path.join(root, 'files.zip'),
+                zip([
+                    {
+                        name: 'working.md',
+                        content: ['+62', '81297538641'].join(''),
+                    },
+                ]),
+            );
+
+            await assert.rejects(scan(root, 'secret'), (error) => {
+                assert(error.findings.some(({ rule }) => rule === 'aws_access_key'));
+
+                return true;
+            });
+            await assert.rejects(scan(root, 'pii'), (error) => {
+                assert(
+                    error.findings.some(({ rule }) => rule === 'indonesian_phone'),
+                );
+
+                return true;
+            });
+        },
+        { max_blob_bytes: 1024 * 1024 },
+    );
+});
+
+test('Markdown ZIP rejects corruption traversal binary nested and excessive compression ratio', async () => {
+    const clean = zip([{ name: 'clean.md', content: 'safe' }]);
+    const local = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
+    const invalid = [
+        clean.subarray(0, clean.length - 1),
+        mutate(clean, local, 14, 4, 0),
+        zip([{ name: '../private.md', content: 'safe' }]),
+        zip([{ name: 'image.png', content: Buffer.from([0x89, 0x50]) }]),
+        zip([{ name: 'nested.zip', content: clean }]),
+        zip([{ name: 'bomb.md', content: 'a'.repeat(20_000) }]),
+    ];
+
+    for (const file of invalid) {
+        await withRepository(
+            { 'files.zip': file },
+            async (root) => {
+                await assert.rejects(
+                    scan(root, 'secret'),
+                    /ZIP is malformed or unsupported/i,
+                );
+            },
+            { max_blob_bytes: 1024 * 1024 },
+        );
+    }
+});
+
+test('Markdown ZIP delegates UTF decoding to the repository scanner', async () => {
+    const content = Buffer.concat([
+        Buffer.from([0xff, 0xfe]),
+        Buffer.from(secretCanary(), 'utf16le'),
+    ]);
+
+    await withRepository(
+        { 'files.zip': zip([{ name: 'utf16.md', content }]) },
+        async (root) => {
+            await assert.rejects(scan(root, 'secret'), (error) => {
+                assert(error.findings.some(({ rule }) => rule === 'aws_access_key'));
+
+                return true;
+            });
+        },
+        { max_blob_bytes: 1024 * 1024 },
+    );
+});
+
 test('scanner implementation and tests contain no detectable secret or PII literals', async () => {
     const scanner = await readFile(
         new URL('./repository-content-scan.mjs', import.meta.url),
     );
     const ooxml = await readFile(new URL('./ooxml-content.mjs', import.meta.url));
+    const zipText = await readFile(
+        new URL('./zip-text-content.mjs', import.meta.url),
+    );
     const tests = await readFile(new URL(import.meta.url));
 
     await withRepository(
@@ -489,6 +611,7 @@ test('scanner implementation and tests contain no detectable secret or PII liter
             'ooxml.mjs': ooxml,
             'scanner.mjs': scanner,
             'scanner.test.mjs': tests,
+            'zip-text.mjs': zipText,
         },
         async (root) => {
             assert.deepEqual((await scan(root, 'secret')).findings, []);
