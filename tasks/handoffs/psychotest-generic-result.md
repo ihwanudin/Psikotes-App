@@ -156,3 +156,11 @@ egress HTTPS, health operasional berbasis metrics/log, dan multi-host scheduler
 belum diuji. Scoring IQ authoritative tetap belum tersedia, sehingga menyalakan
 worker tidak membuat outbox hasil dengan sendirinya dan flag callback tetap
 harus dipertahankan nonaktif sampai kontrak lintas aplikasi siap.
+
+## Irisan keyring callback Selection
+
+Task lintas aplikasi ini dikerjakan pada branch `codex/selection-callback-keyring`, worktree `D:/LSI/Web/Psikotes-worktrees/selection-callback-keyring`, dari baseline bersih `93826263d9c91b227771bb3ee035de4f47e737c3`. Provider kini menerima `SELECTION_RESULT_CALLBACK_KEY_ID` opsional dengan format `^[a-z0-9][a-z0-9_-]{0,63}$`. Jika nilainya kosong, canonical HMAC dan header lama tetap persis sama. Jika diisi, dispatcher mengirim `X-Psychotest-Key-Id` dan signer menambahkan baris terakhir `key-id:{id}` ke canonical HMAC v2. Karena ID ikut ditandatangani, penggantian header tidak dapat memakai ulang signature untuk key lain. Nilai kosong selain `null`, format asing, atau panjang berlebih gagal tertutup sebelum claim dan HTTP.
+
+Kontrak environment dan Compose meneruskan key ID ke `app`, `queue`, `integrations-queue`, dan `scheduler`, tetapi default tetap kosong dan callback tetap default nonaktif. Aktivasi produksi harus dilakukan sebagai perubahan terkoordinasi: pasang provider code dengan key ID kosong terlebih dahulu; jeda dan drain worker callback; pasang key ID serta secret yang sama pada Psikotes dan keyring aktif Selection; clear config cache dan restart worker; lalu aktifkan kembali dan verifikasi satu callback sintetis. Jangan mengubah hanya header atau hanya satu VPS. Rotasi berikutnya memakai ID baru sebagai active di kedua sisi sementara ID lama tetap retiring pada Selection sampai retry/rekonsiliasi lama selesai.
+
+Bukti lokal: RED awal 2 dari 9 test callback gagal karena header keyed belum ada dan key ID rusak masih diterima. GREEN core 15 test/93 assertion; konfigurasi/Compose 20 test/124 assertion; focused Pint lulus; `docker compose config --quiet` lulus dengan nilai wajib sintetis. Tidak ada secret nyata, network, callback produksi, migration, atau scoring yang disentuh. Full suite, PHPStan, dependency audit, serta contract HTTP nyata dua VPS masih menjadi gerbang sebelum push/deploy.

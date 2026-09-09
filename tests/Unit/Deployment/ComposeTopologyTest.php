@@ -126,6 +126,7 @@ final class ComposeTopologyTest extends TestCase
             $this->assertSame('${SELECTION_RESULT_CALLBACK_ENABLED:-false}', $environment['SELECTION_RESULT_CALLBACK_ENABLED'] ?? null);
             $this->assertSame('${SELECTION_RESULT_CALLBACK_BASE_URL:-https://seleksi.beasiswajepang.id}', $environment['SELECTION_RESULT_CALLBACK_BASE_URL'] ?? null);
             $this->assertSame('${SELECTION_RESULT_CALLBACK_SECRET:-}', $environment['SELECTION_RESULT_CALLBACK_SECRET'] ?? null);
+            $this->assertSame('${SELECTION_RESULT_CALLBACK_KEY_ID:-}', $environment['SELECTION_RESULT_CALLBACK_KEY_ID'] ?? null);
             $this->assertSame('${SELECTION_RESULT_CALLBACK_TIMEOUT_SECONDS:-10}', $environment['SELECTION_RESULT_CALLBACK_TIMEOUT_SECONDS'] ?? null);
         }
     }
