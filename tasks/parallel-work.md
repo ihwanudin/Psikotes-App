@@ -289,9 +289,9 @@ user-owned and is excluded from every worker scope and coordinator commit.
 
 | Task setup ID | Lane | Exclusive ownership | First increment | Status / next checkpoint |
 |---|---|---|---|---|
-| `client-new-thread:e4108e35-7ecd-4ee5-bfcd-bbcf9f69ea1b` | F2 PostgreSQL `000700` | Read-only disposable PostgreSQL runner and existing grant security tests | Run focused `TestSessionGrantSecurityTest`, then the full organization PostgreSQL suite; verify catalog/RLS/concurrency evidence and exact cleanup | setup queued; no code changes authorized |
-| `client-new-thread:5bca891c-5a9c-4063-833e-b8ce7dedfb03` | F2 allocator readiness | Read-only resolver/session-definition/session-writer inspection | Freeze the smallest resolver-backed session plus grant dual-write slice, exact files, lock order, idempotency, and acceptance matrix | setup queued; waits for `000700` acceptance before implementation |
-| `client-new-thread:6cd099b2-4349-4a88-8b2b-cf0921491336` | F9 retention readiness | Read-only retention schema/model/job/scheduler/storage inspection | Separate pure policy, persistence, object cleanup, audit redaction, and schedule; select one dependency-unblocked implementation slice | setup queued; no deletion or scheduler execution authorized |
+| `01a0881b-8590-7123-a9ce-640f7cbf75c3` (`2469`) | F2 PostgreSQL `000700` | Read-only disposable PostgreSQL runner and existing grant security tests | Run focused `TestSessionGrantSecurityTest`, then the full organization PostgreSQL suite; verify catalog/RLS/concurrency evidence and exact cleanup | active; no code changes authorized |
+| `01a0881b-86ec-7fc1-b0f3-99e1e5b99cb1` (`fa77`) | F2 allocator readiness | Read-only resolver/session-definition/session-writer inspection | Freeze the smallest resolver-backed session plus grant dual-write slice, exact files, lock order, idempotency, and acceptance matrix | active; waits for `000700` acceptance before implementation |
+| `01a0881b-85ce-7f43-91d5-dd84fe064064` (`13aa`) | F9 retention readiness | Read-only retention schema/model/job/scheduler/storage inspection | Separate pure policy, persistence, object cleanup, audit redaction, and schedule; select one dependency-unblocked implementation slice | active; no deletion or scheduler execution authorized |
 
 The coordinator owns this canonical dispatch record and all acceptance updates.
 No migration owner may be assigned beyond PostgreSQL verification until the
