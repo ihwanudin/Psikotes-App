@@ -45,6 +45,8 @@ final readonly class IntegrationClusterExtremaCandidates
                 'level' => $item['level'],
                 'source_position' => $position + 1,
             ];
+            $highestLevel = $highestLevel === null ? $item['level'] : max($highestLevel, $item['level']);
+            $lowestLevel = $lowestLevel === null ? $item['level'] : min($lowestLevel, $item['level']);
 
             if ($item['review_required']) {
                 $omitted[] = $candidate;
@@ -53,11 +55,9 @@ final readonly class IntegrationClusterExtremaCandidates
             }
 
             $included[] = $candidate;
-            $highestLevel = $highestLevel === null ? $item['level'] : max($highestLevel, $item['level']);
-            $lowestLevel = $lowestLevel === null ? $item['level'] : min($lowestLevel, $item['level']);
         }
 
-        if ($highestLevel === null || $lowestLevel === null) {
+        if ($included === []) {
             throw new InvalidArgumentException('Integration cluster has no resolved extrema authority.');
         }
 

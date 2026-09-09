@@ -35,23 +35,18 @@ final class IntegrationClusterExtremaCandidatesTest extends TestCase
         ], $result);
     }
 
-    public function test_it_omits_unresolved_cluster_c_aspects_and_preserves_typed_provenance(): void
+    public function test_unresolved_true_extrema_are_omitted_without_promoting_resolved_runner_ups(): void
     {
-        $input = $this->validInput('C', [5, 1, 4, 2, 1, 4, 3]);
+        $input = $this->validInput('C', [5, 1, 4, 2, 2, 4, 3]);
         $input[0]['review_required'] = true;
         $input[1]['review_required'] = true;
 
         $result = (new IntegrationClusterExtremaCandidates)->candidates('C', $input);
 
-        $this->assertSame(4, $result['highest_level']);
-        $this->assertSame([
-            ['aspect' => 'C3', 'level' => 4, 'source_position' => 3],
-            ['aspect' => 'C6', 'level' => 4, 'source_position' => 6],
-        ], $result['highest_candidates']);
+        $this->assertSame(5, $result['highest_level']);
+        $this->assertSame([], $result['highest_candidates']);
         $this->assertSame(1, $result['lowest_level']);
-        $this->assertSame([
-            ['aspect' => 'C5', 'level' => 1, 'source_position' => 5],
-        ], $result['lowest_candidates']);
+        $this->assertSame([], $result['lowest_candidates']);
         $this->assertTrue($result['review_required']);
         $this->assertSame([
             ['aspect' => 'C1', 'level' => 5, 'source_position' => 1],
