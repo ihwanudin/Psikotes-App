@@ -132,6 +132,7 @@ final class TestSessionGrantSecurityTest extends TestCase
                     'function_security' => DB::unprepared('CREATE OR REPLACE FUNCTION app_private.guard_test_session_grant_identity() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$ BEGIN RETURN NEW; END; $$'),
                     'function_search_path' => DB::unprepared('CREATE OR REPLACE FUNCTION app_private.guard_test_session_grant_identity() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$ BEGIN RETURN NEW; END; $$'),
                     'unexpected_grantee' => DB::unprepared('CREATE ROLE test_session_grants_counterfeit_role NOLOGIN; GRANT SELECT ON test_session_grants TO test_session_grants_counterfeit_role'),
+                    'grant_option' => DB::unprepared('GRANT SELECT ON test_session_grants TO psikotes_runtime WITH GRANT OPTION'),
                     default => throw new RuntimeException("Unknown counterfeit component {$component}."),
                 };
                 $before = $this->grantDefinitions();
@@ -159,6 +160,7 @@ final class TestSessionGrantSecurityTest extends TestCase
         yield 'function loses security definer' => ['function_security'];
         yield 'function unsafe search path' => ['function_search_path'];
         yield 'unexpected role grant' => ['unexpected_grantee'];
+        yield 'runtime select grant option' => ['grant_option'];
     }
 
     /** @return array{branch:int,participant:int,case:int,order:int,entitlement:int,session:int} */

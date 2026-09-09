@@ -684,7 +684,7 @@ return new class extends Migration
         })->all();
         $privileges = collect(DB::select(<<<'SQL'
             SELECT CASE WHEN acl.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(acl.grantee) END grantee,
-                   acl.privilege_type
+                   acl.privilege_type,acl.is_grantable
             FROM pg_class class
             CROSS JOIN LATERAL aclexplode(COALESCE(class.relacl,acldefault('r',class.relowner))) acl
             WHERE class.oid='test_session_grants'::regclass AND acl.grantee <> class.relowner
@@ -692,7 +692,7 @@ return new class extends Migration
             SQL))->map(function (object $row): array {
             $data = (array) $row;
 
-            return [(string) $data['grantee'], (string) $data['privilege_type']];
+            return [(string) $data['grantee'], (string) $data['privilege_type'], (bool) $data['is_grantable']];
         })->all();
         $securityData = $security === null ? [] : (array) $security;
         $triggerData = $trigger === null ? [] : (array) $trigger;
@@ -719,7 +719,10 @@ return new class extends Migration
             || $policies !== [
                 ['test_session_grants_service_insert', 'PERMISSIVE', '{psikotes_runtime}', 'INSERT', null, "(app_private.app_role() = 'service'::text)"],
                 ['test_session_grants_service_select', 'PERMISSIVE', '{psikotes_runtime}', 'SELECT', "(app_private.app_role() = 'service'::text)", null],
-            ] || $privileges !== [['psikotes_runtime', 'INSERT'], ['psikotes_runtime', 'SELECT']]) {
+            ] || $privileges !== [
+                ['psikotes_runtime', 'INSERT', false],
+                ['psikotes_runtime', 'SELECT', false],
+            ]) {
             $this->abort('partial PostgreSQL enforcement already exists');
         }
     }
