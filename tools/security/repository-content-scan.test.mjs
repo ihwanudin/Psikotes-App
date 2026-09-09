@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
+import { createHash } from 'node:crypto';
 import { mkdtemp, readFile, rm, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -276,6 +277,45 @@ test('DOCX scans document metadata comments headers and relationships without ex
                         'word/header1.xml',
                     ]) {
                         assert(!report.includes(inner));
+                    }
+
+                    return true;
+                });
+            }
+        },
+        { max_blob_bytes: 1024 * 1024 },
+    );
+});
+
+test('DOCX finding identifiers disclose neither common inner names nor their hash guesses', async () => {
+    const token = secretCanary();
+    const phone = ['+62', '81297538641'].join('');
+    const innerNames = [
+        'word/document.xml',
+        'word/styles.xml',
+        'docProps/core.xml',
+        'word/comments.xml',
+    ];
+    const file = docx(
+        innerNames.map((name) => ({
+            name,
+            content: `<part>${token} ${phone}</part>`,
+        })),
+    );
+
+    await withRepository(
+        { 'requirements.docx': file },
+        async (root) => {
+            for (const kind of ['secret', 'pii']) {
+                await assert.rejects(scan(root, kind), (error) => {
+                    const report = JSON.stringify(error);
+
+                    for (const innerName of innerNames) {
+                        const hashGuess = createHash('sha256')
+                            .update(innerName)
+                            .digest('hex');
+                        assert(!report.includes(innerName));
+                        assert(!report.includes(hashGuess));
                     }
 
                     return true;

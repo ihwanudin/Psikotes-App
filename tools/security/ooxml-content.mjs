@@ -1,5 +1,4 @@
 import { Buffer } from 'node:buffer';
-import { createHash } from 'node:crypto';
 import { crc32, inflateRawSync } from 'node:zlib';
 
 const CENTRAL_SIGNATURE = 0x02014b50;
@@ -62,19 +61,23 @@ export function extractDocxTextParts(
     const parts = readLocalEntries(bytes, entries, centralOffset);
     assertDocxShape(entries);
 
-    return parts.flatMap(({ name, content }) => {
+    const orderedParts = [...parts].sort((left, right) =>
+        left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
+    );
+
+    return orderedParts.flatMap(({ content }, index) => {
         const xml = decodeXml(content);
         const entities = decodeEntities(xml);
-        const identity = createHash('sha256').update(name).digest('hex');
+        const identity = `part-${String(index + 1).padStart(4, '0')}`;
 
         return [
-            { reportId: `xml-${identity}`, bytes: Buffer.from(xml) },
+            { reportId: `${identity}/raw`, bytes: Buffer.from(xml) },
             {
-                reportId: `entities-${identity}`,
+                reportId: `${identity}/entities`,
                 bytes: Buffer.from(entities),
             },
             {
-                reportId: `text-${identity}`,
+                reportId: `${identity}/text`,
                 bytes: Buffer.from(projectXmlText(xml)),
             },
         ];
