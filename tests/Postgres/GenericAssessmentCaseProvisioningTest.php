@@ -81,6 +81,7 @@ final class GenericAssessmentCaseProvisioningTest extends TestCase
         $results = $this->race(fn () => $this->provision(), fn () => $this->provision());
 
         $this->assertSame([false, true], $this->replayFlags($results));
+        $this->assertSame([1, 2], $this->replayLookupCounts($results));
         $this->assertSame($results[0]['assessment_attempt_id'], $results[1]['assessment_attempt_id']);
         $this->assertRows(1, 1);
     }
@@ -90,6 +91,7 @@ final class GenericAssessmentCaseProvisioningTest extends TestCase
         $results = $this->race(fn () => $this->provision(), fn () => $this->provision(key: 'other-key'));
 
         $this->assertSame([false, true], $this->replayFlags($results));
+        $this->assertSame([1, 2], $this->replayLookupCounts($results));
         $this->assertSame($results[0]['assessment_attempt_id'], $results[1]['assessment_attempt_id']);
         $this->assertRows(1, 1);
     }
@@ -211,7 +213,18 @@ final class GenericAssessmentCaseProvisioningTest extends TestCase
         return $flags;
     }
 
-    /** Independent runtime-role processes wait on a shared advisory-lock start barrier. */
+    /** @param array<int, array<string, mixed>> $results
+     * @return list<int>
+     */
+    private function replayLookupCounts(array $results): array
+    {
+        $counts = array_column($results, '_replay_lookup_count');
+        sort($counts);
+
+        return $counts;
+    }
+
+    /** Independent runtime-role processes pause after the initial empty replay read. */
     private function race(callable $first, callable $second): array
     {
         $this->assertTrue(function_exists('pcntl_fork'), 'Concurrency requires pcntl; never skip.');
@@ -237,13 +250,27 @@ final class GenericAssessmentCaseProvisioningTest extends TestCase
                         if ($identity->name !== 'psikotes_runtime') {
                             throw new RuntimeException('Worker must use runtime role.');
                         }
+                        $replayLookupCount = 0;
+                        $gateArmed = true;
+                        DB::listen(function (QueryExecuted $query) use (&$replayLookupCount, &$gateArmed, $gate): void {
+                            if (! str_starts_with($query->sql, 'select')
+                                || ! str_contains($query->sql, 'assessment_participants')
+                                || ! str_contains($query->sql, 'limit 2')) {
+                                return;
+                            }
+                            $replayLookupCount++;
+                            if ($gateArmed) {
+                                $gateArmed = false;
+                                DB::select('SELECT pg_advisory_lock_shared(?)', [$gate]);
+                                DB::select('SELECT pg_advisory_unlock_shared(?)', [$gate]);
+                            }
+                        });
                         fwrite($pair[1], json_encode(['pid' => $identity->pid], JSON_THROW_ON_ERROR)."\n");
                         if (fgets($pair[1]) !== "go\n") {
                             throw new RuntimeException('Barrier timed out.');
                         }
-                        DB::select('SELECT pg_advisory_lock_shared(?)', [$gate]);
-                        DB::select('SELECT pg_advisory_unlock_shared(?)', [$gate]);
                         $result = $callback();
+                        $result['_replay_lookup_count'] = $replayLookupCount;
                     } catch (Throwable $exception) {
                         $result = ['class' => $exception::class, 'error' => $exception->getMessage()];
                     }
@@ -275,7 +302,7 @@ final class GenericAssessmentCaseProvisioningTest extends TestCase
                     }
                     usleep(10000);
                 } while (microtime(true) < $deadline);
-                $this->assertSame('Lock', $waiting?->wait_event_type, 'Both workers must reach the start barrier.');
+                $this->assertSame('Lock', $waiting?->wait_event_type, 'Both workers must reach the post-read barrier.');
             }
             DB::select('SELECT pg_advisory_unlock(?)', [$gate]);
             $gateHeld = false;
