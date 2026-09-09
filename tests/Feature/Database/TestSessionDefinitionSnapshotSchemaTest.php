@@ -184,10 +184,11 @@ final class TestSessionDefinitionSnapshotSchemaTest extends OrganizationPaymentT
         ));
     }
 
-    public function test_new_grant_requires_a_complete_definition_snapshot(): void
+    public function test_new_grant_without_snapshot_remains_compatible_during_expand_window(): void
     {
         $missing = $this->directGraph('missing-snapshot', false);
-        $this->assertRejected(fn () => DB::table('test_session_grants')->insert($this->grantRow($missing)));
+        DB::table('test_session_grants')->insert($this->grantRow($missing));
+        $this->assertDatabaseHas('test_session_grants', ['test_session_id' => $missing['session']]);
 
         $complete = $this->directGraph('complete-snapshot', true);
         DB::table('test_session_grants')->insert($this->grantRow($complete));

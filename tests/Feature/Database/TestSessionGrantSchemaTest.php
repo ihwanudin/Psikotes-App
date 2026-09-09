@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Database;
 
-use App\Domain\AssessmentSessions\SessionDefinition;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -314,69 +313,27 @@ final class TestSessionGrantSchemaTest extends OrganizationPaymentTestCase
 
     private function createBoundSession(int $participant, int $case, string $testType = 'ist'): int
     {
-        $row = [
+        return DB::table('test_sessions')->insertGetId([
             'public_id' => (string) Str::ulid(), 'participant_id' => $participant,
             'assessment_case_id' => $case, 'test_type' => $testType, 'attempt_no' => 1,
             'authorization_id' => (string) Str::ulid(), 'allocation_intent_id' => (string) Str::ulid(),
             'duration_seconds' => 3600, 'status' => 'created', 'answers_revision' => 0,
             'created_at' => now(), 'updated_at' => now(),
-        ];
-        if ($testType !== 'dass21') {
-            $row += $this->definitionSnapshot($testType, 3600);
-        }
-
-        return DB::table('test_sessions')->insertGetId($row);
+        ]);
     }
 
     private function createDassSessionForConstraintProbe(int $participant, int $case): int
     {
-        $triggerNames = ['test_sessions_contract_insert', 'test_sessions_definition_snapshot_insert_guard'];
-        $triggers = [];
-        foreach ($triggerNames as $name) {
-            $trigger = DB::selectOne("SELECT sql FROM sqlite_master WHERE type='trigger' AND name=?", [$name]);
-            if ($trigger === null) {
-                throw new RuntimeException("Test session insert guard {$name} is unavailable.");
-            }
-            $triggers[] = (string) $trigger->sql;
-            DB::statement("DROP TRIGGER {$name}");
+        $trigger = DB::selectOne("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='test_sessions_contract_insert'");
+        if ($trigger === null) {
+            throw new RuntimeException('Test session insert guard is unavailable.');
         }
+        DB::statement('DROP TRIGGER test_sessions_contract_insert');
         try {
-            return DB::table('test_sessions')->insertGetId([
-                'public_id' => (string) Str::ulid(), 'participant_id' => $participant,
-                'assessment_case_id' => $case, 'test_type' => 'dass21', 'attempt_no' => 1,
-                'authorization_id' => (string) Str::ulid(), 'allocation_intent_id' => (string) Str::ulid(),
-                'duration_seconds' => 60, 'status' => 'created', 'answers_revision' => 0,
-                'session_definition_version' => 'synthetic-v1',
-                'session_definition_provenance' => 'synthetic-test-fixture',
-                'session_definition_checksum' => str_repeat('a', 64),
-                'session_definition_payload' => '{}',
-                'created_at' => now(), 'updated_at' => now(),
-            ]);
+            return $this->createBoundSession($participant, $case, 'dass21');
         } finally {
-            foreach ($triggers as $sql) {
-                DB::statement($sql);
-            }
+            DB::statement((string) $trigger->sql);
         }
-    }
-
-    /** @return array<string,mixed> */
-    private function definitionSnapshot(string $instrument, int $duration): array
-    {
-        $definition = [
-            'instrument' => $instrument, 'version' => 'synthetic-v1',
-            'provenance' => 'synthetic-test-fixture', 'checksum' => '',
-            'total_duration_seconds' => $duration,
-            'subtests' => [['code' => 'SYNTHETIC', 'duration_seconds' => $duration, 'item_count' => 1]],
-            'randomization' => 'fixed', 'seed' => null, 'generator' => null,
-        ];
-        $definition['checksum'] = SessionDefinition::checksumFor($definition);
-
-        return [
-            'session_definition_version' => $definition['version'],
-            'session_definition_provenance' => $definition['provenance'],
-            'session_definition_checksum' => $definition['checksum'],
-            'session_definition_payload' => json_encode($definition, JSON_THROW_ON_ERROR),
-        ];
     }
 
     /** @param array{branch:int,participant:int,case:int,order:int,entitlement:int,session:int} $graph

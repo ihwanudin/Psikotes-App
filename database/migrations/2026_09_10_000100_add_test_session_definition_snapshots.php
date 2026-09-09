@@ -7,11 +7,12 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
+/**
+ * Expand phase only: legacy session/grant writers may omit snapshots until a later contract migration.
+ */
 return new class extends Migration
 {
     private const POSTGRES_SESSION_GUARD_SHA256 = 'c377e31edc6347b691e854eb373c25b690519e6ec5efa3ef21193d13bb302fe9';
-
-    private const POSTGRES_GRANT_GUARD_SHA256 = 'ccc54a9d87a513abe110b5b0496d2069fa6093a4fa54ab4c2dd970206b044f4e';
 
     private const COLUMNS = [
         'session_definition_version',
@@ -27,7 +28,6 @@ return new class extends Migration
                 $driver = DB::getDriverName();
                 if ($driver === 'pgsql') {
                     DB::statement('LOCK TABLE test_sessions IN ACCESS EXCLUSIVE MODE');
-                    DB::statement('LOCK TABLE test_session_grants IN ACCESS EXCLUSIVE MODE');
                 }
 
                 $present = array_values(array_filter(
@@ -98,7 +98,6 @@ return new class extends Migration
 
             if ($driver === 'pgsql') {
                 DB::statement('LOCK TABLE test_sessions IN ACCESS EXCLUSIVE MODE');
-                DB::statement('LOCK TABLE test_session_grants IN ACCESS EXCLUSIVE MODE');
                 DB::statement("SELECT set_config('app.role', 'service', true)");
             }
             $populated = DB::table('test_sessions')->where(function ($query): void {
@@ -321,27 +320,6 @@ return new class extends Migration
             CREATE TRIGGER test_sessions_definition_snapshot_guard
             BEFORE INSERT OR UPDATE ON test_sessions
             FOR EACH ROW EXECUTE FUNCTION app_private.guard_test_session_definition_snapshot();
-
-            CREATE FUNCTION app_private.guard_test_session_grant_definition_snapshot() RETURNS trigger
-            LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $guard$
-            BEGIN
-                IF NOT EXISTS (
-                    SELECT 1 FROM public.test_sessions session
-                    WHERE session.id = NEW.test_session_id
-                      AND session.session_definition_version IS NOT NULL
-                      AND session.session_definition_provenance IS NOT NULL
-                      AND session.session_definition_checksum IS NOT NULL
-                      AND session.session_definition_payload IS NOT NULL
-                ) THEN
-                    RAISE EXCEPTION 'test session grant requires a complete definition snapshot' USING ERRCODE = '23514';
-                END IF;
-                RETURN NEW;
-            END;
-            $guard$;
-            REVOKE ALL ON FUNCTION app_private.guard_test_session_grant_definition_snapshot() FROM PUBLIC;
-            CREATE TRIGGER test_session_grants_definition_snapshot_guard
-            BEFORE INSERT ON test_session_grants
-            FOR EACH ROW EXECUTE FUNCTION app_private.guard_test_session_grant_definition_snapshot();
             SQL);
     }
 
@@ -360,19 +338,6 @@ return new class extends Migration
               OR NEW.session_definition_payload IS NOT OLD.session_definition_payload
               OR COALESCE(({$valid}), 0) = 0
             BEGIN SELECT RAISE(ABORT, 'test session definition snapshot is immutable or invalid'); END");
-        DB::unprepared(<<<'SQL'
-            CREATE TRIGGER test_session_grants_definition_snapshot_guard
-            BEFORE INSERT ON test_session_grants FOR EACH ROW
-            WHEN NOT EXISTS (
-                SELECT 1 FROM test_sessions session
-                WHERE session.id = NEW.test_session_id
-                  AND session.session_definition_version IS NOT NULL
-                  AND session.session_definition_provenance IS NOT NULL
-                  AND session.session_definition_checksum IS NOT NULL
-                  AND session.session_definition_payload IS NOT NULL
-            )
-            BEGIN SELECT RAISE(ABORT, 'test session grant requires a complete definition snapshot'); END
-            SQL);
     }
 
     private function sqliteValidSnapshotExpression(): string
@@ -600,29 +565,21 @@ return new class extends Migration
             JOIN pg_proc function ON function.oid=trigger.tgfoid
             JOIN pg_namespace namespace ON namespace.oid=function.pronamespace
             WHERE NOT trigger.tgisinternal
-              AND trigger.tgrelid IN ('test_sessions'::regclass, 'test_session_grants'::regclass)
+              AND trigger.tgrelid='test_sessions'::regclass
               AND (trigger.tgname LIKE '%definition_snapshot%'
                 OR (namespace.nspname='app_private' AND function.proname IN (
-                    'guard_test_session_definition_snapshot',
-                    'guard_test_session_grant_definition_snapshot'
+                    'guard_test_session_definition_snapshot'
                 )))
             ORDER BY trigger.tgname
             SQL))->keyBy('tgname');
-        if ($triggers->count() !== 2
-            || ! isset(
-                $triggers['test_sessions_definition_snapshot_guard'],
-                $triggers['test_session_grants_definition_snapshot_guard'],
-            )) {
+        if ($triggers->count() !== 1
+            || ! isset($triggers['test_sessions_definition_snapshot_guard'])) {
             return false;
         }
         $expectedTriggers = [
             'test_sessions_definition_snapshot_guard' => [
                 'guard_test_session_definition_snapshot',
                 'CREATE TRIGGER test_sessions_definition_snapshot_guard BEFORE INSERT OR UPDATE ON public.test_sessions FOR EACH ROW EXECUTE FUNCTION app_private.guard_test_session_definition_snapshot()',
-            ],
-            'test_session_grants_definition_snapshot_guard' => [
-                'guard_test_session_grant_definition_snapshot',
-                'CREATE TRIGGER test_session_grants_definition_snapshot_guard BEFORE INSERT ON public.test_session_grants FOR EACH ROW EXECUTE FUNCTION app_private.guard_test_session_grant_definition_snapshot()',
             ],
         ];
         foreach ($expectedTriggers as $name => [$function, $definition]) {
@@ -641,11 +598,10 @@ return new class extends Migration
             JOIN pg_language language ON language.oid=proc.prolang
             WHERE namespace.nspname='app_private'
               AND proc.proname IN (
-                'guard_test_session_definition_snapshot',
-                'guard_test_session_grant_definition_snapshot'
+                'guard_test_session_definition_snapshot'
               ) ORDER BY proc.proname
             SQL))->keyBy('proname');
-        if ($functions->count() !== 2) {
+        if ($functions->count() !== 1) {
             return false;
         }
         $tableOwner = DB::scalar("SELECT pg_get_userbyid(relowner) FROM pg_class WHERE oid='test_sessions'::regclass");
@@ -659,9 +615,7 @@ return new class extends Migration
         }
 
         return ! (bool) $functions['guard_test_session_definition_snapshot']->prosecdef
-            && (bool) $functions['guard_test_session_grant_definition_snapshot']->prosecdef
-            && hash('sha256', $this->normalize((string) $functions['guard_test_session_definition_snapshot']->prosrc)) === self::POSTGRES_SESSION_GUARD_SHA256
-            && hash('sha256', $this->normalize((string) $functions['guard_test_session_grant_definition_snapshot']->prosrc)) === self::POSTGRES_GRANT_GUARD_SHA256;
+            && hash('sha256', $this->normalize((string) $functions['guard_test_session_definition_snapshot']->prosrc)) === self::POSTGRES_SESSION_GUARD_SHA256;
     }
 
     private function sqliteEnforcementExact(): bool
@@ -670,18 +624,16 @@ return new class extends Migration
             SELECT name, sql FROM sqlite_master WHERE type='trigger'
               AND name IN (
                 'test_sessions_definition_snapshot_insert_guard',
-                'test_sessions_definition_snapshot_update_guard',
-                'test_session_grants_definition_snapshot_guard'
+                'test_sessions_definition_snapshot_update_guard'
               ) ORDER BY name
             SQL))->pluck('sql', 'name');
-        if ($actual->count() !== 3) {
+        if ($actual->count() !== 2) {
             return false;
         }
         $valid = $this->sqliteValidSnapshotExpression();
         $expected = [
             'test_sessions_definition_snapshot_insert_guard' => "CREATE TRIGGER test_sessions_definition_snapshot_insert_guard BEFORE INSERT ON test_sessions FOR EACH ROW WHEN COALESCE(({$valid}), 0) = 0 BEGIN SELECT RAISE(ABORT, 'test session definition snapshot is invalid'); END",
             'test_sessions_definition_snapshot_update_guard' => "CREATE TRIGGER test_sessions_definition_snapshot_update_guard BEFORE UPDATE ON test_sessions FOR EACH ROW WHEN NEW.session_definition_version IS NOT OLD.session_definition_version OR NEW.session_definition_provenance IS NOT OLD.session_definition_provenance OR NEW.session_definition_checksum IS NOT OLD.session_definition_checksum OR NEW.session_definition_payload IS NOT OLD.session_definition_payload OR COALESCE(({$valid}), 0) = 0 BEGIN SELECT RAISE(ABORT, 'test session definition snapshot is immutable or invalid'); END",
-            'test_session_grants_definition_snapshot_guard' => "CREATE TRIGGER test_session_grants_definition_snapshot_guard BEFORE INSERT ON test_session_grants FOR EACH ROW WHEN NOT EXISTS (SELECT 1 FROM test_sessions session WHERE session.id = NEW.test_session_id AND session.session_definition_version IS NOT NULL AND session.session_definition_provenance IS NOT NULL AND session.session_definition_checksum IS NOT NULL AND session.session_definition_payload IS NOT NULL) BEGIN SELECT RAISE(ABORT, 'test session grant requires a complete definition snapshot'); END",
         ];
         foreach ($expected as $name => $sql) {
             if (! isset($actual[$name]) || $this->normalize((string) $actual[$name]) !== $this->normalize($sql)) {
@@ -700,14 +652,12 @@ return new class extends Migration
                     SELECT 1 FROM pg_constraint WHERE conname='test_sessions_definition_snapshot_completeness_check'
                     UNION ALL
                     SELECT 1 FROM pg_trigger WHERE tgname IN (
-                        'test_sessions_definition_snapshot_guard',
-                        'test_session_grants_definition_snapshot_guard'
+                        'test_sessions_definition_snapshot_guard'
                     )
                     UNION ALL
                     SELECT 1 FROM pg_proc proc JOIN pg_namespace namespace ON namespace.oid=proc.pronamespace
                     WHERE namespace.nspname='app_private' AND proc.proname IN (
-                        'guard_test_session_definition_snapshot',
-                        'guard_test_session_grant_definition_snapshot'
+                        'guard_test_session_definition_snapshot'
                     )
                 )
                 SQL);
@@ -717,8 +667,7 @@ return new class extends Migration
             SELECT EXISTS (
                 SELECT 1 FROM sqlite_master WHERE name IN (
                     'test_sessions_definition_snapshot_insert_guard',
-                    'test_sessions_definition_snapshot_update_guard',
-                    'test_session_grants_definition_snapshot_guard'
+                    'test_sessions_definition_snapshot_update_guard'
                 )
             )
             SQL);
@@ -727,16 +676,13 @@ return new class extends Migration
     private function removeEnforcement(string $driver): void
     {
         if ($driver === 'pgsql') {
-            DB::unprepared('DROP TRIGGER IF EXISTS test_session_grants_definition_snapshot_guard ON test_session_grants');
             DB::unprepared('DROP TRIGGER IF EXISTS test_sessions_definition_snapshot_guard ON test_sessions');
             DB::statement('ALTER TABLE test_sessions DROP CONSTRAINT IF EXISTS test_sessions_definition_snapshot_completeness_check');
-            DB::unprepared('DROP FUNCTION IF EXISTS app_private.guard_test_session_grant_definition_snapshot()');
             DB::unprepared('DROP FUNCTION IF EXISTS app_private.guard_test_session_definition_snapshot()');
 
             return;
         }
 
-        DB::unprepared('DROP TRIGGER IF EXISTS test_session_grants_definition_snapshot_guard');
         DB::unprepared('DROP TRIGGER IF EXISTS test_sessions_definition_snapshot_update_guard');
         DB::unprepared('DROP TRIGGER IF EXISTS test_sessions_definition_snapshot_insert_guard');
     }

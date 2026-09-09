@@ -64,11 +64,10 @@ final class TestSessionDefinitionSnapshotSecurityTest extends TestCase
             JOIN pg_namespace namespace ON namespace.oid=proc.pronamespace
             JOIN pg_language language ON language.oid=proc.prolang
             WHERE namespace.nspname='app_private' AND proc.proname IN (
-                'guard_test_session_definition_snapshot',
-                'guard_test_session_grant_definition_snapshot'
+                'guard_test_session_definition_snapshot'
             ) ORDER BY proc.proname
             SQL))->keyBy('proname');
-        $this->assertCount(2, $functions);
+        $this->assertCount(1, $functions);
         $owner = DB::scalar("SELECT pg_get_userbyid(relowner) FROM pg_class WHERE oid='test_sessions'::regclass");
         foreach ($functions as $function) {
             $this->assertSame($owner, $function->owner);
@@ -77,7 +76,6 @@ final class TestSessionDefinitionSnapshotSecurityTest extends TestCase
             $this->assertSame("{{$owner}=X/{$owner}}", $function->proacl);
         }
         $this->assertFalse((bool) $functions['guard_test_session_definition_snapshot']->prosecdef);
-        $this->assertTrue((bool) $functions['guard_test_session_grant_definition_snapshot']->prosecdef);
 
         $triggers = collect(DB::select(<<<'SQL'
             SELECT tgname,tgenabled,pg_get_triggerdef(oid,false) definition
@@ -86,23 +84,21 @@ final class TestSessionDefinitionSnapshotSecurityTest extends TestCase
             ORDER BY tgname
             SQL))->keyBy('tgname');
         $this->assertSame([
-            'test_session_grants_definition_snapshot_guard',
             'test_sessions_definition_snapshot_guard',
         ], $triggers->keys()->all());
-        $this->assertSame('O', $triggers['test_session_grants_definition_snapshot_guard']->tgenabled);
         $this->assertSame('O', $triggers['test_sessions_definition_snapshot_guard']->tgenabled);
     }
 
-    public function test_runtime_service_can_bind_only_complete_valid_immutable_snapshots(): void
+    public function test_runtime_service_accepts_legacy_and_snapshotted_grants_during_expand_window(): void
     {
         app(RlsContextRunner::class)->runAsService(function (): void {
             $historical = $this->directFixture(false);
             foreach ($this->snapshotColumns() as $column) {
                 $this->assertNull(DB::table('test_sessions')->where('id', $historical['session'])->value($column));
             }
-            $this->assertSqlState('23514', fn () => DB::table('test_session_grants')->insert(
-                $this->grantRow($historical),
-            ));
+            DB::table('test_session_grants')->insert($this->grantRow($historical));
+            $this->assertSame(1, DB::table('test_session_grants')
+                ->where('test_session_id', $historical['session'])->count());
 
             $bound = $this->directFixture(true);
             DB::table('test_session_grants')->insert($this->grantRow($bound));
@@ -163,9 +159,9 @@ final class TestSessionDefinitionSnapshotSecurityTest extends TestCase
                 match ($component) {
                     'constraint' => DB::unprepared('ALTER TABLE test_sessions DROP CONSTRAINT test_sessions_definition_snapshot_completeness_check; ALTER TABLE test_sessions ADD CONSTRAINT test_sessions_definition_snapshot_completeness_check CHECK (true)'),
                     'function_body' => DB::unprepared("CREATE OR REPLACE FUNCTION app_private.guard_test_session_definition_snapshot() RETURNS trigger LANGUAGE plpgsql SET search_path = pg_catalog, public AS \$\$ BEGIN PERFORM 'jsonb_object_length(definition) <> 9'; RETURN NEW; END; \$\$"),
-                    'function_security' => DB::unprepared('ALTER FUNCTION app_private.guard_test_session_grant_definition_snapshot() SECURITY INVOKER'),
-                    'function_search_path' => DB::unprepared('ALTER FUNCTION app_private.guard_test_session_grant_definition_snapshot() SET search_path = public'),
-                    'function_acl' => DB::unprepared('GRANT EXECUTE ON FUNCTION app_private.guard_test_session_grant_definition_snapshot() TO psikotes_runtime'),
+                    'function_security' => DB::unprepared('ALTER FUNCTION app_private.guard_test_session_definition_snapshot() SECURITY DEFINER'),
+                    'function_search_path' => DB::unprepared('ALTER FUNCTION app_private.guard_test_session_definition_snapshot() SET search_path = public'),
+                    'function_acl' => DB::unprepared('GRANT EXECUTE ON FUNCTION app_private.guard_test_session_definition_snapshot() TO psikotes_runtime'),
                     'disabled_trigger' => DB::unprepared('ALTER TABLE test_sessions DISABLE TRIGGER test_sessions_definition_snapshot_guard'),
                     'extra_trigger' => DB::unprepared('CREATE TRIGGER counterfeit_definition_snapshot_guard BEFORE INSERT ON test_sessions FOR EACH ROW EXECUTE FUNCTION app_private.guard_test_session_definition_snapshot()'),
                     default => throw new RuntimeException("Unknown counterfeit component {$component}."),
@@ -189,7 +185,7 @@ final class TestSessionDefinitionSnapshotSecurityTest extends TestCase
     {
         yield 'completeness constraint' => ['constraint'];
         yield 'session guard body' => ['function_body'];
-        yield 'grant guard invoker' => ['function_security'];
+        yield 'session guard definer' => ['function_security'];
         yield 'unsafe search path' => ['function_search_path'];
         yield 'runtime function execute' => ['function_acl'];
         yield 'disabled session trigger' => ['disabled_trigger'];
@@ -222,7 +218,7 @@ final class TestSessionDefinitionSnapshotSecurityTest extends TestCase
         });
     }
 
-    public function test_owner_down_up_preserves_historical_null_session_and_grant_without_backfill(): void
+    public function test_owner_down_up_preserves_historical_null_session_without_backfill(): void
     {
         $this->asOwner(function (): void {
             DB::beginTransaction();
@@ -233,11 +229,8 @@ final class TestSessionDefinitionSnapshotSecurityTest extends TestCase
                 $migration->down();
                 $this->assertFalse(Schema::hasColumn('test_sessions', 'session_definition_payload'));
                 $historical = $this->directFixture(false);
-                DB::table('test_session_grants')->insert($this->grantRow($historical));
                 $migration->up();
                 $this->assertEquals($before, $this->definitions());
-                $this->assertSame(1, DB::table('test_session_grants')
-                    ->where('test_session_id', $historical['session'])->count());
                 foreach ($this->snapshotColumns() as $column) {
                     $this->assertNull(DB::table('test_sessions')
                         ->where('id', $historical['session'])->value($column));

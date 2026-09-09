@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Postgres;
 
-use App\Domain\AssessmentSessions\SessionDefinition;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
 use Illuminate\Database\QueryException;
@@ -226,7 +225,6 @@ final class TestSessionGrantSecurityTest extends TestCase
             'assessment_case_id' => $case, 'test_type' => 'ist', 'attempt_no' => 1,
             'authorization_id' => (string) Str::ulid(), 'allocation_intent_id' => (string) Str::ulid(),
             'duration_seconds' => 3600, 'status' => 'created', 'answers_revision' => 0,
-            ...$this->definitionSnapshot(),
             'created_at' => now(), 'updated_at' => now(),
         ]);
 
@@ -254,29 +252,8 @@ final class TestSessionGrantSecurityTest extends TestCase
             'assessment_case_id' => $case, 'test_type' => 'ist', 'attempt_no' => $attemptNo,
             'authorization_id' => (string) Str::ulid(), 'allocation_intent_id' => (string) Str::ulid(),
             'duration_seconds' => 3600, 'status' => 'created', 'answers_revision' => 0,
-            ...$this->definitionSnapshot(),
             'created_at' => now(), 'updated_at' => now(),
         ]);
-    }
-
-    /** @return array<string,mixed> */
-    private function definitionSnapshot(): array
-    {
-        $definition = [
-            'instrument' => 'ist', 'version' => 'synthetic-v1',
-            'provenance' => 'synthetic-test-fixture', 'checksum' => '',
-            'total_duration_seconds' => 3600,
-            'subtests' => [['code' => 'SYNTHETIC', 'duration_seconds' => 3600, 'item_count' => 1]],
-            'randomization' => 'fixed', 'seed' => null, 'generator' => null,
-        ];
-        $definition['checksum'] = SessionDefinition::checksumFor($definition);
-
-        return [
-            'session_definition_version' => $definition['version'],
-            'session_definition_provenance' => $definition['provenance'],
-            'session_definition_checksum' => $definition['checksum'],
-            'session_definition_payload' => json_encode($definition, JSON_THROW_ON_ERROR),
-        ];
     }
 
     /** @param array<string,mixed> $fixture
