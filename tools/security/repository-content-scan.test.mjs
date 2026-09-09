@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
-import { createHash } from 'node:crypto';
 import { mkdtemp, readFile, rm, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -244,31 +243,74 @@ test('realistic phones containing repeated or ascending digits remain PII', asyn
     );
 });
 
-test('finding fingerprints bind location and blob without hashing low-entropy PII directly', async () => {
-    const phone = ['6281', '1111', '1119'].join('');
+test('PII findings expose no stable candidate verifier', async () => {
+    const candidates = [
+        ['6281', '1111', '1119'].join(''),
+        ['6281', '1111', '1129'].join(''),
+    ];
+    const reports = [];
 
-    await withRepository({ 'records.txt': `${phone}\n` }, async (root) => {
-        let finding;
-        await assert.rejects(scan(root, 'pii'), (error) => {
-            [finding] = error.findings;
+    for (const phone of candidates) {
+        await withRepository({ 'records.txt': `${phone}\n` }, async (root) => {
+            await assert.rejects(scan(root, 'pii'), (error) => {
+                reports.push(error.findings);
+                assert.deepEqual(Object.keys(error.findings[0]).sort(), [
+                    'kind',
+                    'line',
+                    'path',
+                    'rule',
+                ]);
 
-            return true;
+                return true;
+            });
         });
-        const reversible = createHash('sha256')
-            .update('pii\0indonesian_phone\0records.txt\0')
-            .update(phone)
-            .digest('hex');
+    }
 
-        assert.notEqual(finding.fingerprint, reversible);
-        assert.match(finding.fingerprint, /^[0-9a-f]{64}$/);
-    });
+    assert.deepEqual(reports[0], reports[1]);
 });
 
 test('control characters in reported paths are encoded against log injection', () => {
-    const encoded = reportPath('line\ninject\t%name.txt');
+    const encoded = reportPath(
+        'line\ninject\t%\u0085\u2028\u2029\u202ename.txt',
+    );
 
-    assert.equal(encoded, 'line%0Ainject%09%25name.txt');
-    assert(!/[\r\n\t]/.test(encoded));
+    assert.equal(
+        encoded,
+        'line%0Ainject%09%25%C2%85%E2%80%A8%E2%80%A9%E2%80%AEname.txt',
+    );
+    assert.match(encoded, /^[\x20-\x7e]+$/);
+});
+
+test('binary PNG and ICO blobs fail closed without a content extractor', async () => {
+    for (const [name, bytes] of [
+        ['asset.png', Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00])],
+        ['asset.ico', Buffer.from([0x00, 0x00, 0x01, 0x00, 0xff])],
+    ]) {
+        await withRepository({ [name]: bytes }, async (root) => {
+            await assert.rejects(scan(root, 'secret'), /encoding/i);
+        });
+    }
+});
+
+test('PII fingerprint exceptions are forbidden without private fingerprint authority', async () => {
+    await withRepository(
+        { 'clean.txt': 'safe' },
+        async (root) => {
+            await assert.rejects(scan(root, 'pii'), /PII.*exception/i);
+        },
+        {
+            exceptions: [
+                {
+                    kind: 'pii',
+                    rule: 'indonesian_phone',
+                    path: 'records.txt',
+                    fingerprint: '0'.repeat(64),
+                    reason: 'No private fingerprint authority.',
+                    expires_on: '2026-10-01',
+                },
+            ],
+        },
+    );
 });
 
 test('PII profile treats exact dependency metadata and obvious fixture syntax as non-participant data', async () => {

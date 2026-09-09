@@ -74,9 +74,16 @@ export function reportPath(value) {
         .map((character) => {
             const code = character.charCodeAt(0);
 
-            return character === '%' || code <= 31 || code === 127
-                ? `%${code.toString(16).toUpperCase().padStart(2, '0')}`
-                : character;
+            if (character !== '%' && code >= 32 && code <= 126) {
+                return character;
+            }
+
+            return [...Buffer.from(character)]
+                .map(
+                    (byte) =>
+                        `%${byte.toString(16).toUpperCase().padStart(2, '0')}`,
+                )
+                .join('');
         })
         .join('');
 }
@@ -266,6 +273,12 @@ async function loadPolicy(policyPath, now) {
     const seen = new Set();
 
     for (const exception of raw.exceptions) {
+        if (isPlainObject(exception) && exception.kind === 'pii') {
+            throw new ScanFailure(
+                'PII scan exceptions are forbidden without private fingerprint authority.',
+            );
+        }
+
         if (
             !isPlainObject(exception) ||
             !sameKeys(exception, [
@@ -342,17 +355,6 @@ function scanBlob(kind, relativePath, bytes) {
 }
 
 function decodeBlob(bytes, relativePath) {
-    if (
-        bytes
-            .subarray(0, 8)
-            .equals(
-                Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-            ) ||
-        bytes.subarray(0, 4).equals(Buffer.from([0x00, 0x00, 0x01, 0x00]))
-    ) {
-        return bytes.toString('latin1');
-    }
-
     let content;
 
     try {
@@ -546,14 +548,16 @@ function collect(target, relativePath, content, rule, expression) {
 }
 
 function finding(kind, rule, relativePath, content, index) {
-    const blobDigest = createHash('sha256').update(content).digest('hex');
-
-    return {
+    const result = {
         kind,
         rule,
         path: relativePath,
         line: 1 + countNewlines(content, index),
-        fingerprint: createHash('sha256')
+    };
+
+    if (kind === 'secret') {
+        const blobDigest = createHash('sha256').update(content).digest('hex');
+        result.fingerprint = createHash('sha256')
             .update(kind)
             .update('\0')
             .update(rule)
@@ -563,8 +567,10 @@ function finding(kind, rule, relativePath, content, index) {
             .update(String(index))
             .update('\0')
             .update(blobDigest)
-            .digest('hex'),
-    };
+            .digest('hex');
+    }
+
+    return result;
 }
 
 function countNewlines(content, end) {
@@ -708,8 +714,12 @@ async function main() {
             process.stderr.write(`${error.message}\n`);
 
             for (const item of error.findings) {
+                const fingerprint = item.fingerprint
+                    ? ` fingerprint:${item.fingerprint}`
+                    : '';
+
                 process.stderr.write(
-                    `${item.kind} ${item.rule} ${item.path}:${item.line} sha256:${item.fingerprint}\n`,
+                    `${item.kind} ${item.rule} ${item.path}:${item.line}${fingerprint}\n`,
                 );
             }
 
