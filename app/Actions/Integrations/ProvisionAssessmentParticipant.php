@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Actions\Integrations;
 
+use App\Models\AssessmentCase;
 use App\Models\AssessmentParticipant;
 use App\Models\IntegrationClient;
 use App\Models\IntegrationSource;
@@ -34,19 +35,13 @@ final readonly class ProvisionAssessmentParticipant
         try {
             return $this->runner->run(new RlsContext('service'), function () use ($input, $client, $idempotencyKey, $requestHash, $logicalKey): array {
                 app(CheckoutContractAdapter::class)->assertLegacyAllowed($client->organization_id, $input['sourceSystem']);
-                $existing = AssessmentParticipant::query()
-                    ->where('integration_client_id', $client->id)
-                    ->where(fn ($query) => $query
-                        ->where('idempotency_key', $idempotencyKey)
-                        ->orWhere('logical_assessment_key', $logicalKey))
-                    ->first();
+                $replay = DB::transaction(function () use ($client, $idempotencyKey, $logicalKey, $requestHash): ?array {
+                    $existing = $this->findReplay($client, $idempotencyKey, $logicalKey);
 
-                if ($existing !== null) {
-                    if (! hash_equals($existing->request_hash, $requestHash)) {
-                        throw new IdempotencyConflict;
-                    }
-
-                    return $this->result($existing, true);
+                    return $existing === null ? null : $this->replayResult($existing, $requestHash);
+                });
+                if ($replay !== null) {
+                    return $replay;
                 }
 
                 return DB::transaction(function () use ($input, $client, $idempotencyKey, $requestHash, $logicalKey): array {
@@ -92,12 +87,23 @@ final readonly class ProvisionAssessmentParticipant
                         ]);
                     }
 
+                    $attemptId = (string) Str::ulid();
+                    $case = AssessmentCase::query()->create([
+                        'public_id' => $attemptId,
+                        'participant_id' => $participant->id,
+                        'organization_id' => $client->organization_id,
+                        'package_id' => $package->id,
+                        'origin' => 'INTEGRATED',
+                        // Generic v1 has no intended-field input; the mutable participant default is not evidence.
+                        'intended_field_snapshot' => null,
+                    ]);
                     $mapping = AssessmentParticipant::query()->create([
+                        'assessment_case_id' => $case->id,
                         'integration_client_id' => $client->id,
                         'organization_id' => $client->organization_id,
                         'participant_id' => $participant->id,
                         'package_id' => $package->id,
-                        'assessment_attempt_id' => (string) Str::ulid(),
+                        'assessment_attempt_id' => $attemptId,
                         'source_system' => $input['sourceSystem'],
                         'external_candidate_id' => $input['externalCandidateId'],
                         'external_process_id' => $input['externalProcessId'] ?? null,
@@ -129,20 +135,56 @@ final readonly class ProvisionAssessmentParticipant
                 });
             });
         } catch (QueryException $exception) {
-            $existing = $this->runner->run(new RlsContext('service'), fn (): ?AssessmentParticipant => AssessmentParticipant::query()
-                ->where('integration_client_id', $client->id)
-                ->where(fn ($query) => $query
-                    ->where('idempotency_key', $idempotencyKey)
-                    ->orWhere('logical_assessment_key', $logicalKey))
-                ->first());
-            if ($existing === null) {
-                throw $exception;
-            }
-            if (! hash_equals($existing->request_hash, $requestHash)) {
-                throw new IdempotencyConflict;
-            }
+            return $this->runner->run(new RlsContext('service'), fn (): array => DB::transaction(function () use ($client, $idempotencyKey, $logicalKey, $requestHash, $exception): array {
+                $existing = $this->findReplay($client, $idempotencyKey, $logicalKey);
+                if ($existing === null) {
+                    throw $exception;
+                }
 
-            return $this->result($existing, true);
+                return $this->replayResult($existing, $requestHash);
+            }));
+        }
+    }
+
+    private function findReplay(IntegrationClient $client, string $idempotencyKey, string $logicalKey): ?AssessmentParticipant
+    {
+        $matches = AssessmentParticipant::query()
+            ->where('integration_client_id', $client->id)
+            ->where(fn ($query) => $query
+                ->where('idempotency_key', $idempotencyKey)
+                ->orWhere('logical_assessment_key', $logicalKey))
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->limit(2)
+            ->get();
+        if ($matches->count() > 1) {
+            throw new IdempotencyConflict;
+        }
+
+        return $matches->first();
+    }
+
+    /** @return array{participant_id:int, assessment_attempt_id:string, assessment_status:string, replayed:bool} */
+    private function replayResult(AssessmentParticipant $mapping, string $requestHash): array
+    {
+        if (! hash_equals($mapping->request_hash, $requestHash)) {
+            throw new IdempotencyConflict;
+        }
+        $this->assertCaseBinding($mapping);
+
+        return $this->result($mapping, true);
+    }
+
+    private function assertCaseBinding(AssessmentParticipant $mapping): void
+    {
+        $case = $mapping->assessmentCase()->first();
+        if ($case === null
+            || ! hash_equals($case->public_id, $mapping->assessment_attempt_id)
+            || $case->participant_id !== $mapping->participant_id
+            || $case->organization_id !== $mapping->organization_id
+            || $case->package_id !== $mapping->package_id
+            || $case->origin !== 'INTEGRATED') {
+            throw new IdempotencyConflict;
         }
     }
 

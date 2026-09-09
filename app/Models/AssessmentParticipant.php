@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * @property int $id
+ * @property int|null $assessment_case_id
  * @property int $integration_client_id
  * @property int $organization_id
  * @property int $participant_id
@@ -33,11 +34,18 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $logical_assessment_key
  * @property array<string, mixed>|null $metadata
  * @property-read IntegrationClient $client
+ * @property-read AssessmentCase|null $assessmentCase
  * @property-read Participant $participant
  */
-#[Fillable(['integration_client_id', 'organization_id', 'participant_id', 'package_id', 'assessment_attempt_id', 'source_system', 'external_candidate_id', 'external_process_id', 'external_registration_id', 'assessment_round_id', 'funding_mode', 'assessment_status', 'recommendation', 'result_version', 'finalized_at', 'revoked_at', 'idempotency_key', 'request_hash', 'logical_assessment_key', 'metadata'])]
+#[Fillable(['assessment_case_id', 'integration_client_id', 'organization_id', 'participant_id', 'package_id', 'assessment_attempt_id', 'source_system', 'external_candidate_id', 'external_process_id', 'external_registration_id', 'assessment_round_id', 'funding_mode', 'assessment_status', 'recommendation', 'result_version', 'finalized_at', 'revoked_at', 'idempotency_key', 'request_hash', 'logical_assessment_key', 'metadata'])]
 final class AssessmentParticipant extends Model
 {
+    /** @return BelongsTo<AssessmentCase, $this> */
+    public function assessmentCase(): BelongsTo
+    {
+        return $this->belongsTo(AssessmentCase::class, 'assessment_case_id');
+    }
+
     /** @return BelongsTo<IntegrationClient, $this> */
     public function client(): BelongsTo
     {
@@ -65,6 +73,7 @@ final class AssessmentParticipant extends Model
     protected function casts(): array
     {
         return [
+            'assessment_case_id' => 'integer',
             'metadata' => 'array',
             'result_version' => 'integer',
             'finalized_at' => 'immutable_datetime',

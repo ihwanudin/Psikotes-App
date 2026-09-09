@@ -6,6 +6,7 @@ namespace App\Actions\Integrations;
 
 use App\Enums\PayerType;
 use App\Http\Requests\ProvisionCheckoutParticipantRequest;
+use App\Models\AssessmentCase;
 use App\Models\AssessmentParticipant;
 use App\Models\Branch;
 use App\Models\IntegrationClient;
@@ -107,6 +108,7 @@ final readonly class ProvisionCheckoutParticipant
                     throw new IntegrationContractViolation('ASSESSMENT_NOT_PROVISIONABLE');
                 }
                 $this->participant($existing->participant_id, $organization->id);
+                $this->assertCaseBinding($existing);
 
                 return $this->result($existing, true);
             }
@@ -140,10 +142,20 @@ final readonly class ProvisionCheckoutParticipant
                     $participant->save();
                 }
             }
+            $attemptId = (string) Str::ulid();
+            $case = AssessmentCase::query()->create([
+                'public_id' => $attemptId,
+                'participant_id' => $participant->id,
+                'organization_id' => $organization->id,
+                'package_id' => $package->id,
+                'origin' => 'INTEGRATED',
+                'intended_field_snapshot' => $profile['intended_field'],
+            ]);
             $attempt = AssessmentParticipant::query()->create([
+                'assessment_case_id' => $case->id,
                 'integration_client_id' => $client->id, 'organization_id' => $organization->id,
                 'participant_id' => $participant->id, 'package_id' => $package->id,
-                'assessment_attempt_id' => (string) Str::ulid(), 'source_system' => $source->source_system,
+                'assessment_attempt_id' => $attemptId, 'source_system' => $source->source_system,
                 'external_candidate_id' => $input['externalCandidateId'],
                 'external_process_id' => $input['externalProcessId'] ?? null,
                 'external_registration_id' => $input['externalRegistrationId'] ?? null,
@@ -166,6 +178,19 @@ final readonly class ProvisionCheckoutParticipant
         }
 
         return $participant;
+    }
+
+    private function assertCaseBinding(AssessmentParticipant $attempt): void
+    {
+        $case = $attempt->assessmentCase()->first();
+        if ($case === null
+            || ! hash_equals($case->public_id, $attempt->assessment_attempt_id)
+            || $case->participant_id !== $attempt->participant_id
+            || $case->organization_id !== $attempt->organization_id
+            || $case->package_id !== $attempt->package_id
+            || $case->origin !== 'INTEGRATED') {
+            throw new IdempotencyConflict;
+        }
     }
 
     /** @param array<string, mixed> $profile

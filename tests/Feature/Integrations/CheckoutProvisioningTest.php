@@ -8,6 +8,7 @@ use App\Actions\Integrations\IdempotencyConflict;
 use App\Actions\Integrations\IntegrationContractViolation;
 use App\Actions\Integrations\ProvisionCheckoutParticipant;
 use App\Http\Requests\ProvisionCheckoutParticipantRequest;
+use App\Models\AssessmentCase;
 use App\Models\AssessmentParticipant;
 use App\Models\Branch;
 use App\Models\IntegrationClient;
@@ -19,6 +20,7 @@ use App\Security\RlsContextRunner;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use LogicException;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -64,7 +66,15 @@ final class CheckoutProvisioningTest extends OrganizationPaymentTestCase
             $this->assertNull($p->getAttribute($field), $field);
         }
         $a = AssessmentParticipant::sole();
+        $case = AssessmentCase::sole();
         $this->assertNull($a->funding_mode);
+        $this->assertSame($case->id, $a->assessment_case_id);
+        $this->assertSame($case->public_id, $a->assessment_attempt_id);
+        $this->assertSame($p->id, $case->participant_id);
+        $this->assertSame($this->client->organization_id, $case->organization_id);
+        $this->assertSame($this->package->id, $case->package_id);
+        $this->assertSame('INTEGRATED', $case->origin);
+        $this->assertNull($case->intended_field_snapshot);
         $this->assertSame(['checkout_contract_version' => 'checkout-v2', 'checkout_initial_funding_mode' => null], $a->metadata);
         $this->assertSame($this->client->organization_id, $p->branch_id);
         $this->assertSame($p->branch_id, $p->referral_branch_id);
@@ -87,6 +97,7 @@ final class CheckoutProvisioningTest extends OrganizationPaymentTestCase
         $this->assertSame('SMA', $p->education_level);
         $this->assertSame('628123456789', $p->phone);
         $this->assertSame('p9@example.test', $p->getAttribute('email'));
+        $this->assertSame('KAIGO', AssessmentCase::sole()->intended_field_snapshot);
         $this->assertSame($funding, AssessmentParticipant::sole()->funding_mode);
         $this->assertSame(['cohortCode' => 'BATCH-1', 'checkout_contract_version' => 'checkout-v2', 'checkout_initial_funding_mode' => $funding], AssessmentParticipant::sole()->metadata);
         $this->assertNoSideEffects();
@@ -112,6 +123,35 @@ final class CheckoutProvisioningTest extends OrganizationPaymentTestCase
         $this->assertNotSame($first['assessment_attempt_id'], $next['assessment_attempt_id']);
         $this->assertSame('Completed Elsewhere', Participant::sole()->full_name);
         $this->assertDatabaseCount('assessment_participants', 2);
+        $this->assertDatabaseCount('assessment_cases', 2);
+        $this->assertSame([null, null], AssessmentCase::query()->orderBy('id')->pluck('intended_field_snapshot')->all());
+    }
+
+    public function test_replay_fails_closed_when_the_assessment_case_alias_is_inconsistent(): void
+    {
+        $this->provision();
+        AssessmentParticipant::sole()->update(['assessment_attempt_id' => (string) Str::ulid()]);
+
+        $this->expectException(IdempotencyConflict::class);
+        $this->provision();
+    }
+
+    public function test_replay_fails_closed_when_bound_to_another_valid_case(): void
+    {
+        $this->provision();
+        $attempt = AssessmentParticipant::sole();
+        $other = AssessmentCase::create([
+            'public_id' => (string) Str::ulid(),
+            'participant_id' => $attempt->participant_id,
+            'organization_id' => $attempt->organization_id,
+            'package_id' => $attempt->package_id,
+            'origin' => 'DIRECT_PUBLIC',
+            'intended_field_snapshot' => null,
+        ]);
+        $attempt->update(['assessment_case_id' => $other->id]);
+
+        $this->expectException(IdempotencyConflict::class);
+        $this->provision();
     }
 
     #[DataProvider('conflicts')]
@@ -197,6 +237,7 @@ final class CheckoutProvisioningTest extends OrganizationPaymentTestCase
         });
         $this->assertDatabaseCount('participants', 0);
         $this->assertDatabaseCount('assessment_participants', 0);
+        $this->assertDatabaseCount('assessment_cases', 0);
         $this->assertFalse($this->provision()['replayed']);
     }
 

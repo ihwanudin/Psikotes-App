@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Integrations;
 
+use App\Models\AssessmentCase;
+use App\Models\AssessmentParticipant;
 use App\Models\Branch;
 use App\Models\IntegrationClient;
 use App\Models\IntegrationSource;
@@ -91,6 +93,15 @@ final class GenericAssessmentProvisioningTest extends TestCase
             'funding_mode' => 'SPONSORED',
             'assessment_status' => 'READY',
         ]);
+        $attempt = AssessmentParticipant::query()->sole();
+        $case = AssessmentCase::query()->sole();
+        $this->assertSame($case->id, $attempt->assessment_case_id);
+        $this->assertSame($case->public_id, $attempt->assessment_attempt_id);
+        $this->assertSame($participantId, $case->participant_id);
+        $this->assertSame($this->organization->id, $case->organization_id);
+        $this->assertSame($attempt->package_id, $case->package_id);
+        $this->assertSame('INTEGRATED', $case->origin);
+        $this->assertNull($case->intended_field_snapshot);
         $this->assertDatabaseCount('orders', 0);
         $this->assertDatabaseHas('outbox_messages', [
             'topic' => 'psychotest.assessment-event',
@@ -133,6 +144,23 @@ final class GenericAssessmentProvisioningTest extends TestCase
             ->assertJsonPath('error.code', 'IDEMPOTENCY_CONFLICT');
         $this->assertDatabaseCount('participants', 1);
         $this->assertDatabaseCount('assessment_participants', 1);
+        $this->assertDatabaseCount('assessment_cases', 1);
+        $this->assertDatabaseCount('outbox_messages', 1);
+    }
+
+    public function test_replay_fails_closed_when_the_assessment_case_binding_is_missing(): void
+    {
+        $key = 'assessment:v1:missing-case';
+        $this->signedRequest($this->payload(), $key)->assertCreated();
+        AssessmentParticipant::query()->sole()->update(['assessment_case_id' => null]);
+
+        $this->signedRequest($this->payload(), $key)
+            ->assertConflict()
+            ->assertJsonPath('error.code', 'IDEMPOTENCY_CONFLICT');
+
+        $this->assertDatabaseCount('participants', 1);
+        $this->assertDatabaseCount('assessment_participants', 1);
+        $this->assertDatabaseCount('assessment_cases', 1);
         $this->assertDatabaseCount('outbox_messages', 1);
     }
 
@@ -144,8 +172,26 @@ final class GenericAssessmentProvisioningTest extends TestCase
         $this->assertSame($first->json('data.assessmentAttemptId'), $second->json('data.assessmentAttemptId'));
         $this->assertDatabaseCount('participants', 1);
         $this->assertDatabaseCount('assessment_participants', 1);
+        $this->assertDatabaseCount('assessment_cases', 1);
         $this->assertDatabaseCount('entitlements', 2);
         $this->assertDatabaseCount('outbox_messages', 1);
+    }
+
+    public function test_replay_fails_closed_when_key_and_logical_identity_match_different_attempts(): void
+    {
+        $firstKey = 'assessment:v1:first-attempt';
+        $second = [...$this->payload(), 'externalCandidateId' => 'SKR-2026-0002'];
+        $this->signedRequest($this->payload(), $firstKey)->assertCreated();
+        $this->signedRequest($second, 'assessment:v1:second-attempt')->assertCreated();
+
+        $this->signedRequest($second, $firstKey)
+            ->assertConflict()
+            ->assertJsonPath('error.code', 'IDEMPOTENCY_CONFLICT');
+
+        $this->assertDatabaseCount('participants', 2);
+        $this->assertDatabaseCount('assessment_participants', 2);
+        $this->assertDatabaseCount('assessment_cases', 2);
+        $this->assertDatabaseCount('outbox_messages', 2);
     }
 
     public function test_two_clients_may_use_the_same_external_candidate_without_collision(): void
