@@ -540,3 +540,32 @@ idempotency, and eager loading in one parent plus one child query. DASS,
 eligibility/G6/G7, and report/signing data stay outside that ledger. Required
 predecessors are a separate immutable case-bound test-session slice and a
 coordinator/F0 extraction of the 42 mappings into versioned configuration.
+
+## 2026-09-09 integrated case enforcement checkpoint
+
+Assessment-case phase 2B is accepted across foundation `2dded9c`, fixture
+adapter commits `1d4354e` and `1a8033e`, and exact-definition repair
+`be98ec7`. Historical `assessment_participants` now backfill only through the
+lossless integrated mapping: attempt ULID becomes case public ID, with exact
+participant, organization, package, preserved creation instant, INTEGRATED
+origin, and a NULL historical intended-field snapshot. Existing bindings are
+preflighted rather than repaired; any collision, mismatch, malformed history,
+or partial enforcement aborts atomically.
+
+PostgreSQL locks case then attempt tables, preserves FORCE RLS, and enforces a
+composite identity FK, physical NOT NULL case binding, exact INTEGRATED insert
+guard, and immutable identity on updates. SQLite performs a physical NOT NULL
+rebuild while preserving existing descendants, indexes, foreign keys, and
+funding triggers. Exact catalog validators and isolated corruption probes cover
+the parent unique, child FK order/actions, and both guard definitions. Populated
+rollback refuses without deleting history; empty rollback is tested. The
+PostgreSQL harness now runs the three schema-boundary files first and selects
+all 51 files exactly once, while ordinary fixtures retain immutable synthetic
+history and scope assertions to their fixture IDs.
+
+Final coordinator verification passed 106 Feature/SQLite tests with 689
+assertions, full disposable PostgreSQL at 444 tests/5,007 assertions, configured
+PHPStan with zero errors, Pint, and diff checks. Exact containers and network
+were removed. Independent adversarial review found no remaining P1/P2. This
+does not bind `test_sessions`, direct/legacy flows, or DASS; the next result-ledger
+dependencies remain session-case immutability and a versioned 42-source mapping.
