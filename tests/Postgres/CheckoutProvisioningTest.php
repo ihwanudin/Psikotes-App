@@ -8,6 +8,7 @@ use App\Actions\Integrations\IdempotencyConflict;
 use App\Actions\Integrations\IntegrationContractViolation;
 use App\Actions\Integrations\ProvisionCheckoutParticipant;
 use App\Http\Requests\ProvisionCheckoutParticipantRequest;
+use App\Models\AssessmentCase;
 use App\Models\AssessmentParticipant;
 use App\Models\Branch;
 use App\Models\IntegrationClient;
@@ -58,14 +59,8 @@ final class CheckoutProvisioningTest extends TestCase
 
     protected function tearDown(): void
     {
-        app(RlsContextRunner::class)->runAsService(function (): void {
-            DB::table('assessment_participants')->where('organization_id', $this->f['organization'])->delete();
-            DB::table('participants')->where('branch_id', $this->f['organization'])->delete();
-            DB::table('integration_clients')->where('organization_id', $this->f['organization'])->delete();
-            DB::table('package_items')->where('package_id', $this->f['package'])->delete();
-            DB::table('packages')->where('id', $this->f['package'])->delete();
-            DB::table('branches')->where('id', $this->f['organization'])->delete();
-        });
+        // Assessment-case history is deliberately immutable. This disposable suite uses
+        // per-test ULID keys and lets its isolated database teardown remove the history.
         config()->set('assessment_integration.checkout.enabled', false);
         parent::tearDown();
     }
@@ -262,11 +257,22 @@ final class CheckoutProvisioningTest extends TestCase
         $this->assertRows(1, 1);
     }
 
-    private function assertRows(int $participants, int $attempts): void
+    private function assertRows(int $participants, int $attempts, ?int $cases = null): void
     {
-        app(RlsContextRunner::class)->runAsService(function () use ($participants, $attempts): void {
+        app(RlsContextRunner::class)->runAsService(function () use ($participants, $attempts, $cases): void {
+            $expectedCases = $cases ?? $attempts;
             $this->assertSame($participants, DB::table('participants')->where('branch_id', $this->f['organization'])->count());
             $this->assertSame($attempts, DB::table('assessment_participants')->where('organization_id', $this->f['organization'])->count());
+            $this->assertSame($expectedCases, DB::table('assessment_cases')->where('organization_id', $this->f['organization'])->count());
+            foreach (AssessmentParticipant::query()->with('assessmentCase')->where('organization_id', $this->f['organization'])->get() as $attempt) {
+                $case = $attempt->assessmentCase;
+                $this->assertInstanceOf(AssessmentCase::class, $case);
+                $this->assertSame($attempt->assessment_attempt_id, $case->public_id);
+                $this->assertSame($attempt->participant_id, $case->participant_id);
+                $this->assertSame($attempt->organization_id, $case->organization_id);
+                $this->assertSame($attempt->package_id, $case->package_id);
+                $this->assertSame('INTEGRATED', $case->origin);
+            }
         });
     }
 

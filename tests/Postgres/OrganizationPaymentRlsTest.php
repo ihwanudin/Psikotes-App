@@ -79,8 +79,13 @@ final class OrganizationPaymentRlsTest extends TestCase
     {
         foreach (['branches', 'participants', 'orders', 'dass.assessments'] as $table) {
             $this->assertSame(0, DB::table($table)->count(), $table);
-            $this->assertSame(2, app(RlsContextRunner::class)->runAsService(fn () => DB::table($table)->count()));
         }
+        app(RlsContextRunner::class)->runAsService(function (): void {
+            $this->assertSame(self::$branches, DB::table('branches')->whereIn('id', self::$branches)->orderBy('id')->pluck('id')->all());
+            $this->assertSame(self::$participants, DB::table('participants')->whereIn('id', self::$participants)->orderBy('id')->pluck('id')->all());
+            $this->assertSame(self::$participants, DB::table('orders')->whereIn('participant_id', self::$participants)->orderBy('participant_id')->pluck('participant_id')->all());
+            $this->assertSame(self::$participants, DB::table('dass.assessments')->whereIn('participant_id', self::$participants)->orderBy('participant_id')->pluck('participant_id')->all());
+        });
     }
 
     public function test_branch_cannot_read_or_change_other_branch_participants(): void
