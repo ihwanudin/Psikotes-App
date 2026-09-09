@@ -4,11 +4,16 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Integrations;
 
+use App\Models\AssessmentCase;
 use App\Models\Branch;
+use App\Models\SelectionParticipant;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Date;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
@@ -86,6 +91,15 @@ final class SelectionParticipantProvisioningTest extends TestCase
             'registration_id' => 'REG-2026-0001',
             'participant_id' => $participantId,
         ]);
+        $case = AssessmentCase::query()->sole();
+        $mapping = SelectionParticipant::query()->sole();
+        $this->assertSame($case->id, $mapping->assessment_case_id);
+        $this->assertTrue(Str::isUlid($case->public_id));
+        $this->assertSame($participantId, $case->participant_id);
+        $this->assertSame($this->branch->id, $case->organization_id);
+        $this->assertNull($case->package_id);
+        $this->assertSame('LEGACY_SELECTION', $case->origin);
+        $this->assertSame('UMUM', $case->intended_field_snapshot);
         $this->assertDatabaseHas('audit_logs', [
             'branch_id' => $this->branch->id,
             'actor_type' => 'service',
@@ -104,9 +118,67 @@ final class SelectionParticipantProvisioningTest extends TestCase
 
         $this->assertSame($first->json('data.participantId'), $second->json('data.participantId'));
         $this->assertDatabaseCount('participants', 1);
+        $this->assertDatabaseCount('assessment_cases', 1);
         $this->assertDatabaseCount('selection_participants', 1);
         $this->assertDatabaseCount('entitlements', 2);
         $this->assertDatabaseCount('audit_logs', 1);
+    }
+
+    public function test_replay_preserves_the_original_case_when_configured_field_changes(): void
+    {
+        $payload = $this->payload();
+        $key = 'psychotest-participant:v1:stable-case';
+        $this->signedRequest($payload, $key)->assertCreated();
+        $case = AssessmentCase::query()->sole();
+
+        config()->set('selection_integration.intended_field', 'KAIGO');
+        $this->signedRequest($payload, $key)->assertOk();
+
+        $case->refresh();
+        $this->assertSame('UMUM', $case->intended_field_snapshot);
+        $this->assertDatabaseCount('assessment_cases', 1);
+    }
+
+    public function test_idempotency_key_and_candidate_from_different_rows_fail_closed(): void
+    {
+        $first = $this->payload();
+        $second = [
+            ...$first,
+            'externalCandidateId' => '01K3TESTCANDIDATE000000002',
+            'registrationId' => 'REG-2026-0002',
+        ];
+        $this->signedRequest($first, 'psychotest-participant:v1:first')->assertCreated();
+        $this->signedRequest($second, 'psychotest-participant:v1:second')->assertCreated();
+
+        $this->signedRequest($second, 'psychotest-participant:v1:first')
+            ->assertConflict()->assertJsonPath('error.code', 'IDEMPOTENCY_CONFLICT');
+
+        $this->assertDatabaseCount('participants', 2);
+        $this->assertDatabaseCount('assessment_cases', 2);
+        $this->assertDatabaseCount('selection_participants', 2);
+    }
+
+    public function test_unique_conflict_refetch_still_rejects_a_corrupt_case_graph(): void
+    {
+        $payload = $this->payload();
+        $key = 'psychotest-participant:v1:catch-refetch';
+        $this->signedRequest($payload, $key)->assertCreated();
+        DB::unprepared('DROP TRIGGER assessment_cases_history_update');
+        DB::table('assessment_cases')->update(['origin' => 'DIRECT_PUBLIC']);
+
+        $firstSelectionRead = true;
+        DB::beforeExecuting(function (string $query) use (&$firstSelectionRead): void {
+            if ($firstSelectionRead && str_contains($query, 'selection_participants')) {
+                $firstSelectionRead = false;
+                throw new QueryException('sqlite', $query, [], new \PDOException('synthetic unique race'));
+            }
+        });
+
+        $this->signedRequest($payload, $key)
+            ->assertConflict()->assertJsonPath('error.code', 'IDEMPOTENCY_CONFLICT');
+        $this->assertFalse($firstSelectionRead);
+        $this->assertDatabaseCount('participants', 1);
+        $this->assertDatabaseCount('assessment_cases', 1);
     }
 
     public function test_reusing_an_idempotency_key_for_different_data_is_rejected(): void

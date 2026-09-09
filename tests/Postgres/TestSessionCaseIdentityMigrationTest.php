@@ -161,6 +161,8 @@ final class TestSessionCaseIdentityMigrationTest extends TestCase
         $this->asOwner(function () use ($component): void {
             DB::beginTransaction();
             try {
+                $legacySelection = require database_path('migrations/2026_09_09_000500_bind_legacy_selection_assessment_cases.php');
+                $legacySelection->down();
                 $this->corruptPostgres($component);
                 $before = $this->definitions();
                 try {
@@ -204,12 +206,19 @@ final class TestSessionCaseIdentityMigrationTest extends TestCase
 
     private function migrate(string $direction): void
     {
+        $legacySelection = require database_path('migrations/2026_09_09_000500_bind_legacy_selection_assessment_cases.php');
         $migration = require database_path('migrations/2026_09_09_000400_harden_test_session_case_identity.php');
+        if ($direction === 'down' && Schema::hasColumn('selection_participants', 'assessment_case_id')) {
+            $legacySelection->down();
+        }
         $operation = [$migration, $direction];
         if (! is_callable($operation)) {
             throw new RuntimeException("Migration operation {$direction} is unavailable.");
         }
         $operation();
+        if ($direction === 'up' && ! Schema::hasColumn('selection_participants', 'assessment_case_id')) {
+            $legacySelection->up();
+        }
     }
 
     private function openFixtureTables(): void

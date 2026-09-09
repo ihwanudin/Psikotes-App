@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Actions\Integrations;
 
+use App\Models\AssessmentCase;
 use App\Models\Branch;
 use App\Models\Participant;
 use App\Models\SelectionParticipant;
@@ -15,6 +16,7 @@ use App\Services\TestNumber\MonthlyTestNumberIssuer;
 use DomainException;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 final readonly class ProvisionSelectionParticipant
 {
@@ -48,9 +50,10 @@ final readonly class ProvisionSelectionParticipant
                 throw $exception;
             }
 
-            $this->assertSameRequest($existing, $requestHash);
-
-            return ['participant_id' => $existing->participant_id, 'replayed' => true];
+            return $this->runner->run(
+                new RlsContext('service'),
+                fn (): array => $this->replayResult($existing, $requestHash),
+            );
         }
     }
 
@@ -69,15 +72,10 @@ final readonly class ProvisionSelectionParticipant
                 throw new SelectionIntegrationUnavailable;
             }
         }
-        $existing = SelectionParticipant::query()
-            ->where('client_id', $clientId)
-            ->where('idempotency_key', $idempotencyKey)
-            ->first();
+        $existing = $this->findReplay($clientId, $idempotencyKey, (string) $input['externalCandidateId'], true);
 
         if ($existing !== null) {
-            $this->assertSameRequest($existing, $requestHash);
-
-            return ['participant_id' => $existing->participant_id, 'replayed' => true];
+            return $this->replayResult($existing, $requestHash);
         }
 
         $branchRef = config('selection_integration.branch_ref');
@@ -130,12 +128,22 @@ final readonly class ProvisionSelectionParticipant
             $testTypes,
         ));
 
+        $case = AssessmentCase::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'participant_id' => $participant->id,
+            'organization_id' => $branch->id,
+            'package_id' => null,
+            'origin' => 'LEGACY_SELECTION',
+            'intended_field_snapshot' => $intendedField,
+        ]);
+
         SelectionParticipant::query()->create([
             'client_id' => $clientId,
             'external_candidate_id' => $input['externalCandidateId'],
             'selection_round_id' => $input['selectionRoundId'],
             'registration_id' => $input['registrationId'],
             'participant_id' => $participant->id,
+            'assessment_case_id' => $case->id,
             'idempotency_key' => $idempotencyKey,
             'request_hash' => $requestHash,
         ]);
@@ -165,14 +173,49 @@ final readonly class ProvisionSelectionParticipant
     ): ?SelectionParticipant {
         return $this->runner->run(
             new RlsContext('service'),
-            fn (): ?SelectionParticipant => SelectionParticipant::query()
-                ->where('client_id', $clientId)
-                ->where(function ($query) use ($idempotencyKey, $externalCandidateId): void {
-                    $query->where('idempotency_key', $idempotencyKey)
-                        ->orWhere('external_candidate_id', $externalCandidateId);
-                })
-                ->first(),
+            fn (): ?SelectionParticipant => $this->findReplay($clientId, $idempotencyKey, $externalCandidateId, true),
         );
+    }
+
+    private function findReplay(
+        string $clientId,
+        string $idempotencyKey,
+        string $externalCandidateId,
+        bool $lock,
+    ): ?SelectionParticipant {
+        $query = SelectionParticipant::query()
+            ->where('client_id', $clientId)
+            ->where(function ($query) use ($idempotencyKey, $externalCandidateId): void {
+                $query->where('idempotency_key', $idempotencyKey)
+                    ->orWhere('external_candidate_id', $externalCandidateId);
+            })
+            ->orderBy('id')
+            ->limit(2);
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+        $matches = $query->get();
+        if ($matches->count() > 1) {
+            throw new IdempotencyConflict;
+        }
+
+        return $matches->first();
+    }
+
+    /** @return array{participant_id:int,replayed:bool} */
+    private function replayResult(SelectionParticipant $existing, string $requestHash): array
+    {
+        $this->assertSameRequest($existing, $requestHash);
+        $case = $existing->assessmentCase()->first();
+        $organizationId = $existing->participant()->value('branch_id');
+        if ($case === null
+            || $case->participant_id !== $existing->participant_id
+            || $case->organization_id !== $organizationId
+            || $case->origin !== 'LEGACY_SELECTION') {
+            throw new IdempotencyConflict;
+        }
+
+        return ['participant_id' => $existing->participant_id, 'replayed' => true];
     }
 
     private function assertSameRequest(SelectionParticipant $existing, string $requestHash): void

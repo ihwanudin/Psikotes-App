@@ -192,14 +192,21 @@ final class AssessmentCaseSecurityTest extends TestCase
         $this->asOwner(function (): void {
             $migration = require database_path('migrations/2026_09_09_000200_create_assessment_cases.php');
             $phaseTwo = require database_path('migrations/2026_09_09_000300_backfill_integrated_assessment_cases.php');
+            $sessionCase = require database_path('migrations/2026_09_09_000400_harden_test_session_case_identity.php');
+            $legacySelectionCase = require database_path('migrations/2026_09_09_000500_bind_legacy_selection_assessment_cases.php');
             DB::beginTransaction();
             try {
+                $legacySelectionCase->down();
+                $sessionCase->down();
                 $phaseTwo->down();
                 $migration->down();
                 $this->assertFalse(Schema::hasTable('assessment_cases'));
                 $this->assertTrue(Schema::hasTable('assessment_participants'));
                 $this->assertTrue(Schema::hasTable('test_sessions'));
                 $migration->up();
+                $phaseTwo->up();
+                $sessionCase->up();
+                $legacySelectionCase->up();
             } finally {
                 DB::rollBack();
             }
@@ -207,6 +214,8 @@ final class AssessmentCaseSecurityTest extends TestCase
             DB::beginTransaction();
             try {
                 DB::statement('SET LOCAL row_security = off');
+                $legacySelectionCase->down();
+                $sessionCase->down();
                 $phaseTwo->down();
                 $graph = $this->graph();
                 DB::table('assessment_cases')->insert($this->caseRow($graph));

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Integrations;
 
+use App\Models\AssessmentCase;
 use App\Models\Branch;
 use App\Models\Participant;
 use App\Models\SelectionParticipant;
@@ -14,6 +15,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -62,12 +64,21 @@ final class SelectionLaunchTest extends TestCase
                     'email' => 'ayu@example.test',
                     'test_number' => 'LSI-202608-000001-ABCDEF',
                 ]);
+                $case = AssessmentCase::query()->create([
+                    'public_id' => (string) Str::ulid(),
+                    'participant_id' => $participant->id,
+                    'organization_id' => $branch->id,
+                    'package_id' => null,
+                    'origin' => 'LEGACY_SELECTION',
+                    'intended_field_snapshot' => 'UMUM',
+                ]);
                 SelectionParticipant::query()->create([
                     'client_id' => self::CLIENT_ID,
                     'external_candidate_id' => '01K3TESTCANDIDATE000000001',
                     'selection_round_id' => '01K3TESTROUND0000000000001',
                     'registration_id' => 'REG-2026-0001',
                     'participant_id' => $participant->id,
+                    'assessment_case_id' => $case->id,
                     'idempotency_key' => 'psychotest-participant:v1:01K3TESTCANDIDATE000000001',
                     'request_hash' => hash('sha256', 'fixture'),
                 ]);

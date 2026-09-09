@@ -38,7 +38,9 @@ final class AssessmentBillingMigrationTest extends TestCase
             Schema::clearResolvedInstance('db.schema');
             $phaseTwoCaseMigration = require database_path('migrations/2026_09_09_000300_backfill_integrated_assessment_cases.php');
             $sessionCaseMigration = require database_path('migrations/2026_09_09_000400_harden_test_session_case_identity.php');
+            $legacySelectionCaseMigration = require database_path('migrations/2026_09_09_000500_bind_legacy_selection_assessment_cases.php');
             $assessmentCaseStructure = $this->assessmentCaseStructure();
+            $legacySelectionCaseMigration->down();
             $sessionCaseMigration->down();
             $phaseTwoCaseMigration->down();
             $fixture = Fixture::create(withCase: false);
@@ -122,6 +124,7 @@ final class AssessmentBillingMigrationTest extends TestCase
             $assessmentCaseMigration->up();
             $phaseTwoCaseMigration->up();
             $sessionCaseMigration->up();
+            $legacySelectionCaseMigration->up();
             $this->assertEquals($assessmentCaseStructure, $this->assessmentCaseStructure());
             $source = DB::table('integration_sources')->insertGetId([
                 'integration_client_id' => DB::table('assessment_participants')->where('id', $fixture['attempt'])

@@ -14,11 +14,18 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'selection_round_id',
     'registration_id',
     'participant_id',
+    'assessment_case_id',
     'idempotency_key',
     'request_hash',
 ])]
 final class SelectionParticipant extends Model
 {
+    /** @return BelongsTo<AssessmentCase, $this> */
+    public function assessmentCase(): BelongsTo
+    {
+        return $this->belongsTo(AssessmentCase::class);
+    }
+
     /** @return BelongsTo<Participant, $this> */
     public function participant(): BelongsTo
     {
