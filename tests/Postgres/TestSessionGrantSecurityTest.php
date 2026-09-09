@@ -127,9 +127,11 @@ final class TestSessionGrantSecurityTest extends TestCase
                     'instrument_check' => DB::unprepared('ALTER TABLE test_session_grants DROP CONSTRAINT test_session_grants_instrument_check; ALTER TABLE test_session_grants ADD CONSTRAINT test_session_grants_instrument_check CHECK (true)'),
                     'shape_check' => DB::unprepared('ALTER TABLE test_session_grants DROP CONSTRAINT test_session_grants_shape_check; ALTER TABLE test_session_grants ADD CONSTRAINT test_session_grants_shape_check CHECK (true)'),
                     'trigger_event' => DB::unprepared('DROP TRIGGER test_session_grants_identity_guard ON test_session_grants; CREATE TRIGGER test_session_grants_identity_guard BEFORE INSERT OR UPDATE ON test_session_grants FOR EACH ROW EXECUTE FUNCTION app_private.guard_test_session_grant_identity()'),
+                    'extra_trigger' => DB::unprepared('CREATE TRIGGER test_session_grants_counterfeit_guard BEFORE INSERT ON test_session_grants FOR EACH ROW EXECUTE FUNCTION app_private.guard_test_session_grant_identity()'),
                     'function_body' => DB::unprepared('CREATE OR REPLACE FUNCTION app_private.guard_test_session_grant_identity() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$ BEGIN RETURN NEW; END; $$'),
                     'function_security' => DB::unprepared('CREATE OR REPLACE FUNCTION app_private.guard_test_session_grant_identity() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$ BEGIN RETURN NEW; END; $$'),
                     'function_search_path' => DB::unprepared('CREATE OR REPLACE FUNCTION app_private.guard_test_session_grant_identity() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$ BEGIN RETURN NEW; END; $$'),
+                    'unexpected_grantee' => DB::unprepared('CREATE ROLE test_session_grants_counterfeit_role NOLOGIN; GRANT SELECT ON test_session_grants TO test_session_grants_counterfeit_role'),
                     default => throw new RuntimeException("Unknown counterfeit component {$component}."),
                 };
                 $before = $this->grantDefinitions();
@@ -152,9 +154,11 @@ final class TestSessionGrantSecurityTest extends TestCase
         yield 'instrument check true' => ['instrument_check'];
         yield 'shape check true' => ['shape_check'];
         yield 'trigger omits delete event' => ['trigger_event'];
+        yield 'unexpected extra trigger' => ['extra_trigger'];
         yield 'function returns before validation' => ['function_body'];
         yield 'function loses security definer' => ['function_security'];
         yield 'function unsafe search path' => ['function_search_path'];
+        yield 'unexpected role grant' => ['unexpected_grantee'];
     }
 
     /** @return array{branch:int,participant:int,case:int,order:int,entitlement:int,session:int} */

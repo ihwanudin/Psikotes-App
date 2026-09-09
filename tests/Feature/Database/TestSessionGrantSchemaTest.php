@@ -172,6 +172,7 @@ final class TestSessionGrantSchemaTest extends OrganizationPaymentTestCase
             'update_guard' => DB::unprepared("DROP TRIGGER test_session_grants_update_guard; CREATE TRIGGER test_session_grants_update_guard AFTER UPDATE ON test_session_grants FOR EACH ROW BEGIN SELECT RAISE(ABORT, 'Test session grant history is append-only'); END"),
             'update_when_false' => DB::unprepared("DROP TRIGGER test_session_grants_update_guard; CREATE TRIGGER test_session_grants_update_guard BEFORE UPDATE ON test_session_grants FOR EACH ROW WHEN 0 BEGIN SELECT RAISE(ABORT, 'Test session grant history is append-only'); END"),
             'instrument_check' => $this->replaceSqliteTableDefinition("CONSTRAINT test_session_grants_instrument_check CHECK (test_type IN ('ist','papi','rmib','kraepelin'))", 'CONSTRAINT test_session_grants_instrument_check CHECK (1)'),
+            'extra_trigger' => DB::unprepared('CREATE TRIGGER test_session_grants_counterfeit_guard BEFORE INSERT ON test_session_grants FOR EACH ROW BEGIN SELECT 1; END'),
             default => throw new RuntimeException('Unknown synthetic corruption.'),
         };
         $before = DB::select("SELECT type,name,sql FROM sqlite_master WHERE name LIKE 'test_session_grants_%' OR name='test_sessions_grant_scope_unique' ORDER BY type,name");
@@ -194,6 +195,7 @@ final class TestSessionGrantSchemaTest extends OrganizationPaymentTestCase
         yield 'update guard event' => ['update_guard'];
         yield 'update guard disabled by false predicate' => ['update_when_false'];
         yield 'instrument check replaced by true' => ['instrument_check'];
+        yield 'unexpected extra trigger' => ['extra_trigger'];
     }
 
     public function test_empty_down_up_is_safe_but_populated_down_refuses_without_delta(): void

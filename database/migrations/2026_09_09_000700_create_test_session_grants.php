@@ -587,12 +587,18 @@ return new class extends Migration
 
                 return [(string) $data['name'] => $this->normalizeSql((string) $data['sql'])];
             })->all();
+        ksort($triggers);
         $insert = $triggers['test_session_grants_insert_guard'] ?? '';
         $update = $triggers['test_session_grants_update_guard'] ?? '';
         $delete = $triggers['test_session_grants_delete_guard'] ?? '';
         $tableData = $table === null ? [] : (array) $table;
         if ($table === null || $this->normalizeSql((string) $tableData['sql']) !== $this->normalizeSql($this->tableSql('sqlite'))
             || $actualIndexes !== $expectedIndexes
+            || array_keys($triggers) !== [
+                'test_session_grants_delete_guard',
+                'test_session_grants_insert_guard',
+                'test_session_grants_update_guard',
+            ]
             || hash('sha256', $insert) !== self::SQLITE_INSERT_GUARD_SHA256
             || $update !== $this->normalizeSql("CREATE TRIGGER test_session_grants_update_guard BEFORE UPDATE ON test_session_grants FOR EACH ROW BEGIN SELECT RAISE(ABORT, 'Test session grant history is append-only'); END")
             || $delete !== $this->normalizeSql("CREATE TRIGGER test_session_grants_delete_guard BEFORE DELETE ON test_session_grants FOR EACH ROW BEGIN SELECT RAISE(ABORT, 'Test session grant history is append-only'); END")) {
@@ -654,7 +660,7 @@ return new class extends Migration
         ksort($expectedIndexes);
         ksort($actualIndexes);
         $security = DB::selectOne("SELECT relrowsecurity,relforcerowsecurity,pg_get_userbyid(relowner) owner,current_user expected_owner FROM pg_class WHERE oid='test_session_grants'::regclass");
-        $trigger = DB::selectOne(<<<'SQL'
+        $triggers = DB::select(<<<'SQL'
             SELECT trigger.tgtype,trigger.tgenabled,namespace.nspname,function.proname,function.prosecdef,
                    function.proconfig,language.lanname,function.prosrc,
                    pg_get_userbyid(function.proowner) function_owner,current_user expected_owner,
@@ -663,8 +669,10 @@ return new class extends Migration
             JOIN pg_namespace namespace ON namespace.oid=function.pronamespace
             JOIN pg_language language ON language.oid=function.prolang
             WHERE trigger.tgrelid='test_session_grants'::regclass
-              AND trigger.tgname='test_session_grants_identity_guard' AND NOT trigger.tgisinternal
+              AND NOT trigger.tgisinternal
+            ORDER BY trigger.tgname
             SQL);
+        $trigger = count($triggers) === 1 ? $triggers[0] : null;
         $policies = collect(DB::select(<<<'SQL'
             SELECT policyname,permissive,roles,cmd,qual,with_check
             FROM pg_policies WHERE schemaname='public' AND tablename='test_session_grants' ORDER BY policyname
@@ -675,9 +683,12 @@ return new class extends Migration
                 (string) $data['cmd'], $data['qual'], $data['with_check']];
         })->all();
         $privileges = collect(DB::select(<<<'SQL'
-            SELECT grantee,privilege_type FROM information_schema.role_table_grants
-            WHERE table_schema='public' AND table_name='test_session_grants'
-              AND grantee IN ('psikotes_runtime','PUBLIC') ORDER BY grantee,privilege_type
+            SELECT CASE WHEN acl.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(acl.grantee) END grantee,
+                   acl.privilege_type
+            FROM pg_class class
+            CROSS JOIN LATERAL aclexplode(COALESCE(class.relacl,acldefault('r',class.relowner))) acl
+            WHERE class.oid='test_session_grants'::regclass AND acl.grantee <> class.relowner
+            ORDER BY grantee,privilege_type
             SQL))->map(function (object $row): array {
             $data = (array) $row;
 
