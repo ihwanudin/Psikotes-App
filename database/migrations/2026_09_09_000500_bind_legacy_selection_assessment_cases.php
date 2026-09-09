@@ -146,8 +146,15 @@ return new class extends Migration
                 LANGUAGE plpgsql SET search_path = pg_catalog, public AS $guard$
                 BEGIN
                     IF TG_OP = 'UPDATE' AND (
-                        NEW.assessment_case_id IS DISTINCT FROM OLD.assessment_case_id
+                        NEW.client_id IS DISTINCT FROM OLD.client_id
+                        OR NEW.external_candidate_id IS DISTINCT FROM OLD.external_candidate_id
+                        OR NEW.selection_round_id IS DISTINCT FROM OLD.selection_round_id
+                        OR NEW.registration_id IS DISTINCT FROM OLD.registration_id
                         OR NEW.participant_id IS DISTINCT FROM OLD.participant_id
+                        OR NEW.assessment_case_id IS DISTINCT FROM OLD.assessment_case_id
+                        OR NEW.idempotency_key IS DISTINCT FROM OLD.idempotency_key
+                        OR NEW.request_hash IS DISTINCT FROM OLD.request_hash
+                        OR NEW.created_at IS DISTINCT FROM OLD.created_at
                     ) THEN
                         RAISE EXCEPTION 'Selection case identity is immutable' USING ERRCODE = 'P0001';
                     END IF;
@@ -182,8 +189,15 @@ return new class extends Migration
             BEGIN SELECT RAISE(ABORT, 'Selection mapping requires an exact legacy case'); END;
             CREATE TRIGGER selection_participants_case_update_guard
             BEFORE UPDATE ON selection_participants FOR EACH ROW
-            WHEN NEW.assessment_case_id IS NOT OLD.assessment_case_id
+            WHEN NEW.client_id IS NOT OLD.client_id
+              OR NEW.external_candidate_id IS NOT OLD.external_candidate_id
+              OR NEW.selection_round_id IS NOT OLD.selection_round_id
+              OR NEW.registration_id IS NOT OLD.registration_id
               OR NEW.participant_id IS NOT OLD.participant_id
+              OR NEW.assessment_case_id IS NOT OLD.assessment_case_id
+              OR NEW.idempotency_key IS NOT OLD.idempotency_key
+              OR NEW.request_hash IS NOT OLD.request_hash
+              OR NEW.created_at IS NOT OLD.created_at
             BEGIN SELECT RAISE(ABORT, 'Selection case identity is immutable'); END;
             SQL);
     }

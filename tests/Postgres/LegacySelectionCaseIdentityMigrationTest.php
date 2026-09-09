@@ -18,8 +18,7 @@ final class LegacySelectionCaseIdentityMigrationTest extends TestCase
         $this->asOwner(function (): void {
             DB::beginTransaction();
             try {
-                $migration = $this->migration();
-                $migration->down();
+                $this->migrate('down');
                 foreach (['branches', 'participants', 'selection_participants', 'assessment_cases'] as $table) {
                     DB::statement("ALTER TABLE {$table} NO FORCE ROW LEVEL SECURITY");
                 }
@@ -32,7 +31,7 @@ final class LegacySelectionCaseIdentityMigrationTest extends TestCase
                     'created_at' => '2026-08-29 03:15:00+00', 'updated_at' => '2026-08-29 03:15:00+00',
                 ]);
 
-                $migration->up();
+                $this->migrate('up');
 
                 $case = DB::table('assessment_cases')->where('id', DB::table('selection_participants')
                     ->where('id', $selection)->value('assessment_case_id'))->first();
@@ -77,8 +76,10 @@ final class LegacySelectionCaseIdentityMigrationTest extends TestCase
 
             $this->assertSqlState('23514', fn () => $this->selection($second['participant'], $direct, 'wrong'));
             $this->assertSqlState('23514', fn () => $this->selection($second['participant'], PHP_INT_MAX, 'missing'));
-            $this->assertSqlState('P0001', fn () => DB::table('selection_participants')
-                ->where('id', $selection)->update(['assessment_case_id' => $direct]));
+            foreach ($this->identityMutations($second['participant'], $direct) as $column => $value) {
+                $this->assertSqlState('P0001', fn () => DB::table('selection_participants')
+                    ->where('id', $selection)->update([$column => $value]));
+            }
         });
     }
 
@@ -120,6 +121,22 @@ final class LegacySelectionCaseIdentityMigrationTest extends TestCase
         ]);
     }
 
+    /** @return array<string, int|string> */
+    private function identityMutations(int $participant, int $case): array
+    {
+        return [
+            'client_id' => 'mutated-client',
+            'external_candidate_id' => 'mutated-candidate',
+            'selection_round_id' => 'mutated-round',
+            'registration_id' => 'mutated-registration',
+            'participant_id' => $participant,
+            'assessment_case_id' => $case,
+            'idempotency_key' => 'mutated-key',
+            'request_hash' => hash('sha256', 'mutated'),
+            'created_at' => '2026-08-30 03:15:00+00',
+        ];
+    }
+
     private function assertSqlState(string $state, callable $operation): void
     {
         DB::beginTransaction();
@@ -133,9 +150,14 @@ final class LegacySelectionCaseIdentityMigrationTest extends TestCase
         }
     }
 
-    private function migration(): object
+    private function migrate(string $direction): void
     {
-        return require database_path('migrations/2026_09_09_000500_bind_legacy_selection_assessment_cases.php');
+        $migration = require database_path('migrations/2026_09_09_000500_bind_legacy_selection_assessment_cases.php');
+        $operation = [$migration, $direction];
+        if (! is_callable($operation)) {
+            throw new \RuntimeException("Migration operation {$direction} is unavailable.");
+        }
+        $operation();
     }
 
     private function asOwner(callable $operation): void

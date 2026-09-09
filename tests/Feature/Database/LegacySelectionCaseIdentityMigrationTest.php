@@ -92,8 +92,10 @@ final class LegacySelectionCaseIdentityMigrationTest extends OrganizationPayment
             'idempotency_key' => 'other-key', 'request_hash' => hash('sha256', 'other'),
             'created_at' => now(), 'updated_at' => now(),
         ]));
-        $this->assertRejected(fn () => DB::table('selection_participants')->where('id', $fixture['selection'])
-            ->update(['assessment_case_id' => $directCase]));
+        foreach ($this->identityMutations($other['participant'], $directCase) as $column => $value) {
+            $this->assertRejected(fn () => DB::table('selection_participants')
+                ->where('id', $fixture['selection'])->update([$column => $value]));
+        }
         $this->assertSame($mapping->assessment_case_id, DB::table('selection_participants')
             ->where('id', $fixture['selection'])->value('assessment_case_id'));
     }
@@ -156,6 +158,22 @@ final class LegacySelectionCaseIdentityMigrationTest extends OrganizationPayment
         } catch (QueryException) {
             $this->addToAssertionCount(1);
         }
+    }
+
+    /** @return array<string, int|string> */
+    private function identityMutations(int $participant, int $case): array
+    {
+        return [
+            'client_id' => 'mutated-client',
+            'external_candidate_id' => 'mutated-candidate',
+            'selection_round_id' => 'mutated-round',
+            'registration_id' => 'mutated-registration',
+            'participant_id' => $participant,
+            'assessment_case_id' => $case,
+            'idempotency_key' => 'mutated-key',
+            'request_hash' => hash('sha256', 'mutated'),
+            'created_at' => '2026-08-30 03:15:00',
+        ];
     }
 
     private function migrate(string $direction): void

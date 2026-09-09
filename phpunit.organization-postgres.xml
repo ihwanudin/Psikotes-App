@@ -11,6 +11,7 @@
             <file>tests/Postgres/AssessmentCaseBackfillMigrationTest.php</file>
             <file>tests/Postgres/AssessmentCaseSecurityTest.php</file>
             <file>tests/Postgres/TestSessionCaseIdentityMigrationTest.php</file>
+            <file>tests/Postgres/LegacySelectionCaseIdentityMigrationTest.php</file>
         </testsuite>
         <testsuite name="OrganizationPostgres">
             <directory>tests/Postgres</directory>
@@ -18,6 +19,7 @@
             <exclude>tests/Postgres/AssessmentCaseBackfillMigrationTest.php</exclude>
             <exclude>tests/Postgres/AssessmentCaseSecurityTest.php</exclude>
             <exclude>tests/Postgres/TestSessionCaseIdentityMigrationTest.php</exclude>
+            <exclude>tests/Postgres/LegacySelectionCaseIdentityMigrationTest.php</exclude>
         </testsuite>
     </testsuites>
     <php>

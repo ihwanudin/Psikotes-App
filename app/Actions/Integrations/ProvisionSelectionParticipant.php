@@ -41,18 +41,21 @@ final readonly class ProvisionSelectionParticipant
                 fn (): array => $this->createOnce($input, $clientId, $idempotencyKey, $requestHash),
             );
         } catch (QueryException $exception) {
-            $existing = $this->findExisting(
-                $clientId,
-                $idempotencyKey,
-                (string) $input['externalCandidateId'],
-            );
-            if ($existing === null) {
-                throw $exception;
-            }
-
             return $this->runner->run(
                 new RlsContext('service'),
-                fn (): array => $this->replayResult($existing, $requestHash),
+                function () use ($clientId, $idempotencyKey, $input, $requestHash, $exception): array {
+                    $existing = $this->findReplay(
+                        $clientId,
+                        $idempotencyKey,
+                        (string) $input['externalCandidateId'],
+                        true,
+                    );
+                    if ($existing === null) {
+                        throw $exception;
+                    }
+
+                    return $this->replayResult($existing, $requestHash);
+                },
             );
         }
     }
@@ -164,17 +167,6 @@ final readonly class ProvisionSelectionParticipant
         ]);
 
         return ['participant_id' => $participant->id, 'replayed' => false];
-    }
-
-    private function findExisting(
-        string $clientId,
-        string $idempotencyKey,
-        string $externalCandidateId,
-    ): ?SelectionParticipant {
-        return $this->runner->run(
-            new RlsContext('service'),
-            fn (): ?SelectionParticipant => $this->findReplay($clientId, $idempotencyKey, $externalCandidateId, true),
-        );
     }
 
     private function findReplay(

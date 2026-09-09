@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Integrations;
 
+use App\Actions\Integrations\ProvisionSelectionParticipant;
 use App\Models\AssessmentCase;
 use App\Models\Branch;
 use App\Models\SelectionParticipant;
@@ -11,6 +12,7 @@ use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -181,6 +183,34 @@ final class SelectionParticipantProvisioningTest extends TestCase
         $this->assertDatabaseCount('assessment_cases', 1);
     }
 
+    public function test_query_failure_without_a_committed_race_winner_rethrows_the_original_failure(): void
+    {
+        $failure = new QueryException('sqlite', 'synthetic selection read', [], new \PDOException('database unavailable'));
+        $firstSelectionRead = true;
+        DB::beforeExecuting(function (string $query) use (&$firstSelectionRead, $failure): void {
+            if ($firstSelectionRead && str_contains($query, 'selection_participants')) {
+                $firstSelectionRead = false;
+                throw $failure;
+            }
+        });
+
+        try {
+            app(ProvisionSelectionParticipant::class)->handle(
+                $this->payload(),
+                self::CLIENT_ID,
+                'psychotest-participant:v1:no-winner',
+            );
+            $this->fail('A database failure without a committed winner must not become a replay.');
+        } catch (QueryException $exception) {
+            $this->assertSame($failure, $exception);
+        }
+
+        $this->assertFalse($firstSelectionRead);
+        $this->assertDatabaseCount('participants', 0);
+        $this->assertDatabaseCount('selection_participants', 0);
+        $this->assertDatabaseCount('assessment_cases', 0);
+    }
+
     public function test_reusing_an_idempotency_key_for_different_data_is_rejected(): void
     {
         $key = 'psychotest-participant:v1:01K3TESTCANDIDATE000000001';
@@ -272,7 +302,9 @@ final class SelectionParticipantProvisioningTest extends TestCase
         ];
     }
 
-    /** @param array<string, string> $payload */
+    /** @param array<string, string> $payload
+     * @return TestResponse<Response>
+     */
     private function signedRequest(
         array $payload,
         string $idempotencyKey,
