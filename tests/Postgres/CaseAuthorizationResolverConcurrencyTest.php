@@ -26,15 +26,21 @@ final class CaseAuthorizationResolverConcurrencyTest extends TestCase
     {
         parent::setUp();
         $this->assertSame(0, DB::transactionLevel());
-        $fixture = app(RlsContextRunner::class)->runAsService(
-            fn (): array => AssessmentAccessFixture::create(),
-        );
+        $fixture = app(RlsContextRunner::class)->runAsService(function (): array {
+            $fixture = AssessmentAccessFixture::create();
+            $method = DB::table('assessment_bills')->where('id', $fixture['bill'])->value('payment_method_id');
+            if (! is_numeric($method)) {
+                throw new RuntimeException('Synthetic assessment bill must expose its payment method in service scope.');
+            }
+
+            return [...$fixture, 'method' => (int) $method];
+        });
         $this->fixture = [
             'organization' => (int) $fixture['organization'],
             'participant' => (int) $fixture['participant'],
             'package' => (int) $fixture['package'],
             'attempt' => (int) $fixture['attempt'],
-            'method' => (int) DB::table('assessment_bills')->where('id', $fixture['bill'])->value('payment_method_id'),
+            'method' => $fixture['method'],
         ];
     }
 
@@ -209,6 +215,8 @@ final class CaseAuthorizationResolverConcurrencyTest extends TestCase
                 $organization = $this->fixture['organization'];
                 $participant = $this->fixture['participant'];
                 $owner->statement("SET LOCAL session_replication_role = 'replica'");
+                $this->assertSame(1, $owner->table('payment_methods')
+                    ->where('id', $this->fixture['method'])->count());
                 foreach (['assessment_entitlements', 'assessment_bill_items', 'assessment_bills', 'assessment_charges'] as $table) {
                     $owner->table($table)->where('organization_id', $organization)->delete();
                 }
@@ -221,7 +229,10 @@ final class CaseAuthorizationResolverConcurrencyTest extends TestCase
                 $owner->table('package_items')->where('package_id', $this->fixture['package'])->delete();
                 $owner->table('packages')->where('id', $this->fixture['package'])->delete();
                 $owner->table('participants')->where('id', $participant)->delete();
-                $owner->table('payment_methods')->where('id', $this->fixture['method'])->delete();
+                $this->assertSame(1, $owner->table('payment_methods')
+                    ->where('id', $this->fixture['method'])->delete());
+                $this->assertSame(0, $owner->table('payment_methods')
+                    ->where('id', $this->fixture['method'])->count());
                 $owner->table('branches')->where('id', $organization)->delete();
             });
         } finally {
