@@ -583,3 +583,30 @@ case/participant FK, bound-only case indexes, and immutable case/created-at
 identity while preserving existing participant-scoped uniqueness and RLS.
 Final NOT NULL waits for direct and legacy case identity, a case-aware atomic
 session allocator, and explicit adjudication of multi-case history.
+
+The nullable session-integrity foundation is accepted as `7e5fbba`. It binds
+only unbound sessions whose participant has exactly one accepted case, retains
+zero-candidate NULLs, and aborts atomically on ambiguous or corrupt history.
+Bound rows receive an exact case/participant composite FK, case-scoped unique
+indexes, and immutable case/created-at identity while participant-scoped
+compatibility remains. PostgreSQL migration locks follow writer order
+`test_sessions` then `assessment_cases`; FORCE RLS and service-only insert
+semantics remain intact. SQLite preserves cross-table trigger SQL and behavior
+through its rebuild. Exact-state corruption probes cover FK/index/guard
+definitions, and the PostgreSQL harness selects all 52 files exactly once with
+four schema-boundary files first. Worker full PostgreSQL passed 464 tests/5,124
+assertions; coordinator focused gates passed 195/1,027 and adversarial review
+found no P1/P2. A coordinator full rerun executed all 464 tests but hit only the
+pre-existing invoice timing threshold at 3.0507s versus 3.0s; no functional
+error occurred and disposable cleanup completed.
+
+The versioned aspect-source configuration is accepted as `07eaa98`. Its
+extractor reads the authoritative workbook rather than embedding mappings,
+emits exact A1-D5 order with 18 aspects and 42 associations, normalizes A1 to
+`IST_IQ`, maps D5 to `RMIB_S.Se`, and excludes DASS and Persuasive. Canonical
+output is UTF-8 LF-only, 1,148 bytes, SHA-256
+`cdd6c3b89e9ee792db14a9b6878e10c2ddd50143224582c0c99d2bfd03b4d9a9`.
+Seeder registration is immutable and mismatch rollback is all-or-nothing.
+Independent Python 20/20, Feature 5/59, PHPStan, Pint, and diff checks passed;
+focused disposable PostgreSQL passed 7/77 with cleanup. Result-ledger work is
+still blocked on final case-aware session identity, not on source mapping.
