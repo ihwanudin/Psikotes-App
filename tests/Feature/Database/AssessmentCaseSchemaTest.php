@@ -18,6 +18,8 @@ final class AssessmentCaseSchemaTest extends OrganizationPaymentTestCase
     {
         parent::setUp();
         $this->assertSame(0, Artisan::call('migrate', ['--force' => true]));
+        $phaseTwo = require database_path('migrations/2026_09_09_000300_backfill_integrated_assessment_cases.php');
+        $phaseTwo->down();
     }
 
     public function test_sqlite_schema_exposes_universal_case_and_nullable_phase_one_links(): void

@@ -116,7 +116,7 @@ final class AssessmentCaseSecurityTest extends TestCase
         });
     }
 
-    public function test_checks_foreign_keys_nullable_links_and_unique_attempt_binding_are_authoritative(): void
+    public function test_checks_foreign_keys_required_exact_links_and_nullable_sessions_are_authoritative(): void
     {
         app(RlsContextRunner::class)->runAsService(function (): void {
             $graph = $this->graph();
@@ -143,22 +143,26 @@ final class AssessmentCaseSecurityTest extends TestCase
                 );
             }
 
-            $first = DB::table('assessment_cases')->insertGetId($this->caseRow($graph));
-            $second = DB::table('assessment_cases')->insertGetId([
-                ...$this->caseRow($graph), 'public_id' => (string) Str::ulid(),
+            $firstAlias = (string) Str::ulid();
+            $secondAlias = (string) Str::ulid();
+            $first = DB::table('assessment_cases')->insertGetId([
+                ...$this->caseRow($graph), 'public_id' => $firstAlias, 'package_id' => $graph['package'],
+                'origin' => 'INTEGRATED',
             ]);
-            $attemptOne = $this->assessmentParticipant($graph, 'one');
-            $attemptTwo = $this->assessmentParticipant($graph, 'two');
+            $second = DB::table('assessment_cases')->insertGetId([
+                ...$this->caseRow($graph), 'public_id' => $secondAlias, 'package_id' => $graph['package'],
+                'origin' => 'INTEGRATED',
+            ]);
+            $attemptOne = $this->assessmentParticipant($graph, 'one', $firstAlias, $first);
+            $attemptTwo = $this->assessmentParticipant($graph, 'two', $secondAlias, $second);
             $session = $this->createTestSession($graph['participant']);
-            $this->assertNull(DB::table('assessment_participants')->where('id', $attemptOne)->value('assessment_case_id'));
+            $this->assertSame($first, DB::table('assessment_participants')->where('id', $attemptOne)->value('assessment_case_id'));
             $this->assertNull(DB::table('test_sessions')->where('id', $session)->value('assessment_case_id'));
-            DB::table('assessment_participants')->where('id', $attemptOne)->update(['assessment_case_id' => $first]);
             DB::table('test_sessions')->where('id', $session)->update(['assessment_case_id' => $first]);
-            $this->assertSqlState('23505', fn () => DB::table('assessment_participants')->where('id', $attemptTwo)
+            $this->assertSqlState('P0001', fn () => DB::table('assessment_participants')->where('id', $attemptTwo)
                 ->update(['assessment_case_id' => $first]));
-            $this->assertSqlState('23503', fn () => DB::table('assessment_participants')->where('id', $attemptTwo)
+            $this->assertSqlState('P0001', fn () => DB::table('assessment_participants')->where('id', $attemptTwo)
                 ->update(['assessment_case_id' => 999999]));
-            DB::table('assessment_participants')->where('id', $attemptTwo)->update(['assessment_case_id' => $second]);
         });
     }
 
@@ -186,8 +190,10 @@ final class AssessmentCaseSecurityTest extends TestCase
     {
         $this->asOwner(function (): void {
             $migration = require database_path('migrations/2026_09_09_000200_create_assessment_cases.php');
+            $phaseTwo = require database_path('migrations/2026_09_09_000300_backfill_integrated_assessment_cases.php');
             DB::beginTransaction();
             try {
+                $phaseTwo->down();
                 $migration->down();
                 $this->assertFalse(Schema::hasTable('assessment_cases'));
                 $this->assertTrue(Schema::hasTable('assessment_participants'));
@@ -200,6 +206,7 @@ final class AssessmentCaseSecurityTest extends TestCase
             DB::beginTransaction();
             try {
                 DB::statement('SET LOCAL row_security = off');
+                $phaseTwo->down();
                 $graph = $this->graph();
                 DB::table('assessment_cases')->insert($this->caseRow($graph));
                 try {
@@ -263,12 +270,16 @@ final class AssessmentCaseSecurityTest extends TestCase
     }
 
     /** @param array{branch:int,package:int,participant:int,client:int} $graph */
-    private function assessmentParticipant(array $graph, string $candidate): int
-    {
+    private function assessmentParticipant(
+        array $graph,
+        string $candidate,
+        string $alias,
+        int $case,
+    ): int {
         return DB::table('assessment_participants')->insertGetId([
             'integration_client_id' => $graph['client'], 'organization_id' => $graph['branch'],
             'participant_id' => $graph['participant'], 'package_id' => $graph['package'],
-            'assessment_attempt_id' => (string) Str::ulid(), 'source_system' => 'SYNTHETIC',
+            'assessment_case_id' => $case, 'assessment_attempt_id' => $alias, 'source_system' => 'SYNTHETIC',
             'external_candidate_id' => $candidate, 'funding_mode' => 'SPONSORED',
             'assessment_status' => 'READY', 'result_version' => 0,
             'idempotency_key' => 'key-'.$candidate, 'request_hash' => hash('sha256', $candidate),
