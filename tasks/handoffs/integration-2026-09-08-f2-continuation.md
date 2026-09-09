@@ -634,3 +634,13 @@ retry stable, and a transaction must claim entitlement, create the case-bound
 session, and start it atomically. Implementation remains blocked until direct
 and legacy links exist and a versioned authority for duration/config/seed is
 located; retest stays disabled without a distinct audited grant.
+
+The session-definition audit found authoritative basic values only for IST
+(nine ordered subtests totalling 4,320 seconds) and Kraepelin (50 columns at
+15 seconds, 28 digits/27 answers, bottom-to-top unit-digit input). It did not
+find sufficient authority for the IST ME learn/recall timer split, PAPI/RMIB
+durations, the deterministic Kraepelin generator algorithm/version, licensed
+item references, or immutable session-definition provenance. Existing F0 JSON
+is scoring data and must not be silently repurposed. A pure typed validator may
+be built with synthetic data, but no production catalog or allocator wiring is
+accepted until those decisions are supplied.
