@@ -152,6 +152,23 @@ final class EligibilityDecisionSnapshotTest extends TestCase
         EligibilityDecisionSnapshot::create($input);
     }
 
+    public function test_recalculation_changes_only_levels_and_reuses_the_canonical_baseline_input(): void
+    {
+        $input = $this->validInput();
+        $baseline = EligibilityDecisionSnapshot::create($input);
+        $finalLevels = $input['levels'];
+        $finalLevels['C4'] = 1;
+
+        $recalculated = $baseline->recalculateWithLevels($finalLevels)->toArray();
+
+        self::assertSame('BELUM', $recalculated['zone']['aspects']['C4']['zone']);
+        self::assertSame('TIDAK_DISARANKAN', $recalculated['recommendation']['label']);
+        self::assertSame('UMUM', $recalculated['zone']['field_code']);
+        self::assertSame('V1', $recalculated['recommendation']['provenance']['validity']);
+        self::assertSame(100, $recalculated['recommendation']['provenance']['iq']);
+        self::assertSame($input['eligibility_source_versions'], $recalculated['provenance']['eligibility_source_versions']);
+    }
+
     /** @return array<mixed> */
     private function validInput(): array
     {

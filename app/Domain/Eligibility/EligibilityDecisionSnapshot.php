@@ -11,8 +11,14 @@ final readonly class EligibilityDecisionSnapshot
     /** @var list<string> */
     private const ELIGIBILITY_SOURCE_CODES = ['ist', 'papi', 'kraepelin', 'rmib', 'reporting'];
 
-    /** @param array<mixed> $snapshot */
-    private function __construct(private array $snapshot) {}
+    /**
+     * @param  array<mixed>  $canonicalInput
+     * @param  array<mixed>  $snapshot
+     */
+    private function __construct(
+        private array $canonicalInput,
+        private array $snapshot,
+    ) {}
 
     /** @param array<mixed> $input */
     public static function create(array $input): self
@@ -61,15 +67,34 @@ final readonly class EligibilityDecisionSnapshot
             throw new InvalidArgumentException('Eligibility decision provenance is inconsistent.');
         }
 
-        return new self([
-            'type' => 'eligibility_decision_snapshot',
-            'publication_blocked' => $recommendation['publication_blocked'],
-            'zone' => $zone,
-            'recommendation' => $recommendation,
-            'provenance' => [
+        return new self(
+            [
+                'levels' => $input['levels'],
+                'field_code' => $input['field_code'],
+                'iq' => $input['iq'],
+                'validity' => $input['validity'],
+                'standard_configuration' => $configuration,
                 'eligibility_source_versions' => $sourceVersions,
-                'eligibility_standard_version' => $zone['standard_version'],
             ],
+            [
+                'type' => 'eligibility_decision_snapshot',
+                'publication_blocked' => $recommendation['publication_blocked'],
+                'zone' => $zone,
+                'recommendation' => $recommendation,
+                'provenance' => [
+                    'eligibility_source_versions' => $sourceVersions,
+                    'eligibility_standard_version' => $zone['standard_version'],
+                ],
+            ],
+        );
+    }
+
+    /** @param array<mixed> $levels */
+    public function recalculateWithLevels(array $levels): self
+    {
+        return self::create([
+            ...$this->canonicalInput,
+            'levels' => $levels,
         ]);
     }
 
