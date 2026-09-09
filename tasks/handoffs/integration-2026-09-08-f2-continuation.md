@@ -622,3 +622,15 @@ than being inferred from mutable or non-unique configuration. New Selection
 provisioning dual-writes the case, while replay must validate the exact graph
 and reject the existing split-brain OR-lookup ambiguity. The legacy increment
 is the sole active migration lane; direct schema work waits for it.
+
+The case-aware session allocator audit confirms that production has only
+start, autosave, and submit actions; session creation is still test-fixture
+only and the public controller returns `SESSION_ENGINE_PENDING`. A new writer
+must resolve case identity through the origin-specific grant chain (order for
+DIRECT_PUBLIC, Selection mapping for LEGACY_SELECTION, assessment participant
+for INTEGRATED), never by selecting one case from `participant_id`. The case is
+the serialization root, grant-derived authorization/allocation identities make
+retry stable, and a transaction must claim entitlement, create the case-bound
+session, and start it atomically. Implementation remains blocked until direct
+and legacy links exist and a versioned authority for duration/config/seed is
+located; retest stays disabled without a distinct audited grant.
