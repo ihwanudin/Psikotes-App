@@ -493,3 +493,37 @@ children. The later eligibility, G6, G7, report-version, signing-idempotency,
 and dedicated append-only audit ledgers remain serial migrations. DASS stays in
 its isolated schema and must not become an input or foreign-key dependency of
 the 18-aspect normalized result.
+
+## 2026-09-09 integrated dual-write and F4 boundary checkpoint
+
+Integrated assessment-case dual-write phase 2A is accepted across production
+commit `a48e2af`, PostgreSQL acceptance commit `8002ba8`, and deterministic
+race-evidence repair `5f3ee01`. Both integrated provisioners now create the
+INTEGRATED case and assessment participant atomically with the same public /
+attempt ULID and exact participant, organization, and package binding. Replay
+validation fails closed on ambiguous or mismatched history, and injected
+post-insert failure leaves no case, attempt, participant, entitlement, outbox,
+or audit orphan.
+
+The PostgreSQL race tests use two independent runtime-role processes. Both
+workers are held after their initial empty replay lookup and before insert;
+the parent proves both reached that barrier, and lookup counts `[1,2]` prove
+one unique-conflict loser executed the catch/refetch path. Final adversarial
+review found no remaining P1/P2 issue. Coordinator verification passed Feature
+88 tests/540 assertions, scoped PHPStan/Pint, and a fresh disposable PostgreSQL
+run at 435 tests/4,935 assertions. Its exact containers and network were
+removed. Phase 2B may now be assigned to one migration owner: backfill only
+losslessly mapped INTEGRATED attempts and enforce their case binding without
+guessing DIRECT_PUBLIC, legacy Selection, test-session, or DASS identities.
+
+F4 structural target-interest evidence is accepted as `db3dce3`. It emits
+exactly five canonical D1-D5 rows, assesses only the configured field target,
+marks risk only for GREY/BELUM targets, keeps UMUM unassessed, and fails closed
+when review evidence is unresolved. The non-claiming S5/S6 boundary acceptance
+is accepted as `b8efab2`; it prevents the current partial primitives from being
+mistaken for an authoritative S5/S6 composer. Production S5/S6 remains blocked
+on three unresolved decisions: D-aspect support coverage, RMIB ties/UMUM and
+suitability-label derivation, and system-versus-final G6 level selection.
+The D5 eligibility fixture correction `f9bd44a` aligns provenance with RMIB
+Social Service (`RMIB_S.Se`). These three accepted increments passed independent
+Narrative/Eligibility, PHPStan, Pint, and diff checks.
