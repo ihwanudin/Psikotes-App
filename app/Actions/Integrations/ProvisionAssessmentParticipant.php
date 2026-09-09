@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Actions\Integrations;
 
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Models\AssessmentCase;
 use App\Models\AssessmentParticipant;
 use App\Models\IntegrationClient;
@@ -22,7 +24,11 @@ use Illuminate\Support\Str;
 
 final readonly class ProvisionAssessmentParticipant
 {
-    public function __construct(private RlsContextRunner $runner, private MonthlyTestNumberIssuer $testNumbers) {}
+    public function __construct(
+        private RlsContextRunner $runner,
+        private MonthlyTestNumberIssuer $testNumbers,
+        private RetentionPolicy $retention,
+    ) {}
 
     /** @param array<string, mixed> $input
      * @return array{participant_id:int, assessment_attempt_id:string, assessment_status:string, replayed:bool}
@@ -80,7 +86,7 @@ final readonly class ProvisionAssessmentParticipant
                     }
 
                     $participant = $this->existingIdentity($client, $input) ?? $this->createParticipant($client, $package, $input);
-                    $now = now();
+                    $now = now()->toImmutable();
                     foreach ($testTypes as $testType) {
                         $participant->entitlements()->firstOrCreate(['test_type' => $testType], [
                             'order_id' => null, 'status' => 'ready', 'ready_at' => $now,
@@ -127,7 +133,7 @@ final readonly class ProvisionAssessmentParticipant
                         'subject_id' => (string) $participant->id,
                         'context' => json_encode(['source_system' => $input['sourceSystem'], 'assessment_attempt_id' => $mapping->assessment_attempt_id], JSON_THROW_ON_ERROR),
                         'occurred_at' => $now,
-                        'expires_at' => $now->copy()->addYears(5),
+                        'expires_at' => $this->retention->expiresAt(RetentionDataClass::Audit, $now),
                     ]);
                     $this->enqueueProvisioned($mapping, $client, $now);
 

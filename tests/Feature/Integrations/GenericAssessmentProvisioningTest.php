@@ -12,6 +12,7 @@ use App\Models\IntegrationSource;
 use App\Models\TestPackage;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
@@ -112,6 +113,43 @@ final class GenericAssessmentProvisioningTest extends TestCase
         $this->assertSame('PSYCHOTEST_PARTICIPANT_PROVISIONED', $event['eventType']);
         $this->assertDatabaseHas('entitlements', ['participant_id' => $participantId, 'test_type' => 'ist']);
         $this->assertDatabaseHas('entitlements', ['participant_id' => $participantId, 'test_type' => 'dass21']);
+
+        $audit = $this->getConnection()->table('audit_logs')->sole();
+        $context = json_decode((string) $audit->context, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(['source_system', 'assessment_attempt_id'], array_keys($context));
+        $encodedAudit = json_encode($audit, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+        foreach ([
+            'Ayu Pratiwi',
+            'ayu@example.test',
+            '6281234567890',
+            'SKR-2026-0001',
+            'SEL-SKR-2026-0001',
+            'REG-SKR-0001',
+            'ROUND-2026-08',
+        ] as $privateValue) {
+            $this->assertStringNotContainsString($privateValue, $encodedAudit);
+        }
+    }
+
+    public function test_provisioning_audit_retention_uses_a_no_overflow_leap_day_anchor(): void
+    {
+        $originalTimezone = date_default_timezone_get();
+
+        try {
+            date_default_timezone_set('Asia/Bangkok');
+            Date::setTestNow('2024-02-29 10:15:00+07:00');
+
+            $this->signedRequest($this->payload(), 'assessment:v1:leap-day-retention')->assertCreated();
+
+            $audit = $this->getConnection()->table('audit_logs')
+                ->where('action', 'assessment_participant.provisioned')
+                ->sole();
+            $this->assertSame('2024-02-29 10:15:00', $audit->occurred_at);
+            $this->assertSame('2029-02-28 10:15:00', $audit->expires_at);
+        } finally {
+            Date::setTestNow();
+            date_default_timezone_set($originalTimezone);
+        }
     }
 
     public function test_unknown_fields_source_spoofing_package_and_funding_are_rejected(): void
@@ -147,6 +185,7 @@ final class GenericAssessmentProvisioningTest extends TestCase
         $this->assertDatabaseCount('assessment_participants', 1);
         $this->assertDatabaseCount('assessment_cases', 1);
         $this->assertDatabaseCount('outbox_messages', 1);
+        $this->assertDatabaseCount('audit_logs', 1);
     }
 
     public function test_database_rejects_removing_the_case_binding_before_replay(): void
@@ -272,7 +311,9 @@ final class GenericAssessmentProvisioningTest extends TestCase
         ];
     }
 
-    /** @param array<string, mixed> $payload */
+    /** @param array<string, mixed> $payload
+     * @return TestResponse<Response>
+     */
     private function signedRequest(array $payload, string $key, string $clientId = 'LPK_SAKURA_ADMISSION_APP'): TestResponse
     {
         $body = json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
