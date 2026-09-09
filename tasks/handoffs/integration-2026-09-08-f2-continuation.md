@@ -655,3 +655,24 @@ changed definition cannot reuse an old digest. Adversarial re-review found no
 remaining P1/P2; combined AssessmentSessions passed 142 tests/338 assertions
 with PHPStan and Pint green. This is not a production catalog and does not
 resolve the authority gaps above.
+
+LEGACY_SELECTION case identity is accepted across `7aaa00b`, typed test-helper
+repair `5b11f0b`, race/immutability repair `6f3feb1`, and delete/race-evidence
+repair `1200ba0`. Historical mappings receive opaque ULID cases with NULL
+package and intended-field snapshots; new provisioning snapshots the validated
+configured field. Composite identity, exact origin, replay graph, all durable
+mapping fields, and deletion are database-guarded on PostgreSQL and SQLite.
+Both same-key and different-key/same-candidate two-process races produce one
+durable graph and one locked replay. Full disposable PostgreSQL passed 468
+tests/5,189 assertions; coordinator gates and final adversarial review found no
+remaining P1/P2.
+
+The DIRECT_PUBLIC migration-readiness audit classifies packages only from
+relational composition: exact `{dass21}` remains unbound; a main package must
+contain DASS plus at least one supported non-DASS instrument. Historical
+backfill must prove exact equality between package items and order-bound
+entitlements, along with participant/package/source identity, or abort the
+whole migration. Main cases alias the server-minted order ULID and use order
+creation time; historical intended-field remains NULL. Migration `000600` is
+the next sole serial lane, including strict guards, SQLite descendant
+preservation, PostgreSQL boundary ordering, and explicit fixture adapters.
