@@ -42,6 +42,7 @@ const run = (...args) => {
     );
     const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
     writeFileSync(join(artifacts, `${args[0]}.txt`), output);
+
     if (result.error || result.status !== 0 || output.includes('### Error')) {
         throw new Error(output, { cause: result.error });
     }
@@ -58,9 +59,14 @@ try {
     const match = output.match(
         /### Result\s*\n([\s\S]*?)\n### Ran Playwright code/,
     );
-    if (!match) throw new Error('Missing probe result.');
+
+    if (!match) {
+        throw new Error('Missing probe result.');
+    }
+
     const report = JSON.parse(match[1]);
     const expectedEvents = ['sync-action-modals', 'open-modal'];
+
     if (
         !report.focusVisible ||
         report.openStatus !== 200 ||
@@ -78,6 +84,7 @@ try {
     ) {
         throw new Error(`Minimal Filament action probe failed: ${match[1]}`);
     }
+
     writeFileSync(
         join(artifacts, 'report.json'),
         JSON.stringify(report, null, 2),
@@ -102,8 +109,10 @@ async function probe(page) {
         diagnostics.failures.push(request.url()),
     );
     await page.context().route('**/*', (route) => {
-        if (route.request().url().startsWith('http://127.0.0.1:8012/'))
+        if (route.request().url().startsWith('http://127.0.0.1:8012/')) {
             return route.continue();
+        }
+
         diagnostics.blocked.push(route.request().url());
 
         return route.abort();
@@ -113,6 +122,7 @@ async function probe(page) {
         document.addEventListener('alpine:init', () => {
             window.filamentProbe.alpineInit++;
         });
+
         for (const type of [
             'sync-action-modals',
             'open-modal',
@@ -129,6 +139,7 @@ async function probe(page) {
                 }),
             );
         }
+
         for (const type of ['keydown', 'keyup', 'click', 'input', 'change']) {
             document.addEventListener(
                 type,
@@ -148,15 +159,19 @@ async function probe(page) {
         name: 'Buka modal minimal',
         exact: true,
     });
+
     for (let index = 0; index < 50; index++) {
         if (
             await button.evaluate(
                 (element) => element === document.activeElement,
             )
-        )
+        ) {
             break;
+        }
+
         await page.keyboard.press('Tab');
     }
+
     const focusVisible = await button.evaluate(
         (element) =>
             element === document.activeElement &&
@@ -202,26 +217,34 @@ async function probe(page) {
     };
     const input = page.getByRole('textbox', { name: 'Nilai sintetis' });
     await input.waitFor({ state: 'visible' });
+
     for (let index = 0; index < 20; index++) {
         if (
             await input.evaluate(
                 (element) => element === document.activeElement,
             )
-        )
+        ) {
             break;
+        }
+
         await page.keyboard.press('Tab');
     }
+
     await page.keyboard.type('uji native');
     const submit = page.getByRole('button', { name: 'Submit' });
+
     for (let index = 0; index < 20; index++) {
         if (
             await submit.evaluate(
                 (element) => element === document.activeElement,
             )
-        )
+        ) {
             break;
+        }
+
         await page.keyboard.press('Tab');
     }
+
     const submitUpdate = page.waitForResponse((response) =>
         response.url().endsWith('/fixture-update'),
     );
@@ -238,6 +261,7 @@ async function probe(page) {
                 entry.name.includes('/js/filament/actions/actions.js'),
             ),
     }));
+
     return {
         focusVisible,
         openStatus,

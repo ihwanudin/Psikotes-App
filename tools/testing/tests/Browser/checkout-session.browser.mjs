@@ -32,7 +32,9 @@ async (page) => {
         void task.finally(() => listenerTasks.delete(task))
     }
     const drainObservations = async () => {
-        while (listenerTasks.size > 0) await Promise.all([...listenerTasks])
+        while (listenerTasks.size > 0) {
+            await Promise.all([...listenerTasks])
+        }
     }
 
     const assert = (condition, message) => {
@@ -77,34 +79,43 @@ async (page) => {
             const url = parseUrl(request.url())
             safeNetwork.add(`${url.origin}${url.pathname}`)
             const requestHeaders = await request.allHeaders()
+
             if (/och1_|ocs1_|ocsrf1_/.test(request.url() + (requestHeaders.referer || ''))) {
                 violations.push('credential entered URL or Referer')
             }
+
             if (url.origin === appOrigin && url.pathname.startsWith('/__browser/')
                 && /__Secure-oncam_checkout_(session|csrf)=/.test(requestHeaders.cookie || '')) {
                 violations.push('path-scoped checkout cookie reached Laravel auth route')
             }
+
             if (url.origin === appOrigin && url.pathname === '/checkout/session' && request.method() === 'POST') {
                 exchangePosts++
                 const headers = await request.allHeaders()
                 const body = request.postData() || ''
+
                 if (!/^handoffToken=och1_[0-9a-f]{64}$/.test(body)) {
                     violations.push('exchange body was not one canonical bearer field')
                 }
+
                 if ((headers.cookie || '').includes(`${loginCookieName}=`)) {
                     violations.push('Lax Laravel login cookie was sent on cross-site POST')
                 }
+
                 if (url.search !== '') {
                     violations.push('exchange URL contained a query')
                 }
             }
+
             if (url.origin === appOrigin && url.pathname === '/checkout/payment' && request.method() === 'POST') {
                 paymentPosts++
             }
+
             if (url.origin === appOrigin && url.pathname === '/checkout/confirm' && request.method() === 'POST') {
                 confirmationPosts++
                 const headers = await request.allHeaders()
                 const body = request.postData() || ''
+
                 if (url.search !== '' || headers['content-type'] !== 'application/json'
                     || /payer|payment|package|amount/i.test(body)) {
                     violations.push('confirmation transport exceeded its exact JSON boundary')
@@ -113,17 +124,24 @@ async (page) => {
         }))
         context.on('response', (response) => observe(async () => {
             const url = parseUrl(response.url())
+
             if (url.origin === appOrigin && url.pathname.startsWith('/checkout')) {
-                if (url.pathname === '/checkout' && response.request().isNavigationRequest()) checkoutDocumentResponses++
+                if (url.pathname === '/checkout' && response.request().isNavigationRequest()) {
+                    checkoutDocumentResponses++
+                }
+
                 if (!(await privateHeaders(response))) {
                     violations.push(`privacy headers missing on ${url.pathname}:${response.status()}`)
                 }
+
                 const headers = await response.headersArray()
+
                 if (headers.some(({ name, value }) => name.toLowerCase() === 'set-cookie'
                     && value.startsWith(`${loginCookieName}=`))) {
                     violations.push('checkout response wrote the Laravel login cookie')
                 }
             }
+
             if ([appOrigin, wrongHost].includes(url.origin) && [403, 404, 419].includes(response.status())) {
                 rejectedHttpStatuses.add(response.status())
             }
@@ -131,15 +149,20 @@ async (page) => {
         await context.route('**/*', async (route) => {
             const request = route.request()
             const url = parseUrl(request.url())
+
             if (url.pathname.startsWith('/__browser/control/')) {
                 violations.push('browser navigation attempted driver control')
+
                 return route.abort()
             }
+
             const document = syntheticDocuments.get(request.url())
+
             if (document && request.method() === 'GET') {
                 return route.fulfill({ status: 200, contentType: 'text/html; charset=UTF-8',
                     headers: { 'Cache-Control': 'no-store, private', 'Referrer-Policy': 'no-referrer' }, body: document })
             }
+
             if ([...sources, foreignOrigin].includes(url.origin)) {
                 if (request.method() !== 'GET' || url.pathname !== '/handoff') {
                     violations.push(`unexpected synthetic source request ${request.method()} ${url.pathname}`)
@@ -154,11 +177,13 @@ async (page) => {
                     body: sourceDocument(url.origin),
                 })
             }
+
             if (![appOrigin, wrongHost].includes(url.origin)) {
                 violations.push(`blocked non-loopback origin ${url.origin}`)
 
                 return route.abort()
             }
+
             // Chromium supplies Cookie/Origin/Referer unchanged; TLS bridge owns proxy headers.
             return route.continue()
         })
@@ -194,6 +219,7 @@ async (page) => {
         .filter((cookie) => [selectorName, csrfName].includes(cookie.name))
     const assertCookieContract = (cookies) => {
         assert(cookies.length === 2, 'Checkout cookie pair missing')
+
         for (const cookie of cookies) {
             assert(cookie.domain === 'psikotes.oncam.id', 'Checkout cookie is not host-only on the fixed host')
             assert(cookie.path === '/checkout', 'Checkout cookie path mismatch')
@@ -237,16 +263,20 @@ async (page) => {
             assert(new Set(flags).size === flags.length && !(flags[0] === true && flags[1] === false),
                 'Payment choice order differs')
         }
+
         for (const key of ['sourceName', 'branchName', 'packageName', 'attemptLabel', 'identityMessage']) {
             assert(text(summary[key]), 'Summary label type differs')
         }
+
         assert(['catalog', 'charge_snapshot'].includes(summary.packageSource), 'Package provenance differs')
         assert(['unselected', 'self', 'organization'].includes(summary.payment.payer), 'Payer differs')
         assert(['unselected', 'unpaid', 'unbilled', 'preparing', 'pending', 'recovery_required', 'expired', 'rejected', 'paid', 'free']
             .includes(summary.payment.state), 'Payment state differs')
+
         if (summary.payment.payer === 'organization') {
             assert(summary.payment.organizationName === summary.branchName, 'Organization label differs')
         }
+
         if (summary.packageSource === 'catalog') {
             assert(summary.payment.amountSource === 'unavailable' && summary.payment.amountIdr === null
                 && summary.payment.consultationRequested === null, 'Unavailable amount correlation differs')
@@ -254,10 +284,13 @@ async (page) => {
             assert(summary.payment.amountSource === 'charge_snapshot' && safeAmount(summary.payment.amountIdr)
                 && typeof summary.payment.consultationRequested === 'boolean', 'Snapshot amount correlation differs')
         }
+
         assert(summary.payment.actionAvailable === (summary.payment.action !== null), 'Payment capability correlation differs')
+
         if (summary.payment.actionAvailable) {
             validateAction(summary.payment.action)
             const action = summary.payment.action
+
             if (summary.payment.payer === 'self' && action.mode === 'select') {
                 assert(summary.payment.state === 'unpaid' && summary.payment.amountSource === 'unavailable',
                     'Self selection capability differs')
@@ -276,39 +309,50 @@ async (page) => {
                 'Organization zero-price capability differs')
             }
         }
+
         assert(Array.isArray(summary.profile) && summary.profile.length === 7, 'Profile collection differs')
         const profileKeys = ['fullName', 'birthDate', 'gender', 'educationLevel', 'intendedField', 'email', 'phone']
         assert(JSON.stringify(summary.profile.map((field) => field.key)) === JSON.stringify(profileKeys), 'Profile field order differs')
+
         for (const field of summary.profile) {
             exact(field, ['key', 'label', 'state', 'required', ...(field.state === 'locked' ? ['displayValue'] : [])], 'profile field')
             assert(['locked', 'missing'].includes(field.state) && text(field.label)
                 && field.required === (field.key !== 'email') && (field.state !== 'locked' || text(field.displayValue)), 'Profile types differ')
         }
+
         assert(Array.isArray(summary.access.tests) && summary.access.tests.length >= 1 && summary.access.tests.length <= 5, 'Test collection differs')
         const types = summary.access.tests.map((test) => test.testType)
         assert(new Set(types).size === types.length && JSON.stringify([...types].sort()) === JSON.stringify(types), 'Test canonical order differs')
         assert(types.includes('dass21') && types.some((type) => type !== 'dass21'),
             'Mandatory DASS-21 plus psychotest composition missing')
+
         for (const test of summary.access.tests) {
             exact(test, ['testType', 'state'], 'test')
             assert(['dass21', 'ist', 'kraepelin', 'papi', 'rmib'].includes(test.testType)
                 && ['locked', 'ready'].includes(test.state), 'Test state differs')
         }
+
         const ready = summary.access.tests.filter((test) => test.state === 'ready').length
         const expectedAccess = ready === types.length ? 'ready' : ready === 0 ? 'locked' : 'partial'
         const accessMessages = { ready: 'Prasyarat akses tes terpenuhi; mesin sesi belum tersedia.', partial: 'Sebagian akses tes belum siap.', locked: 'Akses tes belum siap.' }
         assert(summary.access.state === expectedAccess && summary.access.message === accessMessages[expectedAccess], 'Access aggregate differs')
+
         for (const key of ['psychotest', 'dass']) {
             const consent = summary.consents[key]
             exact(consent, consent.state === 'accepted' ? ['state', 'version']
                 : consent.state === 'required' ? ['state', 'document'] : ['state'], 'consent')
             assert(['accepted', 'required'].includes(consent.state), 'Consent state differs')
-            if (consent.state === 'accepted') assert(text(consent.version), 'Accepted version differs')
+
+            if (consent.state === 'accepted') {
+                assert(text(consent.version), 'Accepted version differs')
+            }
+
             if (consent.state === 'required') {
                 exact(consent.document, ['version', 'title', 'text'], 'consent document')
                 assert(Object.values(consent.document).every(text), 'Document types differ')
             }
         }
+
         assert(typeof summary.consents.legalReviewPending === 'boolean', 'Legal state type differs')
         const encoded = JSON.stringify(summary)
         assert(!/och1_|ocs1_|ocsrf1_|PRIVATE_OTHER_PROFILE|PRIVATE_GATEWAY|PRIVATE_INVOICE/.test(encoded), 'Summary JSON leaks forbidden data')
@@ -344,6 +388,7 @@ async (page) => {
         assert(await targetPage.locator('script:not([type="application/json"]):not([type="module"]), script[type="module"]:not([src="/js/checkout-confirmation-v1.js"])').count() === 0,
             'Summary created an unknown executable script')
         const body = await targetPage.locator('body').innerText()
+
         for (const forbidden of ['PRIVATE_OTHER_PROFILE', 'PRIVATE_GATEWAY', 'PRIVATE_INVOICE', 'ocs1_', 'ocsrf1_', 'och1_']) {
             assert(!body.includes(forbidden), 'Summary exposed a forbidden marker')
         }
@@ -397,107 +442,449 @@ async (page) => {
             consultationRequested: null, actionAvailable: true, action: { path: '/checkout/payment', mode: 'select', currency: 'IDR', choices: [
                 { consultationRequested: false, baseAmountIdr: 0, consultationAmountIdr: 0, amountIdr: 0 },
             ] }, organizationName: 'Synthetic' })
-        const terminalOrRecoveryActionCases = ['recovery_required', 'expired', 'rejected', 'paid', 'free']
-            .flatMap((state) => [
-                [`self-select-${state}`, (s) => { s.payment = selfSelectPayment(); s.payment.state = state }],
-                [`self-continue-${state}`, (s) => { s.packageSource = 'charge_snapshot'; s.payment = selfContinuePayment(); s.payment.state = state }],
-            ])
+        const terminalOrRecoveryActionCases = [
+            'recovery_required',
+            'expired',
+            'rejected',
+            'paid',
+            'free',
+        ].flatMap((state) => [
+            [
+                `self-select-${state}`,
+                (s) => {
+                    s.payment = selfSelectPayment();
+                    s.payment.state = state;
+                },
+            ],
+            [
+                `self-continue-${state}`,
+                (s) => {
+                    s.packageSource = 'charge_snapshot';
+                    s.payment = selfContinuePayment();
+                    s.payment.state = state;
+                },
+            ],
+        ]);
         const malformed = [
-            ['unknown-test', (s) => { s.access.tests[0].testType = 'unknown' }],
-            ['empty-tests', (s) => { s.access.tests = [] }],
-            ['duplicate-tests', (s) => { s.access.tests.push({ ...s.access.tests[0] }) }],
-            ['unsorted-tests', (s) => { s.access.tests.unshift({ testType: 'ist', state: 'locked' }) }],
-            ['unknown-access', (s) => { s.access.state = 'unknown' }],
-            ['access-count', (s) => { s.access.state = 'ready' }],
-            ['unknown-payer', (s) => { s.payment.payer = 'other' }],
-            ['unknown-payment-state', (s) => { s.payment.state = 'other' }],
-            ['amount-negative', (s) => { s.payment.amountIdr = -1 }],
-            ['amount-fraction', (s) => { s.payment.amountIdr = 0.5 }],
-            ['amount-unsafe', (s) => { s.payment.amountIdr = 9007199254740992 }],
-            ['amount-string', (s) => { s.payment.amountIdr = '100' }],
-            ['amount-provenance', (s) => { s.payment.amountSource = 'charge_snapshot' }],
-            ['amount-unknown-source', (s) => { s.payment.amountSource = 'other' }],
-            ['consultation-null-correlation', (s) => { s.payment.consultationRequested = false }],
-            ['consultation-type', (s) => { s.payment.consultationRequested = 'false' }],
-            ['package-provenance', (s) => { s.packageSource = 'charge_snapshot' }],
-            ['package-unknown-source', (s) => { s.packageSource = 'other' }],
-            ['psychotest-not-applicable', (s) => { s.consents.psychotest = { state: 'not_applicable' } }],
-            ['accepted-version-type', (s) => { s.consents.psychotest.version = 1 }],
-            ['accepted-version-empty', (s) => { s.consents.psychotest.version = '' }],
-            ['dass-not-applicable', (s) => { s.consents.dass = { state: 'not_applicable' } }],
-            ['mandatory-dass-missing', (s) => { s.access.tests = [{ testType: 'ist', state: 'locked' }] }],
-            ['dass-only-package', (s) => { s.access.tests = [{ testType: 'dass21', state: 'locked' }] }],
-            ['action-missing', (s) => { delete s.payment.action }],
-            ['action-capability-mismatch', (s) => { s.payment.actionAvailable = true }],
-            ['action-path', (s) => { s.payment = selfSelectPayment(); s.payment.action.path = '/checkout/logout' }],
-            ['action-currency', (s) => { s.payment = selfSelectPayment(); s.payment.action.currency = 'USD' }],
-            ['action-choice-arithmetic', (s) => { s.payment = selfSelectPayment(); s.payment.action.choices[1].amountIdr = 1 }],
-            ['action-choice-order', (s) => { s.payment = selfSelectPayment(); s.payment.action.choices.reverse() }],
-            ['action-continue-snapshot', (s) => { s.packageSource = 'charge_snapshot'; s.payment = selfContinuePayment(); s.payment.amountIdr = 99000 }],
-            ['action-select-snapshot', (s) => { s.packageSource = 'charge_snapshot'; s.payment = selfSelectPayment(); s.payment.amountSource = 'charge_snapshot'; s.payment.amountIdr = 99000; s.payment.consultationRequested = false }],
-            ['organization-zero-snapshot', (s) => { s.packageSource = 'charge_snapshot'; s.payment = organizationZeroPayment(); s.payment.amountSource = 'charge_snapshot'; s.payment.amountIdr = 0; s.payment.consultationRequested = false }],
-            ['organization-positive-snapshot', (s) => { s.packageSource = 'charge_snapshot'; s.payment = organizationZeroPayment(); s.payment.amountSource = 'charge_snapshot'; s.payment.amountIdr = 100; s.payment.consultationRequested = false }],
+            [
+                'unknown-test',
+                (s) => {
+                    s.access.tests[0].testType = 'unknown';
+                },
+            ],
+            [
+                'empty-tests',
+                (s) => {
+                    s.access.tests = [];
+                },
+            ],
+            [
+                'duplicate-tests',
+                (s) => {
+                    s.access.tests.push({ ...s.access.tests[0] });
+                },
+            ],
+            [
+                'unsorted-tests',
+                (s) => {
+                    s.access.tests.unshift({
+                        testType: 'ist',
+                        state: 'locked',
+                    });
+                },
+            ],
+            [
+                'unknown-access',
+                (s) => {
+                    s.access.state = 'unknown';
+                },
+            ],
+            [
+                'access-count',
+                (s) => {
+                    s.access.state = 'ready';
+                },
+            ],
+            [
+                'unknown-payer',
+                (s) => {
+                    s.payment.payer = 'other';
+                },
+            ],
+            [
+                'unknown-payment-state',
+                (s) => {
+                    s.payment.state = 'other';
+                },
+            ],
+            [
+                'amount-negative',
+                (s) => {
+                    s.payment.amountIdr = -1;
+                },
+            ],
+            [
+                'amount-fraction',
+                (s) => {
+                    s.payment.amountIdr = 0.5;
+                },
+            ],
+            [
+                'amount-unsafe',
+                (s) => {
+                    s.payment.amountIdr = 9007199254740992;
+                },
+            ],
+            [
+                'amount-string',
+                (s) => {
+                    s.payment.amountIdr = '100';
+                },
+            ],
+            [
+                'amount-provenance',
+                (s) => {
+                    s.payment.amountSource = 'charge_snapshot';
+                },
+            ],
+            [
+                'amount-unknown-source',
+                (s) => {
+                    s.payment.amountSource = 'other';
+                },
+            ],
+            [
+                'consultation-null-correlation',
+                (s) => {
+                    s.payment.consultationRequested = false;
+                },
+            ],
+            [
+                'consultation-type',
+                (s) => {
+                    s.payment.consultationRequested = 'false';
+                },
+            ],
+            [
+                'package-provenance',
+                (s) => {
+                    s.packageSource = 'charge_snapshot';
+                },
+            ],
+            [
+                'package-unknown-source',
+                (s) => {
+                    s.packageSource = 'other';
+                },
+            ],
+            [
+                'psychotest-not-applicable',
+                (s) => {
+                    s.consents.psychotest = { state: 'not_applicable' };
+                },
+            ],
+            [
+                'accepted-version-type',
+                (s) => {
+                    s.consents.psychotest.version = 1;
+                },
+            ],
+            [
+                'accepted-version-empty',
+                (s) => {
+                    s.consents.psychotest.version = '';
+                },
+            ],
+            [
+                'dass-not-applicable',
+                (s) => {
+                    s.consents.dass = { state: 'not_applicable' };
+                },
+            ],
+            [
+                'mandatory-dass-missing',
+                (s) => {
+                    s.access.tests = [{ testType: 'ist', state: 'locked' }];
+                },
+            ],
+            [
+                'dass-only-package',
+                (s) => {
+                    s.access.tests = [{ testType: 'dass21', state: 'locked' }];
+                },
+            ],
+            [
+                'action-missing',
+                (s) => {
+                    delete s.payment.action;
+                },
+            ],
+            [
+                'action-capability-mismatch',
+                (s) => {
+                    s.payment.actionAvailable = true;
+                },
+            ],
+            [
+                'action-path',
+                (s) => {
+                    s.payment = selfSelectPayment();
+                    s.payment.action.path = '/checkout/logout';
+                },
+            ],
+            [
+                'action-currency',
+                (s) => {
+                    s.payment = selfSelectPayment();
+                    s.payment.action.currency = 'USD';
+                },
+            ],
+            [
+                'action-choice-arithmetic',
+                (s) => {
+                    s.payment = selfSelectPayment();
+                    s.payment.action.choices[1].amountIdr = 1;
+                },
+            ],
+            [
+                'action-choice-order',
+                (s) => {
+                    s.payment = selfSelectPayment();
+                    s.payment.action.choices.reverse();
+                },
+            ],
+            [
+                'action-continue-snapshot',
+                (s) => {
+                    s.packageSource = 'charge_snapshot';
+                    s.payment = selfContinuePayment();
+                    s.payment.amountIdr = 99000;
+                },
+            ],
+            [
+                'action-select-snapshot',
+                (s) => {
+                    s.packageSource = 'charge_snapshot';
+                    s.payment = selfSelectPayment();
+                    s.payment.amountSource = 'charge_snapshot';
+                    s.payment.amountIdr = 99000;
+                    s.payment.consultationRequested = false;
+                },
+            ],
+            [
+                'organization-zero-snapshot',
+                (s) => {
+                    s.packageSource = 'charge_snapshot';
+                    s.payment = organizationZeroPayment();
+                    s.payment.amountSource = 'charge_snapshot';
+                    s.payment.amountIdr = 0;
+                    s.payment.consultationRequested = false;
+                },
+            ],
+            [
+                'organization-positive-snapshot',
+                (s) => {
+                    s.packageSource = 'charge_snapshot';
+                    s.payment = organizationZeroPayment();
+                    s.payment.amountSource = 'charge_snapshot';
+                    s.payment.amountIdr = 100;
+                    s.payment.consultationRequested = false;
+                },
+            ],
             ...terminalOrRecoveryActionCases,
-            ['required-profile', (s) => { s.profile[0].required = false }],
-            ['optional-email', (s) => { s.profile[5].required = true }],
-            ['label-type', (s) => { s.branchName = 7 }],
-            ['extra-top-key', (s) => { s.billId = 1 }],
-            ['array-object', (s) => { s.payment = [] }],
-            ['null-object', (s) => { s.access = null }],
-            ['snapshot-negative', (s) => { snapshot(s, -1) }],
-            ['snapshot-fraction', (s) => { snapshot(s, 0.5) }],
-            ['snapshot-unsafe', (s) => { snapshot(s, 9007199254740992) }],
-            ['snapshot-string', (s) => { snapshot(s, '100') }],
-            ['snapshot-null', (s) => { snapshot(s, null) }],
-            ['snapshot-consultation', (s) => { snapshot(s); s.payment.consultationRequested = null }],
-            ['organization-label', (s) => { s.payment.payer = 'organization'; s.payment.organizationName = 7 }],
-            ['required-document-type', (s) => { s.consents.psychotest = { state: 'required', document: { version: 'v1', title: 'Synthetic', text: 1 } } }],
-            ['missing-display-value', (s) => { s.profile[0].state = 'locked' }],
-        ]
-        validateSummary(sample())
-        let positiveProbes = 1
-        for (const state of ['unselected', 'unpaid', 'unbilled', 'preparing', 'pending', 'recovery_required', 'expired', 'rejected', 'paid', 'free']) {
-            const value = sample()
-            snapshot(value, state === 'free' ? 0 : 100)
-            value.payment.state = state
-            validateSummary(value)
-            positiveProbes++
+            [
+                'required-profile',
+                (s) => {
+                    s.profile[0].required = false;
+                },
+            ],
+            [
+                'optional-email',
+                (s) => {
+                    s.profile[5].required = true;
+                },
+            ],
+            [
+                'label-type',
+                (s) => {
+                    s.branchName = 7;
+                },
+            ],
+            [
+                'extra-top-key',
+                (s) => {
+                    s.billId = 1;
+                },
+            ],
+            [
+                'array-object',
+                (s) => {
+                    s.payment = [];
+                },
+            ],
+            [
+                'null-object',
+                (s) => {
+                    s.access = null;
+                },
+            ],
+            [
+                'snapshot-negative',
+                (s) => {
+                    snapshot(s, -1);
+                },
+            ],
+            [
+                'snapshot-fraction',
+                (s) => {
+                    snapshot(s, 0.5);
+                },
+            ],
+            [
+                'snapshot-unsafe',
+                (s) => {
+                    snapshot(s, 9007199254740992);
+                },
+            ],
+            [
+                'snapshot-string',
+                (s) => {
+                    snapshot(s, '100');
+                },
+            ],
+            [
+                'snapshot-null',
+                (s) => {
+                    snapshot(s, null);
+                },
+            ],
+            [
+                'snapshot-consultation',
+                (s) => {
+                    snapshot(s);
+                    s.payment.consultationRequested = null;
+                },
+            ],
+            [
+                'organization-label',
+                (s) => {
+                    s.payment.payer = 'organization';
+                    s.payment.organizationName = 7;
+                },
+            ],
+            [
+                'required-document-type',
+                (s) => {
+                    s.consents.psychotest = {
+                        state: 'required',
+                        document: {
+                            version: 'v1',
+                            title: 'Synthetic',
+                            text: 1,
+                        },
+                    };
+                },
+            ],
+            [
+                'missing-display-value',
+                (s) => {
+                    s.profile[0].state = 'locked';
+                },
+            ],
+        ];
+        validateSummary(sample());
+        let positiveProbes = 1;
+
+        for (const state of [
+            'unselected',
+            'unpaid',
+            'unbilled',
+            'preparing',
+            'pending',
+            'recovery_required',
+            'expired',
+            'rejected',
+            'paid',
+            'free',
+        ]) {
+            const value = sample();
+            snapshot(value, state === 'free' ? 0 : 100);
+            value.payment.state = state;
+            validateSummary(value);
+            positiveProbes++;
         }
+
         for (const readyCount of [0, 1, 5]) {
-            const value = sample()
-            snapshot(value, 0) // Zero alone must NOT be inferred as free or ready.
-            value.payment.payer = 'organization'
-            value.payment.organizationName = value.branchName
-            value.access.tests = ['dass21', 'ist', 'kraepelin', 'papi', 'rmib']
-                .map((testType, index) => ({ testType, state: index < readyCount ? 'ready' : 'locked' }))
-            value.access.state = readyCount === 0 ? 'locked' : readyCount === 5 ? 'ready' : 'partial'
-            value.access.message = { locked: 'Akses tes belum siap.', partial: 'Sebagian akses tes belum siap.', ready: 'Prasyarat akses tes terpenuhi; mesin sesi belum tersedia.' }[value.access.state]
-            value.consents.dass = { state: 'required', document: { version: 'v1', title: 'Synthetic', text: 'Synthetic text' } }
-            validateSummary(value)
-            positiveProbes++
+            const value = sample();
+            snapshot(value, 0); // Zero alone must NOT be inferred as free or ready.
+            value.payment.payer = 'organization';
+            value.payment.organizationName = value.branchName;
+            value.access.tests = [
+                'dass21',
+                'ist',
+                'kraepelin',
+                'papi',
+                'rmib',
+            ].map((testType, index) => ({
+                testType,
+                state: index < readyCount ? 'ready' : 'locked',
+            }));
+            value.access.state =
+                readyCount === 0
+                    ? 'locked'
+                    : readyCount === 5
+                      ? 'ready'
+                      : 'partial';
+            value.access.message = {
+                locked: 'Akses tes belum siap.',
+                partial: 'Sebagian akses tes belum siap.',
+                ready: 'Prasyarat akses tes terpenuhi; mesin sesi belum tersedia.',
+            }[value.access.state];
+            value.consents.dass = {
+                state: 'required',
+                document: {
+                    version: 'v1',
+                    title: 'Synthetic',
+                    text: 'Synthetic text',
+                },
+            };
+            validateSummary(value);
+            positiveProbes++;
         }
-        const selfSelect = sample()
-        selfSelect.payment = selfSelectPayment()
-        validateSummary(selfSelect)
-        positiveProbes++
-        const selfContinue = structuredClone(selfSelect)
-        selfContinue.packageSource = 'charge_snapshot'
-        selfContinue.payment = selfContinuePayment()
-        validateSummary(selfContinue)
-        positiveProbes++
-        const organizationZero = sample()
-        organizationZero.payment = organizationZeroPayment()
-        validateSummary(organizationZero)
-        positiveProbes++
-        const accepted = []
+
+        const selfSelect = sample();
+        selfSelect.payment = selfSelectPayment();
+        validateSummary(selfSelect);
+        positiveProbes++;
+        const selfContinue = structuredClone(selfSelect);
+        selfContinue.packageSource = 'charge_snapshot';
+        selfContinue.payment = selfContinuePayment();
+        validateSummary(selfContinue);
+        positiveProbes++;
+        const organizationZero = sample();
+        organizationZero.payment = organizationZeroPayment();
+        validateSummary(organizationZero);
+        positiveProbes++;
+        const accepted = [];
+
         for (const [name, mutate] of malformed) {
-            const candidate = sample()
-            mutate(candidate)
-            let rejected = false
-            try { validateSummary(candidate) } catch { rejected = true }
-            if (!rejected) accepted.push(name)
+            const candidate = sample();
+            mutate(candidate);
+            let rejected = false;
+
+            try {
+                validateSummary(candidate);
+            } catch {
+                rejected = true;
+            }
+
+            if (!rejected) {
+                accepted.push(name);
+            }
         }
+
         assert(accepted.length === 0, `Malformed summary probes accepted: ${accepted.join(', ')}`)
+
         return { positiveProbes, negativeProbes: malformed.length, passed: true, browserStarted: false }
     }
 
@@ -507,10 +894,13 @@ async (page) => {
         targetPage.on('console', (message) => {
             if (['error', 'warning'].includes(message.type())) {
                 const rejected = /^Failed to load resource: the server responded with a status of (403|404|419) \(.*\)$/.exec(message.text())
+
                 if (message.type() === 'error' && rejected) {
                     expectedHttpConsole.push(Number(rejected[1]))
+
                     return
                 }
+
                 consoleMessages.push('unexpected browser console message')
             }
         })
@@ -518,8 +908,10 @@ async (page) => {
             // Installed Playwright's serviceWorkers:block init script reads this forbidden getter in opaque frames.
             if (opaqueAttackInFlight && error.message === "Failed to read the 'serviceWorker' property from 'Navigator': Service worker is disabled because the context is sandboxed and lacks the 'allow-same-origin' flag.") {
                 expectedSandboxInstrumentationErrors++
+
                 return
             }
+
             consoleMessages.push('Uncaught browser page error')
         })
     }
@@ -560,8 +952,10 @@ async (page) => {
         const post = async (body, token = csrf) => {
             const response = await fetch('/checkout/confirm', { method: 'POST', credentials: 'same-origin',
                 headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Checkout-CSRF': token }, body })
+
             return response.status
         }
+
         return [
             await post('{'),
             await post(JSON.stringify({ profile: {}, consents: {} }), `ocsrf1_${'0'.repeat(64)}`),
@@ -652,11 +1046,13 @@ async (page) => {
     const secondSummary = JSON.parse(await secondTab.locator('script#checkout-summary-v2').textContent())
     assert(JSON.stringify(firstSummary) === JSON.stringify(secondSummary), 'Tabs did not share the same authorized summary')
     await secondTab.close()
+
     for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 }, { width: 320, height: 720 }]) {
         await page.setViewportSize(viewport)
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)
         assert(overflow <= 2, `Checkout page overflowed at ${viewport.width}px`)
     }
+
     await page.keyboard.press('Tab')
     assert(await page.getByRole('button', { name: 'Keluar' }).evaluate((element) => element === document.activeElement),
         'Keyboard did not reach logout')
@@ -738,6 +1134,7 @@ async (page) => {
     assert(recoveredCookies.find((cookie) => cookie.name === csrfName)?.value !== oldRecoveryCsrf,
         'Recovery did not rotate the delivered CSRF')
     const recoveryBefore = await control('state', 'orphan')
+
     try {
         const staleRequest = recoveryStaleTab.waitForRequest((request) => request.method() === 'POST'
             && parseUrl(request.url()).pathname === '/checkout/logout')
@@ -759,6 +1156,7 @@ async (page) => {
     } finally {
         await recoveryStaleTab.close()
     }
+
     await drainObservations()
     documentsBefore = checkoutDocumentResponses
     await page.goBack()
@@ -786,6 +1184,7 @@ async (page) => {
     const noJs = await page.context().browser().newContext({ javaScriptEnabled: false, ignoreHTTPSErrors: false, serviceWorkers: 'block' })
     let hostileForms = 0
     let opaqueNetworkBlocks = 0
+
     try {
         await installInterception(noJs)
         const noJsPage = await noJs.newPage()
@@ -803,6 +1202,7 @@ async (page) => {
 
         const formDocument = (field) => `<!doctype html><html><meta charset="utf-8"><title>Form sintetis</title>
             <form method="post" action="${appOrigin}/checkout/logout">${field}<button type="submit">Uji form</button></form></html>`
+
         for (const kind of ['foreign', 'opaque', 'sibling']) {
             for (const field of ['', `<input type="hidden" name="_checkout_csrf" value="ocsrf1_${'0'.repeat(64)}">`]) {
                 const origin = kind === 'foreign' ? foreignOrigin : kind === 'sibling' ? siblingOrigin : appOrigin
@@ -826,6 +1226,7 @@ async (page) => {
                 const attackHeaders = await (await attackRequest).allHeaders()
                 const outcome = await attackResponse
                 assert(attackHeaders.origin === 'null', `Hostile ${kind} form did not exercise literal null Origin`)
+
                 if (outcome.failure) {
                     assert(kind === 'opaque' && outcome.failure === 'net::ERR_BLOCKED_BY_LOCAL_NETWORK_ACCESS_CHECKS',
                         `Unexpected hostile ${kind} network failure`)
@@ -837,6 +1238,7 @@ async (page) => {
                         && ['/checkout/unavailable', `${appOrigin}/checkout/unavailable`].includes((await rejected.allHeaders()).location)),
                     `Hostile ${kind} form was not rejected`)
                 }
+
                 assert((await control('state', 'no-js')).logoutAudits === 0, `Hostile ${kind} form revoked the session`)
                 await noJs.addCookies(nativeCookies)
                 await noJsPage.goto(`${appOrigin}/checkout`)
@@ -877,6 +1279,7 @@ async (page) => {
         await drainObservations()
         await noJs.close()
     }
+
     await drainObservations()
     // Frozen own allocation is visible; parent total, peer and invoice markers remain absent.
     await submit(page, sources[0], await issue('price'))

@@ -76,7 +76,11 @@ try {
     const match = output.match(
         /### Result\s*\n([\s\S]*?)\n### Ran Playwright code/,
     );
-    if (!match) throw new Error('Missing P12c browser result.');
+
+    if (!match) {
+        throw new Error('Missing P12c browser result.');
+    }
+
     const report = JSON.parse(match[1]);
     writeFileSync(
         join(artifacts, 'p12c-report.json'),
@@ -91,7 +95,9 @@ async function verify(page, manifest, files) {
     page.setDefaultTimeout(15000);
     page.setDefaultNavigationTimeout(60000);
     const ok = (condition, message) => {
-        if (!condition) throw new Error(message);
+        if (!condition) {
+            throw new Error(message);
+        }
     };
     const state = {
         responses: [],
@@ -121,12 +127,14 @@ async function verify(page, manifest, files) {
     page.on('requestfailed', (request) => state.failures.push(request.url()));
     await page.context().route('**/*', (route) => {
         const url = route.request().url();
+
         if (
             url.startsWith('http://127.0.0.1:8012/') ||
             url.startsWith('blob:')
         ) {
             return route.continue();
         }
+
         state.blocked.push(url);
 
         return route.abort();
@@ -136,6 +144,7 @@ async function verify(page, manifest, files) {
     });
     await page.addInitScript(() => {
         window.p12cNative = [];
+
         for (const type of ['keydown', 'keyup', 'click', 'change']) {
             document.addEventListener(
                 type,
@@ -171,8 +180,10 @@ async function verify(page, manifest, files) {
 
                 return;
             }
+
             await page.keyboard.press('Tab');
         }
+
         throw new Error('Native Tab did not reach target.');
     };
     const control = async (action) => {
@@ -187,6 +198,7 @@ async function verify(page, manifest, files) {
     const body = () => page.locator('body').innerText();
     const reload = async (checkpoint) => {
         const before = page.url();
+
         try {
             await page.reload();
         } catch (error) {
@@ -246,6 +258,7 @@ async function verify(page, manifest, files) {
             expectedStatuses.includes(status),
             `Upload action returned ${status}.`,
         );
+
         if (expectedTitle) {
             await page.getByText(expectedTitle, { exact: true }).waitFor({
                 state: 'visible',
