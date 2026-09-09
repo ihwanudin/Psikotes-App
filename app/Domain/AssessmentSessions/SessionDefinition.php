@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\AssessmentSessions;
 
 use InvalidArgumentException;
+use JsonException;
 
 final readonly class SessionDefinition
 {
@@ -105,6 +106,21 @@ final readonly class SessionDefinition
             );
         }
 
+        $expectedChecksum = self::checksumFor([
+            'instrument' => $instrument->value,
+            'version' => $version,
+            'provenance' => $provenance,
+            'total_duration_seconds' => $totalDurationSeconds,
+            'subtests' => $subtests,
+            'randomization' => $randomization,
+            'seed' => $seed,
+            'generator' => $generator,
+        ]);
+
+        if (! hash_equals($expectedChecksum, $checksum)) {
+            throw new InvalidArgumentException('Session definition checksum does not match its canonical payload.');
+        }
+
         return new self(
             instrument: $instrument,
             version: $version,
@@ -116,6 +132,26 @@ final readonly class SessionDefinition
             seed: $seed,
             generator: $generator,
         );
+    }
+
+    /** @param array<string, mixed> $input */
+    public static function checksumFor(array $input): string
+    {
+        unset($input['checksum']);
+        self::assertExactFields(
+            $input,
+            array_values(array_diff(self::REQUIRED_FIELDS, ['checksum'])),
+            'Session definition checksum payload',
+        );
+
+        try {
+            return hash('sha256', json_encode(
+                self::canonicalize($input),
+                JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
+            ));
+        } catch (JsonException $exception) {
+            throw new InvalidArgumentException('Session definition checksum payload is not encodable.', previous: $exception);
+        }
     }
 
     /**
@@ -265,8 +301,32 @@ final readonly class SessionDefinition
 
     private static function nonBlankString(mixed $value, string $label): string
     {
-        if (! is_string($value) || trim($value) === '') {
-            throw new InvalidArgumentException("{$label} must be a non-blank string.");
+        if (
+            ! is_string($value)
+            || $value === ''
+            || $value !== trim($value)
+            || preg_match('/[\p{C}\p{Z}\s]/u', $value) !== 0
+        ) {
+            throw new InvalidArgumentException("{$label} must be a canonical non-blank identity string.");
+        }
+
+        return $value;
+    }
+
+    private static function canonicalize(mixed $value): mixed
+    {
+        if (! is_array($value)) {
+            return $value;
+        }
+
+        if (array_is_list($value)) {
+            return array_map(self::canonicalize(...), $value);
+        }
+
+        ksort($value);
+
+        foreach ($value as $key => $entry) {
+            $value[$key] = self::canonicalize($entry);
         }
 
         return $value;

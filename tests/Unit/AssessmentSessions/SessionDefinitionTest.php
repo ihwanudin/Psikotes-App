@@ -21,7 +21,7 @@ final class SessionDefinitionTest extends TestCase
         $this->assertSame(GenericAssessmentInstrument::fromExternal($instrument), $definition->instrument);
         $this->assertSame('synthetic-v1', $definition->version);
         $this->assertSame('synthetic-test-fixture', $definition->provenance);
-        $this->assertSame(str_repeat('a', 64), $definition->checksum);
+        $this->assertSame(SessionDefinition::checksumFor($this->fixedDefinition($instrument)), $definition->checksum);
         $this->assertSame(60, $definition->totalDurationSeconds);
         $this->assertSame('fixed', $definition->randomization);
         $this->assertNull($definition->seed);
@@ -52,6 +52,29 @@ final class SessionDefinitionTest extends TestCase
             'numbers_per_column' => 28,
             'answer_slots_per_column' => 27,
         ], $definition->generator);
+    }
+
+    public function test_it_rejects_a_checksum_reused_for_different_definition_content(): void
+    {
+        $input = $this->fixedDefinition('ist');
+        $input['total_duration_seconds'] = 120;
+        $input['subtests'][0]['duration_seconds'] = 120;
+
+        $this->expectException(InvalidArgumentException::class);
+
+        SessionDefinition::fromArray($input);
+    }
+
+    public function test_its_checksum_is_canonical_across_associative_field_order(): void
+    {
+        $input = $this->fixedDefinition('ist');
+        $reordered = array_reverse($input, preserve_keys: true);
+        $reordered['subtests'][0] = array_reverse($reordered['subtests'][0], preserve_keys: true);
+
+        $this->assertSame(
+            SessionDefinition::checksumFor($input),
+            SessionDefinition::checksumFor($reordered),
+        );
     }
 
     #[DataProvider('unsupportedInstruments')]
@@ -113,6 +136,44 @@ final class SessionDefinitionTest extends TestCase
         }];
         yield 'invalid subtest field' => [static function (array &$input): void {
             $input['subtests'][0]['item_count'] = 0;
+        }];
+    }
+
+    #[DataProvider('identityStringAliases')]
+    public function test_it_rejects_padded_control_and_format_aliases(callable $mutate): void
+    {
+        $input = $this->fixedDefinition('ist');
+        $mutate($input);
+        $input['checksum'] = SessionDefinition::checksumFor($input);
+
+        $this->expectException(InvalidArgumentException::class);
+
+        SessionDefinition::fromArray($input);
+    }
+
+    /** @return iterable<string, array{callable(array<string, mixed>&): void}> */
+    public static function identityStringAliases(): iterable
+    {
+        yield 'padded version' => [static function (array &$input): void {
+            $input['version'] = ' synthetic-v1 ';
+        }];
+        yield 'control in provenance' => [static function (array &$input): void {
+            $input['provenance'] = "synthetic\nfixture";
+        }];
+        yield 'format character in subtest code' => [static function (array &$input): void {
+            $input['subtests'][0]['code'] = "SYN\u{200B}THETIC";
+        }];
+        yield 'unicode separator in seed' => [static function (array &$input): void {
+            $input = self::syntheticKraepelinDefinition();
+            $input['seed'] = "synthetic\u{00A0}seed";
+        }];
+        yield 'padded generator algorithm' => [static function (array &$input): void {
+            $input = self::syntheticKraepelinDefinition();
+            $input['generator']['algorithm'] = ' synthetic-generator';
+        }];
+        yield 'control in generator version' => [static function (array &$input): void {
+            $input = self::syntheticKraepelinDefinition();
+            $input['generator']['version'] = "synthetic\tgenerator-v1";
         }];
     }
 
@@ -191,11 +252,11 @@ final class SessionDefinitionTest extends TestCase
     /** @return array<string, mixed> */
     private function fixedDefinition(string $instrument): array
     {
-        return [
+        $input = [
             'instrument' => $instrument,
             'version' => 'synthetic-v1',
             'provenance' => 'synthetic-test-fixture',
-            'checksum' => str_repeat('a', 64),
+            'checksum' => '',
             'total_duration_seconds' => 60,
             'subtests' => [[
                 'code' => 'SYNTHETIC',
@@ -206,16 +267,26 @@ final class SessionDefinitionTest extends TestCase
             'seed' => null,
             'generator' => null,
         ];
+
+        $input['checksum'] = SessionDefinition::checksumFor($input);
+
+        return $input;
     }
 
     /** @return array<string, mixed> */
     private function kraepelinDefinition(): array
     {
-        return [
+        return self::syntheticKraepelinDefinition();
+    }
+
+    /** @return array<string, mixed> */
+    private static function syntheticKraepelinDefinition(): array
+    {
+        $input = [
             'instrument' => 'kraepelin',
             'version' => 'synthetic-v1',
             'provenance' => 'synthetic-test-fixture',
-            'checksum' => str_repeat('b', 64),
+            'checksum' => '',
             'total_duration_seconds' => 750,
             'subtests' => [[
                 'code' => 'WORK',
@@ -233,5 +304,9 @@ final class SessionDefinitionTest extends TestCase
                 'answer_slots_per_column' => 27,
             ],
         ];
+
+        $input['checksum'] = SessionDefinition::checksumFor($input);
+
+        return $input;
     }
 }
