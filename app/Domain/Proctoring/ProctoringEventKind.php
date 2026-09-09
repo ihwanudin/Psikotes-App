@@ -13,8 +13,8 @@ enum ProctoringEventKind: string
     case FaceMismatch = 'FACE_MISMATCH';
     case SecondFaceDetected = 'SECOND_FACE_DETECTED';
     case AudioAssistanceDetected = 'AUDIO_ASSISTANCE_DETECTED';
-    case SubstitutionConfirmed = 'SUBSTITUTION_CONFIRMED';
-    case AssistanceConfirmed = 'ASSISTANCE_CONFIRMED';
+    case NetworkInterrupted = 'NETWORK_INTERRUPTED';
+    case UnreasonableTiming = 'UNREASONABLE_TIMING';
     case IdentityFailure = 'IDENTITY_FAILURE';
     case SubtestIncomplete = 'SUBTEST_INCOMPLETE';
     case InvalidResponsePatternConfirmed = 'INVALID_RESPONSE_PATTERN_CONFIRMED';

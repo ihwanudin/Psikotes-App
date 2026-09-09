@@ -10,8 +10,9 @@ final class ProctoringValidityPolicy
 {
     /**
      * @param  array<mixed>  $events
+     * @param  array<mixed>  $findings
      */
-    public function decide(array $events): ProctoringValidityDecision
+    public function decide(array $events, array $findings = []): ProctoringValidityDecision
     {
         /** @var array<string, ProctoringEvent> $uniqueEvents */
         $uniqueEvents = [];
@@ -30,7 +31,8 @@ final class ProctoringValidityPolicy
         }
 
         $validity = ProctoringValidity::V1;
-        $humanReviewRequired = false;
+        /** @var array<string, true> $pendingEvidence */
+        $pendingEvidence = [];
         $markerCodes = [];
 
         foreach ($uniqueEvents as $event) {
@@ -42,19 +44,63 @@ final class ProctoringValidityPolicy
                 $validity = ProctoringValidity::V2;
             }
 
-            $humanReviewRequired = $humanReviewRequired || $this->requiresHumanReview($event->kind);
+            if ($this->requiresHumanReview($event->kind)) {
+                $pendingEvidence[$event->evidenceId] = true;
+            }
+        }
+
+        /** @var array<string, ProctoringAdjudicatedFinding> $uniqueFindings */
+        $uniqueFindings = [];
+        /** @var array<string, ProctoringAdjudicatedFinding> $findingsByEvidence */
+        $findingsByEvidence = [];
+        foreach ($findings as $finding) {
+            if (! $finding instanceof ProctoringAdjudicatedFinding) {
+                throw new InvalidArgumentException('Proctoring adjudication must contain typed findings.');
+            }
+
+            $existing = $uniqueFindings[$finding->findingId] ?? null;
+            if ($existing !== null) {
+                if (! $existing->hasSamePayload($finding)) {
+                    throw new InvalidArgumentException('Proctoring finding ID has conflicting payloads.');
+                }
+
+                continue;
+            }
+
+            $source = $uniqueEvents[$finding->sourceEvidenceId] ?? null;
+            if ($source === null || ! $finding->supports($source)) {
+                throw new InvalidArgumentException('Proctoring finding has no compatible source evidence.');
+            }
+            if (isset($findingsByEvidence[$finding->sourceEvidenceId])) {
+                throw new InvalidArgumentException('Proctoring evidence has conflicting adjudications.');
+            }
+
+            $uniqueFindings[$finding->findingId] = $finding;
+            $findingsByEvidence[$finding->sourceEvidenceId] = $finding;
+            unset($pendingEvidence[$finding->sourceEvidenceId]);
+            $markerCodes[$finding->kind->value] = true;
+
+            if ($finding->confirmsV3()) {
+                $validity = ProctoringValidity::V3;
+            }
         }
 
         $markers = array_keys($markerCodes);
         sort($markers);
+        $pendingIds = array_keys($pendingEvidence);
+        sort($pendingIds);
+        $pendingAdjudication = $pendingIds !== [];
 
         return new ProctoringValidityDecision(
             validity: $validity,
             markerCodes: $markers,
             uniqueEvidenceCount: count($uniqueEvents),
-            humanReviewRequired: $humanReviewRequired,
+            uniqueAdjudicationCount: count($uniqueFindings),
+            humanReviewRequired: $pendingAdjudication,
+            pendingAdjudication: $pendingAdjudication,
+            pendingEvidenceIds: $pendingIds,
             procedureNoteRequired: $validity === ProctoringValidity::V2,
-            publicationBlocked: $validity === ProctoringValidity::V3,
+            publicationBlocked: $validity === ProctoringValidity::V3 || $pendingAdjudication,
         );
     }
 
@@ -65,14 +111,14 @@ final class ProctoringValidityPolicy
             ProctoringEventKind::CameraUnavailable,
             ProctoringEventKind::CameraInterrupted,
             ProctoringEventKind::ScreenDeparture,
+            ProctoringEventKind::NetworkInterrupted,
+            ProctoringEventKind::UnreasonableTiming,
         ], true);
     }
 
     private function requiresV3(ProctoringEventKind $kind): bool
     {
         return in_array($kind, [
-            ProctoringEventKind::SubstitutionConfirmed,
-            ProctoringEventKind::AssistanceConfirmed,
             ProctoringEventKind::IdentityFailure,
             ProctoringEventKind::SubtestIncomplete,
             ProctoringEventKind::InvalidResponsePatternConfirmed,
