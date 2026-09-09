@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, unlink, writeFile } from 'node:fs/promises';
+import { Buffer } from 'node:buffer';
+import { createHash } from 'node:crypto';
+import { mkdtemp, readFile, rm, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -7,6 +9,7 @@ import test from 'node:test';
 
 import {
     parseTrackedEntries,
+    reportPath,
     ScanFailure,
     scanRepository,
 } from './repository-content-scan.mjs';
@@ -86,6 +89,22 @@ test('clean tracked repository passes both independent profiles', async () => {
     );
 });
 
+test('scanner implementation and tests contain no detectable secret or PII literals', async () => {
+    const scanner = await readFile(
+        new URL('./repository-content-scan.mjs', import.meta.url),
+    );
+    const tests = await readFile(new URL(import.meta.url));
+
+    await withRepository(
+        { 'scanner.mjs': scanner, 'scanner.test.mjs': tests },
+        async (root) => {
+            assert.deepEqual((await scan(root, 'secret')).findings, []);
+            assert.deepEqual((await scan(root, 'pii')).findings, []);
+        },
+        { max_blob_bytes: 1024 * 1024 },
+    );
+});
+
 test('secret profile detects known token and private key markers without returning matched bytes', async () => {
     const token = secretCanary();
     const key = privateKeyCanary();
@@ -121,6 +140,47 @@ test('secret profile detects high entropy credential assignment but not hashes w
     );
 });
 
+test('placeholder words embedded in a high entropy secret do not bypass detection', async () => {
+    const secret = ['q9Vx', 'example', '2LmP', 'dummy', '7ZaN4RtK'].join('');
+
+    await withRepository(
+        { 'config.txt': `api_secret = "${secret}"\n` },
+        async (root) => {
+            await assert.rejects(scan(root, 'secret'), (error) => {
+                assert.equal(error.findings[0].rule, 'credential_assignment');
+
+                return true;
+            });
+        },
+    );
+});
+
+test('both staged index blobs and tracked working-tree bytes are scanned', async () => {
+    await withRepository({ 'config.txt': 'safe\n' }, async (root) => {
+        await writeFile(path.join(root, 'config.txt'), `${secretCanary()}\n`);
+        git(root, ['add', 'config.txt']);
+        await writeFile(path.join(root, 'config.txt'), 'safe again\n');
+        await assert.rejects(scan(root, 'secret'), /redacted finding/i);
+
+        git(root, ['add', 'config.txt']);
+        await writeFile(path.join(root, 'config.txt'), `${secretCanary()}\n`);
+        await assert.rejects(scan(root, 'secret'), /redacted finding/i);
+    });
+});
+
+test('UTF-16LE secrets are detected and unsupported text encodings fail closed', async () => {
+    await withRepository(
+        { 'utf16.txt': Buffer.from(`\ufeff${secretCanary()}\n`, 'utf16le') },
+        async (root) =>
+            assert.rejects(scan(root, 'secret'), /redacted finding/i),
+    );
+
+    await withRepository(
+        { 'invalid.txt': Buffer.from([0xc3, 0x28]) },
+        async (root) => assert.rejects(scan(root, 'secret'), /encoding/i),
+    );
+});
+
 test('PII profile detects non-reserved email, Indonesian phone, and valid NIK without returning values', async () => {
     const email = ['person', '@', 'corp', '.', 'id'].join('');
     const phone = ['+62', '81297538641'].join('');
@@ -144,7 +204,7 @@ test('PII profile detects non-reserved email, Indonesian phone, and valid NIK wi
     );
 });
 
-test('reserved synthetic contacts and unrelated long numbers pass PII profile', async () => {
+test('only exact reserved synthetic contacts and unrelated long numbers pass PII profile', async () => {
     await withRepository(
         {
             'fixtures.txt': [
@@ -159,6 +219,56 @@ test('reserved synthetic contacts and unrelated long numbers pass PII profile', 
         async (root) =>
             assert.deepEqual((await scan(root, 'pii')).findings, []),
     );
+});
+
+test('realistic phones containing repeated or ascending digits remain PII', async () => {
+    const repeated = ['6281', '1111', '1119'].join('');
+    const ascending = ['+6281', '2345', '6781'].join('');
+
+    await withRepository(
+        {
+            'records.txt': [repeated, ascending].join('\n'),
+        },
+        async (root) => {
+            await assert.rejects(scan(root, 'pii'), (error) => {
+                assert.equal(
+                    error.findings.filter(
+                        ({ rule }) => rule === 'indonesian_phone',
+                    ).length,
+                    2,
+                );
+
+                return true;
+            });
+        },
+    );
+});
+
+test('finding fingerprints bind location and blob without hashing low-entropy PII directly', async () => {
+    const phone = ['6281', '1111', '1119'].join('');
+
+    await withRepository({ 'records.txt': `${phone}\n` }, async (root) => {
+        let finding;
+        await assert.rejects(scan(root, 'pii'), (error) => {
+            [finding] = error.findings;
+
+            return true;
+        });
+        const reversible = createHash('sha256')
+            .update('pii\0indonesian_phone\0records.txt\0')
+            .update(phone)
+            .digest('hex');
+
+        assert.notEqual(finding.fingerprint, reversible);
+        assert.match(finding.fingerprint, /^[0-9a-f]{64}$/);
+    });
+});
+
+test('control characters in reported paths are encoded against log injection', () => {
+    const encoded = reportPath('line\ninject\t%name.txt');
+
+    assert.equal(encoded, 'line%0Ainject%09%25name.txt');
+    assert(!/[\r\n\t]/.test(encoded));
 });
 
 test('PII profile treats exact dependency metadata and obvious fixture syntax as non-participant data', async () => {
@@ -273,6 +383,7 @@ for (const scenario of [
 
             if (scenario === 'stale') {
                 await writeFile(path.join(root, 'leak.txt'), 'safe');
+                git(root, ['add', 'leak.txt']);
             }
 
             if (scenario === 'unknown-rule') {

@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import { lstat, readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
@@ -6,6 +7,13 @@ import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
 const KINDS = new Set(['secret', 'pii']);
+const SYNTHETIC_PHONES = new Set([
+    '620000000000',
+    '628111111110',
+    '628123456789',
+    '6281234567800',
+    '6281234567890',
+]);
 const RULES = Object.freeze({
     secret: new Set([
         'aws_access_key',
@@ -61,6 +69,18 @@ export function parseTrackedEntries(output) {
     return entries;
 }
 
+export function reportPath(value) {
+    return [...value.replaceAll('\\', '/')]
+        .map((character) => {
+            const code = character.charCodeAt(0);
+
+            return character === '%' || code <= 31 || code === 127
+                ? `%${code.toString(16).toUpperCase().padStart(2, '0')}`
+                : character;
+        })
+        .join('');
+}
+
 export async function scanRepository({
     root,
     kind,
@@ -79,15 +99,17 @@ export async function scanRepository({
     const findings = [];
 
     for (const entry of entries) {
+        const displayPath = reportPath(entry.path);
+
         if (entry.stage !== 0) {
             throw new ScanFailure(
-                `Unmerged tracked entry is unsupported: ${entry.path}`,
+                `Unmerged tracked entry is unsupported: ${displayPath}`,
             );
         }
 
         if (!['100644', '100755'].includes(entry.mode)) {
             throw new ScanFailure(
-                `Tracked symlink or unsupported mode is forbidden: ${entry.path}`,
+                `Tracked symlink or unsupported mode is forbidden: ${displayPath}`,
             );
         }
 
@@ -95,42 +117,49 @@ export async function scanRepository({
 
         if (!isInside(canonicalRoot, target)) {
             throw new ScanFailure(
-                `Tracked path escapes repository: ${entry.path}`,
+                `Tracked path escapes repository: ${displayPath}`,
             );
         }
 
         const info = await lstat(target).catch(() => {
-            throw new ScanFailure(`Tracked file is unreadable: ${entry.path}`);
+            throw new ScanFailure(`Tracked file is unreadable: ${displayPath}`);
         });
 
         if (!info.isFile() || info.isSymbolicLink()) {
             throw new ScanFailure(
-                `Tracked symlink or unsupported file is forbidden: ${entry.path}`,
+                `Tracked symlink or unsupported file is forbidden: ${displayPath}`,
             );
         }
 
         if (info.size > policy.max_blob_bytes) {
             throw new ScanFailure(
-                `Tracked file exceeds the configured maximum: ${entry.path}`,
+                `Tracked file exceeds the configured maximum: ${displayPath}`,
             );
         }
 
         const bytes = await readFile(target).catch(() => {
-            throw new ScanFailure(`Tracked file is unreadable: ${entry.path}`);
+            throw new ScanFailure(`Tracked file is unreadable: ${displayPath}`);
         });
 
         if (bytes.length !== info.size) {
             throw new ScanFailure(
-                `Tracked file changed while scanning: ${entry.path}`,
+                `Tracked file changed while scanning: ${displayPath}`,
             );
         }
 
-        findings.push(
-            ...scanBlob(kind, entry.path.replaceAll('\\', '/'), bytes),
+        const indexBytes = readIndexBlob(
+            canonicalRoot,
+            entry,
+            policy.max_blob_bytes,
         );
+
+        findings.push(...scanBlob(kind, displayPath, indexBytes));
+        findings.push(...scanBlob(kind, displayPath, bytes));
     }
 
-    findings.sort(
+    const uniqueFindings = deduplicate(findings);
+
+    uniqueFindings.sort(
         (a, b) =>
             a.path.localeCompare(b.path) ||
             a.line - b.line ||
@@ -140,7 +169,7 @@ export async function scanRepository({
         (exception) => exception.kind === kind,
     );
     const used = new Set();
-    const unsuppressed = findings.filter((finding) => {
+    const unsuppressed = uniqueFindings.filter((finding) => {
         const index = applicable.findIndex(
             (exception, candidate) =>
                 !used.has(candidate) &&
@@ -187,6 +216,33 @@ function trackedEntries(root) {
     return parseTrackedEntries(result.stdout);
 }
 
+function readIndexBlob(root, entry, maximum) {
+    const result = spawnSync('git', ['cat-file', 'blob', entry.objectId], {
+        cwd: root,
+        encoding: null,
+        windowsHide: true,
+        maxBuffer: 16 * 1024 * 1024,
+    });
+
+    if (
+        result.status !== 0 ||
+        result.error ||
+        !Buffer.isBuffer(result.stdout)
+    ) {
+        throw new ScanFailure(
+            `Unable to read Git index blob: ${reportPath(entry.path)}`,
+        );
+    }
+
+    if (result.stdout.length > maximum) {
+        throw new ScanFailure(
+            `Git index blob exceeds the configured maximum: ${reportPath(entry.path)}`,
+        );
+    }
+
+    return result.stdout;
+}
+
 async function loadPolicy(policyPath, now) {
     let raw;
 
@@ -225,6 +281,7 @@ async function loadPolicy(policyPath, now) {
             typeof exception.path !== 'string' ||
             exception.path === '' ||
             exception.path.includes('\\') ||
+            reportPath(exception.path) !== exception.path ||
             typeof exception.fingerprint !== 'string' ||
             !/^[0-9a-f]{64}$/.test(exception.fingerprint) ||
             typeof exception.reason !== 'string' ||
@@ -277,11 +334,65 @@ async function loadPolicy(policyPath, now) {
 }
 
 function scanBlob(kind, relativePath, bytes) {
-    const content = bytes.toString('latin1');
+    const content = decodeBlob(bytes, relativePath);
 
     return kind === 'secret'
         ? scanSecrets(relativePath, content)
         : scanPii(relativePath, content);
+}
+
+function decodeBlob(bytes, relativePath) {
+    if (
+        bytes
+            .subarray(0, 8)
+            .equals(
+                Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+            ) ||
+        bytes.subarray(0, 4).equals(Buffer.from([0x00, 0x00, 0x01, 0x00]))
+    ) {
+        return bytes.toString('latin1');
+    }
+
+    let content;
+
+    try {
+        if (bytes.subarray(0, 2).equals(Buffer.from([0xff, 0xfe]))) {
+            content = new TextDecoder('utf-16le', { fatal: true }).decode(
+                bytes.subarray(2),
+            );
+        } else if (bytes.subarray(0, 2).equals(Buffer.from([0xfe, 0xff]))) {
+            content = new TextDecoder('utf-16be', { fatal: true }).decode(
+                bytes.subarray(2),
+            );
+        } else {
+            content = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+        }
+    } catch {
+        throw new ScanFailure(
+            `Tracked file has unsupported encoding: ${relativePath}`,
+        );
+    }
+
+    if ([...content].some((character) => isUnsupportedControl(character))) {
+        throw new ScanFailure(
+            `Tracked file has unsupported encoding: ${relativePath}`,
+        );
+    }
+
+    return content;
+}
+
+function isUnsupportedControl(character) {
+    const code = character.charCodeAt(0);
+
+    return (
+        code === 0 ||
+        (code >= 1 && code <= 8) ||
+        code === 11 ||
+        code === 12 ||
+        (code >= 14 && code <= 31) ||
+        code === 127
+    );
 }
 
 function scanSecrets(relativePath, content) {
@@ -434,7 +545,9 @@ function collect(target, relativePath, content, rule, expression) {
     }
 }
 
-function finding(kind, rule, relativePath, content, index, value) {
+function finding(kind, rule, relativePath, content, index) {
+    const blobDigest = createHash('sha256').update(content).digest('hex');
+
     return {
         kind,
         rule,
@@ -447,7 +560,9 @@ function finding(kind, rule, relativePath, content, index, value) {
             .update('\0')
             .update(relativePath)
             .update('\0')
-            .update(value)
+            .update(String(index))
+            .update('\0')
+            .update(blobDigest)
             .digest('hex'),
     };
 }
@@ -493,18 +608,10 @@ function entropy(value) {
 }
 
 function looksLikePlaceholder(value) {
-    const normalized = value.toLowerCase();
-
     return (
-        normalized.includes('${') ||
-        normalized.includes('example') ||
-        normalized.includes('placeholder') ||
-        normalized.includes('changeme') ||
-        normalized.includes('dummy') ||
-        normalized.includes('synthetic') ||
-        normalized.includes('your_') ||
-        normalized.includes('your-') ||
-        normalized.includes('test-secret') ||
+        /^\$\{[A-Z][A-Z0-9_]*\}$/i.test(value) ||
+        /^(?:placeholder|changeme|dummy|synthetic|test-secret)$/i.test(value) ||
+        /^your[_-][a-z0-9_-]+$/i.test(value) ||
         /^(.)\1+$/.test(value)
     );
 }
@@ -521,11 +628,7 @@ function isSyntheticEmail(value) {
 }
 
 function isSyntheticPhone(digits) {
-    return (
-        /(\d)\1{3,}/.test(digits) ||
-        /012345|123456|234567|345678|456789/.test(digits) ||
-        /^(?:62|08)(\d)\1{7,}$/.test(digits)
-    );
+    return SYNTHETIC_PHONES.has(digits);
 }
 
 function looksLikeFilename(value) {
@@ -598,7 +701,7 @@ async function main() {
             ),
         });
         process.stdout.write(
-            `${result.kind.toUpperCase()} scan passed (${result.scanned} tracked blobs; current snapshot only).\n`,
+            `${result.kind.toUpperCase()} scan passed (${result.scanned} tracked paths; index and working-tree snapshots).\n`,
         );
     } catch (error) {
         if (error instanceof ScanFailure) {
