@@ -10,12 +10,14 @@
             <file>tests/Postgres/AssessmentBillingMigrationTest.php</file>
             <file>tests/Postgres/AssessmentCaseBackfillMigrationTest.php</file>
             <file>tests/Postgres/AssessmentCaseSecurityTest.php</file>
+            <file>tests/Postgres/TestSessionCaseIdentityMigrationTest.php</file>
         </testsuite>
         <testsuite name="OrganizationPostgres">
             <directory>tests/Postgres</directory>
             <exclude>tests/Postgres/AssessmentBillingMigrationTest.php</exclude>
             <exclude>tests/Postgres/AssessmentCaseBackfillMigrationTest.php</exclude>
             <exclude>tests/Postgres/AssessmentCaseSecurityTest.php</exclude>
+            <exclude>tests/Postgres/TestSessionCaseIdentityMigrationTest.php</exclude>
         </testsuite>
     </testsuites>
     <php>

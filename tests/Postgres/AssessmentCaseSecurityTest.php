@@ -155,10 +155,11 @@ final class AssessmentCaseSecurityTest extends TestCase
             ]);
             $attemptOne = $this->assessmentParticipant($graph, 'one', $firstAlias, $first);
             $attemptTwo = $this->assessmentParticipant($graph, 'two', $secondAlias, $second);
-            $session = $this->createTestSession($graph['participant']);
+            $session = $this->createTestSession($graph['participant'], $first);
             $this->assertSame($first, DB::table('assessment_participants')->where('id', $attemptOne)->value('assessment_case_id'));
-            $this->assertNull(DB::table('test_sessions')->where('id', $session)->value('assessment_case_id'));
-            DB::table('test_sessions')->where('id', $session)->update(['assessment_case_id' => $first]);
+            $this->assertSame($first, DB::table('test_sessions')->where('id', $session)->value('assessment_case_id'));
+            $this->assertSqlState('P0001', fn () => DB::table('test_sessions')->where('id', $session)
+                ->update(['assessment_case_id' => $second]));
             $this->assertSqlState('P0001', fn () => DB::table('assessment_participants')->where('id', $attemptTwo)
                 ->update(['assessment_case_id' => $first]));
             $this->assertSqlState('P0001', fn () => DB::table('assessment_participants')->where('id', $attemptTwo)
@@ -288,10 +289,11 @@ final class AssessmentCaseSecurityTest extends TestCase
         ]);
     }
 
-    private function createTestSession(int $participant): int
+    private function createTestSession(int $participant, ?int $case = null): int
     {
         return DB::table('test_sessions')->insertGetId([
             'public_id' => (string) Str::ulid(), 'participant_id' => $participant,
+            'assessment_case_id' => $case,
             'test_type' => 'ist', 'attempt_no' => random_int(1, 1000000),
             'authorization_id' => (string) Str::ulid(), 'allocation_intent_id' => (string) Str::ulid(),
             'duration_seconds' => 3600, 'status' => 'created', 'answers_revision' => 0,
