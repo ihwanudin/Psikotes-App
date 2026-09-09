@@ -23,6 +23,7 @@ final class InstrumentSeederTest extends TestCase
         'kraepelin' => 'kraepelin.json',
         'dass21' => 'dass21.json',
         'reporting' => 'reporting.json',
+        'aspect_sources' => 'aspect_sources.json',
     ];
 
     public function test_it_seeds_every_f0_payload_with_its_source_checksum(): void
@@ -81,6 +82,35 @@ final class InstrumentSeederTest extends TestCase
         $this->expectExceptionMessage('immutable');
 
         $this->seed(InstrumentSeeder::class);
+    }
+
+    public function test_it_refuses_to_overwrite_the_frozen_aspect_source_version(): void
+    {
+        DB::table('instrument_versions')->insert([
+            'code' => 'aspect_sources',
+            'version' => 'ASPECT-SOURCES-2026.09',
+            'source_file' => 'aspect_sources.json',
+            'checksum' => str_repeat('0', 64),
+            'payload' => '{}',
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        try {
+            $this->seed(InstrumentSeeder::class);
+            $this->fail('Expected the immutable aspect-source version to reject different content.');
+        } catch (LogicException $exception) {
+            $this->assertStringContainsString('immutable', $exception->getMessage());
+        }
+
+        $this->assertDatabaseCount('instrument_versions', 1);
+        $this->assertDatabaseHas('instrument_versions', [
+            'code' => 'aspect_sources',
+            'version' => 'ASPECT-SOURCES-2026.09',
+            'checksum' => str_repeat('0', 64),
+            'payload' => '{}',
+        ]);
     }
 
     public function test_it_is_safe_inside_an_existing_service_context(): void

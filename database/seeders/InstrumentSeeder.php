@@ -22,6 +22,7 @@ final class InstrumentSeeder extends Seeder
         'kraepelin' => 'kraepelin.json',
         'dass21' => 'dass21.json',
         'reporting' => 'reporting.json',
+        'aspect_sources' => 'aspect_sources.json',
     ];
 
     public function run(): void

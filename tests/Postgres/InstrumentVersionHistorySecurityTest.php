@@ -76,9 +76,29 @@ final class InstrumentVersionHistorySecurityTest extends TestCase
         (new InstrumentSeeder)->run();
 
         $this->assertSame(0, DB::table('instrument_versions')->count());
-        $this->assertSame(6, app(RlsContextRunner::class)->runAsService(
-            fn (): int => DB::table('instrument_versions')->count(),
-        ));
+        $seeded = app(RlsContextRunner::class)->runAsService(
+            fn (): array => DB::table('instrument_versions')->orderBy('code')
+                ->get(['code', 'version', 'source_file', 'checksum'])
+                ->map(fn (object $row): array => (array) $row)->all(),
+        );
+        $expected = [];
+        foreach ([
+            'aspect_sources' => ['ASPECT-SOURCES-2026.09', 'aspect_sources.json'],
+            'dass21' => ['F0-2026.08', 'dass21.json'],
+            'ist' => ['F2-2026.09', 'ist.json'],
+            'kraepelin' => ['F2-2026.09', 'kraepelin.json'],
+            'papi' => ['F2-2026.09', 'papi.json'],
+            'reporting' => ['GA-2026.08', 'reporting.json'],
+            'rmib' => ['F2-2026.09', 'rmib.json'],
+        ] as $code => [$version, $sourceFile]) {
+            $expected[] = [
+                'code' => $code,
+                'version' => $version,
+                'source_file' => $sourceFile,
+                'checksum' => hash_file('sha256', database_path("seeders/data/{$sourceFile}")),
+            ];
+        }
+        $this->assertSame($expected, $seeded);
 
         foreach (['super_admin', 'psychologist', 'branch_admin', 'staff', 'participant'] as $role) {
             $context = match ($role) {

@@ -1,0 +1,83 @@
+{
+  "version": "ASPECT-SOURCES-2026.09",
+  "aspects": {
+    "A1": [
+      "IST_IQ"
+    ],
+    "A2": [
+      "IST_AN",
+      "IST_RA",
+      "IST_ZR",
+      "PAPI_R"
+    ],
+    "B1": [
+      "IST_ME",
+      "KRAEPELIN_PANKER",
+      "KRAEPELIN_JANKER"
+    ],
+    "B2": [
+      "KRAEPELIN_PANKER",
+      "KRAEPELIN_TIANKER"
+    ],
+    "B3": [
+      "IST_GE",
+      "IST_SE",
+      "IST_WA"
+    ],
+    "B4": [
+      "KRAEPELIN_JANKER",
+      "PAPI_C",
+      "PAPI_D"
+    ],
+    "C1": [
+      "PAPI_L",
+      "PAPI_E"
+    ],
+    "C2": [
+      "PAPI_N",
+      "PAPI_F",
+      "PAPI_S"
+    ],
+    "C3": [
+      "PAPI_P",
+      "PAPI_A",
+      "PAPI_B",
+      "PAPI_O"
+    ],
+    "C4": [
+      "PAPI_E",
+      "PAPI_K",
+      "KRAEPELIN_HANKER"
+    ],
+    "C5": [
+      "KRAEPELIN_HANKER",
+      "PAPI_V"
+    ],
+    "C6": [
+      "PAPI_T",
+      "PAPI_V",
+      "PAPI_N"
+    ],
+    "C7": [
+      "PAPI_W",
+      "PAPI_F",
+      "PAPI_R",
+      "KRAEPELIN_JANKER"
+    ],
+    "D1": [
+      "RMIB_Out"
+    ],
+    "D2": [
+      "RMIB_Me"
+    ],
+    "D3": [
+      "RMIB_Prac"
+    ],
+    "D4": [
+      "RMIB_Med"
+    ],
+    "D5": [
+      "RMIB_S.Se"
+    ]
+  }
+}

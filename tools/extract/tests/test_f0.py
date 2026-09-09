@@ -1,7 +1,12 @@
+import hashlib
 import json
+import tempfile
 import unittest
 from pathlib import Path
 
+import openpyxl
+
+from tools.extract import extract_aspect_sources
 from tools.extract.validate import kraepelin_factors, kraepelin_score
 
 
@@ -9,6 +14,27 @@ DATA = Path(__file__).parents[3] / "database" / "seeders" / "data"
 
 
 class F0GateTest(unittest.TestCase):
+    ASPECT_SOURCES = {
+        "A1": ["IST_IQ"],
+        "A2": ["IST_AN", "IST_RA", "IST_ZR", "PAPI_R"],
+        "B1": ["IST_ME", "KRAEPELIN_PANKER", "KRAEPELIN_JANKER"],
+        "B2": ["KRAEPELIN_PANKER", "KRAEPELIN_TIANKER"],
+        "B3": ["IST_GE", "IST_SE", "IST_WA"],
+        "B4": ["KRAEPELIN_JANKER", "PAPI_C", "PAPI_D"],
+        "C1": ["PAPI_L", "PAPI_E"],
+        "C2": ["PAPI_N", "PAPI_F", "PAPI_S"],
+        "C3": ["PAPI_P", "PAPI_A", "PAPI_B", "PAPI_O"],
+        "C4": ["PAPI_E", "PAPI_K", "KRAEPELIN_HANKER"],
+        "C5": ["KRAEPELIN_HANKER", "PAPI_V"],
+        "C6": ["PAPI_T", "PAPI_V", "PAPI_N"],
+        "C7": ["PAPI_W", "PAPI_F", "PAPI_R", "KRAEPELIN_JANKER"],
+        "D1": ["RMIB_Out"],
+        "D2": ["RMIB_Me"],
+        "D3": ["RMIB_Prac"],
+        "D4": ["RMIB_Med"],
+        "D5": ["RMIB_S.Se"],
+    }
+
     def load(self, name):
         return json.loads((DATA / name).read_text(encoding="utf-8"))
 
@@ -135,6 +161,162 @@ class F0GateTest(unittest.TestCase):
         self.assertEqual(data["critical"], ["A1","B2","C4","C5"])
         self.assertEqual(len(data["fields"]), 6)
         self.assertEqual(len(data["narratives"]), 90)
+
+    def test_aspect_source_data_is_the_frozen_42_association_contract(self):
+        data = self.load("aspect_sources.json")
+
+        self.assertEqual(data, {
+            "version": "ASPECT-SOURCES-2026.09",
+            "aspects": self.ASPECT_SOURCES,
+        })
+        self.assertEqual(list(data["aspects"]), list(self.ASPECT_SOURCES))
+        self.assertEqual(sum(len(sources) for sources in data["aspects"].values()), 42)
+        self.assertEqual(len({source for sources in data["aspects"].values() for source in sources}), 33)
+        self.assertNotIn("RMIB_Prs", str(data))
+        self.assertNotIn("DASS", str(data))
+        extract_aspect_sources.validate_source_identifiers(data, DATA)
+
+    def test_aspect_source_bytes_are_deterministic(self):
+        payload = (DATA / "aspect_sources.json").read_bytes()
+
+        self.assertEqual(len(payload), 1148)
+        self.assertEqual(
+            hashlib.sha256(payload).hexdigest(),
+            "cdd6c3b89e9ee792db14a9b6878e10c2ddd50143224582c0c99d2bfd03b4d9a9",
+        )
+        self.assertEqual(
+            payload,
+            json.dumps(self.load("aspect_sources.json"), ensure_ascii=False, indent=2).encode("utf-8"),
+        )
+
+    def test_aspect_source_extractor_reads_formula_counts_and_exact_rmib_categories(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_aspect_source_workbook(root)
+
+            first = extract_aspect_sources.build(root)
+            second = extract_aspect_sources.build(root)
+
+        self.assertEqual(first, {
+            "version": "ASPECT-SOURCES-2026.09",
+            "aspects": self.ASPECT_SOURCES,
+        })
+        self.assertEqual(first, second)
+
+    def test_aspect_source_extractor_writes_stable_utf8_lf_bytes_to_a_temp_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_aspect_source_workbook(root)
+            output = root / "output"
+
+            extract_aspect_sources.extract(root, output, DATA)
+            first = (output / "aspect_sources.json").read_bytes()
+            extract_aspect_sources.extract(root, output, DATA)
+            second = (output / "aspect_sources.json").read_bytes()
+
+        self.assertEqual(first, second)
+        self.assertNotIn(b"\r\n", first)
+        self.assertEqual(len(first), 1148)
+        self.assertEqual(
+            hashlib.sha256(first).hexdigest(),
+            "cdd6c3b89e9ee792db14a9b6878e10c2ddd50143224582c0c99d2bfd03b4d9a9",
+        )
+
+    def test_aspect_source_extractor_rejects_a_formula_count_mismatch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = self.write_aspect_source_workbook(root)
+            workbook = openpyxl.load_workbook(path)
+            workbook["13. Skala Formula"]["D3"] = 3
+            workbook.save(path)
+
+            with self.assertRaisesRegex(ValueError, "A2 declares 3 sources but contains 4"):
+                extract_aspect_sources.build(root)
+
+    def test_aspect_source_extractor_derives_same_count_source_changes_from_the_workbook(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = self.write_aspect_source_workbook(root)
+            workbook = openpyxl.load_workbook(path)
+            workbook["13. Skala Formula"]["E3"] = "IST AN + IST RA + IST ZR + PAPI L"
+            workbook.save(path)
+
+            data = extract_aspect_sources.build(root)
+
+        self.assertEqual(data["aspects"]["A2"], ["IST_AN", "IST_RA", "IST_ZR", "PAPI_L"])
+        self.assertNotEqual(data["aspects"]["A2"], self.ASPECT_SOURCES["A2"])
+
+    def test_aspect_source_extractor_rejects_noncanonical_workbook_aspect_order(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = self.write_aspect_source_workbook(root)
+            workbook = openpyxl.load_workbook(path)
+            sheet = workbook["13. Skala Formula"]
+            a1 = [sheet.cell(2, column).value for column in range(1, 6)]
+            a2 = [sheet.cell(3, column).value for column in range(1, 6)]
+            for column, value in enumerate(a2, start=1):
+                sheet.cell(2, column).value = value
+            for column, value in enumerate(a1, start=1):
+                sheet.cell(3, column).value = value
+            workbook.save(path)
+
+            with self.assertRaisesRegex(ValueError, "canonical order"):
+                extract_aspect_sources.build(root)
+
+    def test_aspect_source_extractor_rejects_persuasive_as_d5(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = self.write_aspect_source_workbook(root)
+            workbook = openpyxl.load_workbook(path)
+            workbook["4. Konversi Skor"]["C5"] = "Prs"
+            workbook.save(path)
+
+            with self.assertRaisesRegex(ValueError, "D5 must use only RMIB_S.Se"):
+                extract_aspect_sources.build(root)
+
+    def test_aspect_source_extractor_rejects_dass_formula_components(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = self.write_aspect_source_workbook(root)
+            workbook = openpyxl.load_workbook(path)
+            workbook["13. Skala Formula"]["E3"] = "IST AN + IST RA + IST ZR + DASS Stress"
+            workbook.save(path)
+
+            with self.assertRaisesRegex(ValueError, "Unknown aspect-source formula component"):
+                extract_aspect_sources.build(root)
+
+    @classmethod
+    def write_aspect_source_workbook(cls, root):
+        path = root / "Update DASS" / "Bank Narasi Formula HPP Psikotes.xlsx"
+        path.parent.mkdir(parents=True)
+        workbook = openpyxl.Workbook()
+        formula = workbook.active
+        formula.title = "13. Skala Formula"
+        formula.append([None, "KODE", "ASPEK", "JML SUMBER", "SUMBER TERURAI"])
+        for code, sources in cls.ASPECT_SOURCES.items():
+            rendered = []
+            for source in sources:
+                instrument, measure = source.split("_", 1)
+                rendered.append(f"{instrument.title()} {measure}" if instrument == "KRAEPELIN" else f"{instrument} {measure}")
+            if code.startswith("D"):
+                rendered = ["RMIB"]
+            formula.append([None, code, code, len(sources), " + ".join(rendered)])
+
+        rmib = workbook.create_sheet("4. Konversi Skor")
+        rmib.append([None, "INDEX", "KODE", "NAMA KATEGORI", "DIPAKAI DI HPP", "ASPEK HPP"])
+        categories = [
+            (1, "Out", "Outdoor", "Ya", "D1"),
+            (2, "Me", "Mechanical", "Ya", "D2"),
+            (5, "Prs", "Persuasive", "Tidak", "-"),
+            (9, "S.Se", "Social Service", "Ya", "D5"),
+            (11, "Prac", "Practical", "Ya", "D3"),
+            (12, "Med", "Medical", "Ya", "D4"),
+        ]
+        for row in categories:
+            rmib.append([None, *row])
+        workbook.save(path)
+
+        return path
 
 
 if __name__ == "__main__":
