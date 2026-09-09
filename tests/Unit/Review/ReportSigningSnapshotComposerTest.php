@@ -37,6 +37,16 @@ final class ReportSigningSnapshotComposerTest extends TestCase
         self::assertSame([], $snapshot->prerequisiteInput()['unresolved_g7_aspects']);
         self::assertSame([['type' => 'level', 'aspect' => 'C4', 'reason' => $reason]], $snapshot->prerequisiteInput()['overrides']);
         self::assertSame(self::ASPECTS, $snapshot->provenance()['discrepancy_aspects']);
+        self::assertSame($reviewed->toArray(), $snapshot->provenance()['reviewed_eligibility']);
+        self::assertCount(18, $snapshot->provenance()['g7_review']);
+        self::assertSame([
+            'aspect' => 'C4',
+            'state' => G7AspectResolution::STATE_RESOLVED,
+            'discrepancy' => $g7->resolutionFor('C4')->discrepancy(),
+            'system_level' => 5,
+            'final_level' => 3,
+            'reason' => $reason,
+        ], $snapshot->provenance()['g7_review'][9]);
         self::assertFalse($snapshot->provenance()['persistence_authority_bound']);
     }
 
@@ -137,24 +147,89 @@ final class ReportSigningSnapshotComposerTest extends TestCase
         ]);
     }
 
-    private function baseline(string $validity = 'V1'): EligibilityDecisionSnapshot
+    public function test_snapshot_hash_binds_levels_source_versions_and_g7_evidence(): void
     {
+        $baseline = ReviewedEligibilityDecision::create($this->baseline(), []);
+        $canonical = ReportSigningSnapshotComposer::compose(
+            $baseline,
+            $this->g7Set($baseline),
+            $this->structuralInput(),
+        );
+
+        $differentLevels = ReviewedEligibilityDecision::create($this->baseline(level: 4), []);
+        $levelSnapshot = ReportSigningSnapshotComposer::compose(
+            $differentLevels,
+            $this->g7Set($differentLevels),
+            $this->structuralInput(),
+        );
+        $differentVersion = ReviewedEligibilityDecision::create($this->baseline(istVersion: 'F0-2026.09'), []);
+        $versionSnapshot = ReportSigningSnapshotComposer::compose(
+            $differentVersion,
+            $this->g7Set($differentVersion),
+            $this->structuralInput(),
+        );
+        $g7Snapshot = ReportSigningSnapshotComposer::compose(
+            $baseline,
+            $this->g7Set($baseline, sourcePrefix: 'ALTERNATE_SOURCE'),
+            $this->structuralInput(),
+        );
+
+        self::assertNotSame($this->snapshotHash($canonical), $this->snapshotHash($levelSnapshot));
+        self::assertNotSame($this->snapshotHash($canonical), $this->snapshotHash($versionSnapshot));
+        self::assertNotSame($this->snapshotHash($canonical), $this->snapshotHash($g7Snapshot));
+    }
+
+    public function test_semantically_identical_permutations_have_identical_snapshot_arrays_and_hashes(): void
+    {
+        $canonicalReviewed = ReviewedEligibilityDecision::create($this->baseline(), []);
+        $canonical = ReportSigningSnapshotComposer::compose(
+            $canonicalReviewed,
+            G7ReviewSet::fromResolutions($this->notRequiredResolutions($canonicalReviewed, 'SOURCE', true)),
+            $this->structuralInput(),
+        );
+
+        $permutedReviewed = ReviewedEligibilityDecision::create($this->baseline(reverseLevels: true), []);
+        $resolutions = array_reverse($this->notRequiredResolutions($permutedReviewed, 'SOURCE', true));
+        $structural = $this->structuralInput();
+        $structural['narrative_clusters'] = array_reverse($structural['narrative_clusters'], true);
+        $structural = array_reverse($structural, true);
+        $permuted = ReportSigningSnapshotComposer::compose(
+            $permutedReviewed,
+            G7ReviewSet::fromResolutions($resolutions),
+            $structural,
+        );
+
+        self::assertSame($canonical->prerequisiteInput(), $permuted->prerequisiteInput());
+        self::assertSame($canonical->provenance(), $permuted->provenance());
+        self::assertSame($this->snapshotHash($canonical), $this->snapshotHash($permuted));
+    }
+
+    private function baseline(
+        string $validity = 'V1',
+        int $level = 5,
+        string $istVersion = 'F0-2026.08',
+        bool $reverseLevels = false,
+    ): EligibilityDecisionSnapshot {
         $reporting = $this->canonicalReporting();
+        $aspects = $reverseLevels ? array_reverse(self::ASPECTS) : self::ASPECTS;
 
         return EligibilityDecisionSnapshot::create([
-            'levels' => array_fill_keys(self::ASPECTS, 5), 'field_code' => 'KAIGO', 'iq' => 100,
+            'levels' => array_fill_keys($aspects, $level), 'field_code' => 'KAIGO', 'iq' => 100,
             'validity' => $validity, 'standard_configuration' => $reporting,
             'eligibility_source_versions' => [
-                'ist' => 'F0-2026.08', 'papi' => 'F0-2026.08', 'kraepelin' => 'F0-2026.08',
+                'ist' => $istVersion, 'papi' => 'F0-2026.08', 'kraepelin' => 'F0-2026.08',
                 'rmib' => 'F0-2026.08', 'reporting' => $reporting['standard_version'],
             ],
         ]);
     }
 
     /** @param array<string, array{final_level: int, reason: string|null}> $resolved */
-    private function g7Set(ReviewedEligibilityDecision $reviewed, array $resolved = []): G7ReviewSet
-    {
-        $resolutions = $this->notRequiredResolutions($reviewed);
+    private function g7Set(
+        ReviewedEligibilityDecision $reviewed,
+        array $resolved = [],
+        string $sourcePrefix = 'SOURCE',
+    ): G7ReviewSet {
+        $resolutions = $this->notRequiredResolutions($reviewed, $sourcePrefix);
         foreach ($resolved as $aspect => $decision) {
             $index = array_search($aspect, self::ASPECTS, true);
             self::assertIsInt($index);
@@ -168,13 +243,33 @@ final class ReportSigningSnapshotComposerTest extends TestCase
     }
 
     /** @return list<G7AspectResolution> */
-    private function notRequiredResolutions(ReviewedEligibilityDecision $reviewed): array
-    {
+    private function notRequiredResolutions(
+        ReviewedEligibilityDecision $reviewed,
+        string $sourcePrefix = 'SOURCE',
+        bool $reverseSources = false,
+    ): array {
         $levels = $reviewed->toArray()['system_levels'];
 
         return array_map(fn (string $aspect): G7AspectResolution => G7AspectResolution::notRequired(
-            $this->discrepancy($aspect, [$levels[$aspect]]), $levels[$aspect],
+            (new AspectSourceDiscrepancyPolicy)->evaluate([
+                'aspect' => $aspect,
+                'sources' => $reverseSources
+                    ? [
+                        ['source' => $sourcePrefix.'_2', 'level' => $levels[$aspect]],
+                        ['source' => $sourcePrefix.'_1', 'level' => $levels[$aspect]],
+                    ]
+                    : [['source' => $sourcePrefix.'_1', 'level' => $levels[$aspect]]],
+            ]),
+            $levels[$aspect],
         ), self::ASPECTS);
+    }
+
+    private function snapshotHash(ReportSigningSnapshotComposer $snapshot): string
+    {
+        return hash('sha256', json_encode([
+            'prerequisite_input' => $snapshot->prerequisiteInput(),
+            'provenance' => $snapshot->provenance(),
+        ], JSON_THROW_ON_ERROR));
     }
 
     /**

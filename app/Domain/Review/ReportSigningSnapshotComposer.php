@@ -62,7 +62,9 @@ final readonly class ReportSigningSnapshotComposer
             [
                 'type' => 'report_signing_snapshot',
                 'reviewed_eligibility_type' => $reviewed['type'],
+                'reviewed_eligibility' => $reviewed,
                 'discrepancy_aspects' => $discrepancyAspects,
+                'g7_review' => self::projectG7Evidence($g7ReviewSet),
                 'changed_override_count' => count($overrides),
                 'persistence_authority_bound' => false,
             ],
@@ -184,6 +186,31 @@ final readonly class ReportSigningSnapshotComposer
         }
 
         return $aspects;
+    }
+
+    /**
+     * @return list<array{
+     *     aspect: string,
+     *     state: string,
+     *     discrepancy: array<mixed>,
+     *     system_level: int,
+     *     final_level: int|null,
+     *     reason: string|null
+     * }>
+     */
+    private static function projectG7Evidence(G7ReviewSet $reviewSet): array
+    {
+        return array_map(
+            static fn (G7AspectResolution $resolution): array => [
+                'aspect' => $resolution->aspect(),
+                'state' => $resolution->state(),
+                'discrepancy' => $resolution->discrepancy(),
+                'system_level' => $resolution->systemLevel(),
+                'final_level' => $resolution->finalLevel(),
+                'reason' => $resolution->reason(),
+            ],
+            $reviewSet->resolutions(),
+        );
     }
 
     /**
