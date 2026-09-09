@@ -29,7 +29,8 @@ final class ProctoringValidityPolicyTest extends TestCase
 
         $this->assertSame(ProctoringValidity::V2, $decision->validity);
         $this->assertTrue($decision->procedureNoteRequired);
-        $this->assertFalse($decision->publicationBlocked);
+        $this->assertFalse($decision->proctoringPublicationBlocked);
+        $this->assertFalse($decision->adjudicationNoteRequired);
         $this->assertSame(1, $decision->uniqueEvidenceCount);
     }
 
@@ -54,7 +55,8 @@ final class ProctoringValidityPolicyTest extends TestCase
         $this->assertSame(ProctoringValidity::V1, $decision->validity);
         $this->assertTrue($decision->humanReviewRequired);
         $this->assertTrue($decision->pendingAdjudication);
-        $this->assertTrue($decision->publicationBlocked);
+        $this->assertTrue($decision->proctoringPublicationBlocked);
+        $this->assertFalse($decision->adjudicationNoteRequired);
         $this->assertSame(['evidence-review'], $decision->pendingEvidenceIds);
     }
 
@@ -74,7 +76,7 @@ final class ProctoringValidityPolicyTest extends TestCase
         ]);
 
         $this->assertSame(ProctoringValidity::V3, $decision->validity);
-        $this->assertTrue($decision->publicationBlocked);
+        $this->assertTrue($decision->proctoringPublicationBlocked);
         $this->assertFalse($decision->pendingAdjudication);
     }
 
@@ -96,7 +98,7 @@ final class ProctoringValidityPolicyTest extends TestCase
         $this->assertSame(ProctoringValidity::V2, $decision->validity);
         $this->assertTrue($decision->procedureNoteRequired);
         $this->assertTrue($decision->pendingAdjudication);
-        $this->assertTrue($decision->publicationBlocked);
+        $this->assertTrue($decision->proctoringPublicationBlocked);
     }
 
     public function test_v3_dominates_v2_while_unresolved_detection_remains_traceable(): void
@@ -108,22 +110,34 @@ final class ProctoringValidityPolicyTest extends TestCase
         ]);
 
         $this->assertSame(ProctoringValidity::V3, $decision->validity);
-        $this->assertTrue($decision->publicationBlocked);
+        $this->assertTrue($decision->proctoringPublicationBlocked);
         $this->assertTrue($decision->pendingAdjudication);
         $this->assertSame(['face'], $decision->pendingEvidenceIds);
     }
 
-    public function test_human_dismissal_resolves_the_exact_raw_signal_without_changing_validity(): void
-    {
+    #[DataProvider('dismissedSignals')]
+    public function test_human_dismissal_resolves_the_exact_raw_signal_and_requires_an_adjudication_note(
+        ProctoringEventKind $rawKind,
+    ): void {
         $decision = (new ProctoringValidityPolicy)->decide(
-            [$this->event('face-raw', ProctoringEventKind::FaceMismatch)],
-            [$this->finding('review-1', 'face-raw', ProctoringAdjudicatedFindingKind::SignalDismissed)],
+            [$this->event('raw-signal', $rawKind)],
+            [$this->finding('review-1', 'raw-signal', ProctoringAdjudicatedFindingKind::SignalDismissed)],
         );
 
         $this->assertSame(ProctoringValidity::V1, $decision->validity);
         $this->assertFalse($decision->pendingAdjudication);
-        $this->assertFalse($decision->publicationBlocked);
+        $this->assertFalse($decision->proctoringPublicationBlocked);
+        $this->assertFalse($decision->procedureNoteRequired);
+        $this->assertTrue($decision->adjudicationNoteRequired);
         $this->assertSame(1, $decision->uniqueAdjudicationCount);
+    }
+
+    /** @return iterable<string, array{ProctoringEventKind}> */
+    public static function dismissedSignals(): iterable
+    {
+        yield 'face mismatch' => [ProctoringEventKind::FaceMismatch];
+        yield 'second face' => [ProctoringEventKind::SecondFaceDetected];
+        yield 'audio assistance signal' => [ProctoringEventKind::AudioAssistanceDetected];
     }
 
     #[DataProvider('confirmedFindings')]
@@ -137,8 +151,9 @@ final class ProctoringValidityPolicyTest extends TestCase
         );
 
         $this->assertSame(ProctoringValidity::V3, $decision->validity);
-        $this->assertTrue($decision->publicationBlocked);
+        $this->assertTrue($decision->proctoringPublicationBlocked);
         $this->assertFalse($decision->pendingAdjudication);
+        $this->assertFalse($decision->adjudicationNoteRequired);
     }
 
     /** @return iterable<string, array{ProctoringEventKind, ProctoringAdjudicatedFindingKind}> */
@@ -232,7 +247,7 @@ final class ProctoringValidityPolicyTest extends TestCase
         (new ProctoringValidityPolicy)->decide(['SCREEN_DEPARTURE']);
     }
 
-    public function test_empty_evidence_is_a_clean_publishable_v1_decision(): void
+    public function test_empty_evidence_is_a_clean_v1_decision_without_a_proctoring_publication_block(): void
     {
         $decision = (new ProctoringValidityPolicy)->decide([]);
 
@@ -240,7 +255,8 @@ final class ProctoringValidityPolicyTest extends TestCase
         $this->assertSame([], $decision->markerCodes);
         $this->assertFalse($decision->humanReviewRequired);
         $this->assertFalse($decision->pendingAdjudication);
-        $this->assertFalse($decision->publicationBlocked);
+        $this->assertFalse($decision->proctoringPublicationBlocked);
+        $this->assertFalse($decision->adjudicationNoteRequired);
         $this->assertSame(0, $decision->uniqueEvidenceCount);
     }
 

@@ -53,6 +53,7 @@ final class ProctoringValidityPolicy
         $uniqueFindings = [];
         /** @var array<string, ProctoringAdjudicatedFinding> $findingsByEvidence */
         $findingsByEvidence = [];
+        $adjudicationNoteRequired = false;
         foreach ($findings as $finding) {
             if (! $finding instanceof ProctoringAdjudicatedFinding) {
                 throw new InvalidArgumentException('Proctoring adjudication must contain typed findings.');
@@ -82,6 +83,8 @@ final class ProctoringValidityPolicy
 
             if ($finding->confirmsV3()) {
                 $validity = ProctoringValidity::V3;
+            } else {
+                $adjudicationNoteRequired = true;
             }
         }
 
@@ -100,7 +103,8 @@ final class ProctoringValidityPolicy
             pendingAdjudication: $pendingAdjudication,
             pendingEvidenceIds: $pendingIds,
             procedureNoteRequired: $validity === ProctoringValidity::V2,
-            publicationBlocked: $validity === ProctoringValidity::V3 || $pendingAdjudication,
+            adjudicationNoteRequired: $adjudicationNoteRequired,
+            proctoringPublicationBlocked: $validity === ProctoringValidity::V3 || $pendingAdjudication,
         );
     }
 
