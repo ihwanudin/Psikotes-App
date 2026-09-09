@@ -102,7 +102,7 @@ final class AssessmentCaseSecurityTest extends TestCase
                 'package_id' => $graph['package'], 'intended_field_snapshot' => 'UMUM',
                 'updated_at' => '2026-09-09 01:00:01+00',
             ]);
-            $this->assertSame(1, DB::table('assessment_cases')->count());
+            $this->assertSame(1, DB::table('assessment_cases')->where('id', $id)->count());
             $this->assertSqlState('P0001', fn () => DB::table('assessment_cases')->where('id', $id)->update([
                 'intended_field_snapshot' => 'KAIGO', 'updated_at' => '2026-09-09 01:00:02+00',
             ]));

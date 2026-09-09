@@ -156,39 +156,11 @@ return new class extends Migration
     private function enforce(string $driver): void
     {
         if ($driver === 'pgsql') {
-            $foreignExists = (bool) DB::scalar(<<<'SQL'
-                SELECT EXISTS (
-                    SELECT 1 FROM pg_constraint
-                    WHERE conname = 'assessment_participants_case_scope_fk'
-                      AND conrelid = 'assessment_participants'::regclass
-                      AND contype = 'f'
-                )
-                SQL);
-            if ($foreignExists
-                && (bool) DB::scalar(<<<'SQL'
-                    SELECT attnotnull FROM pg_attribute
-                    WHERE attrelid = 'assessment_participants'::regclass
-                      AND attname = 'assessment_case_id' AND NOT attisdropped
-                    SQL)
-                && (bool) DB::scalar(<<<'SQL'
-                    SELECT EXISTS (
-                        SELECT 1 FROM pg_constraint
-                        WHERE conname = 'assessment_cases_integrated_scope_unique'
-                          AND conrelid = 'assessment_cases'::regclass
-                          AND contype = 'u'
-                    )
-                    SQL)
-                && (bool) DB::scalar(<<<'SQL'
-                    SELECT EXISTS (
-                        SELECT 1 FROM pg_trigger
-                        WHERE tgname = 'assessment_participants_case_identity_guard'
-                          AND tgrelid = 'assessment_participants'::regclass
-                          AND NOT tgisinternal
-                    )
-                    SQL)) {
+            $state = $this->postgresEnforcementState();
+            if ($state['exact']) {
                 return;
             }
-            if ($foreignExists) {
+            if ($state['present']) {
                 $this->abort('partial PostgreSQL enforcement already exists');
             }
 
@@ -201,10 +173,10 @@ return new class extends Migration
         }
 
         $sqliteState = $this->sqliteEnforcementState();
-        if ($sqliteState === 4) {
+        if ($sqliteState['exact']) {
             return;
         }
-        if ($sqliteState !== 0) {
+        if ($sqliteState['present']) {
             $this->abort('partial SQLite enforcement already exists');
         }
 
@@ -412,20 +384,193 @@ return new class extends Migration
         }
     }
 
-    private function sqliteEnforcementState(): int
+    /** @return array{present:bool,exact:bool} */
+    private function postgresEnforcementState(): array
+    {
+        $unique = DB::selectOne(<<<'SQL'
+            SELECT c.contype, c.convalidated, c.condeferrable, c.condeferred,
+                (SELECT string_agg(a.attname, ',' ORDER BY k.ordinality)
+                 FROM unnest(c.conkey) WITH ORDINALITY AS k(attnum, ordinality)
+                 JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum) AS columns
+            FROM pg_constraint c
+            WHERE c.conname = 'assessment_cases_integrated_scope_unique'
+              AND c.conrelid = 'assessment_cases'::regclass
+            SQL);
+        $foreign = DB::selectOne(<<<'SQL'
+            SELECT c.contype, c.convalidated, c.condeferrable, c.condeferred,
+                c.confrelid::regclass::text AS referenced_table, c.confdeltype, c.confupdtype, c.confmatchtype,
+                (SELECT string_agg(a.attname, ',' ORDER BY k.ordinality)
+                 FROM unnest(c.conkey) WITH ORDINALITY AS k(attnum, ordinality)
+                 JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum) AS columns,
+                (SELECT string_agg(a.attname, ',' ORDER BY k.ordinality)
+                 FROM unnest(c.confkey) WITH ORDINALITY AS k(attnum, ordinality)
+                 JOIN pg_attribute a ON a.attrelid = c.confrelid AND a.attnum = k.attnum) AS referenced_columns
+            FROM pg_constraint c
+            WHERE c.conname = 'assessment_participants_case_scope_fk'
+              AND c.conrelid = 'assessment_participants'::regclass
+            SQL);
+        $notNull = (bool) DB::scalar(<<<'SQL'
+            SELECT attnotnull FROM pg_attribute
+            WHERE attrelid = 'assessment_participants'::regclass
+              AND attname = 'assessment_case_id' AND NOT attisdropped
+            SQL);
+        $trigger = DB::selectOne(<<<'SQL'
+            SELECT t.tgtype, t.tgenabled, t.tgqual IS NULL AS unqualified,
+                p.prosrc, p.prosecdef, p.prorettype = 'trigger'::regtype AS returns_trigger,
+                l.lanname, p.proconfig = ARRAY['search_path=pg_catalog, public'] AS safe_search_path,
+                n.nspname || '.' || p.proname AS function_name
+            FROM pg_trigger t
+            JOIN pg_proc p ON p.oid = t.tgfoid
+            JOIN pg_namespace n ON n.oid = p.pronamespace
+            JOIN pg_language l ON l.oid = p.prolang
+            WHERE t.tgname = 'assessment_participants_case_identity_guard'
+              AND t.tgrelid = 'assessment_participants'::regclass
+              AND NOT t.tgisinternal
+            SQL);
+
+        $caseColumns = 'id,public_id,participant_id,organization_id,package_id';
+        $attemptColumns = 'assessment_case_id,assessment_attempt_id,participant_id,organization_id,package_id';
+        $uniqueExact = $unique !== null && $unique->contype === 'u' && $unique->convalidated
+            && ! $unique->condeferrable && ! $unique->condeferred
+            && $unique->columns === $caseColumns;
+        $foreignExact = $foreign !== null && $foreign->contype === 'f' && $foreign->convalidated
+            && ! $foreign->condeferrable && ! $foreign->condeferred
+            && $foreign->columns === $attemptColumns && $foreign->referenced_table === 'assessment_cases'
+            && $foreign->referenced_columns === $caseColumns && $foreign->confdeltype === 'r'
+            && $foreign->confupdtype === 'a' && $foreign->confmatchtype === 's';
+        $triggerExact = $trigger !== null && (int) $trigger->tgtype === 23 && $trigger->tgenabled === 'O'
+            && $trigger->unqualified && ! $trigger->prosecdef && $trigger->returns_trigger
+            && $trigger->lanname === 'plpgsql' && $trigger->safe_search_path
+            && $trigger->function_name === 'app_private.guard_assessment_participant_case_identity'
+            && $this->normalizeSql($trigger->prosrc) === $this->normalizeSql($this->postgresGuardBody());
+
+        return [
+            'present' => $unique !== null || $foreign !== null || $notNull || $trigger !== null,
+            'exact' => $uniqueExact && $foreignExact && $notNull && $triggerExact,
+        ];
+    }
+
+    /** @return array{present:bool,exact:bool} */
+    private function sqliteEnforcementState(): array
     {
         $notNull = (int) collect(DB::select("PRAGMA table_info('assessment_participants')"))
             ->map(fn (object $column): array => (array) $column)
             ->firstWhere('name', 'assessment_case_id')['notnull'];
         $scopeIndex = collect(DB::select("PRAGMA index_list('assessment_cases')"))
-            ->contains(fn (object $index): bool => ((array) $index)['name'] === self::SCOPE_UNIQUE);
+            ->map(fn (object $index): array => (array) $index)
+            ->firstWhere('name', self::SCOPE_UNIQUE);
+        $indexColumns = $scopeIndex === null ? [] : collect(DB::select("PRAGMA index_info('".self::SCOPE_UNIQUE."')"))
+            ->sortBy('seqno')->pluck('name')->all();
         $scopeForeign = collect(DB::select("PRAGMA foreign_key_list('assessment_participants')"))
             ->groupBy(fn (object $column): int => (int) ((array) $column)['id'])
-            ->contains(fn ($columns): bool => $columns->count() === 5
-                && $columns->every(fn (object $column): bool => ((array) $column)['table'] === 'assessment_cases'));
-        $guard = collect(DB::select("SELECT name FROM sqlite_master WHERE type = 'trigger'"))
-            ->contains(fn (object $trigger): bool => ((array) $trigger)['name'] === 'assessment_participants_case_insert_guard');
+            ->first(function ($columns): bool {
+                $first = (array) $columns->first();
 
-        return $notNull + (int) $scopeIndex + (int) $scopeForeign + (int) $guard;
+                return $first['table'] === 'assessment_cases' && $columns->count() === 5;
+            });
+        $foreignRows = $scopeForeign?->sortBy(fn (object $column): int => (int) ((array) $column)['seq'])->values() ?? collect();
+        $triggers = collect(DB::select(<<<'SQL'
+            SELECT name, sql FROM sqlite_master
+            WHERE type = 'trigger' AND tbl_name = 'assessment_participants'
+              AND name IN ('assessment_participants_case_insert_guard', 'assessment_participants_case_update_guard')
+            SQL))->mapWithKeys(fn (object $trigger): array => [((array) $trigger)['name'] => ((array) $trigger)['sql']]);
+        $indexExact = $scopeIndex !== null && (int) $scopeIndex['unique'] === 1
+            && (int) $scopeIndex['partial'] === 0
+            && $indexColumns === ['id', 'public_id', 'participant_id', 'organization_id', 'package_id'];
+        $foreignExact = $foreignRows->pluck('from')->all()
+                === ['assessment_case_id', 'assessment_attempt_id', 'participant_id', 'organization_id', 'package_id']
+            && $foreignRows->pluck('to')->all()
+                === ['id', 'public_id', 'participant_id', 'organization_id', 'package_id']
+            && $foreignRows->every(fn (object $column): bool => strtoupper(((array) $column)['on_delete']) === 'RESTRICT'
+                && strtoupper(((array) $column)['on_update']) === 'NO ACTION'
+                && strtoupper(((array) $column)['match']) === 'NONE');
+        $guardsExact = $triggers->count() === 2
+            && $this->normalizeSql($triggers['assessment_participants_case_insert_guard'])
+                === $this->normalizeSql($this->sqliteInsertGuardSql())
+            && $this->normalizeSql($triggers['assessment_participants_case_update_guard'])
+                === $this->normalizeSql($this->sqliteUpdateGuardSql());
+
+        return [
+            'present' => $notNull === 1 || $scopeIndex !== null || $scopeForeign !== null || $triggers->isNotEmpty(),
+            'exact' => $notNull === 1 && $indexExact && $foreignExact && $guardsExact,
+        ];
+    }
+
+    private function postgresGuardBody(): string
+    {
+        return <<<'SQL'
+            BEGIN
+                IF TG_OP = 'UPDATE' AND (
+                    NEW.assessment_case_id IS DISTINCT FROM OLD.assessment_case_id OR
+                    NEW.assessment_attempt_id IS DISTINCT FROM OLD.assessment_attempt_id OR
+                    NEW.participant_id IS DISTINCT FROM OLD.participant_id OR
+                    NEW.organization_id IS DISTINCT FROM OLD.organization_id OR
+                    NEW.package_id IS DISTINCT FROM OLD.package_id
+                ) THEN
+                    RAISE EXCEPTION 'assessment participant case identity is immutable' USING ERRCODE = 'P0001';
+                END IF;
+
+                IF TG_OP = 'UPDATE' THEN
+                    RETURN NEW;
+                END IF;
+
+                IF NOT EXISTS (
+                    SELECT 1 FROM public.assessment_cases ac
+                    WHERE ac.id = NEW.assessment_case_id
+                      AND ac.public_id = NEW.assessment_attempt_id
+                      AND ac.participant_id = NEW.participant_id
+                      AND ac.organization_id = NEW.organization_id
+                      AND ac.package_id = NEW.package_id
+                      AND ac.origin = 'INTEGRATED'
+                ) THEN
+                    RAISE EXCEPTION 'assessment participant requires an exact integrated case' USING ERRCODE = '23514';
+                END IF;
+
+                RETURN NEW;
+            END;
+            SQL;
+    }
+
+    private function sqliteInsertGuardSql(): string
+    {
+        return <<<'SQL'
+            CREATE TRIGGER assessment_participants_case_insert_guard
+            BEFORE INSERT ON assessment_participants
+            FOR EACH ROW
+            WHEN NOT EXISTS (
+                SELECT 1 FROM assessment_cases ac
+                WHERE ac.id = NEW.assessment_case_id
+                  AND ac.public_id = NEW.assessment_attempt_id
+                  AND ac.participant_id = NEW.participant_id
+                  AND ac.organization_id = NEW.organization_id
+                  AND ac.package_id = NEW.package_id
+                  AND ac.origin = 'INTEGRATED'
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'assessment participant requires an exact integrated case');
+            END;
+            SQL;
+    }
+
+    private function sqliteUpdateGuardSql(): string
+    {
+        return <<<'SQL'
+            CREATE TRIGGER assessment_participants_case_update_guard
+            BEFORE UPDATE ON assessment_participants
+            FOR EACH ROW
+            WHEN NEW.assessment_case_id IS NOT OLD.assessment_case_id
+              OR NEW.assessment_attempt_id IS NOT OLD.assessment_attempt_id
+              OR NEW.participant_id IS NOT OLD.participant_id
+              OR NEW.organization_id IS NOT OLD.organization_id
+              OR NEW.package_id IS NOT OLD.package_id
+            BEGIN
+                SELECT RAISE(ABORT, 'assessment participant case identity is immutable');
+            END;
+            SQL;
+    }
+
+    private function normalizeSql(string $sql): string
+    {
+        return (string) preg_replace('/\s+/', ' ', rtrim(trim($sql), ';'));
     }
 };

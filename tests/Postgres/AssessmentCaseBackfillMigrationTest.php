@@ -9,6 +9,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 
@@ -177,6 +178,49 @@ final class AssessmentCaseBackfillMigrationTest extends TestCase
         }
     }
 
+    #[DataProvider('postgresEnforcementCorruptions')]
+    public function test_rerun_rejects_one_wrong_postgres_enforcement_component(string $component): void
+    {
+        $this->asOwner(function () use ($component): void {
+            DB::beginTransaction();
+            try {
+                $migration = $this->migration();
+                $migration->down();
+                $migration->up();
+                $this->corruptPostgresEnforcement($component);
+                $before = $this->postgresEnforcementDefinitions();
+
+                try {
+                    $migration->up();
+                    $this->fail("Wrong PostgreSQL {$component} enforcement was accepted.");
+                } catch (RuntimeException $exception) {
+                    $this->assertStringContainsString('partial PostgreSQL enforcement', $exception->getMessage());
+                }
+                $this->assertEquals($before, $this->postgresEnforcementDefinitions());
+                $this->assertSame(0, DB::table('assessment_cases')->count());
+                $this->assertSame(0, DB::table('assessment_participants')->count());
+                foreach (['assessment_cases', 'assessment_participants'] as $table) {
+                    $this->assertTrue(DB::selectOne(
+                        'SELECT relforcerowsecurity FROM pg_class WHERE oid = ?::regclass', [$table],
+                    )->relforcerowsecurity, $table);
+                }
+            } finally {
+                DB::rollBack();
+            }
+        });
+    }
+
+    public static function postgresEnforcementCorruptions(): iterable
+    {
+        yield 'parent unique order' => ['unique_order'];
+        yield 'foreign source and target order' => ['foreign_order'];
+        yield 'foreign target table' => ['foreign_target'];
+        yield 'foreign delete action' => ['foreign_delete'];
+        yield 'trigger event' => ['trigger_event'];
+        yield 'trigger function' => ['trigger_function'];
+        yield 'trigger body' => ['trigger_body'];
+    }
+
     private function migration(): object
     {
         return require database_path('migrations/2026_09_09_000300_backfill_integrated_assessment_cases.php');
@@ -266,6 +310,65 @@ final class AssessmentCaseBackfillMigrationTest extends TestCase
         $constraint = DB::table('pg_constraint')->where('conname', $name)->first();
         $this->assertNotNull($constraint, $name);
         $this->assertSame($type, $constraint->contype, $name);
+    }
+
+    private function corruptPostgresEnforcement(string $component): void
+    {
+        if ($component === 'unique_order') {
+            DB::statement('ALTER TABLE assessment_participants DROP CONSTRAINT assessment_participants_case_scope_fk');
+            DB::statement('ALTER TABLE assessment_cases ADD CONSTRAINT synthetic_phase_two_canonical_unique UNIQUE (id, public_id, participant_id, organization_id, package_id)');
+            DB::statement('ALTER TABLE assessment_cases DROP CONSTRAINT assessment_cases_integrated_scope_unique');
+            DB::statement('ALTER TABLE assessment_cases ADD CONSTRAINT assessment_cases_integrated_scope_unique UNIQUE (id, public_id, organization_id, participant_id, package_id)');
+            DB::statement('ALTER TABLE assessment_participants ADD CONSTRAINT assessment_participants_case_scope_fk FOREIGN KEY (assessment_case_id, assessment_attempt_id, participant_id, organization_id, package_id) REFERENCES assessment_cases (id, public_id, participant_id, organization_id, package_id) ON DELETE RESTRICT');
+
+            return;
+        }
+
+        if (str_starts_with($component, 'foreign_')) {
+            DB::statement('ALTER TABLE assessment_participants DROP CONSTRAINT assessment_participants_case_scope_fk');
+            if ($component === 'foreign_target') {
+                DB::statement('CREATE TABLE synthetic_phase_two_parent (id BIGINT, public_id VARCHAR(26), participant_id BIGINT, organization_id BIGINT, package_id BIGINT, UNIQUE (id, public_id, participant_id, organization_id, package_id))');
+                DB::statement('ALTER TABLE assessment_participants ADD CONSTRAINT assessment_participants_case_scope_fk FOREIGN KEY (assessment_case_id, assessment_attempt_id, participant_id, organization_id, package_id) REFERENCES synthetic_phase_two_parent (id, public_id, participant_id, organization_id, package_id) ON DELETE RESTRICT');
+
+                return;
+            }
+            if ($component === 'foreign_order') {
+                DB::statement('ALTER TABLE assessment_cases ADD CONSTRAINT synthetic_phase_two_swapped_unique UNIQUE (id, public_id, organization_id, participant_id, package_id)');
+                DB::statement('ALTER TABLE assessment_participants ADD CONSTRAINT assessment_participants_case_scope_fk FOREIGN KEY (assessment_case_id, assessment_attempt_id, organization_id, participant_id, package_id) REFERENCES assessment_cases (id, public_id, organization_id, participant_id, package_id) ON DELETE RESTRICT');
+
+                return;
+            }
+            DB::statement('ALTER TABLE assessment_participants ADD CONSTRAINT assessment_participants_case_scope_fk FOREIGN KEY (assessment_case_id, assessment_attempt_id, participant_id, organization_id, package_id) REFERENCES assessment_cases (id, public_id, participant_id, organization_id, package_id) ON DELETE CASCADE');
+
+            return;
+        }
+
+        DB::unprepared('DROP TRIGGER assessment_participants_case_identity_guard ON assessment_participants');
+        if ($component === 'trigger_event') {
+            DB::unprepared('CREATE TRIGGER assessment_participants_case_identity_guard BEFORE INSERT ON assessment_participants FOR EACH ROW EXECUTE FUNCTION app_private.guard_assessment_participant_case_identity()');
+
+            return;
+        }
+        if ($component === 'trigger_function') {
+            DB::unprepared('CREATE FUNCTION app_private.synthetic_phase_two_noop() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END; $$');
+            DB::unprepared('CREATE TRIGGER assessment_participants_case_identity_guard BEFORE INSERT OR UPDATE ON assessment_participants FOR EACH ROW EXECUTE FUNCTION app_private.synthetic_phase_two_noop()');
+
+            return;
+        }
+        DB::unprepared('CREATE OR REPLACE FUNCTION app_private.guard_assessment_participant_case_identity() RETURNS trigger LANGUAGE plpgsql SET search_path = pg_catalog, public AS $$ BEGIN RETURN NEW; END; $$');
+        DB::unprepared('CREATE TRIGGER assessment_participants_case_identity_guard BEFORE INSERT OR UPDATE ON assessment_participants FOR EACH ROW EXECUTE FUNCTION app_private.guard_assessment_participant_case_identity()');
+    }
+
+    /** @return array<string,mixed> */
+    private function postgresEnforcementDefinitions(): array
+    {
+        return [
+            'constraints' => DB::select("SELECT conrelid::regclass::text AS table_name, conname, pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conname IN ('assessment_cases_integrated_scope_unique', 'assessment_participants_case_scope_fk') ORDER BY conname"),
+            'trigger' => DB::select("SELECT pg_get_triggerdef(oid) AS definition FROM pg_trigger WHERE tgname = 'assessment_participants_case_identity_guard' AND tgrelid = 'assessment_participants'::regclass"),
+            'function' => DB::select("SELECT pg_get_functiondef(p.oid) AS definition FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'app_private' AND p.proname = 'guard_assessment_participant_case_identity'"),
+            'case_security' => DB::select("SELECT relrowsecurity, relforcerowsecurity FROM pg_class WHERE oid = 'assessment_cases'::regclass"),
+            'attempt_security' => DB::select("SELECT relrowsecurity, relforcerowsecurity FROM pg_class WHERE oid = 'assessment_participants'::regclass"),
+        ];
     }
 
     private function assertSqlState(string $state, callable $operation): void

@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace Tests\Feature\Database;
 
 use Illuminate\Database\QueryException;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\OrganizationPaymentTestCase;
 
@@ -146,6 +149,90 @@ final class AssessmentCaseBackfillMigrationTest extends OrganizationPaymentTestC
         $this->assertEquals($beforeForeignKeys, DB::select("PRAGMA foreign_key_list('assessment_participants')"));
         $this->assertEquals($beforeIndexes, DB::select("PRAGMA index_list('assessment_participants')"));
         $this->assertSame([], DB::select('PRAGMA foreign_key_check'));
+    }
+
+    #[DataProvider('sqliteEnforcementCorruptions')]
+    public function test_rerun_rejects_one_wrong_sqlite_enforcement_component(string $component): void
+    {
+        $this->migration->up();
+        $this->corruptSqliteEnforcement($component);
+        $before = $this->sqliteEnforcementDefinitions();
+
+        try {
+            $this->migration->up();
+            $this->fail("Wrong SQLite {$component} enforcement was accepted.");
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('partial SQLite enforcement', $exception->getMessage());
+        }
+        $this->assertEquals($before, $this->sqliteEnforcementDefinitions());
+        $this->assertSame(0, DB::table('assessment_cases')->count());
+        $this->assertSame(0, DB::table('assessment_participants')->count());
+    }
+
+    public static function sqliteEnforcementCorruptions(): iterable
+    {
+        yield 'unique columns' => ['unique_columns'];
+        yield 'unique flag' => ['unique_flag'];
+        yield 'foreign source and target order' => ['foreign_order'];
+        yield 'foreign delete action' => ['foreign_delete'];
+        yield 'insert guard body' => ['insert_guard'];
+        yield 'update guard body' => ['update_guard'];
+    }
+
+    private function corruptSqliteEnforcement(string $component): void
+    {
+        if (str_starts_with($component, 'unique_')) {
+            DB::statement('DROP INDEX assessment_cases_integrated_scope_unique');
+            $columns = $component === 'unique_columns'
+                ? 'id, public_id, organization_id, participant_id, package_id'
+                : 'id, public_id, participant_id, organization_id, package_id';
+            $unique = $component === 'unique_columns' ? 'UNIQUE ' : '';
+            DB::statement("CREATE {$unique}INDEX assessment_cases_integrated_scope_unique ON assessment_cases ({$columns})");
+
+            return;
+        }
+
+        if (str_starts_with($component, 'foreign_')) {
+            $triggers = collect(DB::select("SELECT sql FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'assessment_participants' AND sql IS NOT NULL"))
+                ->pluck('sql')->all();
+            Schema::table('assessment_participants', function (Blueprint $table) use ($component): void {
+                $table->dropForeign([
+                    'assessment_case_id', 'assessment_attempt_id', 'participant_id', 'organization_id', 'package_id',
+                ]);
+                $from = $component === 'foreign_order'
+                    ? ['assessment_case_id', 'assessment_attempt_id', 'organization_id', 'participant_id', 'package_id']
+                    : ['assessment_case_id', 'assessment_attempt_id', 'participant_id', 'organization_id', 'package_id'];
+                $to = $component === 'foreign_order'
+                    ? ['id', 'public_id', 'organization_id', 'participant_id', 'package_id']
+                    : ['id', 'public_id', 'participant_id', 'organization_id', 'package_id'];
+                $foreign = $table->foreign($from)->references($to)->on('assessment_cases');
+                $component === 'foreign_delete' ? $foreign->cascadeOnDelete() : $foreign->restrictOnDelete();
+            });
+            foreach ($triggers as $trigger) {
+                DB::unprepared($trigger);
+            }
+
+            return;
+        }
+
+        $name = $component === 'insert_guard'
+            ? 'assessment_participants_case_insert_guard'
+            : 'assessment_participants_case_update_guard';
+        $event = $component === 'insert_guard' ? 'INSERT' : 'UPDATE';
+        DB::unprepared("DROP TRIGGER {$name}");
+        DB::unprepared("CREATE TRIGGER {$name} BEFORE {$event} ON assessment_participants FOR EACH ROW BEGIN SELECT 1; END;");
+    }
+
+    /** @return array<string,mixed> */
+    private function sqliteEnforcementDefinitions(): array
+    {
+        return [
+            'columns' => DB::select("PRAGMA table_info('assessment_participants')"),
+            'case_indexes' => DB::select("PRAGMA index_list('assessment_cases')"),
+            'case_scope_columns' => DB::select("PRAGMA index_info('assessment_cases_integrated_scope_unique')"),
+            'attempt_foreign_keys' => DB::select("PRAGMA foreign_key_list('assessment_participants')"),
+            'attempt_triggers' => DB::select("SELECT name, sql FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'assessment_participants' ORDER BY name"),
+        ];
     }
 
     public function test_down_refuses_populated_history(): void
