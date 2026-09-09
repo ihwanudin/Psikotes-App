@@ -745,3 +745,17 @@ no exclusion was added. The historical 210-error ESLint blocker is independently
 accepted as mechanical commit `0a53002`; repo lint and focused browser/source-
 integrity tests are green. A dependency-free bounded OOXML inspection slice is
 active next, while Git-history scanning remains a later authority/tooling decision.
+
+Current-snapshot archive coverage now includes strict DOCX inspection
+`5a0ec7f` with name-oracle repair `ee38773` and Markdown-only ZIP inspection
+`fd2d3f0`. Canonical ordinal part identifiers expose neither inner filenames
+nor their hashes. Archive parsers fail closed on unsafe paths, duplicate or
+special entries, unsupported methods/content, encryption, descriptors, ZIP64,
+CRC/size mismatch, decompression bombs, nested/binary payloads, and malformed
+XML/entities. Scanner suites passed 43/43 and adversarial review found no P1/P2;
+the tracked PRD DOCX and Markdown archive contain zero scanner findings. Root
+profiles now stop only on two PNG and one ICO static assets. Their structures
+are valid and contain no text/profile/archive metadata, but a digest manifest
+would attest only to prior human review and therefore requires an authenticated
+security owner/CODEOWNERS or signed-approval authority. No extension allowlist
+or suppression was added, so the current-snapshot gate remains fail-closed.
