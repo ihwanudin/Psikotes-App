@@ -107,7 +107,7 @@ final class AspectSourceDiscrepancyPolicyTest extends TestCase
         yield 'D2 from RMIB Mechanical' => ['D2', 'RMIB_Me', 4];
         yield 'D3 from RMIB Practical' => ['D3', 'RMIB_Prac', 3];
         yield 'D4 from RMIB Medical' => ['D4', 'RMIB_Med', 2];
-        yield 'D5 from RMIB Persuasive' => ['D5', 'RMIB_Prs', 1];
+        yield 'D5 from RMIB Social Service' => ['D5', 'RMIB_S.Se', 1];
     }
 
     #[DataProvider('minimalMultiSourceBoundaries')]
