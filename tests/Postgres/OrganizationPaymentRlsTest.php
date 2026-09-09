@@ -34,6 +34,7 @@ final class OrganizationPaymentRlsTest extends TestCase
                 ]);
                 $participant = DB::table('participants')->insertGetId([
                     'branch_id' => $branch, 'referral_branch_id' => $branch, 'referral_source' => 'default',
+                    'source_system' => 'ORGANIZATION_RLS_TEST',
                     'full_name' => 'Synthetic '.$code, 'gender' => 'male', 'birth_date' => '2000-01-01',
                     'education_level' => 'SMA_SMK', 'intended_field' => 'KAIGO', 'phone' => '620000000000',
                 ]);

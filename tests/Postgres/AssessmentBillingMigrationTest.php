@@ -39,11 +39,15 @@ final class AssessmentBillingMigrationTest extends TestCase
             $phaseTwoCaseMigration = require database_path('migrations/2026_09_09_000300_backfill_integrated_assessment_cases.php');
             $sessionCaseMigration = require database_path('migrations/2026_09_09_000400_harden_test_session_case_identity.php');
             $legacySelectionCaseMigration = require database_path('migrations/2026_09_09_000500_bind_legacy_selection_assessment_cases.php');
+            $directPublicCaseMigration = require database_path('migrations/2026_09_09_000600_bind_direct_public_orders_to_assessment_cases.php');
             $assessmentCaseStructure = $this->assessmentCaseStructure();
+            $directPublicCaseMigration->down();
             $legacySelectionCaseMigration->down();
             $sessionCaseMigration->down();
             $phaseTwoCaseMigration->down();
             $fixture = Fixture::create(withCase: false);
+            DB::table('participants')->where('id', $fixture['participant'])
+                ->update(['source_system' => 'P6B_TEST']);
             DB::table('assessment_bill_items')->insert(Fixture::item($fixture));
             DB::table('assessment_entitlements')->insert(Fixture::entitlement($fixture));
             $method = DB::table('assessment_bills')->where('id', $fixture['bill'])->value('payment_method_id');
@@ -125,6 +129,7 @@ final class AssessmentBillingMigrationTest extends TestCase
             $phaseTwoCaseMigration->up();
             $sessionCaseMigration->up();
             $legacySelectionCaseMigration->up();
+            $directPublicCaseMigration->up();
             $this->assertEquals($assessmentCaseStructure, $this->assessmentCaseStructure());
             $source = DB::table('integration_sources')->insertGetId([
                 'integration_client_id' => DB::table('assessment_participants')->where('id', $fixture['attempt'])

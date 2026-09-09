@@ -15,6 +15,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $id
  * @property string $public_id
  * @property int $participant_id
+ * @property int|null $assessment_case_id
+ * @property AssessmentCase|null $assessmentCase
  * @property int|null $payment_method_id
  * @property PaymentMethod|null $paymentMethod
  * @property OrderStatus $status
@@ -32,6 +34,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable([
     'public_id',
     'participant_id',
+    'assessment_case_id',
     'payment_method_id',
     'status',
     'amount',
@@ -52,6 +55,12 @@ final class Order extends Model
     public function participant(): BelongsTo
     {
         return $this->belongsTo(Participant::class);
+    }
+
+    /** @return BelongsTo<AssessmentCase, $this> */
+    public function assessmentCase(): BelongsTo
+    {
+        return $this->belongsTo(AssessmentCase::class);
     }
 
     /** @return BelongsTo<PaymentMethod, $this> */

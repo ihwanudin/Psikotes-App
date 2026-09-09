@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -17,10 +18,12 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property int|null $package_id
  * @property string $origin
  * @property string|null $intended_field_snapshot
+ * @property CarbonInterface $created_at
  * @property-read Participant $participant
  * @property-read Branch $organization
  * @property-read TestPackage|null $package
  * @property-read AssessmentParticipant|null $assessmentParticipant
+ * @property-read Order|null $order
  */
 #[Fillable(['public_id', 'participant_id', 'organization_id', 'package_id', 'origin', 'intended_field_snapshot'])]
 final class AssessmentCase extends Model
@@ -47,5 +50,11 @@ final class AssessmentCase extends Model
     public function assessmentParticipant(): HasOne
     {
         return $this->hasOne(AssessmentParticipant::class, 'assessment_case_id');
+    }
+
+    /** @return HasOne<Order, $this> */
+    public function order(): HasOne
+    {
+        return $this->hasOne(Order::class, 'assessment_case_id');
     }
 }

@@ -134,6 +134,9 @@ final class TestSessionCaseIdentityMigrationTest extends TestCase
         $this->asOwner(function (): void {
             DB::beginTransaction();
             try {
+                $directPublic = require database_path('migrations/2026_09_09_000600_bind_direct_public_orders_to_assessment_cases.php');
+                $sessionCase = require database_path('migrations/2026_09_09_000400_harden_test_session_case_identity.php');
+                $directPublic->down();
                 $before = $this->definitions();
                 $this->openFixtureTables();
                 $graph = $this->graph('populated');
@@ -142,7 +145,7 @@ final class TestSessionCaseIdentityMigrationTest extends TestCase
                 DB::statement('ALTER TABLE assessment_cases FORCE ROW LEVEL SECURITY');
                 DB::statement('ALTER TABLE test_sessions FORCE ROW LEVEL SECURITY');
                 try {
-                    $this->migrate('down');
+                    $sessionCase->down();
                     $this->fail('Populated history must refuse rollback.');
                 } catch (RuntimeException $exception) {
                     $this->assertSame('Test session case history prevents rollback.', $exception->getMessage());
@@ -161,7 +164,9 @@ final class TestSessionCaseIdentityMigrationTest extends TestCase
         $this->asOwner(function () use ($component): void {
             DB::beginTransaction();
             try {
+                $directPublic = require database_path('migrations/2026_09_09_000600_bind_direct_public_orders_to_assessment_cases.php');
                 $legacySelection = require database_path('migrations/2026_09_09_000500_bind_legacy_selection_assessment_cases.php');
+                $directPublic->down();
                 $legacySelection->down();
                 $this->corruptPostgres($component);
                 $before = $this->definitions();
@@ -206,8 +211,12 @@ final class TestSessionCaseIdentityMigrationTest extends TestCase
 
     private function migrate(string $direction): void
     {
+        $directPublic = require database_path('migrations/2026_09_09_000600_bind_direct_public_orders_to_assessment_cases.php');
         $legacySelection = require database_path('migrations/2026_09_09_000500_bind_legacy_selection_assessment_cases.php');
         $migration = require database_path('migrations/2026_09_09_000400_harden_test_session_case_identity.php');
+        if ($direction === 'down' && Schema::hasColumn('orders', 'assessment_case_id')) {
+            $directPublic->down();
+        }
         if ($direction === 'down' && Schema::hasColumn('selection_participants', 'assessment_case_id')) {
             $legacySelection->down();
         }
@@ -218,6 +227,9 @@ final class TestSessionCaseIdentityMigrationTest extends TestCase
         $operation();
         if ($direction === 'up' && ! Schema::hasColumn('selection_participants', 'assessment_case_id')) {
             $legacySelection->up();
+        }
+        if ($direction === 'up' && ! Schema::hasColumn('orders', 'assessment_case_id')) {
+            $directPublic->up();
         }
     }
 
@@ -241,7 +253,7 @@ final class TestSessionCaseIdentityMigrationTest extends TestCase
         ]);
         $participant = DB::table('participants')->insertGetId([
             'branch_id' => $branch, 'referral_branch_id' => $branch, 'referral_source' => 'default',
-            'package_id' => $package, 'source_system' => 'DIRECT_PUBLIC',
+            'package_id' => $package, 'source_system' => 'P4_TEST',
             'full_name' => $suffix, 'phone' => '620000000000',
         ]);
 
@@ -254,7 +266,7 @@ final class TestSessionCaseIdentityMigrationTest extends TestCase
         return DB::table('assessment_cases')->insertGetId([
             'public_id' => (string) Str::ulid(), 'participant_id' => $graph['participant'],
             'organization_id' => $graph['branch'], 'package_id' => $graph['package'],
-            'origin' => 'DIRECT_PUBLIC', 'intended_field_snapshot' => null,
+            'origin' => 'INTEGRATED', 'intended_field_snapshot' => null,
             'created_at' => now(), 'updated_at' => now(),
         ]);
     }

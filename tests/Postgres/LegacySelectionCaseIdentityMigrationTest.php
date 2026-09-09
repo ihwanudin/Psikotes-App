@@ -67,26 +67,31 @@ final class LegacySelectionCaseIdentityMigrationTest extends TestCase
 
     public function test_runtime_guard_rejects_wrong_origin_and_rebinding(): void
     {
-        app(RlsContextRunner::class)->runAsService(function (): void {
-            $first = $this->participant('first');
-            $second = $this->participant('second');
-            $legacy = $this->case($first, 'LEGACY_SELECTION');
-            $direct = $this->case($second, 'DIRECT_PUBLIC');
-            $selection = $this->selection($first['participant'], $legacy, 'first');
+        DB::beginTransaction();
+        try {
+            app(RlsContextRunner::class)->runAsService(function (): void {
+                $first = $this->participant('first');
+                $second = $this->participant('second');
+                $legacy = $this->case($first, 'LEGACY_SELECTION');
+                $direct = $this->case($second, 'DIRECT_PUBLIC');
+                $selection = $this->selection($first['participant'], $legacy, 'first');
 
-            $this->assertSqlState('23514', fn () => $this->selection($second['participant'], $direct, 'wrong'));
-            $this->assertSqlState('23514', fn () => $this->selection($second['participant'], PHP_INT_MAX, 'missing'));
-            foreach ($this->identityMutations($second['participant'], $direct) as $column => $value) {
+                $this->assertSqlState('23514', fn () => $this->selection($second['participant'], $direct, 'wrong'));
+                $this->assertSqlState('23514', fn () => $this->selection($second['participant'], PHP_INT_MAX, 'missing'));
+                foreach ($this->identityMutations($second['participant'], $direct) as $column => $value) {
+                    $this->assertSqlState('P0001', fn () => DB::table('selection_participants')
+                        ->where('id', $selection)->update([$column => $value]));
+                }
+                $case = DB::table('selection_participants')->where('id', $selection)->value('assessment_case_id');
                 $this->assertSqlState('P0001', fn () => DB::table('selection_participants')
-                    ->where('id', $selection)->update([$column => $value]));
-            }
-            $case = DB::table('selection_participants')->where('id', $selection)->value('assessment_case_id');
-            $this->assertSqlState('P0001', fn () => DB::table('selection_participants')
-                ->where('id', $selection)->delete());
-            $this->assertSame($case, DB::table('selection_participants')->where('id', $selection)
-                ->value('assessment_case_id'));
-            $this->assertSame(1, DB::table('assessment_cases')->where('id', $case)->count());
-        });
+                    ->where('id', $selection)->delete());
+                $this->assertSame($case, DB::table('selection_participants')->where('id', $selection)
+                    ->value('assessment_case_id'));
+                $this->assertSame(1, DB::table('assessment_cases')->where('id', $case)->count());
+            });
+        } finally {
+            DB::rollBack();
+        }
     }
 
     /** @return array{branch:int,participant:int} */
@@ -158,12 +163,19 @@ final class LegacySelectionCaseIdentityMigrationTest extends TestCase
 
     private function migrate(string $direction): void
     {
+        $directPublic = require database_path('migrations/2026_09_09_000600_bind_direct_public_orders_to_assessment_cases.php');
         $migration = require database_path('migrations/2026_09_09_000500_bind_legacy_selection_assessment_cases.php');
+        if ($direction === 'down' && Schema::hasColumn('orders', 'assessment_case_id')) {
+            $directPublic->down();
+        }
         $operation = [$migration, $direction];
         if (! is_callable($operation)) {
             throw new \RuntimeException("Migration operation {$direction} is unavailable.");
         }
         $operation();
+        if ($direction === 'up' && ! Schema::hasColumn('orders', 'assessment_case_id')) {
+            $directPublic->up();
+        }
     }
 
     private function asOwner(callable $operation): void

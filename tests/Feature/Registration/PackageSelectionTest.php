@@ -170,6 +170,8 @@ final class PackageSelectionTest extends TestCase
             ->assertRedirect('/registration/received');
 
         $this->assertDatabaseHas('orders', ['amount' => 0, 'status' => 'paid']);
+        $this->assertNull(Order::query()->sole()->assessment_case_id);
+        $this->assertDatabaseCount('assessment_cases', 0);
         $this->assertDatabaseHas('entitlements', ['test_type' => 'dass21', 'status' => 'ready']);
     }
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Registration;
 
 use App\Models\Branch;
+use App\Models\Order;
 use App\Models\Participant;
 use Database\Seeders\PaymentMethodSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -68,6 +69,17 @@ final class ParticipantRegistrationTest extends TestCase
             'test_type' => 'ist',
             'status' => 'locked',
         ]);
+
+        $order = Order::query()->with('assessmentCase')->sole();
+        $case = $order->assessmentCase;
+        $this->assertNotNull($case);
+        $this->assertSame($order->public_id, $case->public_id);
+        $this->assertSame($participant->id, $case->participant_id);
+        $this->assertSame($branch->id, $case->organization_id);
+        $this->assertSame($participant->package_id, $case->package_id);
+        $this->assertSame('DIRECT_PUBLIC', $case->origin);
+        $this->assertSame('KAIGO', $case->intended_field_snapshot);
+        $this->assertTrue($order->created_at->equalTo($case->created_at));
 
         $this->assertDatabaseHas('consent_records', [
             'participant_id' => $participant->id,
@@ -180,6 +192,30 @@ final class ParticipantRegistrationTest extends TestCase
         $this->assertDatabaseCount('participants', 1);
         $this->assertDatabaseCount('consent_records', 2);
         $this->assertDatabaseCount('orders', 1);
+        $this->assertDatabaseCount('assessment_cases', 1);
+    }
+
+    public function test_replay_fails_closed_when_the_persisted_order_graph_is_incomplete(): void
+    {
+        $this->branch('CENTRAL', 'CENTRAL-REF', isDefault: true);
+        $token = (string) Str::uuid();
+        $payload = $this->validPayload($token);
+
+        $this->withSession(['registration.token' => $token])
+            ->post('/registrations', $payload)
+            ->assertRedirect('/registration/received');
+        $participant = Participant::query()->sole();
+        $participant->entitlements()->where('test_type', 'ist')->delete();
+
+        $this->withSession(['registration.token' => $token])
+            ->from('/register')
+            ->post('/registrations', $payload)
+            ->assertRedirect('/register')
+            ->assertSessionHasErrors('_registration_token');
+
+        $this->assertDatabaseCount('participants', 1);
+        $this->assertDatabaseCount('orders', 1);
+        $this->assertDatabaseCount('assessment_cases', 1);
     }
 
     public function test_registration_is_rate_limited_by_ip(): void
