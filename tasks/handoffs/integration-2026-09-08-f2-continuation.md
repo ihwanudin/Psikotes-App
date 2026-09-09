@@ -456,3 +456,40 @@ must not be edited, deleted, or included in coordinator commits.
 5. Choose the next dependency-unblocked increment from `tasks/parallel-work.md`;
    keep architecture enforcement and deterministic narrative acceptance in
    separate non-overlapping test-only lanes when they can run in parallel.
+
+## 2026-09-09 typed signing and persistence checkpoint
+
+The typed signing composer is accepted across `a9375ed` and repair `9b59cd6`.
+The canonical snapshot now binds the complete reviewed eligibility decision and
+all 18 G7 evidence projections. Semantic permutations retain one hash, while a
+different level, source version, or G7 fact changes the hash. Independent
+coordinator verification passed 382 tests/1,726 assertions and scoped PHPStan.
+This remains a pure-domain boundary; `persistence_authority_bound=false` is
+intentional until a transactional reader reloads stored source evidence.
+
+ADR-0029 phase-1 schema is accepted across `542cebd` and repair `fef865c`.
+It creates the immutable universal `assessment_cases` root and nullable links,
+enforces participant/organization tenant consistency with a composite database
+foreign key, and indexes the nullable package foreign key. The repair also
+updates the legacy migration regression to unwind dependent migrations in
+reverse order instead of weakening constraints. Independent coordinator gates
+passed SQLite 4/58, scoped PHPStan/Pint, and the full disposable PostgreSQL
+suite at 431 tests/4,784 assertions; all disposable resources were removed.
+
+Read-only backfill inspection found that only INTEGRATED attempts currently
+have a lossless case identity: `assessment_attempt_id` is the prescribed case
+public ID. The next case increment is therefore integrated dual-write followed
+by deterministic backfill and enforcement of
+`assessment_participants.assessment_case_id`. DIRECT_PUBLIC, legacy Selection,
+`test_sessions`, and DASS remain nullable because participant-only mapping is
+ambiguous when one person has multiple batteries; no migration may guess those
+links.
+
+Read-only F2/F3/F5 persistence audits also confirmed that existing generic
+result versions are integration-only IQ projections, not normalized-result
+authority. After case enforcement, the smallest independent schema slice is an
+immutable case-bound instrument result/version ledger plus exact source-level
+children. The later eligibility, G6, G7, report-version, signing-idempotency,
+and dedicated append-only audit ledgers remain serial migrations. DASS stays in
+its isolated schema and must not become an input or foreign-key dependency of
+the 18-aspect normalized result.
