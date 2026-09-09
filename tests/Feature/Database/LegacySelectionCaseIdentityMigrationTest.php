@@ -14,21 +14,18 @@ use Tests\OrganizationPaymentTestCase;
 
 final class LegacySelectionCaseIdentityMigrationTest extends OrganizationPaymentTestCase
 {
-    private object $migration;
-
     protected function setUp(): void
     {
         parent::setUp();
         $this->assertSame(0, Artisan::call('migrate', ['--force' => true]));
-        $this->migration = require database_path('migrations/2026_09_09_000500_bind_legacy_selection_assessment_cases.php');
-        $this->migration->down();
+        $this->migrate('down');
     }
 
     public function test_historical_selection_mapping_gets_an_opaque_case_without_inventing_package_or_field(): void
     {
         $fixture = $this->legacyFixture('history');
 
-        $this->migration->up();
+        $this->migrate('up');
 
         $mapping = DB::table('selection_participants')->where('id', $fixture['selection'])->first();
         $case = DB::table('assessment_cases')->where('id', $mapping->assessment_case_id)->first();
@@ -41,15 +38,22 @@ final class LegacySelectionCaseIdentityMigrationTest extends OrganizationPayment
         $this->assertSame('LEGACY_SELECTION', $case->origin);
         $this->assertSame('2026-08-29 03:15:00', $case->created_at);
 
-        $column = collect(DB::select("PRAGMA table_info('selection_participants')"))->firstWhere('name', 'assessment_case_id');
-        $this->assertSame(1, (int) $column->notnull);
+        $this->assertSame(1, DB::scalar(<<<'SQL'
+            SELECT "notnull"
+            FROM pragma_table_info('selection_participants')
+            WHERE name = 'assessment_case_id'
+            SQL));
         $this->assertContains('selection_participants_case_unique', collect(DB::select(
             "PRAGMA index_list('selection_participants')",
         ))->pluck('name')->all());
-        $foreign = collect(DB::select("PRAGMA foreign_key_list('selection_participants')"))
-            ->filter(fn (object $row): bool => $row->table === 'assessment_cases')->sortBy('seq')->values();
-        $this->assertSame(['assessment_case_id', 'participant_id'], $foreign->pluck('from')->all());
-        $this->assertSame(['id', 'participant_id'], $foreign->pluck('to')->all());
+        $foreign = collect(DB::select(<<<'SQL'
+            SELECT "from" AS source_column, "to" AS target_column
+            FROM pragma_foreign_key_list('selection_participants')
+            WHERE "table" = 'assessment_cases'
+            ORDER BY id, seq
+            SQL));
+        $this->assertSame(['assessment_case_id', 'participant_id'], $foreign->pluck('source_column')->all());
+        $this->assertSame(['id', 'participant_id'], $foreign->pluck('target_column')->all());
     }
 
     public function test_wrong_source_history_aborts_without_leaving_column_or_case(): void
@@ -58,7 +62,7 @@ final class LegacySelectionCaseIdentityMigrationTest extends OrganizationPayment
         DB::table('participants')->where('id', $fixture['participant'])->update(['source_system' => 'DIRECT_PUBLIC']);
 
         try {
-            $this->migration->up();
+            $this->migrate('up');
             $this->fail('Wrong source history must fail closed.');
         } catch (RuntimeException $exception) {
             $this->assertStringContainsString('historical Selection identity is incomplete', $exception->getMessage());
@@ -71,7 +75,7 @@ final class LegacySelectionCaseIdentityMigrationTest extends OrganizationPayment
     public function test_guards_reject_wrong_origin_and_identity_rebinding(): void
     {
         $fixture = $this->legacyFixture('guard');
-        $this->migration->up();
+        $this->migrate('up');
         $mapping = DB::table('selection_participants')->where('id', $fixture['selection'])->first();
 
         $other = $this->participant('other', 'SELEKSI_BEASISWA_JEPANG');
@@ -97,11 +101,11 @@ final class LegacySelectionCaseIdentityMigrationTest extends OrganizationPayment
     public function test_populated_rollback_refuses_without_changing_history(): void
     {
         $fixture = $this->legacyFixture('rollback');
-        $this->migration->up();
+        $this->migrate('up');
         $case = DB::table('selection_participants')->where('id', $fixture['selection'])->value('assessment_case_id');
 
         try {
-            $this->migration->down();
+            $this->migrate('down');
             $this->fail('Populated rollback must fail closed.');
         } catch (RuntimeException $exception) {
             $this->assertSame('Legacy Selection case history prevents rollback.', $exception->getMessage());
@@ -152,5 +156,15 @@ final class LegacySelectionCaseIdentityMigrationTest extends OrganizationPayment
         } catch (QueryException) {
             $this->addToAssertionCount(1);
         }
+    }
+
+    private function migrate(string $direction): void
+    {
+        $migration = require database_path('migrations/2026_09_09_000500_bind_legacy_selection_assessment_cases.php');
+        $operation = [$migration, $direction];
+        if (! is_callable($operation)) {
+            throw new RuntimeException("Migration operation {$direction} is unavailable.");
+        }
+        $operation();
     }
 }
