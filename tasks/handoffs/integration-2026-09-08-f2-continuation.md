@@ -676,3 +676,25 @@ whole migration. Main cases alias the server-minted order ULID and use order
 creation time; historical intended-field remains NULL. Migration `000600` is
 the next sole serial lane, including strict guards, SQLite descendant
 preservation, PostgreSQL boundary ordering, and explicit fixture adapters.
+
+The pure F7 proctoring policy is accepted across `63b002f`, adjudication repair
+`13a2847`, and gate-meaning repair `a92ffc2`. Camera failure/interruption,
+screen departure, network interruption, and unreasonable timing establish a
+minimum V2; proven invalidity establishes V3. Raw face/second-face/audio
+signals remain pending human adjudication and block only the proctoring gate.
+Confirmed substitution/assistance must reference compatible raw evidence and
+carry adjudicator identity/token; dismissals resolve the pending gate but still
+require an adjudication note. DASS is rejected. The decision explicitly does
+not replace global G5 signing/publication authority. Final adversarial review
+found no P1/P2; focused evidence passed 30 tests/113 assertions and full Unit
+passed 1,101/3,043. Persistence, API, private storage, retention, and UI remain
+later case/session-bound slices.
+
+Read-only F7 commission and F9 audits are also frozen. Commission tables and
+dashboard are absent; their exact implementation remains blocked on business
+authority for rate/base/rounding, eligible organizations, period timezone,
+free/refund handling, and payout/rejection rules. F9 is not launch-ready:
+queue/cache have partial static evidence, while a real secret/PII scan gate,
+retention executor, 50-user Kraepelin load gate, and backup/restore harness are
+missing. Load and runtime cache/queue evidence wait for a stable allocator and
+schema; no live environment or provider was touched.
