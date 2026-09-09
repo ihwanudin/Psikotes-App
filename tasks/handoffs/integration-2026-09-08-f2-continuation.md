@@ -644,3 +644,14 @@ item references, or immutable session-definition provenance. Existing F0 JSON
 is scoring data and must not be silently repurposed. A pure typed validator may
 be built with synthetic data, but no production catalog or allocator wiring is
 accepted until those decisions are supplied.
+
+The preparatory typed session-definition boundary is accepted across
+`804a414` and adversarial repair `a5762bb`. It validates exact shapes with
+synthetic data only, excludes DASS, requires fixed non-seeded definitions for
+IST/PAPI/RMIB, and enforces the known Kraepelin 50-by-28/27-answer contract.
+Every identity string rejects padding and control/Unicode whitespace aliases.
+The supplied checksum is recomputed from all validated canonical content, so a
+changed definition cannot reuse an old digest. Adversarial re-review found no
+remaining P1/P2; combined AssessmentSessions passed 142 tests/338 assertions
+with PHPStan and Pint green. This is not a production catalog and does not
+resolve the authority gaps above.
