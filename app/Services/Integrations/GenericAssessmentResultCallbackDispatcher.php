@@ -117,7 +117,7 @@ final readonly class GenericAssessmentResultCallbackDispatcher
             || filter_var($host, FILTER_VALIDATE_IP) !== false
             || ! in_array($parts['path'] ?? '', ['', '/'], true)
             || isset($parts['port']) && (int) $parts['port'] !== 443
-            || ! is_string($secret) || strlen($secret) < 32
+            || ! is_string($secret) || ! PsychotestSelectionRequestSigner::acceptsSecret($secret)
             || ! PsychotestSelectionRequestSigner::acceptsKeyId($keyId)
             || (is_string($inboundSecret) && hash_equals($inboundSecret, $secret))
             || $timeout < 2 || $timeout > 30) {

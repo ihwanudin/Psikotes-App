@@ -26,7 +26,7 @@ final class PsychotestSelectionRequestSigner
         if (preg_match('/\A[1-9][0-9]{0,10}\z/', $timestamp) !== 1
             || $method !== 'POST'
             || $path !== self::PATH
-            || strlen($secret) < 32
+            || ! self::acceptsSecret($secret)
             || ! self::acceptsKeyId($keyId)) {
             throw new InvalidArgumentException('PSYCHOTEST_SELECTION_SIGNATURE_INPUT_INVALID');
         }
@@ -52,6 +52,15 @@ final class PsychotestSelectionRequestSigner
     {
         return $keyId === null
             || (is_string($keyId) && preg_match('/\A[a-z0-9][a-z0-9_-]{0,63}\z/', $keyId) === 1);
+    }
+
+    public static function acceptsSecret(mixed $secret): bool
+    {
+        return is_string($secret)
+            && strlen($secret) >= 32
+            && strlen($secret) <= 4096
+            && preg_match('/\s/', $secret) !== 1
+            && count(count_chars($secret, 1)) >= 12;
     }
 
     private function canonicalQuery(string $query): string

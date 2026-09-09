@@ -160,6 +160,31 @@ final class GenericAssessmentResultCallbackDispatcherTest extends TestCase
         $this->assertDatabaseMissing('generic_assessment_result_dispatch_attempts', ['outbox_id' => $outboxId]);
     }
 
+    public function test_callback_secret_rejected_by_the_receiver_policy_fails_before_claim_or_http_io(): void
+    {
+        foreach ([str_repeat('P', 32), 'synthetic callback secret with whitespace 123456789'] as $secret) {
+            config()->set('selection_integration.result_callback_secret', $secret);
+            [, $source, $outboxId] = $this->outbox();
+            Http::fake();
+
+            try {
+                app(GenericAssessmentResultCallbackDispatcher::class)->dispatchExact(
+                    $outboxId,
+                    $source->id,
+                    1,
+                    $source->result_checksum,
+                    str_repeat('invalid-secret-token-', 2),
+                );
+                $this->fail('A callback secret rejected by Selection was accepted.');
+            } catch (LogicException $exception) {
+                $this->assertSame('ASSESSMENT_RESULT_CALLBACK_CONFIG_INVALID', $exception->getMessage());
+            }
+
+            Http::assertNothingSent();
+            $this->assertDatabaseMissing('generic_assessment_result_dispatch_attempts', ['outbox_id' => $outboxId]);
+        }
+    }
+
     public function test_http_outcomes_map_to_the_existing_durable_retry_policy(): void
     {
         $statuses = [200, 429, 503, 422, 408];

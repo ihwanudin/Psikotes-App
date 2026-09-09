@@ -18,8 +18,7 @@ final readonly class GenericAssessmentResultCallbackConfiguration
             'SELECTION_RESULT_CALLBACK_BASE_URL_HTTPS_EXACT' => $this->isExactSelectionOrigin(
                 config('selection_integration.result_callback_base_url'),
             ),
-            'SELECTION_RESULT_CALLBACK_SECRET' => is_string($callbackSecret)
-                && strlen($callbackSecret) >= 32,
+            'SELECTION_RESULT_CALLBACK_SECRET' => PsychotestSelectionRequestSigner::acceptsSecret($callbackSecret),
             'SELECTION_RESULT_CALLBACK_KEY_ID' => PsychotestSelectionRequestSigner::acceptsKeyId($callbackKeyId),
             'SELECTION_RESULT_CALLBACK_SECRET_DIRECTIONAL' => ! is_string($inboundSecret)
                 || ! is_string($callbackSecret)
