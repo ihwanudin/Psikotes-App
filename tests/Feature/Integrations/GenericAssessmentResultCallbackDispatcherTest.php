@@ -38,6 +38,7 @@ final class GenericAssessmentResultCallbackDispatcherTest extends TestCase
         config()->set('selection_integration.result_callback_enabled', true);
         config()->set('selection_integration.result_callback_base_url', 'https://seleksi.beasiswajepang.id');
         config()->set('selection_integration.result_callback_secret', self::SECRET);
+        config()->set('selection_integration.result_callback_key_id', null);
         config()->set('selection_integration.result_callback_timeout_seconds', 10);
         config()->set('selection_integration.client_secret', 'selection-to-psychotest-secret-is-distinct');
     }
@@ -74,6 +75,7 @@ final class GenericAssessmentResultCallbackDispatcherTest extends TestCase
             $this->assertSame(['generic-assessment-result'], $request->header('X-Psychotest-Contract'));
             $this->assertSame(['1'], $request->header('X-Psychotest-Contract-Version'));
             $this->assertSame(['v2'], $request->header('X-Psychotest-Signature-Version'));
+            $this->assertSame([], $request->header('X-Psychotest-Key-Id'));
             $expected = app(PsychotestSelectionRequestSigner::class)->sign(
                 $timestamp, 'POST', '/api/v2/integrations/psychotest/results', '', $body, self::SECRET,
             );
@@ -95,6 +97,67 @@ final class GenericAssessmentResultCallbackDispatcherTest extends TestCase
             $this->assertStringNotContainsString(self::SECRET, $encoded);
             $this->assertStringNotContainsString('seleksi.beasiswajepang.id', $encoded);
         }
+    }
+
+    public function test_keyed_callback_binds_the_key_id_into_the_signature_and_header(): void
+    {
+        config()->set('selection_integration.result_callback_key_id', 'psychotest-2026-10');
+        [, $source, $outboxId] = $this->outbox();
+        Http::fake(['https://seleksi.beasiswajepang.id/*' => Http::response(['data' => ['status' => 'ACCEPTED']], 202)]);
+
+        app(GenericAssessmentResultCallbackDispatcher::class)->dispatchExact(
+            $outboxId,
+            $source->id,
+            1,
+            $source->result_checksum,
+            str_repeat('keyed-callback-token-', 2),
+        );
+
+        Http::assertSent(function (Request $request): bool {
+            $timestamp = (string) Date::now()->timestamp;
+            $canonical = implode("\n", [
+                'psychotest-selection-hmac:v2',
+                $timestamp,
+                'generic-assessment-result',
+                '1',
+                'POST',
+                '/api/v2/integrations/psychotest/results',
+                '',
+                hash('sha256', $request->body()),
+                'key-id:psychotest-2026-10',
+            ]);
+
+            $this->assertSame(['psychotest-2026-10'], $request->header('X-Psychotest-Key-Id'));
+            $this->assertSame(
+                [hash_hmac('sha256', $canonical, self::SECRET)],
+                $request->header('X-Psychotest-Signature'),
+            );
+
+            return true;
+        });
+    }
+
+    public function test_malformed_callback_key_id_fails_before_claim_or_http_io(): void
+    {
+        config()->set('selection_integration.result_callback_key_id', 'Invalid Key');
+        [, $source, $outboxId] = $this->outbox();
+        Http::fake();
+
+        try {
+            app(GenericAssessmentResultCallbackDispatcher::class)->dispatchExact(
+                $outboxId,
+                $source->id,
+                1,
+                $source->result_checksum,
+                str_repeat('invalid-key-id-token-', 2),
+            );
+            $this->fail('A malformed callback key ID was accepted.');
+        } catch (LogicException $exception) {
+            $this->assertSame('ASSESSMENT_RESULT_CALLBACK_CONFIG_INVALID', $exception->getMessage());
+        }
+
+        Http::assertNothingSent();
+        $this->assertDatabaseMissing('generic_assessment_result_dispatch_attempts', ['outbox_id' => $outboxId]);
     }
 
     public function test_http_outcomes_map_to_the_existing_durable_retry_policy(): void

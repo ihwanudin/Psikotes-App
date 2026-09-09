@@ -21,15 +21,17 @@ final class PsychotestSelectionRequestSigner
         string $rawQuery,
         string $body,
         string $secret,
+        ?string $keyId = null,
     ): string {
         if (preg_match('/\A[1-9][0-9]{0,10}\z/', $timestamp) !== 1
             || $method !== 'POST'
             || $path !== self::PATH
-            || strlen($secret) < 32) {
+            || strlen($secret) < 32
+            || ! self::acceptsKeyId($keyId)) {
             throw new InvalidArgumentException('PSYCHOTEST_SELECTION_SIGNATURE_INPUT_INVALID');
         }
 
-        return hash_hmac('sha256', implode("\n", [
+        $canonical = implode("\n", [
             'psychotest-selection-hmac:v2',
             $timestamp,
             self::CONTRACT,
@@ -38,7 +40,18 @@ final class PsychotestSelectionRequestSigner
             $path,
             $this->canonicalQuery($rawQuery),
             hash('sha256', $body),
-        ]), $secret);
+        ]);
+        if ($keyId !== null) {
+            $canonical .= "\nkey-id:".$keyId;
+        }
+
+        return hash_hmac('sha256', $canonical, $secret);
+    }
+
+    public static function acceptsKeyId(mixed $keyId): bool
+    {
+        return $keyId === null
+            || (is_string($keyId) && preg_match('/\A[a-z0-9][a-z0-9_-]{0,63}\z/', $keyId) === 1);
     }
 
     private function canonicalQuery(string $query): string
