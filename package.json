@@ -10,6 +10,9 @@
         "format:check": "prettier --check resources/",
         "lint": "eslint . --fix",
         "lint:check": "eslint .",
+        "security:scan:pii": "node tools/security/repository-content-scan.mjs --kind=pii",
+        "security:scan:secret": "node tools/security/repository-content-scan.mjs --kind=secret",
+        "security:scan:test": "node --test tools/security/repository-content-scan.test.mjs",
         "types:check": "tsc --noEmit"
     },
     "devDependencies": {
