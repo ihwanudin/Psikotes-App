@@ -527,3 +527,16 @@ suitability-label derivation, and system-versus-final G6 level selection.
 The D5 eligibility fixture correction `f9bd44a` aligns provenance with RMIB
 Social Service (`RMIB_S.Se`). These three accepted increments passed independent
 Narrative/Eligibility, PHPStan, Pint, and diff checks.
+
+The read-only F2 ledger freeze confirms that phase 2B is necessary but not
+sufficient for result persistence. `test_sessions.assessment_case_id` remains
+nullable and rebindable, while the 42 aspect-source associations exist only as
+prose in SPEC/SCORING_ALGORITHM rather than a versioned data source. Therefore
+no writer or signing reader may claim authoritative instrument results yet,
+and those mappings must not be hardcoded into a migration. The eventual design
+is an immutable case/session/instrument/version parent ledger plus exact ordered
+source-level children, append-only FORCE-RLS access, canonical checksums and
+idempotency, and eager loading in one parent plus one child query. DASS,
+eligibility/G6/G7, and report/signing data stay outside that ledger. Required
+predecessors are a separate immutable case-bound test-session slice and a
+coordinator/F0 extraction of the 42 mappings into versioned configuration.
