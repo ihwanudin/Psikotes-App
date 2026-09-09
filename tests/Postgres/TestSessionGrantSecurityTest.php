@@ -20,6 +20,11 @@ final class TestSessionGrantSecurityTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        if (! Schema::hasTable('test_session_grants')) {
+            $this->asOwner(
+                fn () => (require database_path('migrations/2026_09_09_000700_create_test_session_grants.php'))->up(),
+            );
+        }
         DB::beginTransaction();
     }
 
@@ -89,15 +94,18 @@ final class TestSessionGrantSecurityTest extends TestCase
             $this->assertSqlState('23514', fn () => DB::table('test_session_grants')->insert([
                 ...$this->grantRow($second), 'assessment_case_id' => $first['case'],
             ]));
-            $this->assertSqlState('23505', fn () => DB::table('test_session_grants')->insert([
-                ...$this->grantRow($second), 'entitlement_id' => $first['entitlement'],
-                'order_id' => $first['order'],
-            ]));
 
             DB::table('test_sessions')->where('id', $first['session'])->update([
                 'status' => 'in_progress', 'started_at' => now(), 'ends_at' => now()->addHour(),
             ]);
             $this->assertSame('in_progress', DB::table('test_sessions')->where('id', $first['session'])->value('status'));
+            DB::table('test_sessions')->where('id', $first['session'])->update([
+                'status' => 'void', 'voided_at' => now(), 'void_reason' => 'Synthetic reused source probe.',
+            ]);
+            $reusedSource = $first;
+            $reusedSource['session'] = $this->boundSession($first['participant'], $first['case'], 2);
+            $this->assertSqlState('23505', fn () => DB::table('test_session_grants')
+                ->insert($this->grantRow($reusedSource)));
         });
     }
 
@@ -237,11 +245,11 @@ final class TestSessionGrantSecurityTest extends TestCase
         ];
     }
 
-    private function boundSession(int $participant, int $case): int
+    private function boundSession(int $participant, int $case, int $attemptNo = 1): int
     {
         return DB::table('test_sessions')->insertGetId([
             'public_id' => (string) Str::ulid(), 'participant_id' => $participant,
-            'assessment_case_id' => $case, 'test_type' => 'ist', 'attempt_no' => 1,
+            'assessment_case_id' => $case, 'test_type' => 'ist', 'attempt_no' => $attemptNo,
             'authorization_id' => (string) Str::ulid(), 'allocation_intent_id' => (string) Str::ulid(),
             'duration_seconds' => 3600, 'status' => 'created', 'answers_revision' => 0,
             'created_at' => now(), 'updated_at' => now(),

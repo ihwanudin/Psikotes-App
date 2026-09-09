@@ -16,7 +16,7 @@ return new class extends Migration
 {
     private const SQLITE_INSERT_GUARD_SHA256 = 'a3c52ce5e2e4bc37b845c31d1b044b63d6dfcaebe0b333b2ca44a5e12ad453dc';
 
-    private const POSTGRES_GUARD_BODY_SHA256 = '1b79d5e915627fb1bb93f0ef3f3939a67895532608d620f60b59b9ff92a80df8';
+    private const POSTGRES_GUARD_BODY_SHA256 = '7da0b56c3aac42aecbb0ace7f64e2baae26af7c38069d48ca1e024158fe1d3e6';
 
     /** @var array<string,string> */
     private const SUPPORT_INDEXES = [
@@ -210,7 +210,7 @@ return new class extends Migration
                       AND charge.price_snapshot->>'packageId' = attempt.package_id::text
                       AND charge.price_snapshot->>'currency' = 'IDR'
                       AND EXISTS (
-                          SELECT 1 FROM jsonb_array_elements_text(charge.price_snapshot->'testTypes') snapshot_type(value)
+                          SELECT 1 FROM jsonb_array_elements_text((charge.price_snapshot->'testTypes')::jsonb) snapshot_type(value)
                           WHERE snapshot_type.value = NEW.test_type
                       )
                       AND (SELECT COUNT(*) FROM public.package_items item WHERE item.package_id = attempt.package_id AND item.test_type = 'dass21') = 1
@@ -224,12 +224,12 @@ return new class extends Migration
                           SELECT 1 FROM public.package_items item
                           WHERE item.package_id = attempt.package_id
                             AND NOT EXISTS (
-                                SELECT 1 FROM jsonb_array_elements_text(charge.price_snapshot->'testTypes') snapshot_type(value)
+                                SELECT 1 FROM jsonb_array_elements_text((charge.price_snapshot->'testTypes')::jsonb) snapshot_type(value)
                                 WHERE snapshot_type.value = item.test_type
                             )
                       )
                       AND NOT EXISTS (
-                          SELECT 1 FROM jsonb_array_elements_text(charge.price_snapshot->'testTypes') snapshot_type(value)
+                          SELECT 1 FROM jsonb_array_elements_text((charge.price_snapshot->'testTypes')::jsonb) snapshot_type(value)
                           WHERE NOT EXISTS (
                               SELECT 1 FROM public.package_items item
                               WHERE item.package_id = attempt.package_id AND item.test_type = snapshot_type.value
