@@ -69,6 +69,10 @@ final class AssessmentCaseSecurityTest extends TestCase
             $this->assertSame('{psikotes_runtime}', $policy->roles);
             $this->assertStringContainsString("app_private.app_role() = 'service'", ($policy->qual ?? '').($policy->with_check ?? ''));
         }
+
+        $indexes = DB::table('pg_indexes')->where('schemaname', 'public')
+            ->where('tablename', 'assessment_cases')->pluck('indexname')->all();
+        $this->assertContains('assessment_cases_package_idx', $indexes);
     }
 
     public function test_missing_and_nonservice_contexts_are_denied_while_service_can_bind_once(): void
@@ -116,11 +120,13 @@ final class AssessmentCaseSecurityTest extends TestCase
     {
         app(RlsContextRunner::class)->runAsService(function (): void {
             $graph = $this->graph();
+            $otherOrganization = $this->createBranch();
             foreach ([
                 ['public_id' => strtolower((string) Str::ulid())],
                 ['origin' => 'SELF_PAY'],
                 ['participant_id' => 999999],
                 ['organization_id' => 999999],
+                ['organization_id' => $otherOrganization],
                 ['package_id' => 999999],
                 ['intended_field_snapshot' => 'UNKNOWN'],
                 ['created_at' => null],
@@ -214,10 +220,7 @@ final class AssessmentCaseSecurityTest extends TestCase
     private function graph(): array
     {
         $key = (string) Str::ulid();
-        $branch = DB::table('branches')->insertGetId([
-            'code' => $key, 'name' => 'Synthetic', 'ref_code' => $key,
-            'organization_code' => $key, 'display_name' => 'Synthetic',
-        ]);
+        $branch = $this->createBranch($key);
         $package = DB::table('packages')->insertGetId([
             'code' => 'PKG-'.$key, 'name' => 'Synthetic', 'amount' => 0,
             'currency' => 'IDR', 'is_active' => true, 'created_at' => now(), 'updated_at' => now(),
@@ -234,6 +237,16 @@ final class AssessmentCaseSecurityTest extends TestCase
         ]);
 
         return compact('branch', 'package', 'participant', 'client');
+    }
+
+    private function createBranch(?string $key = null): int
+    {
+        $key ??= (string) Str::ulid();
+
+        return DB::table('branches')->insertGetId([
+            'code' => $key, 'name' => 'Synthetic', 'ref_code' => $key,
+            'organization_code' => $key, 'display_name' => 'Synthetic',
+        ]);
     }
 
     /** @param array{branch:int,package:int,participant:int,client:int} $graph

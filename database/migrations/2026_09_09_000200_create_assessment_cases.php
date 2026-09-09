@@ -27,8 +27,9 @@ return new class extends Migration
             $table->unique('public_id', 'assessment_cases_public_id_unique');
             $table->index('participant_id', 'assessment_cases_participant_idx');
             $table->index('organization_id', 'assessment_cases_organization_idx');
-            $table->foreign('participant_id', 'assessment_cases_participant_fk')
-                ->references('id')->on('participants')->restrictOnDelete();
+            $table->index('package_id', 'assessment_cases_package_idx');
+            $table->foreign(['participant_id', 'organization_id'], 'assessment_cases_participant_scope_fk')
+                ->references(['id', 'branch_id'])->on('participants')->restrictOnDelete();
             $table->foreign('organization_id', 'assessment_cases_organization_fk')
                 ->references('id')->on('branches')->restrictOnDelete();
             $table->foreign('package_id', 'assessment_cases_package_fk')

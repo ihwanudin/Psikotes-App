@@ -48,7 +48,11 @@ final class AssessmentBillingMigrationTest extends TestCase
                 'branches' => $fixture['organization'], 'assessment_participants' => $fixture['attempt'], 'packages' => $fixture['package']];
             $legacy = [];
             foreach ($legacyIds as $table => $id) {
-                $legacy[$table] = DB::table($table)->where('id', $id)->first();
+                $columns = Schema::getColumnListing($table);
+                if ($table === 'assessment_participants') {
+                    $columns = array_values(array_diff($columns, ['assessment_case_id']));
+                }
+                $legacy[$table] = DB::table($table)->where('id', $id)->first($columns);
             }
             $billing = [];
             foreach (['assessment_charges', 'assessment_bills', 'assessment_bill_items', 'assessment_entitlements'] as $table) {
@@ -66,6 +70,8 @@ final class AssessmentBillingMigrationTest extends TestCase
                 $migrations[] = require database_path('migrations/2026_08_31_'.$name.'.php');
             }
             $checkoutStructure = $this->checkoutStructure();
+            $assessmentCaseStructure = $this->assessmentCaseStructure();
+            $assessmentCaseMigration = require database_path('migrations/2026_09_09_000200_create_assessment_cases.php');
 
             $migrations[3]->down();
             foreach ($billing as $table => $row) {
@@ -84,6 +90,13 @@ final class AssessmentBillingMigrationTest extends TestCase
             $this->assertSame(0, DB::table('checkout_handoffs')->count());
             $this->migrateCheckoutDown();
             $this->assertFalse(Schema::hasTable('checkout_handoffs'));
+            $this->assertSame(0, DB::table('assessment_cases')->count());
+            $this->assertSame(0, DB::table('assessment_participants')->whereNotNull('assessment_case_id')->count());
+            $this->assertSame(0, DB::table('test_sessions')->whereNotNull('assessment_case_id')->count());
+            $assessmentCaseMigration->down();
+            $this->assertFalse(Schema::hasTable('assessment_cases'));
+            $this->assertFalse(Schema::hasColumn('assessment_participants', 'assessment_case_id'));
+            $this->assertFalse(Schema::hasColumn('test_sessions', 'assessment_case_id'));
             foreach (array_reverse($migrations) as $migration) {
                 $migration->down();
             }
@@ -91,7 +104,7 @@ final class AssessmentBillingMigrationTest extends TestCase
                 $this->assertFalse(Schema::hasTable($table));
             }
             foreach ($legacy as $table => $row) {
-                $this->assertEquals($row, DB::table($table)->where('id', $row->id)->first());
+                $this->assertEquals($row, DB::table($table)->where('id', $row->id)->first(array_keys((array) $row)));
             }
             foreach ($migrations as $migration) {
                 $migration->up();
@@ -102,6 +115,8 @@ final class AssessmentBillingMigrationTest extends TestCase
             }
             $this->migrateCheckoutUp();
             $this->assertEquals($checkoutStructure, $this->checkoutStructure());
+            $assessmentCaseMigration->up();
+            $this->assertEquals($assessmentCaseStructure, $this->assessmentCaseStructure());
             $source = DB::table('integration_sources')->insertGetId([
                 'integration_client_id' => DB::table('assessment_participants')->where('id', $fixture['attempt'])
                     ->value('integration_client_id'),
@@ -113,7 +128,7 @@ final class AssessmentBillingMigrationTest extends TestCase
             $this->assertSame(1, DB::table('checkout_handoffs')->where('assessment_participant_id', $fixture['attempt'])->count());
             $this->assertSame('locked', DB::table('assessment_entitlements')->where('organization_id', $fixture['organization'])->value('status'));
             foreach ($legacy as $table => $row) {
-                $this->assertEquals($row, DB::table($table)->where('id', $row->id)->first());
+                $this->assertEquals($row, DB::table($table)->where('id', $row->id)->first(array_keys((array) $row)));
             }
         } finally {
             // PostgreSQL transactional DDL restores descendant/ancestor order on any assertion failure.
@@ -150,6 +165,31 @@ final class AssessmentBillingMigrationTest extends TestCase
                     'assessment_attempt_checkout_handoff_scope_unique',
                     'integration_clients_checkout_handoff_scope_unique',
                     'integration_sources_checkout_handoff_scope_unique'
+                ) ORDER BY conname"),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function assessmentCaseStructure(): array
+    {
+        return [
+            'columns' => DB::select("SELECT attname, format_type(atttypid, atttypmod) AS type, attnotnull,
+                pg_get_expr(adbin, adrelid) AS default_value FROM pg_attribute
+                LEFT JOIN pg_attrdef ON adrelid = attrelid AND adnum = attnum
+                WHERE attrelid = 'assessment_cases'::regclass AND attnum > 0 AND NOT attisdropped ORDER BY attnum"),
+            'constraints' => DB::select("SELECT conname, pg_get_constraintdef(oid) AS definition
+                FROM pg_constraint WHERE conrelid = 'assessment_cases'::regclass ORDER BY conname"),
+            'indexes' => DB::select("SELECT indexname, indexdef FROM pg_indexes
+                WHERE schemaname = 'public' AND tablename = 'assessment_cases' ORDER BY indexname"),
+            'policies' => DB::select("SELECT * FROM pg_policies
+                WHERE schemaname = 'public' AND tablename = 'assessment_cases' ORDER BY policyname"),
+            'security' => DB::select("SELECT relrowsecurity, relforcerowsecurity, relowner
+                FROM pg_class WHERE oid = 'assessment_cases'::regclass"),
+            'parent_links' => DB::select("SELECT conrelid::regclass::text AS table_name, conname,
+                pg_get_constraintdef(oid) AS definition FROM pg_constraint
+                WHERE conname IN (
+                    'assessment_participants_case_fk',
+                    'test_sessions_assessment_case_fk'
                 ) ORDER BY conname"),
         ];
     }

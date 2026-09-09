@@ -63,7 +63,12 @@ final class AssessmentCaseSchemaTest extends OrganizationPaymentTestCase
         }
 
         $caseIndexes = collect(DB::select("PRAGMA index_list('assessment_cases')"));
-        foreach (['assessment_cases_public_id_unique', 'assessment_cases_participant_idx', 'assessment_cases_organization_idx'] as $name) {
+        foreach ([
+            'assessment_cases_public_id_unique',
+            'assessment_cases_participant_idx',
+            'assessment_cases_organization_idx',
+            'assessment_cases_package_idx',
+        ] as $name) {
             $this->assertNotNull($caseIndexes->firstWhere('name', $name), $name);
         }
         $attemptIndex = collect(DB::select("PRAGMA index_list('assessment_participants')"))
@@ -79,6 +84,7 @@ final class AssessmentCaseSchemaTest extends OrganizationPaymentTestCase
         $graph = $this->graph();
         $case = $this->caseRow($graph);
         $caseId = DB::table('assessment_cases')->insertGetId($case);
+        $otherOrganization = $this->createBranch();
 
         foreach ([
             ['public_id' => strtolower((string) Str::ulid())],
@@ -86,6 +92,7 @@ final class AssessmentCaseSchemaTest extends OrganizationPaymentTestCase
             ['origin' => 'SELF_PAY'],
             ['participant_id' => 999999],
             ['organization_id' => 999999],
+            ['organization_id' => $otherOrganization],
             ['package_id' => 999999],
             ['intended_field_snapshot' => ''],
             ['intended_field_snapshot' => 'UNKNOWN'],
@@ -181,10 +188,7 @@ final class AssessmentCaseSchemaTest extends OrganizationPaymentTestCase
     private function graph(): array
     {
         $key = (string) Str::ulid();
-        $branch = DB::table('branches')->insertGetId([
-            'code' => $key, 'name' => 'Synthetic', 'ref_code' => $key,
-            'organization_code' => $key, 'display_name' => 'Synthetic',
-        ]);
+        $branch = $this->createBranch($key);
         $package = DB::table('packages')->insertGetId([
             'code' => 'PKG-'.$key, 'name' => 'Synthetic', 'description' => null,
             'amount' => 0, 'currency' => 'IDR', 'is_active' => true,
@@ -202,6 +206,16 @@ final class AssessmentCaseSchemaTest extends OrganizationPaymentTestCase
         ]);
 
         return compact('branch', 'package', 'participant', 'client');
+    }
+
+    private function createBranch(?string $key = null): int
+    {
+        $key ??= (string) Str::ulid();
+
+        return DB::table('branches')->insertGetId([
+            'code' => $key, 'name' => 'Synthetic', 'ref_code' => $key,
+            'organization_code' => $key, 'display_name' => 'Synthetic',
+        ]);
     }
 
     /** @param array{branch:int,package:int,participant:int,client:int} $graph
