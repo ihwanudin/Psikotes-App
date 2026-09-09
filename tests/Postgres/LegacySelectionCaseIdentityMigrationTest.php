@@ -80,6 +80,12 @@ final class LegacySelectionCaseIdentityMigrationTest extends TestCase
                 $this->assertSqlState('P0001', fn () => DB::table('selection_participants')
                     ->where('id', $selection)->update([$column => $value]));
             }
+            $case = DB::table('selection_participants')->where('id', $selection)->value('assessment_case_id');
+            $this->assertSqlState('P0001', fn () => DB::table('selection_participants')
+                ->where('id', $selection)->delete());
+            $this->assertSame($case, DB::table('selection_participants')->where('id', $selection)
+                ->value('assessment_case_id'));
+            $this->assertSame(1, DB::table('assessment_cases')->where('id', $case)->count());
         });
     }
 

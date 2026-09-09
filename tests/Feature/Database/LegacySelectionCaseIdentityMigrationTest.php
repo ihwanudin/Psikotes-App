@@ -96,8 +96,11 @@ final class LegacySelectionCaseIdentityMigrationTest extends OrganizationPayment
             $this->assertRejected(fn () => DB::table('selection_participants')
                 ->where('id', $fixture['selection'])->update([$column => $value]));
         }
+        $this->assertRejected(fn () => DB::table('selection_participants')
+            ->where('id', $fixture['selection'])->delete());
         $this->assertSame($mapping->assessment_case_id, DB::table('selection_participants')
             ->where('id', $fixture['selection'])->value('assessment_case_id'));
+        $this->assertSame(1, DB::table('assessment_cases')->where('id', $mapping->assessment_case_id)->count());
     }
 
     public function test_populated_rollback_refuses_without_changing_history(): void

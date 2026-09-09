@@ -42,6 +42,49 @@ final class SelectionParticipantProvisioningConcurrencyTest extends TestCase
     {
         $results = $this->race(fn (): array => $this->provision(), fn (): array => $this->provision());
 
+        $this->assertSingleCreateAndReplay($results);
+    }
+
+    public function test_different_keys_for_the_same_candidate_store_the_winners_key_and_replay_the_loser(): void
+    {
+        $firstKey = 'selection-first-'.$this->key;
+        $secondKey = 'selection-second-'.$this->key;
+        $results = $this->race(
+            fn (): array => $this->provision($firstKey),
+            fn (): array => $this->provision($secondKey),
+        );
+
+        $this->assertSingleCreateAndReplay($results);
+        $winner = array_values(array_filter($results, fn (array $result): bool => $result['replayed'] === false))[0];
+        app(RlsContextRunner::class)->runAsService(function () use ($winner): void {
+            $participants = DB::table('participants')->where('branch_id', $this->branchId)->pluck('id');
+            $this->assertSame($winner['_requested_key'], DB::table('selection_participants')
+                ->whereIn('participant_id', $participants)->value('idempotency_key'));
+        });
+    }
+
+    /** @return array{participant_id:int,replayed:bool,_requested_key:string} */
+    private function provision(?string $idempotencyKey = null): array
+    {
+        $idempotencyKey ??= 'selection-key-'.$this->key;
+        $result = app(ProvisionSelectionParticipant::class)->handle([
+            'externalCandidateId' => 'candidate-'.$this->key,
+            'selectionRoundId' => 'round-'.$this->key,
+            'registrationId' => 'registration-'.$this->key,
+            'fullName' => 'Concurrent Selection Participant',
+            'gender' => 'male',
+            'birthDate' => '2000-01-01',
+            'educationLevel' => 'SMA/SMK',
+            'phone' => '628123456789',
+            'email' => strtolower($this->key).'@example.test',
+        ], 'selection-race-'.$this->key, $idempotencyKey);
+
+        return [...$result, '_requested_key' => $idempotencyKey];
+    }
+
+    /** @param list<array<string, mixed>> $results */
+    private function assertSingleCreateAndReplay(array $results): void
+    {
         foreach ($results as $result) {
             $this->assertArrayNotHasKey('class', $result, json_encode($result, JSON_THROW_ON_ERROR));
         }
@@ -61,22 +104,6 @@ final class SelectionParticipantProvisioningConcurrencyTest extends TestCase
             $this->assertSame(1, DB::table('audit_logs')->where('branch_id', $this->branchId)
                 ->where('action', 'selection_participant.provisioned')->count());
         });
-    }
-
-    /** @return array{participant_id:int,replayed:bool} */
-    private function provision(): array
-    {
-        return app(ProvisionSelectionParticipant::class)->handle([
-            'externalCandidateId' => 'candidate-'.$this->key,
-            'selectionRoundId' => 'round-'.$this->key,
-            'registrationId' => 'registration-'.$this->key,
-            'fullName' => 'Concurrent Selection Participant',
-            'gender' => 'male',
-            'birthDate' => '2000-01-01',
-            'educationLevel' => 'SMA/SMK',
-            'phone' => '628123456789',
-            'email' => strtolower($this->key).'@example.test',
-        ], 'selection-race-'.$this->key, 'selection-key-'.$this->key);
     }
 
     /**

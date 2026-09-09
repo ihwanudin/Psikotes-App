@@ -145,6 +145,9 @@ return new class extends Migration
                 CREATE FUNCTION app_private.guard_selection_participant_case_identity() RETURNS trigger
                 LANGUAGE plpgsql SET search_path = pg_catalog, public AS $guard$
                 BEGIN
+                    IF TG_OP = 'DELETE' THEN
+                        RAISE EXCEPTION 'Selection case identity is immutable' USING ERRCODE = 'P0001';
+                    END IF;
                     IF TG_OP = 'UPDATE' AND (
                         NEW.client_id IS DISTINCT FROM OLD.client_id
                         OR NEW.external_candidate_id IS DISTINCT FROM OLD.external_candidate_id
@@ -170,7 +173,7 @@ return new class extends Migration
                 END;
                 $guard$;
                 CREATE TRIGGER selection_participants_case_identity_guard
-                BEFORE INSERT OR UPDATE ON selection_participants
+                BEFORE INSERT OR UPDATE OR DELETE ON selection_participants
                 FOR EACH ROW EXECUTE FUNCTION app_private.guard_selection_participant_case_identity();
                 SQL);
 
@@ -199,6 +202,9 @@ return new class extends Migration
               OR NEW.request_hash IS NOT OLD.request_hash
               OR NEW.created_at IS NOT OLD.created_at
             BEGIN SELECT RAISE(ABORT, 'Selection case identity is immutable'); END;
+            CREATE TRIGGER selection_participants_case_delete_guard
+            BEFORE DELETE ON selection_participants FOR EACH ROW
+            BEGIN SELECT RAISE(ABORT, 'Selection case identity is immutable'); END;
             SQL);
     }
 
@@ -210,6 +216,7 @@ return new class extends Migration
         } else {
             DB::unprepared('DROP TRIGGER IF EXISTS selection_participants_case_insert_guard');
             DB::unprepared('DROP TRIGGER IF EXISTS selection_participants_case_update_guard');
+            DB::unprepared('DROP TRIGGER IF EXISTS selection_participants_case_delete_guard');
         }
 
         Schema::table('selection_participants', function (Blueprint $table): void {
