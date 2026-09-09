@@ -149,6 +149,46 @@ final class DirectPublicOrderCaseIdentityMigrationTest extends TestCase
         });
     }
 
+    public function test_extra_main_entitlement_without_order_aborts_without_schema_or_rls_delta(): void
+    {
+        $this->malformedEntitlementMigrationProbe(
+            'extra-null-order',
+            ['dass21', 'ist'],
+            static function (array $graph): void {
+                DB::table('entitlements')->insert([
+                    'participant_id' => $graph['participant'], 'order_id' => null,
+                    'test_type' => 'rmib', 'status' => 'locked',
+                    'created_at' => now(), 'updated_at' => now(),
+                ]);
+            },
+        );
+    }
+
+    public function test_extra_dass_entitlement_linked_to_another_order_aborts_without_schema_or_rls_delta(): void
+    {
+        $this->malformedEntitlementMigrationProbe(
+            'extra-other-order',
+            ['dass21'],
+            function (array $graph): void {
+                $otherParticipant = DB::table('participants')->insertGetId([
+                    'branch_id' => $graph['branch'], 'referral_branch_id' => $graph['branch'],
+                    'referral_source' => 'manual', 'source_system' => 'LEGACY_SELECTION',
+                    'package_id' => $graph['package'], 'full_name' => 'other order owner',
+                    'intended_field' => 'KAIGO', 'phone' => '629999999999',
+                ]);
+                $otherOrder = $this->historicalOrder([
+                    'participant' => $otherParticipant,
+                    'method' => $graph['method'],
+                ], 'other-owner');
+                DB::table('entitlements')->insert([
+                    'participant_id' => $graph['participant'], 'order_id' => $otherOrder,
+                    'test_type' => 'ist', 'status' => 'locked',
+                    'created_at' => now(), 'updated_at' => now(),
+                ]);
+            },
+        );
+    }
+
     public function test_two_real_processes_observing_the_same_empty_token_converge_on_one_exact_graph(): void
     {
         $fixture = app(RlsContextRunner::class)->runAsService(function (): array {
@@ -305,6 +345,60 @@ final class DirectPublicOrderCaseIdentityMigrationTest extends TestCase
             'metadata' => json_encode(['fixture' => $suffix], JSON_THROW_ON_ERROR),
             'created_at' => now(), 'updated_at' => now(),
         ]);
+    }
+
+    /**
+     * @param  list<string>  $types
+     * @param  callable(array{branch:int,package:int,participant:int,method:int,method_code:string}):void  $addMalformedEntitlement
+     */
+    private function malformedEntitlementMigrationProbe(
+        string $suffix,
+        array $types,
+        callable $addMalformedEntitlement,
+    ): void {
+        $this->asOwner(function () use ($suffix, $types, $addMalformedEntitlement): void {
+            DB::beginTransaction();
+            try {
+                $this->migrate('down');
+                $tables = ['packages', 'package_items', 'participants', 'orders', 'entitlements', 'assessment_cases'];
+                foreach ($tables as $table) {
+                    DB::statement("ALTER TABLE {$table} NO FORCE ROW LEVEL SECURITY");
+                }
+                $graph = $this->baseGraph($suffix, $types);
+                $order = $this->historicalOrder($graph, $suffix);
+                foreach ($types as $type) {
+                    DB::table('entitlements')->insert([
+                        'participant_id' => $graph['participant'], 'order_id' => $order,
+                        'test_type' => $type, 'status' => 'locked',
+                        'created_at' => now(), 'updated_at' => now(),
+                    ]);
+                }
+                $addMalformedEntitlement($graph);
+                foreach ($tables as $table) {
+                    DB::statement("ALTER TABLE {$table} FORCE ROW LEVEL SECURITY");
+                }
+                $before = $this->postgresSchema();
+
+                try {
+                    $this->migrate('up');
+                    $this->fail('Every participant entitlement must belong to the sole direct order.');
+                } catch (RuntimeException $exception) {
+                    $this->assertStringContainsString('participant entitlement order differs', $exception->getMessage());
+                }
+
+                $this->assertEquals($before, $this->postgresSchema());
+                $this->assertFalse(Schema::hasColumn('orders', 'assessment_case_id'));
+                foreach ($tables as $table) {
+                    $this->assertTrue((bool) DB::scalar(
+                        'SELECT relforcerowsecurity FROM pg_class WHERE oid=?::regclass', [$table],
+                    ));
+                }
+                DB::statement('ALTER TABLE assessment_cases NO FORCE ROW LEVEL SECURITY');
+                $this->assertSame(0, DB::table('assessment_cases')->where('origin', 'DIRECT_PUBLIC')->count());
+            } finally {
+                DB::rollBack();
+            }
+        });
     }
 
     /** @return array<string, mixed> */

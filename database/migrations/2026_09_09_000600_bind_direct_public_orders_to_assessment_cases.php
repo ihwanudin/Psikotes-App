@@ -169,7 +169,13 @@ return new class extends Migration
                 $this->abort('historical direct package is missing');
             }
 
-            $kind = $this->compositionKind($this->packageTypes((int) $order->package_id));
+            $packageTypes = $this->packageTypes((int) $order->package_id);
+            $entitlementTypes = $this->entitlementTypes((int) $order->id, (int) $order->participant_id);
+            if ($packageTypes !== $entitlementTypes) {
+                $this->abort('package items and entitlements differ');
+            }
+
+            $kind = $this->compositionKind($packageTypes);
             if ($kind === 'dass') {
                 if ($order->assessment_case_id !== null) {
                     $this->abort('DASS-only order was bound to a case');
@@ -206,11 +212,16 @@ return new class extends Migration
     /** @return list<string> */
     private function entitlementTypes(int $orderId, int $participantId): array
     {
-        $rows = DB::table('entitlements')->where('order_id', $orderId)
-            ->orderBy('test_type')->get(['participant_id', 'test_type']);
+        if (DB::table('entitlements')->where('order_id', $orderId)
+            ->where('participant_id', '<>', $participantId)->exists()) {
+            $this->abort('order entitlement participant differs');
+        }
+
+        $rows = DB::table('entitlements')->where('participant_id', $participantId)
+            ->orderBy('test_type')->get(['order_id', 'test_type']);
         foreach ($rows as $row) {
-            if ($row->participant_id !== $participantId) {
-                $this->abort('order entitlement participant differs');
+            if ($row->order_id !== $orderId) {
+                $this->abort('participant entitlement order differs');
             }
         }
 

@@ -102,6 +102,37 @@ final class DirectPublicOrderCaseIdentityMigrationTest extends OrganizationPayme
         $this->assertDatabaseCount('orders', 2);
     }
 
+    public function test_extra_main_entitlement_without_order_aborts_before_any_schema_or_case_write(): void
+    {
+        $fixture = $this->directOrder('extra-null-order', ['dass21', 'ist']);
+        DB::table('entitlements')->insert([
+            'participant_id' => $fixture['participant'], 'order_id' => null,
+            'test_type' => 'rmib', 'status' => 'locked',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $this->assertMalformedEntitlementIsAtomic();
+    }
+
+    public function test_extra_dass_entitlement_linked_to_another_order_aborts_before_any_schema_or_case_write(): void
+    {
+        $fixture = $this->directOrder('extra-other-order', ['dass21']);
+        $other = $this->participant('other-order-owner', $fixture['package'], 'LEGACY_SELECTION');
+        $otherOrder = DB::table('orders')->insertGetId([
+            'public_id' => (string) Str::ulid(), 'participant_id' => $other['participant'],
+            'payment_method_id' => DB::table('orders')->where('id', $fixture['order'])->value('payment_method_id'),
+            'status' => 'pending', 'amount' => 100000, 'currency' => 'IDR',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('entitlements')->insert([
+            'participant_id' => $fixture['participant'], 'order_id' => $otherOrder,
+            'test_type' => 'ist', 'status' => 'locked',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $this->assertMalformedEntitlementIsAtomic();
+    }
+
     public function test_linked_order_identity_is_immutable_while_payment_lifecycle_remains_mutable(): void
     {
         $fixture = $this->directOrder('guard', ['dass21', 'ist']);
@@ -212,6 +243,22 @@ final class DirectPublicOrderCaseIdentityMigrationTest extends OrganizationPayme
         } catch (QueryException) {
             $this->addToAssertionCount(1);
         }
+    }
+
+    private function assertMalformedEntitlementIsAtomic(): void
+    {
+        $before = $this->sqliteSchema();
+
+        try {
+            $this->migrate('up');
+            $this->fail('Every participant entitlement must belong to the sole direct order.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('participant entitlement order differs', $exception->getMessage());
+        }
+
+        $this->assertSame($before, $this->sqliteSchema());
+        $this->assertFalse(Schema::hasColumn('orders', 'assessment_case_id'));
+        $this->assertDatabaseCount('assessment_cases', 0);
     }
 
     /** @return list<array<string, mixed>> */
