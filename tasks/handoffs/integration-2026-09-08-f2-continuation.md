@@ -759,3 +759,17 @@ are valid and contain no text/profile/archive metadata, but a digest manifest
 would attest only to prior human review and therefore requires an authenticated
 security owner/CODEOWNERS or signed-approval authority. No extension allowlist
 or suppression was added, so the current-snapshot gate remains fail-closed.
+
+The durable session-grant audit rejects every historical inference: no existing
+session proves which mutable/current grant authorized its creation. It freezes a
+separate append-only one-to-one `test_session_grants` relation with real,
+mutually-exclusive source foreign keys instead of a polymorphic integer. The
+provisional schema checkpoint is `dea05e2`. It performs zero backfill, excludes
+DASS, preserves old sessions as unbound, applies exact origin/case/participant/
+organization/instrument graph checks, FORCE RLS service-only access, append-only
+guards, and populated-down refusal. Focused SQLite plus boundary adapters passed
+46 tests/278 assertions with PHPStan/Pint/diff clean. PostgreSQL acceptance is
+explicitly unknown: two fresh disposable runners entered Docker bind-mount Linux
+D-state before useful PHPUnit execution and were removed by exact run label with
+no remaining container/network. No production migration or allocator wiring was
+performed; PostgreSQL catalog/RLS/race evidence and adversarial review remain open.
