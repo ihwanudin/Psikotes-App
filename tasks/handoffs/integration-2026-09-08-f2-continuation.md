@@ -610,3 +610,15 @@ Seeder registration is immutable and mismatch rollback is all-or-nothing.
 Independent Python 20/20, Feature 5/59, PHPStan, Pint, and diff checks passed;
 focused disposable PostgreSQL passed 7/77 with cleanup. Result-ledger work is
 still blocked on final case-aware session identity, not on source mapping.
+
+The direct and legacy case-identity audits are now frozen without changing
+production code. DIRECT_PUBLIC cases reuse the server-minted order ULID as the
+case alias and require an explicit one-to-one order-to-case relation; DASS-only
+orders remain outside the generic case graph. Historical direct backfill must
+prove one exact order and exact package-entitlement composition or abort.
+LEGACY_SELECTION has no valid ULID alias and therefore mints a new opaque case
+ULID. Its historical package and intended-field snapshots remain NULL rather
+than being inferred from mutable or non-unique configuration. New Selection
+provisioning dual-writes the case, while replay must validate the exact graph
+and reject the existing split-brain OR-lookup ambiguity. The legacy increment
+is the sole active migration lane; direct schema work waits for it.
