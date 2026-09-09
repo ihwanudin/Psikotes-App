@@ -30,12 +30,33 @@ return new class extends Migration
             );
         }
 
+        $nullActiveTimestamp = DB::selectOne(<<<'SQL'
+            SELECT code
+            FROM instrument_versions
+            WHERE is_active = TRUE AND updated_at IS NULL
+            ORDER BY code
+            LIMIT 1
+            SQL);
+        if ($nullActiveTimestamp !== null) {
+            throw new RuntimeException(
+                "Active instrument version {$nullActiveTimestamp->code} has null updated_at; migration refused.",
+            );
+        }
+
         DB::statement('CREATE UNIQUE INDEX '.self::INDEX.' ON instrument_versions (code) WHERE is_active = TRUE');
         DB::unprepared(<<<'SQL'
             CREATE FUNCTION instrument_versions_guard_history() RETURNS trigger
             LANGUAGE plpgsql
             AS $function$
             BEGIN
+                IF TG_OP = 'INSERT' THEN
+                    IF NEW.is_active AND NEW.updated_at IS NULL THEN
+                        RAISE EXCEPTION 'active instrument version requires updated_at' USING ERRCODE = 'P0001';
+                    END IF;
+
+                    RETURN NEW;
+                END IF;
+
                 IF TG_OP = 'DELETE' THEN
                     RAISE EXCEPTION 'instrument version history cannot be deleted' USING ERRCODE = 'P0001';
                 END IF;
@@ -48,7 +69,9 @@ return new class extends Migration
                     RAISE EXCEPTION 'instrument version history is immutable' USING ERRCODE = 'P0001';
                 END IF;
 
-                IF NOT OLD.is_active OR NEW.is_active OR NEW.updated_at <= OLD.updated_at THEN
+                IF NOT OLD.is_active OR NEW.is_active
+                    OR OLD.updated_at IS NULL OR NEW.updated_at IS NULL
+                    OR NEW.updated_at <= OLD.updated_at THEN
                     RAISE EXCEPTION 'instrument version history only permits active-to-inactive deactivation with a newer updated_at'
                         USING ERRCODE = 'P0001';
                 END IF;
@@ -58,7 +81,7 @@ return new class extends Migration
             $function$;
 
             CREATE TRIGGER instrument_versions_guard_history_trigger
-            BEFORE UPDATE OR DELETE ON instrument_versions
+            BEFORE INSERT OR UPDATE OR DELETE ON instrument_versions
             FOR EACH ROW EXECUTE FUNCTION instrument_versions_guard_history();
             SQL);
 
@@ -90,15 +113,21 @@ return new class extends Migration
             return;
         }
 
-        if (DB::table('instrument_versions')->exists()) {
-            throw new RuntimeException('Cannot weaken populated instrument version history; downgrade refused.');
+        DB::statement('ALTER TABLE instrument_versions NO FORCE ROW LEVEL SECURITY');
+        try {
+            if (DB::table('instrument_versions')->exists()) {
+                throw new RuntimeException('Cannot weaken populated instrument version history; downgrade refused.');
+            }
+        } catch (Throwable $exception) {
+            DB::statement('ALTER TABLE instrument_versions FORCE ROW LEVEL SECURITY');
+
+            throw $exception;
         }
 
         DB::unprepared(<<<'SQL'
             DROP POLICY instrument_versions_service_update ON instrument_versions;
             DROP POLICY instrument_versions_service_insert ON instrument_versions;
             DROP POLICY instrument_versions_service_read ON instrument_versions;
-            ALTER TABLE instrument_versions NO FORCE ROW LEVEL SECURITY;
             ALTER TABLE instrument_versions DISABLE ROW LEVEL SECURITY;
 
             REVOKE ALL PRIVILEGES ON TABLE instrument_versions FROM psikotes_runtime;

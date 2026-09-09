@@ -137,6 +137,37 @@ final class InstrumentVersionHistorySecurityTest extends TestCase
         ));
     }
 
+    public function test_deactivation_rejects_null_old_or_new_updated_at(): void
+    {
+        app(RlsContextRunner::class)->runAsService(function (): void {
+            DB::table('instrument_versions')->insert($this->row('null-new', 'v1'));
+        });
+
+        $this->assertSqlState('P0001', fn () => app(RlsContextRunner::class)->runAsService(
+            fn () => DB::table('instrument_versions')->where('code', 'null-new')->update([
+                'is_active' => false,
+                'updated_at' => null,
+            ]),
+        ));
+
+        $this->asOwner(function (): void {
+            DB::statement('ALTER TABLE instrument_versions DISABLE TRIGGER instrument_versions_guard_history_trigger');
+            DB::table('instrument_versions')->insert($this->row('null-old', 'v1', updatedAt: null));
+            DB::statement('ALTER TABLE instrument_versions ENABLE TRIGGER instrument_versions_guard_history_trigger');
+        });
+
+        $this->assertSqlState('P0001', fn () => app(RlsContextRunner::class)->runAsService(
+            fn () => DB::table('instrument_versions')->where('code', 'null-old')->update([
+                'is_active' => false,
+                'updated_at' => now()->addSecond(),
+            ]),
+        ));
+
+        $this->assertSqlState('P0001', fn () => app(RlsContextRunner::class)->runAsService(
+            fn () => DB::table('instrument_versions')->insert($this->row('null-insert', 'v1', updatedAt: null)),
+        ));
+    }
+
     public function test_migration_refuses_dirty_upgrade_and_populated_downgrade_but_empty_rollback_is_reversible(): void
     {
         $this->asOwner(function (): void {
@@ -183,14 +214,83 @@ final class InstrumentVersionHistorySecurityTest extends TestCase
         });
     }
 
+    public function test_migration_refuses_active_null_timestamp_on_upgrade(): void
+    {
+        $this->asOwner(function (): void {
+            $migration = require database_path('migrations/2026_09_09_000100_harden_instrument_versions_history.php');
+
+            DB::beginTransaction();
+            try {
+                $migration->down();
+                DB::table('instrument_versions')->insert($this->row('null-upgrade', 'v1', updatedAt: null));
+
+                $exception = null;
+                try {
+                    $migration->up();
+                } catch (RuntimeException $runtimeException) {
+                    $exception = $runtimeException;
+                }
+
+                $this->assertNotNull($exception, 'Active history with a null updated_at must refuse upgrade.');
+                $this->assertStringContainsString('null updated_at', $exception->getMessage());
+                $this->assertNull(DB::table('instrument_versions')->where('code', 'null-upgrade')->value('updated_at'));
+            } finally {
+                DB::rollBack();
+            }
+        });
+    }
+
+    public function test_non_bypass_table_owner_can_reverse_empty_migration_but_not_populated_history(): void
+    {
+        $this->asNonBypassOwner(function (): void {
+            $migration = require database_path('migrations/2026_09_09_000100_harden_instrument_versions_history.php');
+            $identity = DB::selectOne('SELECT current_user AS name, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user');
+
+            $this->assertSame('instrument_history_owner', $identity->name);
+            $this->assertFalse($identity->rolsuper);
+            $this->assertFalse($identity->rolbypassrls);
+
+            DB::beginTransaction();
+            try {
+                $migration->down();
+                $this->assertFalse(DB::selectOne("SELECT relrowsecurity FROM pg_class WHERE oid = 'instrument_versions'::regclass")->relrowsecurity);
+                $migration->up();
+                $this->assertTrue(DB::selectOne("SELECT relforcerowsecurity FROM pg_class WHERE oid = 'instrument_versions'::regclass")->relforcerowsecurity);
+            } finally {
+                DB::rollBack();
+            }
+
+            DB::beginTransaction();
+            try {
+                DB::statement('ALTER TABLE instrument_versions NO FORCE ROW LEVEL SECURITY');
+                DB::table('instrument_versions')->insert($this->row('non-bypass-owner', 'v1'));
+                DB::statement('ALTER TABLE instrument_versions FORCE ROW LEVEL SECURITY');
+
+                try {
+                    $migration->down();
+                    $this->fail('A non-bypass table owner must refuse populated downgrade.');
+                } catch (RuntimeException $exception) {
+                    $this->assertStringContainsString('populated', $exception->getMessage());
+                }
+
+                $this->assertTrue(DB::selectOne("SELECT relforcerowsecurity FROM pg_class WHERE oid = 'instrument_versions'::regclass")->relforcerowsecurity);
+                $this->assertNotNull(DB::selectOne("SELECT to_regclass('instrument_versions_one_active_code_unique') AS name")->name);
+            } finally {
+                DB::rollBack();
+            }
+        });
+    }
+
     private function seedDeniedOutsideService(): void
     {
         $this->assertSqlState('42501', fn () => DB::table('instrument_versions')->insert($this->row('outside', 'v1')));
     }
 
     /** @return array<string, mixed> */
-    private function row(string $code, string $version): array
+    private function row(string $code, string $version, mixed $updatedAt = false): array
     {
+        $updatedAt = $updatedAt === false ? now() : $updatedAt;
+
         return [
             'code' => $code,
             'version' => $version,
@@ -199,7 +299,7 @@ final class InstrumentVersionHistorySecurityTest extends TestCase
             'payload' => json_encode(['code' => $code, 'version' => $version], JSON_THROW_ON_ERROR),
             'is_active' => true,
             'created_at' => now(),
-            'updated_at' => now(),
+            'updated_at' => $updatedAt,
         ];
     }
 
@@ -230,6 +330,46 @@ final class InstrumentVersionHistorySecurityTest extends TestCase
             Schema::clearResolvedInstance('db.schema');
             DB::purge('instrument_history_owner');
             config()->set('database.connections.instrument_history_owner', null);
+        }
+    }
+
+    private function asNonBypassOwner(callable $callback): void
+    {
+        $runtime = DB::getDefaultConnection();
+        $config = config('database.connections.'.$runtime);
+
+        $this->asOwner(function (): void {
+            DB::statement('CREATE ROLE instrument_history_owner LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS');
+            DB::statement('GRANT USAGE, CREATE ON SCHEMA public TO instrument_history_owner');
+            DB::statement('GRANT USAGE ON SCHEMA app_private TO instrument_history_owner');
+            DB::statement('ALTER TABLE instrument_versions OWNER TO instrument_history_owner');
+            DB::statement('ALTER SEQUENCE instrument_versions_id_seq OWNER TO instrument_history_owner');
+            DB::statement('ALTER FUNCTION instrument_versions_guard_history() OWNER TO instrument_history_owner');
+        });
+
+        config()->set('database.connections.instrument_history_nonsuper_owner', [
+            ...$config,
+            'username' => 'instrument_history_owner',
+        ]);
+        DB::setDefaultConnection('instrument_history_nonsuper_owner');
+        Schema::clearResolvedInstance('db.schema');
+
+        try {
+            $callback();
+        } finally {
+            DB::setDefaultConnection($runtime);
+            Schema::clearResolvedInstance('db.schema');
+            DB::purge('instrument_history_nonsuper_owner');
+            config()->set('database.connections.instrument_history_nonsuper_owner', null);
+
+            $this->asOwner(function (): void {
+                DB::statement('ALTER TABLE instrument_versions OWNER TO org_test_owner');
+                DB::statement('ALTER SEQUENCE instrument_versions_id_seq OWNER TO org_test_owner');
+                DB::statement('ALTER FUNCTION instrument_versions_guard_history() OWNER TO org_test_owner');
+                DB::statement('REVOKE USAGE, CREATE ON SCHEMA public FROM instrument_history_owner');
+                DB::statement('REVOKE USAGE ON SCHEMA app_private FROM instrument_history_owner');
+                DB::statement('DROP ROLE instrument_history_owner');
+            });
         }
     }
 }
