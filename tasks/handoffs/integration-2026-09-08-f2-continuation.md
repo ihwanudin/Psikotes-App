@@ -698,3 +698,24 @@ queue/cache have partial static evidence, while a real secret/PII scan gate,
 retention executor, 50-user Kraepelin load gate, and backup/restore harness are
 missing. Load and runtime cache/queue evidence wait for a stable allocator and
 schema; no live environment or provider was touched.
+
+DIRECT_PUBLIC case identity is accepted across `43a21f0`, duplicate-order and
+lock-order repair `4f611c6`, and complete-entitlement repair `87c530e`. Main
+orders alias one immutable case by the server-minted order ULID; exact DASS-only
+orders remain unbound. Backfill requires one order per DIRECT_PUBLIC participant
+and exact equality of every participant entitlement, order binding, and package
+composition; partial, foreign, NULL-order, duplicate-order, or collision history
+aborts with zero schema/data/RLS delta. Runtime replay validates the complete
+graph in one locked transaction. Migration and replay share the lock order
+participant, package/items, case, order, entitlement, with coordinated PG proof
+against deadlock. Full disposable PostgreSQL passed 475 tests/5,258 assertions;
+final adversarial review found no remaining P1/P2.
+
+A post-link session audit still rejects universal `test_sessions` case NOT NULL.
+Existing authorization/allocation strings are opaque and have no durable FK or
+namespace to an order, Selection mapping, or integrated grant; multi-case history
+therefore remains ambiguous and DASS-only intentionally has no generic case.
+The next safe non-migration slice is a read-only origin-aware case authorization
+resolver that fails closed on zero/multiple/mismatched grants. A production
+session creator remains blocked on durable grant identity and complete immutable
+session definitions.
