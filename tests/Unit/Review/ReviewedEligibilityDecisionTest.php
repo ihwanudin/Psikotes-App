@@ -85,6 +85,62 @@ final class ReviewedEligibilityDecisionTest extends TestCase
         ReviewedEligibilityDecision::create(EligibilityDecisionSnapshot::create($this->validInput()), [$override, $override]);
     }
 
+    public function test_level_override_order_does_not_change_the_reviewed_decision_or_hash(): void
+    {
+        $policy = new ProfessionalOverridePolicy;
+        $baseline = EligibilityDecisionSnapshot::create($this->validInput());
+        $a2 = $policy->levelOverride([
+            'aspect' => 'A2',
+            'system_level' => 5,
+            'final_level' => 4,
+            'reason' => 'Observasi profesional mendukung level akhir empat.',
+        ]);
+        $c4 = $policy->levelOverride([
+            'aspect' => 'C4',
+            'system_level' => 5,
+            'final_level' => 3,
+            'reason' => 'Observasi profesional mendukung level akhir tiga.',
+        ]);
+
+        $canonical = ReviewedEligibilityDecision::create($baseline, [$a2, $c4])->toArray();
+        $permuted = ReviewedEligibilityDecision::create($baseline, [$c4, $a2])->toArray();
+
+        self::assertSame($canonical, $permuted);
+        self::assertSame(
+            hash('sha256', json_encode($canonical, JSON_THROW_ON_ERROR)),
+            hash('sha256', json_encode($permuted, JSON_THROW_ON_ERROR)),
+        );
+        self::assertSame(['A2', 'C4'], array_map(
+            static fn (array $override): string => $override['provenance']['aspect'],
+            $permuted['level_overrides'],
+        ));
+    }
+
+    public function test_no_op_level_override_is_rejected(): void
+    {
+        $override = (new ProfessionalOverridePolicy)->levelOverride([
+            'aspect' => 'C4',
+            'system_level' => 5,
+            'final_level' => 5,
+            'reason' => null,
+        ]);
+
+        $this->expectException(InvalidArgumentException::class);
+        ReviewedEligibilityDecision::create(EligibilityDecisionSnapshot::create($this->validInput()), [$override]);
+    }
+
+    public function test_no_op_label_override_is_rejected(): void
+    {
+        $override = (new ProfessionalOverridePolicy)->labelOverride([
+            'system_label' => 'DISARANKAN',
+            'final_label' => 'DISARANKAN',
+            'reason' => null,
+        ]);
+
+        $this->expectException(InvalidArgumentException::class);
+        ReviewedEligibilityDecision::create(EligibilityDecisionSnapshot::create($this->validInput()), [], $override);
+    }
+
     public function test_forged_or_nonexact_override_outputs_fail_closed(): void
     {
         $override = (new ProfessionalOverridePolicy)->levelOverride([

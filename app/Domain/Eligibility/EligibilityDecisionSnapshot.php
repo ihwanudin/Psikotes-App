@@ -9,6 +9,9 @@ use InvalidArgumentException;
 final readonly class EligibilityDecisionSnapshot
 {
     /** @var list<string> */
+    private const ASPECTS = ['A1', 'A2', 'B1', 'B2', 'B3', 'B4', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'D1', 'D2', 'D3', 'D4', 'D5'];
+
+    /** @var list<string> */
     private const ELIGIBILITY_SOURCE_CODES = ['ist', 'papi', 'kraepelin', 'rmib', 'reporting'];
 
     /**
@@ -53,12 +56,20 @@ final readonly class EligibilityDecisionSnapshot
             throw new InvalidArgumentException('Eligibility decision standard provenance is inconsistent.');
         }
 
+        if (! self::hasExactKeys($input['levels'], self::ASPECTS)) {
+            throw new InvalidArgumentException('Eligibility decision levels are invalid.');
+        }
+        $canonicalLevels = [];
+        foreach (self::ASPECTS as $aspect) {
+            $canonicalLevels[$aspect] = $input['levels'][$aspect];
+        }
+
         $calculator = new EligibilityZoneCalculator(
             $configuration['standard_version'],
             $configuration['base_standards'],
             $configuration['fields'],
         );
-        $zone = $calculator->calculate($input['levels'], $input['field_code']);
+        $zone = $calculator->calculate($canonicalLevels, $input['field_code']);
         $recommendation = (new RecommendationLabelPolicy)->decide($zone, $input['iq'], $input['validity']);
 
         if ($zone['standard_version'] !== $sourceVersions['reporting']
@@ -69,7 +80,7 @@ final readonly class EligibilityDecisionSnapshot
 
         return new self(
             [
-                'levels' => $input['levels'],
+                'levels' => $canonicalLevels,
                 'field_code' => $input['field_code'],
                 'iq' => $input['iq'],
                 'validity' => $input['validity'],

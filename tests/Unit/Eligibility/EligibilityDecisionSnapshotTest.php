@@ -169,6 +169,22 @@ final class EligibilityDecisionSnapshotTest extends TestCase
         self::assertSame($input['eligibility_source_versions'], $recalculated['provenance']['eligibility_source_versions']);
     }
 
+    public function test_level_input_order_does_not_change_the_snapshot_or_its_hash(): void
+    {
+        $input = $this->validInput();
+        $canonical = EligibilityDecisionSnapshot::create($input)->toArray();
+        $input['levels'] = array_reverse($input['levels'], true);
+
+        $permuted = EligibilityDecisionSnapshot::create($input)->toArray();
+
+        self::assertSame($canonical, $permuted);
+        self::assertSame(
+            hash('sha256', json_encode($canonical, JSON_THROW_ON_ERROR)),
+            hash('sha256', json_encode($permuted, JSON_THROW_ON_ERROR)),
+        );
+        self::assertSame($this->aspectCodes(), array_keys($permuted['zone']['aspects']));
+    }
+
     /** @return array<mixed> */
     private function validInput(): array
     {

@@ -32,6 +32,7 @@ final readonly class ReviewedEligibilityDecision
         $systemLevels = self::levelsFrom($systemDecision);
         $finalLevels = $systemLevels;
         $seenAspects = [];
+        $canonicalOverridesByAspect = [];
 
         foreach ($levelOverrides as $override) {
             if (! is_array($override)) {
@@ -40,12 +41,23 @@ final readonly class ReviewedEligibilityDecision
 
             $canonical = self::canonicalLevelOverride($override);
             $aspect = $canonical['provenance']['aspect'];
+            if (! $canonical['changed']) {
+                throw new InvalidArgumentException('Reviewed eligibility level overrides must change a level.');
+            }
             if (isset($seenAspects[$aspect]) || $canonical['system_level'] !== $systemLevels[$aspect]) {
                 throw new InvalidArgumentException('Reviewed eligibility level override does not match its baseline.');
             }
 
             $seenAspects[$aspect] = true;
+            $canonicalOverridesByAspect[$aspect] = $canonical;
             $finalLevels[$aspect] = $canonical['final_level'];
+        }
+
+        $canonicalOverrides = [];
+        foreach (self::ASPECTS as $aspect) {
+            if (isset($canonicalOverridesByAspect[$aspect])) {
+                $canonicalOverrides[] = $canonicalOverridesByAspect[$aspect];
+            }
         }
 
         $recalculated = $baseline->recalculateWithLevels($finalLevels)->toArray();
@@ -60,6 +72,9 @@ final readonly class ReviewedEligibilityDecision
             $finalLabel = $recommendation['label'];
             if ($labelOverride !== null) {
                 $canonicalLabelOverride = self::canonicalLabelOverride($labelOverride);
+                if (! $canonicalLabelOverride['changed']) {
+                    throw new InvalidArgumentException('Reviewed eligibility label override must change the label.');
+                }
                 if ($canonicalLabelOverride['system_label'] !== $finalLabel) {
                     throw new InvalidArgumentException('Reviewed eligibility label override does not match the recalculated label.');
                 }
@@ -83,7 +98,7 @@ final readonly class ReviewedEligibilityDecision
             'system_decision' => $systemDecision,
             'recalculated_decision' => $recalculated,
             'final_decision' => $finalDecision,
-            'level_overrides' => $levelOverrides,
+            'level_overrides' => $canonicalOverrides,
             'label_override' => $labelOverride,
         ]);
     }
