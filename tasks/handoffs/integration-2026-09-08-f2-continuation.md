@@ -356,6 +356,89 @@ denied; runtime DELETE is denied. The existing seeder must run inside
 This slice is prerequisite evidence only and does not close G8 report snapshot
 non-retroactivity.
 
+Fresh adversarial review reopens the signing snapshot acceptance despite its
+passing regression gates. Three concrete probes still reached a synthetic
+`SIGNED` transition: an invented standard/all-unassessed recommendation
+summary, a critical level change paired with a stale recommendation plus a true
+recalculation boolean, and a spread-two G7 result cleared by a bare resolution
+boolean. Therefore `a8fb562`/`4ec39cf` are retained as implementation history
+but are not an accepted authority boundary. Correct closure requires full
+eligibility input/version binding, a typed post-override recalculation artifact,
+typed G7 resolution with final level/reason, and ultimately a transactional
+persistence command. A separate static guard extension may detect manual
+literal successful-SIGNED arrays, but is defense-in-depth and does not close
+these P1 findings.
+
+The next parallel wave keeps ownership disjoint: one serial migration owner
+hardens only `instrument_versions` plus its trusted seeder execution and
+disposable PostgreSQL tests; Narrative adds only a pure A1-C7 S5 ordering
+primitive with no prose; Review performs a read-only adversarial audit of the
+accepted signing snapshot. Shared report identity, routes, DTOs, lockfiles,
+canonical JSON, and active services remain untouched.
+
+Coordinator review accepts the bounded S5 ordering primitive `951651c` and the
+true-extrema repair across `e0b5d62` + `f50f75e`. The latter was reopened
+because it promoted a resolved runner-up when the actual extreme was G7-blocked;
+the repair now preserves the real B/C extreme, omits blocked candidates, and
+does not claim S2/S3 prose authority. Focused coordinator verification passed
+23 tests/30 assertions; the worker's full Narrative gate passed 159/309.
+
+The manual successful-SIGNED array guard `7891d09` is accepted as static
+defense-in-depth after the combined coordinator gate passed 56 tests/882
+assertions. It does not repair the signing authority boundary. The read-only
+signing audit found a fourth caller-forgeable path: internally consistent G7
+source arrays can still be replaced with synthetic lower-spread sources because
+they are not bound to stored F2 evidence. The safe sequence is now two parallel
+pure artifacts (derived eligibility decision and typed 18-aspect G7 review set),
+then a typed post-override recalculation artifact, and only then serial signing
+composer integration. Persistence must wait for a coordinator-owned report /
+assessment aggregate identity decision.
+
+The first two typed artifacts are independently accepted as bounded partials:
+`a025c4b` derives an immutable eligibility decision from exact 18-aspect inputs
+and emits V3 as publication-blocked, while `3dac6c5` replaces boolean G7 evidence
+with typed per-aspect states and a complete signing-ready 18-aspect set. The
+coordinator reran Eligibility at 118 tests/349 assertions and Review at 252/349.
+Neither artifact is persistence authority: raw eligibility configuration/source
+versions and G7 discrepancy sources remain caller-supplied until a transactional
+reader binds them to stored evidence. The next pure step is a reviewed decision
+artifact that performs real post-level-override recalculation and validates an
+optional label override without accepting recalculation booleans.
+
+Instrument history commit `25d6b37` remains repair-required despite the full
+disposable PostgreSQL gate passing 423 tests/4,696 assertions. Adversarial
+inspection found that nullable timestamps can bypass the monotonic deactivation
+trigger and that populated rollback is only proven with a superuser owner, so a
+FORCE-RLS non-superuser owner could observe a false empty table. A serial repair
+owns only that migration and its isolated tests. No active database was used;
+the disposable containers and network were removed by the runner.
+
+The repair `d7b5359` closes both history findings. Active NULL timestamps are
+rejected before upgrade and by the insert/update trigger; populated rollback is
+now proven with a real table owner that is `NOSUPERUSER` and `NOBYPASSRLS`.
+Independent verification accepts `25d6b37` + `d7b5359` after the full disposable
+PostgreSQL suite passed 426 tests/4,717 assertions, scoped Pint/PHPStan passed,
+and the exact runner containers/network were absent after cleanup. The ordinary
+unique-index creation may briefly lock this small catalog, so rollout must occur
+before concurrent version seeding; this is operational, not an acceptance gap.
+
+Real post-override recalculation is accepted as bounded pure-domain commit
+`2ac749f`. It retains the baseline field, IQ, validity, standard configuration,
+and source versions privately; exact ProfessionalOverridePolicy outputs update
+levels, then a new EligibilityDecisionSnapshot is calculated before an optional
+label override is checked. Raw recalculation/audit booleans are no longer part
+of this artifact. Coordinator gates passed 369 tests/1,491 assertions and
+PHPStan with zero errors. It remains non-authoritative until persistence loads
+and binds the raw sources.
+
+The identity audit found no existing document or schema that unifies direct,
+legacy Selection, and integrated assessment attempts. ADR-0029 therefore
+accepts `assessment_cases` as the immutable universal battery/report root, with
+instrument sessions scoped to the case and one append-only report-version
+stream per case. Ambiguous historical participant-to-case mappings must stop
+backfill; they may never be guessed. This freezes the next serial migration
+boundary without creating or running a migration.
+
 ## Preserved user-owned work
 
 `docs/decisions/0026-checkout-secure-composition-launcher-authority.md` was
