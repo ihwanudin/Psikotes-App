@@ -101,18 +101,7 @@ final class AssessmentInvoiceClaimTest extends TestCase
                 DB::table('assessment_charges')->where('organization_id', $org)->delete();
                 DB::table('audit_logs')->where('branch_id', $org)->delete();
                 DB::table('admins')->where('id', $this->admin->id)->delete();
-                foreach ($this->fixtures as $f) {
-                    $code = DB::table('packages')->where('id', $f['package'])->value('code');
-                    DB::table('assessment_participants')->where('id', $f['attempt'])->delete();
-                    DB::table('integration_sources')->where('id', $f['source'])->delete();
-                    DB::table('integration_clients')->where('id', $f['client'])->delete();
-                    DB::table('participants')->where('id', $f['participant'])->delete();
-                    DB::table('package_items')->where('package_id', $f['package'])->delete();
-                    DB::table('packages')->where('id', $f['package'])->delete();
-                    DB::table('payment_methods')->where('code', $code)->delete();
-                }
                 DB::table('payment_methods')->where('id', $this->method)->delete();
-                DB::table('branches')->where('id', $org)->delete();
             });
             config()->set('assessment_integration.checkout.enabled', $this->previous['enabled']);
             config()->set('assessment_billing.invoice_duration_hours', $this->previous['duration']);

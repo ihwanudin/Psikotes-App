@@ -55,7 +55,9 @@ final class AssessmentBillingRlsTest extends TestCase
             'participant' => in_array($table, ['assessment_charges', 'assessment_entitlements'], true) ? 1 : 0,
             'staff' => 0, 'psychologist' => 0] as $role => $expected) {
             $runner->run(new RlsContext($role, $this->own['organization'], $this->own['participant']), function () use ($table, $role, $expected): void {
-                $this->assertSame($expected, DB::table($table)->count(), $table.':'.$role);
+                $this->assertSame($expected, DB::table($table)->whereIn('organization_id', [
+                    $this->own['organization'], $this->foreign['organization'],
+                ])->count(), $table.':'.$role);
                 if (in_array($role, ['branch_admin', 'participant'], true)) {
                     $this->assertSame(0, DB::table($table)->where('organization_id', $this->foreign['organization'])->count());
                 }
@@ -126,7 +128,9 @@ final class AssessmentBillingRlsTest extends TestCase
     {
         app(RlsContextRunner::class)->runAsService(function (): void {
             foreach (self::tables() as [$table]) {
-                $this->assertSame(3, DB::table($table)->update(['updated_at' => now()]));
+                $this->assertSame(3, DB::table($table)->whereIn('organization_id', [
+                    $this->own['organization'], $this->foreign['organization'],
+                ])->update(['updated_at' => now()]));
             }
         });
     }

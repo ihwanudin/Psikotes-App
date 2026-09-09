@@ -64,18 +64,7 @@ final class AssessmentBillReservationTest extends TestCase
             DB::table('assessment_charges')->where('organization_id', $org)->delete();
             DB::table('audit_logs')->where('branch_id', $org)->delete();
             DB::table('admins')->whereIn('id', array_map(fn ($admin) => $admin->id, $this->admins))->delete();
-            foreach ($this->fixtures as $fixture) {
-                $packageCode = DB::table('packages')->where('id', $fixture['package'])->value('code');
-                DB::table('assessment_participants')->where('id', $fixture['attempt'])->delete();
-                DB::table('integration_sources')->where('id', $fixture['source'])->delete();
-                DB::table('integration_clients')->where('id', $fixture['client'])->delete();
-                DB::table('participants')->where('id', $fixture['participant'])->delete();
-                DB::table('package_items')->where('package_id', $fixture['package'])->delete();
-                DB::table('packages')->where('id', $fixture['package'])->delete();
-                DB::table('payment_methods')->where('code', $packageCode)->delete();
-            }
             DB::table('payment_methods')->where('id', $this->method)->delete();
-            DB::table('branches')->where('id', $org)->delete();
         });
         parent::tearDown();
     }

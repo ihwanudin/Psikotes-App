@@ -147,7 +147,8 @@ final class AssessmentBillItemsSchemaTest extends TestCase
             $this->assertSame(1, $row->update(['status' => 'ready', 'ready_at' => '2026-08-31 01:00:00+00']));
             $this->assertSame(1, $row->update(['status' => 'in_progress', 'started_at' => '2026-08-31 02:00:00+00']));
             $this->assertSame(1, $row->update(['status' => 'done', 'completed_at' => '2026-08-31 03:00:00+00']));
-            $this->assertSame(4, DB::table('assessment_entitlements')->where('status', 'locked')->count());
+            $this->assertSame(4, DB::table('assessment_entitlements')
+                ->where('organization_id', $this->fixture['organization'])->where('status', 'locked')->count());
         });
     }
 
@@ -195,8 +196,11 @@ final class AssessmentBillItemsSchemaTest extends TestCase
                 DB::table('assessment_entitlements')->insert(Fixture::entitlement($fixture));
             }
             $this->assertSame(2, DB::table('assessment_bill_items')->where('bill_id', $this->fixture['bill'])->count());
-            $this->assertSame(200, (int) DB::table('assessment_bill_items')->sum('amount'));
-            $this->assertSame(2, DB::table('assessment_entitlements')->where('status', 'locked')->count());
+            $this->assertSame(200, (int) DB::table('assessment_bill_items')
+                ->where('bill_id', $this->fixture['bill'])->sum('amount'));
+            $this->assertSame(2, DB::table('assessment_entitlements')
+                ->whereIn('assessment_participant_id', [$this->fixture['attempt'], $other['attempt']])
+                ->where('status', 'locked')->count());
         });
     }
 
@@ -230,7 +234,8 @@ final class AssessmentBillItemsSchemaTest extends TestCase
             DB::table('assessment_entitlements')->insert(Fixture::entitlement($this->fixture));
             $other = Fixture::create('organization', $this->fixture);
             DB::table('assessment_entitlements')->insert(Fixture::entitlement($other));
-            $this->assertSame(2, DB::table('assessment_entitlements')->count());
+            $this->assertSame(2, DB::table('assessment_entitlements')
+                ->whereIn('assessment_participant_id', [$this->fixture['attempt'], $other['attempt']])->count());
             DB::table('assessment_entitlements')->insert(Fixture::entitlement($this->fixture));
         });
     }
@@ -251,7 +256,8 @@ final class AssessmentBillItemsSchemaTest extends TestCase
             foreach (['participant', 'branch_admin', 'super_admin'] as $role) {
                 $expected = $role === 'participant' && $table === 'assessment_bill_items' ? 0 : 1;
                 app(RlsContextRunner::class)->run(new RlsContext($role, $this->fixture['organization'], $this->fixture['participant']),
-                    fn () => $this->assertSame($expected, DB::table($table)->count()));
+                    fn () => $this->assertSame($expected, DB::table($table)
+                        ->where('organization_id', $this->fixture['organization'])->count()));
             }
         }
     }

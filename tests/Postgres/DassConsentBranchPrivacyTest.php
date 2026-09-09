@@ -16,7 +16,7 @@ use Tests\Support\AssessmentPreviewFixture as Fixture;
 /** PostgreSQL runtime evidence for the DASS consent privacy boundary. */
 final class DassConsentBranchPrivacyTest extends TestCase
 {
-    /** @var array{organization:int,participant:int,firstAttempt:int,secondAttempt:int,foreignOrganization:int,foreignParticipant:int} */
+    /** @var array{organization:int,participant:int,firstAttempt:int,secondAttempt:int,foreignOrganization:int,foreignParticipant:int,dassAssessment:int} */
     private array $fixture;
 
     protected function setUp(): void
@@ -73,6 +73,7 @@ final class DassConsentBranchPrivacyTest extends TestCase
                 'secondAttempt' => (int) $second['attempt'],
                 'foreignOrganization' => (int) $foreign['organization'],
                 'foreignParticipant' => (int) $foreign['participant'],
+                'dassAssessment' => (int) $assessment,
             ];
         });
         DB::select("SELECT set_config('app.role', '', true), set_config('app.branch_id', '', true), set_config('app.participant_id', '', true)");
@@ -190,7 +191,9 @@ final class DassConsentBranchPrivacyTest extends TestCase
     private function assertDassTableCounts(int $expected): void
     {
         foreach (['dass.assessments', 'dass.responses', 'dass.results'] as $table) {
-            $this->assertSame($expected, DB::table($table)->count(), $table.' visibility differs from DASS consent.');
+            $column = $table === 'dass.assessments' ? 'id' : 'assessment_id';
+            $this->assertSame($expected, DB::table($table)->where($column, $this->fixture['dassAssessment'])->count(),
+                $table.' visibility differs from DASS consent.');
         }
     }
 

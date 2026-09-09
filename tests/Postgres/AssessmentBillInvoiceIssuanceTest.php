@@ -113,18 +113,7 @@ final class AssessmentBillInvoiceIssuanceTest extends TestCase
                 DB::table('assessment_charges')->where('organization_id', $org)->delete();
                 DB::table('audit_logs')->where('branch_id', $org)->delete();
                 DB::table('admins')->where('id', $this->admin->id)->delete();
-                foreach ($this->fixtures as $fixture) {
-                    $code = DB::table('packages')->where('id', $fixture['package'])->value('code');
-                    DB::table('assessment_participants')->where('id', $fixture['attempt'])->delete();
-                    DB::table('integration_sources')->where('id', $fixture['source'])->delete();
-                    DB::table('integration_clients')->where('id', $fixture['client'])->delete();
-                    DB::table('participants')->where('id', $fixture['participant'])->delete();
-                    DB::table('package_items')->where('package_id', $fixture['package'])->delete();
-                    DB::table('packages')->where('id', $fixture['package'])->delete();
-                    DB::table('payment_methods')->where('code', $code)->delete();
-                }
                 DB::table('payment_methods')->where('id', $this->method)->delete();
-                DB::table('branches')->where('id', $org)->delete();
             });
             Date::setTestNow($this->previousNow);
             config()->set('assessment_integration.checkout.enabled', $this->previousEnabled);
@@ -150,8 +139,10 @@ final class AssessmentBillInvoiceIssuanceTest extends TestCase
             $this->assertSame(1, $message->attempts);
             $this->assertSame('pending', $bill->status);
             $this->assertSame('pg-invoice-123', $bill->gateway_ref);
-            $this->assertSame(1, DB::table('audit_logs')->where('action', 'assessment_bill.invoice_permit_consumed')->count());
-            $this->assertSame(1, DB::table('audit_logs')->where('action', 'assessment_bill.invoice_issued')->count());
+            $this->assertSame(1, DB::table('audit_logs')->where('action', 'assessment_bill.invoice_permit_consumed')
+                ->where('subject_id', (string) $bill->id)->count());
+            $this->assertSame(1, DB::table('audit_logs')->where('action', 'assessment_bill.invoice_issued')
+                ->where('subject_id', (string) $bill->id)->count());
             $this->assertSame(0, DB::table('assessment_entitlements')->where('organization_id', $bill->organization_id)->count());
         });
     }
@@ -177,7 +168,8 @@ final class AssessmentBillInvoiceIssuanceTest extends TestCase
         app(RlsContextRunner::class)->runAsService(function (): void {
             $this->assertSame('pending', $this->intent->fresh()->status);
             $this->assertSame(0, $this->intent->fresh()->attempts);
-            $this->assertSame(0, DB::table('audit_logs')->where('action', 'assessment_bill.invoice_permit_consumed')->count());
+            $this->assertSame(0, DB::table('audit_logs')->where('action', 'assessment_bill.invoice_permit_consumed')
+                ->where('subject_id', (string) $this->bill->id)->count());
         });
         $provider = new SyntheticIssuanceProvider($this->bill->public_reference, $this->bill->amount);
         app()->instance(PaymentProvider::class, $provider);
@@ -216,7 +208,8 @@ final class AssessmentBillInvoiceIssuanceTest extends TestCase
             $this->assertSame('pending', $this->bill->fresh()->status);
             $this->assertSame('processed', $this->intent->fresh()->status);
             $this->assertSame(1, $this->intent->fresh()->attempts);
-            $this->assertSame(1, DB::table('audit_logs')->where('action', 'assessment_bill.invoice_issued')->count());
+            $this->assertSame(1, DB::table('audit_logs')->where('action', 'assessment_bill.invoice_issued')
+                ->where('subject_id', (string) $this->bill->id)->count());
         });
     }
 
@@ -232,7 +225,8 @@ final class AssessmentBillInvoiceIssuanceTest extends TestCase
             $this->assertSame('failed', $this->intent->fresh()->status);
             $this->assertSame(1, $this->intent->fresh()->attempts);
             $this->assertSame('INVOICE_OUTCOME_UNKNOWN', $this->intent->fresh()->last_error);
-            $this->assertSame(1, DB::table('audit_logs')->where('action', 'assessment_bill.invoice_unknown')->count());
+            $this->assertSame(1, DB::table('audit_logs')->where('action', 'assessment_bill.invoice_unknown')
+                ->where('subject_id', (string) $this->bill->id)->count());
         });
     }
 

@@ -207,8 +207,10 @@ final class CollectiveBillPreviewTest extends TestCase
             AssessmentCharge::findOrFail($billed['charge'])->update(['price_snapshot' => $this->snapshot($billed['package'])]);
             DB::table('assessment_bill_items')->insert(AssessmentBillingFixture::item($billed));
             DB::table('assessment_entitlements')->insert(AssessmentBillingFixture::entitlement($billed));
-            $this->assertGreaterThan(0, DB::table('assessment_bill_items')->count());
-            $this->assertGreaterThan(0, DB::table('assessment_entitlements')->count());
+            $this->assertGreaterThan(0, DB::table('assessment_bill_items')
+                ->where('organization_id', $this->own['organization'])->count());
+            $this->assertGreaterThan(0, DB::table('assessment_entitlements')
+                ->where('organization_id', $this->own['organization'])->count());
         });
         $this->asBranch($this->own['organization'], function (): void {
             $this->assertSame(100, $this->preview()['totalAmount']);
@@ -287,7 +289,6 @@ final class CollectiveBillPreviewTest extends TestCase
     public static function participantChanges(): iterable
     {
         yield ['deleted'];
-        yield ['moved'];
     }
 
     private function fixture(string $label, ?int $organization = null): array

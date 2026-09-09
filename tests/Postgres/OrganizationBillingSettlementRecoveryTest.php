@@ -57,21 +57,16 @@ final class OrganizationBillingSettlementRecoveryTest extends TestCase
                 DB::table('outbox_messages')->where('topic', 'assessment.activation')
                     ->whereIn('aggregate_id', array_map(strval(...), $this->attempts))->delete();
                 DB::table('audit_logs')->where('branch_id', $this->bill['organization'])->delete();
-                foreach (['assessment_entitlements', 'assessment_bill_items', 'assessment_bills', 'assessment_charges',
-                    'assessment_participants', 'integration_clients'] as $table) {
+                foreach (['assessment_entitlements', 'assessment_bill_items', 'assessment_bills', 'assessment_charges'] as $table) {
                     DB::table($table)->where('organization_id', $this->bill['organization'])->delete();
                 }
                 foreach (['consent_records', 'identity_verifications', 'identity_evidence'] as $table) {
                     DB::table($table)->whereIn('participant_id', $this->participants)->delete();
                 }
-                DB::table('participants')->whereIn('id', $this->participants)->delete();
-                DB::table('package_items')->whereIn('package_id', $this->packages)->delete();
-                DB::table('packages')->whereIn('id', $this->packages)->delete();
                 if ($this->reviewer !== null) {
                     DB::table('admins')->where('id', $this->reviewer)->delete();
                 }
                 DB::table('payment_methods')->where('id', $this->bill['paymentMethod'])->delete();
-                DB::table('branches')->where('id', $this->bill['organization'])->delete();
             });
         }
         Date::setTestNow();

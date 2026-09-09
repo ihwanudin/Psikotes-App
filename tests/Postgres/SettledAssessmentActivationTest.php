@@ -44,18 +44,13 @@ final class SettledAssessmentActivationTest extends TestCase
             $method = DB::table('assessment_bills')->where('id', $this->f['bill'])->value('payment_method_id');
             DB::table('outbox_messages')->where('topic', 'assessment.activation')->where('aggregate_id', (string) $this->f['attempt'])->delete();
             DB::table('audit_logs')->where('branch_id', $org)->delete();
-            foreach (['assessment_entitlements', 'assessment_bill_items', 'assessment_bills', 'assessment_charges',
-                'assessment_participants', 'integration_clients'] as $table) {
+            foreach (['assessment_entitlements', 'assessment_bill_items', 'assessment_bills', 'assessment_charges'] as $table) {
                 DB::table($table)->where('organization_id', $org)->delete();
             }
             foreach (['consent_records', 'identity_verifications', 'identity_evidence'] as $table) {
                 DB::table($table)->where('participant_id', $this->f['participant'])->delete();
             }
-            DB::table('participants')->where('id', $this->f['participant'])->delete();
-            DB::table('package_items')->where('package_id', $this->f['package'])->delete();
-            DB::table('packages')->where('id', $this->f['package'])->delete();
             DB::table('payment_methods')->where('id', $method)->delete();
-            DB::table('branches')->where('id', $org)->delete();
         });
         Date::setTestNow();
         parent::tearDown();

@@ -126,16 +126,7 @@ final class AssessmentInvoiceReconciliationLeaseValidationTest extends TestCase
                 DB::table('assessment_charges')->where('organization_id', $this->fixture['organization'])->delete();
                 DB::table('audit_logs')->where('branch_id', $this->fixture['organization'])->delete();
                 DB::table('admins')->where('id', $this->admin->id)->delete();
-                $code = DB::table('packages')->where('id', $this->fixture['package'])->value('code');
-                DB::table('assessment_participants')->where('id', $this->fixture['attempt'])->delete();
-                DB::table('integration_sources')->where('id', $this->fixture['source'])->delete();
-                DB::table('integration_clients')->where('id', $this->fixture['client'])->delete();
-                DB::table('participants')->where('id', $this->fixture['participant'])->delete();
-                DB::table('package_items')->where('package_id', $this->fixture['package'])->delete();
-                DB::table('packages')->where('id', $this->fixture['package'])->delete();
-                DB::table('payment_methods')->where('code', $code)->delete();
                 DB::table('payment_methods')->where('id', $this->method)->delete();
-                DB::table('branches')->where('id', $this->fixture['organization'])->delete();
             });
             config()->set('assessment_integration.checkout.enabled', $this->previous['enabled']);
             config()->set('assessment_billing.invoice_duration_hours', $this->previous['duration']);
@@ -168,7 +159,8 @@ final class AssessmentInvoiceReconciliationLeaseValidationTest extends TestCase
             $this->assertSame($winners[0]['token'], $fresh->reconciliation_lease_token);
             $this->assertSame('processing', $fresh->status);
             $this->assertSame(1, $fresh->attempts);
-            $this->assertSame(1, DB::table('audit_logs')->where('action', 'assessment_bill.invoice_claimed')->count());
+            $this->assertSame(1, DB::table('audit_logs')->where('action', 'assessment_bill.invoice_claimed')
+                ->where('subject_id', (string) $this->bill->id)->count());
         });
     }
 

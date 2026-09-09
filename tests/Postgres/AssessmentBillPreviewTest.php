@@ -51,13 +51,19 @@ final class AssessmentBillPreviewTest extends TestCase
                 $this->addMandatoryDass($fixture['package']);
                 $selection[] = Fixture::selection($fixture);
             }
+            $tables = ['assessment_charges', 'assessment_bills', 'assessment_bill_items', 'assessment_entitlements',
+                'orders', 'entitlements', 'outbox_messages'];
+            $before = [];
+            foreach ($tables as $table) {
+                $before[$table] = DB::table($table)->count();
+            }
             $result = app(PreviewAssessmentBill::class)->execute($this->own['organization'], $selection, PayerType::Organization);
             $this->assertSame(930, $result['totalAmount']);
             $this->assertSame(9, $result['paidCount']);
             $this->assertSame(1, $result['freeCount']);
             $this->assertTrue($result['canReserve']);
-            foreach (['assessment_charges', 'assessment_bills', 'assessment_bill_items', 'assessment_entitlements', 'orders', 'entitlements', 'outbox_messages'] as $table) {
-                $this->assertSame(0, DB::table($table)->count(), $table);
+            foreach ($tables as $table) {
+                $this->assertSame($before[$table], DB::table($table)->count(), $table);
             }
         });
     }

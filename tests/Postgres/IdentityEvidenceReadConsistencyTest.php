@@ -65,18 +65,13 @@ final class IdentityEvidenceReadConsistencyTest extends TestCase
             if (isset($this->fixture)) {
                 app(RlsContextRunner::class)->runAsService(function (): void {
                     $method = DB::table('assessment_bills')->where('id', $this->fixture['bill'])->value('payment_method_id');
-                    foreach (['assessment_entitlements', 'assessment_bill_items', 'assessment_bills', 'assessment_charges',
-                        'assessment_participants', 'integration_clients'] as $table) {
+                    foreach (['assessment_entitlements', 'assessment_bill_items', 'assessment_bills', 'assessment_charges'] as $table) {
                         DB::table($table)->where('organization_id', $this->fixture['organization'])->delete();
                     }
                     foreach (['consent_records', 'identity_verifications', 'identity_evidence'] as $table) {
                         DB::table($table)->where('participant_id', $this->fixture['participant'])->delete();
                     }
-                    DB::table('participants')->where('id', $this->fixture['participant'])->delete();
-                    DB::table('package_items')->where('package_id', $this->fixture['package'])->delete();
-                    DB::table('packages')->where('id', $this->fixture['package'])->delete();
                     DB::table('payment_methods')->where('id', $method)->delete();
-                    DB::table('branches')->where('id', $this->fixture['organization'])->delete();
                 });
             }
         } finally {

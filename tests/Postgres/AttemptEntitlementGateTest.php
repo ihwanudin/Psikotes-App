@@ -53,7 +53,8 @@ final class AttemptEntitlementGateTest extends TestCase
             $this->assertSame($this->f['entitlement'], $entitlement->id);
             $this->assertSame('ready', $entitlement->status);
             $this->assertNull($entitlement->started_at);
-            $this->assertSame(0, DB::table('outbox_messages')->count());
+            $this->assertSame(0, DB::table('outbox_messages')
+                ->where('aggregate_id', (string) $this->f['attempt'])->count());
         });
     }
 

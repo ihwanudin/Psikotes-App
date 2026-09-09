@@ -76,20 +76,15 @@ final class AssessmentBillStatusReconciliationTest extends TestCase
             DB::table('payment_webhook_events')->where('merchant_reference', $this->fixture['reference'])->delete();
             DB::table('outbox_messages')->where('aggregate_id', (string) $this->fixture['attempt'])->delete();
             DB::table('audit_logs')->where('branch_id', $this->fixture['organization'])->delete();
-            foreach (['assessment_entitlements', 'assessment_bill_items', 'assessment_bills', 'assessment_charges',
-                'assessment_participants', 'integration_clients'] as $table) {
+            foreach (['assessment_entitlements', 'assessment_bill_items', 'assessment_bills', 'assessment_charges'] as $table) {
                 DB::table($table)->where('organization_id', $this->fixture['organization'])->delete();
             }
             foreach (['consent_records', 'identity_verifications', 'identity_evidence'] as $table) {
                 DB::table($table)->where('participant_id', $this->fixture['participant'])->delete();
             }
-            DB::table('participants')->where('id', $this->fixture['participant'])->delete();
-            DB::table('package_items')->where('package_id', $this->fixture['package'])->delete();
-            DB::table('packages')->where('id', $this->fixture['package'])->delete();
             if ($this->ownsMethod) {
                 DB::table('payment_methods')->where('id', $this->method)->delete();
             }
-            DB::table('branches')->where('id', $this->fixture['organization'])->delete();
         });
         Http::swap(new Factory);
         Http::preventStrayRequests();
