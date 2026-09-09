@@ -719,3 +719,29 @@ The next safe non-migration slice is a read-only origin-aware case authorization
 resolver that fails closed on zero/multiple/mismatched grants. A production
 session creator remains blocked on durable grant identity and complete immutable
 session definitions.
+
+The read-only origin-aware case authorization resolver is accepted across
+`87946e7`, lock/ambiguity repair `0cccb43`, and PostgreSQL cleanup repair
+`66d0f86`. Typed principal entrypoints derive, lock, and validate exactly one
+INTEGRATED, DIRECT_PUBLIC, or LEGACY_SELECTION graph without accepting caller
+origin, case, order, mapping, or opaque session IDs. DASS is excluded by the
+typed instrument boundary. Competing origin graphs, cross-scope rows, duplicate
+or missing grants, unpaid or consumed state, and package/entitlement drift fail
+closed. All origins share a participant-first mutex; infrastructure exceptions
+remain observable. SQLite passed 12 tests/39 assertions and full disposable
+PostgreSQL passed 476 tests/5,274 assertions, including a deterministic opposing-
+entrypoint lock proof and exact resource cleanup. Final adversarial review found
+no P1/P2. This remains an unwired read-only prerequisite, not a production
+session allocator or authorization-id persistence design.
+
+F9 now has a reproducible tracked-snapshot content scanner across `1358d66`,
+`b344a0f`, and `727b294`. It checks both Git index and working-tree content,
+keeps secret and PII profiles separate, emits redacted safe paths, rejects
+unsupported binary/encoding states, permits only exact expiring secret
+exceptions, and emits no offline-verifiable PII fingerprint. Adversarial tests
+passed 31/31 with no remaining P1/P2. The gate is still provisional because the
+tracked PRD DOCX is intentionally rejected until archive content can be inspected;
+no exclusion was added. The historical 210-error ESLint blocker is independently
+accepted as mechanical commit `0a53002`; repo lint and focused browser/source-
+integrity tests are green. A dependency-free bounded OOXML inspection slice is
+active next, while Git-history scanning remains a later authority/tooling decision.
