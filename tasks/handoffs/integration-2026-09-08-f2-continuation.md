@@ -569,3 +569,17 @@ PHPStan with zero errors, Pint, and diff checks. Exact containers and network
 were removed. Independent adversarial review found no remaining P1/P2. This
 does not bind `test_sessions`, direct/legacy flows, or DASS; the next result-ledger
 dependencies remain session-case immutability and a versioned 42-source mapping.
+
+The follow-up session audit confirms that universal `test_sessions` case NOT
+NULL would guess history. Existing sessions carry participant/test/attempt and
+opaque authorization/allocation identifiers, but no integrated attempt, order,
+Selection, origin, organization, or package relation. A pre-bound exact row may
+be retained, and an unbound row may be linked only when its participant has
+exactly one accepted case. Zero-candidate rows remain NULL because direct and
+legacy flows do not create cases; multi-case rows abort as ambiguous. Timestamps
+are not a mapping heuristic. The next serial slice is therefore nullable
+session integrity: exact preflight, single-candidate backfill, composite
+case/participant FK, bound-only case indexes, and immutable case/created-at
+identity while preserving existing participant-scoped uniqueness and RLS.
+Final NOT NULL waits for direct and legacy case identity, a case-aware atomic
+session allocator, and explicit adjudication of multi-case history.
