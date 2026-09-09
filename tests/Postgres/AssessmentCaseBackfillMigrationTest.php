@@ -20,6 +20,7 @@ final class AssessmentCaseBackfillMigrationTest extends TestCase
         $this->asOwner(function (): void {
             DB::beginTransaction();
             try {
+                $this->grantMigration()->down();
                 $migration = $this->migration();
                 $migration->down();
                 DB::statement('ALTER TABLE assessment_cases NO FORCE ROW LEVEL SECURITY');
@@ -87,6 +88,7 @@ final class AssessmentCaseBackfillMigrationTest extends TestCase
             $this->asOwner(function () use ($scenario): void {
                 DB::beginTransaction();
                 try {
+                    $this->grantMigration()->down();
                     $migration = $this->migration();
                     $migration->down();
                     DB::statement('ALTER TABLE assessment_cases NO FORCE ROW LEVEL SECURITY');
@@ -184,6 +186,7 @@ final class AssessmentCaseBackfillMigrationTest extends TestCase
         $this->asOwner(function () use ($component): void {
             DB::beginTransaction();
             try {
+                $this->grantMigration()->down();
                 $migration = $this->migration();
                 $migration->down();
                 $migration->up();
@@ -224,6 +227,11 @@ final class AssessmentCaseBackfillMigrationTest extends TestCase
     private function migration(): object
     {
         return require database_path('migrations/2026_09_09_000300_backfill_integrated_assessment_cases.php');
+    }
+
+    private function grantMigration(): object
+    {
+        return require database_path('migrations/2026_09_09_000700_create_test_session_grants.php');
     }
 
     /** @return array{organization:int,participant:int,package:int,client:int,attempt:int,alias:string,created_at:string} */

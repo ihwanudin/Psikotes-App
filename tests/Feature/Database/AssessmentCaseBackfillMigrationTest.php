@@ -22,6 +22,10 @@ final class AssessmentCaseBackfillMigrationTest extends OrganizationPaymentTestC
     {
         parent::setUp();
         $this->assertSame(0, Artisan::call('migrate', ['--force' => true]));
+        (require database_path('migrations/2026_09_09_000700_create_test_session_grants.php'))->down();
+        (require database_path('migrations/2026_09_09_000600_bind_direct_public_orders_to_assessment_cases.php'))->down();
+        (require database_path('migrations/2026_09_09_000500_bind_legacy_selection_assessment_cases.php'))->down();
+        (require database_path('migrations/2026_09_09_000400_harden_test_session_case_identity.php'))->down();
         $this->migration = require database_path('migrations/2026_09_09_000300_backfill_integrated_assessment_cases.php');
         $this->migration->down();
     }

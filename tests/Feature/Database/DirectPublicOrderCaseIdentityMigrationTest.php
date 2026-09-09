@@ -275,11 +275,17 @@ final class DirectPublicOrderCaseIdentityMigrationTest extends OrganizationPayme
 
     private function migrate(string $direction): void
     {
+        if ($direction === 'down' && Schema::hasTable('test_session_grants')) {
+            (require database_path('migrations/2026_09_09_000700_create_test_session_grants.php'))->down();
+        }
         $migration = require database_path('migrations/2026_09_09_000600_bind_direct_public_orders_to_assessment_cases.php');
         $operation = [$migration, $direction];
         if (! is_callable($operation)) {
             throw new RuntimeException("Migration operation {$direction} is unavailable.");
         }
         $operation();
+        if ($direction === 'up' && ! Schema::hasTable('test_session_grants')) {
+            (require database_path('migrations/2026_09_09_000700_create_test_session_grants.php'))->up();
+        }
     }
 }

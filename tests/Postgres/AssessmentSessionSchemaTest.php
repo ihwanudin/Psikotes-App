@@ -350,6 +350,9 @@ final class AssessmentSessionSchemaTest extends TestCase
 
     private function runMigration(string $method): void
     {
+        if ($method === 'down' && Schema::hasTable('test_session_grants')) {
+            (require database_path('migrations/2026_09_09_000700_create_test_session_grants.php'))->down();
+        }
         $migration = require database_path('migrations/2026_09_08_000100_create_generic_assessment_sessions.php');
         if (! is_object($migration) || ! in_array($method, ['up', 'down'], true) || ! method_exists($migration, $method)) {
             throw new RuntimeException('Assessment session migration is invalid.');

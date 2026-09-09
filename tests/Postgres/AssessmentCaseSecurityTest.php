@@ -195,8 +195,10 @@ final class AssessmentCaseSecurityTest extends TestCase
             $sessionCase = require database_path('migrations/2026_09_09_000400_harden_test_session_case_identity.php');
             $legacySelectionCase = require database_path('migrations/2026_09_09_000500_bind_legacy_selection_assessment_cases.php');
             $directPublicCase = require database_path('migrations/2026_09_09_000600_bind_direct_public_orders_to_assessment_cases.php');
+            $sessionGrant = require database_path('migrations/2026_09_09_000700_create_test_session_grants.php');
             DB::beginTransaction();
             try {
+                $sessionGrant->down();
                 $directPublicCase->down();
                 $legacySelectionCase->down();
                 $sessionCase->down();
@@ -210,6 +212,7 @@ final class AssessmentCaseSecurityTest extends TestCase
                 $sessionCase->up();
                 $legacySelectionCase->up();
                 $directPublicCase->up();
+                $sessionGrant->up();
             } finally {
                 DB::rollBack();
             }
@@ -217,6 +220,7 @@ final class AssessmentCaseSecurityTest extends TestCase
             DB::beginTransaction();
             try {
                 DB::statement('SET LOCAL row_security = off');
+                $sessionGrant->down();
                 $directPublicCase->down();
                 $legacySelectionCase->down();
                 $sessionCase->down();
