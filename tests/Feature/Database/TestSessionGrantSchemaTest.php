@@ -13,7 +13,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use ReflectionMethod;
 use RuntimeException;
 use Tests\OrganizationPaymentTestCase;
-use Tests\Support\AssessmentBillingFixture as Fixture;
+use Tests\Support\AssessmentAccessFixture;
 
 final class TestSessionGrantSchemaTest extends OrganizationPaymentTestCase
 {
@@ -73,18 +73,14 @@ final class TestSessionGrantSchemaTest extends OrganizationPaymentTestCase
         $direct = $this->directGraph('valid-direct');
         $this->insertGrant($this->directGrant($direct));
 
-        $integrated = Fixture::create();
-        DB::table('assessment_participants')->where('id', $integrated['attempt'])->update(['assessment_status' => 'READY']);
-        $assessmentEntitlement = DB::table('assessment_entitlements')->insertGetId([
-            ...Fixture::entitlement($integrated), 'status' => 'ready', 'ready_at' => now(),
-        ]);
+        $integrated = AssessmentAccessFixture::create();
         $integratedSession = $this->createBoundSession($integrated['participant'], (int) $integrated['case']);
         $this->insertGrant([
             'test_session_id' => $integratedSession, 'assessment_case_id' => $integrated['case'],
             'participant_id' => $integrated['participant'], 'organization_id' => $integrated['organization'],
             'test_type' => 'ist', 'origin' => 'INTEGRATED', 'grant_kind' => 'assessment_entitlement',
             'assessment_participant_id' => $integrated['attempt'],
-            'assessment_entitlement_id' => $assessmentEntitlement, 'created_at' => now(),
+            'assessment_entitlement_id' => $integrated['entitlement'], 'created_at' => now(),
         ]);
 
         $legacy = $this->legacyGraph('valid-legacy');
@@ -100,7 +96,7 @@ final class TestSessionGrantSchemaTest extends OrganizationPaymentTestCase
             'organization_id' => $extraCase['branch'], 'package_id' => $extraCase['package'],
             'origin' => 'DIRECT_PUBLIC', 'created_at' => now(), 'updated_at' => now(),
         ]);
-        $this->assertRejected(fn () => $this->insertGrant($this->directGrant($extraCase)), 'exact authorization graph');
+        $this->assertRejected(fn () => $this->insertGrant($this->directGrant($extraCase)), 'exact durable source graph');
 
         $extraOrder = $this->directGraph('extra-order');
         $orderGuard = DB::selectOne("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='orders_direct_case_insert_guard'");
@@ -119,19 +115,50 @@ final class TestSessionGrantSchemaTest extends OrganizationPaymentTestCase
         } finally {
             DB::statement((string) $orderGuard->sql);
         }
-        $this->assertRejected(fn () => $this->insertGrant($this->directGrant($extraOrder)), 'exact authorization graph');
+        $this->assertRejected(fn () => $this->insertGrant($this->directGrant($extraOrder)), 'exact durable source graph');
 
         $orderless = $this->directGraph('orderless');
         DB::table('package_items')->insert(['package_id' => $orderless['package'], 'test_type' => 'papi',
             'sort_order' => 3, 'created_at' => now(), 'updated_at' => now()]);
         DB::table('entitlements')->insert(['participant_id' => $orderless['participant'], 'order_id' => null,
             'test_type' => 'papi', 'status' => 'ready', 'ready_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
-        $this->assertRejected(fn () => $this->insertGrant($this->directGrant($orderless)), 'exact authorization graph');
+        $this->assertRejected(fn () => $this->insertGrant($this->directGrant($orderless)), 'exact durable source graph');
 
         $drift = $this->directGraph('composition-drift');
         DB::table('package_items')->insert(['package_id' => $drift['package'], 'test_type' => 'papi',
             'sort_order' => 3, 'created_at' => now(), 'updated_at' => now()]);
-        $this->assertRejected(fn () => $this->insertGrant($this->directGrant($drift)), 'exact authorization graph');
+        $this->assertRejected(fn () => $this->insertGrant($this->directGrant($drift)), 'exact durable source graph');
+
+        $missingDass = $this->directGraph('missing-dass');
+        DB::table('entitlements')->where('id', $missingDass['dass_entitlement'])->delete();
+        DB::table('package_items')->where('package_id', $missingDass['package'])->where('test_type', 'dass21')->delete();
+        $this->assertRejected(fn () => $this->insertGrant($this->directGrant($missingDass)), 'exact durable source graph');
+    }
+
+    public function test_integrated_grant_requires_durable_checkout_price_and_settlement_graph(): void
+    {
+        foreach (['metadata', 'snapshot', 'settlement', 'composition'] as $corruption) {
+            $graph = AssessmentAccessFixture::create();
+            $session = $this->createBoundSession($graph['participant'], (int) $graph['case']);
+            match ($corruption) {
+                'metadata' => DB::table('assessment_participants')->where('id', $graph['attempt'])->update(['metadata' => '{}']),
+                'snapshot' => DB::table('assessment_charges')->where('id', $graph['charge'])->update(['price_snapshot' => json_encode([
+                    'version' => 1, 'packageId' => $graph['package'], 'packageCode' => 'synthetic',
+                    'packageName' => 'Synthetic', 'testTypes' => ['dass21'], 'baseAmount' => 100,
+                    'consultationRequested' => false, 'consultationAmount' => 0, 'amount' => 100, 'currency' => 'IDR',
+                ], JSON_THROW_ON_ERROR)]),
+                'settlement' => DB::table('assessment_bills')->where('id', $graph['bill'])->update(['status' => 'pending', 'paid_at' => null]),
+                'composition' => DB::table('package_items')->where('package_id', $graph['package'])->where('test_type', 'dass21')->delete(),
+            };
+
+            $this->assertRejected(fn () => $this->insertGrant([
+                'test_session_id' => $session, 'assessment_case_id' => $graph['case'],
+                'participant_id' => $graph['participant'], 'organization_id' => $graph['organization'],
+                'test_type' => 'ist', 'origin' => 'INTEGRATED', 'grant_kind' => 'assessment_entitlement',
+                'assessment_participant_id' => $graph['attempt'],
+                'assessment_entitlement_id' => $graph['entitlement'], 'created_at' => now(),
+            ]), 'exact durable source graph');
+        }
     }
 
     #[DataProvider('sqliteCorruptions')]
@@ -140,7 +167,11 @@ final class TestSessionGrantSchemaTest extends OrganizationPaymentTestCase
         match ($component) {
             'support_index' => DB::unprepared('DROP INDEX test_sessions_grant_scope_unique; CREATE INDEX test_sessions_grant_scope_unique ON test_sessions (id, assessment_case_id, participant_id, test_type)'),
             'insert_guard' => DB::unprepared("DROP TRIGGER test_session_grants_insert_guard; CREATE TRIGGER test_session_grants_insert_guard BEFORE INSERT ON test_session_grants FOR EACH ROW BEGIN SELECT RAISE(ABORT, 'counterfeit'); END"),
+            'insert_when_false' => $this->replaceSqliteTrigger('test_session_grants_insert_guard', fn (string $sql): string => preg_replace('/\bWHEN\b/', 'WHEN 0 AND', $sql, 1) ?? $sql),
+            'insert_comment' => DB::unprepared('DROP TRIGGER test_session_grants_insert_guard; CREATE TRIGGER test_session_grants_insert_guard BEFORE INSERT ON test_session_grants FOR EACH ROW WHEN 0 BEGIN SELECT 1; /* case_row.package_id IS NULL; SELECT 1 FROM package_items item; exact durable source graph */ END'),
             'update_guard' => DB::unprepared("DROP TRIGGER test_session_grants_update_guard; CREATE TRIGGER test_session_grants_update_guard AFTER UPDATE ON test_session_grants FOR EACH ROW BEGIN SELECT RAISE(ABORT, 'Test session grant history is append-only'); END"),
+            'update_when_false' => DB::unprepared("DROP TRIGGER test_session_grants_update_guard; CREATE TRIGGER test_session_grants_update_guard BEFORE UPDATE ON test_session_grants FOR EACH ROW WHEN 0 BEGIN SELECT RAISE(ABORT, 'Test session grant history is append-only'); END"),
+            'instrument_check' => $this->replaceSqliteTableDefinition("CONSTRAINT test_session_grants_instrument_check CHECK (test_type IN ('ist','papi','rmib','kraepelin'))", 'CONSTRAINT test_session_grants_instrument_check CHECK (1)'),
             default => throw new RuntimeException('Unknown synthetic corruption.'),
         };
         $before = DB::select("SELECT type,name,sql FROM sqlite_master WHERE name LIKE 'test_session_grants_%' OR name='test_sessions_grant_scope_unique' ORDER BY type,name");
@@ -158,7 +189,11 @@ final class TestSessionGrantSchemaTest extends OrganizationPaymentTestCase
     {
         yield 'support index definition' => ['support_index'];
         yield 'insert guard body' => ['insert_guard'];
+        yield 'insert guard disabled by false predicate' => ['insert_when_false'];
+        yield 'insert guard expected fragments hidden in comment' => ['insert_comment'];
         yield 'update guard event' => ['update_guard'];
+        yield 'update guard disabled by false predicate' => ['update_when_false'];
+        yield 'instrument check replaced by true' => ['instrument_check'];
     }
 
     public function test_empty_down_up_is_safe_but_populated_down_refuses_without_delta(): void
@@ -370,6 +405,30 @@ final class TestSessionGrantSchemaTest extends OrganizationPaymentTestCase
             $this->fail('Expected database rejection.');
         } catch (QueryException $exception) {
             $this->assertStringContainsString($message, $exception->getMessage());
+        }
+    }
+
+    /** @param callable(string):string $transform */
+    private function replaceSqliteTrigger(string $name, callable $transform): void
+    {
+        $trigger = DB::selectOne("SELECT sql FROM sqlite_master WHERE type='trigger' AND name=?", [$name]);
+        if ($trigger === null) {
+            throw new RuntimeException("Missing SQLite trigger {$name}.");
+        }
+        DB::statement("DROP TRIGGER {$name}");
+        $result = DB::connection()->getPdo()->exec($transform((string) $trigger->sql));
+        if ($result === false) {
+            throw new RuntimeException("Unable to replace SQLite trigger {$name}.");
+        }
+    }
+
+    private function replaceSqliteTableDefinition(string $from, string $to): void
+    {
+        DB::statement('PRAGMA writable_schema = ON');
+        try {
+            DB::update("UPDATE sqlite_master SET sql=replace(sql, ?, ?) WHERE type='table' AND name='test_session_grants'", [$from, $to]);
+        } finally {
+            DB::statement('PRAGMA writable_schema = OFF');
         }
     }
 }

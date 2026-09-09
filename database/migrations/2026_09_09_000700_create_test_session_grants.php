@@ -6,8 +6,18 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
+/**
+ * Immutable identity of the durable source grant used by a test session.
+ *
+ * This is intentionally not a consent/identity prerequisite ledger. The allocator must run the
+ * accepted authorization resolver in the same transaction before it inserts the session and grant.
+ */
 return new class extends Migration
 {
+    private const SQLITE_INSERT_GUARD_SHA256 = 'a3c52ce5e2e4bc37b845c31d1b044b63d6dfcaebe0b333b2ca44a5e12ad453dc';
+
+    private const POSTGRES_GUARD_BODY_SHA256 = '1b79d5e915627fb1bb93f0ef3f3939a67895532608d620f60b59b9ff92a80df8';
+
     /** @var array<string,string> */
     private const SUPPORT_INDEXES = [
         'test_sessions_grant_scope_unique' => 'test_sessions (id, assessment_case_id, participant_id, test_type)',
@@ -175,6 +185,7 @@ return new class extends Migration
                     FROM public.assessment_entitlements grant_row
                     JOIN public.assessment_participants attempt ON attempt.id = grant_row.assessment_participant_id
                     JOIN public.assessment_cases case_row ON case_row.id = attempt.assessment_case_id
+                    JOIN public.assessment_charges charge ON charge.assessment_participant_id = attempt.id
                     WHERE grant_row.id = NEW.assessment_entitlement_id
                       AND grant_row.assessment_participant_id = NEW.assessment_participant_id
                       AND grant_row.organization_id = NEW.organization_id
@@ -186,16 +197,80 @@ return new class extends Migration
                       AND attempt.assessment_case_id = NEW.assessment_case_id
                       AND attempt.participant_id = NEW.participant_id
                       AND attempt.organization_id = NEW.organization_id
+                      AND attempt.package_id = case_row.package_id
+                      AND attempt.metadata->>'checkout_contract_version' = 'checkout-v2'
                       AND attempt.assessment_status IN ('READY','IN_PROGRESS')
                       AND attempt.revoked_at IS NULL AND attempt.finalized_at IS NULL
                       AND case_row.origin = 'INTEGRATED'
+                      AND charge.id = grant_row.charge_id
+                      AND charge.organization_id = NEW.organization_id
+                      AND charge.participant_id = NEW.participant_id
+                      AND charge.package_id = attempt.package_id
+                      AND charge.currency = 'IDR'
+                      AND charge.price_snapshot->>'packageId' = attempt.package_id::text
+                      AND charge.price_snapshot->>'currency' = 'IDR'
+                      AND EXISTS (
+                          SELECT 1 FROM jsonb_array_elements_text(charge.price_snapshot->'testTypes') snapshot_type(value)
+                          WHERE snapshot_type.value = NEW.test_type
+                      )
+                      AND (SELECT COUNT(*) FROM public.package_items item WHERE item.package_id = attempt.package_id AND item.test_type = 'dass21') = 1
+                      AND (SELECT COUNT(*) FROM public.package_items item WHERE item.package_id = attempt.package_id AND item.test_type IN ('ist','papi','rmib','kraepelin')) >= 1
+                      AND NOT EXISTS (
+                          SELECT 1 FROM public.package_items item
+                          WHERE item.package_id = attempt.package_id
+                            AND item.test_type NOT IN ('dass21','ist','papi','rmib','kraepelin')
+                      )
+                      AND NOT EXISTS (
+                          SELECT 1 FROM public.package_items item
+                          WHERE item.package_id = attempt.package_id
+                            AND NOT EXISTS (
+                                SELECT 1 FROM jsonb_array_elements_text(charge.price_snapshot->'testTypes') snapshot_type(value)
+                                WHERE snapshot_type.value = item.test_type
+                            )
+                      )
+                      AND NOT EXISTS (
+                          SELECT 1 FROM jsonb_array_elements_text(charge.price_snapshot->'testTypes') snapshot_type(value)
+                          WHERE NOT EXISTS (
+                              SELECT 1 FROM public.package_items item
+                              WHERE item.package_id = attempt.package_id AND item.test_type = snapshot_type.value
+                          )
+                      )
+                      AND (
+                          (charge.amount = 0 AND charge.free_settled_at IS NOT NULL
+                              AND charge.free_settled_at <= CURRENT_TIMESTAMP
+                              AND NOT EXISTS (SELECT 1 FROM public.assessment_bill_items bi WHERE bi.charge_id = charge.id))
+                          OR (charge.amount > 0 AND EXISTS (
+                              SELECT 1 FROM public.assessment_bill_items item
+                              JOIN public.assessment_bills bill ON bill.id = item.bill_id
+                              WHERE item.charge_id = charge.id
+                                AND item.organization_id = charge.organization_id
+                                AND item.participant_id = charge.participant_id
+                                AND item.payer_type = charge.payer_type
+                                AND item.amount = charge.amount AND item.currency = charge.currency
+                                AND item.settled_at IS NOT NULL AND item.settled_at <= CURRENT_TIMESTAMP
+                                AND bill.organization_id = charge.organization_id
+                                AND bill.payer_type = charge.payer_type AND bill.currency = charge.currency
+                                AND bill.status = 'paid' AND bill.paid_at IS NOT NULL AND bill.paid_at <= CURRENT_TIMESTAMP
+                                AND bill.payer_participant_id IS NOT DISTINCT FROM
+                                    (CASE WHEN charge.payer_type = 'self' THEN charge.participant_id ELSE NULL END)
+                                AND item.payer_participant_id IS NOT DISTINCT FROM
+                                    (CASE WHEN charge.payer_type = 'self' THEN charge.participant_id ELSE NULL END)
+                                AND bill.item_count = (SELECT COUNT(*) FROM public.assessment_bill_items member WHERE member.bill_id = bill.id)
+                                AND bill.amount = (SELECT COALESCE(SUM(member.amount), 0) FROM public.assessment_bill_items member WHERE member.bill_id = bill.id)
+                                AND NOT EXISTS (
+                                    SELECT 1 FROM public.assessment_bill_items member
+                                    WHERE member.bill_id = bill.id
+                                      AND (member.amount <= 0 OR member.settled_at IS NULL OR member.settled_at > CURRENT_TIMESTAMP)
+                                )
+                          ))
+                      )
                       AND (SELECT COUNT(*) FROM public.assessment_cases c WHERE c.participant_id = NEW.participant_id) = 1
                       AND (SELECT COUNT(*) FROM public.assessment_participants a WHERE a.participant_id = NEW.participant_id) = 1
                       AND NOT EXISTS (SELECT 1 FROM public.orders o WHERE o.participant_id = NEW.participant_id)
                       AND NOT EXISTS (SELECT 1 FROM public.selection_participants s WHERE s.participant_id = NEW.participant_id)
                       AND NOT EXISTS (SELECT 1 FROM public.entitlements e WHERE e.participant_id = NEW.participant_id)
                 ) THEN
-                    RAISE EXCEPTION 'Test session grant requires an exact integrated authorization graph' USING ERRCODE = '23514';
+                    RAISE EXCEPTION 'Test session grant requires an exact integrated durable source graph' USING ERRCODE = '23514';
                 ELSIF NEW.origin = 'DIRECT_PUBLIC' AND NOT EXISTS (
                     SELECT 1
                     FROM public.entitlements grant_row
@@ -218,6 +293,13 @@ return new class extends Migration
                       AND participant.source_system = 'DIRECT_PUBLIC'
                       AND participant.branch_id = NEW.organization_id
                       AND participant.package_id = case_row.package_id
+                      AND (SELECT COUNT(*) FROM public.package_items item WHERE item.package_id = participant.package_id AND item.test_type = 'dass21') = 1
+                      AND (SELECT COUNT(*) FROM public.package_items item WHERE item.package_id = participant.package_id AND item.test_type IN ('ist','papi','rmib','kraepelin')) >= 1
+                      AND NOT EXISTS (
+                          SELECT 1 FROM public.package_items item
+                          WHERE item.package_id = participant.package_id
+                            AND item.test_type NOT IN ('dass21','ist','papi','rmib','kraepelin')
+                      )
                       AND (SELECT COUNT(*) FROM public.assessment_cases c WHERE c.participant_id = NEW.participant_id) = 1
                       AND (SELECT COUNT(*) FROM public.orders o WHERE o.participant_id = NEW.participant_id) = 1
                       AND NOT EXISTS (
@@ -240,7 +322,7 @@ return new class extends Migration
                       AND NOT EXISTS (SELECT 1 FROM public.selection_participants s WHERE s.participant_id = NEW.participant_id)
                       AND NOT EXISTS (SELECT 1 FROM public.assessment_participants a WHERE a.participant_id = NEW.participant_id)
                 ) THEN
-                    RAISE EXCEPTION 'Test session grant requires an exact direct authorization graph' USING ERRCODE = '23514';
+                    RAISE EXCEPTION 'Test session grant requires an exact direct durable source graph' USING ERRCODE = '23514';
                 ELSIF NEW.origin = 'LEGACY_SELECTION' AND NOT EXISTS (
                     SELECT 1
                     FROM public.entitlements grant_row
@@ -268,7 +350,7 @@ return new class extends Migration
                       AND NOT EXISTS (SELECT 1 FROM public.orders o WHERE o.participant_id = NEW.participant_id)
                       AND NOT EXISTS (SELECT 1 FROM public.assessment_participants a WHERE a.participant_id = NEW.participant_id)
                 ) THEN
-                    RAISE EXCEPTION 'Test session grant requires an exact legacy authorization graph' USING ERRCODE = '23514';
+                    RAISE EXCEPTION 'Test session grant requires an exact legacy durable source graph' USING ERRCODE = '23514';
                 END IF;
                 RETURN NEW;
             END;
@@ -301,6 +383,7 @@ return new class extends Migration
                             SELECT 1 FROM assessment_entitlements grant_row
                             JOIN assessment_participants attempt ON attempt.id = grant_row.assessment_participant_id
                             JOIN assessment_cases case_row ON case_row.id = attempt.assessment_case_id
+                            JOIN assessment_charges charge ON charge.assessment_participant_id = attempt.id
                             WHERE grant_row.id = NEW.assessment_entitlement_id
                               AND grant_row.assessment_participant_id = NEW.assessment_participant_id
                               AND grant_row.organization_id = NEW.organization_id
@@ -312,9 +395,73 @@ return new class extends Migration
                               AND attempt.assessment_case_id = NEW.assessment_case_id
                               AND attempt.participant_id = NEW.participant_id
                               AND attempt.organization_id = NEW.organization_id
+                              AND attempt.package_id = case_row.package_id
+                              AND json_extract(attempt.metadata, '$.checkout_contract_version') = 'checkout-v2'
                               AND attempt.assessment_status IN ('READY','IN_PROGRESS')
                               AND attempt.revoked_at IS NULL AND attempt.finalized_at IS NULL
                               AND case_row.origin = 'INTEGRATED'
+                              AND charge.id = grant_row.charge_id
+                              AND charge.organization_id = NEW.organization_id
+                              AND charge.participant_id = NEW.participant_id
+                              AND charge.package_id = attempt.package_id
+                              AND charge.currency = 'IDR'
+                              AND json_extract(charge.price_snapshot, '$.packageId') = attempt.package_id
+                              AND json_extract(charge.price_snapshot, '$.currency') = 'IDR'
+                              AND EXISTS (
+                                  SELECT 1 FROM json_each(charge.price_snapshot, '$.testTypes') snapshot_type
+                                  WHERE snapshot_type.value = NEW.test_type
+                              )
+                              AND (SELECT COUNT(*) FROM package_items item WHERE item.package_id = attempt.package_id AND item.test_type = 'dass21') = 1
+                              AND (SELECT COUNT(*) FROM package_items item WHERE item.package_id = attempt.package_id AND item.test_type IN ('ist','papi','rmib','kraepelin')) >= 1
+                              AND NOT EXISTS (
+                                  SELECT 1 FROM package_items item
+                                  WHERE item.package_id = attempt.package_id
+                                    AND item.test_type NOT IN ('dass21','ist','papi','rmib','kraepelin')
+                              )
+                              AND NOT EXISTS (
+                                  SELECT 1 FROM package_items item
+                                  WHERE item.package_id = attempt.package_id
+                                    AND NOT EXISTS (
+                                        SELECT 1 FROM json_each(charge.price_snapshot, '$.testTypes') snapshot_type
+                                        WHERE snapshot_type.value = item.test_type
+                                    )
+                              )
+                              AND NOT EXISTS (
+                                  SELECT 1 FROM json_each(charge.price_snapshot, '$.testTypes') snapshot_type
+                                  WHERE NOT EXISTS (
+                                      SELECT 1 FROM package_items item
+                                      WHERE item.package_id = attempt.package_id AND item.test_type = snapshot_type.value
+                                  )
+                              )
+                              AND (
+                                  (charge.amount = 0 AND charge.free_settled_at IS NOT NULL
+                                      AND charge.free_settled_at <= CURRENT_TIMESTAMP
+                                      AND NOT EXISTS (SELECT 1 FROM assessment_bill_items bi WHERE bi.charge_id = charge.id))
+                                  OR (charge.amount > 0 AND EXISTS (
+                                      SELECT 1 FROM assessment_bill_items item
+                                      JOIN assessment_bills bill ON bill.id = item.bill_id
+                                      WHERE item.charge_id = charge.id
+                                        AND item.organization_id = charge.organization_id
+                                        AND item.participant_id = charge.participant_id
+                                        AND item.payer_type = charge.payer_type
+                                        AND item.amount = charge.amount AND item.currency = charge.currency
+                                        AND item.settled_at IS NOT NULL AND item.settled_at <= CURRENT_TIMESTAMP
+                                        AND bill.organization_id = charge.organization_id
+                                        AND bill.payer_type = charge.payer_type AND bill.currency = charge.currency
+                                        AND bill.status = 'paid' AND bill.paid_at IS NOT NULL AND bill.paid_at <= CURRENT_TIMESTAMP
+                                        AND item.payer_participant_id IS
+                                            (CASE WHEN charge.payer_type = 'self' THEN charge.participant_id ELSE NULL END)
+                                        AND bill.payer_participant_id IS
+                                            (CASE WHEN charge.payer_type = 'self' THEN charge.participant_id ELSE NULL END)
+                                        AND bill.item_count = (SELECT COUNT(*) FROM assessment_bill_items member WHERE member.bill_id = bill.id)
+                                        AND bill.amount = (SELECT COALESCE(SUM(member.amount), 0) FROM assessment_bill_items member WHERE member.bill_id = bill.id)
+                                        AND NOT EXISTS (
+                                            SELECT 1 FROM assessment_bill_items member
+                                            WHERE member.bill_id = bill.id
+                                              AND (member.amount <= 0 OR member.settled_at IS NULL OR member.settled_at > CURRENT_TIMESTAMP)
+                                        )
+                                  ))
+                              )
                               AND (SELECT COUNT(*) FROM assessment_cases c WHERE c.participant_id = NEW.participant_id) = 1
                               AND (SELECT COUNT(*) FROM assessment_participants a WHERE a.participant_id = NEW.participant_id) = 1
                               AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.participant_id = NEW.participant_id)
@@ -342,6 +489,13 @@ return new class extends Migration
                               AND participant.source_system = 'DIRECT_PUBLIC'
                               AND participant.branch_id = NEW.organization_id
                               AND participant.package_id = case_row.package_id
+                              AND (SELECT COUNT(*) FROM package_items item WHERE item.package_id = participant.package_id AND item.test_type = 'dass21') = 1
+                              AND (SELECT COUNT(*) FROM package_items item WHERE item.package_id = participant.package_id AND item.test_type IN ('ist','papi','rmib','kraepelin')) >= 1
+                              AND NOT EXISTS (
+                                  SELECT 1 FROM package_items item
+                                  WHERE item.package_id = participant.package_id
+                                    AND item.test_type NOT IN ('dass21','ist','papi','rmib','kraepelin')
+                              )
                               AND (SELECT COUNT(*) FROM assessment_cases c WHERE c.participant_id = NEW.participant_id) = 1
                               AND (SELECT COUNT(*) FROM orders o WHERE o.participant_id = NEW.participant_id) = 1
                               AND NOT EXISTS (
@@ -390,7 +544,7 @@ return new class extends Migration
                               AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.participant_id = NEW.participant_id)
                               AND NOT EXISTS (SELECT 1 FROM assessment_participants a WHERE a.participant_id = NEW.participant_id)
                         ))
-                    BEGIN SELECT RAISE(ABORT, 'Test session grant requires an exact authorization graph'); END;
+                    BEGIN SELECT RAISE(ABORT, 'Test session grant requires an exact durable source graph'); END;
                     SQL);
             } else {
                 DB::unprepared("CREATE TRIGGER test_session_grants_{$name}_guard BEFORE {$event} ON test_session_grants FOR EACH ROW BEGIN SELECT RAISE(ABORT, 'Test session grant history is append-only'); END;");
@@ -439,10 +593,7 @@ return new class extends Migration
         $tableData = $table === null ? [] : (array) $table;
         if ($table === null || $this->normalizeSql((string) $tableData['sql']) !== $this->normalizeSql($this->tableSql('sqlite'))
             || $actualIndexes !== $expectedIndexes
-            || ! str_starts_with($insert, 'CREATE TRIGGER test_session_grants_insert_guard BEFORE INSERT ON test_session_grants FOR EACH ROW WHEN ')
-            || ! str_contains($insert, 'case_row.package_id IS NULL')
-            || ! str_contains($insert, '(SELECT COUNT(*) FROM orders o WHERE o.participant_id = NEW.participant_id) = 1')
-            || ! str_contains($insert, 'SELECT 1 FROM package_items item')
+            || hash('sha256', $insert) !== self::SQLITE_INSERT_GUARD_SHA256
             || $update !== $this->normalizeSql("CREATE TRIGGER test_session_grants_update_guard BEFORE UPDATE ON test_session_grants FOR EACH ROW BEGIN SELECT RAISE(ABORT, 'Test session grant history is append-only'); END")
             || $delete !== $this->normalizeSql("CREATE TRIGGER test_session_grants_delete_guard BEFORE DELETE ON test_session_grants FOR EACH ROW BEGIN SELECT RAISE(ABORT, 'Test session grant history is append-only'); END")) {
             $this->abort('partial SQLite enforcement already exists');
@@ -477,6 +628,7 @@ return new class extends Migration
 
                 return [(string) $data['conname'] => [(string) $data['contype'], $this->normalizeSql((string) $data['definition'])]];
             })->all();
+        $expectedChecks = $this->expectedPostgresCheckDefinitions();
         $expectedForeigns = [
             'test_session_grants_session_scope_fk' => 'FOREIGN KEY (test_session_id, assessment_case_id, participant_id, test_type) REFERENCES test_sessions(id, assessment_case_id, participant_id, test_type) ON UPDATE RESTRICT ON DELETE RESTRICT',
             'test_session_grants_case_scope_fk' => 'FOREIGN KEY (assessment_case_id, participant_id, organization_id, origin) REFERENCES assessment_cases(id, participant_id, organization_id, origin) ON UPDATE RESTRICT ON DELETE RESTRICT',
@@ -501,10 +653,12 @@ return new class extends Migration
             })->all();
         ksort($expectedIndexes);
         ksort($actualIndexes);
-        $security = DB::selectOne("SELECT relrowsecurity,relforcerowsecurity FROM pg_class WHERE oid='test_session_grants'::regclass");
+        $security = DB::selectOne("SELECT relrowsecurity,relforcerowsecurity,pg_get_userbyid(relowner) owner,current_user expected_owner FROM pg_class WHERE oid='test_session_grants'::regclass");
         $trigger = DB::selectOne(<<<'SQL'
             SELECT trigger.tgtype,trigger.tgenabled,namespace.nspname,function.proname,function.prosecdef,
-                   function.proconfig,language.lanname,pg_get_functiondef(function.oid) definition
+                   function.proconfig,language.lanname,function.prosrc,
+                   pg_get_userbyid(function.proowner) function_owner,current_user expected_owner,
+                   pg_get_triggerdef(trigger.oid,false) trigger_definition
             FROM pg_trigger trigger JOIN pg_proc function ON function.oid=trigger.tgfoid
             JOIN pg_namespace namespace ON namespace.oid=function.pronamespace
             JOIN pg_language language ON language.oid=function.prolang
@@ -531,26 +685,78 @@ return new class extends Migration
         })->all();
         $securityData = $security === null ? [] : (array) $security;
         $triggerData = $trigger === null ? [] : (array) $trigger;
-        $functionDefinition = $trigger === null ? '' : $this->normalizeSql((string) $triggerData['definition']);
+        $functionBody = $trigger === null ? '' : $this->normalizeSql((string) $triggerData['prosrc']);
         $foreignsExact = collect($expectedForeigns)->every(fn (string $definition, string $name): bool => ($constraints[$name] ?? null) === ['f', $this->normalizeSql($definition)]);
         if ($columns !== $expectedColumns || count($constraints) !== 10
             || ! isset($constraints['test_session_grants_pkey'], $constraints['test_session_grants_instrument_check'], $constraints['test_session_grants_shape_check'])
             || collect($constraints)->filter(fn (array $row): bool => $row[0] === 'f')->count() !== 7
             || ! $foreignsExact || $constraints['test_session_grants_pkey'] !== ['p', 'PRIMARY KEY (test_session_id)']
+            || $constraints['test_session_grants_instrument_check'] !== ['c', $expectedChecks['test_session_grants_instrument_check']]
+            || $constraints['test_session_grants_shape_check'] !== ['c', $expectedChecks['test_session_grants_shape_check']]
             || $actualIndexes !== $expectedIndexes
-            || $security === null || ! $securityData['relrowsecurity'] || ! $securityData['relforcerowsecurity'] || $trigger === null
+            || $security === null || ! $securityData['relrowsecurity'] || ! $securityData['relforcerowsecurity']
+            || (string) $securityData['owner'] !== (string) $securityData['expected_owner'] || $trigger === null
             || (int) $triggerData['tgtype'] !== 31 || (string) $triggerData['tgenabled'] !== 'O'
             || (string) $triggerData['nspname'] !== 'app_private' || (string) $triggerData['proname'] !== 'guard_test_session_grant_identity'
             || ! $triggerData['prosecdef'] || (string) $triggerData['lanname'] !== 'plpgsql'
             || (string) $triggerData['proconfig'] !== '{"search_path=pg_catalog, public"}'
-            || ! str_contains($functionDefinition, 'Test session grant history is append-only')
-            || ! str_contains($functionDefinition, 'case_row.package_id IS NULL')
-            || ! str_contains($functionDefinition, 'SELECT 1 FROM public.package_items item')
+            || (string) $triggerData['function_owner'] !== (string) $triggerData['expected_owner']
+            || hash('sha256', $functionBody) !== self::POSTGRES_GUARD_BODY_SHA256
+            || $this->normalizeSql((string) $triggerData['trigger_definition']) !== $this->normalizeSql(
+                'CREATE TRIGGER test_session_grants_identity_guard BEFORE INSERT OR DELETE OR UPDATE ON public.test_session_grants FOR EACH ROW EXECUTE FUNCTION app_private.guard_test_session_grant_identity()'
+            )
             || $policies !== [
                 ['test_session_grants_service_insert', 'PERMISSIVE', '{psikotes_runtime}', 'INSERT', null, "(app_private.app_role() = 'service'::text)"],
                 ['test_session_grants_service_select', 'PERMISSIVE', '{psikotes_runtime}', 'SELECT', "(app_private.app_role() = 'service'::text)", null],
             ] || $privileges !== [['psikotes_runtime', 'INSERT'], ['psikotes_runtime', 'SELECT']]) {
             $this->abort('partial PostgreSQL enforcement already exists');
+        }
+    }
+
+    /** @return array<string,string> */
+    private function expectedPostgresCheckDefinitions(): array
+    {
+        DB::statement('DROP TABLE IF EXISTS pg_temp.test_session_grants_expected_checks');
+        try {
+            DB::statement(<<<'SQL'
+                CREATE TEMP TABLE test_session_grants_expected_checks (
+                    test_type VARCHAR NOT NULL,
+                    origin VARCHAR NOT NULL,
+                    grant_kind VARCHAR NOT NULL,
+                    assessment_participant_id BIGINT NULL,
+                    order_id BIGINT NULL,
+                    selection_participant_id BIGINT NULL,
+                    assessment_entitlement_id BIGINT NULL,
+                    entitlement_id BIGINT NULL,
+                    CONSTRAINT test_session_grants_instrument_check CHECK (test_type IN ('ist','papi','rmib','kraepelin')),
+                    CONSTRAINT test_session_grants_shape_check CHECK (
+                        (origin = 'INTEGRATED' AND grant_kind = 'assessment_entitlement'
+                            AND assessment_participant_id IS NOT NULL AND assessment_entitlement_id IS NOT NULL
+                            AND order_id IS NULL AND selection_participant_id IS NULL AND entitlement_id IS NULL)
+                        OR (origin = 'DIRECT_PUBLIC' AND grant_kind = 'entitlement'
+                            AND order_id IS NOT NULL AND entitlement_id IS NOT NULL
+                            AND assessment_participant_id IS NULL AND selection_participant_id IS NULL
+                            AND assessment_entitlement_id IS NULL)
+                        OR (origin = 'LEGACY_SELECTION' AND grant_kind = 'entitlement'
+                            AND selection_participant_id IS NOT NULL AND entitlement_id IS NOT NULL
+                            AND assessment_participant_id IS NULL AND order_id IS NULL
+                            AND assessment_entitlement_id IS NULL)
+                    )
+                ) ON COMMIT DROP
+                SQL);
+
+            return collect(DB::select(<<<'SQL'
+                SELECT conname,pg_get_constraintdef(oid,false) definition
+                FROM pg_constraint
+                WHERE conrelid='pg_temp.test_session_grants_expected_checks'::regclass
+                ORDER BY conname
+                SQL))->mapWithKeys(function (object $row): array {
+                $data = (array) $row;
+
+                return [(string) $data['conname'] => $this->normalizeSql((string) $data['definition'])];
+            })->all();
+        } finally {
+            DB::statement('DROP TABLE IF EXISTS pg_temp.test_session_grants_expected_checks');
         }
     }
 

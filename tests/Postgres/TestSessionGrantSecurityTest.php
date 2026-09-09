@@ -8,8 +8,12 @@ use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
+use Tests\Support\AssessmentAccessFixture;
 
 final class TestSessionGrantSecurityTest extends TestCase
 {
@@ -97,6 +101,62 @@ final class TestSessionGrantSecurityTest extends TestCase
         });
     }
 
+    public function test_integrated_grant_is_bound_to_durable_checkout_price_and_settlement_facts(): void
+    {
+        app(RlsContextRunner::class)->runAsService(function (): void {
+            $valid = AssessmentAccessFixture::create();
+            $validSession = $this->boundSession($valid['participant'], (int) $valid['case']);
+            DB::table('test_session_grants')->insert($this->integratedGrantRow($valid, $validSession));
+            $this->assertSame(1, DB::table('test_session_grants')->where('test_session_id', $validSession)->count());
+
+            $unsettled = AssessmentAccessFixture::create();
+            $unsettledSession = $this->boundSession($unsettled['participant'], (int) $unsettled['case']);
+            DB::table('assessment_bills')->where('id', $unsettled['bill'])->update(['status' => 'pending', 'paid_at' => null]);
+            $this->assertSqlState('23514', fn () => DB::table('test_session_grants')
+                ->insert($this->integratedGrantRow($unsettled, $unsettledSession)));
+        });
+    }
+
+    #[DataProvider('counterfeitDefinitions')]
+    public function test_owner_rerun_rejects_counterfeit_full_definitions_without_delta(string $component): void
+    {
+        $this->asOwner(function () use ($component): void {
+            DB::beginTransaction();
+            try {
+                match ($component) {
+                    'instrument_check' => DB::unprepared('ALTER TABLE test_session_grants DROP CONSTRAINT test_session_grants_instrument_check; ALTER TABLE test_session_grants ADD CONSTRAINT test_session_grants_instrument_check CHECK (true)'),
+                    'shape_check' => DB::unprepared('ALTER TABLE test_session_grants DROP CONSTRAINT test_session_grants_shape_check; ALTER TABLE test_session_grants ADD CONSTRAINT test_session_grants_shape_check CHECK (true)'),
+                    'trigger_event' => DB::unprepared('DROP TRIGGER test_session_grants_identity_guard ON test_session_grants; CREATE TRIGGER test_session_grants_identity_guard BEFORE INSERT OR UPDATE ON test_session_grants FOR EACH ROW EXECUTE FUNCTION app_private.guard_test_session_grant_identity()'),
+                    'function_body' => DB::unprepared('CREATE OR REPLACE FUNCTION app_private.guard_test_session_grant_identity() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$ BEGIN RETURN NEW; END; $$'),
+                    'function_security' => DB::unprepared('CREATE OR REPLACE FUNCTION app_private.guard_test_session_grant_identity() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$ BEGIN RETURN NEW; END; $$'),
+                    'function_search_path' => DB::unprepared('CREATE OR REPLACE FUNCTION app_private.guard_test_session_grant_identity() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$ BEGIN RETURN NEW; END; $$'),
+                    default => throw new RuntimeException("Unknown counterfeit component {$component}."),
+                };
+                $before = $this->grantDefinitions();
+                try {
+                    (require database_path('migrations/2026_09_09_000700_create_test_session_grants.php'))->up();
+                    $this->fail("Counterfeit {$component} was accepted.");
+                } catch (RuntimeException $exception) {
+                    $this->assertStringContainsString('partial PostgreSQL enforcement', $exception->getMessage());
+                }
+                $this->assertEquals($before, $this->grantDefinitions());
+            } finally {
+                DB::rollBack();
+            }
+        });
+    }
+
+    /** @return iterable<string,array{string}> */
+    public static function counterfeitDefinitions(): iterable
+    {
+        yield 'instrument check true' => ['instrument_check'];
+        yield 'shape check true' => ['shape_check'];
+        yield 'trigger omits delete event' => ['trigger_event'];
+        yield 'function returns before validation' => ['function_body'];
+        yield 'function loses security definer' => ['function_security'];
+        yield 'function unsafe search path' => ['function_search_path'];
+    }
+
     /** @return array{branch:int,participant:int,case:int,order:int,entitlement:int,session:int} */
     private function directFixture(): array
     {
@@ -171,6 +231,37 @@ final class TestSessionGrantSecurityTest extends TestCase
         ];
     }
 
+    private function boundSession(int $participant, int $case): int
+    {
+        return DB::table('test_sessions')->insertGetId([
+            'public_id' => (string) Str::ulid(), 'participant_id' => $participant,
+            'assessment_case_id' => $case, 'test_type' => 'ist', 'attempt_no' => 1,
+            'authorization_id' => (string) Str::ulid(), 'allocation_intent_id' => (string) Str::ulid(),
+            'duration_seconds' => 3600, 'status' => 'created', 'answers_revision' => 0,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+    }
+
+    /** @param array<string,mixed> $fixture
+     * @return array<string,mixed>
+     */
+    private function integratedGrantRow(array $fixture, int $session): array
+    {
+        foreach (['organization', 'participant', 'case', 'attempt', 'entitlement'] as $key) {
+            if (! is_int($fixture[$key] ?? null)) {
+                throw new RuntimeException("Integrated fixture {$key} is unavailable.");
+            }
+        }
+
+        return [
+            'test_session_id' => $session, 'assessment_case_id' => $fixture['case'],
+            'participant_id' => $fixture['participant'], 'organization_id' => $fixture['organization'],
+            'test_type' => 'ist', 'origin' => 'INTEGRATED', 'grant_kind' => 'assessment_entitlement',
+            'assessment_participant_id' => $fixture['attempt'],
+            'assessment_entitlement_id' => $fixture['entitlement'], 'created_at' => now(),
+        ];
+    }
+
     private function assertSqlState(string $state, callable $operation): void
     {
         DB::beginTransaction();
@@ -181,6 +272,35 @@ final class TestSessionGrantSecurityTest extends TestCase
             $this->assertSame($state, $exception->errorInfo[0] ?? null, $exception->getMessage());
         } finally {
             DB::rollBack();
+        }
+    }
+
+    /** @return array<string,mixed> */
+    private function grantDefinitions(): array
+    {
+        return [
+            'constraints' => DB::select("SELECT conname,pg_get_constraintdef(oid,false) definition FROM pg_constraint WHERE conrelid='test_session_grants'::regclass ORDER BY conname"),
+            'trigger' => DB::select("SELECT pg_get_triggerdef(oid,false) definition FROM pg_trigger WHERE tgrelid='test_session_grants'::regclass AND NOT tgisinternal ORDER BY tgname"),
+            'function' => DB::select("SELECT pg_get_functiondef(proc.oid) definition,pg_get_userbyid(proc.proowner) owner FROM pg_proc proc JOIN pg_namespace namespace ON namespace.oid=proc.pronamespace WHERE namespace.nspname='app_private' AND proc.proname='guard_test_session_grant_identity'"),
+            'table' => DB::select("SELECT relrowsecurity,relforcerowsecurity,pg_get_userbyid(relowner) owner FROM pg_class WHERE oid='test_session_grants'::regclass"),
+        ];
+    }
+
+    private function asOwner(callable $callback): void
+    {
+        $runtime = DB::getDefaultConnection();
+        $config = config('database.connections.'.$runtime);
+        config()->set('database.connections.test_session_grant_owner', [...$config, 'username' => 'org_test_owner']);
+        DB::setDefaultConnection('test_session_grant_owner');
+        Schema::clearResolvedInstance('db.schema');
+        try {
+            $this->assertSame('org_test_owner', DB::selectOne('SELECT current_user AS name')->name);
+            $callback();
+        } finally {
+            DB::setDefaultConnection($runtime);
+            Schema::clearResolvedInstance('db.schema');
+            DB::purge('test_session_grant_owner');
+            config()->set('database.connections.test_session_grant_owner', null);
         }
     }
 }
