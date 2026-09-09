@@ -5,13 +5,17 @@ declare(strict_types=1);
 namespace Tests\Integration\Review;
 
 use App\Domain\Eligibility\AspectSourceDiscrepancyPolicy;
+use App\Domain\Eligibility\EligibilityDecisionSnapshot;
 use App\Domain\Eligibility\EligibilityZoneCalculator;
 use App\Domain\Eligibility\RecommendationLabelPolicy;
+use App\Domain\Review\G7AspectResolution;
+use App\Domain\Review\G7ReviewSet;
 use App\Domain\Review\ProfessionalOverridePolicy;
 use App\Domain\Review\ReportReviewStateMachine;
 use App\Domain\Review\ReportSigningPrerequisitePolicy;
 use App\Domain\Review\ReportSigningSnapshotComposer;
 use App\Domain\Review\ReportSigningTransitionPolicy;
+use App\Domain\Review\ReviewedEligibilityDecision;
 use DomainException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -88,14 +92,14 @@ final class ReportSigningGuardrailsAcceptanceTest extends TestCase
     public function test_incomplete_under_review_report_returns_no_signing_transition(): void
     {
         $input = $this->completeInput();
-        $input['target_field'] = null;
+        $input['narrative_clusters']['A'] = null;
 
         $result = (new ReportSigningTransitionPolicy)->attempt('UNDER_REVIEW', $this->snapshot($input));
 
         self::assertFalse($result['can_sign']);
-        self::assertSame(['TARGET_FIELD_REQUIRED'], $result['blocking_reason_codes']);
+        self::assertSame(['NARRATIVE_CLUSTER_A_REQUIRED'], $result['blocking_reason_codes']);
         self::assertNull($result['transition']);
-        self::assertNull($result['prerequisite_provenance']['target_field']);
+        self::assertFalse($result['prerequisite_provenance']['narrative_clusters_present']['A']);
     }
 
     public function test_v3_recommendation_without_a_label_cannot_transition_to_signed(): void
@@ -111,7 +115,7 @@ final class ReportSigningGuardrailsAcceptanceTest extends TestCase
         $input['validity'] = $recommendation['provenance']['validity'];
         $input['label'] = $recommendation['label'] ?? null;
 
-        $result = (new ReportSigningTransitionPolicy)->attempt('UNDER_REVIEW', $this->snapshot($input, $recommendation));
+        $result = (new ReportSigningTransitionPolicy)->attempt('UNDER_REVIEW', $this->snapshot($input));
 
         self::assertArrayNotHasKey('label', $recommendation);
         self::assertFalse($result['can_sign']);
@@ -202,50 +206,41 @@ final class ReportSigningGuardrailsAcceptanceTest extends TestCase
 
     /**
      * @param  array<mixed>  $input
-     * @param  array<mixed>|null  $recommendation
      */
-    private function snapshot(array $input, ?array $recommendation = null): ReportSigningSnapshotComposer
+    private function snapshot(array $input): ReportSigningSnapshotComposer
     {
         $reporting = $this->canonicalReporting();
-        $zone = (new EligibilityZoneCalculator(
-            $reporting['standard_version'],
-            $reporting['base_standards'],
-            $reporting['fields'],
-        ))->calculate(array_fill_keys($this->aspectCodes(), 3), 'KAIGO');
-        $recommendation ??= (new RecommendationLabelPolicy)->decide($zone, 100, $input['validity']);
-
-        $discrepancies = [];
-        foreach ($this->aspectCodes() as $aspect) {
-            $discrepancies[] = [
-                'result' => (new AspectSourceDiscrepancyPolicy)->evaluate([
-                    'aspect' => $aspect,
-                    'sources' => [['source' => 'CANONICAL_SOURCE', 'level' => 3]],
-                ]),
-                'review_resolved' => false,
-            ];
+        $baseline = EligibilityDecisionSnapshot::create([
+            'levels' => array_fill_keys($this->aspectCodes(), 5),
+            'field_code' => 'KAIGO',
+            'iq' => 100,
+            'validity' => $input['validity'],
+            'standard_configuration' => $reporting,
+            'eligibility_source_versions' => [
+                'ist' => 'F0-2026.08', 'papi' => 'F0-2026.08', 'kraepelin' => 'F0-2026.08',
+                'rmib' => 'F0-2026.08', 'reporting' => $reporting['standard_version'],
+            ],
+        ]);
+        $labelOverride = null;
+        if ($input['validity'] !== 'V3' && $input['label'] !== 'DISARANKAN') {
+            $labelOverride = (new ProfessionalOverridePolicy)->labelOverride([
+                'system_label' => 'DISARANKAN',
+                'final_label' => $input['label'],
+                'reason' => 'Pertimbangan profesional telah dicatat secara lengkap.',
+            ]);
         }
+        $reviewed = ReviewedEligibilityDecision::create($baseline, [], $labelOverride);
+        $resolutions = array_map(static fn (string $aspect): G7AspectResolution => G7AspectResolution::notRequired(
+            (new AspectSourceDiscrepancyPolicy)->evaluate([
+                'aspect' => $aspect,
+                'sources' => [['source' => 'CANONICAL_SOURCE', 'level' => 5]],
+            ]),
+            5,
+        ), $this->aspectCodes());
 
-        $overrides = [];
-        $recommendationLabel = $recommendation['label'] ?? null;
-        if ($input['validity'] !== 'V3' && $input['label'] !== $recommendationLabel) {
-            $overrides[] = [
-                'result' => (new ProfessionalOverridePolicy)->labelOverride([
-                    'system_label' => $recommendationLabel,
-                    'final_label' => $input['label'],
-                    'reason' => 'Pertimbangan profesional telah dicatat secara lengkap.',
-                ]),
-                'audit_recorded' => true,
-                'recalculation_completed' => false,
-            ];
-        }
-
-        return ReportSigningSnapshotComposer::compose([
-            'recommendation' => $recommendation,
-            'discrepancies' => $discrepancies,
-            'overrides' => $overrides,
+        return ReportSigningSnapshotComposer::compose($reviewed, G7ReviewSet::fromResolutions($resolutions), [
             'procedure_note' => $input['procedure_note'],
             'accompaniment_conditions' => $input['accompaniment_conditions'],
-            'target_field' => $input['target_field'],
             'narrative_clusters' => $input['narrative_clusters'],
         ]);
     }

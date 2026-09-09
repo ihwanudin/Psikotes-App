@@ -11,12 +11,6 @@ final readonly class ReportSigningSnapshotComposer
     /** @var list<string> */
     private const ASPECTS = ['A1', 'A2', 'B1', 'B2', 'B3', 'B4', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'D1', 'D2', 'D3', 'D4', 'D5'];
 
-    /** @var list<string> */
-    private const LABELS = ['DISARANKAN', 'DIPERTIMBANGKAN', 'TIDAK_DISARANKAN'];
-
-    /** @var list<string> */
-    private const TARGET_FIELDS = ['KAIGO', 'KENSETSU', 'NOUGYOU', 'SEIZOU', 'GAISHOKU', 'UMUM'];
-
     /**
      * @param  array<mixed>  $prerequisiteInput
      * @param  array<mixed>  $snapshotProvenance
@@ -26,63 +20,51 @@ final readonly class ReportSigningSnapshotComposer
         private array $snapshotProvenance,
     ) {}
 
-    /** @param array<mixed> $input */
-    public static function compose(array $input): self
-    {
-        if (! self::hasExactKeys($input, [
-            'recommendation',
-            'discrepancies',
-            'overrides',
-            'procedure_note',
-            'accompaniment_conditions',
-            'target_field',
-            'narrative_clusters',
-        ])
-            || ! is_array($input['recommendation'])
-            || ! is_array($input['discrepancies'])
-            || ! array_is_list($input['discrepancies'])
-            || ! is_array($input['overrides'])
-            || ! array_is_list($input['overrides'])
-            || ($input['procedure_note'] !== null && ! is_string($input['procedure_note']))
-            || ($input['accompaniment_conditions'] !== null && ! is_string($input['accompaniment_conditions']))
-            || ($input['target_field'] !== null && ! is_string($input['target_field']))
-            || ! is_array($input['narrative_clusters'])
-            || ! self::hasExactKeys($input['narrative_clusters'], ['A', 'B', 'C', 'D'])) {
-            throw new InvalidArgumentException('Report signing snapshot input is invalid.');
-        }
+    /** @param array<mixed> $structuralInput */
+    public static function compose(
+        ReviewedEligibilityDecision $reviewedEligibility,
+        G7ReviewSet $g7ReviewSet,
+        array $structuralInput,
+    ): self {
+        $structural = self::validateStructuralInput($structuralInput);
+        $reviewed = $reviewedEligibility->toArray();
+        $systemLevels = $reviewed['system_levels'];
+        $finalLevels = $reviewed['final_levels'];
+        $systemRecommendation = $reviewed['system_decision']['recommendation'];
+        $finalDecision = $reviewed['final_decision'];
 
-        foreach ($input['narrative_clusters'] as $narrative) {
-            if ($narrative !== null && ! is_string($narrative)) {
-                throw new InvalidArgumentException('Report signing snapshot narrative is invalid.');
-            }
-        }
-
-        [$validity, $label, $recommendationType, $recommendationField] = self::validateRecommendation($input['recommendation']);
-        $targetField = $input['target_field'];
-        if (is_string($targetField) && trim($targetField) !== '' && $targetField !== $recommendationField) {
-            throw new InvalidArgumentException('Report target field does not match the recommendation field.');
-        }
-        [$unresolvedAspects, $discrepancyAspects] = self::validateDiscrepancies($input['discrepancies']);
-        [$overrides, $finalLabel] = self::validateOverrides($input['overrides'], $validity, $label);
+        $validity = $systemRecommendation['provenance']['validity'];
+        $targetField = $systemRecommendation['provenance']['field_code'];
+        $label = $reviewed['publication_blocked'] ? null : $finalDecision['label'];
+        $levelOverrides = self::levelOverridesByAspect($reviewed['level_overrides']);
+        $discrepancyAspects = self::validateG7Bindings(
+            $g7ReviewSet,
+            $systemLevels,
+            $finalLevels,
+            $levelOverrides,
+        );
+        $overrides = self::projectChangedOverrides(
+            $reviewed['level_overrides'],
+            $reviewed['label_override'],
+        );
 
         return new self(
             [
                 'validity' => $validity,
-                'procedure_note' => $input['procedure_note'],
-                'label' => $finalLabel,
-                'accompaniment_conditions' => $input['accompaniment_conditions'],
-                'unresolved_g7_aspects' => $unresolvedAspects,
+                'procedure_note' => $structural['procedure_note'],
+                'label' => $label,
+                'accompaniment_conditions' => $structural['accompaniment_conditions'],
+                'unresolved_g7_aspects' => [],
                 'overrides' => $overrides,
-                'target_field' => $input['target_field'],
-                'narrative_clusters' => $input['narrative_clusters'],
+                'target_field' => $targetField,
+                'narrative_clusters' => $structural['narrative_clusters'],
             ],
             [
                 'type' => 'report_signing_snapshot',
-                'recommendation_type' => $recommendationType,
+                'reviewed_eligibility_type' => $reviewed['type'],
                 'discrepancy_aspects' => $discrepancyAspects,
                 'changed_override_count' => count($overrides),
-                'audit_evidence_complete' => true,
-                'recalculation_evidence_complete' => true,
+                'persistence_authority_bound' => false,
             ],
         );
     }
@@ -100,343 +82,138 @@ final readonly class ReportSigningSnapshotComposer
     }
 
     /**
-     * @param  array<mixed>  $recommendation
-     * @return array{0: 'V1'|'V2'|'V3', 1: 'DISARANKAN'|'DIPERTIMBANGKAN'|'TIDAK_DISARANKAN'|null, 2: 'recommendation_label'|'publication_blocked', 3: string}
+     * @param  array<mixed>  $input
+     * @return array{
+     *     procedure_note: string|null,
+     *     accompaniment_conditions: string|null,
+     *     narrative_clusters: array{A: string|null, B: string|null, C: string|null, D: string|null}
+     * }
      */
-    private static function validateRecommendation(array $recommendation): array
+    private static function validateStructuralInput(array $input): array
     {
-        if (($recommendation['type'] ?? null) === 'publication_blocked') {
-            if (! self::hasExactKeys($recommendation, ['type', 'publication_blocked', 'reason_code', 'provenance'])
-                || $recommendation['publication_blocked'] !== true
-                || $recommendation['reason_code'] !== 'VALIDITY_V3'
-                || ! is_array($recommendation['provenance'])
-                || ! self::hasExactKeys($recommendation['provenance'], ['standard_version', 'field_code', 'iq', 'validity'])
-                || ! self::validRecommendationProvenance($recommendation['provenance'], 'V3')) {
-                throw new InvalidArgumentException('Blocked recommendation output is invalid.');
-            }
-
-            return ['V3', null, 'publication_blocked', $recommendation['provenance']['field_code']];
+        if (! self::hasExactKeys($input, ['procedure_note', 'accompaniment_conditions', 'narrative_clusters'])
+            || ($input['procedure_note'] !== null && ! is_string($input['procedure_note']))
+            || ($input['accompaniment_conditions'] !== null && ! is_string($input['accompaniment_conditions']))
+            || ! is_array($input['narrative_clusters'])
+            || ! self::hasExactKeys($input['narrative_clusters'], ['A', 'B', 'C', 'D'])) {
+            throw new InvalidArgumentException('Report signing structural input is invalid.');
         }
 
-        if (! self::hasExactKeys($recommendation, [
-            'type',
-            'publication_blocked',
-            'initial_label',
-            'label',
-            'review_required',
-            'review_reason_codes',
-            'provenance',
-        ])
-            || $recommendation['type'] !== 'recommendation_label'
-            || $recommendation['publication_blocked'] !== false
-            || ! is_string($recommendation['initial_label'])
-            || ! in_array($recommendation['initial_label'], self::LABELS, true)
-            || ! is_string($recommendation['label'])
-            || ! in_array($recommendation['label'], self::LABELS, true)
-            || ! is_bool($recommendation['review_required'])
-            || ! is_array($recommendation['review_reason_codes'])
-            || ! array_is_list($recommendation['review_reason_codes'])
-            || ! is_array($recommendation['provenance'])
-            || ! self::hasExactKeys($recommendation['provenance'], [
-                'standard_version',
-                'field_code',
-                'iq',
-                'validity',
-                'critical_belum_aspects',
-                'belum_aspects',
-                'grey_aspects',
-                'zone_counts',
-            ])) {
-            throw new InvalidArgumentException('Recommendation label output is invalid.');
-        }
-
-        $validity = $recommendation['provenance']['validity'];
-        if (! in_array($validity, ['V1', 'V2'], true)
-            || ! self::validRecommendationProvenance($recommendation['provenance'], $validity)) {
-            throw new InvalidArgumentException('Recommendation label output is inconsistent.');
-        }
-
-        $belumAspects = $recommendation['provenance']['belum_aspects'];
-        $greyAspects = $recommendation['provenance']['grey_aspects'];
-        $expectedCritical = array_values(array_intersect(['A1', 'B2', 'C4', 'C5'], $belumAspects));
-        $expectedInitialLabel = match (true) {
-            $expectedCritical !== [], count($belumAspects) >= 3 => 'TIDAK_DISARANKAN',
-            $belumAspects !== [], $greyAspects !== [] => 'DIPERTIMBANGKAN',
-            default => 'DISARANKAN',
-        };
-        if ($recommendation['provenance']['critical_belum_aspects'] !== $expectedCritical
-            || $recommendation['provenance']['zone_counts']['BELUM'] !== count($belumAspects)
-            || $recommendation['provenance']['zone_counts']['GREY'] !== count($greyAspects)
-            || $recommendation['initial_label'] !== $expectedInitialLabel
-            || ($recommendation['review_required']
-                ? ($recommendation['review_reason_codes'] !== ['IQ_BELOW_70']
-                    || $recommendation['initial_label'] !== 'DISARANKAN'
-                    || $recommendation['label'] !== 'DIPERTIMBANGKAN'
-                    || $recommendation['provenance']['iq'] >= 70)
-                : ($recommendation['review_reason_codes'] !== []
-                    || $recommendation['label'] !== $recommendation['initial_label']))) {
-            throw new InvalidArgumentException('Recommendation label output is inconsistent.');
-        }
-
-        return [$validity, $recommendation['label'], 'recommendation_label', $recommendation['provenance']['field_code']];
-    }
-
-    /** @param array<mixed> $provenance */
-    private static function validRecommendationProvenance(array $provenance, string $validity): bool
-    {
-        if (! is_string($provenance['standard_version'] ?? null)
-            || trim($provenance['standard_version']) === ''
-            || ! is_string($provenance['field_code'] ?? null)
-            || ! in_array($provenance['field_code'], self::TARGET_FIELDS, true)
-            || ! is_int($provenance['iq'] ?? null)
-            || $provenance['iq'] < 1
-            || ($provenance['validity'] ?? null) !== $validity) {
-            return false;
-        }
-
-        if ($validity === 'V3') {
-            return true;
-        }
-
-        foreach (['critical_belum_aspects', 'belum_aspects', 'grey_aspects'] as $key) {
-            if (! is_array($provenance[$key] ?? null)
-                || ! array_is_list($provenance[$key])
-                || array_filter($provenance[$key], static fn (mixed $aspect): bool => ! is_string($aspect) || ! in_array($aspect, self::ASPECTS, true)) !== []
-                || $provenance[$key] !== array_values(array_intersect(self::ASPECTS, $provenance[$key]))) {
-                return false;
+        foreach ($input['narrative_clusters'] as $narrative) {
+            if ($narrative !== null && ! is_string($narrative)) {
+                throw new InvalidArgumentException('Report signing narrative is invalid.');
             }
         }
 
-        return is_array($provenance['zone_counts'] ?? null)
-            && self::hasExactKeys($provenance['zone_counts'], ['OK', 'GREY', 'BELUM', 'UNASSESSED'])
-            && array_sum($provenance['zone_counts']) === count(self::ASPECTS)
-            && array_filter($provenance['zone_counts'], static fn (mixed $count): bool => ! is_int($count) || $count < 0) === [];
+        return [
+            'procedure_note' => $input['procedure_note'],
+            'accompaniment_conditions' => $input['accompaniment_conditions'],
+            'narrative_clusters' => [
+                'A' => $input['narrative_clusters']['A'],
+                'B' => $input['narrative_clusters']['B'],
+                'C' => $input['narrative_clusters']['C'],
+                'D' => $input['narrative_clusters']['D'],
+            ],
+        ];
     }
 
     /**
-     * @param  list<mixed>  $discrepancies
-     * @return array{0: list<string>, 1: list<string>}
+     * @param  list<array<mixed>>  $overrides
+     * @return array<string, array<mixed>>
      */
-    private static function validateDiscrepancies(array $discrepancies): array
+    private static function levelOverridesByAspect(array $overrides): array
     {
-        if (count($discrepancies) !== count(self::ASPECTS)) {
-            throw new InvalidArgumentException('Every aspect needs discrepancy evidence.');
+        $byAspect = [];
+        foreach ($overrides as $override) {
+            if (($override['provenance']['override_type'] ?? null) !== 'level') {
+                throw new InvalidArgumentException('Reviewed eligibility contains an invalid level override.');
+            }
+            $aspect = $override['provenance']['aspect'];
+            if (! is_string($aspect) || isset($byAspect[$aspect])) {
+                throw new InvalidArgumentException('Reviewed eligibility level override identity is invalid.');
+            }
+            $byAspect[$aspect] = $override;
         }
 
-        $seen = [];
-        $unresolved = [];
-        foreach ($discrepancies as $evidence) {
-            if (! is_array($evidence)
-                || ! self::hasExactKeys($evidence, ['result', 'review_resolved'])
-                || ! is_bool($evidence['review_resolved'])
-                || ! is_array($evidence['result'])) {
-                throw new InvalidArgumentException('Discrepancy evidence is invalid.');
+        return $byAspect;
+    }
+
+    /**
+     * @param  array<string, int>  $systemLevels
+     * @param  array<string, int>  $finalLevels
+     * @param  array<string, array<mixed>>  $levelOverrides
+     * @return list<string>
+     */
+    private static function validateG7Bindings(
+        G7ReviewSet $reviewSet,
+        array $systemLevels,
+        array $finalLevels,
+        array $levelOverrides,
+    ): array {
+        $aspects = [];
+        foreach ($reviewSet->resolutions() as $resolution) {
+            $aspect = $resolution->aspect();
+            if (! in_array($aspect, self::ASPECTS, true)
+                || $resolution->systemLevel() !== $systemLevels[$aspect]) {
+                throw new InvalidArgumentException('G7 system level does not match reviewed eligibility.');
             }
 
-            $result = $evidence['result'];
-            if (! self::hasExactKeys($result, ['type', 'review_required', 'automatic_narrative_allowed', 'reason_code', 'provenance'])
-                || $result['type'] !== 'aspect_source_discrepancy'
-                || ! is_bool($result['review_required'])
-                || ! is_bool($result['automatic_narrative_allowed'])
-                || ! is_array($result['provenance'])
-                || ! self::hasExactKeys($result['provenance'], ['aspect', 'sources', 'minimum_level', 'maximum_level', 'spread'])) {
-                throw new InvalidArgumentException('Discrepancy output is invalid.');
-            }
-
-            $provenance = $result['provenance'];
-            $aspect = $provenance['aspect'];
-            $sources = $provenance['sources'];
-            if (! is_string($aspect)
-                || ! in_array($aspect, self::ASPECTS, true)
-                || isset($seen[$aspect])
-                || ! is_array($sources)
-                || ! array_is_list($sources)
-                || $sources === []) {
-                throw new InvalidArgumentException('Discrepancy provenance is invalid.');
-            }
-
-            $levels = [];
-            $sourceNames = [];
-            foreach ($sources as $source) {
-                if (! is_array($source)
-                    || ! self::hasExactKeys($source, ['source', 'level'])
-                    || ! is_string($source['source'])
-                    || trim($source['source']) === ''
-                    || $source['source'] !== trim($source['source'])
-                    || isset($sourceNames[$source['source']])
-                    || ! is_int($source['level'])
-                    || $source['level'] < 1
-                    || $source['level'] > 5) {
-                    throw new InvalidArgumentException('Discrepancy sources are invalid.');
+            if ($resolution->state() === G7AspectResolution::STATE_RESOLVED) {
+                $finalLevel = $resolution->finalLevel();
+                if ($finalLevel !== $finalLevels[$aspect]) {
+                    throw new InvalidArgumentException('G7 final level does not match reviewed eligibility.');
                 }
-                $sourceNames[$source['source']] = true;
-                $levels[] = $source['level'];
-            }
-            $sortedSources = $sources;
-            usort($sortedSources, static fn (array $left, array $right): int => strcmp($left['source'], $right['source']));
-            $minimum = min($levels);
-            $maximum = max($levels);
-            $spread = $maximum - $minimum;
-            $reviewRequired = $spread >= 2;
-            if ($sources !== $sortedSources
-                || $provenance['minimum_level'] !== $minimum
-                || $provenance['maximum_level'] !== $maximum
-                || $provenance['spread'] !== $spread
-                || $result['review_required'] !== $reviewRequired
-                || $result['automatic_narrative_allowed'] !== ! $reviewRequired
-                || $result['reason_code'] !== ($reviewRequired ? 'SOURCE_LEVEL_SPREAD' : null)
-                || (! $reviewRequired && $evidence['review_resolved'])) {
-                throw new InvalidArgumentException('Discrepancy evidence is inconsistent.');
+
+                if ($finalLevel !== $resolution->systemLevel()) {
+                    $override = $levelOverrides[$aspect] ?? null;
+                    if (! is_array($override)
+                        || $override['changed'] !== true
+                        || $override['system_level'] !== $resolution->systemLevel()
+                        || $override['final_level'] !== $finalLevel
+                        || $override['reason'] !== $resolution->reason()) {
+                        throw new InvalidArgumentException('Changed G7 resolution does not match its professional override.');
+                    }
+                }
             }
 
-            $seen[$aspect] = true;
-            if ($reviewRequired && ! $evidence['review_resolved']) {
-                $unresolved[] = $aspect;
-            }
+            $aspects[] = $aspect;
         }
 
-        $aspects = array_keys($seen);
-        sort($aspects);
-        $expected = self::ASPECTS;
-        sort($expected);
-        if ($aspects !== $expected) {
-            throw new InvalidArgumentException('Discrepancy aspect coverage is invalid.');
+        if ($aspects !== self::ASPECTS) {
+            throw new InvalidArgumentException('G7 review set is not in canonical aspect order.');
         }
-        sort($unresolved);
 
-        return [$unresolved, self::ASPECTS];
+        return $aspects;
     }
 
     /**
-     * @param  list<mixed>  $overrideEvidence
-     * @param  'V1'|'V2'|'V3'  $validity
-     * @param  'DISARANKAN'|'DIPERTIMBANGKAN'|'TIDAK_DISARANKAN'|null  $label
-     * @return array{0: list<array{type: 'level'|'label', aspect: string|null, reason: string}>, 1: 'DISARANKAN'|'DIPERTIMBANGKAN'|'TIDAK_DISARANKAN'|null}
+     * @param  list<array<mixed>>  $levelOverrides
+     * @param  array<mixed>|null  $labelOverride
+     * @return list<array{type: 'level'|'label', aspect: string|null, reason: string|null}>
      */
-    private static function validateOverrides(array $overrideEvidence, string $validity, ?string $label): array
+    private static function projectChangedOverrides(array $levelOverrides, ?array $labelOverride): array
     {
         $projected = [];
-        $seen = [];
-        foreach ($overrideEvidence as $evidence) {
-            if (! is_array($evidence)
-                || ! self::hasExactKeys($evidence, ['result', 'audit_recorded', 'recalculation_completed'])
-                || ! is_array($evidence['result'])
-                || ! is_bool($evidence['audit_recorded'])
-                || ! is_bool($evidence['recalculation_completed'])) {
-                throw new InvalidArgumentException('Override evidence is invalid.');
+        foreach ($levelOverrides as $override) {
+            if ($override['changed'] === true) {
+                $projected[] = [
+                    'type' => 'level',
+                    'aspect' => $override['provenance']['aspect'],
+                    'reason' => $override['reason'],
+                ];
             }
-
-            $result = $evidence['result'];
-            if (($result['provenance']['override_type'] ?? null) === 'level') {
-                [$changed, $identity, $projection] = self::validateLevelOverride($result);
-            } elseif (($result['provenance']['override_type'] ?? null) === 'label') {
-                [$changed, $identity, $projection] = self::validateLabelOverride($result);
-                if ($changed) {
-                    if ($validity === 'V3' || $result['system_label'] !== $label) {
-                        throw new InvalidArgumentException('Professional label override does not match the recommendation.');
-                    }
-                    $label = $result['final_label'];
-                }
-            } else {
-                throw new InvalidArgumentException('Professional override output is invalid.');
-            }
-
-            if (isset($seen[$identity])
-                || $result['audit_required'] !== $changed
-                || ($changed && ! $evidence['audit_recorded'])
-                || (! $changed && $evidence['audit_recorded'])
-                || ($result['recalculation_required'] && ! $evidence['recalculation_completed'])
-                || (! $result['recalculation_required'] && $evidence['recalculation_completed'])) {
-                throw new InvalidArgumentException('Professional override evidence is inconsistent.');
-            }
-            $seen[$identity] = true;
-            if ($changed) {
-                $projected[] = $projection;
-            }
+        }
+        if ($labelOverride !== null && $labelOverride['changed'] === true) {
+            $projected[] = [
+                'type' => 'label',
+                'aspect' => null,
+                'reason' => $labelOverride['reason'],
+            ];
         }
 
         usort($projected, static fn (array $left, array $right): int => [$left['type'], $left['aspect']] <=> [$right['type'], $right['aspect']]);
 
-        return [$projected, $label];
-    }
-
-    /**
-     * @param  array<mixed>  $result
-     * @return array{0: bool, 1: string, 2: array{type: 'level', aspect: string, reason: string|null}}
-     */
-    private static function validateLevelOverride(array $result): array
-    {
-        if (! self::hasExactKeys($result, ['type', 'changed', 'audit_required', 'recalculation_required', 'system_level', 'final_level', 'reason', 'provenance'])
-            || ! self::validOverrideCommon($result, 'level')
-            || ! is_int($result['system_level'])
-            || $result['system_level'] < 1
-            || $result['system_level'] > 5
-            || ! is_int($result['final_level'])
-            || $result['final_level'] < 1
-            || $result['final_level'] > 5
-            || ! is_string($result['provenance']['aspect'])
-            || ! in_array($result['provenance']['aspect'], self::ASPECTS, true)) {
-            throw new InvalidArgumentException('Professional level override output is invalid.');
-        }
-        $changed = $result['system_level'] !== $result['final_level'];
-        if ($result['changed'] !== $changed || $result['recalculation_required'] !== $changed) {
-            throw new InvalidArgumentException('Professional level override output is inconsistent.');
-        }
-
-        return [$changed, 'level:'.$result['provenance']['aspect'], [
-            'type' => 'level',
-            'aspect' => $result['provenance']['aspect'],
-            'reason' => $result['reason'],
-        ]];
-    }
-
-    /**
-     * @param  array<mixed>  $result
-     * @return array{0: bool, 1: 'label:', 2: array{type: 'label', aspect: null, reason: string|null}}
-     */
-    private static function validateLabelOverride(array $result): array
-    {
-        if (! self::hasExactKeys($result, ['type', 'changed', 'audit_required', 'recalculation_required', 'system_label', 'final_label', 'reason', 'provenance'])
-            || ! self::validOverrideCommon($result, 'label')
-            || ! is_string($result['system_label'])
-            || ! in_array($result['system_label'], self::LABELS, true)
-            || ! is_string($result['final_label'])
-            || ! in_array($result['final_label'], self::LABELS, true)
-            || $result['provenance']['aspect'] !== null) {
-            throw new InvalidArgumentException('Professional label override output is invalid.');
-        }
-        $changed = $result['system_label'] !== $result['final_label'];
-        if ($result['changed'] !== $changed || $result['recalculation_required'] !== false) {
-            throw new InvalidArgumentException('Professional label override output is inconsistent.');
-        }
-
-        return [$changed, 'label:', [
-            'type' => 'label',
-            'aspect' => null,
-            'reason' => $result['reason'],
-        ]];
-    }
-
-    /** @param array<mixed> $result */
-    private static function validOverrideCommon(array $result, string $type): bool
-    {
-        if ($result['type'] !== 'professional_override'
-            || ! is_bool($result['changed'])
-            || ! is_bool($result['audit_required'])
-            || ! is_bool($result['recalculation_required'])
-            || ($result['reason'] !== null && ! is_string($result['reason']))
-            || ! is_array($result['provenance'])
-            || ! self::hasExactKeys($result['provenance'], ['policy', 'override_type', 'aspect', 'reason_character_count'])
-            || $result['provenance']['policy'] !== 'G6'
-            || $result['provenance']['override_type'] !== $type
-            || ! is_int($result['provenance']['reason_character_count'])) {
-            return false;
-        }
-
-        $reasonLength = is_string($result['reason']) ? mb_strlen($result['reason']) : 0;
-
-        return $result['provenance']['reason_character_count'] === $reasonLength
-            && ($result['changed'] ? $reasonLength >= 20 : $result['reason'] === null);
+        return $projected;
     }
 
     /**

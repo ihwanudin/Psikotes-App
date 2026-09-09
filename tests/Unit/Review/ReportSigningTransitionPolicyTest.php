@@ -5,14 +5,19 @@ declare(strict_types=1);
 namespace Tests\Unit\Review;
 
 use App\Domain\Eligibility\AspectSourceDiscrepancyPolicy;
+use App\Domain\Eligibility\EligibilityDecisionSnapshot;
+use App\Domain\Review\G7AspectResolution;
+use App\Domain\Review\G7ReviewSet;
 use App\Domain\Review\ProfessionalOverridePolicy;
 use App\Domain\Review\ReportSigningSnapshotComposer;
 use App\Domain\Review\ReportSigningTransitionPolicy;
+use App\Domain\Review\ReviewedEligibilityDecision;
 use DomainException;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
+use RuntimeException;
 use TypeError;
 
 final class ReportSigningTransitionPolicyTest extends TestCase
@@ -77,8 +82,6 @@ final class ReportSigningTransitionPolicyTest extends TestCase
         yield 'V3' => ['v3', 'VALIDITY_V3'];
         yield 'V2 note' => ['v2_note', 'V2_PROCEDURE_NOTE_REQUIRED'];
         yield 'accompaniment conditions' => ['conditions', 'ACCOMPANIMENT_CONDITIONS_REQUIRED'];
-        yield 'unresolved G7' => ['g7', 'G7_ASPECTS_UNRESOLVED'];
-        yield 'target field' => ['field', 'TARGET_FIELD_REQUIRED'];
         yield 'narrative A' => ['A', 'NARRATIVE_CLUSTER_A_REQUIRED'];
         yield 'narrative B' => ['B', 'NARRATIVE_CLUSTER_B_REQUIRED'];
         yield 'narrative C' => ['C', 'NARRATIVE_CLUSTER_C_REQUIRED'];
@@ -92,8 +95,6 @@ final class ReportSigningTransitionPolicyTest extends TestCase
         $input['procedure_note'] = ' ';
         $input['label'] = 'DIPERTIMBANGKAN';
         $input['accompaniment_conditions'] = null;
-        $input['unresolved_g7_aspects'] = ['D5'];
-        $input['target_field'] = '';
         $input['narrative_clusters'] = ['A' => null, 'B' => '', 'C' => ' ', 'D' => "\n"];
 
         $result = (new ReportSigningTransitionPolicy)->attempt('UNDER_REVIEW', $this->snapshot($input));
@@ -101,8 +102,6 @@ final class ReportSigningTransitionPolicyTest extends TestCase
         $this->assertSame([
             'V2_PROCEDURE_NOTE_REQUIRED',
             'ACCOMPANIMENT_CONDITIONS_REQUIRED',
-            'G7_ASPECTS_UNRESOLVED',
-            'TARGET_FIELD_REQUIRED',
             'NARRATIVE_CLUSTER_A_REQUIRED',
             'NARRATIVE_CLUSTER_B_REQUIRED',
             'NARRATIVE_CLUSTER_C_REQUIRED',
@@ -160,8 +159,6 @@ final class ReportSigningTransitionPolicyTest extends TestCase
             'v3' => [$input['validity'], $input['label']] = ['V3', null],
             'v2_note' => [$input['validity'], $input['procedure_note']] = ['V2', null],
             'conditions' => [$input['label'], $input['accompaniment_conditions']] = ['DIPERTIMBANGKAN', null],
-            'g7' => $input['unresolved_g7_aspects'] = ['C4'],
-            'field' => $input['target_field'] = null,
             default => $input['narrative_clusters'][$mutation] = ' ',
         };
     }
@@ -204,65 +201,56 @@ final class ReportSigningTransitionPolicyTest extends TestCase
     /** @param array<mixed> $input */
     private function snapshot(array $input): ReportSigningSnapshotComposer
     {
-        $discrepancies = [];
-        foreach (['A1', 'A2', 'B1', 'B2', 'B3', 'B4', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'D1', 'D2', 'D3', 'D4', 'D5'] as $aspect) {
-            $requiresReview = in_array($aspect, $input['unresolved_g7_aspects'], true);
-            $sources = $requiresReview
-                ? [['source' => 'SOURCE_A', 'level' => 1], ['source' => 'SOURCE_B', 'level' => 3]]
-                : [['source' => 'SOURCE_A', 'level' => 3]];
-            $discrepancies[] = [
-                'result' => (new AspectSourceDiscrepancyPolicy)->evaluate(['aspect' => $aspect, 'sources' => $sources]),
-                'review_resolved' => false,
-            ];
-        }
-
-        $recommendation = $input['validity'] === 'V3'
-            ? [
-                'type' => 'publication_blocked',
-                'publication_blocked' => true,
-                'reason_code' => 'VALIDITY_V3',
-                'provenance' => ['standard_version' => 'GA-2026.08', 'field_code' => 'KAIGO', 'iq' => 100, 'validity' => 'V3'],
-            ]
-            : [
-                'type' => 'recommendation_label',
-                'publication_blocked' => false,
-                'initial_label' => 'DISARANKAN',
-                'label' => 'DISARANKAN',
-                'review_required' => false,
-                'review_reason_codes' => [],
-                'provenance' => [
-                    'standard_version' => 'GA-2026.08',
-                    'field_code' => 'KAIGO',
-                    'iq' => 100,
-                    'validity' => $input['validity'],
-                    'critical_belum_aspects' => [],
-                    'belum_aspects' => [],
-                    'grey_aspects' => [],
-                    'zone_counts' => ['OK' => 18, 'GREY' => 0, 'BELUM' => 0, 'UNASSESSED' => 0],
-                ],
-            ];
-
+        $aspects = ['A1', 'A2', 'B1', 'B2', 'B3', 'B4', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'D1', 'D2', 'D3', 'D4', 'D5'];
+        $reporting = $this->canonicalReporting();
+        $baseline = EligibilityDecisionSnapshot::create([
+            'levels' => array_fill_keys($aspects, 5),
+            'field_code' => 'KAIGO',
+            'iq' => 100,
+            'validity' => $input['validity'],
+            'standard_configuration' => $reporting,
+            'eligibility_source_versions' => [
+                'ist' => 'F0-2026.08', 'papi' => 'F0-2026.08', 'kraepelin' => 'F0-2026.08',
+                'rmib' => 'F0-2026.08', 'reporting' => $reporting['standard_version'],
+            ],
+        ]);
         $overrides = [];
         if ($input['validity'] !== 'V3' && $input['label'] !== 'DISARANKAN') {
-            $overrides[] = [
-                'result' => (new ProfessionalOverridePolicy)->labelOverride([
-                    'system_label' => 'DISARANKAN',
-                    'final_label' => $input['label'],
-                    'reason' => 'Pertimbangan profesional telah dicatat secara lengkap.',
-                ]),
-                'audit_recorded' => true,
-                'recalculation_completed' => false,
-            ];
+            $labelOverride = (new ProfessionalOverridePolicy)->labelOverride([
+                'system_label' => 'DISARANKAN', 'final_label' => $input['label'],
+                'reason' => 'Pertimbangan profesional telah dicatat secara lengkap.',
+            ]);
+        } else {
+            $labelOverride = null;
         }
+        $reviewed = ReviewedEligibilityDecision::create($baseline, $overrides, $labelOverride);
+        $resolutions = array_map(static fn (string $aspect): G7AspectResolution => G7AspectResolution::notRequired(
+            (new AspectSourceDiscrepancyPolicy)->evaluate([
+                'aspect' => $aspect, 'sources' => [['source' => 'SOURCE_A', 'level' => 5]],
+            ]),
+            5,
+        ), $aspects);
 
-        return ReportSigningSnapshotComposer::compose([
-            'recommendation' => $recommendation,
-            'discrepancies' => $discrepancies,
-            'overrides' => $overrides,
+        return ReportSigningSnapshotComposer::compose($reviewed, G7ReviewSet::fromResolutions($resolutions), [
             'procedure_note' => $input['procedure_note'],
             'accompaniment_conditions' => $input['accompaniment_conditions'],
-            'target_field' => $input['target_field'],
             'narrative_clusters' => $input['narrative_clusters'],
         ]);
+    }
+
+    /** @return array{standard_version: string, base_standards: array<mixed>, fields: array<mixed>} */
+    private function canonicalReporting(): array
+    {
+        $contents = file_get_contents(dirname(__DIR__, 3).'/database/seeders/data/reporting.json');
+        if (! is_string($contents)) {
+            throw new RuntimeException('Canonical reporting data could not be read.');
+        }
+        $data = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
+        if (! is_array($data) || ! is_string($data['standard_version'] ?? null)
+            || ! is_array($data['base_standards'] ?? null) || ! is_array($data['fields'] ?? null)) {
+            throw new RuntimeException('Canonical reporting data is incomplete.');
+        }
+
+        return ['standard_version' => $data['standard_version'], 'base_standards' => $data['base_standards'], 'fields' => $data['fields']];
     }
 }
