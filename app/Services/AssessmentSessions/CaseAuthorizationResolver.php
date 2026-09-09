@@ -13,7 +13,6 @@ use App\Models\AssessmentCase;
 use App\Models\AssessmentCharge;
 use App\Models\AssessmentEntitlement;
 use App\Models\AssessmentParticipant;
-use App\Models\Branch;
 use App\Models\Entitlement;
 use App\Models\Order;
 use App\Models\PackageItem;
@@ -23,12 +22,13 @@ use App\Models\TestPackage;
 use App\Security\RlsContextRunner;
 use App\Services\ParticipantAuth\AssessmentEntitlementGate;
 use App\Services\ParticipantAuth\AssessmentPrincipal;
+use App\Services\ParticipantAuth\Exceptions\EntitlementLocked;
 use App\Services\ParticipantAuth\ParticipantPrincipal;
+use DomainException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use LogicException;
-use Throwable;
 
 /** Resolves a ready canonical grant to one durable case while retaining caller-owned locks. */
 final readonly class CaseAuthorizationResolver
@@ -44,63 +44,69 @@ final readonly class CaseAuthorizationResolver
     ): CaseAuthorization {
         $this->assertScope();
 
-        try {
-            $attemptHint = AssessmentParticipant::query()->find($principal->assessmentParticipantId);
-            if ($attemptHint === null) {
-                $this->reject();
-            }
-            $this->one(Branch::query()->whereKey($principal->organizationId)->lockForUpdate()->limit(2)->get());
-            $package = $this->one(TestPackage::query()->whereKey($attemptHint->package_id)
-                ->lockForUpdate()->limit(2)->get());
-            $this->assertMainComposition($this->packageTypes($package->id), $instrument);
-
-            $attempt = $this->one(AssessmentParticipant::query()
-                ->whereKey($principal->assessmentParticipantId)
-                ->where('participant_id', $principal->participantId)
-                ->where('organization_id', $principal->organizationId)
-                ->where('package_id', $package->id)
-                ->lockForUpdate()->limit(2)->get());
-            $this->one(Participant::query()->whereKey($principal->participantId)
-                ->where('branch_id', $principal->organizationId)->lockForUpdate()->limit(2)->get());
-            $case = $this->one(AssessmentCase::query()->whereKey($attempt->assessment_case_id)
-                ->lockForUpdate()->limit(2)->get());
-            $charge = $this->one(AssessmentCharge::query()
-                ->where('assessment_participant_id', $attempt->id)
-                ->where('participant_id', $principal->participantId)
-                ->where('organization_id', $principal->organizationId)
-                ->where('package_id', $package->id)
-                ->lockForUpdate()->limit(2)->get());
-            $entitlement = $this->one(AssessmentEntitlement::query()
-                ->where('assessment_participant_id', $attempt->id)->where('charge_id', $charge->id)
-                ->where('participant_id', $principal->participantId)
-                ->where('organization_id', $principal->organizationId)
-                ->where('test_type', $instrument->value)
-                ->where('status', 'ready')->whereNotNull('ready_at')
-                ->whereRaw('ready_at <= CURRENT_TIMESTAMP')->whereNull('started_at')->whereNull('completed_at')
-                ->lockForUpdate()->limit(2)->get());
-
-            if (! in_array($attempt->assessment_status, ['READY', 'IN_PROGRESS'], true)
-                || $attempt->revoked_at !== null || $attempt->finalized_at !== null
-                || $case->public_id !== $attempt->assessment_attempt_id
-                || $case->participant_id !== $principal->participantId
-                || $case->organization_id !== $principal->organizationId
-                || $case->package_id !== $package->id
-                || $case->origin !== CaseAuthorizationOrigin::Integrated->value) {
-                $this->reject();
-            }
-
-            $canonical = $this->integratedGate->assertReady($principal, $instrument->value);
-            if ($canonical->id !== $entitlement->id) {
-                $this->reject();
-            }
-
-            return $this->authorization($case, $instrument, CaseAuthorizationOrigin::Integrated,
-                CaseAuthorizationGrantKind::AssessmentEntitlement, $entitlement->id);
-        } catch (CaseAuthorizationRejected $exception) {
-            throw $exception;
-        } catch (Throwable) {
+        $attemptHint = AssessmentParticipant::query()->find($principal->assessmentParticipantId);
+        if ($attemptHint === null) {
             $this->reject();
         }
+        $this->one(Participant::query()->whereKey($principal->participantId)
+            ->where('branch_id', $principal->organizationId)->lockForUpdate()->limit(2)->get());
+        $package = $this->one(TestPackage::query()->whereKey($attemptHint->package_id)
+            ->lockForUpdate()->limit(2)->get());
+        $this->assertMainComposition($this->packageTypes($package->id), $instrument);
+
+        $cases = AssessmentCase::query()->where('participant_id', $principal->participantId)
+            ->orderBy('id')->lockForUpdate()->get();
+        $case = $this->one($cases->where('id', $attemptHint->assessment_case_id)->values());
+        $orders = Order::query()->where('participant_id', $principal->participantId)
+            ->orderBy('id')->lockForUpdate()->limit(2)->get();
+        $selections = SelectionParticipant::query()->where('participant_id', $principal->participantId)
+            ->orderBy('id')->lockForUpdate()->limit(2)->get();
+        $attempt = $this->one(AssessmentParticipant::query()
+            ->whereKey($principal->assessmentParticipantId)
+            ->where('participant_id', $principal->participantId)
+            ->where('organization_id', $principal->organizationId)
+            ->where('package_id', $package->id)
+            ->lockForUpdate()->limit(2)->get());
+        $charge = $this->one(AssessmentCharge::query()
+            ->where('assessment_participant_id', $attempt->id)
+            ->where('participant_id', $principal->participantId)
+            ->where('organization_id', $principal->organizationId)
+            ->where('package_id', $package->id)
+            ->lockForUpdate()->limit(2)->get());
+        $genericEntitlements = Entitlement::query()->where('participant_id', $principal->participantId)
+            ->orderBy('id')->lockForUpdate()->limit(2)->get();
+        $entitlement = $this->one(AssessmentEntitlement::query()
+            ->where('assessment_participant_id', $attempt->id)->where('charge_id', $charge->id)
+            ->where('participant_id', $principal->participantId)
+            ->where('organization_id', $principal->organizationId)
+            ->where('test_type', $instrument->value)
+            ->where('status', 'ready')->whereNotNull('ready_at')
+            ->whereRaw('ready_at <= CURRENT_TIMESTAMP')->whereNull('started_at')->whereNull('completed_at')
+            ->lockForUpdate()->limit(2)->get());
+
+        if ($orders->isNotEmpty() || $selections->isNotEmpty() || $genericEntitlements->isNotEmpty()
+            || $cases->contains(fn (AssessmentCase $candidate): bool => $candidate->origin !== CaseAuthorizationOrigin::Integrated->value)
+            || ! in_array($attempt->assessment_status, ['READY', 'IN_PROGRESS'], true)
+            || $attempt->revoked_at !== null || $attempt->finalized_at !== null
+            || $case->public_id !== $attempt->assessment_attempt_id
+            || $case->participant_id !== $principal->participantId
+            || $case->organization_id !== $principal->organizationId
+            || $case->package_id !== $package->id
+            || $case->origin !== CaseAuthorizationOrigin::Integrated->value) {
+            $this->reject();
+        }
+
+        try {
+            $canonical = $this->integratedGate->assertReady($principal, $instrument->value);
+        } catch (EntitlementLocked) {
+            $this->reject();
+        }
+        if ($canonical->id !== $entitlement->id) {
+            $this->reject();
+        }
+
+        return $this->authorization($case, $instrument, CaseAuthorizationOrigin::Integrated,
+            CaseAuthorizationGrantKind::AssessmentEntitlement, $entitlement->id);
     }
 
     public function resolveParticipantForUpdate(
@@ -109,18 +115,12 @@ final readonly class CaseAuthorizationResolver
     ): CaseAuthorization {
         $this->assertScope();
 
-        try {
-            $participant = $this->one(Participant::query()->whereKey($principal->participantId)
-                ->where('branch_id', $principal->branchId)->lockForUpdate()->limit(2)->get());
+        $participant = $this->one(Participant::query()->whereKey($principal->participantId)
+            ->where('branch_id', $principal->branchId)->lockForUpdate()->limit(2)->get());
 
-            return $participant->source_system === CaseAuthorizationOrigin::DirectPublic->value
-                ? $this->resolveDirect($participant, $instrument)
-                : $this->resolveLegacy($participant, $instrument);
-        } catch (CaseAuthorizationRejected $exception) {
-            throw $exception;
-        } catch (Throwable) {
-            $this->reject();
-        }
+        return $participant->source_system === CaseAuthorizationOrigin::DirectPublic->value
+            ? $this->resolveDirect($participant, $instrument)
+            : $this->resolveLegacy($participant, $instrument);
     }
 
     private function resolveDirect(Participant $participant, GenericAssessmentInstrument $instrument): CaseAuthorization
@@ -139,16 +139,15 @@ final readonly class CaseAuthorizationResolver
             $this->reject();
         }
         $case = $this->one(AssessmentCase::query()->where('participant_id', $participant->id)
-            ->where('origin', CaseAuthorizationOrigin::DirectPublic->value)
             ->orderBy('id')->lockForUpdate()->limit(2)->get());
         $order = $this->one(Order::query()->where('participant_id', $participant->id)
             ->orderBy('id')->lockForUpdate()->limit(2)->get());
-        $entitlements = Entitlement::query()->where('participant_id', $participant->id)
-            ->orderBy('id')->lockForUpdate()->get();
         $selection = SelectionParticipant::query()->where('participant_id', $participant->id)
             ->orderBy('id')->lockForUpdate()->limit(2)->get();
         $integrated = AssessmentParticipant::query()->where('participant_id', $participant->id)
             ->orderBy('id')->lockForUpdate()->limit(2)->get();
+        $entitlements = Entitlement::query()->where('participant_id', $participant->id)
+            ->orderBy('id')->lockForUpdate()->get();
         $grant = $this->readyEntitlement($participant->id, $instrument, $order->id);
         $entitlementTypes = $entitlements->pluck('test_type')->sort()->values()->all();
 
@@ -173,17 +172,16 @@ final readonly class CaseAuthorizationResolver
         if ($participant->source_system !== 'SELEKSI_BEASISWA_JEPANG' || $participant->package_id !== null) {
             $this->reject();
         }
-        $selection = $this->one(SelectionParticipant::query()->where('participant_id', $participant->id)
-            ->orderBy('id')->lockForUpdate()->limit(2)->get());
         $case = $this->one(AssessmentCase::query()->where('participant_id', $participant->id)
-            ->where('origin', CaseAuthorizationOrigin::LegacySelection->value)
             ->orderBy('id')->lockForUpdate()->limit(2)->get());
-        $entitlements = Entitlement::query()->where('participant_id', $participant->id)
-            ->orderBy('id')->lockForUpdate()->get();
         $orders = Order::query()->where('participant_id', $participant->id)
             ->orderBy('id')->lockForUpdate()->limit(2)->get();
+        $selection = $this->one(SelectionParticipant::query()->where('participant_id', $participant->id)
+            ->orderBy('id')->lockForUpdate()->limit(2)->get());
         $integrated = AssessmentParticipant::query()->where('participant_id', $participant->id)
             ->orderBy('id')->lockForUpdate()->limit(2)->get();
+        $entitlements = Entitlement::query()->where('participant_id', $participant->id)
+            ->orderBy('id')->lockForUpdate()->get();
         $grant = $this->readyEntitlement($participant->id, $instrument, null);
 
         if ($orders->isNotEmpty() || $integrated->isNotEmpty()
@@ -223,7 +221,7 @@ final readonly class CaseAuthorizationResolver
     {
         try {
             $canonical = TestPackage::canonicalComposition($types);
-        } catch (Throwable) {
+        } catch (DomainException) {
             $this->reject();
         }
         if (! in_array($instrument->value, $canonical, true)) {

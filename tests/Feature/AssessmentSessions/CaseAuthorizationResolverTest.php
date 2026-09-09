@@ -15,8 +15,10 @@ use App\Services\AssessmentSessions\CaseAuthorizationResolver;
 use App\Services\ParticipantAuth\AssessmentPrincipal;
 use App\Services\ParticipantAuth\ParticipantPrincipal;
 use Closure;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use LogicException;
 use Tests\OrganizationPaymentTestCase;
@@ -125,6 +127,47 @@ final class CaseAuthorizationResolverTest extends OrganizationPaymentTestCase
         $this->expectException(CaseAuthorizationRejected::class);
         $this->asService(fn () => $this->resolver()->resolveIntegratedForUpdate(
             new AssessmentPrincipal($fixture['participant'], $fixture['organization'] + 1, $fixture['attempt']),
+            GenericAssessmentInstrument::Ist,
+        ));
+    }
+
+    public function test_integrated_grant_rejects_a_competing_direct_public_graph(): void
+    {
+        $fixture = AssessmentAccessFixture::create();
+        DB::table('participants')->where('id', $fixture['participant'])->update([
+            'source_system' => 'DIRECT_PUBLIC', 'package_id' => $fixture['package'],
+        ]);
+        $publicId = (string) Str::ulid();
+        $case = DB::table('assessment_cases')->insertGetId([
+            'public_id' => $publicId, 'participant_id' => $fixture['participant'],
+            'organization_id' => $fixture['organization'], 'package_id' => $fixture['package'],
+            'origin' => 'DIRECT_PUBLIC', 'intended_field_snapshot' => null,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $order = $this->insertUnboundOrder($fixture['participant'], $publicId, $case);
+        foreach (['dass21', 'ist'] as $type) {
+            DB::table('entitlements')->insert([
+                'participant_id' => $fixture['participant'], 'order_id' => $order,
+                'test_type' => $type, 'status' => 'ready', 'ready_at' => now(),
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+
+        $this->expectException(CaseAuthorizationRejected::class);
+        $this->asService(fn (): CaseAuthorization => $this->resolver()->resolveIntegratedForUpdate(
+            new AssessmentPrincipal($fixture['participant'], $fixture['organization'], $fixture['attempt']),
+            GenericAssessmentInstrument::Ist,
+        ));
+    }
+
+    public function test_database_failures_are_not_relabelled_as_authorization_denials(): void
+    {
+        $fixture = AssessmentAccessFixture::create();
+        Schema::drop('orders');
+
+        $this->expectException(QueryException::class);
+        $this->asService(fn (): CaseAuthorization => $this->resolver()->resolveIntegratedForUpdate(
+            new AssessmentPrincipal($fixture['participant'], $fixture['organization'], $fixture['attempt']),
             GenericAssessmentInstrument::Ist,
         ));
     }
