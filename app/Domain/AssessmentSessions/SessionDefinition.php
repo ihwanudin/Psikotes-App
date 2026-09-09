@@ -134,6 +134,41 @@ final readonly class SessionDefinition
         );
     }
 
+    /**
+     * @return array{
+     *     instrument: string,
+     *     version: string,
+     *     provenance: string,
+     *     checksum: string,
+     *     total_duration_seconds: int,
+     *     subtests: list<array{code: string, duration_seconds: int, item_count: int}>,
+     *     randomization: string,
+     *     seed: string|null,
+     *     generator: array{
+     *         algorithm: string,
+     *         version: string,
+     *         columns: int,
+     *         seconds_per_column: int,
+     *         numbers_per_column: int,
+     *         answer_slots_per_column: int
+     *     }|null
+     * }
+     */
+    public function toArray(): array
+    {
+        return [
+            'instrument' => $this->instrument->value,
+            'version' => $this->version,
+            'provenance' => $this->provenance,
+            'checksum' => $this->checksum,
+            'total_duration_seconds' => $this->totalDurationSeconds,
+            'subtests' => $this->subtests,
+            'randomization' => $this->randomization,
+            'seed' => $this->seed,
+            'generator' => $this->generator,
+        ];
+    }
+
     /** @param array<string, mixed> $input */
     public static function checksumFor(array $input): string
     {

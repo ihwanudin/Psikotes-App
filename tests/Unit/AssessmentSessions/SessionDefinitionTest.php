@@ -54,6 +54,64 @@ final class SessionDefinitionTest extends TestCase
         ], $definition->generator);
     }
 
+    #[DataProvider('fixedInstruments')]
+    public function test_it_exports_fixed_definitions_as_exact_canonical_round_trips(string $instrument): void
+    {
+        $input = $this->fixedDefinition($instrument);
+        $reordered = array_reverse($input, preserve_keys: true);
+        $reordered['subtests'][0] = array_reverse($reordered['subtests'][0], preserve_keys: true);
+
+        $exported = SessionDefinition::fromArray($reordered)->toArray();
+
+        $this->assertSame([
+            'instrument',
+            'version',
+            'provenance',
+            'checksum',
+            'total_duration_seconds',
+            'subtests',
+            'randomization',
+            'seed',
+            'generator',
+        ], array_keys($exported));
+        $this->assertSame($input, $exported);
+        $this->assertEquals(SessionDefinition::fromArray($input), SessionDefinition::fromArray($exported));
+    }
+
+    public function test_it_exports_seeded_kraepelin_as_an_exact_canonical_round_trip(): void
+    {
+        $input = $this->kraepelinDefinition();
+        $reordered = array_reverse($input, preserve_keys: true);
+        $reordered['subtests'][0] = array_reverse($reordered['subtests'][0], preserve_keys: true);
+        $reordered['generator'] = array_reverse($reordered['generator'], preserve_keys: true);
+
+        $exported = SessionDefinition::fromArray($reordered)->toArray();
+
+        $this->assertSame($input, $exported);
+        $this->assertSame('synthetic-v1', $exported['version']);
+        $this->assertSame('synthetic-test-fixture', $exported['provenance']);
+        $this->assertSame(750, $exported['total_duration_seconds']);
+        $this->assertSame('seeded', $exported['randomization']);
+        $this->assertSame('synthetic-seed', $exported['seed']);
+        $this->assertSame($input['generator'], $exported['generator']);
+        $this->assertSame($input['checksum'], $exported['checksum']);
+        $this->assertEquals(SessionDefinition::fromArray($input), SessionDefinition::fromArray($exported));
+    }
+
+    public function test_exported_snapshots_do_not_mutate_the_readonly_definition(): void
+    {
+        $definition = SessionDefinition::fromArray($this->kraepelinDefinition());
+        $expected = $definition->toArray();
+        $exported = $definition->toArray();
+
+        $exported['version'] = 'mutated';
+        $exported['subtests'][0]['duration_seconds'] = 1;
+        $exported['generator']['columns'] = 1;
+
+        $this->assertTrue((new \ReflectionClass($definition))->isReadOnly());
+        $this->assertSame($expected, $definition->toArray());
+    }
+
     public function test_it_rejects_a_checksum_reused_for_different_definition_content(): void
     {
         $input = $this->fixedDefinition('ist');
