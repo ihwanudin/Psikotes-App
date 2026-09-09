@@ -78,6 +78,30 @@ final class DirectPublicOrderCaseIdentityMigrationTest extends OrganizationPayme
         $this->assertDatabaseCount('assessment_cases', 0);
     }
 
+    public function test_two_orders_for_one_direct_participant_abort_before_any_schema_or_case_write(): void
+    {
+        $fixture = $this->directOrder('duplicate-order', ['dass21', 'ist']);
+        DB::table('orders')->insert([
+            'public_id' => (string) Str::ulid(), 'participant_id' => $fixture['participant'],
+            'payment_method_id' => DB::table('orders')->where('id', $fixture['order'])->value('payment_method_id'),
+            'status' => 'pending', 'amount' => 100000, 'currency' => 'IDR',
+            'created_at' => '2026-08-25 03:15:00', 'updated_at' => '2026-08-25 03:15:00',
+        ]);
+        $before = $this->sqliteSchema();
+
+        try {
+            $this->migrate('up');
+            $this->fail('Multiple direct orders must fail before backfill.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('each direct participant must have exactly one order', $exception->getMessage());
+        }
+
+        $this->assertSame($before, $this->sqliteSchema());
+        $this->assertFalse(Schema::hasColumn('orders', 'assessment_case_id'));
+        $this->assertDatabaseCount('assessment_cases', 0);
+        $this->assertDatabaseCount('orders', 2);
+    }
+
     public function test_linked_order_identity_is_immutable_while_payment_lifecycle_remains_mutable(): void
     {
         $fixture = $this->directOrder('guard', ['dass21', 'ist']);
@@ -188,6 +212,18 @@ final class DirectPublicOrderCaseIdentityMigrationTest extends OrganizationPayme
         } catch (QueryException) {
             $this->addToAssertionCount(1);
         }
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function sqliteSchema(): array
+    {
+        return array_values(array_map(
+            static fn (object $row): array => (array) $row,
+            DB::select(<<<'SQL'
+                SELECT type, name, tbl_name, sql FROM sqlite_master
+                WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name
+                SQL),
+        ));
     }
 
     private function migrate(string $direction): void

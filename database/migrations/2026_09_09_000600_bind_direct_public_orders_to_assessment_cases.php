@@ -34,6 +34,7 @@ return new class extends Migration
                 if (DB::table('assessment_cases')->where('origin', 'DIRECT_PUBLIC')->exists()) {
                     $this->abort('unbound direct case history already exists');
                 }
+                $this->assertOneOrderPerDirectParticipant();
 
                 if ($driver === 'sqlite') {
                     DB::statement('ALTER TABLE orders ADD COLUMN assessment_case_id INTEGER NULL');
@@ -134,6 +135,21 @@ return new class extends Migration
             ]);
 
             DB::table('orders')->where('id', $order->id)->update(['assessment_case_id' => $caseId]);
+        }
+    }
+
+    private function assertOneOrderPerDirectParticipant(): void
+    {
+        $invalid = DB::table('participants as participant')
+            ->leftJoin('orders as orders', 'orders.participant_id', '=', 'participant.id')
+            ->where('participant.source_system', 'DIRECT_PUBLIC')
+            ->groupBy('participant.id')
+            ->havingRaw('COUNT(orders.id) <> 1')
+            ->limit(1)
+            ->first(['participant.id']) !== null;
+
+        if ($invalid) {
+            $this->abort('each direct participant must have exactly one order');
         }
     }
 
@@ -461,7 +477,7 @@ return new class extends Migration
     private function lockPostgresTables(): void
     {
         DB::statement(<<<'SQL'
-            LOCK TABLE packages, package_items, participants, orders, entitlements, assessment_cases
+            LOCK TABLE participants, packages, package_items, assessment_cases, orders, entitlements
                 IN ACCESS EXCLUSIVE MODE
             SQL);
     }

@@ -265,14 +265,6 @@ final readonly class RegisterParticipant
             $this->rejectReplay();
         }
 
-        $orders = Order::query()->where('participant_id', $participant->id)
-            ->orderBy('id')->limit(2)->lockForUpdate()->get();
-        if ($orders->count() !== 1) {
-            $this->rejectReplay();
-        }
-        /** @var Order $order */
-        $order = $orders->first();
-
         $package = TestPackage::query()->whereKey($participant->package_id)->lockForUpdate()->first();
         if ($package === null) {
             $this->rejectReplay();
@@ -282,6 +274,16 @@ final readonly class RegisterParticipant
         if ($composition === null) {
             $this->rejectReplay();
         }
+
+        $cases = AssessmentCase::query()->where('participant_id', $participant->id)
+            ->where('origin', 'DIRECT_PUBLIC')->orderBy('id')->limit(2)->lockForUpdate()->get();
+        $orders = Order::query()->where('participant_id', $participant->id)
+            ->orderBy('id')->limit(2)->lockForUpdate()->get();
+        if ($orders->count() !== 1) {
+            $this->rejectReplay();
+        }
+        /** @var Order $order */
+        $order = $orders->first();
 
         $entitlements = Entitlement::query()->where('participant_id', $participant->id)
             ->orderBy('id')->lockForUpdate()->get();
@@ -293,8 +295,6 @@ final readonly class RegisterParticipant
             $this->rejectReplay();
         }
 
-        $cases = AssessmentCase::query()->where('participant_id', $participant->id)
-            ->where('origin', 'DIRECT_PUBLIC')->orderBy('id')->limit(2)->lockForUpdate()->get();
         if ($composition === 'dass') {
             if ($order->assessment_case_id !== null || $cases->isNotEmpty()) {
                 $this->rejectReplay();

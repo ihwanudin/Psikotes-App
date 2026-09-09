@@ -104,6 +104,51 @@ final class DirectPublicOrderCaseIdentityMigrationTest extends TestCase
         }
     }
 
+    public function test_two_historical_orders_for_one_direct_participant_abort_without_schema_or_rls_delta(): void
+    {
+        $this->asOwner(function (): void {
+            DB::beginTransaction();
+            try {
+                $this->migrate('down');
+                foreach (['branches', 'packages', 'package_items', 'participants', 'orders', 'entitlements', 'assessment_cases'] as $table) {
+                    DB::statement("ALTER TABLE {$table} NO FORCE ROW LEVEL SECURITY");
+                }
+                $graph = $this->baseGraph('duplicate-order', ['dass21', 'ist']);
+                $first = $this->historicalOrder($graph, 'first');
+                $this->historicalOrder($graph, 'second');
+                foreach (['dass21', 'ist'] as $type) {
+                    DB::table('entitlements')->insert([
+                        'participant_id' => $graph['participant'], 'order_id' => $first,
+                        'test_type' => $type, 'status' => 'locked', 'created_at' => now(), 'updated_at' => now(),
+                    ]);
+                }
+                foreach (['branches', 'packages', 'package_items', 'participants', 'orders', 'entitlements', 'assessment_cases'] as $table) {
+                    DB::statement("ALTER TABLE {$table} FORCE ROW LEVEL SECURITY");
+                }
+                $before = $this->postgresSchema();
+
+                try {
+                    $this->migrate('up');
+                    $this->fail('Multiple direct orders must fail before backfill.');
+                } catch (RuntimeException $exception) {
+                    $this->assertStringContainsString('each direct participant must have exactly one order', $exception->getMessage());
+                }
+
+                $this->assertEquals($before, $this->postgresSchema());
+                $this->assertFalse(Schema::hasColumn('orders', 'assessment_case_id'));
+                foreach (['orders', 'assessment_cases'] as $table) {
+                    $this->assertTrue((bool) DB::scalar(
+                        'SELECT relforcerowsecurity FROM pg_class WHERE oid=?::regclass', [$table],
+                    ));
+                }
+                DB::statement('ALTER TABLE assessment_cases NO FORCE ROW LEVEL SECURITY');
+                $this->assertSame(0, DB::table('assessment_cases')->where('origin', 'DIRECT_PUBLIC')->count());
+            } finally {
+                DB::rollBack();
+            }
+        });
+    }
+
     public function test_two_real_processes_observing_the_same_empty_token_converge_on_one_exact_graph(): void
     {
         $fixture = app(RlsContextRunner::class)->runAsService(function (): array {
@@ -165,8 +210,59 @@ final class DirectPublicOrderCaseIdentityMigrationTest extends TestCase
         }
     }
 
+    public function test_migration_waiting_on_participants_does_not_deadlock_a_dass_replay(): void
+    {
+        $this->asOwner(fn () => $this->migrate('down'));
+        $token = (string) Str::uuid();
+        $input = [
+            'full_name' => 'Migration Replay', 'gender' => 'female',
+            'birth_date' => '2001-04-15', 'education_level' => 'SMA/SMK',
+            'intended_field' => 'KAIGO', 'phone' => '+6281234567800',
+            'email' => 'migration-replay@example.test', 'include_consultation' => false,
+        ];
+        $fixture = app(RlsContextRunner::class)->runAsService(function () use ($input, $token): array {
+            $graph = $this->baseGraph('migration-replay', ['dass21']);
+            $hashInput = [...$input, 'package_id' => $graph['package'], 'payment_method_code' => $graph['method_code']];
+            ksort($hashInput);
+            $payloadHash = hash_hmac(
+                'sha256', json_encode($hashInput, JSON_THROW_ON_ERROR), (string) config('app.key'),
+            );
+            DB::table('participants')->where('id', $graph['participant'])->update([
+                'registration_token' => $token, 'registration_payload_hash' => $payloadHash,
+            ]);
+            $order = $this->historicalOrder($graph, 'migration-replay');
+            DB::table('entitlements')->insert([
+                'participant_id' => $graph['participant'], 'order_id' => $order,
+                'test_type' => 'dass21', 'status' => 'locked', 'created_at' => now(), 'updated_at' => now(),
+            ]);
+
+            return $graph;
+        });
+        $replay = static function () use ($input, $fixture, $token): array {
+            $participant = app(RegisterParticipant::class)->handle(
+                $input, $fixture['package'], $fixture['method_code'], $token, null,
+            );
+
+            return ['participant' => $participant->id];
+        };
+
+        try {
+            $results = $this->migrationReplayRace($replay);
+            $this->assertArrayNotHasKey('error', $results['replay']);
+            $this->assertArrayNotHasKey('error', $results['migration']);
+            $this->assertSame($fixture['participant'], $results['replay']['participant']);
+            $this->assertTrue($results['migration']['migrated']);
+            $this->assertTrue(Schema::hasColumn('orders', 'assessment_case_id'));
+        } finally {
+            $this->cleanupConcurrentGraph($token, $fixture);
+            if (! Schema::hasColumn('orders', 'assessment_case_id')) {
+                $this->asOwner(fn () => $this->migrate('up'));
+            }
+        }
+    }
+
     /** @param list<string> $types
-     * @return array{branch:int,package:int,participant:int,method:int}
+     * @return array{branch:int,package:int,participant:int,method:int,method_code:string}
      */
     private function baseGraph(string $suffix, array $types): array
     {
@@ -190,12 +286,58 @@ final class DirectPublicOrderCaseIdentityMigrationTest extends TestCase
             'source_system' => 'DIRECT_PUBLIC', 'package_id' => $package, 'full_name' => $suffix,
             'intended_field' => 'KAIGO', 'phone' => '620000000000',
         ]);
+        $methodCode = 'method-'.$key;
         $method = DB::table('payment_methods')->insertGetId([
-            'code' => 'method-'.$key, 'display_name' => $suffix, 'is_active' => true,
+            'code' => $methodCode, 'display_name' => $suffix, 'is_active' => true,
             'created_at' => now(), 'updated_at' => now(),
         ]);
 
-        return compact('branch', 'package', 'participant', 'method');
+        return compact('branch', 'package', 'participant', 'method') + ['method_code' => $methodCode];
+    }
+
+    /** @param array{participant:int,method:int} $graph */
+    private function historicalOrder(array $graph, string $suffix): int
+    {
+        return DB::table('orders')->insertGetId([
+            'public_id' => (string) Str::ulid(), 'participant_id' => $graph['participant'],
+            'payment_method_id' => $graph['method'], 'status' => 'pending',
+            'amount' => 99000, 'currency' => 'IDR',
+            'metadata' => json_encode(['fixture' => $suffix], JSON_THROW_ON_ERROR),
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+    }
+
+    /** @return array<string, mixed> */
+    private function postgresSchema(): array
+    {
+        return [
+            'columns' => DB::select(<<<'SQL'
+                SELECT attrelid::regclass::text AS table_name, attname, atttypid, atttypmod, attnotnull
+                FROM pg_attribute
+                WHERE attrelid IN ('orders'::regclass, 'assessment_cases'::regclass)
+                  AND attnum > 0 AND NOT attisdropped ORDER BY table_name, attnum
+                SQL),
+            'constraints' => DB::select(<<<'SQL'
+                SELECT conrelid::regclass::text AS table_name, conname, pg_get_constraintdef(oid) AS definition
+                FROM pg_constraint WHERE conrelid IN ('orders'::regclass, 'assessment_cases'::regclass)
+                ORDER BY table_name, conname
+                SQL),
+            'indexes' => DB::select(<<<'SQL'
+                SELECT tablename, indexname, indexdef FROM pg_indexes
+                WHERE schemaname='public' AND tablename IN ('orders','assessment_cases')
+                ORDER BY tablename, indexname
+                SQL),
+            'triggers' => DB::select(<<<'SQL'
+                SELECT tgrelid::regclass::text AS table_name, tgname, pg_get_triggerdef(oid) AS definition
+                FROM pg_trigger WHERE tgrelid IN ('orders'::regclass, 'assessment_cases'::regclass)
+                  AND NOT tgisinternal ORDER BY table_name, tgname
+                SQL),
+            'security' => DB::select(<<<'SQL'
+                SELECT oid::regclass::text AS table_name, relrowsecurity, relforcerowsecurity
+                FROM pg_class WHERE oid IN ('orders'::regclass, 'assessment_cases'::regclass)
+                ORDER BY table_name
+                SQL),
+        ];
     }
 
     private function assertSqlState(string $state, callable $operation): void
@@ -366,5 +508,168 @@ final class DirectPublicOrderCaseIdentityMigrationTest extends TestCase
                 $this->assertSame(0, pcntl_wexitstatus($status));
             }
         }
+    }
+
+    /** @return array{replay:array<string,mixed>,migration:array<string,mixed>} */
+    private function migrationReplayRace(callable $replay): array
+    {
+        $this->assertTrue(function_exists('pcntl_fork'), 'Migration/replay concurrency requires pcntl; never skip.');
+        DB::purge('pgsql');
+        $gate = random_int(1, 2_000_000_000);
+        $gateHeld = false;
+        $workers = [];
+        $runtimeConfig = config('database.connections.'.DB::getDefaultConnection());
+        config()->set('database.connections.direct_case_race_monitor', [
+            ...$runtimeConfig,
+            'username' => 'org_test_owner',
+        ]);
+        try {
+            $replayPair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
+            if ($replayPair === false || ($replayPid = pcntl_fork()) === -1) {
+                throw new RuntimeException('Unable to create replay worker.');
+            }
+            if ($replayPid === 0) {
+                fclose($replayPair[0]);
+                DB::purge('pgsql');
+                stream_set_timeout($replayPair[1], 15);
+                try {
+                    $identity = DB::selectOne('SELECT pg_backend_pid() AS pid, current_user AS name');
+                    if ($identity->name !== 'psikotes_runtime') {
+                        throw new RuntimeException('Replay worker must use runtime role.');
+                    }
+                    $armed = true;
+                    DB::listen(function (QueryExecuted $query) use (&$armed, $gate): void {
+                        if (! $armed || ! str_starts_with($query->sql, 'select')
+                            || ! str_contains($query->sql, 'participants')
+                            || ! str_contains($query->sql, 'registration_token')
+                            || ! str_contains($query->sql, 'limit 2')) {
+                            return;
+                        }
+                        $armed = false;
+                        DB::select('SELECT pg_advisory_lock_shared(?)', [$gate]);
+                        DB::select('SELECT pg_advisory_unlock_shared(?)', [$gate]);
+                    });
+                    fwrite($replayPair[1], json_encode(['pid' => $identity->pid], JSON_THROW_ON_ERROR)."\n");
+                    if (fgets($replayPair[1]) !== "go\n") {
+                        throw new RuntimeException('Replay barrier timed out.');
+                    }
+                    $result = $replay();
+                } catch (Throwable $exception) {
+                    $result = ['class' => $exception::class, 'error' => $exception->getMessage()];
+                }
+                fwrite($replayPair[1], json_encode($result, JSON_THROW_ON_ERROR)."\n");
+                fclose($replayPair[1]);
+                DB::disconnect('pgsql');
+                exit(0);
+            }
+            fclose($replayPair[1]);
+            stream_set_timeout($replayPair[0], 20);
+            $workers[] = ['pid' => $replayPid, 'socket' => $replayPair[0]];
+            $replayBackend = json_decode((string) fgets($replayPair[0]), true, flags: JSON_THROW_ON_ERROR)['pid'];
+
+            DB::select('SELECT pg_advisory_lock(?)', [$gate]);
+            $gateHeld = true;
+            fwrite($replayPair[0], "go\n");
+            $this->waitForBackendLock($replayBackend, 'Replay must finish its participant read before migration starts.');
+
+            $migrationPair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
+            if ($migrationPair === false || ($migrationPid = pcntl_fork()) < 0) {
+                throw new RuntimeException('Unable to create migration worker.');
+            }
+            if ($migrationPid === 0) {
+                fclose($migrationPair[0]);
+                fclose($replayPair[0]);
+                DB::purge('pgsql');
+                stream_set_timeout($migrationPair[1], 20);
+                try {
+                    $runtime = DB::getDefaultConnection();
+                    $config = config('database.connections.'.$runtime);
+                    config()->set('database.connections.direct_case_race_owner', [...$config, 'username' => 'org_test_owner']);
+                    DB::setDefaultConnection('direct_case_race_owner');
+                    Schema::clearResolvedInstance('db.schema');
+                    $identity = DB::selectOne('SELECT pg_backend_pid() AS pid, current_user AS name');
+                    if ($identity->name !== 'org_test_owner') {
+                        throw new RuntimeException('Migration worker must use owner role.');
+                    }
+                    fwrite($migrationPair[1], json_encode(['pid' => $identity->pid], JSON_THROW_ON_ERROR)."\n");
+                    $migration = require database_path('migrations/2026_09_09_000600_bind_direct_public_orders_to_assessment_cases.php');
+                    $migration->up();
+                    $result = ['migrated' => true];
+                } catch (Throwable $exception) {
+                    $result = ['class' => $exception::class, 'error' => $exception->getMessage()];
+                }
+                fwrite($migrationPair[1], json_encode($result, JSON_THROW_ON_ERROR)."\n");
+                fgets($migrationPair[1]);
+                fclose($migrationPair[1]);
+                exit(0);
+            }
+            fclose($migrationPair[1]);
+            stream_set_timeout($migrationPair[0], 20);
+            $workers[] = ['pid' => $migrationPid, 'socket' => $migrationPair[0]];
+            $migrationBackend = json_decode((string) fgets($migrationPair[0]), true, flags: JSON_THROW_ON_ERROR)['pid'];
+            $this->waitForBackendLock(
+                $migrationBackend,
+                'Migration must wait on the participant table first.',
+                $migrationPair[0],
+                'direct_case_race_monitor',
+            );
+
+            DB::select('SELECT pg_advisory_unlock(?)', [$gate]);
+            $gateHeld = false;
+            $replayResult = json_decode((string) fgets($replayPair[0]), true, flags: JSON_THROW_ON_ERROR);
+            $migrationResult = json_decode((string) fgets($migrationPair[0]), true, flags: JSON_THROW_ON_ERROR);
+            fwrite($migrationPair[0], "finish\n");
+
+            return ['replay' => $replayResult, 'migration' => $migrationResult];
+        } finally {
+            if ($gateHeld) {
+                DB::select('SELECT pg_advisory_unlock(?)', [$gate]);
+            }
+            foreach ($workers as $worker) {
+                fclose($worker['socket']);
+                pcntl_waitpid($worker['pid'], $status);
+                $this->assertTrue(pcntl_wifexited($status));
+                $this->assertSame(0, pcntl_wexitstatus($status));
+            }
+            DB::purge('direct_case_race_monitor');
+            config()->set('database.connections.direct_case_race_monitor', null);
+        }
+    }
+
+    /** @param resource|null $resultSocket */
+    private function waitForBackendLock(
+        int $backendId,
+        string $message,
+        $resultSocket = null,
+        ?string $monitorConnection = null,
+    ): void {
+        $deadline = microtime(true) + 5;
+        $waiting = null;
+        do {
+            $waiting = DB::connection($monitorConnection)->selectOne(
+                'SELECT state, wait_event_type, wait_event, query FROM pg_stat_activity WHERE pid = ?',
+                [$backendId],
+            );
+            if ($waiting?->wait_event_type === 'Lock') {
+                return;
+            }
+            usleep(10000);
+        } while (microtime(true) < $deadline);
+
+        $earlyResult = null;
+        if (is_resource($resultSocket)) {
+            $read = [$resultSocket];
+            $write = null;
+            $except = null;
+            if (stream_select($read, $write, $except, 0) === 1) {
+                $earlyResult = trim((string) fgets($resultSocket));
+            }
+        }
+
+        $this->fail(
+            $message
+            .' Last activity: '.json_encode($waiting, JSON_THROW_ON_ERROR)
+            .' Early result: '.($earlyResult ?? 'none'),
+        );
     }
 }
