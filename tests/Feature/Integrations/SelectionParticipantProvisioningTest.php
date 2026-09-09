@@ -109,6 +109,36 @@ final class SelectionParticipantProvisioningTest extends TestCase
             'action' => 'selection_participant.provisioned',
             'subject_id' => (string) $participantId,
         ]);
+
+        $audit = DB::table('audit_logs')->sole();
+        $context = json_decode((string) $audit->context, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(['selection_round_id', 'test_types'], array_keys($context));
+        $encodedAudit = json_encode($audit, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+        foreach (['Ayu Pratiwi', 'ayu@example.test', '+6281234567890',
+            '01K3TESTCANDIDATE000000001', 'REG-2026-0001'] as $privateValue) {
+            $this->assertStringNotContainsString($privateValue, $encodedAudit);
+        }
+    }
+
+    public function test_selection_audit_retention_preserves_an_immutable_leap_day_anchor(): void
+    {
+        $originalTimezone = date_default_timezone_get();
+
+        try {
+            date_default_timezone_set('Asia/Bangkok');
+            Date::setTestNow('2024-02-29 10:15:00+07:00');
+
+            $this->signedRequest(
+                $this->payload(),
+                'psychotest-participant:v1:leap-day-retention',
+            )->assertCreated();
+
+            $audit = DB::table('audit_logs')->where('action', 'selection_participant.provisioned')->sole();
+            $this->assertSame('2024-02-29 10:15:00', $audit->occurred_at);
+            $this->assertSame('2029-02-28 10:15:00', $audit->expires_at);
+        } finally {
+            date_default_timezone_set($originalTimezone);
+        }
     }
 
     public function test_an_identical_idempotent_replay_returns_the_same_participant(): void

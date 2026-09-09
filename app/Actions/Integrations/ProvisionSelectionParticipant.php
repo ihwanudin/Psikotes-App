@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Actions\Integrations;
 
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Models\AssessmentCase;
 use App\Models\Branch;
 use App\Models\Participant;
@@ -25,6 +27,7 @@ final readonly class ProvisionSelectionParticipant
     public function __construct(
         private RlsContextRunner $runner,
         private MonthlyTestNumberIssuer $testNumbers,
+        private RetentionPolicy $retention,
     ) {}
 
     /**
@@ -118,7 +121,7 @@ final readonly class ProvisionSelectionParticipant
             'test_number' => $this->testNumbers->issue(),
         ]);
 
-        $now = now();
+        $now = now()->toImmutable();
         $participant->entitlements()->createMany(array_map(
             static fn (string $testType): array => [
                 'order_id' => null,
@@ -163,7 +166,7 @@ final readonly class ProvisionSelectionParticipant
                 'test_types' => $testTypes,
             ], JSON_THROW_ON_ERROR),
             'occurred_at' => $now,
-            'expires_at' => $now->addYears(5),
+            'expires_at' => $this->retention->expiresAt(RetentionDataClass::Audit, $now),
         ]);
 
         return ['participant_id' => $participant->id, 'replayed' => false];
