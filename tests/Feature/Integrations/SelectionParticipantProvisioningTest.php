@@ -137,6 +137,7 @@ final class SelectionParticipantProvisioningTest extends TestCase
             $this->assertSame('2024-02-29 10:15:00', $audit->occurred_at);
             $this->assertSame('2029-02-28 10:15:00', $audit->expires_at);
         } finally {
+            Date::setTestNow();
             date_default_timezone_set($originalTimezone);
         }
     }
