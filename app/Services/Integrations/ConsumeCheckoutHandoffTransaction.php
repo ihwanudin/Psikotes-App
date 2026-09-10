@@ -6,6 +6,8 @@ namespace App\Services\Integrations;
 
 use App\Actions\Integrations\InvalidCheckoutHandoff;
 use App\Data\Integrations\CheckoutSessionScope;
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Models\AssessmentParticipant;
 use App\Models\Branch;
 use App\Models\CheckoutHandoff;
@@ -34,6 +36,7 @@ final readonly class ConsumeCheckoutHandoffTransaction
     public function __construct(
         private RlsContextRunner $contexts,
         private CheckoutHandoffHistoryValidator $historyValidator,
+        private RetentionPolicy $retention,
     ) {}
 
     public function execute(#[SensitiveParameter] string $rawToken): ?CheckoutSessionScope
@@ -195,7 +198,7 @@ final readonly class ConsumeCheckoutHandoffTransaction
                 'consumedAt' => $now->toISOString(),
             ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
             'occurred_at' => $now,
-            'expires_at' => $now->addYearsNoOverflow(2),
+            'expires_at' => $this->retention->expiresAt(RetentionDataClass::Audit, $now),
         ]);
     }
 }

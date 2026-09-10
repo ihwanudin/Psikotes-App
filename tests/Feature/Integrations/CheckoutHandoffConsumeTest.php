@@ -10,11 +10,14 @@ use App\Actions\Integrations\IssueCheckoutHandoff;
 use App\Data\Integrations\CheckoutHandoffConsumeInput;
 use App\Data\Integrations\CheckoutHandoffIssueInput;
 use App\Data\Integrations\CheckoutSessionScope;
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Enums\CheckoutHandoffIntent;
 use App\Models\AssessmentParticipant;
 use App\Models\IntegrationClient;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use LogicException;
@@ -56,6 +59,7 @@ final class CheckoutHandoffConsumeTest extends OrganizationPaymentTestCase
     {
         $fixture = $this->fixture();
         $raw = $this->issue($fixture);
+        $handoffBefore = DB::table('checkout_handoffs')->where('token_digest', hash('sha256', $raw))->sole();
         $unrelatedBefore = $this->unrelatedCounts();
         $scope = app(ConsumeCheckoutHandoff::class)->execute(new CheckoutHandoffConsumeInput($raw));
 
@@ -72,6 +76,25 @@ final class CheckoutHandoffConsumeTest extends OrganizationPaymentTestCase
             'status' => 'CONSUMED', 'active_marker' => null,
         ]);
         $audit = DB::table('audit_logs')->where('action', 'checkout_handoff.consumed')->sole();
+        $consumedAt = CarbonImmutable::parse($audit->occurred_at)->utc();
+        $auditExpiresAt = CarbonImmutable::parse($audit->expires_at)->utc();
+        $this->assertTrue($scope->consumedAt->equalTo($consumedAt));
+        $this->assertTrue($auditExpiresAt->equalTo(
+            app(RetentionPolicy::class)->expiresAt(RetentionDataClass::Audit, $consumedAt),
+        ));
+        $handoffAfter = DB::table('checkout_handoffs')->where('token_digest', hash('sha256', $raw))->sole();
+        $this->assertSame($handoffBefore->issued_at, $handoffAfter->issued_at);
+        $this->assertSame($handoffBefore->expires_at, $handoffAfter->expires_at);
+        $this->assertSame(600.0, CarbonImmutable::parse($handoffAfter->issued_at)
+            ->diffInSeconds(CarbonImmutable::parse($handoffAfter->expires_at)));
+        $this->assertFalse($auditExpiresAt->equalTo(CarbonImmutable::parse($handoffAfter->expires_at)));
+        $this->assertSame(
+            '2029-02-28T03:15:00+00:00',
+            app(RetentionPolicy::class)->expiresAt(
+                RetentionDataClass::Audit,
+                CarbonImmutable::parse('2024-02-29T03:15:00+00:00'),
+            )->format('c'),
+        );
         $context = (string) $audit->context;
         $this->assertStringNotContainsString($raw, $context);
         $this->assertStringNotContainsString(hash('sha256', $raw), $context);
@@ -309,10 +332,18 @@ final class CheckoutHandoffConsumeTest extends OrganizationPaymentTestCase
             ['package_id' => $package, 'test_type' => 'ist', 'sort_order' => 1],
             ['package_id' => $package, 'test_type' => 'dass21', 'sort_order' => 2],
         ]);
+        $attemptPublicId = (string) Str::ulid();
+        $case = DB::table('assessment_cases')->insertGetId([
+            'public_id' => $attemptPublicId, 'participant_id' => $participant,
+            'organization_id' => $organization, 'package_id' => $package,
+            'origin' => 'INTEGRATED', 'intended_field_snapshot' => null,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
         $attemptId = DB::table('assessment_participants')->insertGetId([
             'organization_id' => $organization, 'integration_client_id' => $clientId,
             'participant_id' => $participant, 'package_id' => $package,
-            'assessment_attempt_id' => (string) Str::ulid(), 'source_system' => $sourceSystem,
+            'assessment_case_id' => $case, 'assessment_attempt_id' => $attemptPublicId,
+            'source_system' => $sourceSystem,
             'external_candidate_id' => $key, 'funding_mode' => 'COMMERCIAL_SELF_PAY',
             'assessment_status' => 'PROVISIONED', 'idempotency_key' => $key,
             'request_hash' => hash('sha256', $key), 'logical_assessment_key' => hash('sha256', 'logical'.$key),
