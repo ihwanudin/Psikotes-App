@@ -56,6 +56,19 @@ final class CheckoutPartialProfileSchemaTest extends OrganizationPaymentTestCase
         $this->assertSame($triggers, $this->profileDependentTriggers());
         $this->assertEquals($participant, DB::table('participants')->find($f['participant']));
         $this->assertEquals($attempt, DB::table('assessment_participants')->find($f['attempt']));
+        $replacementPublicId = (string) Str::ulid();
+        $replacementCase = AssessmentBillingFixture::createExactIntegratedCase(
+            $f['participant'], $f['organization'], $f['package'], $replacementPublicId,
+        );
+        try {
+            DB::table('assessment_participants')->where('id', $f['attempt'])->update([
+                'assessment_case_id' => $replacementCase,
+                'assessment_attempt_id' => $replacementPublicId,
+            ]);
+            $this->fail('Profile migration roundtrip removed immutable case identity enforcement.');
+        } catch (QueryException) {
+            $this->assertEquals($attempt, DB::table('assessment_participants')->find($f['attempt']));
+        }
         $this->assertSame([], DB::select('PRAGMA foreign_key_check'));
         $this->assertSame(1, (int) DB::scalar('PRAGMA foreign_keys'));
     }
