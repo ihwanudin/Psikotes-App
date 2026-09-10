@@ -56,6 +56,7 @@ final class CheckoutContractCompatibilityTest extends OrganizationPaymentTestCas
             'currency' => 'IDR', 'is_active' => true,
         ]);
         $this->package->items()->create(['test_type' => 'ist', 'sort_order' => 1]);
+        $this->package->items()->create(['test_type' => 'dass21', 'sort_order' => 2]);
         // Test-only boundary; no route is exposed by the application in P5.
         Route::post('/_test/p5', function (ProvisionCheckoutParticipantRequest $request) {
             return response()->json(['valid' => true, 'key' => $request->idempotencyKey()]);
@@ -155,7 +156,7 @@ final class CheckoutContractCompatibilityTest extends OrganizationPaymentTestCas
         $this->request([...$input, 'externalCandidateId' => 'NEW'], $path, 'p5:new')->assertForbidden();
         $this->assertDatabaseCount('participants', 1);
         $this->assertDatabaseCount('assessment_participants', 1);
-        $this->assertDatabaseCount('entitlements', 1);
+        $this->assertDatabaseCount('entitlements', 2);
         $this->assertDatabaseCount('orders', 0);
     }
 

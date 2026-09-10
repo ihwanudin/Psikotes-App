@@ -50,6 +50,7 @@ final class CheckoutProvisioningHttpTest extends OrganizationPaymentTestCase
         $package = TestPackage::create(['code' => 'HTTP_PACKAGE', 'name' => 'HTTP Test', 'amount' => 1000,
             'currency' => 'IDR', 'is_active' => true]);
         $package->items()->create(['test_type' => 'ist', 'sort_order' => 1]);
+        $package->items()->create(['test_type' => 'dass21', 'sort_order' => 2]);
         config()->set('assessment_integration.credentials.http-test', self::SECRET);
         config()->set('assessment_integration.checkout.enabled', true);
         // This route exists only in this test; use the installed alias and real HMAC middleware.
