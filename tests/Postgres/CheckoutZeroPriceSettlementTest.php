@@ -11,12 +11,15 @@ use App\Data\Integrations\CheckoutHandoffIssueInput;
 use App\Data\Integrations\CheckoutSessionExchangeInput;
 use App\Data\Integrations\CheckoutSessionMutationCredentials;
 use App\Data\Integrations\CheckoutZeroPriceResult;
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Enums\CheckoutHandoffIntent;
 use App\Models\CheckoutSession;
 use App\Models\IntegrationClient;
 use App\Registration\ConsentDocument;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
+use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\DB;
@@ -118,6 +121,26 @@ final class CheckoutZeroPriceSettlementTest extends TestCase
                 ->where('assessment_participant_id', $this->fixture['attempt'])->where('status', 'ready')->count());
             $this->assertSame(1, DB::table('outbox_messages')->where('aggregate_id', (string) $this->fixture['attempt'])
                 ->where('topic', 'assessment.activation')->count());
+            $charge = DB::table('assessment_charges')
+                ->where('assessment_participant_id', $this->fixture['attempt'])->sole();
+            $audit = DB::table('audit_logs')->where('branch_id', $this->fixture['organization'])
+                ->where('action', 'assessment_charge.free_settled')->sole();
+            $anchor = CarbonImmutable::parse((string) $audit->occurred_at)->utc();
+            $this->assertSame(
+                CarbonImmutable::parse((string) $charge->free_settled_at)->utc()->format('Y-m-d H:i:s.uP'),
+                $anchor->format('Y-m-d H:i:s.uP'),
+            );
+            $this->assertSame(
+                app(RetentionPolicy::class)->expiresAt(RetentionDataClass::Audit, $anchor)->format('Y-m-d H:i:s.uP'),
+                CarbonImmutable::parse((string) $audit->expires_at)->utc()->format('Y-m-d H:i:s.uP'),
+            );
+            $this->assertSame(
+                '2029-02-28 03:15:00.000000+00:00',
+                app(RetentionPolicy::class)->expiresAt(
+                    RetentionDataClass::Audit,
+                    CarbonImmutable::parse('2024-02-29 10:15:00+07:00')->utc(),
+                )->format('Y-m-d H:i:s.uP'),
+            );
         });
     }
 

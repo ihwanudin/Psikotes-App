@@ -12,12 +12,15 @@ use App\Data\Integrations\CheckoutHandoffIssueInput;
 use App\Data\Integrations\CheckoutSessionExchangeInput;
 use App\Data\Integrations\CheckoutSessionMutationCredentials;
 use App\Data\Integrations\CheckoutZeroPriceResult;
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Enums\CheckoutHandoffIntent;
 use App\Models\IntegrationClient;
 use App\Registration\ConsentDocument;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
 use Carbon\Carbon;
+use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Illuminate\Support\Facades\DB;
@@ -72,6 +75,29 @@ final class CheckoutZeroPriceSettlementTest extends OrganizationPaymentTestCase
         $this->assertFalse($price['consultationRequested']);
         $this->assertSame(['self'], $policy['allowedPayerTypes']);
         $this->assertSame('self', $policy['payerType']);
+        $audit = DB::table('audit_logs')->where('action', 'assessment_charge.free_settled')->sole();
+        $anchor = CarbonImmutable::parse((string) $audit->occurred_at)->utc();
+        $this->assertSame($charge->free_settled_at, $audit->occurred_at);
+        $this->assertSame(
+            app(RetentionPolicy::class)->expiresAt(RetentionDataClass::Audit, $anchor)->format('Y-m-d H:i:s.uP'),
+            CarbonImmutable::parse((string) $audit->expires_at)->utc()->format('Y-m-d H:i:s.uP'),
+        );
+        $this->assertSame(
+            '2029-02-28 03:15:00.000000+00:00',
+            app(RetentionPolicy::class)->expiresAt(
+                RetentionDataClass::Audit,
+                CarbonImmutable::parse('2024-02-29 10:15:00+07:00')->utc(),
+            )->format('Y-m-d H:i:s.uP'),
+        );
+        $this->assertSame([
+            'version' => 1,
+            'consultationRequested' => false,
+            'priceSnapshotHash' => hash('sha256', json_encode(
+                $price,
+                JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
+            )),
+        ], json_decode((string) $audit->context, true, flags: JSON_THROW_ON_ERROR));
+        $chargeBeforeReplay = clone $charge;
 
         $second = $this->settle($fixture, false);
         $this->assertSame('settled', $second->state);
@@ -80,6 +106,8 @@ final class CheckoutZeroPriceSettlementTest extends OrganizationPaymentTestCase
         $this->assertSame(1, $this->freeAuditCount());
         $this->assertSame(1, DB::table('audit_logs')->where('action', 'assessment.activated')->count());
         $this->assertSame(1, DB::table('outbox_messages')->where('topic', 'assessment.activation')->count());
+        $this->assertEquals($chargeBeforeReplay, DB::table('assessment_charges')
+            ->where('assessment_participant_id', $fixture['attempt'])->sole());
     }
 
     public function test_organization_zero_settles_but_missing_identity_stays_locked(): void
@@ -440,9 +468,20 @@ final class CheckoutZeroPriceSettlementTest extends OrganizationPaymentTestCase
             ['package_id' => $package, 'test_type' => 'dass21', 'sort_order' => 2],
         ]);
         $attemptPublicId = (string) Str::ulid();
+        $case = DB::table('assessment_cases')->insertGetId([
+            'public_id' => $attemptPublicId,
+            'participant_id' => $participant,
+            'organization_id' => $organization,
+            'package_id' => $package,
+            'origin' => 'INTEGRATED',
+            'intended_field_snapshot' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         $attempt = DB::table('assessment_participants')->insertGetId([
             'organization_id' => $organization, 'integration_client_id' => $client,
             'participant_id' => $participant, 'package_id' => $package,
+            'assessment_case_id' => $case,
             'assessment_attempt_id' => $attemptPublicId, 'source_system' => $sourceSystem,
             'external_candidate_id' => $key, 'funding_mode' => $funding,
             'assessment_status' => 'PROVISIONED', 'idempotency_key' => $key,

@@ -10,6 +10,8 @@ use App\Data\Integrations\CheckoutSessionMutationCredentials;
 use App\Data\Integrations\CheckoutSessionPrincipal;
 use App\Data\Integrations\CheckoutZeroPriceResult;
 use App\Data\Payments\PayerDecision;
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Enums\PayerType;
 use App\Models\AssessmentCharge;
 use App\Models\AssessmentParticipant;
@@ -42,6 +44,7 @@ final readonly class SettleZeroPriceCheckout
         private AssessmentPriceSnapshot $prices,
         private ResolvePayerPolicy $payerPolicy,
         private ActivateSettledAssessment $activation,
+        private RetentionPolicy $retention,
     ) {}
 
     public function execute(
@@ -262,7 +265,7 @@ final readonly class SettleZeroPriceCheckout
             'subject_id' => (string) $charge->id,
             'context' => json_encode($this->auditContext($consultationRequested, $snapshot), JSON_THROW_ON_ERROR),
             'occurred_at' => $now,
-            'expires_at' => $now->addYearsNoOverflow(2),
+            'expires_at' => $this->retention->expiresAt(RetentionDataClass::Audit, $now),
         ]);
     }
 
