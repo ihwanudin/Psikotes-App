@@ -20,6 +20,16 @@ use RuntimeException;
 
 abstract class OrganizationPaymentTestCase extends TestCase
 {
+    protected function setUp(): void
+    {
+        if (isset(class_uses_recursive(static::class)[DatabaseTruncation::class])) {
+            // A prior RefreshDatabase test may have migrated a different in-memory PDO.
+            RefreshDatabaseState::$migrated = false;
+        }
+
+        parent::setUp();
+    }
+
     protected function tearDown(): void
     {
         try {
