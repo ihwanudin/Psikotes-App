@@ -12,6 +12,8 @@ use App\Data\Integrations\CheckoutSessionPrincipal;
 use App\Data\Integrations\CheckoutSessionSelector;
 use App\Data\Integrations\CheckoutSummary;
 use App\Data\Integrations\CheckoutSummaryEvidence;
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Enums\CheckoutSessionOperation;
 use App\Enums\PayerType;
 use App\Models\AssessmentBill;
@@ -57,6 +59,7 @@ final readonly class CheckoutSessionLifecycle
         private CheckoutPaymentFactsReader $payments,
         private CheckoutSummaryComposer $summaries,
         private ResolvePayerPolicy $payerPolicy,
+        private RetentionPolicy $retention,
     ) {}
 
     public function hydrate(#[SensitiveParameter] CheckoutSessionSelector $input): CheckoutSessionPrincipal
@@ -606,7 +609,7 @@ final readonly class CheckoutSessionLifecycle
                 'transitionedAt' => $now->toISOString(),
             ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
             'occurred_at' => $now,
-            'expires_at' => $now->addYearsNoOverflow(2),
+            'expires_at' => $this->retention->expiresAt(RetentionDataClass::Audit, $now),
         ]);
     }
 }

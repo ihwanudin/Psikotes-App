@@ -15,6 +15,8 @@ use App\Data\Integrations\CheckoutSessionExchangeInput;
 use App\Data\Integrations\CheckoutSessionMutationCredentials;
 use App\Data\Integrations\CheckoutSessionPrincipal;
 use App\Data\Integrations\CheckoutSessionSelector;
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Enums\CheckoutHandoffIntent;
 use App\Models\AssessmentParticipant;
 use App\Models\CheckoutHandoff;
@@ -140,6 +142,11 @@ final class CheckoutSessionLifecycleTest extends OrganizationPaymentTestCase
     {
         $fixture = $this->established();
         $foreign = $this->established();
+        $sessionBefore = DB::table('checkout_sessions')->where('id', $fixture['session'])
+            ->sole(['idle_expires_at', 'absolute_expires_at', 'established_at']);
+        $handoffId = DB::table('checkout_sessions')->where('id', $fixture['session'])->value('checkout_handoff_id');
+        $handoffBefore = DB::table('checkout_handoffs')->where('id', $handoffId)
+            ->sole(['issued_at', 'expires_at', 'consumed_at']);
         foreach (['', 'ocsrf1_'.str_repeat('0', 64), 'ocsrf1_'.str_repeat('g', 64), $foreign['csrf']] as $csrf) {
             try {
                 $this->logout($fixture['selector'], $csrf);
@@ -156,6 +163,36 @@ final class CheckoutSessionLifecycleTest extends OrganizationPaymentTestCase
         ]);
         $this->assertSame(1, DB::table('audit_logs')->where('action', 'checkout_session.revoked')
             ->where('subject_id', (string) $fixture['attempt'])->count());
+        $sessionAfter = DB::table('checkout_sessions')->where('id', $fixture['session'])->sole();
+        $this->assertSame($sessionBefore->idle_expires_at, $sessionAfter->idle_expires_at);
+        $this->assertSame($sessionBefore->absolute_expires_at, $sessionAfter->absolute_expires_at);
+        $this->assertSame($sessionBefore->established_at, $sessionAfter->established_at);
+        $this->assertEquals($handoffBefore, DB::table('checkout_handoffs')->where('id', $handoffId)
+            ->sole(['issued_at', 'expires_at', 'consumed_at']));
+        $audit = DB::table('audit_logs')->where('action', 'checkout_session.revoked')
+            ->where('subject_id', (string) $fixture['attempt'])->sole();
+        $anchor = CarbonImmutable::parse((string) $audit->occurred_at)->utc();
+        $this->assertSame(
+            app(RetentionPolicy::class)->expiresAt(RetentionDataClass::Audit, $anchor)->format('Y-m-d H:i:s.uP'),
+            CarbonImmutable::parse((string) $audit->expires_at)->utc()->format('Y-m-d H:i:s.uP'),
+        );
+        $this->assertSame(
+            '2029-02-28 03:15:00.000000+00:00',
+            app(RetentionPolicy::class)->expiresAt(
+                RetentionDataClass::Audit,
+                CarbonImmutable::parse('2024-02-29 10:15:00+07:00')->utc(),
+            )->format('Y-m-d H:i:s.uP'),
+        );
+        $this->assertSame([
+            'version' => 1,
+            'sessionPublicId' => $sessionAfter->public_id,
+            'sourceSystem' => $sessionAfter->source_system,
+            'reason' => 'LOGOUT',
+            'transitionedAt' => $anchor->toISOString(),
+        ], json_decode((string) $audit->context, true, flags: JSON_THROW_ON_ERROR));
+        foreach ([$fixture['selector'], $fixture['csrf'], 'Synthetic Person', '620000000000', 'synthetic-only'] as $secret) {
+            $this->assertStringNotContainsString($secret, (string) $audit->context);
+        }
         try {
             $this->logout($fixture['selector'], $fixture['csrf']);
             $this->fail('Logout replay succeeded.');
@@ -692,9 +729,20 @@ final class CheckoutSessionLifecycleTest extends OrganizationPaymentTestCase
             ['package_id' => $package, 'test_type' => 'dass21', 'sort_order' => 2],
         ]);
         $attemptPublicId = (string) Str::ulid();
+        $case = DB::table('assessment_cases')->insertGetId([
+            'public_id' => $attemptPublicId,
+            'participant_id' => $participant,
+            'organization_id' => $organization,
+            'package_id' => $package,
+            'origin' => 'INTEGRATED',
+            'intended_field_snapshot' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         $attempt = DB::table('assessment_participants')->insertGetId([
             'organization_id' => $organization, 'integration_client_id' => $client,
             'participant_id' => $participant, 'package_id' => $package,
+            'assessment_case_id' => $case,
             'assessment_attempt_id' => $attemptPublicId, 'source_system' => $sourceSystem,
             'external_candidate_id' => $key, 'funding_mode' => 'COMMERCIAL_SELF_PAY',
             'assessment_status' => 'PROVISIONED', 'idempotency_key' => $key,
