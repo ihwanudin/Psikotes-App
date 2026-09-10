@@ -116,6 +116,7 @@ final class AssessmentInvoiceClaimTest extends TestCase
     #[DataProvider('commitOrRollback')]
     public function test_waiting_worker_observes_outer_commit_or_rollback(bool $rollback): void
     {
+        Date::setTestNow('2024-02-29T10:15:00+07:00');
         [$first, $waiting] = $this->whileClaimWaits(fn () => $this->claim(), $rollback);
         $this->assertSame('claimed', $first['decision']);
         $this->assertSame($rollback ? 'claimed' : 'replayed', $waiting['decision'], json_encode($waiting));
@@ -125,11 +126,22 @@ final class AssessmentInvoiceClaimTest extends TestCase
             $this->assertSame($first['messageId'], $waiting['messageId']);
         }
         $this->assertStored(1);
+        app(RlsContextRunner::class)->runAsService(function (): void {
+            $message = $this->message();
+            $this->assertTrue($message->available_at->equalTo('2024-02-29T03:15:00Z'));
+            $this->assertTrue($message->created_at->equalTo('2024-02-29T03:15:00Z'));
+            $this->assertTrue($message->updated_at->equalTo('2024-02-29T03:15:00Z'));
+            $this->assertTrue($message->expires_at->equalTo('2026-02-28T03:15:00Z'));
+            $audit = DB::table('audit_logs')->where('branch_id', $this->fixtures[0]['organization'])
+                ->where('action', 'assessment_bill.invoice_claimed')->sole();
+            $this->assertSame('2024-02-29 03:15:00+00', $audit->occurred_at);
+            $this->assertSame('2029-02-28 03:15:00+00', $audit->expires_at);
+        });
         app(RlsContextRunner::class)->runAsService(function () use ($waiting): void {
             $message = $this->message();
             $this->assertSame($waiting['messageId'], $message->message_id);
             $before = $message->getAttributes();
-            Date::setTestNow('2026-09-04T00:00:00Z');
+            Date::setTestNow('2024-03-04T03:15:00Z');
             config()->set('assessment_billing.invoice_duration_hours', -1); // Replay does not read new duration.
             $this->assertSame('replayed', $this->claim()['decision']);
             $this->assertSame($before, $message->fresh()->getAttributes());

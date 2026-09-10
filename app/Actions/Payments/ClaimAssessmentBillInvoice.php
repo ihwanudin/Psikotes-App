@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Actions\Payments;
 
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Enums\PayerType;
 use App\Models\AssessmentBill;
 use App\Models\AssessmentBillItem;
@@ -31,7 +33,11 @@ final readonly class ClaimAssessmentBillInvoice
 {
     private const TOPIC = 'assessment.bill.invoice-issuance';
 
-    public function __construct(private AssessmentPriceSnapshot $prices, private ResolvePayerPolicy $policy) {}
+    public function __construct(
+        private AssessmentPriceSnapshot $prices,
+        private ResolvePayerPolicy $policy,
+        private RetentionPolicy $retention,
+    ) {}
 
     /** @return array{decision: string, messageId: ?string} */
     public function execute(int $organizationId, int $billId): array
@@ -151,7 +157,8 @@ final readonly class ClaimAssessmentBillInvoice
             DB::table('audit_logs')->insert(['branch_id' => $organizationId, 'actor_type' => 'service', 'actor_id' => null,
                 'action' => 'assessment_bill.invoice_claimed', 'subject_type' => AssessmentBill::class, 'subject_id' => (string) $billId,
                 'context' => json_encode(['messageId' => $messageId, 'reference' => $bill->public_reference, 'snapshotHash' => $payload['snapshotHash']], JSON_THROW_ON_ERROR),
-                'occurred_at' => $at, 'expires_at' => $at->addYearsNoOverflow(2)]);
+                'occurred_at' => $at,
+                'expires_at' => $this->retention->expiresAt(RetentionDataClass::Audit, $at)]);
 
             return ['decision' => 'claimed', 'messageId' => $messageId];
         });
