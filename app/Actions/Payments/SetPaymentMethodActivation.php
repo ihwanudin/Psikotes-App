@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Actions\Payments;
 
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Enums\AdminAbility;
 use App\Models\Admin;
 use App\Models\PaymentMethod;
@@ -13,7 +15,10 @@ use Illuminate\Support\Facades\DB;
 
 final readonly class SetPaymentMethodActivation
 {
-    public function __construct(private RlsContextRunner $runner) {}
+    public function __construct(
+        private RlsContextRunner $runner,
+        private RetentionPolicy $retention,
+    ) {}
 
     public function handle(Admin $admin, int $paymentMethodId, bool $active): PaymentMethod
     {
@@ -33,6 +38,7 @@ final readonly class SetPaymentMethodActivation
                 $method->is_active = $active;
                 $method->save();
 
+                $occurredAt = now()->utc()->toImmutable();
                 DB::table('audit_logs')->insert([
                     'branch_id' => null,
                     'actor_type' => 'admin',
@@ -45,8 +51,8 @@ final readonly class SetPaymentMethodActivation
                         'from' => $previous,
                         'to' => $active,
                     ], JSON_THROW_ON_ERROR),
-                    'occurred_at' => now(),
-                    'expires_at' => now()->addYears(2),
+                    'occurred_at' => $occurredAt,
+                    'expires_at' => $this->retention->expiresAt(RetentionDataClass::Audit, $occurredAt),
                 ]);
 
                 return $method;

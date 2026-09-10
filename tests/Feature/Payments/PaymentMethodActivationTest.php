@@ -11,6 +11,8 @@ use App\Models\PaymentMethod;
 use Database\Seeders\PaymentMethodSeeder;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Date;
+use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
@@ -33,11 +35,25 @@ final class PaymentMethodActivationTest extends TestCase
 
     public function test_super_admin_can_activate_and_deactivate_a_method_with_audit(): void
     {
+        Date::setTestNow('2024-02-29 10:15:00+07:00');
         $admin = $this->admin(AdminRole::SuperAdmin);
         $method = PaymentMethod::query()->where('code', 'xendit')->sole();
         $action = app(SetPaymentMethodActivation::class);
 
         $activated = $action->handle($admin, $method->id, true);
+        $audit = (array) DB::table('audit_logs')->sole();
+        $this->assertSame('2024-02-29 03:15:00', $audit['occurred_at']);
+        $this->assertSame('2029-02-28 03:15:00', $audit['expires_at']);
+        $this->assertSame([
+            'code' => 'xendit',
+            'from' => false,
+            'to' => true,
+        ], json_decode((string) $audit['context'], true, 512, JSON_THROW_ON_ERROR));
+        foreach ([$admin->name, $admin->email] as $privateValue) {
+            $this->assertStringNotContainsString($privateValue, (string) $audit['context']);
+        }
+
+        Date::setTestNow('2024-02-29 11:00:00+07:00');
         $deactivated = $action->handle($admin, $method->id, false);
 
         $this->assertTrue($activated->is_active);
@@ -58,11 +74,13 @@ final class PaymentMethodActivationTest extends TestCase
 
     public function test_repeating_the_same_state_is_a_no_op_without_duplicate_audit(): void
     {
+        Date::setTestNow('2024-02-29 10:15:00+07:00');
         $admin = $this->admin(AdminRole::SuperAdmin);
         $method = PaymentMethod::query()->where('code', 'xendit')->sole();
         $action = app(SetPaymentMethodActivation::class);
 
         $action->handle($admin, $method->id, true);
+        Date::setTestNow('2024-02-29 11:00:00+07:00');
         $unchanged = $action->handle($admin, $method->id, true);
 
         $this->assertTrue($unchanged->is_active);
