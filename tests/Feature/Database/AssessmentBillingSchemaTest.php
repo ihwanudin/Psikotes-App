@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\OrganizationPaymentTestCase;
+use Tests\Support\AssessmentBillingFixture;
 
 final class AssessmentBillingSchemaTest extends OrganizationPaymentTestCase
 {
@@ -37,10 +38,19 @@ final class AssessmentBillingSchemaTest extends OrganizationPaymentTestCase
             'consultation_amount' => 30000, 'currency' => 'IDR', 'is_active' => true]);
         $participant = Participant::create(['branch_id' => $organization->id, 'referral_branch_id' => $organization->id,
             'referral_source' => 'default', 'full_name' => 'Synthetic', 'gender' => 'male',
-            'birth_date' => '2000-01-01', 'education_level' => 'SMA_SMK', 'intended_field' => 'UMUM', 'phone' => '620000000000']);
+            'birth_date' => '2000-01-01', 'education_level' => 'SMA_SMK', 'intended_field' => 'UMUM',
+            'phone' => '620000000000', 'source_system' => 'BILL_TEST']);
+        $attemptId = (string) Str::ulid();
+        $caseId = AssessmentBillingFixture::createExactIntegratedCase(
+            $participant->id,
+            $organization->id,
+            $package->id,
+            $attemptId,
+        );
         $this->attempt = AssessmentParticipant::create(['integration_client_id' => $client->id,
             'organization_id' => $organization->id, 'participant_id' => $participant->id, 'package_id' => $package->id,
-            'assessment_attempt_id' => (string) Str::ulid(), 'source_system' => 'BILL_TEST', 'external_candidate_id' => 'C-1',
+            'assessment_case_id' => $caseId, 'assessment_attempt_id' => $attemptId,
+            'source_system' => 'BILL_TEST', 'external_candidate_id' => 'C-1',
             'funding_mode' => 'COMMERCIAL_SELF_PAY', 'assessment_status' => 'PROVISIONED',
             'idempotency_key' => 'attempt:1', 'request_hash' => str_repeat('a', 64), 'logical_assessment_key' => str_repeat('b', 64)]);
         $this->method = DB::table('payment_methods')->insertGetId(['code' => 'test_manual', 'display_name' => 'Synthetic', 'is_active' => false]);

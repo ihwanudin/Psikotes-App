@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Tests\OrganizationPaymentTestCase;
+use Tests\Support\AssessmentBillingFixture;
 
 final class CheckoutSessionSchemaTest extends OrganizationPaymentTestCase
 {
@@ -182,9 +183,10 @@ final class CheckoutSessionSchemaTest extends OrganizationPaymentTestCase
         $package = DB::table('packages')->insertGetId([
             'code' => $key, 'name' => 'Synthetic', 'amount' => 100, 'currency' => 'IDR',
         ]);
+        $case = AssessmentBillingFixture::createExactIntegratedCase($participant, $organization, $package, $key);
         $attempt = DB::table('assessment_participants')->insertGetId([
             'organization_id' => $organization, 'integration_client_id' => $client,
-            'participant_id' => $participant, 'package_id' => $package,
+            'participant_id' => $participant, 'package_id' => $package, 'assessment_case_id' => $case,
             'assessment_attempt_id' => $key, 'source_system' => 'CHECKOUT_SESSION_SOURCE',
             'external_candidate_id' => $key, 'funding_mode' => 'COMMERCIAL_SELF_PAY',
             'assessment_status' => 'PROVISIONED', 'idempotency_key' => $key,

@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Tests\OrganizationPaymentTestCase;
+use Tests\Support\AssessmentBillingFixture;
 
 final class CheckoutHandoffSchemaTest extends OrganizationPaymentTestCase
 {
@@ -114,10 +115,18 @@ final class CheckoutHandoffSchemaTest extends OrganizationPaymentTestCase
             }
         }
 
+        $mismatchedAttemptId = (string) Str::ulid();
+        $mismatchedCaseId = AssessmentBillingFixture::createExactIntegratedCase(
+            $foreign['participant'],
+            $foreign['organization'],
+            $foreign['package'],
+            $mismatchedAttemptId,
+        );
         $mismatchedClientAttempt = DB::table('assessment_participants')->insertGetId([
             'organization_id' => $foreign['organization'], 'integration_client_id' => $graph['client'],
             'participant_id' => $foreign['participant'], 'package_id' => $foreign['package'],
-            'assessment_attempt_id' => (string) Str::ulid(), 'source_system' => 'HANDOFF_SOURCE',
+            'assessment_case_id' => $mismatchedCaseId,
+            'assessment_attempt_id' => $mismatchedAttemptId, 'source_system' => 'HANDOFF_SOURCE',
             'external_candidate_id' => (string) Str::ulid(), 'funding_mode' => 'COMMERCIAL_SELF_PAY',
             'assessment_status' => 'PROVISIONED', 'idempotency_key' => (string) Str::ulid(),
             'request_hash' => hash('sha256', 'cross-organization-request'),
@@ -208,9 +217,11 @@ final class CheckoutHandoffSchemaTest extends OrganizationPaymentTestCase
         $package = DB::table('packages')->insertGetId([
             'code' => $key, 'name' => 'Synthetic', 'amount' => 100, 'currency' => 'IDR',
         ]);
+        $case = AssessmentBillingFixture::createExactIntegratedCase($participant, $organization, $package, $key);
         $attempt = DB::table('assessment_participants')->insertGetId([
             'organization_id' => $organization, 'integration_client_id' => $client, 'participant_id' => $participant,
-            'package_id' => $package, 'assessment_attempt_id' => $key, 'source_system' => 'HANDOFF_SOURCE',
+            'package_id' => $package, 'assessment_case_id' => $case,
+            'assessment_attempt_id' => $key, 'source_system' => 'HANDOFF_SOURCE',
             'external_candidate_id' => $key, 'funding_mode' => 'COMMERCIAL_SELF_PAY',
             'assessment_status' => 'PROVISIONED', 'idempotency_key' => $key,
             'request_hash' => hash('sha256', $key), 'logical_assessment_key' => hash('sha256', 'logical'.$key),

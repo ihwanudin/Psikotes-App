@@ -20,6 +20,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\OrganizationPaymentTestCase;
 use Tests\Support\AssessmentAccessFixture as Fixture;
+use Tests\Support\AssessmentBillingFixture;
 
 final class CheckoutPartialProfileSchemaTest extends OrganizationPaymentTestCase
 {
@@ -137,6 +138,12 @@ final class CheckoutPartialProfileSchemaTest extends OrganizationPaymentTestCase
         $row = (array) DB::table('assessment_participants')->find($f['attempt']);
         unset($row['id']);
         $row['assessment_attempt_id'] = (string) Str::ulid();
+        $row['assessment_case_id'] = AssessmentBillingFixture::createExactIntegratedCase(
+            (int) $row['participant_id'],
+            (int) $row['organization_id'],
+            (int) $row['package_id'],
+            $row['assessment_attempt_id'],
+        );
         $row['idempotency_key'] = 'invalid-new';
         $row['logical_assessment_key'] = hash('sha256', 'invalid-new');
         try {

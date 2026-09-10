@@ -88,6 +88,19 @@ return new class extends Migration
 
     private function changeSqlite(bool $nullable): void
     {
+        $dependentTriggers = collect(DB::select(<<<'SQL'
+            SELECT name, sql
+            FROM sqlite_master
+            WHERE type = 'trigger'
+              AND tbl_name NOT IN ('participants', 'assessment_participants')
+              AND (sql LIKE '%participants%' OR sql LIKE '%assessment_participants%')
+              AND sql IS NOT NULL
+            ORDER BY name
+            SQL));
+        foreach ($dependentTriggers as $trigger) {
+            $name = str_replace('"', '""', (string) $trigger->name);
+            DB::statement('DROP TRIGGER "'.$name.'"');
+        }
         if (! $nullable) {
             DB::statement('DROP TRIGGER assessment_participants_checkout_funding_insert');
             DB::statement('DROP TRIGGER assessment_participants_checkout_funding_update');
@@ -113,6 +126,9 @@ return new class extends Migration
                         AND NEW.assessment_status IN ('PROVISIONED', 'REVOKED', 'VOID'), 0) ELSE 0 END = 0
                     BEGIN SELECT RAISE(ABORT, 'assessment_participants_checkout_funding_check'); END");
             }
+        }
+        foreach ($dependentTriggers as $trigger) {
+            DB::unprepared((string) $trigger->sql);
         }
     }
 };
