@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Services\Payments;
 
 use App\Data\Payments\AssessmentBillProofAccess;
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Enums\AdminRole;
 use App\Models\Admin;
 use App\Models\AssessmentBill;
@@ -12,6 +14,7 @@ use App\Models\Branch;
 use App\Models\PaymentMethod;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
+use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -24,6 +27,7 @@ final readonly class AssessmentBillProofUrlIssuer
     public function __construct(
         private RlsContextRunner $contexts,
         private AssessmentBillProofIdentity $proofs,
+        private RetentionPolicy $retention,
     ) {}
 
     public function issue(Admin $actor, string $billReference): AssessmentBillProofAccess
@@ -40,7 +44,8 @@ final readonly class AssessmentBillProofUrlIssuer
             || ! is_int($minutes) || $minutes < 1 || $minutes > 60) {
             throw new LogicException('Assessment bill proof access configuration is invalid.');
         }
-        $expiresAt = now()->toImmutable()->utc()->addMinutes($minutes);
+        $occurredAt = CarbonImmutable::now('UTC');
+        $expiresAt = $occurredAt->addMinutes($minutes);
 
         /** @var array{billId: int, organizationId: int, objectKey: string, fingerprint: string} $snapshot */
         $snapshot = $this->contexts->run(new RlsContext('service'),
@@ -65,7 +70,7 @@ final readonly class AssessmentBillProofUrlIssuer
         }
 
         $this->contexts->run(new RlsContext('service'), function () use (
-            $actor, $billReference, $snapshot, $expiresAt,
+            $actor, $billReference, $snapshot, $expiresAt, $occurredAt,
         ): void {
             $reviewer = $this->lockReviewer($actor);
             if (Branch::query()->lockForUpdate()->find($snapshot['organizationId']) === null) {
@@ -80,7 +85,6 @@ final readonly class AssessmentBillProofUrlIssuer
             if (! hash_equals($snapshot['fingerprint'], $fingerprint)) {
                 $this->notFound();
             }
-            $now = now()->toImmutable()->utc();
             DB::table('audit_logs')->insert([
                 'branch_id' => $snapshot['organizationId'],
                 'actor_type' => 'admin',
@@ -94,8 +98,8 @@ final readonly class AssessmentBillProofUrlIssuer
                     'proof_fingerprint' => $fingerprint,
                     'url_expires_at' => $expiresAt->toIso8601String(),
                 ], JSON_THROW_ON_ERROR),
-                'occurred_at' => $now,
-                'expires_at' => $now->addYearsNoOverflow(2),
+                'occurred_at' => $occurredAt,
+                'expires_at' => $this->retention->expiresAt(RetentionDataClass::Audit, $occurredAt),
             ]);
         });
 

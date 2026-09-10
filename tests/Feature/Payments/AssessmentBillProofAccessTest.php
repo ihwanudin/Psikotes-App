@@ -14,6 +14,7 @@ use App\Services\Payments\AssessmentBillProofUrlIssuer;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Illuminate\Foundation\Testing\RefreshDatabaseState;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
@@ -37,7 +38,7 @@ final class AssessmentBillProofAccessTest extends OrganizationPaymentTestCase
     {
         RefreshDatabaseState::$migrated = false;
         parent::setUp();
-        $this->freezeTime();
+        Carbon::setTestNow('2024-02-29 10:15:00+07:00');
         Storage::fake('payment-proofs');
         $this->bill = $this->manualBillWithProof();
         $this->superAdmin = $this->admin(AdminRole::SuperAdmin, null, true);
@@ -73,6 +74,7 @@ final class AssessmentBillProofAccessTest extends OrganizationPaymentTestCase
     {
         $disk = Storage::disk('payment-proofs');
         $url = 'https://private.example.test/proof?opaque=token';
+        $issuedAt = Carbon::parse('2024-02-29 03:15:00+00:00')->toImmutable();
         $this->proxyDisk($disk,
             function (string $key) use ($disk): bool {
                 $this->assertSame(0, DB::transactionLevel());
@@ -80,17 +82,18 @@ final class AssessmentBillProofAccessTest extends OrganizationPaymentTestCase
 
                 return $disk->exists($key);
             },
-            function (string $key, \DateTimeInterface $expiresAt) use ($url): string {
+            function (string $key, \DateTimeInterface $expiresAt) use ($issuedAt, $url): string {
                 $this->assertSame(0, DB::transactionLevel());
                 $this->assertNull(app(RlsContextRunner::class)->current());
-                $this->assertSame(now()->addMinutes(15)->getTimestamp(), $expiresAt->getTimestamp());
+                $this->assertSame($issuedAt->addMinutes(15)->getTimestamp(), $expiresAt->getTimestamp());
+                Carbon::setTestNow(Carbon::now()->addHour());
 
                 return $url;
             });
 
         $access = $this->issue($this->superAdmin);
         $this->assertSame($url, $access->url);
-        $this->assertSame(now()->addMinutes(15)->getTimestamp(), $access->expiresAt->getTimestamp());
+        $this->assertSame($issuedAt->addMinutes(15)->getTimestamp(), $access->expiresAt->getTimestamp());
         $this->assertMatchesRegularExpression('/^[0-9a-f]{64}$/D', $access->proofFingerprint);
         $this->assertFalse(property_exists($access, 'objectKey'));
 
@@ -99,6 +102,8 @@ final class AssessmentBillProofAccessTest extends OrganizationPaymentTestCase
         $this->assertSame((string) $this->superAdmin->id, $audit->actor_id);
         $this->assertSame(AssessmentBill::class, $audit->subject_type);
         $this->assertSame((string) $this->bill['bill'], $audit->subject_id);
+        $this->assertSame('2024-02-29 03:15:00', $audit->occurred_at);
+        $this->assertSame('2029-02-28 03:15:00', $audit->expires_at);
         $context = json_decode((string) $audit->context, true, flags: JSON_THROW_ON_ERROR);
         $this->assertSame([
             'version' => 1,
@@ -106,8 +111,13 @@ final class AssessmentBillProofAccessTest extends OrganizationPaymentTestCase
             'proof_fingerprint' => $access->proofFingerprint,
             'url_expires_at' => $access->expiresAt->toIso8601String(),
         ], $context);
-        $this->assertStringNotContainsString('object', (string) $audit->context);
-        $this->assertStringNotContainsString('private.example', (string) $audit->context);
+        $participant = DB::table('participants')->where('id', $this->bill['participant'])->sole();
+        $attempt = DB::table('assessment_participants')->where('id', $this->bill['attempt'])->sole();
+        $bill = DB::table('assessment_bills')->where('id', $this->bill['bill'])->sole();
+        foreach ([$url, $this->bill['proofKey'], $participant->full_name, $participant->birth_date,
+            $attempt->external_candidate_id, $bill->idempotency_key, $bill->request_hash] as $privateValue) {
+            $this->assertStringNotContainsString((string) $privateValue, (string) $audit->context);
+        }
     }
 
     #[DataProvider('unauthorizedActors')]
