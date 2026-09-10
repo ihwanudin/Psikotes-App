@@ -254,11 +254,7 @@ return new class extends Migration
     private function dropPhaseOneSchema(): void
     {
         if (DB::getDriverName() === 'sqlite') {
-            DB::statement('DROP INDEX test_sessions_assessment_case_idx');
-            DB::statement('ALTER TABLE test_sessions DROP COLUMN assessment_case_id');
-            DB::statement('DROP INDEX assessment_participants_case_unique');
-            DB::statement('ALTER TABLE assessment_participants DROP COLUMN assessment_case_id');
-            Schema::drop('assessment_cases');
+            $this->dropSqlitePhaseOneSchema();
 
             return;
         }
@@ -274,5 +270,114 @@ return new class extends Migration
             $table->dropColumn('assessment_case_id');
         });
         Schema::drop('assessment_cases');
+    }
+
+    private function dropSqlitePhaseOneSchema(): void
+    {
+        if (DB::transactionLevel() !== 0) {
+            throw new RuntimeException('SQLite assessment case rollback requires no surrounding transaction.');
+        }
+
+        $foreignKeys = (bool) DB::scalar('PRAGMA foreign_keys');
+        Schema::disableForeignKeyConstraints();
+        try {
+            DB::transaction(function (): void {
+                $dependentTriggers = collect(DB::select(<<<'SQL'
+                    SELECT name, sql FROM sqlite_master
+                    WHERE type = 'trigger' AND sql IS NOT NULL
+                      AND (lower(sql) LIKE '%assessment_participants%'
+                        OR lower(sql) LIKE '%test_sessions%')
+                    ORDER BY name
+                    SQL));
+                foreach ($dependentTriggers as $trigger) {
+                    $name = str_replace('"', '""', (string) $trigger->name);
+                    DB::statement('DROP TRIGGER "'.$name.'"');
+                }
+
+                $this->rebuildSqliteTableWithoutAssessmentCase('test_sessions');
+                $this->rebuildSqliteTableWithoutAssessmentCase('assessment_participants');
+                Schema::drop('assessment_cases');
+
+                foreach ($dependentTriggers as $trigger) {
+                    DB::unprepared((string) $trigger->sql);
+                }
+                if (DB::select('PRAGMA foreign_key_check') !== []) {
+                    throw new RuntimeException('Assessment case rollback would violate existing foreign keys.');
+                }
+            });
+        } finally {
+            if ($foreignKeys) {
+                Schema::enableForeignKeyConstraints();
+            }
+        }
+    }
+
+    private function rebuildSqliteTableWithoutAssessmentCase(string $table): void
+    {
+        $createSql = DB::table('sqlite_master')
+            ->where('type', 'table')
+            ->where('name', $table)
+            ->value('sql');
+        if (! is_string($createSql)) {
+            throw new RuntimeException("SQLite table {$table} is missing during assessment case rollback.");
+        }
+
+        $column = ', assessment_case_id INTEGER NULL REFERENCES assessment_cases(id) ON DELETE RESTRICT';
+        $withoutColumn = str_replace($column, '', $createSql, $replacements);
+        if ($replacements === 0) {
+            $withoutColumn = preg_replace(
+                '/,\s*foreign key\("assessment_case_id"\) references assessment_cases\("id"\) on delete restrict on update no action/i',
+                '',
+                $createSql,
+                1,
+                $foreignReplacements,
+            );
+            $withoutColumn = is_string($withoutColumn) ? preg_replace(
+                '/,\s*"assessment_case_id"\s+integer/i',
+                '',
+                $withoutColumn,
+                1,
+                $columnReplacements,
+            ) : null;
+            if (! is_string($withoutColumn) || $foreignReplacements !== 1 || $columnReplacements !== 1) {
+                throw new RuntimeException("SQLite table {$table} has an unexpected assessment case definition.");
+            }
+        } elseif ($replacements !== 1) {
+            throw new RuntimeException("SQLite table {$table} has an unexpected assessment case definition.");
+        }
+
+        $temporary = $table.'_without_assessment_case';
+        $quotedTable = '"'.str_replace('"', '""', $table).'"';
+        $quotedTemporary = '"'.str_replace('"', '""', $temporary).'"';
+        $temporarySql = preg_replace(
+            '/^CREATE TABLE\s+(?:"'.preg_quote($table, '/').'"|`'.preg_quote($table, '/').'`|\['.preg_quote($table, '/').'\]|'.preg_quote($table, '/').')/i',
+            'CREATE TABLE '.$quotedTemporary,
+            $withoutColumn,
+            1,
+            $renamed,
+        );
+        if (! is_string($temporarySql) || $renamed !== 1) {
+            throw new RuntimeException("SQLite table {$table} could not be prepared for assessment case rollback.");
+        }
+
+        $indexes = DB::select(<<<'SQL'
+            SELECT sql FROM sqlite_master
+            WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL
+              AND lower(sql) NOT LIKE '%assessment_case_id%'
+            ORDER BY name
+            SQL, [$table]);
+        $columns = collect(DB::select("PRAGMA table_info({$quotedTable})"))
+            ->pluck('name')
+            ->reject(fn (string $name): bool => $name === 'assessment_case_id')
+            ->map(fn (string $name): string => '"'.str_replace('"', '""', $name).'"')
+            ->implode(', ');
+
+        DB::unprepared($temporarySql);
+        DB::statement("INSERT INTO {$quotedTemporary} ({$columns}) SELECT {$columns} FROM {$quotedTable}");
+        DB::statement("DROP TABLE {$quotedTable}");
+        DB::statement("ALTER TABLE {$quotedTemporary} RENAME TO {$quotedTable}");
+        foreach ($indexes as $index) {
+            DB::unprepared((string) $index->sql);
+        }
     }
 };

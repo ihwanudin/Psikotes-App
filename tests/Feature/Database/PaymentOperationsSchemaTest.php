@@ -92,17 +92,7 @@ final class PaymentOperationsSchemaTest extends TestCase
     public function test_disabling_a_payment_method_preserves_historical_orders(): void
     {
         [$participantId, $methodId] = $this->seedParticipantAndPaymentMethod();
-
-        $orderId = DB::table('orders')->insertGetId([
-            'public_id' => (string) Str::ulid(),
-            'participant_id' => $participantId,
-            'payment_method_id' => $methodId,
-            'status' => 'pending',
-            'amount' => 500000,
-            'currency' => 'IDR',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        $orderId = DB::table('orders')->insertGetId($this->directOrder($participantId, $methodId));
 
         DB::table('payment_methods')->where('id', $methodId)->update(['is_active' => false]);
 
@@ -112,23 +102,14 @@ final class PaymentOperationsSchemaTest extends TestCase
     public function test_gateway_references_are_unique_when_present(): void
     {
         [$participantId, $methodId] = $this->seedParticipantAndPaymentMethod();
-        $order = [
-            'public_id' => (string) Str::ulid(),
-            'participant_id' => $participantId,
-            'payment_method_id' => $methodId,
-            'status' => 'pending',
-            'amount' => 500000,
-            'currency' => 'IDR',
-            'gateway_ref' => 'invoice-synthetic-1',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ];
+        $order = $this->directOrder($participantId, $methodId, ['gateway_ref' => 'invoice-synthetic-1']);
 
         DB::table('orders')->insert($order);
 
         $this->expectException(QueryException::class);
-        $order['public_id'] = (string) Str::ulid();
-        DB::table('orders')->insert($order);
+        DB::table('orders')->insert($this->directOrder($participantId, $methodId, [
+            'gateway_ref' => 'invoice-synthetic-1',
+        ]));
     }
 
     public function test_each_participant_has_only_one_entitlement_per_test_type(): void
@@ -221,6 +202,18 @@ final class PaymentOperationsSchemaTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+        $packageId = DB::table('packages')->insertGetId([
+            'code' => (string) Str::ulid(), 'name' => 'Synthetic', 'amount' => 500000,
+            'currency' => 'IDR', 'is_active' => true,
+        ]);
+        DB::table('package_items')->insert([
+            ['package_id' => $packageId, 'test_type' => 'ist', 'sort_order' => 1],
+            ['package_id' => $packageId, 'test_type' => 'dass21', 'sort_order' => 2],
+        ]);
+        DB::table('participants')->where('id', $participantId)->update([
+            'package_id' => $packageId,
+            'source_system' => 'DIRECT_PUBLIC',
+        ]);
 
         $this->seed(PaymentMethodSeeder::class);
         $methodId = DB::table('payment_methods')->where('code', 'xendit')->value('id');
@@ -228,5 +221,39 @@ final class PaymentOperationsSchemaTest extends TestCase
         $this->assertIsInt($methodId);
 
         return [$participantId, $methodId];
+    }
+
+    /** @param array<string, mixed> $override
+     * @return array<string, mixed>
+     */
+    private function directOrder(int $participantId, int $methodId, array $override = []): array
+    {
+        $participant = DB::table('participants')->where('id', $participantId)->first();
+        if ($participant === null || ! is_int($participant->branch_id) || ! is_int($participant->package_id)) {
+            throw new \LogicException('Synthetic direct participant identity is incomplete.');
+        }
+        $publicId = (string) Str::ulid();
+        $case = DB::table('assessment_cases')->insertGetId([
+            'public_id' => $publicId,
+            'participant_id' => $participantId,
+            'organization_id' => $participant->branch_id,
+            'package_id' => $participant->package_id,
+            'origin' => 'DIRECT_PUBLIC',
+            'intended_field_snapshot' => $participant->intended_field,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return [...[
+            'public_id' => $publicId,
+            'participant_id' => $participantId,
+            'assessment_case_id' => $case,
+            'payment_method_id' => $methodId,
+            'status' => 'pending',
+            'amount' => 500000,
+            'currency' => 'IDR',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ], ...$override];
     }
 }

@@ -18,6 +18,14 @@ final class AssessmentCaseSchemaTest extends OrganizationPaymentTestCase
     {
         parent::setUp();
         $this->assertSame(0, Artisan::call('migrate', ['--force' => true]));
+        $grants = require database_path('migrations/2026_09_09_000700_create_test_session_grants.php');
+        $grants->down();
+        $directCases = require database_path('migrations/2026_09_09_000600_bind_direct_public_orders_to_assessment_cases.php');
+        $directCases->down();
+        $selectionCases = require database_path('migrations/2026_09_09_000500_bind_legacy_selection_assessment_cases.php');
+        $selectionCases->down();
+        $sessionCases = require database_path('migrations/2026_09_09_000400_harden_test_session_case_identity.php');
+        $sessionCases->down();
         $phaseTwo = require database_path('migrations/2026_09_09_000300_backfill_integrated_assessment_cases.php');
         $phaseTwo->down();
     }
