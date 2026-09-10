@@ -10,6 +10,7 @@ use App\Models\Participant;
 use App\Models\PaymentMethod;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -206,10 +207,13 @@ final class ManualPaymentProofUploadTest extends TestCase
             'name' => 'Cabang Uji',
             'ref_code' => 'REF-'.Str::upper(Str::random(8)),
         ]);
+        $packageId = $this->directPackage();
         $participant = Participant::query()->create([
             'branch_id' => $branch->id,
             'referral_branch_id' => $branch->id,
             'referral_source' => 'default',
+            'package_id' => $packageId,
+            'source_system' => 'DIRECT_PUBLIC',
             'full_name' => 'Ayu Pratiwi',
             'gender' => 'female',
             'birth_date' => '2001-04-15',
@@ -223,9 +227,21 @@ final class ManualPaymentProofUploadTest extends TestCase
             'display_name' => Str::headline($methodCode),
             'is_active' => true,
         ])->save();
-        $order = Order::query()->create([
-            'public_id' => (string) Str::ulid(),
+        $orderPublicId = (string) Str::ulid();
+        $caseId = DB::table('assessment_cases')->insertGetId([
+            'public_id' => $orderPublicId,
             'participant_id' => $participant->id,
+            'organization_id' => $branch->id,
+            'package_id' => $packageId,
+            'origin' => 'DIRECT_PUBLIC',
+            'intended_field_snapshot' => $participant->intended_field,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $order = Order::query()->create([
+            'public_id' => $orderPublicId,
+            'participant_id' => $participant->id,
+            'assessment_case_id' => $caseId,
             'payment_method_id' => $method->id,
             'status' => $status,
             'amount' => 250_000,
@@ -233,6 +249,26 @@ final class ManualPaymentProofUploadTest extends TestCase
         ]);
 
         return [$participant, $order];
+    }
+
+    private function directPackage(): int
+    {
+        $key = (string) Str::ulid();
+        $packageId = DB::table('packages')->insertGetId([
+            'code' => 'PKG-'.$key,
+            'name' => 'Paket pembayaran langsung',
+            'amount' => 250_000,
+            'currency' => 'IDR',
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('package_items')->insert([
+            ['package_id' => $packageId, 'test_type' => 'ist', 'sort_order' => 1, 'created_at' => now(), 'updated_at' => now()],
+            ['package_id' => $packageId, 'test_type' => 'dass21', 'sort_order' => 2, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        return $packageId;
     }
 
     /** @return array<string, int> */
