@@ -440,10 +440,30 @@ return new class extends Migration
                     UNION ALL
                     SELECT value, position + 1, unicode(substr(value, position + 1, 1))
                     FROM identity_characters WHERE position < length(value)
+                ), payload_characters(position, backslash_run) AS (
+                    SELECT 1,
+                        CASE WHEN substr(CAST(NEW.template_payload AS TEXT), 1, 1) = char(92)
+                            THEN 1 ELSE 0 END
+                    UNION ALL
+                    SELECT position + 1,
+                        CASE WHEN substr(
+                            CAST(NEW.template_payload AS TEXT), position + 1, 1
+                        ) = char(92) THEN backslash_run + 1 ELSE 0 END
+                    FROM payload_characters
+                    WHERE position < length(CAST(NEW.template_payload AS TEXT))
                 ), forbidden_codepoints(start_codepoint, end_codepoint) AS (
                     SELECT json_extract(range.value, '$[0]'), json_extract(range.value, '$[1]')
                     FROM json_each('__FORBIDDEN_CODEPOINT_RANGES_JSON__') range
                 )
+                SELECT 1 FROM identities
+                WHERE value IS NOT NULL
+                    AND instr(CAST(value AS BLOB), X'00') > 0
+                UNION ALL
+                SELECT 1 FROM payload_characters
+                WHERE backslash_run % 2 = 1
+                    AND substr(CAST(NEW.template_payload AS TEXT), position, 6)
+                        = char(92) || 'u0000'
+                UNION ALL
                 SELECT 1 FROM identity_characters character
                 INNER JOIN forbidden_codepoints forbidden
                     ON character.codepoint BETWEEN forbidden.start_codepoint

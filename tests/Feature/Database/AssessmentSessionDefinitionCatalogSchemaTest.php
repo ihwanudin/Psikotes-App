@@ -88,7 +88,7 @@ final class AssessmentSessionDefinitionCatalogSchemaTest extends OrganizationPay
         $canonical['version'] = 'versi-é';
         $canonical['provenance'] = 'sumber-日本';
         $canonical['subtests'][0]['code'] = '分析';
-        $canonical['generator']['algorithm'] = 'algoritme™';
+        $canonical['generator']['algorithm'] = 'algoritme™\\u0000';
         $canonical['generator']['version'] = 'versi-é';
         $this->insert($canonical);
 
@@ -193,6 +193,21 @@ final class AssessmentSessionDefinitionCatalogSchemaTest extends OrganizationPay
             $template['version'] = 'unicode-generator-'.$field;
             $template['generator'][$field] .= "\u{2060}";
             $templates['word joiner in generator '.$field] = $template;
+        }
+        foreach (['version', 'provenance', 'subtest_code'] as $field) {
+            $template = $this->template('ist', 'nul-'.$field);
+            match ($field) {
+                'version' => $template['version'] .= "\u{0000}",
+                'provenance' => $template['provenance'] .= "\u{0000}",
+                'subtest_code' => $template['subtests'][0]['code'] .= "\u{0000}",
+            };
+            $templates['nul in '.$field] = $template;
+        }
+        foreach (['algorithm', 'version'] as $field) {
+            $template = $this->kraepelinTemplate();
+            $template['version'] = 'nul-generator-'.$field;
+            $template['generator'][$field] .= "\u{0000}";
+            $templates['nul in generator '.$field] = $template;
         }
 
         $unassigned = $this->template('papi', "unassigned-\u{0378}");

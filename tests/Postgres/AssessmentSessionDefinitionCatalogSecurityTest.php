@@ -211,6 +211,27 @@ final class AssessmentSessionDefinitionCatalogSecurityTest extends TestCase
         $this->assertSame('sumber-日本', $stored->provenance);
     }
 
+    public function test_postgres_rejects_nul_in_every_identity_field(): void
+    {
+        foreach ($this->nulIdentityTemplates() as $label => $template) {
+            try {
+                app(RlsContextRunner::class)->runAsService(
+                    fn () => DB::table(self::TABLE)->insert($this->rowForTemplate($template)),
+                );
+                $this->fail('Expected PostgreSQL to reject '.$label.'.');
+            } catch (QueryException $exception) {
+                $this->assertContains(
+                    $exception->errorInfo[0] ?? null,
+                    ['22021', '22P05', '23514'],
+                    $exception->getMessage(),
+                );
+            }
+        }
+        $this->assertSame(0, app(RlsContextRunner::class)->runAsService(
+            fn () => DB::table(self::TABLE)->count(),
+        ));
+    }
+
     public function test_two_runtime_processes_racing_activation_leave_exactly_one_winner(): void
     {
         DB::purge('pgsql');
@@ -471,6 +492,29 @@ final class AssessmentSessionDefinitionCatalogSecurityTest extends TestCase
         $separator = $this->template('papi', 'separator');
         $separator['subtests'][0]['code'] .= "\u{2007}";
         $templates['separator category Zs'] = $separator;
+
+        return $templates;
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    private function nulIdentityTemplates(): array
+    {
+        $templates = [];
+        foreach (['version', 'provenance', 'subtest_code'] as $field) {
+            $template = $this->template('ist', 'nul-'.$field);
+            match ($field) {
+                'version' => $template['version'] .= "\u{0000}",
+                'provenance' => $template['provenance'] .= "\u{0000}",
+                'subtest_code' => $template['subtests'][0]['code'] .= "\u{0000}",
+            };
+            $templates['nul in '.$field] = $template;
+        }
+        foreach (['algorithm', 'version'] as $field) {
+            $template = $this->kraepelinTemplate();
+            $template['version'] = 'nul-generator-'.$field;
+            $template['generator'][$field] .= "\u{0000}";
+            $templates['nul in generator '.$field] = $template;
+        }
 
         return $templates;
     }
