@@ -6,15 +6,12 @@ namespace Tests\Feature\Payments;
 
 use App\Data\Payments\PaymentEvent;
 use App\Enums\PaymentStatus;
-use App\Models\Branch;
 use App\Models\Entitlement;
 use App\Models\Order;
-use App\Models\Participant;
 use App\Services\Payments\PaymentWebhookProcessor;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Date;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
+use Tests\Support\DirectPublicOrderFixture;
 use Tests\TestCase;
 
 final class PaymentWebhookProcessorTest extends TestCase
@@ -44,6 +41,7 @@ final class PaymentWebhookProcessorTest extends TestCase
         $this->assertTrue($order->fresh()->paid_at->equalTo('2026-08-25 13:00:00+07:00'));
         $this->assertSame('ready', $entitlement->fresh()->status);
         $this->assertTrue($entitlement->fresh()->ready_at->equalTo('2026-08-25 13:00:00+07:00'));
+        $this->assertEntitlements($order, 'ready');
         $this->assertDatabaseCount('payment_webhook_events', 1);
         $this->assertDatabaseHas('payment_webhook_events', [
             'provider' => 'xendit',
@@ -63,6 +61,7 @@ final class PaymentWebhookProcessorTest extends TestCase
         $this->assertSame('conflict', $conflict->outcome->value);
         $this->assertSame('pending', $order->fresh()->status->value);
         $this->assertSame('locked', $entitlement->fresh()->status);
+        $this->assertEntitlements($order, 'locked');
         $this->assertDatabaseCount('payment_webhook_events', 1);
     }
 
@@ -78,6 +77,7 @@ final class PaymentWebhookProcessorTest extends TestCase
         $this->assertSame('applied', $result->outcome->value);
         $this->assertSame('expired', $order->fresh()->status->value);
         $this->assertSame('locked', $entitlement->fresh()->status);
+        $this->assertEntitlements($order, 'locked');
     }
 
     public function test_reordered_terminal_event_is_recorded_as_rejected_without_partial_change(): void
@@ -95,6 +95,7 @@ final class PaymentWebhookProcessorTest extends TestCase
         $this->assertSame('invalid_transition', $reordered->reason);
         $this->assertSame('paid', $order->fresh()->status->value);
         $this->assertSame('ready', $entitlement->fresh()->status);
+        $this->assertEntitlements($order, 'ready');
         $this->assertDatabaseHas('payment_webhook_events', [
             'event_id' => 'invoice-event-late-expired',
             'outcome' => 'rejected',
@@ -105,84 +106,14 @@ final class PaymentWebhookProcessorTest extends TestCase
     /** @return array{Order, Entitlement} */
     private function orderWithLockedEntitlement(): array
     {
-        $branch = Branch::query()->create([
-            'code' => 'CENTRAL',
-            'name' => 'LSI Pusat',
-            'ref_code' => 'CENTRAL-REF',
-            'is_default' => true,
-        ]);
-        $packageId = $this->directPackage();
-        $participant = Participant::query()->create([
-            'branch_id' => $branch->id,
-            'referral_branch_id' => $branch->id,
-            'referral_source' => 'default',
-            'package_id' => $packageId,
-            'source_system' => 'DIRECT_PUBLIC',
-            'full_name' => 'Ayu Pratiwi',
-            'gender' => 'female',
-            'birth_date' => '2001-04-15',
-            'education_level' => 'SMA/SMK',
-            'intended_field' => 'KAIGO',
-            'phone' => '+6281234567890',
-            'test_number' => 'LSI-202608-000001-ABCDEF',
-        ]);
-        $paymentMethodId = DB::table('payment_methods')->insertGetId([
-            'code' => 'xendit',
-            'display_name' => 'Xendit Invoice',
-            'is_active' => true,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-        $orderPublicId = (string) Str::ulid();
-        $caseId = DB::table('assessment_cases')->insertGetId([
-            'public_id' => $orderPublicId,
-            'participant_id' => $participant->id,
-            'organization_id' => $branch->id,
-            'package_id' => $packageId,
-            'origin' => 'DIRECT_PUBLIC',
-            'intended_field_snapshot' => $participant->intended_field,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-        $order = Order::query()->create([
-            'public_id' => $orderPublicId,
-            'participant_id' => $participant->id,
-            'assessment_case_id' => $caseId,
-            'payment_method_id' => $paymentMethodId,
-            'status' => 'pending',
-            'amount' => 350_000,
-            'currency' => 'IDR',
-            'gateway_ref' => 'xendit-invoice-reference',
-            'expires_at' => Date::now()->addHour(),
-        ]);
-        $entitlement = Entitlement::query()->create([
-            'participant_id' => $participant->id,
-            'order_id' => $order->id,
-            'test_type' => 'ist',
-            'status' => 'locked',
-        ]);
+        $fixture = DirectPublicOrderFixture::create(
+            paymentMethodCode: 'xendit',
+            amount: 350_000,
+            gatewayReference: 'xendit-invoice-reference',
+            expiresAt: Date::now()->addHour(),
+        );
 
-        return [$order, $entitlement];
-    }
-
-    private function directPackage(): int
-    {
-        $key = (string) Str::ulid();
-        $packageId = DB::table('packages')->insertGetId([
-            'code' => 'PKG-'.$key,
-            'name' => 'Paket pembayaran langsung',
-            'amount' => 350_000,
-            'currency' => 'IDR',
-            'is_active' => true,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-        DB::table('package_items')->insert([
-            ['package_id' => $packageId, 'test_type' => 'ist', 'sort_order' => 1, 'created_at' => now(), 'updated_at' => now()],
-            ['package_id' => $packageId, 'test_type' => 'dass21', 'sort_order' => 2, 'created_at' => now(), 'updated_at' => now()],
-        ]);
-
-        return $packageId;
+        return [$fixture['order'], $fixture['entitlements']['ist']];
     }
 
     private function event(PaymentStatus $status, string $eventId): PaymentEvent
@@ -195,6 +126,14 @@ final class PaymentWebhookProcessorTest extends TestCase
             occurredAt: Date::now(),
             amount: 350_000,
             currency: 'IDR',
+        );
+    }
+
+    private function assertEntitlements(Order $order, string $status): void
+    {
+        $this->assertSame(
+            ['dass21' => $status, 'ist' => $status],
+            Entitlement::query()->where('order_id', $order->id)->orderBy('test_type')->pluck('status', 'test_type')->all(),
         );
     }
 }
