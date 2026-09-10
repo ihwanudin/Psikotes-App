@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Services\Payments;
 
 use App\Data\Payments\AssessmentBillProofAccess;
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Enums\AdminRole;
 use App\Models\Admin;
 use App\Models\AssessmentBill;
@@ -23,6 +25,7 @@ final readonly class OrganizationBillProofUrlIssuer
     public function __construct(
         private RlsContextRunner $contexts,
         private AssessmentBillProofIdentity $proofs,
+        private RetentionPolicy $retention,
     ) {}
 
     public function issue(Admin $actor, string $billReference, string $expectedFingerprint): AssessmentBillProofAccess
@@ -43,9 +46,10 @@ final readonly class OrganizationBillProofUrlIssuer
             throw new LogicException('Organization bill proof access configuration is invalid.');
         }
 
+        $occurredAt = CarbonImmutable::now('UTC');
+        $expiresAt = $occurredAt->addMinutes($minutes);
         $loaded = $this->contexts->run(new RlsContext('service'),
             fn (): array => $this->load($actor->getKey(), $billReference, $expectedFingerprint));
-        $expiresAt = CarbonImmutable::now()->utc()->addMinutes($minutes);
 
         try {
             $disk = Storage::disk($diskName);
@@ -70,8 +74,11 @@ final readonly class OrganizationBillProofUrlIssuer
             $billReference,
             $expectedFingerprint,
             $expiresAt,
+            $occurredAt,
         ): void {
-            DB::transaction(function () use ($actor, $billReference, $expectedFingerprint, $expiresAt): void {
+            DB::transaction(function () use (
+                $actor, $billReference, $expectedFingerprint, $expiresAt, $occurredAt,
+            ): void {
                 $loaded = $this->load($actor->getKey(), $billReference, $expectedFingerprint, lock: true);
                 DB::table('audit_logs')->insert([
                     'branch_id' => $loaded['organizationId'],
@@ -85,8 +92,8 @@ final readonly class OrganizationBillProofUrlIssuer
                         'proof_fingerprint' => $expectedFingerprint,
                         'url_expires_at' => $expiresAt->toIso8601String(),
                     ], JSON_THROW_ON_ERROR),
-                    'occurred_at' => now(),
-                    'expires_at' => now()->addYears(2),
+                    'occurred_at' => $occurredAt,
+                    'expires_at' => $this->retention->expiresAt(RetentionDataClass::Audit, $occurredAt),
                 ]);
             });
         });

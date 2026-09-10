@@ -17,6 +17,7 @@ use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Illuminate\Foundation\Testing\RefreshDatabaseState;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
@@ -36,7 +37,7 @@ final class OrganizationBillProofTest extends OrganizationPaymentTestCase
     {
         RefreshDatabaseState::$migrated = false;
         parent::setUp();
-        $this->freezeTime();
+        Carbon::setTestNow('2024-02-29 10:15:00+07:00');
         Storage::fake('payment-proofs');
         $this->fixture = $this->pendingManualOrganizationBill();
         $this->admin = $this->admin(AdminRole::BranchAdmin, $this->fixture['organization']);
@@ -146,19 +147,45 @@ final class OrganizationBillProofTest extends OrganizationPaymentTestCase
     public function test_private_access_rechecks_branch_actor_and_current_fingerprint_and_audits_safely(): void
     {
         config(['payments.manual_proof_temporary_url_minutes' => 9]);
+        $issuedAt = Carbon::parse('2024-02-29 03:15:00+00:00')->toImmutable();
         $receipt = app(StoreAssessmentBillProof::class)->execute(new AssessmentBillProofUpload(
             $this->admin, $this->fixture['reference'], UploadedFile::fake()->image('proof.jpg'), null,
         ));
         Storage::disk('payment-proofs')->buildTemporaryUrlsUsing(
-            fn (string $path): string => 'https://private.example.test/synthetic-token',
+            function (string $path): string {
+                Carbon::setTestNow(Carbon::now()->addHour());
+
+                return 'https://private.example.test/synthetic-token';
+            },
         );
         $access = app(OrganizationBillProofUrlIssuer::class)
             ->issue($this->admin, $this->fixture['reference'], $receipt->proofFingerprint);
         $this->assertSame('https://private.example.test/synthetic-token', $access->url);
-        $this->assertTrue($access->expiresAt->equalTo(now()->utc()->addMinutes(9)));
+        $this->assertTrue($access->expiresAt->equalTo($issuedAt->addMinutes(9)));
         $audit = DB::table('audit_logs')->where('action', 'assessment_bill.branch_proof_temporary_url_issued')->sole();
-        $this->assertStringNotContainsString('assessment-bills/', (string) $audit->context);
-        $this->assertStringNotContainsString('private.example', (string) $audit->context);
+        $this->assertSame('2024-02-29 03:15:00', $audit->occurred_at);
+        $this->assertSame('2029-02-28 03:15:00', $audit->expires_at);
+        $context = json_decode((string) $audit->context, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame([
+            'version' => 1,
+            'proof_fingerprint' => $receipt->proofFingerprint,
+            'url_expires_at' => $issuedAt->addMinutes(9)->toIso8601String(),
+        ], $context);
+        $this->assertArrayNotHasKey('gateway_ref', $context);
+        $this->assertArrayNotHasKey('provider_reference', $context);
+        $bill = DB::table('assessment_bills')->where('id', $this->fixture['bill'])->sole();
+        $participant = DB::table('participants')->where('id', $this->fixture['participant'])->sole();
+        $attempt = DB::table('assessment_participants')->where('id', $this->fixture['attempt'])->sole();
+        foreach ([$access->url, $bill->proof_object_key, $participant->full_name, $participant->birth_date,
+            $attempt->external_candidate_id, $bill->idempotency_key, $bill->request_hash] as $privateValue) {
+            $this->assertStringNotContainsString((string) $privateValue, (string) $audit->context);
+        }
+
+        Carbon::setTestNow('2024-02-29 10:15:00+07:00');
+        app(OrganizationBillProofUrlIssuer::class)
+            ->issue($this->admin, $this->fixture['reference'], $receipt->proofFingerprint);
+        $this->assertSame(2, DB::table('audit_logs')
+            ->where('action', 'assessment_bill.branch_proof_temporary_url_issued')->count());
 
         DB::table('admins')->where('id', $this->admin->id)->update(['branch_id' => $this->fixture['foreignOrganization']]);
         $this->expectException(\DomainException::class);
