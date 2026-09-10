@@ -6,10 +6,12 @@ namespace Tests\Feature\Notifications;
 
 use App\Contracts\Notifier;
 use App\Data\Notifications\ParticipantActivationNotification;
+use App\Models\AssessmentCase;
 use App\Models\Branch;
 use App\Models\Entitlement;
 use App\Models\Order;
 use App\Models\Participant;
+use App\Models\TestPackage;
 use App\Services\Notifications\DeliverParticipantActivation;
 use App\Services\Notifications\Exceptions\NotificationDeliveryFailed;
 use App\Services\Notifications\FakeNotifier;
@@ -33,8 +35,16 @@ final class ParticipantActivationDeliveryTest extends TestCase
         Date::setTestNow('2026-08-25 15:00:00+07:00');
     }
 
+    protected function tearDown(): void
+    {
+        Date::setTestNow();
+
+        parent::tearDown();
+    }
+
     public function test_delivery_sends_minimal_credentials_once_and_marks_outbox_processed(): void
     {
+        Date::setTestNow('2024-02-29 10:15:00+07:00');
         [$order, $messageId] = $this->paidOrderAndOutbox();
         $notifier = new FakeNotifier;
         $logger = new RecordingLogger;
@@ -55,6 +65,7 @@ final class ParticipantActivationDeliveryTest extends TestCase
             'message_id' => $messageId,
             'status' => 'processed',
             'attempts' => 1,
+            'processed_at' => '2024-02-29 03:15:00',
             'last_error' => null,
         ]);
         $this->assertDatabaseHas('audit_logs', [
@@ -64,6 +75,20 @@ final class ParticipantActivationDeliveryTest extends TestCase
             'subject_id' => $order->public_id,
         ]);
         $this->assertDatabaseCount('audit_logs', 1);
+        $audit = DB::table('audit_logs')->sole();
+        $this->assertSame('2024-02-29 03:15:00', $audit->occurred_at);
+        $this->assertSame('2029-02-28 03:15:00', $audit->expires_at);
+        $context = json_decode((string) $audit->context, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(['topic', 'channel', 'attempt'], array_keys($context));
+        $this->assertSame([
+            'topic' => 'participant.activation',
+            'channel' => 'fake',
+            'attempt' => 1,
+        ], $context);
+        $encodedAudit = json_encode($audit, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+        foreach (['Ayu Pratiwi', '+6281234567890', 'LSI-202608-000001-ABCDEF'] as $privateValue) {
+            $this->assertStringNotContainsString($privateValue, $encodedAudit);
+        }
         $this->assertSame([
             [
                 'level' => 'info',
@@ -81,6 +106,7 @@ final class ParticipantActivationDeliveryTest extends TestCase
 
     public function test_provider_failure_is_audited_without_rolling_back_paid_and_can_retry(): void
     {
+        Date::setTestNow('2024-02-29 10:15:00+07:00');
         [$order, $messageId, $entitlements] = $this->paidOrderAndOutbox();
         $notifier = new FailsOnceNotifier;
         $logger = new RecordingLogger;
@@ -101,14 +127,22 @@ final class ParticipantActivationDeliveryTest extends TestCase
             'message_id' => $messageId,
             'status' => 'failed',
             'attempts' => 1,
+            'available_at' => '2024-02-29 03:15:30',
             'last_error' => 'synthetic_provider_unavailable',
         ]);
         $this->assertDatabaseHas('audit_logs', [
             'action' => 'participant_notification.failed',
             'subject_id' => $order->public_id,
         ]);
+        $failureAudit = DB::table('audit_logs')->sole();
+        $this->assertSame('2024-02-29 03:15:00', $failureAudit->occurred_at);
+        $this->assertSame('2029-02-28 03:15:00', $failureAudit->expires_at);
+        $failureContext = json_decode((string) $failureAudit->context, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(['topic', 'channel', 'attempt', 'error_code'], array_keys($failureContext));
+        $this->assertSame('synthetic_provider_unavailable', $failureContext['error_code']);
 
-        Date::setTestNow('2026-08-25 15:00:31+07:00');
+        Date::setTestNow('2024-02-29 10:15:31+07:00');
+        $delivery->handle($messageId);
         $delivery->handle($messageId);
 
         $this->assertSame([$messageId, $messageId], $notifier->attemptedKeys);
@@ -120,6 +154,19 @@ final class ParticipantActivationDeliveryTest extends TestCase
             'last_error' => null,
         ]);
         $this->assertDatabaseCount('audit_logs', 2);
+        $audits = DB::table('audit_logs')->orderBy('id')->get();
+        $this->assertSame(
+            ['participant_notification.failed', 'participant_notification.delivered'],
+            $audits->pluck('action')->all(),
+        );
+        $this->assertSame('2024-02-29 03:15:31', $audits[1]->occurred_at);
+        $this->assertSame('2029-02-28 03:15:31', $audits[1]->expires_at);
+        $deliveryContext = json_decode((string) $audits[1]->context, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(['topic', 'channel', 'attempt'], array_keys($deliveryContext));
+        $encodedAudits = json_encode($audits, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+        foreach (['Ayu Pratiwi', '+6281234567890', 'LSI-202608-000001-ABCDEF'] as $privateValue) {
+            $this->assertStringNotContainsString($privateValue, $encodedAudits);
+        }
         $failureLog = $logger->records[0];
         $this->assertSame('warning', $failureLog['level']);
         $this->assertSame('participant_notification_delivery', $failureLog['message']);
@@ -157,10 +204,22 @@ final class ParticipantActivationDeliveryTest extends TestCase
             'ref_code' => 'CENTRAL-REF',
             'is_default' => true,
         ]);
+        $package = TestPackage::query()->create([
+            'code' => 'ACTIVATION_V1',
+            'name' => 'Activation Package',
+            'amount' => 250_000,
+            'currency' => 'IDR',
+            'is_active' => true,
+        ]);
+        foreach (['ist', 'papi', 'dass21'] as $testType) {
+            $package->items()->create(['test_type' => $testType]);
+        }
         $participant = Participant::query()->create([
             'branch_id' => $branch->id,
             'referral_branch_id' => $branch->id,
             'referral_source' => 'default',
+            'package_id' => $package->id,
+            'source_system' => 'DIRECT_PUBLIC',
             'full_name' => 'Ayu Pratiwi',
             'gender' => 'female',
             'birth_date' => '2001-04-15',
@@ -176,9 +235,19 @@ final class ParticipantActivationDeliveryTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
-        $order = Order::query()->create([
-            'public_id' => (string) Str::ulid(),
+        $orderPublicId = (string) Str::ulid();
+        $case = AssessmentCase::query()->create([
+            'public_id' => $orderPublicId,
             'participant_id' => $participant->id,
+            'organization_id' => $branch->id,
+            'package_id' => $package->id,
+            'origin' => 'DIRECT_PUBLIC',
+            'intended_field_snapshot' => 'KAIGO',
+        ]);
+        $order = Order::query()->create([
+            'public_id' => $orderPublicId,
+            'participant_id' => $participant->id,
+            'assessment_case_id' => $case->id,
             'payment_method_id' => $methodId,
             'status' => 'paid',
             'amount' => 250_000,
