@@ -27,6 +27,9 @@ final class OrganizationDatabaseTraitIsolationTest extends TestCase
         $previousTrait = null;
         foreach ($sequence as $index => $trait) {
             $fixture = $trait === 'truncate' ? Fixture::truncating() : Fixture::refreshing();
+            if ($previousTrait === 'refresh' && $trait === 'truncate') {
+                $this->assertTrue(RefreshDatabaseState::$migrated);
+            }
             try {
                 $fixture->startLifecycle();
                 $this->assertSame('sqlite', config('database.default'));
