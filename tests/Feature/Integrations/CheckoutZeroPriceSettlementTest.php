@@ -25,6 +25,7 @@ use Illuminate\Support\Str;
 use LogicException;
 use RuntimeException;
 use Tests\OrganizationPaymentTestCase;
+use Tests\Support\AssessmentBillingFixture;
 
 final class CheckoutZeroPriceSettlementTest extends OrganizationPaymentTestCase
 {
@@ -440,9 +441,13 @@ final class CheckoutZeroPriceSettlementTest extends OrganizationPaymentTestCase
             ['package_id' => $package, 'test_type' => 'dass21', 'sort_order' => 2],
         ]);
         $attemptPublicId = (string) Str::ulid();
+        $case = AssessmentBillingFixture::createExactIntegratedCase(
+            $participant, $organization, $package, $attemptPublicId,
+        );
         $attempt = DB::table('assessment_participants')->insertGetId([
             'organization_id' => $organization, 'integration_client_id' => $client,
             'participant_id' => $participant, 'package_id' => $package,
+            'assessment_case_id' => $case,
             'assessment_attempt_id' => $attemptPublicId, 'source_system' => $sourceSystem,
             'external_candidate_id' => $key, 'funding_mode' => $funding,
             'assessment_status' => 'PROVISIONED', 'idempotency_key' => $key,
