@@ -202,6 +202,7 @@ final readonly class RegisterParticipant
             collect($packageTypes)
                 ->map(fn (string $testType): array => [
                     'order_id' => $order->id,
+                    'assessment_case_id' => $testType === 'dass21' ? null : $assessmentCase?->id,
                     'test_type' => $testType,
                     'status' => $isFree ? 'ready' : 'locked',
                     'ready_at' => $isFree ? $now : null,
@@ -296,7 +297,8 @@ final readonly class RegisterParticipant
         }
 
         if ($composition === 'dass') {
-            if ($order->assessment_case_id !== null || $cases->isNotEmpty()) {
+            if ($order->assessment_case_id !== null || $cases->isNotEmpty()
+                || $entitlements->contains(fn (Entitlement $entitlement): bool => $entitlement->assessment_case_id !== null)) {
                 $this->rejectReplay();
             }
 
@@ -315,7 +317,11 @@ final readonly class RegisterParticipant
             || $case->package_id !== $participant->package_id
             || $case->origin !== 'DIRECT_PUBLIC'
             || $case->intended_field_snapshot !== $participant->intended_field
-            || ! $case->created_at->equalTo($order->created_at)) {
+            || ! $case->created_at->equalTo($order->created_at)
+            || $entitlements->contains(
+                fn (Entitlement $entitlement): bool => $entitlement->assessment_case_id
+                    !== ($entitlement->test_type === 'dass21' ? null : $case->id),
+            )) {
             $this->rejectReplay();
         }
     }

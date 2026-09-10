@@ -80,6 +80,18 @@ final class ParticipantRegistrationTest extends TestCase
         $this->assertSame('DIRECT_PUBLIC', $case->origin);
         $this->assertSame('KAIGO', $case->intended_field_snapshot);
         $this->assertTrue($order->created_at->equalTo($case->created_at));
+        $this->assertDatabaseHas('entitlements', [
+            'participant_id' => $participant->id,
+            'order_id' => $order->id,
+            'assessment_case_id' => $case->id,
+            'test_type' => 'ist',
+        ]);
+        $this->assertDatabaseHas('entitlements', [
+            'participant_id' => $participant->id,
+            'order_id' => $order->id,
+            'assessment_case_id' => null,
+            'test_type' => 'dass21',
+        ]);
 
         $this->assertDatabaseHas('consent_records', [
             'participant_id' => $participant->id,
@@ -193,9 +205,12 @@ final class ParticipantRegistrationTest extends TestCase
         $this->assertDatabaseCount('consent_records', 2);
         $this->assertDatabaseCount('orders', 1);
         $this->assertDatabaseCount('assessment_cases', 1);
+        $caseId = DB::table('assessment_cases')->sole()->id;
+        $this->assertSame($caseId, DB::table('entitlements')->where('test_type', 'ist')->sole()->assessment_case_id);
+        $this->assertNull(DB::table('entitlements')->where('test_type', 'dass21')->sole()->assessment_case_id);
     }
 
-    public function test_replay_fails_closed_when_the_persisted_order_graph_is_incomplete(): void
+    public function test_replay_fails_closed_when_a_generic_entitlement_loses_its_case_binding(): void
     {
         $this->branch('CENTRAL', 'CENTRAL-REF', isDefault: true);
         $token = (string) Str::uuid();
@@ -205,7 +220,8 @@ final class ParticipantRegistrationTest extends TestCase
             ->post('/registrations', $payload)
             ->assertRedirect('/registration/received');
         $participant = Participant::query()->sole();
-        $participant->entitlements()->where('test_type', 'ist')->delete();
+        DB::unprepared('DROP TRIGGER entitlements_case_update_guard');
+        $participant->entitlements()->where('test_type', 'ist')->update(['assessment_case_id' => null]);
 
         $this->withSession(['registration.token' => $token])
             ->from('/register')
@@ -216,6 +232,40 @@ final class ParticipantRegistrationTest extends TestCase
         $this->assertDatabaseCount('participants', 1);
         $this->assertDatabaseCount('orders', 1);
         $this->assertDatabaseCount('assessment_cases', 1);
+        $this->assertDatabaseCount('entitlements', 2);
+    }
+
+    public function test_standalone_dass_registration_remains_without_a_case_binding(): void
+    {
+        $this->branch('CENTRAL', 'CENTRAL-REF', isDefault: true);
+        $packageId = DB::table('packages')->insertGetId([
+            'code' => 'DASS-STANDALONE',
+            'name' => 'DASS-21 Mandiri',
+            'amount' => 0,
+            'currency' => 'IDR',
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('package_items')->insert([
+            'package_id' => $packageId,
+            'test_type' => 'dass21',
+            'sort_order' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $token = (string) Str::uuid();
+        $payload = [...$this->validPayload($token), 'package_id' => $packageId];
+
+        $this->withSession(['registration.token' => $token])
+            ->post('/registrations', $payload)
+            ->assertRedirect('/registration/received');
+
+        $this->assertDatabaseCount('assessment_cases', 0);
+        $this->assertNull(Order::query()->sole()->assessment_case_id);
+        $entitlement = DB::table('entitlements')->sole();
+        $this->assertSame('dass21', $entitlement->test_type);
+        $this->assertNull($entitlement->assessment_case_id);
     }
 
     public function test_registration_is_rate_limited_by_ip(): void

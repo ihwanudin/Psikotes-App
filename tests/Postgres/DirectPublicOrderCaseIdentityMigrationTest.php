@@ -241,8 +241,11 @@ final class DirectPublicOrderCaseIdentityMigrationTest extends TestCase
                 $case = DB::table('assessment_cases')->where('participant_id', $participant->id)->sole();
                 $this->assertSame($order->public_id, $case->public_id);
                 $this->assertSame($order->assessment_case_id, $case->id);
-                $this->assertSame(['dass21', 'ist'], DB::table('entitlements')->where('order_id', $order->id)
-                    ->orderBy('test_type')->pluck('test_type')->all());
+                $entitlements = DB::table('entitlements')->where('order_id', $order->id)
+                    ->orderBy('test_type')->get();
+                $this->assertSame(['dass21', 'ist'], $entitlements->pluck('test_type')->all());
+                $this->assertNull($entitlements->firstWhere('test_type', 'dass21')->assessment_case_id);
+                $this->assertSame($case->id, $entitlements->firstWhere('test_type', 'ist')->assessment_case_id);
                 $this->assertSame(2, DB::table('consent_records')->where('participant_id', $participant->id)->count());
             });
         } finally {

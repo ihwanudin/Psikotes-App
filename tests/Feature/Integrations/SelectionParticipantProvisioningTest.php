@@ -102,6 +102,18 @@ final class SelectionParticipantProvisioningTest extends TestCase
         $this->assertNull($case->package_id);
         $this->assertSame('LEGACY_SELECTION', $case->origin);
         $this->assertSame('UMUM', $case->intended_field_snapshot);
+        $this->assertDatabaseHas('entitlements', [
+            'participant_id' => $participantId,
+            'order_id' => null,
+            'assessment_case_id' => $case->id,
+            'test_type' => 'ist',
+        ]);
+        $this->assertDatabaseHas('entitlements', [
+            'participant_id' => $participantId,
+            'order_id' => null,
+            'assessment_case_id' => null,
+            'test_type' => 'dass21',
+        ]);
         $this->assertDatabaseHas('audit_logs', [
             'branch_id' => $this->branch->id,
             'actor_type' => 'service',
@@ -155,6 +167,33 @@ final class SelectionParticipantProvisioningTest extends TestCase
         $this->assertDatabaseCount('selection_participants', 1);
         $this->assertDatabaseCount('entitlements', 2);
         $this->assertDatabaseCount('audit_logs', 1);
+        $caseId = DB::table('assessment_cases')->sole()->id;
+        $this->assertSame($caseId, DB::table('entitlements')->where('test_type', 'ist')->sole()->assessment_case_id);
+        $this->assertNull(DB::table('entitlements')->where('test_type', 'dass21')->sole()->assessment_case_id);
+    }
+
+    public function test_provisioning_failure_after_entitlements_rolls_back_the_exact_case_graph(): void
+    {
+        DB::unprepared(<<<'SQL'
+            CREATE TRIGGER reject_selection_audit
+            BEFORE INSERT ON audit_logs
+            BEGIN
+                SELECT RAISE(ABORT, 'synthetic selection audit failure');
+            END
+            SQL);
+
+        try {
+            $this->signedRequest($this->payload(), 'psychotest-participant:v1:rollback')
+                ->assertServerError();
+        } finally {
+            DB::unprepared('DROP TRIGGER reject_selection_audit');
+        }
+
+        $this->assertDatabaseCount('participants', 0);
+        $this->assertDatabaseCount('assessment_cases', 0);
+        $this->assertDatabaseCount('entitlements', 0);
+        $this->assertDatabaseCount('selection_participants', 0);
+        $this->assertDatabaseCount('audit_logs', 0);
     }
 
     public function test_replay_preserves_the_original_case_when_configured_field_changes(): void
@@ -170,6 +209,23 @@ final class SelectionParticipantProvisioningTest extends TestCase
         $case->refresh();
         $this->assertSame('UMUM', $case->intended_field_snapshot);
         $this->assertDatabaseCount('assessment_cases', 1);
+    }
+
+    public function test_replay_fails_closed_when_a_generic_entitlement_loses_its_case_binding(): void
+    {
+        $payload = $this->payload();
+        $key = 'psychotest-participant:v1:corrupt-entitlement-case';
+        $this->signedRequest($payload, $key)->assertCreated();
+        DB::unprepared('DROP TRIGGER entitlements_case_update_guard');
+        DB::table('entitlements')->where('test_type', 'ist')->update(['assessment_case_id' => null]);
+
+        $this->signedRequest($payload, $key)
+            ->assertConflict()
+            ->assertJsonPath('error.code', 'IDEMPOTENCY_CONFLICT');
+
+        $this->assertDatabaseCount('participants', 1);
+        $this->assertDatabaseCount('assessment_cases', 1);
+        $this->assertDatabaseCount('entitlements', 2);
     }
 
     public function test_idempotency_key_and_candidate_from_different_rows_fail_closed(): void
