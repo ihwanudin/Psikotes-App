@@ -94,9 +94,6 @@ final class CollectiveBillLifecycleCompositionTest extends OrganizationPaymentTe
             $participants[$fixture['attempt']] = $fixture['participant'];
             DB::table('participants')->where('id', $fixture['participant'])->update(['full_name' => 'Composition participant '.($index + 1)]);
             DB::table('packages')->where('id', $fixture['package'])->update(['name' => 'Composition package '.($index + 1)]);
-            DB::table('package_items')->insert([
-                'package_id' => $fixture['package'], 'test_type' => 'dass21', 'sort_order' => 2,
-            ]);
             DB::table('assessment_participants')->where('id', $fixture['attempt'])->update([
                 'funding_mode' => 'INVOICED_TO_ORGANIZATION',
                 'metadata' => '{"checkout_contract_version":"checkout-v2","checkout_initial_funding_mode":null}',
@@ -327,9 +324,6 @@ final class CollectiveBillLifecycleCompositionTest extends OrganizationPaymentTe
         foreach ([$first, $second, $foreign] as $index => $fixture) {
             DB::table('packages')->where('id', $fixture['package'])->update([
                 'name' => 'PRIVATE SOURCE '.($index + 1).' PACKAGE',
-            ]);
-            DB::table('package_items')->insert([
-                'package_id' => $fixture['package'], 'test_type' => 'dass21', 'sort_order' => 2,
             ]);
         }
         $this->assertNotSame($first['attempt'], $second['attempt']);

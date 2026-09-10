@@ -145,9 +145,6 @@ final class ZeroPriceDassPayerIsolationTest extends OrganizationPaymentTestCase
         DB::table('packages')->where('id', $package)->update([
             'name' => 'PRIVATE PACKAGE '.$package, 'consultation_amount' => 50_000,
         ]);
-        DB::table('package_items')->insert([
-            'package_id' => $package, 'test_type' => 'dass21', 'sort_order' => 2,
-        ]);
 
         return compact('organization', 'participant', 'package', 'attempt');
     }
