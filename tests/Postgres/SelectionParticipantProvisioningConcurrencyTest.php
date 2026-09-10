@@ -99,8 +99,12 @@ final class SelectionParticipantProvisioningConcurrencyTest extends TestCase
             $participants = DB::table('participants')->where('branch_id', $this->branchId)->pluck('id');
             $this->assertCount(1, $participants);
             $this->assertSame(1, DB::table('selection_participants')->whereIn('participant_id', $participants)->count());
-            $this->assertSame(1, DB::table('assessment_cases')->where('organization_id', $this->branchId)->count());
+            $case = DB::table('assessment_cases')->where('organization_id', $this->branchId)->sole();
             $this->assertSame(2, DB::table('entitlements')->whereIn('participant_id', $participants)->count());
+            $this->assertSame($case->id, DB::table('entitlements')->whereIn('participant_id', $participants)
+                ->where('test_type', 'ist')->sole()->assessment_case_id);
+            $this->assertNull(DB::table('entitlements')->whereIn('participant_id', $participants)
+                ->where('test_type', 'dass21')->sole()->assessment_case_id);
             $this->assertSame(1, DB::table('audit_logs')->where('branch_id', $this->branchId)
                 ->where('action', 'selection_participant.provisioned')->count());
         });

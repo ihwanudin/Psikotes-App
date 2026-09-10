@@ -8,6 +8,7 @@ use App\Domain\Retention\RetentionDataClass;
 use App\Domain\Retention\RetentionPolicy;
 use App\Models\AssessmentCase;
 use App\Models\Branch;
+use App\Models\Entitlement;
 use App\Models\Participant;
 use App\Models\SelectionParticipant;
 use App\Models\TestPackage;
@@ -122,18 +123,6 @@ final readonly class ProvisionSelectionParticipant
         ]);
 
         $now = now()->toImmutable();
-        $participant->entitlements()->createMany(array_map(
-            static fn (string $testType): array => [
-                'order_id' => null,
-                'test_type' => $testType,
-                'status' => 'ready',
-                'ready_at' => $now,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ],
-            $testTypes,
-        ));
-
         $case = AssessmentCase::query()->create([
             'public_id' => (string) Str::ulid(),
             'participant_id' => $participant->id,
@@ -153,6 +142,19 @@ final readonly class ProvisionSelectionParticipant
             'idempotency_key' => $idempotencyKey,
             'request_hash' => $requestHash,
         ]);
+
+        $participant->entitlements()->createMany(array_map(
+            static fn (string $testType): array => [
+                'order_id' => null,
+                'assessment_case_id' => $testType === 'dass21' ? null : $case->id,
+                'test_type' => $testType,
+                'status' => 'ready',
+                'ready_at' => $now,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            $testTypes,
+        ));
 
         DB::table('audit_logs')->insert([
             'branch_id' => $branch->id,
@@ -202,11 +204,30 @@ final readonly class ProvisionSelectionParticipant
     {
         $this->assertSameRequest($existing, $requestHash);
         $case = $existing->assessmentCase()->first();
-        $organizationId = $existing->participant()->value('branch_id');
+        $participant = $existing->participant()->first();
+        $entitlements = $participant?->entitlements()
+            ->orderBy('id')->lockForUpdate()->get();
         if ($case === null
+            || $participant === null
             || $case->participant_id !== $existing->participant_id
-            || $case->organization_id !== $organizationId
-            || $case->origin !== 'LEGACY_SELECTION') {
+            || $case->organization_id !== $participant->branch_id
+            || $case->origin !== 'LEGACY_SELECTION'
+            || $case->package_id !== null
+            || $case->intended_field_snapshot !== $participant->intended_field
+            || $entitlements === null
+            || $entitlements->count() < 2
+            || $entitlements->pluck('test_type')->unique()->count() !== $entitlements->count()
+            || $entitlements->where('test_type', 'dass21')->count() !== 1
+            || $entitlements->contains(fn (Entitlement $entitlement): bool => $entitlement->order_id !== null)
+            || $entitlements->contains(fn (Entitlement $entitlement): bool => ! in_array(
+                $entitlement->test_type,
+                ['dass21', 'ist', 'kraepelin', 'papi', 'rmib'],
+                true,
+            ))
+            || $entitlements->contains(
+                fn (Entitlement $entitlement): bool => $entitlement->assessment_case_id
+                    !== ($entitlement->test_type === 'dass21' ? null : $case->id),
+            )) {
             throw new IdempotencyConflict;
         }
 
