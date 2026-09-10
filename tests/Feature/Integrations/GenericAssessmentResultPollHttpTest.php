@@ -23,6 +23,7 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use ReflectionMethod;
+use Tests\Support\AssessmentBillingFixture;
 use Tests\TestCase;
 
 final class GenericAssessmentResultPollHttpTest extends TestCase
@@ -301,10 +302,14 @@ final class GenericAssessmentResultPollHttpTest extends TestCase
             'code' => 'R'.$key, 'name' => 'Synthetic result package',
             'amount' => 100, 'currency' => 'IDR', 'is_active' => true,
         ]);
+        $attemptPublicId = (string) Str::ulid();
+        $case = AssessmentBillingFixture::createExactIntegratedCase(
+            $participant->id, $organization->id, $package->id, $attemptPublicId,
+        );
         $assessment = AssessmentParticipant::query()->create([
             'organization_id' => $organization->id, 'integration_client_id' => $client->id,
             'participant_id' => $participant->id, 'package_id' => $package->id,
-            'assessment_attempt_id' => (string) Str::ulid(), 'source_system' => 'RESULT_HTTP_TEST',
+            'assessment_case_id' => $case, 'assessment_attempt_id' => $attemptPublicId, 'source_system' => 'RESULT_HTTP_TEST',
             'external_candidate_id' => $key, 'funding_mode' => 'SPONSORED',
             'assessment_status' => 'UNDER_REVIEW', 'idempotency_key' => $key,
             'request_hash' => hash('sha256', $key),
