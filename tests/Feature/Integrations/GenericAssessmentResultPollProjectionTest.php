@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Integrations;
 
+use App\Models\AssessmentCase;
 use App\Models\AssessmentParticipant;
 use App\Models\Branch;
 use App\Models\GenericAssessmentResultVersion;
@@ -33,6 +34,10 @@ final class GenericAssessmentResultPollProjectionTest extends TestCase
     public function test_it_returns_the_latest_exact_publishable_envelope_without_rounding_and_audits_safely(): void
     {
         [$assessment, $client, $source] = $this->published(iq: 98.75);
+        $resultTimestampsBefore = DB::table('generic_assessment_result_versions')
+            ->where('id', $source->id)
+            ->first(['completed_at', 'created_at', 'revoked_at']);
+        Date::setTestNow('2024-02-29 10:15:00+07:00');
         $selects = 0;
         DB::listen(static function ($query) use (&$selects): void {
             if (str_starts_with(strtolower(ltrim($query->sql)), 'select')) {
@@ -53,9 +58,19 @@ final class GenericAssessmentResultPollProjectionTest extends TestCase
 
         $audit = DB::table('audit_logs')->where('action', 'generic_assessment_result_poll.available')->sole();
         $context = json_decode((string) $audit->context, true, 512, JSON_THROW_ON_ERROR);
-        $this->assertSame(hash('sha256', $assessment->assessment_attempt_id), $context['assessmentAttemptReference']);
-        $this->assertSame(1, $context['resultVersion']);
-        $this->assertSame($source->result_checksum, $context['resultChecksum']);
+        $this->assertSame([
+            'assessmentAttemptReference' => hash('sha256', $assessment->assessment_attempt_id),
+            'resultVersion' => 1,
+            'resultChecksum' => $source->result_checksum,
+            'finality' => 'FINALIZED',
+            'isRevoked' => false,
+        ], $context);
+        $this->assertSame('2024-02-29 03:15:00', $audit->occurred_at);
+        $this->assertSame('2029-02-28 03:15:00', $audit->expires_at);
+        $resultTimestampsAfter = DB::table('generic_assessment_result_versions')
+            ->where('id', $source->id)
+            ->first(['completed_at', 'created_at', 'revoked_at']);
+        $this->assertEquals($resultTimestampsBefore, $resultTimestampsAfter);
         $encoded = json_encode($audit, JSON_THROW_ON_ERROR);
         $this->assertStringNotContainsString($assessment->assessment_attempt_id, $encoded);
         $this->assertStringNotContainsString('98.75', $encoded);
@@ -111,6 +126,7 @@ final class GenericAssessmentResultPollProjectionTest extends TestCase
     {
         [$assessment, $client, $source] = $this->published();
         [, $foreignClient] = $this->assessment();
+        Date::setTestNow('2024-02-29 10:15:00+07:00');
         $poll = app(GenericAssessmentResultPollProjection::class);
 
         foreach ([
@@ -126,7 +142,19 @@ final class GenericAssessmentResultPollProjectionTest extends TestCase
         $audits = DB::table('audit_logs')->where('action', 'generic_assessment_result_poll.unavailable')->get();
         $this->assertCount(4, $audits);
         foreach ($audits as $audit) {
-            $encoded = (string) $audit->context;
+            $context = json_decode((string) $audit->context, true, 512, JSON_THROW_ON_ERROR);
+            $this->assertSame(
+                ['assessmentAttemptReference', 'resultVersion', 'resultChecksum', 'finality', 'isRevoked'],
+                array_keys($context),
+            );
+            $this->assertMatchesRegularExpression('/^[a-f0-9]{64}$/', $context['assessmentAttemptReference']);
+            $this->assertNull($context['resultVersion']);
+            $this->assertNull($context['resultChecksum']);
+            $this->assertNull($context['finality']);
+            $this->assertNull($context['isRevoked']);
+            $this->assertSame('2024-02-29 03:15:00', $audit->occurred_at);
+            $this->assertSame('2029-02-28 03:15:00', $audit->expires_at);
+            $encoded = json_encode($context, JSON_THROW_ON_ERROR);
             $this->assertStringNotContainsString($assessment->assessment_attempt_id, $encoded);
             $this->assertStringNotContainsString('Synthetic participant', $encoded);
             $this->assertStringNotContainsString('synthetic-client-secret', $encoded);
@@ -251,10 +279,20 @@ final class GenericAssessmentResultPollProjectionTest extends TestCase
             'code' => 'R'.$key, 'name' => 'Synthetic result package',
             'amount' => 100, 'currency' => 'IDR', 'is_active' => true,
         ]);
+        $assessmentAttemptId = (string) Str::ulid();
+        $case = AssessmentCase::query()->create([
+            'public_id' => $assessmentAttemptId,
+            'participant_id' => $participant->id,
+            'organization_id' => $organization->id,
+            'package_id' => $package->id,
+            'origin' => 'INTEGRATED',
+            'intended_field_snapshot' => null,
+        ]);
         $assessment = AssessmentParticipant::query()->create([
             'organization_id' => $organization->id, 'integration_client_id' => $client->id,
             'participant_id' => $participant->id, 'package_id' => $package->id,
-            'assessment_attempt_id' => (string) Str::ulid(), 'source_system' => 'RESULT_TEST',
+            'assessment_case_id' => $case->id,
+            'assessment_attempt_id' => $assessmentAttemptId, 'source_system' => 'RESULT_TEST',
             'external_candidate_id' => $key, 'funding_mode' => 'SPONSORED',
             'assessment_status' => 'UNDER_REVIEW', 'idempotency_key' => $key,
             'request_hash' => hash('sha256', $key),

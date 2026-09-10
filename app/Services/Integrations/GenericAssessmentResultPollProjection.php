@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Integrations;
 
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Models\GenericAssessmentResultVersion;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Query\JoinClause;
@@ -13,7 +15,10 @@ use Throwable;
 
 final readonly class GenericAssessmentResultPollProjection
 {
-    public function __construct(private GenericAssessmentResultProjector $projector) {}
+    public function __construct(
+        private GenericAssessmentResultProjector $projector,
+        private RetentionPolicy $retention,
+    ) {}
 
     /**
      * @return array{status:'AVAILABLE'|'REPLAYED',envelope:array<string,mixed>}|array{status:'UNAVAILABLE',envelope:null}
@@ -198,7 +203,8 @@ final readonly class GenericAssessmentResultPollProjection
             'action' => 'generic_assessment_result_poll.unavailable',
             'subject_type' => GenericAssessmentResultVersion::class, 'subject_id' => $sourceId,
             'context' => json_encode($context, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
-            'occurred_at' => $at, 'expires_at' => $at->addYearsNoOverflow(2),
+            'occurred_at' => $at,
+            'expires_at' => $this->retention->expiresAt(RetentionDataClass::Audit, $at),
         ]);
     }
 
@@ -218,7 +224,8 @@ final readonly class GenericAssessmentResultPollProjection
             'action' => 'generic_assessment_result_poll.'.strtolower($status),
             'subject_type' => GenericAssessmentResultVersion::class, 'subject_id' => $sourceId,
             'context' => json_encode($context, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
-            'occurred_at' => $at, 'expires_at' => $at->addYearsNoOverflow(2),
+            'occurred_at' => $at,
+            'expires_at' => $this->retention->expiresAt(RetentionDataClass::Audit, $at),
         ]);
     }
 }
