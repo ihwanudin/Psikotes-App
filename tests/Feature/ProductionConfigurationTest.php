@@ -56,7 +56,10 @@ final class ProductionConfigurationTest extends TestCase
             ['selection_integration.result_callback_base_url', 'https://user:pass@seleksi.beasiswajepang.id', 'SELECTION_RESULT_CALLBACK_BASE_URL_HTTPS_EXACT'],
             ['selection_integration.result_callback_base_url', 'https://seleksi.beasiswajepang.id#fragment', 'SELECTION_RESULT_CALLBACK_BASE_URL_HTTPS_EXACT'],
             ['selection_integration.result_callback_secret', 'too-short', 'SELECTION_RESULT_CALLBACK_SECRET'],
+            ['selection_integration.result_callback_secret', str_repeat('P', 32), 'SELECTION_RESULT_CALLBACK_SECRET'],
+            ['selection_integration.result_callback_secret', 'synthetic callback secret with whitespace 123456789', 'SELECTION_RESULT_CALLBACK_SECRET'],
             ['selection_integration.result_callback_secret', str_repeat('S', 32), 'SELECTION_RESULT_CALLBACK_SECRET_DIRECTIONAL'],
+            ['selection_integration.result_callback_key_id', 'Invalid Key', 'SELECTION_RESULT_CALLBACK_KEY_ID'],
             ['selection_integration.result_callback_timeout_seconds', 1, 'SELECTION_RESULT_CALLBACK_TIMEOUT'],
             ['selection_integration.result_callback_timeout_seconds', 31, 'SELECTION_RESULT_CALLBACK_TIMEOUT'],
         ] as [$key, $value, $expectedRequirement]) {
@@ -94,6 +97,7 @@ final class ProductionConfigurationTest extends TestCase
         $this->assertStringContainsString('SELECTION_RESULT_CALLBACK_ENABLED=false', $example);
         $this->assertStringContainsString('SELECTION_RESULT_CALLBACK_BASE_URL=https://seleksi.beasiswajepang.id', $example);
         $this->assertStringContainsString('SELECTION_RESULT_CALLBACK_SECRET=', $example);
+        $this->assertStringContainsString('SELECTION_RESULT_CALLBACK_KEY_ID=', $example);
         $this->assertStringContainsString('SELECTION_RESULT_CALLBACK_TIMEOUT_SECONDS=10', $example);
     }
 
@@ -234,7 +238,8 @@ PHP;
             'selection_integration.allow_insecure_local_http' => false,
             'selection_integration.result_callback_enabled' => true,
             'selection_integration.result_callback_base_url' => 'https://seleksi.beasiswajepang.id',
-            'selection_integration.result_callback_secret' => str_repeat('P', 32),
+            'selection_integration.result_callback_secret' => 'synthetic-callback-secret-2026-10-ABCDEFGH',
+            'selection_integration.result_callback_key_id' => 'psychotest-2026-10',
             'selection_integration.result_callback_timeout_seconds' => 10,
         ]);
     }

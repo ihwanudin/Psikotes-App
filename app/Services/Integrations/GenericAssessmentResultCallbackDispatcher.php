@@ -40,7 +40,7 @@ final readonly class GenericAssessmentResultCallbackDispatcher
         string $resultChecksum,
         string $leaseToken,
     ): array {
-        [$url, $secret, $timeout] = $this->configuration();
+        [$url, $secret, $timeout, $keyId] = $this->configuration();
         [$envelope, $claim] = $this->runner->run(new RlsContext('service'), function () use (
             $outboxId,
             $resultVersionId,
@@ -64,16 +64,20 @@ final readonly class GenericAssessmentResultCallbackDispatcher
         }
 
         $timestamp = (string) now()->timestamp;
-        $signature = $this->signer->sign($timestamp, 'POST', self::PATH, '', $body, $secret);
+        $signature = $this->signer->sign($timestamp, 'POST', self::PATH, '', $body, $secret, $keyId);
+        $headers = [
+            'X-Psychotest-Timestamp' => $timestamp,
+            'X-Psychotest-Contract' => self::CONTRACT,
+            'X-Psychotest-Contract-Version' => self::CONTRACT_VERSION,
+            'X-Psychotest-Signature-Version' => 'v2',
+            'X-Psychotest-Signature' => $signature,
+        ];
+        if ($keyId !== null) {
+            $headers['X-Psychotest-Key-Id'] = $keyId;
+        }
         try {
             $response = Http::acceptJson()
-                ->withHeaders([
-                    'X-Psychotest-Timestamp' => $timestamp,
-                    'X-Psychotest-Contract' => self::CONTRACT,
-                    'X-Psychotest-Contract-Version' => self::CONTRACT_VERSION,
-                    'X-Psychotest-Signature-Version' => 'v2',
-                    'X-Psychotest-Signature' => $signature,
-                ])
+                ->withHeaders($headers)
                 ->withOptions(['allow_redirects' => false])
                 ->connectTimeout($timeout)
                 ->timeout($timeout)
@@ -96,11 +100,12 @@ final readonly class GenericAssessmentResultCallbackDispatcher
         ));
     }
 
-    /** @return array{string,string,int} */
+    /** @return array{string,string,int,?string} */
     private function configuration(): array
     {
         $baseUrl = config('selection_integration.result_callback_base_url');
         $secret = config('selection_integration.result_callback_secret');
+        $keyId = config('selection_integration.result_callback_key_id');
         $inboundSecret = config('selection_integration.client_secret');
         $timeout = (int) config('selection_integration.result_callback_timeout_seconds', 10);
         $parts = is_string($baseUrl) ? parse_url($baseUrl) : false;
@@ -112,13 +117,14 @@ final readonly class GenericAssessmentResultCallbackDispatcher
             || filter_var($host, FILTER_VALIDATE_IP) !== false
             || ! in_array($parts['path'] ?? '', ['', '/'], true)
             || isset($parts['port']) && (int) $parts['port'] !== 443
-            || ! is_string($secret) || strlen($secret) < 32
+            || ! is_string($secret) || ! PsychotestSelectionRequestSigner::acceptsSecret($secret)
+            || ! PsychotestSelectionRequestSigner::acceptsKeyId($keyId)
             || (is_string($inboundSecret) && hash_equals($inboundSecret, $secret))
             || $timeout < 2 || $timeout > 30) {
             throw new LogicException('ASSESSMENT_RESULT_CALLBACK_CONFIG_INVALID');
         }
 
-        return [rtrim($baseUrl, '/').self::PATH, $secret, $timeout];
+        return [rtrim($baseUrl, '/').self::PATH, $secret, $timeout, is_string($keyId) ? $keyId : null];
     }
 
     /** @return array<string,mixed> */
