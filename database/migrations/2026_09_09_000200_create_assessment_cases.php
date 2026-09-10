@@ -299,7 +299,7 @@ return new class extends Migration
                 Schema::drop('assessment_cases');
 
                 foreach ($dependentTriggers as $trigger) {
-                    DB::unprepared((string) $trigger->sql);
+                    $this->executeSqliteSchemaSql((string) $trigger->sql);
                 }
                 if (DB::select('PRAGMA foreign_key_check') !== []) {
                     throw new RuntimeException('Assessment case rollback would violate existing foreign keys.');
@@ -325,6 +325,7 @@ return new class extends Migration
         $column = ', assessment_case_id INTEGER NULL REFERENCES assessment_cases(id) ON DELETE RESTRICT';
         $withoutColumn = str_replace($column, '', $createSql, $replacements);
         if ($replacements === 0) {
+            $columnReplacements = 0;
             $withoutColumn = preg_replace(
                 '/,\s*foreign key\("assessment_case_id"\) references assessment_cases\("id"\) on delete restrict on update no action/i',
                 '',
@@ -372,12 +373,19 @@ return new class extends Migration
             ->map(fn (string $name): string => '"'.str_replace('"', '""', $name).'"')
             ->implode(', ');
 
-        DB::unprepared($temporarySql);
+        $this->executeSqliteSchemaSql($temporarySql);
         DB::statement("INSERT INTO {$quotedTemporary} ({$columns}) SELECT {$columns} FROM {$quotedTable}");
         DB::statement("DROP TABLE {$quotedTable}");
         DB::statement("ALTER TABLE {$quotedTemporary} RENAME TO {$quotedTable}");
         foreach ($indexes as $index) {
-            DB::unprepared((string) $index->sql);
+            $this->executeSqliteSchemaSql((string) $index->sql);
+        }
+    }
+
+    private function executeSqliteSchemaSql(string $sql): void
+    {
+        if (DB::connection()->getPdo()->exec($sql) === false) {
+            throw new RuntimeException('SQLite assessment case schema restoration failed.');
         }
     }
 };

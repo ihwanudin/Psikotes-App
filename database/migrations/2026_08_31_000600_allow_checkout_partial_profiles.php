@@ -131,7 +131,14 @@ return new class extends Migration
             }
         }
         foreach ($dependentTriggers as $trigger) {
-            DB::unprepared((string) $trigger->sql);
+            $this->executeSqliteSchemaSql((string) $trigger->sql);
+        }
+    }
+
+    private function executeSqliteSchemaSql(string $sql): void
+    {
+        if (DB::connection()->getPdo()->exec($sql) === false) {
+            throw new RuntimeException('SQLite dependent trigger restoration failed.');
         }
     }
 };
