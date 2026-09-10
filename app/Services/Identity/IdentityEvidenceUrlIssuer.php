@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Identity;
 
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Models\Admin;
 use App\Models\IdentityEvidence;
 use App\Security\RlsContext;
@@ -15,7 +17,10 @@ use Illuminate\Support\Facades\Storage;
 
 final readonly class IdentityEvidenceUrlIssuer
 {
-    public function __construct(private RlsContextRunner $runner) {}
+    public function __construct(
+        private RlsContextRunner $runner,
+        private RetentionPolicy $retention,
+    ) {}
 
     /** @return array{url: string, expires_at: string} */
     public function issue(Admin $admin, string $publicId): array
@@ -43,7 +48,8 @@ final readonly class IdentityEvidenceUrlIssuer
             },
         );
 
-        $this->runner->run(new RlsContext('service'), function () use ($admin, $evidence, $expiresAt): void {
+        $occurredAt = CarbonImmutable::now()->utc();
+        $this->runner->run(new RlsContext('service'), function () use ($admin, $evidence, $expiresAt, $occurredAt): void {
             DB::table('audit_logs')->insert([
                 'branch_id' => $evidence->participant->branch_id,
                 'actor_type' => 'admin',
@@ -55,8 +61,8 @@ final readonly class IdentityEvidenceUrlIssuer
                     'evidence_type' => $evidence->type,
                     'url_expires_at' => $expiresAt->toIso8601String(),
                 ], JSON_THROW_ON_ERROR),
-                'occurred_at' => now(),
-                'expires_at' => now()->addYears(2),
+                'occurred_at' => $occurredAt,
+                'expires_at' => $this->retention->expiresAt(RetentionDataClass::Audit, $occurredAt),
             ]);
         });
 

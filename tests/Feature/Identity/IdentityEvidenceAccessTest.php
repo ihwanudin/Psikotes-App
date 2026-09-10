@@ -11,6 +11,7 @@ use App\Models\IdentityEvidence;
 use App\Models\Participant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -21,7 +22,7 @@ final class IdentityEvidenceAccessTest extends TestCase
 
     public function test_authorized_admin_gets_a_short_lived_url_and_the_access_is_audited(): void
     {
-        Carbon::setTestNow('2026-08-25 10:00:00');
+        Carbon::setTestNow('2024-02-29 10:15:00+07:00');
         Storage::fake('identity');
         [$branch, $participant, $evidence] = $this->evidence('A');
         $admin = $this->admin(AdminRole::Staff, $branch);
@@ -39,6 +40,24 @@ final class IdentityEvidenceAccessTest extends TestCase
             now()->addMinutes(15)->toIso8601String(),
             $response->json('expires_at'),
         );
+        $audit = (array) DB::table('audit_logs')->sole();
+        $this->assertSame('2024-02-29 03:15:00', $audit['occurred_at']);
+        $this->assertSame('2029-02-28 03:15:00', $audit['expires_at']);
+        $this->assertSame([
+            'evidence_type' => 'identity_document',
+            'url_expires_at' => $response->json('expires_at'),
+        ], json_decode((string) $audit['context'], true, 512, JSON_THROW_ON_ERROR));
+        foreach ([
+            $response->json('url'),
+            $evidence->object_key,
+            $participant->full_name,
+            $participant->phone,
+            $participant->birth_date?->format('Y-m-d'),
+            $admin->name,
+            $admin->email,
+        ] as $privateValue) {
+            $this->assertStringNotContainsString((string) $privateValue, (string) $audit['context']);
+        }
         $this->assertDatabaseHas('audit_logs', [
             'branch_id' => $branch->id,
             'actor_type' => 'admin',
@@ -47,6 +66,13 @@ final class IdentityEvidenceAccessTest extends TestCase
             'subject_type' => IdentityEvidence::class,
             'subject_id' => (string) $evidence->public_id,
         ]);
+
+        Carbon::setTestNow('2024-02-29 10:20:00+07:00');
+        $this->actingAs($admin, 'admin')
+            ->postJson("/admin/identity-evidence/{$evidence->public_id}/temporary-url")
+            ->assertOk();
+
+        $this->assertDatabaseCount('audit_logs', 2);
     }
 
     public function test_unauthenticated_and_cross_branch_access_are_denied_without_audit_or_url(): void
