@@ -298,3 +298,13 @@ Only task `2469` may edit migrations. No worker may edit routes, lockfiles, ADR
 numbering, or canonical checklists in this wave. Shared contracts must use the
 exclusive ownership recorded above and be integrated by the coordinator before
 any dependent allocator slice begins.
+
+## Psychotest integration convergence — 2026-09-10
+
+The callback/keyring integration branch is being converged on
+`integration/psychotest-current`. The detailed commit and verification record is
+[`tasks/handoffs/integration-2026-09-10-psychotest-current.md`](handoffs/integration-2026-09-10-psychotest-current.md).
+The full SQLite suite is green at 3,214 tests / 20,593 assertions. Independent
+review, Pint, PHPStan, the frontend build, dependency audits, and Compose config
+all passed; the canonical integration branch is ready to push. `main` and the
+active organization payment worktree remain untouched.
