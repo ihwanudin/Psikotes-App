@@ -424,7 +424,7 @@ final class AssessmentBillManualReviewTest extends OrganizationPaymentTestCase
                 'checkout_initial_funding_mode' => 'INVOICED_TO_ORGANIZATION',
             ], JSON_THROW_ON_ERROR),
         ]);
-        DB::table('assessment_entitlements')->where('id', $fixture['entitlement'])
+        DB::table('assessment_entitlements')->where('assessment_participant_id', $fixture['attempt'])
             ->update(['status' => 'locked', 'ready_at' => null]);
         DB::table('assessment_bill_items')->where('id', $fixture['item'])->update(['settled_at' => null]);
         $method = (int) DB::table('assessment_bills')->where('id', $fixture['bill'])->value('payment_method_id');

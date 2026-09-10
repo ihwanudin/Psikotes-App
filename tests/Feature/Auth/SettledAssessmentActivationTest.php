@@ -37,7 +37,8 @@ final class SettledAssessmentActivationTest extends OrganizationPaymentTestCase
     {
         $f = Fixture::create(identity: $identity);
         DB::table('assessment_participants')->where('id', $f['attempt'])->update(['assessment_status' => 'PROVISIONED']);
-        DB::table('assessment_entitlements')->where('id', $f['entitlement'])->update(['status' => 'locked', 'ready_at' => null]);
+        DB::table('assessment_entitlements')->where('assessment_participant_id', $f['attempt'])
+            ->update(['status' => 'locked', 'ready_at' => null]);
 
         return $f;
     }
@@ -52,7 +53,7 @@ final class SettledAssessmentActivationTest extends OrganizationPaymentTestCase
 
     public function test_settlement_activates_once_with_atomic_outbox_and_audit(): void
     {
-        $this->assertSame(['ist'], $this->activate());
+        $this->assertSame(['dass21', 'ist'], $this->activate());
         $readyAt = AssessmentEntitlement::findOrFail($this->f['entitlement'])->ready_at;
         $this->travel(1)->minutes();
         $this->assertSame([], $this->activate());
@@ -102,8 +103,8 @@ final class SettledAssessmentActivationTest extends OrganizationPaymentTestCase
     public function test_missing_entitlements_are_created_only_for_purchased_tests(): void
     {
         DB::table('assessment_entitlements')->delete();
-        $this->assertSame(['ist'], $this->activate());
-        $this->assertDatabaseCount('assessment_entitlements', 1);
+        $this->assertSame(['dass21', 'ist'], $this->activate());
+        $this->assertDatabaseCount('assessment_entitlements', 2);
     }
 
     public function test_one_incomplete_member_does_not_block_others_and_can_retry_without_rebilling(): void
@@ -113,20 +114,15 @@ final class SettledAssessmentActivationTest extends OrganizationPaymentTestCase
         DB::table('assessment_bills')->where('id', $this->f['bill'])->update(['amount' => 200, 'item_count' => 2]);
         DB::table('consent_records')->where('participant_id', $other['participant'])->update(['status' => 'declined']);
         $this->assertSame([], $this->activate($other));
-        $this->assertSame(['ist'], $this->activate());
+        $this->assertSame(['dass21', 'ist'], $this->activate());
         DB::table('consent_records')->where('participant_id', $other['participant'])->update(['status' => 'accepted']);
-        $this->assertSame(['ist'], $this->activate($other));
+        $this->assertSame(['dass21', 'ist'], $this->activate($other));
         $this->assertDatabaseCount('outbox_messages', 2);
         $this->assertDatabaseCount('assessment_bill_items', 2);
     }
 
     public function test_dass_decline_does_not_block_main_test_and_later_consent_does_not_duplicate_notification(): void
     {
-        $charge = AssessmentCharge::findOrFail($this->f['charge']);
-        $snapshot = $charge->price_snapshot;
-        $snapshot['testTypes'][] = 'dass21';
-        sort($snapshot['testTypes']);
-        $charge->update(['price_snapshot' => $snapshot]);
         DB::table('consent_records')->where('consent_type', 'dass')->update(['status' => 'declined']);
         $this->assertSame(['ist'], $this->activate());
         $this->assertDatabaseMissing('assessment_entitlements', ['test_type' => 'dass21', 'status' => 'ready']);
@@ -139,7 +135,7 @@ final class SettledAssessmentActivationTest extends OrganizationPaymentTestCase
     {
         $other = $this->pending($this->f);
         DB::table('assessment_bill_items')->where('id', $other['item'])->update(['settled_at' => null]);
-        $this->assertSame(['ist'], $this->activate());
+        $this->assertSame(['dass21', 'ist'], $this->activate());
         $this->assertSame([], $this->activate($other));
         $this->assertSame([], $this->activate([...$this->f, 'attempt' => $other['attempt'], 'participant' => 99999]));
         $this->assertDatabaseCount('outbox_messages', 1);
@@ -183,7 +179,7 @@ final class SettledAssessmentActivationTest extends OrganizationPaymentTestCase
         $charge->update(['base_amount' => 0, 'amount' => 0, 'price_snapshot' => $snapshot]);
         $this->assertSame([], $this->activate());
         $charge->update(['free_settled_at' => now()]);
-        $this->assertSame(['ist'], $this->activate());
+        $this->assertSame(['dass21', 'ist'], $this->activate());
         $this->assertDatabaseCount('orders', 0);
     }
 
@@ -207,7 +203,7 @@ final class SettledAssessmentActivationTest extends OrganizationPaymentTestCase
             $this->assertDatabaseHas('assessment_entitlements', ['id' => $this->f['entitlement'], 'status' => 'locked']);
             $this->assertDatabaseCount('outbox_messages', 0);
         });
-        $this->assertSame(['ist'], $this->activate());
+        $this->assertSame(['dass21', 'ist'], $this->activate());
         $this->assertSame([], $this->activate());
         $this->assertDatabaseCount('outbox_messages', 1);
     }
