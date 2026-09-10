@@ -6,6 +6,8 @@ namespace App\Actions\Registration;
 
 use App\Actions\Payments\ActivateSettledAssessment;
 use App\Data\Integrations\IntegratedCheckoutConfirmationInput;
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Models\AssessmentParticipant;
 use App\Models\Branch;
 use App\Models\CheckoutHandoff;
@@ -36,6 +38,7 @@ final readonly class ConfirmIntegratedCheckout
         private RlsContextRunner $contexts,
         private ActivateSettledAssessment $activation,
         private CheckoutHandoffHistoryValidator $history,
+        private RetentionPolicy $retention,
     ) {}
 
     /** @return array{replayed:bool,profileFieldsCompleted:int,consentsRecorded:int,activatedTestTypes:list<string>} */
@@ -175,7 +178,8 @@ final readonly class ConfirmIntegratedCheckout
                 'actor_id' => $session->public_id, 'action' => 'checkout.confirmed',
                 'subject_type' => AssessmentParticipant::class, 'subject_id' => (string) $attempt->id,
                 'context' => json_encode($this->auditContext($input, $history['nextGeneration']), JSON_THROW_ON_ERROR),
-                'occurred_at' => $now, 'expires_at' => $now->addYearsNoOverflow(2)]);
+                'occurred_at' => $now,
+                'expires_at' => $this->retention->expiresAt(RetentionDataClass::Audit, $now)]);
 
             return ['replayed' => false, 'profileFieldsCompleted' => count($missing), 'consentsRecorded' => $recorded,
                 'principal' => new AssessmentPrincipal($participant->id, $organization->id, $attempt->id)];
@@ -448,7 +452,7 @@ final readonly class ConfirmIntegratedCheckout
                     $this->consentRecordTimestamp($record, 'withdrawn_at')),
             ], JSON_THROW_ON_ERROR),
             'occurred_at' => $now,
-            'expires_at' => $now->addYearsNoOverflow(2),
+            'expires_at' => $this->retention->expiresAt(RetentionDataClass::Audit, $now),
         ]);
     }
 

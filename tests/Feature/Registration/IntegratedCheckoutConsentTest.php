@@ -9,6 +9,8 @@ use App\Actions\Integrations\IssueCheckoutHandoff;
 use App\Actions\Registration\ConfirmIntegratedCheckout;
 use App\Data\Integrations\CheckoutHandoffIssueInput;
 use App\Data\Integrations\CheckoutSessionExchangeInput;
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Enums\CheckoutHandoffIntent;
 use App\Http\Middleware\AuthenticateCheckoutSession;
 use App\Http\Middleware\ProtectCheckoutSessionHttpBoundary;
@@ -22,6 +24,7 @@ use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
 use App\Services\Integrations\CheckoutSessionHttpContract;
 use App\Services\Payments\AssessmentPriceSnapshot;
+use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -230,6 +233,10 @@ final class IntegratedCheckoutConsentTest extends OrganizationPaymentTestCase
         $fixture = $this->established();
         $this->acceptCurrentConsents($fixture['participant'], ['psychotest']);
         $payload = $this->writerPayload(['dass']);
+        $sessionBefore = DB::table('checkout_sessions')->where('assessment_participant_id', $fixture['attempt'])
+            ->sole(['idle_expires_at', 'absolute_expires_at']);
+        $handoffBefore = DB::table('checkout_handoffs')->where('assessment_participant_id', $fixture['attempt'])
+            ->sole(['expires_at']);
 
         $this->mutation($fixture, $payload, path: '/checkout/_test/confirm-write')
             ->assertOk()->assertExactJson([
@@ -243,6 +250,23 @@ final class IntegratedCheckoutConsentTest extends OrganizationPaymentTestCase
         $this->assertSame(['version', 'generation', 'sessionPublicId', 'requestHash'], array_keys($context));
         $this->assertSame(2, $context['version']);
         $this->assertSame(1, $context['generation']);
+        $anchor = CarbonImmutable::parse((string) $audit->occurred_at)->utc();
+        $this->assertSame(
+            app(RetentionPolicy::class)->expiresAt(RetentionDataClass::Audit, $anchor)->format('Y-m-d H:i:s.uP'),
+            CarbonImmutable::parse((string) $audit->expires_at)->utc()->format('Y-m-d H:i:s.uP'),
+        );
+        $this->assertSame(
+            '2029-02-28 03:15:00.000000+00:00',
+            app(RetentionPolicy::class)->expiresAt(
+                RetentionDataClass::Audit,
+                CarbonImmutable::parse('2024-02-29 10:15:00+07:00')->utc(),
+            )->format('Y-m-d H:i:s.uP'),
+        );
+        $this->assertEquals($sessionBefore, DB::table('checkout_sessions')
+            ->where('assessment_participant_id', $fixture['attempt'])
+            ->sole(['idle_expires_at', 'absolute_expires_at']));
+        $this->assertEquals($handoffBefore, DB::table('checkout_handoffs')
+            ->where('assessment_participant_id', $fixture['attempt'])->sole(['expires_at']));
         $this->assertStringNotContainsString('dass', strtolower((string) $audit->context));
         $this->assertStringNotContainsString('psychotest', strtolower((string) $audit->context));
         $this->assertStringNotContainsString(ConsentDocument::for('dass')->version, (string) $audit->context);
@@ -334,6 +358,20 @@ final class IntegratedCheckoutConsentTest extends OrganizationPaymentTestCase
                 'previousConsentedAt' => $previousConsentedAt?->format('Y-m-d\TH:i:s\Z'),
                 'previousWithdrawnAt' => $previousWithdrawnAt?->format('Y-m-d\TH:i:s\Z'),
             ], json_decode((string) $audit->context, true, flags: JSON_THROW_ON_ERROR));
+            $anchor = CarbonImmutable::parse((string) $audit->occurred_at)->utc();
+            $this->assertSame(
+                app(RetentionPolicy::class)->expiresAt(RetentionDataClass::Audit, $anchor)->format('Y-m-d H:i:s.uP'),
+                CarbonImmutable::parse((string) $audit->expires_at)->utc()->format('Y-m-d H:i:s.uP'),
+            );
+            $this->assertSame(
+                '2029-02-28 03:15:00.000000+00:00',
+                app(RetentionPolicy::class)->expiresAt(
+                    RetentionDataClass::Audit,
+                    CarbonImmutable::parse('2024-02-29 10:15:00+07:00')->utc(),
+                )->format('Y-m-d H:i:s.uP'),
+            );
+            $this->assertStringNotContainsString('620000000000', (string) $audit->context);
+            $this->assertStringNotContainsString($document->hash, (string) $audit->context);
 
             $before = DB::table('audit_logs')->count();
             $this->mutation($fixture, $payload, path: '/checkout/_test/confirm-write')
@@ -749,9 +787,20 @@ final class IntegratedCheckoutConsentTest extends OrganizationPaymentTestCase
             ['package_id' => $package, 'test_type' => 'dass21', 'sort_order' => 2],
         ]);
         $attemptPublicId = (string) Str::ulid();
+        $case = DB::table('assessment_cases')->insertGetId([
+            'public_id' => $attemptPublicId,
+            'participant_id' => $participant,
+            'organization_id' => $organization,
+            'package_id' => $package,
+            'origin' => 'INTEGRATED',
+            'intended_field_snapshot' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         $attempt = DB::table('assessment_participants')->insertGetId([
             'organization_id' => $organization, 'integration_client_id' => $client,
             'participant_id' => $participant, 'package_id' => $package,
+            'assessment_case_id' => $case,
             'assessment_attempt_id' => $attemptPublicId, 'source_system' => $sourceSystem,
             'external_candidate_id' => $key, 'funding_mode' => 'COMMERCIAL_SELF_PAY',
             'assessment_status' => 'PROVISIONED', 'idempotency_key' => $key,
