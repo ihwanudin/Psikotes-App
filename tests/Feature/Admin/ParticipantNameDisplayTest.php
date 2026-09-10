@@ -24,6 +24,7 @@ use Illuminate\Support\Str;
 use Livewire\Livewire;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\OrganizationPaymentTestCase;
+use Tests\Support\AssessmentBillingFixture;
 
 final class ParticipantNameDisplayTest extends OrganizationPaymentTestCase
 {
@@ -122,12 +123,18 @@ final class ParticipantNameDisplayTest extends OrganizationPaymentTestCase
     {
         $participant = Participant::create(['branch_id' => $branch->id, 'referral_branch_id' => $branch->id,
             'referral_source' => 'default', 'full_name' => $name, 'gender' => 'female', 'birth_date' => '2000-01-01',
-            'education_level' => 'SMA_SMK', 'intended_field' => 'UMUM', 'phone' => '620000000000']);
+            'education_level' => 'SMA_SMK', 'intended_field' => 'UMUM', 'phone' => '620000000000',
+            'source_system' => 'DISPLAY']);
         $package = TestPackage::create(['code' => 'DISPLAY-'.$suffix, 'name' => 'Synthetic', 'amount' => 100, 'currency' => 'IDR']);
         $client = IntegrationClient::create(['organization_id' => $branch->id, 'client_id' => 'display-'.$suffix,
             'credential_reference' => 'synthetic-only']);
+        $attemptPublicId = (string) Str::ulid();
+        $case = AssessmentBillingFixture::createExactIntegratedCase(
+            $participant->id, $branch->id, $package->id, $attemptPublicId,
+        );
         $attempt = AssessmentParticipant::create(['organization_id' => $branch->id, 'integration_client_id' => $client->id,
-            'participant_id' => $participant->id, 'package_id' => $package->id, 'assessment_attempt_id' => (string) Str::ulid(),
+            'participant_id' => $participant->id, 'package_id' => $package->id, 'assessment_case_id' => $case,
+            'assessment_attempt_id' => $attemptPublicId,
             'source_system' => 'DISPLAY', 'external_candidate_id' => 'CANDIDATE-'.$suffix, 'funding_mode' => 'COMMERCIAL_SELF_PAY',
             'assessment_status' => 'PROVISIONED', 'idempotency_key' => 'display-'.$suffix,
             'request_hash' => hash('sha256', $suffix), 'logical_assessment_key' => hash('sha256', 'display-'.$suffix)]);

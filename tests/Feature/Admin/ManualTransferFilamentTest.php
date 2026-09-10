@@ -110,6 +110,7 @@ final class ManualTransferFilamentTest extends TestCase
             'education_level' => 'SMA/SMK',
             'intended_field' => 'KAIGO',
             'phone' => '+6281234567890',
+            'source_system' => 'MANUAL_TRANSFER_TEST',
         ]);
         $method = PaymentMethod::query()->where('code', 'manual_transfer')->first();
 
