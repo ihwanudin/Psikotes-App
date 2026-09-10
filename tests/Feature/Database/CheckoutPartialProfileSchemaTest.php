@@ -45,6 +45,7 @@ final class CheckoutPartialProfileSchemaTest extends OrganizationPaymentTestCase
         $participant = DB::table('participants')->find($f['participant']);
         $attempt = DB::table('assessment_participants')->find($f['attempt']);
         $structures = $this->structure();
+        $triggers = $this->profileDependentTriggers();
         $this->migration()->down();
         $this->assertNullable(false);
         $this->assertEquals($participant, DB::table('participants')->find($f['participant']));
@@ -52,6 +53,7 @@ final class CheckoutPartialProfileSchemaTest extends OrganizationPaymentTestCase
         $this->migration()->up();
         $this->assertNullable(true);
         $this->assertEquals($structures, $this->structure());
+        $this->assertSame($triggers, $this->profileDependentTriggers());
         $this->assertEquals($participant, DB::table('participants')->find($f['participant']));
         $this->assertEquals($attempt, DB::table('assessment_participants')->find($f['attempt']));
         $this->assertSame([], DB::select('PRAGMA foreign_key_check'));
@@ -195,5 +197,20 @@ final class CheckoutPartialProfileSchemaTest extends OrganizationPaymentTestCase
         }
 
         return $result;
+    }
+
+    /** @return array<string, string> */
+    private function profileDependentTriggers(): array
+    {
+        return collect(DB::select(<<<'SQL'
+            SELECT name, sql
+            FROM sqlite_master
+            WHERE type = 'trigger'
+              AND (sql LIKE '%participants%' OR sql LIKE '%assessment_participants%')
+              AND sql IS NOT NULL
+            ORDER BY name
+            SQL))->mapWithKeys(static fn (object $trigger): array => [
+            (string) $trigger->name => (string) $trigger->sql,
+        ])->all();
     }
 }

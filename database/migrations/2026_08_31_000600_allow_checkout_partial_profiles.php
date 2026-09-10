@@ -92,8 +92,11 @@ return new class extends Migration
             SELECT name, sql
             FROM sqlite_master
             WHERE type = 'trigger'
-              AND tbl_name NOT IN ('participants', 'assessment_participants')
               AND (sql LIKE '%participants%' OR sql LIKE '%assessment_participants%')
+              AND name NOT IN (
+                  'assessment_participants_checkout_funding_insert',
+                  'assessment_participants_checkout_funding_update'
+              )
               AND sql IS NOT NULL
             ORDER BY name
             SQL));
