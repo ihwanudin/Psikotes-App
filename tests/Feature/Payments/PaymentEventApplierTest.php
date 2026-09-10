@@ -6,10 +6,8 @@ namespace Tests\Feature\Payments;
 
 use App\Data\Payments\PaymentEvent;
 use App\Enums\PaymentStatus;
-use App\Models\Branch;
 use App\Models\Entitlement;
 use App\Models\Order;
-use App\Models\Participant;
 use App\Services\Payments\Exceptions\InvalidOrderTransition;
 use App\Services\Payments\Exceptions\PaymentAmountMismatch;
 use App\Services\Payments\Exceptions\PaymentReferenceMismatch;
@@ -17,9 +15,8 @@ use App\Services\Payments\OrderPaymentEventHandler;
 use App\Services\Payments\PaymentEventApplier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Date;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use LogicException;
+use Tests\Support\DirectPublicOrderFixture;
 use Tests\TestCase;
 
 final class PaymentEventApplierTest extends TestCase
@@ -46,6 +43,7 @@ final class PaymentEventApplierTest extends TestCase
         $this->assertSame('expired', $order->fresh()->status->value);
         $this->assertSame('locked', $entitlement->fresh()->status);
         $this->assertNull($entitlement->fresh()->ready_at);
+        $this->assertEntitlements($order, 'locked');
     }
 
     public function test_valid_paid_event_updates_order_and_unlocks_entitlement_atomically(): void
@@ -61,6 +59,7 @@ final class PaymentEventApplierTest extends TestCase
         $this->assertTrue($order->fresh()->paid_at->equalTo(Date::now()));
         $this->assertSame('ready', $entitlement->fresh()->status);
         $this->assertTrue($entitlement->fresh()->ready_at->equalTo(Date::now()));
+        $this->assertEntitlements($order, 'ready');
     }
 
     public function test_replayed_paid_event_is_a_no_op(): void
@@ -80,6 +79,7 @@ final class PaymentEventApplierTest extends TestCase
         $this->assertFalse($replay->unlocksEntitlements);
         $this->assertTrue($order->fresh()->paid_at->equalTo($paidAt));
         $this->assertTrue($entitlement->fresh()->ready_at->equalTo($readyAt));
+        $this->assertEntitlements($order, 'ready');
     }
 
     public function test_reordered_terminal_event_is_rejected_without_partial_changes(): void
@@ -94,6 +94,7 @@ final class PaymentEventApplierTest extends TestCase
         } catch (InvalidOrderTransition) {
             $this->assertSame('paid', $order->fresh()->status->value);
             $this->assertSame('ready', $entitlement->fresh()->status);
+            $this->assertEntitlements($order, 'ready');
         }
     }
 
@@ -117,6 +118,7 @@ final class PaymentEventApplierTest extends TestCase
         } catch (PaymentReferenceMismatch) {
             $this->assertSame('pending', $order->fresh()->status->value);
             $this->assertSame('locked', $entitlement->fresh()->status);
+            $this->assertEntitlements($order, 'locked');
         }
     }
 
@@ -156,6 +158,7 @@ final class PaymentEventApplierTest extends TestCase
         } catch (PaymentAmountMismatch) {
             $this->assertSame('pending', $order->fresh()->status->value);
             $this->assertSame('locked', $entitlement->fresh()->status);
+            $this->assertEntitlements($order, 'locked');
         }
     }
 
@@ -177,90 +180,22 @@ final class PaymentEventApplierTest extends TestCase
         } catch (PaymentReferenceMismatch) {
             $this->assertSame('pending', $order->fresh()->status->value);
             $this->assertSame('locked', $entitlement->fresh()->status);
+            $this->assertEntitlements($order, 'locked');
         }
     }
 
     /** @return array{Order, Entitlement} */
     private function orderWithLockedEntitlement(): array
     {
-        $branch = Branch::query()->create([
-            'code' => 'CENTRAL',
-            'name' => 'LSI Pusat',
-            'ref_code' => 'CENTRAL-REF',
-            'is_default' => true,
-        ]);
-        $packageId = $this->directPackage();
-        $participant = Participant::query()->create([
-            'branch_id' => $branch->id,
-            'referral_branch_id' => $branch->id,
-            'referral_source' => 'default',
-            'package_id' => $packageId,
-            'source_system' => 'DIRECT_PUBLIC',
-            'full_name' => 'Ayu Pratiwi',
-            'gender' => 'female',
-            'birth_date' => '2001-04-15',
-            'education_level' => 'SMA/SMK',
-            'intended_field' => 'KAIGO',
-            'phone' => '+6281234567890',
-            'test_number' => 'LSI-202608-000001-ABCDEF',
-        ]);
-        $paymentMethodId = DB::table('payment_methods')->insertGetId([
-            'code' => 'fake',
-            'display_name' => 'Fake Provider',
-            'is_active' => false,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-        $orderPublicId = (string) Str::ulid();
-        $caseId = DB::table('assessment_cases')->insertGetId([
-            'public_id' => $orderPublicId,
-            'participant_id' => $participant->id,
-            'organization_id' => $branch->id,
-            'package_id' => $packageId,
-            'origin' => 'DIRECT_PUBLIC',
-            'intended_field_snapshot' => $participant->intended_field,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-        $order = Order::query()->create([
-            'public_id' => $orderPublicId,
-            'participant_id' => $participant->id,
-            'assessment_case_id' => $caseId,
-            'payment_method_id' => $paymentMethodId,
-            'status' => 'pending',
-            'amount' => 350_000,
-            'currency' => 'IDR',
-            'gateway_ref' => 'fake-provider-reference',
-            'expires_at' => Date::now()->addHour(),
-        ]);
-        $entitlement = Entitlement::query()->create([
-            'participant_id' => $participant->id,
-            'order_id' => $order->id,
-            'test_type' => 'ist',
-            'status' => 'locked',
-        ]);
+        $fixture = DirectPublicOrderFixture::create(
+            paymentMethodCode: 'fake',
+            amount: 350_000,
+            gatewayReference: 'fake-provider-reference',
+            paymentMethodActive: false,
+            expiresAt: Date::now()->addHour(),
+        );
 
-        return [$order, $entitlement];
-    }
-
-    private function directPackage(): int
-    {
-        $key = (string) Str::ulid();
-        $packageId = DB::table('packages')->insertGetId([
-            'code' => 'PKG-'.$key,
-            'name' => 'Paket pembayaran langsung',
-            'amount' => 350_000,
-            'currency' => 'IDR',
-            'is_active' => true,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-        DB::table('package_items')->insert([
-            ['package_id' => $packageId, 'test_type' => 'ist', 'sort_order' => 1, 'created_at' => now(), 'updated_at' => now()],
-            ['package_id' => $packageId, 'test_type' => 'dass21', 'sort_order' => 2, 'created_at' => now(), 'updated_at' => now()],
-        ]);
-
-        return $packageId;
+        return [$fixture['order'], $fixture['entitlements']['ist']];
     }
 
     private function event(PaymentStatus $status, string $eventId): PaymentEvent
@@ -273,6 +208,14 @@ final class PaymentEventApplierTest extends TestCase
             occurredAt: Date::now(),
             amount: 350_000,
             currency: 'IDR',
+        );
+    }
+
+    private function assertEntitlements(Order $order, string $status): void
+    {
+        $this->assertSame(
+            ['dass21' => $status, 'ist' => $status],
+            Entitlement::query()->where('order_id', $order->id)->orderBy('test_type')->pluck('status', 'test_type')->all(),
         );
     }
 }

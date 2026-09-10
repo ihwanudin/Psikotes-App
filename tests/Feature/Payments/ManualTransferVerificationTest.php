@@ -10,15 +10,13 @@ use App\Models\Admin;
 use App\Models\Branch;
 use App\Models\Entitlement;
 use App\Models\Order;
-use App\Models\Participant;
-use App\Models\PaymentMethod;
 use App\Services\Payments\Exceptions\InvalidOrderTransition;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Date;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Tests\Support\DirectPublicOrderFixture;
 use Tests\TestCase;
 
 final class ManualTransferVerificationTest extends TestCase
@@ -48,6 +46,7 @@ final class ManualTransferVerificationTest extends TestCase
         $this->assertTrue($order->paid_at?->equalTo(Date::now()) ?? false);
         $this->assertSame('ready', $entitlement->status);
         $this->assertTrue($entitlement->ready_at?->equalTo(Date::now()) ?? false);
+        $this->assertEntitlements($order, 'ready');
         $this->assertDatabaseHas('audit_logs', [
             'branch_id' => $branch->id,
             'actor_id' => (string) $admin->id,
@@ -88,6 +87,7 @@ final class ManualTransferVerificationTest extends TestCase
         $this->assertSame($admin->id, $order->verified_by_admin_id);
         $this->assertSame('locked', $entitlement->fresh()->status);
         $this->assertNull($entitlement->fresh()->ready_at);
+        $this->assertEntitlements($order, 'locked');
         $this->assertDatabaseHas('audit_logs', [
             'action' => 'manual_transfer.rejected',
             'subject_id' => (string) $order->public_id,
@@ -128,6 +128,7 @@ final class ManualTransferVerificationTest extends TestCase
 
         $this->assertSame('pending', $order->fresh()->status->value);
         $this->assertSame('locked', $entitlement->fresh()->status);
+        $this->assertEntitlements($order, 'locked');
         $this->assertDatabaseCount('audit_logs', 0);
     }
 
@@ -147,6 +148,7 @@ final class ManualTransferVerificationTest extends TestCase
             } catch (AuthorizationException) {
                 $this->assertSame('pending', $order->fresh()->status->value);
                 $this->assertSame('locked', $entitlement->fresh()->status);
+                $this->assertEntitlements($order, 'locked');
             }
         }
 
@@ -169,6 +171,7 @@ final class ManualTransferVerificationTest extends TestCase
         }
 
         $this->assertSame('pending', $order->fresh()->status->value);
+        $this->assertEntitlements($order, 'locked');
         $this->assertDatabaseCount('audit_logs', 0);
     }
 
@@ -204,91 +207,19 @@ final class ManualTransferVerificationTest extends TestCase
     /** @return array{Branch, Order, Entitlement} */
     private function manualOrder(bool $proof = true, string $methodCode = 'manual_transfer'): array
     {
-        $suffix = Str::upper(Str::random(8));
-        $branch = Branch::query()->create([
-            'code' => "BR-{$suffix}",
-            'name' => "Cabang {$suffix}",
-            'ref_code' => "REF-{$suffix}",
-        ]);
-        $packageId = $this->directPackage($suffix);
-        $participant = Participant::query()->create([
-            'branch_id' => $branch->id,
-            'referral_branch_id' => $branch->id,
-            'referral_source' => 'default',
-            'package_id' => $packageId,
-            'source_system' => 'DIRECT_PUBLIC',
-            'full_name' => "Peserta {$suffix}",
-            'gender' => 'female',
-            'birth_date' => '2001-04-15',
-            'education_level' => 'SMA/SMK',
-            'intended_field' => 'KAIGO',
-            'phone' => '+6281234567890',
-        ]);
-        $method = PaymentMethod::query()->where('code', $methodCode)->first();
-
-        if ($method === null) {
-            $method = new PaymentMethod;
-            $method->forceFill([
-                'code' => $methodCode,
-                'display_name' => Str::headline($methodCode),
-                'is_active' => true,
-            ])->save();
-        }
-
-        $orderPublicId = (string) Str::ulid();
-        $caseId = DB::table('assessment_cases')->insertGetId([
-            'public_id' => $orderPublicId,
-            'participant_id' => $participant->id,
-            'organization_id' => $branch->id,
-            'package_id' => $packageId,
-            'origin' => 'DIRECT_PUBLIC',
-            'intended_field_snapshot' => $participant->intended_field,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-        $order = Order::query()->create([
-            'public_id' => $orderPublicId,
-            'participant_id' => $participant->id,
-            'assessment_case_id' => $caseId,
-            'payment_method_id' => $method->id,
-            'status' => 'pending',
-            'amount' => 250_000,
-            'currency' => 'IDR',
-            'proof_object_key' => $proof ? 'manual/private-proof.jpg' : null,
-            'metadata' => $proof ? [
+        $fixture = DirectPublicOrderFixture::create(
+            paymentMethodCode: $methodCode,
+            amount: 250_000,
+            proofObjectKey: $proof ? 'manual/private-proof.jpg' : null,
+            orderMetadata: $proof ? [
                 'manual_payment_proof' => [
                     'disk' => 'payment-proofs',
                     'mime_type' => 'image/jpeg',
                 ],
             ] : null,
-        ]);
-        $entitlement = Entitlement::query()->create([
-            'participant_id' => $participant->id,
-            'order_id' => $order->id,
-            'test_type' => 'ist',
-            'status' => 'locked',
-        ]);
+        );
 
-        return [$branch, $order, $entitlement];
-    }
-
-    private function directPackage(string $suffix): int
-    {
-        $packageId = DB::table('packages')->insertGetId([
-            'code' => "PKG-{$suffix}",
-            'name' => "Paket {$suffix}",
-            'amount' => 250_000,
-            'currency' => 'IDR',
-            'is_active' => true,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-        DB::table('package_items')->insert([
-            ['package_id' => $packageId, 'test_type' => 'ist', 'sort_order' => 1, 'created_at' => now(), 'updated_at' => now()],
-            ['package_id' => $packageId, 'test_type' => 'dass21', 'sort_order' => 2, 'created_at' => now(), 'updated_at' => now()],
-        ]);
-
-        return $packageId;
+        return [$fixture['branch'], $fixture['order'], $fixture['entitlements']['ist']];
     }
 
     private function admin(Branch $branch, bool $canVerify): Admin
@@ -301,5 +232,13 @@ final class ManualTransferVerificationTest extends TestCase
             'role' => AdminRole::BranchAdmin,
             'can_verify_payments' => $canVerify,
         ]);
+    }
+
+    private function assertEntitlements(Order $order, string $status): void
+    {
+        $this->assertSame(
+            ['dass21' => $status, 'ist' => $status],
+            Entitlement::query()->where('order_id', $order->id)->orderBy('test_type')->pluck('status', 'test_type')->all(),
+        );
     }
 }
