@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Integrations;
 
+use App\Models\AssessmentCase;
 use App\Models\AssessmentParticipant;
 use App\Models\Branch;
 use App\Models\GenericAssessmentResultVersion;
@@ -34,6 +35,8 @@ final class GenericAssessmentResultOutboxTest extends TestCase
     {
         $assessment = $this->assessment();
         $source = $this->persist($assessment);
+        $sourceBefore = DB::table('generic_assessment_result_versions')->where('id', $source->id)->first();
+        Date::setTestNow('2024-02-29 10:15:00+07:00');
 
         $result = app(GenericAssessmentResultOutbox::class)->enqueueExact(
             $source->id,
@@ -49,16 +52,26 @@ final class GenericAssessmentResultOutboxTest extends TestCase
         $this->assertSame(1, $row->result_version);
         $this->assertSame($source->result_checksum, $row->result_checksum);
         $this->assertSame('generic-assessment-result:v1', $row->envelope_contract);
+        $this->assertSame('2024-02-29 03:15:00', $row->created_at);
         $this->assertFalse(property_exists($row, 'iq'));
         $this->assertFalse(property_exists($row, 'payload'));
 
         $audit = DB::table('audit_logs')->where('action', 'generic_assessment_result_outbox.created')->sole();
         $context = json_decode((string) $audit->context, true, 512, JSON_THROW_ON_ERROR);
-        $this->assertSame(hash('sha256', $assessment->assessment_attempt_id), $context['assessmentAttemptReference']);
-        $this->assertSame(1, $context['resultVersion']);
-        $this->assertSame($source->result_checksum, $context['resultChecksum']);
-        $this->assertSame('FINALIZED', $context['finality']);
-        $this->assertFalse($context['isRevoked']);
+        $this->assertSame([
+            'assessmentAttemptReference' => hash('sha256', $assessment->assessment_attempt_id),
+            'resultVersion' => 1,
+            'resultChecksum' => $source->result_checksum,
+            'finality' => 'FINALIZED',
+            'isRevoked' => false,
+            'reasonCode' => null,
+        ], $context);
+        $this->assertSame('2024-02-29 03:15:00', $audit->occurred_at);
+        $this->assertSame('2029-02-28 03:15:00', $audit->expires_at);
+        $this->assertEquals(
+            $sourceBefore,
+            DB::table('generic_assessment_result_versions')->where('id', $source->id)->first(),
+        );
         $encoded = json_encode([$row, $audit], JSON_THROW_ON_ERROR);
         $this->assertStringNotContainsString($assessment->assessment_attempt_id, $audit->context);
         $this->assertStringNotContainsString('99.125', $encoded);
@@ -113,6 +126,8 @@ final class GenericAssessmentResultOutboxTest extends TestCase
     {
         $assessment = $this->assessment();
         $source = $this->persist($assessment);
+        $sourceBefore = DB::table('generic_assessment_result_versions')->where('id', $source->id)->first();
+        Date::setTestNow('2024-02-29 10:15:00+07:00');
 
         try {
             app(GenericAssessmentResultOutbox::class)->enqueueExact(
@@ -135,6 +150,12 @@ final class GenericAssessmentResultOutboxTest extends TestCase
         $this->assertSame('SOURCE_CONFLICT', $context['reasonCode']);
         $this->assertNull($context['finality']);
         $this->assertNull($context['isRevoked']);
+        $this->assertSame('2024-02-29 03:15:00', $audit->occurred_at);
+        $this->assertSame('2029-02-28 03:15:00', $audit->expires_at);
+        $this->assertEquals(
+            $sourceBefore,
+            DB::table('generic_assessment_result_versions')->where('id', $source->id)->first(),
+        );
         $this->assertStringNotContainsString($assessment->assessment_attempt_id, (string) $audit->context);
     }
 
@@ -263,13 +284,23 @@ final class GenericAssessmentResultOutboxTest extends TestCase
             'currency' => 'IDR',
             'is_active' => true,
         ]);
+        $assessmentAttemptId = (string) Str::ulid();
+        $case = AssessmentCase::query()->create([
+            'public_id' => $assessmentAttemptId,
+            'participant_id' => $participant->id,
+            'organization_id' => $organization->id,
+            'package_id' => $package->id,
+            'origin' => 'INTEGRATED',
+            'intended_field_snapshot' => null,
+        ]);
 
         return AssessmentParticipant::query()->create([
             'organization_id' => $organization->id,
             'integration_client_id' => $client->id,
             'participant_id' => $participant->id,
             'package_id' => $package->id,
-            'assessment_attempt_id' => (string) Str::ulid(),
+            'assessment_case_id' => $case->id,
+            'assessment_attempt_id' => $assessmentAttemptId,
             'source_system' => 'RESULT_TEST',
             'external_candidate_id' => $key,
             'funding_mode' => 'SPONSORED',

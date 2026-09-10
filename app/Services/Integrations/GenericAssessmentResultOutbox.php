@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Integrations;
 
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Models\AssessmentParticipant;
 use App\Models\GenericAssessmentResultVersion;
 use Carbon\CarbonImmutable;
@@ -15,7 +17,10 @@ final readonly class GenericAssessmentResultOutbox
 {
     private const string ENVELOPE_CONTRACT = 'generic-assessment-result:v1';
 
-    public function __construct(private GenericAssessmentResultProjector $projector) {}
+    public function __construct(
+        private GenericAssessmentResultProjector $projector,
+        private RetentionPolicy $retention,
+    ) {}
 
     /** @return array{action:string,outboxId:?string} */
     public function enqueueExact(
@@ -170,7 +175,7 @@ final readonly class GenericAssessmentResultOutbox
                 'reasonCode' => $reasonCode,
             ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
             'occurred_at' => $at,
-            'expires_at' => $at->addYearsNoOverflow(2),
+            'expires_at' => $this->retention->expiresAt(RetentionDataClass::Audit, $at),
         ]);
     }
 
@@ -202,7 +207,7 @@ final readonly class GenericAssessmentResultOutbox
                     'reasonCode' => $reasonCode,
                 ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
                 'occurred_at' => $at,
-                'expires_at' => $at->addYearsNoOverflow(2),
+                'expires_at' => $this->retention->expiresAt(RetentionDataClass::Audit, $at),
             ]);
         });
     }
