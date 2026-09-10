@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Integrations;
 
+use App\Domain\Retention\RetentionPolicy;
+use App\Models\AssessmentCase;
 use App\Models\AssessmentParticipant;
 use App\Models\Branch;
 use App\Models\GenericAssessmentResultVersion;
@@ -35,6 +37,11 @@ final class GenericAssessmentResultDispatchTest extends TestCase
     {
         [$assessment, $source, $outboxId] = $this->outbox();
         $token = str_repeat('claim-a-', 6);
+        $sourceTimestampsBefore = DB::table('generic_assessment_result_versions')
+            ->where('id', $source->id)->first(['completed_at', 'created_at', 'revoked_at']);
+        $outboxTimestampsBefore = DB::table('generic_assessment_result_outbox')
+            ->where('id', $outboxId)->first(['available_at', 'created_at', 'updated_at']);
+        Date::setTestNow('2024-02-29 10:15:00+07:00');
 
         $claim = app(GenericAssessmentResultDispatch::class)->claimExact(
             $outboxId, $source->id, 1, $source->result_checksum, $token,
@@ -42,21 +49,34 @@ final class GenericAssessmentResultDispatchTest extends TestCase
 
         $this->assertSame('CLAIMED', $claim['action']);
         $this->assertSame(1, $claim['attemptNumber']);
-        $this->assertSame('2026-09-05T05:05:00.000000Z', $claim['leaseExpiresAt']);
+        $this->assertSame('2024-02-29T03:20:00.000000Z', $claim['leaseExpiresAt']);
         $attempt = DB::table('generic_assessment_result_dispatch_attempts')->sole();
         $this->assertSame(hash('sha256', $token), $attempt->lease_token_hash);
         $this->assertSame('CALLBACK_AND_POLL', $attempt->mode);
         $this->assertSame('PROCESSING', $attempt->outcome);
+        $this->assertSame('2024-02-29 03:15:00', $attempt->claimed_at);
+        $this->assertSame('2024-02-29 03:20:00', $attempt->lease_expires_at);
+        $this->assertSame('2024-02-29 03:15:00', $attempt->created_at);
         $this->assertFalse(property_exists($attempt, 'iq'));
 
         $audit = DB::table('audit_logs')->where('action', 'generic_assessment_result_dispatch.claimed')->sole();
         $context = json_decode((string) $audit->context, true, 512, JSON_THROW_ON_ERROR);
-        $this->assertSame(hash('sha256', $assessment->assessment_attempt_id), $context['assessmentAttemptReference']);
-        $this->assertSame(1, $context['resultVersion']);
-        $this->assertSame($source->result_checksum, $context['resultChecksum']);
-        $this->assertSame('FINALIZED', $context['finality']);
-        $this->assertFalse($context['isRevoked']);
-        $this->assertSame(1, $context['attemptNumber']);
+        $this->assertSame([
+            'assessmentAttemptReference' => hash('sha256', $assessment->assessment_attempt_id),
+            'resultVersion' => 1,
+            'resultChecksum' => $source->result_checksum,
+            'finality' => 'FINALIZED',
+            'isRevoked' => false,
+            'attemptNumber' => 1,
+            'outcome' => 'PROCESSING',
+            'reasonCode' => null,
+        ], $context);
+        $this->assertSame('2024-02-29 03:15:00', $audit->occurred_at);
+        $this->assertSame('2029-02-28 03:15:00', $audit->expires_at);
+        $this->assertEquals($sourceTimestampsBefore, DB::table('generic_assessment_result_versions')
+            ->where('id', $source->id)->first(['completed_at', 'created_at', 'revoked_at']));
+        $this->assertEquals($outboxTimestampsBefore, DB::table('generic_assessment_result_outbox')
+            ->where('id', $outboxId)->first(['available_at', 'created_at', 'updated_at']));
         $encoded = json_encode([$attempt, $audit], JSON_THROW_ON_ERROR);
         $this->assertStringNotContainsString($assessment->assessment_attempt_id, (string) $audit->context);
         $this->assertStringNotContainsString($token, $encoded);
@@ -131,7 +151,9 @@ final class GenericAssessmentResultDispatchTest extends TestCase
     public function test_retryable_attempts_use_internal_backoff_and_stop_at_the_maximum(): void
     {
         [, $source, $outboxId] = $this->outbox();
-        $dispatch = new GenericAssessmentResultDispatch(leaseSeconds: 60, maxAttempts: 2, backoffSeconds: [30]);
+        $dispatch = new GenericAssessmentResultDispatch(
+            app(RetentionPolicy::class), leaseSeconds: 60, maxAttempts: 2, backoffSeconds: [30],
+        );
         $firstToken = str_repeat('retry-one-', 4);
         $first = $dispatch->claimExact($outboxId, $source->id, 1, $source->result_checksum, $firstToken);
         Date::setTestNow('2026-09-05 05:00:10+00:00');
@@ -195,10 +217,11 @@ final class GenericAssessmentResultDispatchTest extends TestCase
     public function test_expired_or_mismatched_completion_fails_closed_with_safe_durable_audit(): void
     {
         [$assessment, $source, $outboxId] = $this->outbox();
-        $dispatch = new GenericAssessmentResultDispatch(leaseSeconds: 30);
+        Date::setTestNow('2024-02-29 10:15:00+07:00');
+        $dispatch = new GenericAssessmentResultDispatch(app(RetentionPolicy::class), leaseSeconds: 30);
         $token = str_repeat('expiry-token-', 3);
         $claim = $dispatch->claimExact($outboxId, $source->id, 1, $source->result_checksum, $token);
-        Date::setTestNow('2026-09-05 05:00:30+00:00');
+        Date::setTestNow('2024-02-29 03:15:30+00:00');
 
         try {
             $dispatch->completeExact(
@@ -216,6 +239,8 @@ final class GenericAssessmentResultDispatchTest extends TestCase
         ]);
         $audit = DB::table('audit_logs')->where('action', 'generic_assessment_result_dispatch.failed')->sole();
         $encoded = (string) $audit->context;
+        $this->assertSame('2024-02-29 03:15:30', $audit->occurred_at);
+        $this->assertSame('2029-02-28 03:15:30', $audit->expires_at);
         $this->assertStringContainsString(hash('sha256', $assessment->assessment_attempt_id), $encoded);
         $this->assertStringContainsString('LEASE_EXPIRED', $encoded);
         $this->assertStringNotContainsString($assessment->assessment_attempt_id, $encoded);
@@ -370,11 +395,21 @@ final class GenericAssessmentResultDispatchTest extends TestCase
             'code' => 'R'.$key, 'name' => 'Synthetic result package',
             'amount' => 100, 'currency' => 'IDR', 'is_active' => true,
         ]);
+        $assessmentAttemptId = (string) Str::ulid();
+        $case = AssessmentCase::query()->create([
+            'public_id' => $assessmentAttemptId,
+            'participant_id' => $participant->id,
+            'organization_id' => $organization->id,
+            'package_id' => $package->id,
+            'origin' => 'INTEGRATED',
+            'intended_field_snapshot' => null,
+        ]);
 
         return AssessmentParticipant::query()->create([
             'organization_id' => $organization->id, 'integration_client_id' => $client->id,
             'participant_id' => $participant->id, 'package_id' => $package->id,
-            'assessment_attempt_id' => (string) Str::ulid(), 'source_system' => 'RESULT_TEST',
+            'assessment_case_id' => $case->id,
+            'assessment_attempt_id' => $assessmentAttemptId, 'source_system' => 'RESULT_TEST',
             'external_candidate_id' => $key, 'funding_mode' => 'SPONSORED',
             'assessment_status' => 'UNDER_REVIEW', 'idempotency_key' => $key,
             'request_hash' => hash('sha256', $key),

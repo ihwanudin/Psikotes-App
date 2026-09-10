@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Integrations;
 
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Models\GenericAssessmentResultVersion;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -25,6 +27,7 @@ final readonly class GenericAssessmentResultDispatch
 
     /** @param list<int> $backoffSeconds */
     public function __construct(
+        private RetentionPolicy $retention,
         private int $leaseSeconds = 300,
         private int $maxAttempts = 4,
         array $backoffSeconds = [60, 300, 900],
@@ -276,7 +279,8 @@ final readonly class GenericAssessmentResultDispatch
                 'finality' => $binding->finality, 'isRevoked' => $binding->isRevoked,
                 'attemptNumber' => $attemptNumber, 'outcome' => $outcome, 'reasonCode' => $reasonCode,
             ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
-            'occurred_at' => $at, 'expires_at' => $at->addYearsNoOverflow(2),
+            'occurred_at' => $at,
+            'expires_at' => $this->retention->expiresAt(RetentionDataClass::Audit, $at),
         ]);
     }
 
@@ -307,7 +311,8 @@ final readonly class GenericAssessmentResultDispatch
                     default => 'INPUT_INVALID',
                 },
             ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
-            'occurred_at' => $at, 'expires_at' => $at->addYearsNoOverflow(2),
+            'occurred_at' => $at,
+            'expires_at' => $this->retention->expiresAt(RetentionDataClass::Audit, $at),
         ]);
     }
 }
