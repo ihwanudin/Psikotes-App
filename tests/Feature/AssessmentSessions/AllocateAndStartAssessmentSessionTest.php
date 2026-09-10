@@ -21,17 +21,23 @@ use App\Services\AssessmentSessions\CaseAuthorizationResolver;
 use App\Services\ParticipantAuth\AssessmentPrincipal;
 use App\Services\ParticipantAuth\ParticipantPrincipal;
 use DateTimeImmutable;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\QueryException;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use LogicException;
+use PDOException;
+use PHPUnit\Framework\Attributes\DataProvider;
+use RuntimeException;
 use Tests\OrganizationPaymentTestCase;
 use Tests\Support\AssessmentAccessFixture;
+use Throwable;
 
+/** SQLite contract only: first attempt/exact replay, with no HTTP binding, retest, or multi-case resolution. */
 final class AllocateAndStartAssessmentSessionTest extends OrganizationPaymentTestCase
 {
-    use RefreshDatabase;
+    use DatabaseTruncation;
 
     private const NOW = '2026-09-10T02:00:00.123456+00:00';
 
@@ -280,6 +286,109 @@ final class AllocateAndStartAssessmentSessionTest extends OrganizationPaymentTes
         }
     }
 
+    #[DataProvider('retryableSqlStates')]
+    public function test_only_retryable_transaction_sqlstates_restart_the_whole_transaction_and_then_succeed(
+        string $sqlState,
+    ): void {
+        $fixture = $this->participantGraph(direct: true);
+        $authority = new FakeAssessmentSessionDefinitionAuthority;
+        $injector = $this->injectFinalTransitionFailures([$sqlState]);
+
+        $result = $this->action($authority)->execute(
+            new ParticipantPrincipal($fixture['participant'], $fixture['branch']),
+            'ist',
+        );
+
+        $this->assertFalse($result->replayed);
+        $this->assertSame(2, $injector->transactionAttempts);
+        $this->assertSame($injector->transactionAttempts, $authority->calls);
+        $this->assertSame(1, DB::table('test_sessions')->count());
+        $this->assertSame(1, DB::table('test_session_grants')->count());
+        $this->assertSame('in_progress', DB::table('entitlements')->where('id', $fixture['entitlement'])->value('status'));
+        $this->assertNotNull(DB::table('entitlements')->where('id', $fixture['entitlement'])->value('started_at'));
+        $this->assertNull(app(RlsContextRunner::class)->current());
+        $this->assertSame(0, DB::transactionLevel());
+    }
+
+    public function test_retryable_transaction_failure_is_attempted_at_most_three_times_then_the_final_exception_escapes(): void
+    {
+        $fixture = $this->participantGraph(direct: true);
+        $authority = new FakeAssessmentSessionDefinitionAuthority;
+        $injector = $this->injectFinalTransitionFailures(['40001', '40001', '40001', '40001']);
+
+        try {
+            $this->action($authority)->execute(
+                new ParticipantPrincipal($fixture['participant'], $fixture['branch']),
+                'ist',
+            );
+            $this->fail('A fourth transaction attempt must never be made.');
+        } catch (QueryException $exception) {
+            $this->assertSame('40001', $exception->errorInfo[0] ?? null);
+            $this->assertSame($injector->lastException, $exception);
+            $this->assertSame(3, $injector->transactionAttempts);
+            $this->assertSame($injector->transactionAttempts, $authority->calls);
+            $this->assertAllocatorRolledBack($fixture);
+        }
+    }
+
+    #[DataProvider('nonRetryableSqlStates')]
+    public function test_non_retryable_sqlstates_escape_after_one_transaction_attempt(string $sqlState): void
+    {
+        $fixture = $this->participantGraph(direct: true);
+        $authority = new FakeAssessmentSessionDefinitionAuthority;
+        $injector = $this->injectFinalTransitionFailures([$sqlState, $sqlState]);
+
+        try {
+            $this->action($authority)->execute(
+                new ParticipantPrincipal($fixture['participant'], $fixture['branch']),
+                'ist',
+            );
+            $this->fail("SQLSTATE {$sqlState} must not be retried.");
+        } catch (QueryException $exception) {
+            $this->assertSame($sqlState, $exception->errorInfo[0] ?? null);
+            $this->assertSame(1, $injector->transactionAttempts);
+            $this->assertSame(1, $authority->calls);
+            $this->assertAllocatorRolledBack($fixture);
+        }
+    }
+
+    public function test_generic_non_sql_failure_is_not_retried_and_leaves_no_transaction_state(): void
+    {
+        $fixture = $this->participantGraph(direct: true);
+        $authority = new FakeAssessmentSessionDefinitionAuthority;
+        $failure = new RuntimeException('synthetic non-SQL failure');
+        $injector = $this->injectFinalTransitionFailures([$failure, $failure]);
+
+        try {
+            $this->action($authority)->execute(
+                new ParticipantPrincipal($fixture['participant'], $fixture['branch']),
+                'ist',
+            );
+            $this->fail('Generic failures must not be retried.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame($failure, $exception);
+            $this->assertSame(1, $injector->transactionAttempts);
+            $this->assertSame(1, $authority->calls);
+            $this->assertAllocatorRolledBack($fixture);
+        }
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function retryableSqlStates(): iterable
+    {
+        yield 'serialization failure' => ['40001'];
+        yield 'deadlock detected' => ['40P01'];
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function nonRetryableSqlStates(): iterable
+    {
+        yield 'unique violation' => ['23505'];
+        yield 'check violation' => ['23514'];
+        yield 'insufficient privilege' => ['42501'];
+        yield 'generic driver error' => ['HY000'];
+    }
+
     /** @return array{branch:int,participant:int,package:int,case:int,order:int|null,selection:int|null,entitlement:int} */
     private function participantGraph(bool $direct): array
     {
@@ -367,7 +476,7 @@ final class AllocateAndStartAssessmentSessionTest extends OrganizationPaymentTes
                 'order_id' => $order,
                 'test_type' => $type,
                 'status' => 'ready',
-                'ready_at' => now(),
+                'ready_at' => now()->subSecond(),
                 'created_at' => self::NOW,
                 'updated_at' => self::NOW,
             ]);
@@ -377,6 +486,28 @@ final class AllocateAndStartAssessmentSessionTest extends OrganizationPaymentTes
         }
 
         return compact('branch', 'participant', 'package', 'case', 'order', 'selection', 'entitlement');
+    }
+
+    /**
+     * @param  list<string|Throwable>  $failures
+     */
+    private function injectFinalTransitionFailures(array $failures): FinalTransitionFailureInjector
+    {
+        $injector = new FinalTransitionFailureInjector($failures);
+        DB::listen($injector->handle(...));
+
+        return $injector;
+    }
+
+    /** @param array{entitlement: int} $fixture */
+    private function assertAllocatorRolledBack(array $fixture): void
+    {
+        $this->assertNull(app(RlsContextRunner::class)->current());
+        $this->assertSame(0, DB::transactionLevel());
+        $this->assertSame(0, DB::table('test_sessions')->count());
+        $this->assertSame(0, DB::table('test_session_grants')->count());
+        $this->assertSame('ready', DB::table('entitlements')->where('id', $fixture['entitlement'])->value('status'));
+        $this->assertNull(DB::table('entitlements')->where('id', $fixture['entitlement'])->value('started_at'));
     }
 
     private function action(
@@ -418,5 +549,38 @@ final class FakeAssessmentSessionDefinitionAuthority implements AssessmentSessio
         $payload['checksum'] = SessionDefinition::checksumFor($payload);
 
         return SessionDefinition::fromArray($payload);
+    }
+}
+
+final class FinalTransitionFailureInjector
+{
+    public int $transactionAttempts = 0;
+
+    public ?QueryException $lastException = null;
+
+    /** @param list<string|Throwable> $failures */
+    public function __construct(private array $failures) {}
+
+    public function handle(QueryExecuted $query): void
+    {
+        if (! str_contains(strtolower($query->sql), 'update "test_sessions"')
+            || ! in_array('in_progress', $query->bindings, true)) {
+            return;
+        }
+
+        $this->transactionAttempts++;
+        $failure = array_shift($this->failures);
+        if ($failure === null) {
+            return;
+        }
+        if ($failure instanceof Throwable) {
+            throw $failure;
+        }
+
+        $previous = new PDOException("Synthetic SQLSTATE {$failure}");
+        $previous->errorInfo = [$failure, 0, 'synthetic final-transition failure'];
+        $this->lastException = new QueryException('sqlite', $query->sql, $query->bindings, $previous);
+
+        throw $this->lastException;
     }
 }

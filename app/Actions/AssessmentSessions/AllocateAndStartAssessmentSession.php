@@ -33,7 +33,12 @@ use Illuminate\Support\Str;
 use JsonException;
 use RuntimeException;
 
-/** Internal first-attempt allocator; deliberately not bound to an HTTP or production definition authority. */
+/**
+ * Internal first-attempt allocator with exact replay only.
+ *
+ * This unwired slice has no HTTP or production definition-authority binding and deliberately does not
+ * authorize retests or resolve multi-case history.
+ */
 final class AllocateAndStartAssessmentSession
 {
     private const MAX_TRANSACTION_ATTEMPTS = 3;
