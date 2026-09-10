@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Integrations;
 
 use App\Jobs\DispatchGenericAssessmentResultCallback;
+use App\Models\AssessmentCase;
 use App\Models\AssessmentParticipant;
 use App\Models\Branch;
 use App\Models\GenericAssessmentResultVersion;
@@ -616,10 +617,21 @@ final class GenericAssessmentResultCallbackOrchestrationTest extends TestCase
             'amount' => 100, 'currency' => 'IDR', 'is_active' => true,
         ]);
 
+        $assessmentAttemptId = (string) Str::ulid();
+        $case = AssessmentCase::query()->create([
+            'public_id' => $assessmentAttemptId,
+            'participant_id' => $participant->id,
+            'organization_id' => $organization->id,
+            'package_id' => $package->id,
+            'origin' => 'INTEGRATED',
+            'intended_field_snapshot' => 'UMUM',
+        ]);
+
         return AssessmentParticipant::query()->create([
+            'assessment_case_id' => $case->id,
             'organization_id' => $organization->id, 'integration_client_id' => $client->id,
             'participant_id' => $participant->id, 'package_id' => $package->id,
-            'assessment_attempt_id' => (string) Str::ulid(), 'source_system' => 'CALLBACK_ORCHESTRATION_TEST',
+            'assessment_attempt_id' => $assessmentAttemptId, 'source_system' => 'CALLBACK_ORCHESTRATION_TEST',
             'external_candidate_id' => $key, 'funding_mode' => 'SPONSORED',
             'assessment_status' => 'UNDER_REVIEW', 'idempotency_key' => $key,
             'request_hash' => hash('sha256', $key),
