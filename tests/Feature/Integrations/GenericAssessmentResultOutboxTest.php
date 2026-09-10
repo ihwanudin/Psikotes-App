@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use LogicException;
+use Tests\Support\AssessmentBillingFixture;
 use Tests\TestCase;
 
 final class GenericAssessmentResultOutboxTest extends TestCase
@@ -263,13 +264,18 @@ final class GenericAssessmentResultOutboxTest extends TestCase
             'currency' => 'IDR',
             'is_active' => true,
         ]);
+        $attemptPublicId = (string) Str::ulid();
+        $case = AssessmentBillingFixture::createExactIntegratedCase(
+            $participant->id, $organization->id, $package->id, $attemptPublicId,
+        );
 
         return AssessmentParticipant::query()->create([
             'organization_id' => $organization->id,
             'integration_client_id' => $client->id,
             'participant_id' => $participant->id,
             'package_id' => $package->id,
-            'assessment_attempt_id' => (string) Str::ulid(),
+            'assessment_case_id' => $case,
+            'assessment_attempt_id' => $attemptPublicId,
             'source_system' => 'RESULT_TEST',
             'external_candidate_id' => $key,
             'funding_mode' => 'SPONSORED',
