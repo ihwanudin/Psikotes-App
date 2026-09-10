@@ -45,21 +45,16 @@ final class CollectiveBillPreviewTest extends OrganizationPaymentTestCase
     {
         $groups = ['A', 'A', 'B', 'B', 'C', 'C', 'A', 'B', 'C', 'A'];
         $consultation = [false, true, false, true, false, true, false, false, false, true];
-        $packages = $selection = $fixtures = [];
+        $selection = $fixtures = [];
         foreach ($groups as $index => $group) {
             $fixture = $index === 0 ? $this->fixture : $this->fixture($this->fixture['organization']);
-            if (! isset($packages[$group])) {
-                $packages[$group] = $fixture['package'];
-                DB::table('packages')->where('id', $fixture['package'])->update([
-                    'code' => 'SYN-'.$group, 'name' => 'Synthetic '.$group,
-                    'amount' => ['A' => 100, 'B' => 200, 'C' => 0][$group],
-                    'consultation_amount' => $group === 'B' ? 50 : 30]);
-                DB::table('package_items')->where('package_id', $fixture['package'])
-                    ->update(['test_type' => $group === 'C' ? 'dass21' : 'ist']);
-            }
-            DB::table('assessment_participants')->where('id', $fixture['attempt'])->update(['package_id' => $packages[$group]]);
+            $packageCode = 'SYN-'.$group.'-'.$index;
+            DB::table('packages')->where('id', $fixture['package'])->update([
+                'code' => $packageCode, 'name' => 'Synthetic '.$group,
+                'amount' => ['A' => 100, 'B' => 200, 'C' => 0][$group],
+                'consultation_amount' => $group === 'B' ? 50 : 30]);
             DB::table('integration_sources')->where('id', $fixture['source'])
-                ->update(['allowed_assessment_packages' => json_encode(['SYN-'.$group], JSON_THROW_ON_ERROR)]);
+                ->update(['allowed_assessment_packages' => json_encode([$packageCode], JSON_THROW_ON_ERROR)]);
             $selection[] = Fixture::selection($fixture, $consultation[$index]);
             $fixtures[] = $fixture;
         }
@@ -81,7 +76,7 @@ final class CollectiveBillPreviewTest extends OrganizationPaymentTestCase
             $this->assertSame('CANDIDATE-'.$fixtures[$index]['attempt'], $item['externalCandidateId']);
             $this->assertSame('Synthetic participant', $item['participantName']);
             $this->assertSame('Synthetic period', $item['period']);
-            $this->assertSame('SYN-'.$groups[$index], $item['packageCode']);
+            $this->assertSame('SYN-'.$groups[$index].'-'.$index, $item['packageCode']);
             $this->assertSame($consultation[$index], $item['consultationRequested']);
             $this->assertSame(in_array($index, [4, 8], true) ? 'free' : 'payable', $item['status']);
         }

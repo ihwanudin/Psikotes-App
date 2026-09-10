@@ -22,7 +22,10 @@ final class AssessmentPreviewFixture
         DB::table('integration_clients')->where('id', $attempt->integration_client_id)->update(['enabled' => true]);
         $code = DB::table('packages')->where('id', $fixture['package'])->value('code');
         DB::table('packages')->where('id', $fixture['package'])->update(['amount' => $amount, 'consultation_amount' => 30, 'is_active' => true]);
-        DB::table('package_items')->insert(['package_id' => $fixture['package'], 'test_type' => 'ist', 'sort_order' => 1]);
+        DB::table('package_items')->insert([
+            ['package_id' => $fixture['package'], 'test_type' => 'ist', 'sort_order' => 1],
+            ['package_id' => $fixture['package'], 'test_type' => 'dass21', 'sort_order' => 2],
+        ]);
         $source = DB::table('integration_sources')->insertGetId(['integration_client_id' => $attempt->integration_client_id,
             'source_system' => $attempt->source_system, 'contract_version' => 'checkout-v2',
             'allowed_assessment_packages' => json_encode([$code], JSON_THROW_ON_ERROR), 'allowed_funding_modes' => '[]',
