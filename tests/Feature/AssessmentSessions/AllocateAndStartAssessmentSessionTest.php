@@ -245,8 +245,15 @@ final class AllocateAndStartAssessmentSessionTest extends OrganizationPaymentTes
     {
         $fixture = $this->participantGraph(direct: true);
         $authority = new FakeAssessmentSessionDefinitionAuthority;
-        DB::unprepared("CREATE TEMP TRIGGER allocator_source_failure BEFORE UPDATE OF status ON entitlements
-            WHEN OLD.id = {$fixture['entitlement']} BEGIN SELECT RAISE(ABORT, 'injected source failure'); END");
+        DB::unprepared(<<<'SQL'
+            CREATE TEMP TRIGGER allocator_source_failure BEFORE UPDATE OF status ON entitlements
+            WHEN OLD.test_type = 'ist'
+                AND OLD.status = 'ready'
+                AND OLD.started_at IS NULL
+                AND NEW.status = 'in_progress'
+                AND NEW.started_at IS NOT NULL
+            BEGIN SELECT RAISE(ABORT, 'injected source failure'); END
+            SQL);
 
         try {
             $this->action($authority)->execute(
