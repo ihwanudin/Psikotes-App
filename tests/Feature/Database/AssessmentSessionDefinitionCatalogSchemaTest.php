@@ -78,6 +78,26 @@ final class AssessmentSessionDefinitionCatalogSchemaTest extends OrganizationPay
         $this->assertRejected(fn () => $this->insert($kraepelin));
     }
 
+    public function test_catalog_identity_fields_match_the_domain_unicode_contract(): void
+    {
+        foreach ($this->nonCanonicalUnicodeTemplates() as $label => $template) {
+            $this->assertRejected(fn () => $this->insert($template), $label);
+        }
+
+        $canonical = $this->kraepelinTemplate();
+        $canonical['version'] = 'versi-é';
+        $canonical['provenance'] = 'sumber-日本';
+        $canonical['subtests'][0]['code'] = '分析';
+        $canonical['generator']['algorithm'] = 'algoritme™';
+        $canonical['generator']['version'] = 'versi-é';
+        $this->insert($canonical);
+
+        $this->assertSame(
+            'versi-é',
+            DB::table('assessment_session_definitions')->value('version'),
+        );
+    }
+
     public function test_populated_catalog_refuses_down_while_empty_catalog_is_reversible(): void
     {
         $migration = require database_path('migrations/2026_09_10_000200_create_assessment_session_definitions.php');
@@ -155,11 +175,43 @@ final class AssessmentSessionDefinitionCatalogSchemaTest extends OrganizationPay
         ];
     }
 
-    private function assertRejected(callable $operation): void
+    /** @return array<string, array<string, mixed>> */
+    private function nonCanonicalUnicodeTemplates(): array
+    {
+        $templates = [];
+        foreach (['version', 'provenance', 'subtest_code'] as $field) {
+            $template = $this->template('ist', 'unicode-'.$field);
+            match ($field) {
+                'version' => $template['version'] .= "\u{2060}",
+                'provenance' => $template['provenance'] .= "\u{2060}",
+                'subtest_code' => $template['subtests'][0]['code'] .= "\u{2060}",
+            };
+            $templates['word joiner in '.$field] = $template;
+        }
+        foreach (['algorithm', 'version'] as $field) {
+            $template = $this->kraepelinTemplate();
+            $template['version'] = 'unicode-generator-'.$field;
+            $template['generator'][$field] .= "\u{2060}";
+            $templates['word joiner in generator '.$field] = $template;
+        }
+
+        $unassigned = $this->template('papi', "unassigned-\u{0378}");
+        $templates['unassigned category Cn'] = $unassigned;
+        $privateUse = $this->template('rmib', 'private-use');
+        $privateUse['provenance'] .= "\u{E000}";
+        $templates['private-use category Co'] = $privateUse;
+        $separator = $this->template('papi', 'separator');
+        $separator['subtests'][0]['code'] .= "\u{2007}";
+        $templates['separator category Zs'] = $separator;
+
+        return $templates;
+    }
+
+    private function assertRejected(callable $operation, string $message = ''): void
     {
         try {
             $operation();
-            $this->fail('Expected catalog invariant rejection.');
+            $this->fail('Expected catalog invariant rejection. '.$message);
         } catch (QueryException) {
             $this->addToAssertionCount(1);
         }

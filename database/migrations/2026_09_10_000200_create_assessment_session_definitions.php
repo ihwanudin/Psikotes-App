@@ -73,6 +73,10 @@ return new class extends Migration
 
     private function addPostgresContract(): void
     {
+        if (DB::scalar('SHOW server_encoding') !== 'UTF8') {
+            throw new RuntimeException('Session definition identity validation requires PostgreSQL UTF8.');
+        }
+
         DB::statement(<<<'SQL'
             ALTER TABLE assessment_session_definitions
                 ADD CONSTRAINT assessment_session_definitions_identity_check CHECK (
@@ -103,7 +107,7 @@ return new class extends Migration
                         AND deactivated_at >= activated_at)
                 )
             SQL);
-        DB::unprepared(<<<'SQL'
+        $guardSql = <<<'SQL'
             CREATE FUNCTION app_private.guard_assessment_session_definitions() RETURNS trigger
             LANGUAGE plpgsql SET search_path = pg_catalog, public AS $guard$
             DECLARE
@@ -116,6 +120,10 @@ return new class extends Migration
                 item_text text;
                 code_text text;
                 seen_codes text[] := ARRAY[]::text[];
+                identity_value text;
+                identity_position integer;
+                forbidden_codepoints int4multirange :=
+                    '__FORBIDDEN_CODEPOINT_MULTIRANGE__'::int4multirange;
             BEGIN
                 IF TG_OP = 'DELETE' THEN
                     RAISE EXCEPTION 'assessment session definition history cannot be deleted' USING ERRCODE = 'P0001';
@@ -137,6 +145,16 @@ return new class extends Migration
                     RAISE EXCEPTION 'assessment session definitions must be inserted active'
                         USING ERRCODE = 'P0001';
                 END IF;
+
+                FOREACH identity_value IN ARRAY ARRAY[NEW.version, NEW.provenance] LOOP
+                    FOR identity_position IN 1..char_length(identity_value) LOOP
+                        IF ascii(substr(identity_value, identity_position, 1))
+                            <@ forbidden_codepoints THEN
+                            RAISE EXCEPTION 'assessment session definition identity is not canonical'
+                                USING ERRCODE = '23514';
+                        END IF;
+                    END LOOP;
+                END LOOP;
 
                 definition := NEW.template_payload;
                 IF (SELECT count(*) FROM jsonb_object_keys(definition)) <> 8
@@ -181,6 +199,13 @@ return new class extends Migration
                         RAISE EXCEPTION 'assessment session definition subtest values are invalid'
                             USING ERRCODE = '23514';
                     END IF;
+                    FOR identity_position IN 1..char_length(code_text) LOOP
+                        IF ascii(substr(code_text, identity_position, 1))
+                            <@ forbidden_codepoints THEN
+                            RAISE EXCEPTION 'assessment session definition subtest code is not canonical'
+                                USING ERRCODE = '23514';
+                        END IF;
+                    END LOOP;
                     seen_codes := array_append(seen_codes, code_text);
                     duration_sum := duration_sum + duration_text::numeric;
                     item_sum := item_sum + item_text::numeric;
@@ -226,6 +251,17 @@ return new class extends Migration
                         RAISE EXCEPTION 'kraepelin definition template is invalid'
                             USING ERRCODE = '23514';
                     END IF;
+                    FOREACH identity_value IN ARRAY ARRAY[
+                        generator->>'algorithm', generator->>'version'
+                    ] LOOP
+                        FOR identity_position IN 1..char_length(identity_value) LOOP
+                            IF ascii(substr(identity_value, identity_position, 1))
+                                <@ forbidden_codepoints THEN
+                                RAISE EXCEPTION 'kraepelin generator identity is not canonical'
+                                    USING ERRCODE = '23514';
+                            END IF;
+                        END LOOP;
+                    END LOOP;
                 END IF;
                 RETURN NEW;
             END;
@@ -250,7 +286,12 @@ return new class extends Migration
             CREATE POLICY assessment_session_definitions_service_update ON assessment_session_definitions
                 FOR UPDATE TO psikotes_runtime USING (app_private.app_role() = 'service')
                 WITH CHECK (app_private.app_role() = 'service');
-            SQL);
+            SQL;
+        $this->executeGeneratedContractSql(str_replace(
+            '__FORBIDDEN_CODEPOINT_MULTIRANGE__',
+            $this->postgresForbiddenCodepointMultirange(),
+            $guardSql,
+        ));
     }
 
     private function addSqliteContract(): void
@@ -376,11 +417,48 @@ return new class extends Migration
                         FROM json_each(NEW.template_payload, '$.subtests') subtest
                     ) = 1350)
             )
+            AND NOT EXISTS (
+                WITH RECURSIVE identities(value) AS (
+                    SELECT CAST(NEW.version AS TEXT)
+                    UNION ALL SELECT CAST(NEW.provenance AS TEXT)
+                    UNION ALL
+                    SELECT CASE WHEN subtest.type = 'object'
+                        THEN CAST(json_extract(subtest.value, '$.code') AS TEXT)
+                        ELSE NULL END
+                    FROM json_each(NEW.template_payload, '$.subtests') subtest
+                    UNION ALL
+                    SELECT CAST(json_extract(
+                        NEW.template_payload, '$.generator.algorithm'
+                    ) AS TEXT)
+                    UNION ALL
+                    SELECT CAST(json_extract(
+                        NEW.template_payload, '$.generator.version'
+                    ) AS TEXT)
+                ), identity_characters(value, position, codepoint) AS (
+                    SELECT value, 1, unicode(substr(value, 1, 1))
+                    FROM identities WHERE value IS NOT NULL AND value <> ''
+                    UNION ALL
+                    SELECT value, position + 1, unicode(substr(value, position + 1, 1))
+                    FROM identity_characters WHERE position < length(value)
+                ), forbidden_codepoints(start_codepoint, end_codepoint) AS (
+                    SELECT json_extract(range.value, '$[0]'), json_extract(range.value, '$[1]')
+                    FROM json_each('__FORBIDDEN_CODEPOINT_RANGES_JSON__') range
+                )
+                SELECT 1 FROM identity_characters character
+                INNER JOIN forbidden_codepoints forbidden
+                    ON character.codepoint BETWEEN forbidden.start_codepoint
+                        AND forbidden.end_codepoint
+            )
             AND NEW.is_active = 1
             AND NEW.deactivated_at IS NULL
             SQL;
+        $valid = str_replace(
+            '__FORBIDDEN_CODEPOINT_RANGES_JSON__',
+            $this->sqliteForbiddenCodepointRangesJson(),
+            $valid,
+        );
 
-        DB::unprepared("CREATE TRIGGER assessment_session_definitions_insert_guard
+        $this->executeGeneratedContractSql("CREATE TRIGGER assessment_session_definitions_insert_guard
             BEFORE INSERT ON assessment_session_definitions FOR EACH ROW
             WHEN COALESCE(({$valid}), 0) = 0
             BEGIN SELECT RAISE(ABORT, 'assessment session definition template is invalid'); END");
@@ -408,5 +486,84 @@ return new class extends Migration
             BEFORE DELETE ON assessment_session_definitions FOR EACH ROW
             BEGIN SELECT RAISE(ABORT, 'assessment session definition history cannot be deleted'); END
             SQL);
+    }
+
+    private function postgresForbiddenCodepointMultirange(): string
+    {
+        return '{'.implode(',', array_map(
+            static fn (array $range): string => sprintf('[%d,%d)', $range[0], $range[1] + 1),
+            $this->forbiddenCodepointRanges(),
+        )).'}';
+    }
+
+    private function executeGeneratedContractSql(string $sql): void
+    {
+        if (DB::connection()->getPdo()->exec($sql) === false) {
+            throw new RuntimeException('Unable to install the generated session definition contract.');
+        }
+    }
+
+    private function sqliteForbiddenCodepointRangesJson(): string
+    {
+        return json_encode($this->forbiddenCodepointRanges(), JSON_THROW_ON_ERROR);
+    }
+
+    /** @return list<array{int, int}> */
+    private function forbiddenCodepointRanges(): array
+    {
+        /** @var list<array{int, int}>|null $cached */
+        static $cached = null;
+        if ($cached !== null) {
+            return $cached;
+        }
+
+        $ranges = [];
+        $start = null;
+        $last = null;
+        for ($codepoint = 1; $codepoint <= 0x10FFFF; $codepoint++) {
+            $forbidden = $codepoint >= 0xD800 && $codepoint <= 0xDFFF;
+            if (! $forbidden) {
+                $match = preg_match('/[\p{C}\p{Z}\s]/u', $this->utf8Character($codepoint));
+                if ($match === false) {
+                    throw new RuntimeException('Unable to compile the canonical identity predicate.');
+                }
+                $forbidden = $match === 1;
+            }
+
+            if ($forbidden) {
+                $start ??= $codepoint;
+                $last = $codepoint;
+            } elseif ($start !== null && $last !== null) {
+                $ranges[] = [$start, $last];
+                $start = null;
+                $last = null;
+            }
+        }
+        if ($start !== null && $last !== null) {
+            $ranges[] = [$start, $last];
+        }
+
+        return $cached = $ranges;
+    }
+
+    private function utf8Character(int $codepoint): string
+    {
+        if ($codepoint <= 0x7F) {
+            return chr($codepoint);
+        }
+        if ($codepoint <= 0x7FF) {
+            return chr(0xC0 | ($codepoint >> 6))
+                .chr(0x80 | ($codepoint & 0x3F));
+        }
+        if ($codepoint <= 0xFFFF) {
+            return chr(0xE0 | ($codepoint >> 12))
+                .chr(0x80 | (($codepoint >> 6) & 0x3F))
+                .chr(0x80 | ($codepoint & 0x3F));
+        }
+
+        return chr(0xF0 | ($codepoint >> 18))
+            .chr(0x80 | (($codepoint >> 12) & 0x3F))
+            .chr(0x80 | (($codepoint >> 6) & 0x3F))
+            .chr(0x80 | ($codepoint & 0x3F));
     }
 };
