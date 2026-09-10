@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Integrations;
 
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
+use App\Models\AssessmentCase;
 use App\Models\AssessmentParticipant;
 use App\Models\Branch;
 use App\Models\IntegrationClient;
 use App\Models\Participant;
 use App\Models\TestPackage;
 use App\Services\Integrations\GenericAssessmentResultStore;
+use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -33,11 +37,11 @@ final class GenericAssessmentResultPersistenceTest extends TestCase
     public function test_it_persists_fractional_iq_without_rounding_and_audits_only_safe_context(): void
     {
         $assessment = $this->assessment();
+        Date::setTestNow('2024-02-29 10:15:00+07:00');
+        $snapshot = $this->snapshot($assessment->assessment_attempt_id, iq: 98.75);
+        $snapshot['completedAt'] = '2024-02-29T03:00:00+00:00';
 
-        $result = app(GenericAssessmentResultStore::class)->persistAuthorizedSnapshot($this->snapshot(
-            $assessment->assessment_attempt_id,
-            iq: 98.75,
-        ));
+        $result = app(GenericAssessmentResultStore::class)->persistAuthorizedSnapshot($snapshot);
 
         $this->assertSame('CREATED', $result['action']);
         $this->assertSame(98.75, $result['envelope']['iq']);
@@ -49,15 +53,22 @@ final class GenericAssessmentResultPersistenceTest extends TestCase
 
         $audit = DB::table('audit_logs')->where('action', 'generic_assessment_result.created')->sole();
         $context = json_decode((string) $audit->context, true, 512, JSON_THROW_ON_ERROR);
-        $this->assertSame(hash('sha256', $assessment->assessment_attempt_id), $context['assessmentAttemptReference']);
-        $this->assertSame(1, $context['resultVersion']);
-        $this->assertSame($row->result_checksum, $context['resultChecksum']);
-        $this->assertSame('FINALIZED', $context['finality']);
-        $this->assertFalse($context['isRevoked']);
+        $this->assertSame('2024-02-29 03:15:00', $audit->occurred_at);
+        $this->assertSame('2029-02-28 03:15:00', $audit->expires_at);
+        $this->assertSame([
+            'assessmentAttemptReference' => hash('sha256', $assessment->assessment_attempt_id),
+            'resultVersion' => 1,
+            'resultChecksum' => $row->result_checksum,
+            'finality' => 'FINALIZED',
+            'isRevoked' => false,
+        ], $context);
+        $participant = $assessment->participant;
         $encoded = json_encode($audit, JSON_THROW_ON_ERROR);
-        $this->assertStringNotContainsString($assessment->assessment_attempt_id, $encoded);
-        $this->assertStringNotContainsString('98.75', $encoded);
-        $this->assertStringNotContainsString('engineVersion', $encoded);
+        foreach ([$assessment->assessment_attempt_id, '98.75', 'engineVersion', $participant->full_name,
+            $participant->phone, $assessment->external_candidate_id, $assessment->idempotency_key,
+            $assessment->request_hash] as $privateValue) {
+            $this->assertStringNotContainsString((string) $privateValue, $encoded);
+        }
     }
 
     public function test_exact_replay_keeps_one_result_but_records_each_successful_action(): void
@@ -76,6 +87,14 @@ final class GenericAssessmentResultPersistenceTest extends TestCase
             ['generic_assessment_result.created', 'generic_assessment_result.replayed'],
             DB::table('audit_logs')->orderBy('id')->pluck('action')->all(),
         );
+        $audits = DB::table('audit_logs')->orderBy('id')->get();
+        $this->assertSame($audits[0]->context, $audits[1]->context);
+        foreach ($audits as $audit) {
+            $occurredAt = CarbonImmutable::parse($audit->occurred_at)->utc();
+            $this->assertTrue(CarbonImmutable::parse($audit->expires_at)->utc()->equalTo(
+                app(RetentionPolicy::class)->expiresAt(RetentionDataClass::Audit, $occurredAt),
+            ));
+        }
     }
 
     public function test_lowercase_attempt_input_resolves_and_persists_the_canonical_uppercase_owner(): void
@@ -395,12 +414,23 @@ final class GenericAssessmentResultPersistenceTest extends TestCase
             'is_active' => true,
         ]);
 
+        $assessmentAttemptId = (string) Str::ulid();
+        $case = AssessmentCase::query()->create([
+            'public_id' => $assessmentAttemptId,
+            'participant_id' => $participant->id,
+            'organization_id' => $organization->id,
+            'package_id' => $package->id,
+            'origin' => 'INTEGRATED',
+            'intended_field_snapshot' => null,
+        ]);
+
         return AssessmentParticipant::query()->create([
+            'assessment_case_id' => $case->id,
             'organization_id' => $organization->id,
             'integration_client_id' => $client->id,
             'participant_id' => $participant->id,
             'package_id' => $package->id,
-            'assessment_attempt_id' => (string) Str::ulid(),
+            'assessment_attempt_id' => $assessmentAttemptId,
             'source_system' => 'RESULT_TEST',
             'external_candidate_id' => $key,
             'funding_mode' => 'SPONSORED',

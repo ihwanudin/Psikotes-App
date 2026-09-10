@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Integrations;
 
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Models\AssessmentParticipant;
 use App\Models\GenericAssessmentResultVersion;
 use Carbon\CarbonImmutable;
@@ -14,7 +16,10 @@ use LogicException;
 
 final readonly class GenericAssessmentResultStore
 {
-    public function __construct(private GenericAssessmentResultProjector $projector) {}
+    public function __construct(
+        private GenericAssessmentResultProjector $projector,
+        private RetentionPolicy $retention,
+    ) {}
 
     /**
      * Persist an explicit snapshot produced by the future authorized scoring boundary.
@@ -156,7 +161,7 @@ final readonly class GenericAssessmentResultStore
             'subject_id' => (string) $assessment->id,
             'context' => json_encode($context, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
             'occurred_at' => $at,
-            'expires_at' => $at->addYearsNoOverflow(2),
+            'expires_at' => $this->retention->expiresAt(RetentionDataClass::Audit, $at),
         ]);
     }
 }
