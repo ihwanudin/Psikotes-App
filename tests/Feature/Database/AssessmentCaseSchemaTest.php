@@ -194,6 +194,72 @@ final class AssessmentCaseSchemaTest extends OrganizationPaymentTestCase
         $this->assertTrue(Schema::hasTable('assessment_cases'));
     }
 
+    public function test_successful_down_up_preserves_parent_rows_schema_triggers_and_sequences(): void
+    {
+        $migration = require database_path('migrations/2026_09_09_000200_create_assessment_cases.php');
+        $graph = $this->graph();
+        $attempt = $this->assessmentParticipant($graph);
+        $session = $this->createTestSession($graph['participant']);
+        DB::statement('CREATE INDEX assessment_participants_preservation_probe_idx ON assessment_participants (assessment_status, id)');
+        DB::statement('CREATE INDEX test_sessions_preservation_probe_idx ON test_sessions (status, id)');
+        DB::unprepared(<<<'SQL'
+            CREATE TRIGGER assessment_participants_preservation_probe
+            BEFORE UPDATE ON assessment_participants WHEN NEW.id IS NOT OLD.id
+            BEGIN SELECT RAISE(ABORT, 'assessment participant id is immutable'); END
+            SQL);
+        DB::unprepared(<<<'SQL'
+            CREATE TRIGGER test_sessions_preservation_probe
+            BEFORE UPDATE ON test_sessions WHEN NEW.id IS NOT OLD.id
+            BEGIN SELECT RAISE(ABORT, 'test session id is immutable'); END
+            SQL);
+        DB::unprepared(<<<'SQL'
+            CREATE TRIGGER assessment_case_cross_table_preservation_probe
+            AFTER UPDATE ON branches
+            BEGIN
+                SELECT count(*) FROM assessment_participants WHERE organization_id = NEW.id;
+                SELECT count(*) FROM test_sessions
+                    WHERE participant_id IN (SELECT id FROM participants WHERE branch_id = NEW.id);
+            END
+            SQL);
+
+        $attemptRow = (array) DB::table('assessment_participants')->find($attempt);
+        $sessionRow = (array) DB::table('test_sessions')->find($session);
+        $preservedSchema = $this->parentSchemaWithoutCaseLinks();
+        $dependentTriggers = $this->preservationProbeTriggers();
+        $sequences = $this->parentSequences();
+        $this->assertSame($attempt, $sequences['assessment_participants'] ?? null);
+        $this->assertSame($session, $sequences['test_sessions'] ?? null);
+
+        $migration->down();
+
+        unset($attemptRow['assessment_case_id'], $sessionRow['assessment_case_id']);
+        $this->assertEquals($attemptRow, (array) DB::table('assessment_participants')->find($attempt));
+        $this->assertEquals($sessionRow, (array) DB::table('test_sessions')->find($session));
+        $this->assertSame($preservedSchema, $this->parentSchemaWithoutCaseLinks());
+        $this->assertSame($dependentTriggers, $this->preservationProbeTriggers());
+        $this->assertSame($sequences, $this->parentSequences());
+        $this->assertDatabaseMissing('sqlite_sequence', ['name' => 'assessment_participants_without_assessment_case']);
+        $this->assertDatabaseMissing('sqlite_sequence', ['name' => 'test_sessions_without_assessment_case']);
+        $this->assertFalse(Schema::hasTable('assessment_participants_without_assessment_case'));
+        $this->assertFalse(Schema::hasTable('test_sessions_without_assessment_case'));
+        $this->assertCaseSchemaPresent(false);
+        $this->assertSame([], DB::select('PRAGMA foreign_key_check'));
+        $this->assertSame(1, (int) DB::scalar('PRAGMA foreign_keys'));
+
+        $migration->up();
+
+        $this->assertEquals([...$attemptRow, 'assessment_case_id' => null], (array) DB::table('assessment_participants')->find($attempt));
+        $this->assertEquals([...$sessionRow, 'assessment_case_id' => null], (array) DB::table('test_sessions')->find($session));
+        $this->assertSame($preservedSchema, $this->parentSchemaWithoutCaseLinks());
+        $this->assertSame($dependentTriggers, $this->preservationProbeTriggers());
+        $this->assertSame($sequences, $this->parentSequences());
+        $this->assertDatabaseMissing('sqlite_sequence', ['name' => 'assessment_participants_without_assessment_case']);
+        $this->assertDatabaseMissing('sqlite_sequence', ['name' => 'test_sessions_without_assessment_case']);
+        $this->assertCaseSchemaPresent(true);
+        $this->assertSame([], DB::select('PRAGMA foreign_key_check'));
+        $this->assertSame(1, (int) DB::scalar('PRAGMA foreign_keys'));
+    }
+
     /** @return array{branch:int,package:int,participant:int,client:int} */
     private function graph(): array
     {
@@ -265,6 +331,91 @@ final class AssessmentCaseSchemaTest extends OrganizationPaymentTestCase
             'duration_seconds' => 3600, 'status' => 'created', 'answers_revision' => 0,
             'created_at' => now(), 'updated_at' => now(),
         ]);
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    private function parentSchemaWithoutCaseLinks(): array
+    {
+        $schema = [];
+        foreach (['assessment_participants', 'test_sessions'] as $table) {
+            $columns = collect(DB::select("PRAGMA table_info('{$table}')"))
+                ->reject(fn (object $column): bool => $column->name === 'assessment_case_id')
+                ->map(fn (object $column): array => [
+                    'name' => (string) $column->name,
+                    'type' => (string) $column->type,
+                    'notnull' => (int) $column->notnull,
+                    'default' => $column->dflt_value,
+                    'primary' => (int) $column->pk,
+                ])->sortBy('name')->values()->all();
+            $indexes = collect(DB::select(
+                "SELECT name, sql FROM sqlite_master WHERE type = 'index' AND tbl_name = ? ORDER BY name",
+                [$table],
+            ))->reject(fn (object $index): bool => str_contains(strtolower((string) $index->sql), 'assessment_case_id'))
+                ->map(fn (object $index): array => ['name' => (string) $index->name, 'sql' => $index->sql])
+                ->values()->all();
+            $foreignKeys = collect(DB::select("PRAGMA foreign_key_list('{$table}')"))
+                ->reject(fn (object $foreign): bool => $foreign->from === 'assessment_case_id')
+                ->map(fn (object $foreign): array => [
+                    'sequence' => (int) $foreign->seq,
+                    'table' => (string) $foreign->table,
+                    'from' => (string) $foreign->from,
+                    'to' => (string) $foreign->to,
+                    'on_update' => (string) $foreign->on_update,
+                    'on_delete' => (string) $foreign->on_delete,
+                    'match' => (string) $foreign->match,
+                ])->sortBy(['table', 'sequence', 'from'])->values()->all();
+            $triggers = collect(DB::select(
+                "SELECT name, sql FROM sqlite_master WHERE type = 'trigger' AND tbl_name = ? ORDER BY name",
+                [$table],
+            ))->map(fn (object $trigger): array => ['name' => (string) $trigger->name, 'sql' => (string) $trigger->sql])
+                ->values()->all();
+            $schema[$table] = compact('columns', 'indexes', 'foreignKeys', 'triggers');
+        }
+
+        return $schema;
+    }
+
+    /** @return array<string, int> */
+    private function parentSequences(): array
+    {
+        return collect(DB::select(<<<'SQL'
+            SELECT name, seq FROM sqlite_sequence
+            WHERE name IN ('assessment_participants', 'test_sessions')
+            ORDER BY name
+            SQL))->mapWithKeys(fn (object $sequence): array => [
+            (string) $sequence->name => (int) $sequence->seq,
+        ])->all();
+    }
+
+    /** @return array<string, string> */
+    private function preservationProbeTriggers(): array
+    {
+        return collect(DB::select(<<<'SQL'
+            SELECT name, sql FROM sqlite_master
+            WHERE type = 'trigger' AND name LIKE '%preservation_probe'
+            ORDER BY name
+            SQL))->mapWithKeys(fn (object $trigger): array => [
+            (string) $trigger->name => (string) $trigger->sql,
+        ])->all();
+    }
+
+    private function assertCaseSchemaPresent(bool $present): void
+    {
+        $this->assertSame($present, Schema::hasTable('assessment_cases'));
+        foreach (['assessment_participants', 'test_sessions'] as $table) {
+            $this->assertSame($present, Schema::hasColumn($table, 'assessment_case_id'));
+            $foreign = collect(DB::select("PRAGMA foreign_key_list('{$table}')"))
+                ->contains(fn (object $candidate): bool => $candidate->from === 'assessment_case_id'
+                    && $candidate->table === 'assessment_cases');
+            $this->assertSame($present, $foreign);
+        }
+        foreach ([
+            'assessment_participants' => 'assessment_participants_case_unique',
+            'test_sessions' => 'test_sessions_assessment_case_idx',
+        ] as $table => $index) {
+            $exists = collect(DB::select("PRAGMA index_list('{$table}')"))->contains('name', $index);
+            $this->assertSame($present, $exists);
+        }
     }
 
     private function assertRejected(callable $operation): void
