@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Actions\Payments;
 
 use App\Actions\Notifications\EnqueueParticipantActivation;
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Models\Admin;
 use App\Models\Entitlement;
 use App\Models\Order;
@@ -20,6 +22,7 @@ final readonly class VerifyManualTransfer
         private RlsContextRunner $runner,
         private OrderStateMachine $stateMachine,
         private EnqueueParticipantActivation $enqueueActivation,
+        private RetentionPolicy $retention,
     ) {}
 
     public function approve(Admin $admin, int $orderId, string $expectedProofKey): Order
@@ -76,7 +79,7 @@ final readonly class VerifyManualTransfer
                 return $order;
             }
 
-            $reviewedAt = now()->utc();
+            $reviewedAt = now()->utc()->toImmutable();
             $order->status = $transition->status;
             $order->verified_at = $reviewedAt;
             $order->verified_by_admin_id = $admin->id;
@@ -114,7 +117,7 @@ final readonly class VerifyManualTransfer
                     'rejection_reason_present' => ! $approved,
                 ], JSON_THROW_ON_ERROR),
                 'occurred_at' => $reviewedAt,
-                'expires_at' => $reviewedAt->addYears(2),
+                'expires_at' => $this->retention->expiresAt(RetentionDataClass::Audit, $reviewedAt),
             ]);
 
             return $order;

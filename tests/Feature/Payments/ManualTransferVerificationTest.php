@@ -7,15 +7,18 @@ namespace Tests\Feature\Payments;
 use App\Actions\Payments\VerifyManualTransfer;
 use App\Enums\AdminRole;
 use App\Models\Admin;
+use App\Models\AssessmentCase;
 use App\Models\Branch;
 use App\Models\Entitlement;
 use App\Models\Order;
 use App\Models\Participant;
 use App\Models\PaymentMethod;
+use App\Models\TestPackage;
 use App\Services\Payments\Exceptions\InvalidOrderTransition;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Date;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
@@ -33,6 +36,7 @@ final class ManualTransferVerificationTest extends TestCase
 
     public function test_authorized_branch_admin_approves_once_and_unlocks_entitlements_atomically(): void
     {
+        Date::setTestNow('2024-02-29 10:15:00+07:00');
         [$branch, $order, $entitlement] = $this->manualOrder();
         $admin = $this->admin($branch, canVerify: true);
         $action = app(VerifyManualTransfer::class);
@@ -47,6 +51,17 @@ final class ManualTransferVerificationTest extends TestCase
         $this->assertTrue($order->paid_at?->equalTo(Date::now()) ?? false);
         $this->assertSame('ready', $entitlement->status);
         $this->assertTrue($entitlement->ready_at?->equalTo(Date::now()) ?? false);
+        $audit = (array) DB::table('audit_logs')->sole();
+        $this->assertSame('2024-02-29 03:15:00', $audit['occurred_at']);
+        $this->assertSame('2029-02-28 03:15:00', $audit['expires_at']);
+        $this->assertSame([
+            'amount' => 250_000,
+            'currency' => 'IDR',
+            'rejection_reason_present' => false,
+        ], json_decode((string) $audit['context'], true, 512, JSON_THROW_ON_ERROR));
+        foreach ([$order->participant->full_name, $order->participant->phone, $order->proof_object_key] as $privateValue) {
+            $this->assertStringNotContainsString((string) $privateValue, (string) $audit['context']);
+        }
         $this->assertDatabaseHas('audit_logs', [
             'branch_id' => $branch->id,
             'actor_id' => (string) $admin->id,
@@ -57,7 +72,7 @@ final class ManualTransferVerificationTest extends TestCase
 
         $paidAt = $order->paid_at;
         $readyAt = $entitlement->ready_at;
-        Date::setTestNow('2026-08-25 11:00:00+07:00');
+        Date::setTestNow('2024-02-29 11:00:00+07:00');
         $action->approve($admin, $order->id, (string) $order->proof_object_key);
 
         $this->assertTrue($order->fresh()->paid_at?->equalTo($paidAt) ?? false);
@@ -209,10 +224,22 @@ final class ManualTransferVerificationTest extends TestCase
             'name' => "Cabang {$suffix}",
             'ref_code' => "REF-{$suffix}",
         ]);
+        $package = TestPackage::query()->create([
+            'code' => "PACKAGE-{$suffix}",
+            'name' => "Paket {$suffix}",
+            'amount' => 250_000,
+            'currency' => 'IDR',
+            'is_active' => true,
+        ]);
+        foreach (['ist', 'dass21'] as $testType) {
+            $package->items()->create(['test_type' => $testType]);
+        }
         $participant = Participant::query()->create([
             'branch_id' => $branch->id,
             'referral_branch_id' => $branch->id,
             'referral_source' => 'default',
+            'package_id' => $package->id,
+            'source_system' => 'DIRECT_PUBLIC',
             'full_name' => "Peserta {$suffix}",
             'gender' => 'female',
             'birth_date' => '2001-04-15',
@@ -231,9 +258,19 @@ final class ManualTransferVerificationTest extends TestCase
             ])->save();
         }
 
-        $order = Order::query()->create([
-            'public_id' => (string) Str::ulid(),
+        $orderPublicId = (string) Str::ulid();
+        $case = AssessmentCase::query()->create([
+            'public_id' => $orderPublicId,
             'participant_id' => $participant->id,
+            'organization_id' => $branch->id,
+            'package_id' => $package->id,
+            'origin' => 'DIRECT_PUBLIC',
+            'intended_field_snapshot' => 'KAIGO',
+        ]);
+        $order = Order::query()->create([
+            'public_id' => $orderPublicId,
+            'participant_id' => $participant->id,
+            'assessment_case_id' => $case->id,
             'payment_method_id' => $method->id,
             'status' => 'pending',
             'amount' => 250_000,
