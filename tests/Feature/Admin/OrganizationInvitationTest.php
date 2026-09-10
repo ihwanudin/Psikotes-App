@@ -8,6 +8,7 @@ use App\Actions\Integrations\IssueAssessmentInvitation;
 use App\Enums\AdminRole;
 use App\Filament\Resources\AssessmentParticipants\Pages\ListAssessmentParticipants;
 use App\Models\Admin;
+use App\Models\AssessmentCase;
 use App\Models\AssessmentParticipant;
 use App\Models\Branch;
 use App\Models\IntegrationClient;
@@ -57,6 +58,13 @@ final class OrganizationInvitationTest extends TestCase
             'password' => 'password',
             'role' => AdminRole::BranchAdmin,
         ]);
+    }
+
+    protected function tearDown(): void
+    {
+        Date::setTestNow();
+
+        parent::tearDown();
     }
 
     public function test_organization_admin_can_issue_and_consume_a_one_time_invitation(): void
@@ -117,6 +125,47 @@ final class OrganizationInvitationTest extends TestCase
         $this->assertIsString($secondUrl);
         $this->postJson($firstUrl.'/consume', ['token' => $first->token])->assertStatus(409);
         $this->postJson($secondUrl.'/consume', ['token' => $second->token])->assertOk();
+    }
+
+    public function test_issue_and_reissue_each_write_one_private_five_year_audit_from_a_leap_day_anchor(): void
+    {
+        Date::setTestNow('2024-02-29 10:15:00+07:00');
+        $first = app(IssueAssessmentInvitation::class)->handle($this->adminA, $this->assessmentA);
+
+        Date::setTestNow('2024-02-29 10:16:00+07:00');
+        $second = app(IssueAssessmentInvitation::class)->handle($this->adminA, $this->assessmentA);
+
+        $audits = $this->getConnection()->table('audit_logs')->orderBy('id')->get();
+        $this->assertCount(2, $audits);
+        $this->assertSame(
+            ['assessment_invitation.issued', 'assessment_invitation.reissued'],
+            $audits->pluck('action')->all(),
+        );
+        $this->assertSame('2024-02-29 03:15:00', $audits[0]->occurred_at);
+        $this->assertSame('2029-02-28 03:15:00', $audits[0]->expires_at);
+        $this->assertSame('2024-02-29 03:16:00', $audits[1]->occurred_at);
+        $this->assertSame('2029-02-28 03:16:00', $audits[1]->expires_at);
+
+        foreach ([[$audits[0], $first, 1], [$audits[1], $second, 2]] as [$audit, $issued, $issueNumber]) {
+            $context = json_decode((string) $audit->context, true, 512, JSON_THROW_ON_ERROR);
+            $this->assertSame(['invitation_id', 'issue_number', 'expires_at'], array_keys($context));
+            $this->assertSame($issueNumber, $context['issue_number']);
+            $this->assertStringContainsString((string) $context['invitation_id'], $issued->url);
+        }
+
+        $encodedAudits = json_encode($audits, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+        foreach ([
+            'Admin Organization A',
+            'admin-a@example.test',
+            'Private A',
+            'private-a@example.test',
+            '62811111111A',
+            'CAND-A',
+            'PROCESS-A',
+            'ROUND-2026-08',
+        ] as $privateValue) {
+            $this->assertStringNotContainsString($privateValue, $encodedAudits);
+        }
     }
 
     public function test_admin_cannot_issue_an_invitation_for_another_organization(): void
@@ -183,12 +232,22 @@ final class OrganizationInvitationTest extends TestCase
             'phone' => '62811111111'.$suffix, 'email' => 'private-'.strtolower($suffix).'@example.test',
             'test_number' => 'TEST-'.$suffix,
         ]);
+        $assessmentAttemptId = (string) Str::ulid();
+        $case = AssessmentCase::query()->create([
+            'public_id' => $assessmentAttemptId,
+            'participant_id' => $participant->id,
+            'organization_id' => $organization->id,
+            'package_id' => $package->id,
+            'origin' => 'INTEGRATED',
+            'intended_field_snapshot' => 'UMUM',
+        ]);
         $mapping = AssessmentParticipant::query()->create([
+            'assessment_case_id' => $case->id,
             'integration_client_id' => $client->id,
             'organization_id' => $organization->id,
             'participant_id' => $participant->id,
             'package_id' => $package->id,
-            'assessment_attempt_id' => (string) Str::ulid(),
+            'assessment_attempt_id' => $assessmentAttemptId,
             'source_system' => 'PORTAL_ONLY',
             'external_candidate_id' => 'CAND-'.$suffix,
             'external_process_id' => 'PROCESS-'.$suffix,

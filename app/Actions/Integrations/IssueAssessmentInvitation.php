@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Actions\Integrations;
 
 use App\Data\Integrations\IssuedAssessmentInvitation;
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Enums\AdminAbility;
 use App\Enums\AdminRole;
 use App\Models\Admin;
@@ -18,7 +20,10 @@ use LogicException;
 
 final readonly class IssueAssessmentInvitation
 {
-    public function __construct(private RlsContextRunner $runner) {}
+    public function __construct(
+        private RlsContextRunner $runner,
+        private RetentionPolicy $retention,
+    ) {}
 
     public function handle(Admin $admin, AssessmentParticipant $assessment): IssuedAssessmentInvitation
     {
@@ -28,10 +33,11 @@ final readonly class IssueAssessmentInvitation
         }
 
         $token = Str::random(64);
-        $expiresAt = now()->utc()->addHours(max(1, min(720, (int) config('assessment_integration.invitation_ttl_hours', 168))));
+        $auditAt = now()->utc()->toImmutable();
+        $expiresAt = $auditAt->addHours(max(1, min(720, (int) config('assessment_integration.invitation_ttl_hours', 168))));
 
-        $publicId = $this->runner->runAsService(function () use ($admin, $assessment, $token, $expiresAt): string {
-            return DB::transaction(function () use ($admin, $assessment, $token, $expiresAt): string {
+        $publicId = $this->runner->runAsService(function () use ($admin, $assessment, $token, $auditAt, $expiresAt): string {
+            return DB::transaction(function () use ($admin, $assessment, $token, $auditAt, $expiresAt): string {
                 $locked = AssessmentParticipant::query()->lockForUpdate()->findOrFail($assessment->id);
                 if (! in_array($locked->assessment_status, ['READY', 'IN_PROGRESS'], true)) {
                     throw new LogicException('Invitations are only available for active assessments.');
@@ -68,8 +74,8 @@ final readonly class IssueAssessmentInvitation
                         'issue_number' => $invitation->issue_number,
                         'expires_at' => $expiresAt->toISOString(),
                     ], JSON_THROW_ON_ERROR),
-                    'occurred_at' => now(),
-                    'expires_at' => now()->addYears(5),
+                    'occurred_at' => $auditAt,
+                    'expires_at' => $this->retention->expiresAt(RetentionDataClass::Audit, $auditAt),
                 ]);
 
                 return $invitation->public_id;

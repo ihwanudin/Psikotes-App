@@ -6,6 +6,8 @@ namespace App\Services\Notifications;
 
 use App\Contracts\Notifier;
 use App\Data\Notifications\ParticipantActivationNotification;
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Enums\OrderStatus;
 use App\Models\Order;
 use App\Models\OutboxMessage;
@@ -22,6 +24,7 @@ final readonly class DeliverParticipantActivation
         private RlsContextRunner $runner,
         private Notifier $notifier,
         private LoggerInterface $logger,
+        private RetentionPolicy $retention,
     ) {}
 
     public function handle(string $messageId): void
@@ -225,7 +228,7 @@ final readonly class DeliverParticipantActivation
                 return false;
             }
 
-            $now = now()->utc();
+            $now = now()->utc()->toImmutable();
             $message->forceFill([
                 'status' => $status,
                 'processed_at' => $status === 'processed' ? $now : null,
@@ -251,7 +254,7 @@ final readonly class DeliverParticipantActivation
                     'error_code' => $errorCode,
                 ], fn (mixed $value): bool => $value !== null), JSON_THROW_ON_ERROR),
                 'occurred_at' => $now,
-                'expires_at' => $now->addYears(5),
+                'expires_at' => $this->retention->expiresAt(RetentionDataClass::Audit, $now),
             ]);
 
             return true;
