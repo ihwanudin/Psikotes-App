@@ -12,6 +12,7 @@ use App\Models\Participant;
 use App\Models\PaymentMethod;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -89,10 +90,13 @@ final class ManualPaymentProofAccessTest extends TestCase
             'name' => "Cabang {$suffix}",
             'ref_code' => "REF-{$suffix}",
         ]);
+        $package = $this->directPackage($suffix);
         $participant = Participant::query()->create([
             'branch_id' => $branch->id,
             'referral_branch_id' => $branch->id,
             'referral_source' => 'default',
+            'package_id' => $package,
+            'source_system' => 'DIRECT_PUBLIC',
             'full_name' => "Peserta {$suffix}",
             'gender' => 'female',
             'birth_date' => '2001-04-15',
@@ -112,9 +116,21 @@ final class ManualPaymentProofAccessTest extends TestCase
         }
         $key = 'manual/'.Str::lower(Str::random(64)).'.jpg';
         Storage::disk('payment-proofs')->put($key, 'private-proof', 'private');
-        $order = Order::query()->create([
-            'public_id' => (string) Str::ulid(),
+        $orderPublicId = (string) Str::ulid();
+        $case = DB::table('assessment_cases')->insertGetId([
+            'public_id' => $orderPublicId,
             'participant_id' => $participant->id,
+            'organization_id' => $branch->id,
+            'package_id' => $package,
+            'origin' => 'DIRECT_PUBLIC',
+            'intended_field_snapshot' => $participant->intended_field,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $order = Order::query()->create([
+            'public_id' => $orderPublicId,
+            'participant_id' => $participant->id,
+            'assessment_case_id' => $case,
             'payment_method_id' => $method->id,
             'status' => 'pending',
             'amount' => 250_000,
@@ -129,6 +145,25 @@ final class ManualPaymentProofAccessTest extends TestCase
         ]);
 
         return [$branch, $order];
+    }
+
+    private function directPackage(string $suffix): int
+    {
+        $package = DB::table('packages')->insertGetId([
+            'code' => "PKG-{$suffix}",
+            'name' => "Paket {$suffix}",
+            'amount' => 250_000,
+            'currency' => 'IDR',
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('package_items')->insert([
+            ['package_id' => $package, 'test_type' => 'ist', 'sort_order' => 1, 'created_at' => now(), 'updated_at' => now()],
+            ['package_id' => $package, 'test_type' => 'dass21', 'sort_order' => 2, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        return $package;
     }
 
     private function admin(Branch $branch, bool $canVerify): Admin

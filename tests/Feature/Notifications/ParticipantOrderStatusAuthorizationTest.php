@@ -11,6 +11,7 @@ use App\Models\PaymentMethod;
 use App\Services\ParticipantAuth\ParticipantJwt;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Date;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -125,10 +126,14 @@ final class ParticipantOrderStatusAuthorizationTest extends TestCase
 
     private function participant(string $name, string $testNumber): Participant
     {
+        $package = $this->directPackage();
+
         return Participant::query()->create([
             'branch_id' => $this->branch->id,
             'referral_branch_id' => $this->branch->id,
             'referral_source' => 'default',
+            'package_id' => $package,
+            'source_system' => 'DIRECT_PUBLIC',
             'full_name' => $name,
             'gender' => 'female',
             'birth_date' => '2001-04-15',
@@ -145,9 +150,22 @@ final class ParticipantOrderStatusAuthorizationTest extends TestCase
         int $amount,
         ?string $rejectionReason = null,
     ): Order {
-        return Order::query()->create([
-            'public_id' => (string) Str::ulid(),
+        $orderPublicId = (string) Str::ulid();
+        $case = DB::table('assessment_cases')->insertGetId([
+            'public_id' => $orderPublicId,
             'participant_id' => $participant->id,
+            'organization_id' => $participant->branch_id,
+            'package_id' => $participant->package_id,
+            'origin' => 'DIRECT_PUBLIC',
+            'intended_field_snapshot' => $participant->intended_field,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return Order::query()->create([
+            'public_id' => $orderPublicId,
+            'participant_id' => $participant->id,
+            'assessment_case_id' => $case,
             'payment_method_id' => $this->method->id,
             'status' => $status,
             'amount' => $amount,
@@ -155,6 +173,26 @@ final class ParticipantOrderStatusAuthorizationTest extends TestCase
             'paid_at' => $status === 'paid' ? now() : null,
             'rejection_reason' => $rejectionReason,
         ]);
+    }
+
+    private function directPackage(): int
+    {
+        $key = (string) Str::ulid();
+        $package = DB::table('packages')->insertGetId([
+            'code' => 'PKG-'.$key,
+            'name' => 'Paket pembayaran langsung',
+            'amount' => 250_000,
+            'currency' => 'IDR',
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('package_items')->insert([
+            ['package_id' => $package, 'test_type' => 'ist', 'sort_order' => 1, 'created_at' => now(), 'updated_at' => now()],
+            ['package_id' => $package, 'test_type' => 'dass21', 'sort_order' => 2, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        return $package;
     }
 
     private function token(Participant $participant): string

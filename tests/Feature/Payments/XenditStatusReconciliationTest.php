@@ -77,10 +77,13 @@ final class XenditStatusReconciliationTest extends TestCase
             'ref_code' => 'CENTRAL-REF',
             'is_default' => true,
         ]);
+        $package = $this->directPackage();
         $participant = Participant::query()->create([
             'branch_id' => $branch->id,
             'referral_branch_id' => $branch->id,
             'referral_source' => 'default',
+            'package_id' => $package,
+            'source_system' => 'DIRECT_PUBLIC',
             'full_name' => 'Ayu Pratiwi',
             'gender' => 'female',
             'birth_date' => '2001-04-15',
@@ -96,9 +99,21 @@ final class XenditStatusReconciliationTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
-        $order = Order::query()->create([
-            'public_id' => (string) Str::ulid(),
+        $orderPublicId = (string) Str::ulid();
+        $case = DB::table('assessment_cases')->insertGetId([
+            'public_id' => $orderPublicId,
             'participant_id' => $participant->id,
+            'organization_id' => $branch->id,
+            'package_id' => $package,
+            'origin' => 'DIRECT_PUBLIC',
+            'intended_field_snapshot' => $participant->intended_field,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $order = Order::query()->create([
+            'public_id' => $orderPublicId,
+            'participant_id' => $participant->id,
+            'assessment_case_id' => $case,
             'payment_method_id' => $methodId,
             'status' => 'pending',
             'amount' => 350_000,
@@ -115,6 +130,26 @@ final class XenditStatusReconciliationTest extends TestCase
         ]);
 
         return [$order, $entitlement];
+    }
+
+    private function directPackage(): int
+    {
+        $key = (string) Str::ulid();
+        $package = DB::table('packages')->insertGetId([
+            'code' => 'PKG-'.$key,
+            'name' => 'Paket pembayaran langsung',
+            'amount' => 350_000,
+            'currency' => 'IDR',
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('package_items')->insert([
+            ['package_id' => $package, 'test_type' => 'ist', 'sort_order' => 1, 'created_at' => now(), 'updated_at' => now()],
+            ['package_id' => $package, 'test_type' => 'dass21', 'sort_order' => 2, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        return $package;
     }
 
     /** @return array<string, mixed> */
