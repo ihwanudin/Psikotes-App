@@ -253,9 +253,33 @@ occur before distinguishing missing from forbidden tenant resources.
 | `POST /sessions/:id/proctor` | Stores bounded proctor evidence/logs under the same participant/session authorization without altering deadline or answer revision |
 | `POST /sessions/:id/submit` | Seals once, scores idempotently, and returns the stable `status: scored` response |
 
-Route/controller work must continue to implement `RequiresRlsContext` and use
-the existing participant bearer and `rls` middleware. IDs in paths are selectors,
-not authorization evidence.
+Route/controller work must continue to use the existing participant bearer.
+Except for the narrowly approved start boundary below, participant session
+controllers implement `RequiresRlsContext` and use the `rls` middleware. IDs in
+paths are selectors, not authorization evidence.
+
+### Trusted participant session-start boundary
+
+ADR-0030 supersedes the earlier assumption that the generic start controller can
+run inside participant RLS and then invoke the service-only case resolver. Only
+`POST /api/sessions/:test_type/start` uses `participant.jwt` without the generic
+`rls` middleware. Its controller performs no database query and invokes exactly
+one sealed command with this input surface:
+
+```php
+execute(
+    ParticipantPrincipal $principal,
+    GenericAssessmentInstrument $instrument,
+): AssessmentSessionStartResult
+```
+
+The command requires no active RLS context or transaction, owns one outer service
+transaction, and inside it calls the accepted `CaseAuthorizationResolver`, loads
+the server-side session definition, and performs the atomic session/grant/source
+transition. The request cannot supply participant, branch, case, origin, grant,
+authorization/allocation ID, definition, duration, seed, or timestamps. A generic
+callback-based participant-to-service elevation is forbidden. DASS-21 remains on
+its isolated flow and must be rejected by this generic route.
 
 ## PostgreSQL RLS and privilege matrix
 
