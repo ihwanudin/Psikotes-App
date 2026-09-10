@@ -28,11 +28,7 @@ final class AssessmentBillingFixture
             $package = DB::table('packages')->insertGetId(['code' => $key, 'name' => 'Synthetic', 'amount' => 100, 'currency' => 'IDR']);
             $timestamp = now();
             $case = $withCase
-                ? DB::table('assessment_cases')->insertGetId([
-                    'public_id' => $key, 'participant_id' => $participant, 'organization_id' => $organization,
-                    'package_id' => $package, 'origin' => 'INTEGRATED', 'intended_field_snapshot' => null,
-                    'created_at' => $timestamp, 'updated_at' => $timestamp,
-                ])
+                ? self::createExactIntegratedCase($participant, $organization, $package, $key)
                 : null;
             $attempt = DB::table('assessment_participants')->insertGetId(['organization_id' => $organization,
                 'integration_client_id' => $client, 'participant_id' => $participant, 'package_id' => $package,
@@ -53,6 +49,26 @@ final class AssessmentBillingFixture
 
             return compact('organization', 'participant', 'package', 'case', 'attempt', 'charge', 'bill', 'payer');
         });
+    }
+
+    public static function createExactIntegratedCase(
+        int $participant,
+        int $organization,
+        int $package,
+        string $attemptPublicId,
+    ): int {
+        $timestamp = now();
+
+        return DB::table('assessment_cases')->insertGetId([
+            'public_id' => $attemptPublicId,
+            'participant_id' => $participant,
+            'organization_id' => $organization,
+            'package_id' => $package,
+            'origin' => 'INTEGRATED',
+            'intended_field_snapshot' => null,
+            'created_at' => $timestamp,
+            'updated_at' => $timestamp,
+        ]);
     }
 
     /** @param array{bill:int,charge:int,organization:int,participant:int,payer:string} $fixture
