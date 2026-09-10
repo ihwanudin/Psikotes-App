@@ -6,6 +6,8 @@ namespace App\Actions\Payments;
 
 use App\Data\Payments\AssessmentBillManualReview;
 use App\Data\Payments\PaymentEvent;
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Enums\AdminRole;
 use App\Enums\AssessmentBillManualDecision;
 use App\Enums\AssessmentBillManualReviewError;
@@ -40,6 +42,7 @@ final readonly class FinalizeAssessmentBill
         private AssessmentPriceSnapshot $prices,
         private ActivateSettledAssessment $activation,
         private AssessmentBillProofIdentity $proofs,
+        private RetentionPolicy $retention,
     ) {}
 
     /** @return array{decision: string, allocationCount: int, activatedAttemptCount: int} */
@@ -458,7 +461,7 @@ final readonly class FinalizeAssessmentBill
     /** @param Collection<int, AssessmentBillItem> $items */
     private function audit(PaymentEvent $event, AssessmentBill $bill, Collection $items, CarbonImmutable $paidAt): void
     {
-        $now = now()->toImmutable();
+        $now = now()->toImmutable()->utc();
         DB::table('audit_logs')->insert([
             'branch_id' => $bill->organization_id,
             'actor_type' => 'system',
@@ -468,7 +471,7 @@ final readonly class FinalizeAssessmentBill
             'subject_id' => (string) $bill->id,
             'context' => json_encode($this->auditContext($event, $items, $paidAt), JSON_THROW_ON_ERROR),
             'occurred_at' => $now,
-            'expires_at' => $now->addYearsNoOverflow(2),
+            'expires_at' => $this->retention->expiresAt(RetentionDataClass::Audit, $now),
         ]);
     }
 
@@ -476,7 +479,7 @@ final readonly class FinalizeAssessmentBill
     private function auditManual(AssessmentBillManualReview $review, Admin $actor, AssessmentBill $bill,
         Collection $items, CarbonImmutable $reviewedAt, string $fingerprint): void
     {
-        $now = now()->toImmutable();
+        $now = now()->toImmutable()->utc();
         DB::table('audit_logs')->insert([
             'branch_id' => $bill->organization_id,
             'actor_type' => 'admin',
@@ -489,7 +492,7 @@ final readonly class FinalizeAssessmentBill
                 JSON_THROW_ON_ERROR,
             ),
             'occurred_at' => $now,
-            'expires_at' => $now->addYearsNoOverflow(2),
+            'expires_at' => $this->retention->expiresAt(RetentionDataClass::Audit, $now),
         ]);
     }
 
@@ -497,7 +500,7 @@ final readonly class FinalizeAssessmentBill
     private function auditTerminal(PaymentEvent $event, AssessmentBill $bill, Collection $items,
         CarbonImmutable $occurredAt, string $status): void
     {
-        $now = now()->toImmutable();
+        $now = now()->toImmutable()->utc();
         DB::table('audit_logs')->insert([
             'branch_id' => $bill->organization_id,
             'actor_type' => 'system',
@@ -507,7 +510,7 @@ final readonly class FinalizeAssessmentBill
             'subject_id' => (string) $bill->id,
             'context' => json_encode($this->terminalAuditContext($event, $items, $occurredAt, $status), JSON_THROW_ON_ERROR),
             'occurred_at' => $now,
-            'expires_at' => $now->addYearsNoOverflow(2),
+            'expires_at' => $this->retention->expiresAt(RetentionDataClass::Audit, $now),
         ]);
     }
 

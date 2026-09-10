@@ -14,6 +14,7 @@ use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Illuminate\Foundation\Testing\RefreshDatabaseState;
+use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use LogicException;
 use RuntimeException;
@@ -30,7 +31,7 @@ final class AssessmentBillPaymentFinalizationTest extends OrganizationPaymentTes
     {
         RefreshDatabaseState::$migrated = false;
         parent::setUp();
-        $this->freezeTime();
+        Date::setTestNow('2024-02-29 10:15:00+07:00');
         $this->bill = $this->pendingAttempt();
     }
 
@@ -51,6 +52,57 @@ final class AssessmentBillPaymentFinalizationTest extends OrganizationPaymentTes
         $this->assertSame(1, DB::table('audit_logs')->where('action', 'assessment_bill.paid')->count());
         $this->assertSame(1, DB::table('audit_logs')->where('action', 'assessment.activated')->count());
         $this->assertDatabaseCount('outbox_messages', 1);
+        $audit = DB::table('audit_logs')->where('action', 'assessment_bill.paid')->sole();
+        $context = json_decode((string) $audit->context, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame('2024-02-29 03:15:00', $audit->occurred_at);
+        $this->assertSame('2029-02-28 03:15:00', $audit->expires_at);
+        $this->assertSame([
+            'version' => 1,
+            'eventIdHash' => hash('sha256', 'xendit-invoice-event-paid'),
+            'providerReferenceHash' => hash('sha256', 'xendit-invoice-reference'),
+            'amount' => 200,
+            'currency' => 'IDR',
+            'paidAt' => '2024-02-29T03:15:00.000000Z',
+            'billItemIds' => DB::table('assessment_bill_items')->where('bill_id', $this->bill['bill'])
+                ->orderBy('id')->pluck('id')->all(),
+        ], $context);
+        $this->assertStringNotContainsString('xendit-invoice-event-paid', (string) $audit->context);
+        $this->assertStringNotContainsString('xendit-invoice-reference', (string) $audit->context);
+        $this->assertSame('2024-02-29 03:15:00', DB::table('assessment_bills')
+            ->where('id', $this->bill['bill'])->value('paid_at'));
+        $this->assertSame(0, DB::table('assessment_bill_items')->where('bill_id', $this->bill['bill'])
+            ->where('settled_at', '!=', '2024-02-29 03:15:00')->count());
+    }
+
+    public function test_expired_event_uses_exact_audit_retention_without_settling_business_timestamps(): void
+    {
+        $billBefore = DB::table('assessment_bills')->where('id', $this->bill['bill'])->sole();
+        $itemBefore = DB::table('assessment_bill_items')->where('id', $this->bill['item'])->sole();
+
+        $result = $this->finalize($this->event(PaymentStatus::Expired));
+
+        $this->assertSame('transitioned', $result['decision']);
+        $audit = DB::table('audit_logs')->where('action', 'assessment_bill.expired')->sole();
+        $this->assertSame('2024-02-29 03:15:00', $audit->occurred_at);
+        $this->assertSame('2029-02-28 03:15:00', $audit->expires_at);
+        $this->assertSame([
+            'version' => 1,
+            'eventIdHash' => hash('sha256', 'xendit-invoice-event-paid'),
+            'providerReferenceHash' => hash('sha256', 'xendit-invoice-reference'),
+            'status' => 'expired',
+            'amount' => 100,
+            'currency' => 'IDR',
+            'occurredAt' => '2024-02-29T03:15:00.000000Z',
+            'billItemIds' => [$this->bill['item']],
+        ], json_decode((string) $audit->context, true, flags: JSON_THROW_ON_ERROR));
+        $billAfter = DB::table('assessment_bills')->where('id', $this->bill['bill'])->sole();
+        $itemAfter = DB::table('assessment_bill_items')->where('id', $this->bill['item'])->sole();
+        $this->assertSame('expired', $billAfter->status);
+        $this->assertNull($billAfter->paid_at);
+        $this->assertSame($billBefore->created_at, $billAfter->created_at);
+        $this->assertEquals($itemBefore, $itemAfter);
+        $this->assertStringNotContainsString('xendit-invoice-event-paid', (string) $audit->context);
+        $this->assertStringNotContainsString('xendit-invoice-reference', (string) $audit->context);
     }
 
     public function test_exact_replay_and_late_terminal_events_are_no_ops(): void
@@ -126,6 +178,7 @@ final class AssessmentBillPaymentFinalizationTest extends OrganizationPaymentTes
         for ($i = 0; $i < 5; $i++) {
             $this->appendAttempt();
         }
+        $readyBeforeFinalize = DB::table('assessment_entitlements')->where('status', 'ready')->count();
         $saved = 0;
         AssessmentBillItem::updating(function () use (&$saved): void {
             if (++$saved === 5) {
@@ -145,7 +198,10 @@ final class AssessmentBillPaymentFinalizationTest extends OrganizationPaymentTes
         $this->assertSame(6, DB::table('assessment_bill_items')->where('bill_id', $this->bill['bill'])->whereNull('settled_at')->count());
         $this->assertSame(0, DB::table('audit_logs')->whereIn('action', ['assessment_bill.paid', 'assessment.activated'])->count());
         $this->assertDatabaseCount('outbox_messages', 0);
-        $this->assertSame(0, DB::table('assessment_entitlements')->where('status', 'ready')->count());
+        $this->assertSame(
+            $readyBeforeFinalize,
+            DB::table('assessment_entitlements')->where('status', 'ready')->count(),
+        );
     }
 
     public function test_pending_nonpaid_event_does_not_mutate_payment_state(): void

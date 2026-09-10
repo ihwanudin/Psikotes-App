@@ -6,8 +6,11 @@ namespace Tests\Postgres;
 
 use App\Actions\Payments\FinalizeAssessmentBill;
 use App\Data\Payments\PaymentEvent;
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Enums\PaymentStatus;
 use App\Security\RlsContextRunner;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\TestCase;
@@ -88,6 +91,26 @@ final class AssessmentBillPaymentFinalizationTest extends TestCase
                 ->where('action', 'assessment.activated')->count());
             $this->assertSame(1, DB::table('outbox_messages')->where('topic', 'assessment.activation')
                 ->where('aggregate_id', (string) $this->fixture['attempt'])->count());
+            $bill = DB::table('assessment_bills')->where('id', $this->fixture['bill'])->sole();
+            $audit = DB::table('audit_logs')->where('branch_id', $this->fixture['organization'])
+                ->where('action', 'assessment_bill.paid')->sole();
+            $anchor = CarbonImmutable::parse((string) $audit->occurred_at)->utc();
+            $this->assertSame(
+                CarbonImmutable::parse((string) $bill->paid_at)->utc()->format('Y-m-d H:i:s.uP'),
+                CarbonImmutable::parse((string) DB::table('assessment_bill_items')
+                    ->where('id', $this->fixture['item'])->value('settled_at'))->utc()->format('Y-m-d H:i:s.uP'),
+            );
+            $this->assertSame(
+                app(RetentionPolicy::class)->expiresAt(RetentionDataClass::Audit, $anchor)->format('Y-m-d H:i:s.uP'),
+                CarbonImmutable::parse((string) $audit->expires_at)->utc()->format('Y-m-d H:i:s.uP'),
+            );
+            $this->assertSame(
+                '2029-02-28 03:15:00.000000+00:00',
+                app(RetentionPolicy::class)->expiresAt(
+                    RetentionDataClass::Audit,
+                    CarbonImmutable::parse('2024-02-29 10:15:00+07:00')->utc(),
+                )->format('Y-m-d H:i:s.uP'),
+            );
         });
     }
 
