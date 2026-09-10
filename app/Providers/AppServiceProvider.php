@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Contracts\AssessmentSessionDefinitionAuthority;
 use App\Contracts\IdentityMatcher;
 use App\Contracts\Notifier;
 use App\Contracts\PaymentProvider;
 use App\Contracts\RunsRlsContext;
 use App\Security\RlsContextRunner;
+use App\Services\AssessmentSessions\DatabaseAssessmentSessionDefinitionAuthority;
 use App\Services\Identity\ManualReviewIdentityMatcher;
 use App\Services\Integrations\GenericAssessmentResultCallbackConfiguration;
 use App\Services\Notifications\N8nNotifier;
@@ -36,6 +38,10 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(IdentityMatcher::class, ManualReviewIdentityMatcher::class);
         $this->app->bind(Notifier::class, N8nNotifier::class);
         $this->app->bind(PaymentProvider::class, XenditProvider::class);
+        $this->app->bind(
+            AssessmentSessionDefinitionAuthority::class,
+            DatabaseAssessmentSessionDefinitionAuthority::class,
+        );
     }
 
     /**
