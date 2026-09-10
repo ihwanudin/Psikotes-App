@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Integrations;
 
 use App\Jobs\DispatchGenericAssessmentResultCallback;
+use App\Models\AssessmentCase;
 use App\Models\AssessmentParticipant;
 use App\Models\Branch;
 use App\Models\GenericAssessmentResultVersion;
@@ -80,6 +81,51 @@ final class GenericAssessmentResultCallbackOrchestrationTest extends TestCase
                 $this->fail('An unbounded selector limit was accepted.');
             } catch (InvalidArgumentException $exception) {
                 $this->assertSame('ASSESSMENT_RESULT_CALLBACK_SCHEDULE_LIMIT_INVALID', $exception->getMessage());
+            }
+        }
+    }
+
+    public function test_callback_audits_share_one_leap_day_anchor_and_keep_the_safe_projection_exact(): void
+    {
+        Queue::fake();
+        [$assessment, $source, $outboxId] = $this->outbox();
+        Date::setTestNow('2024-02-29 10:15:00+07:00');
+
+        $this->assertSame(
+            ['selected' => 1, 'queued' => 1, 'brokerFailures' => 0],
+            app(GenericAssessmentResultCallbackOrchestrator::class)->schedule(1),
+        );
+
+        $audits = DB::table('audit_logs')
+            ->where('action', 'like', 'generic_assessment_result_callback.%')
+            ->orderBy('id')
+            ->get();
+        $this->assertSame([
+            'generic_assessment_result_callback.scheduled',
+            'generic_assessment_result_callback.broker_accepted',
+        ], $audits->pluck('action')->all());
+        foreach ($audits as $audit) {
+            $this->assertSame('2024-02-29 03:15:00', $audit->occurred_at);
+            $this->assertSame('2029-02-28 03:15:00', $audit->expires_at);
+            $this->assertSame([
+                'resultVersion' => 1,
+                'resultChecksum' => $source->result_checksum,
+                'brokerAttempts' => 1,
+                'reasonCode' => null,
+            ], json_decode((string) $audit->context, true, flags: JSON_THROW_ON_ERROR));
+            foreach ([
+                $assessment->assessment_attempt_id,
+                $assessment->participant->full_name,
+                $assessment->participant->phone,
+                $assessment->external_candidate_id,
+                $assessment->idempotency_key,
+                $assessment->request_hash,
+                $outboxId,
+                '99.125',
+                'psychotest-to-selection-secret',
+                'seleksi.beasiswajepang.id',
+            ] as $privateValue) {
+                $this->assertStringNotContainsString((string) $privateValue, (string) $audit->context);
             }
         }
     }
@@ -616,10 +662,21 @@ final class GenericAssessmentResultCallbackOrchestrationTest extends TestCase
             'amount' => 100, 'currency' => 'IDR', 'is_active' => true,
         ]);
 
+        $assessmentAttemptId = (string) Str::ulid();
+        $case = AssessmentCase::query()->create([
+            'public_id' => $assessmentAttemptId,
+            'participant_id' => $participant->id,
+            'organization_id' => $organization->id,
+            'package_id' => $package->id,
+            'origin' => 'INTEGRATED',
+            'intended_field_snapshot' => null,
+        ]);
+
         return AssessmentParticipant::query()->create([
+            'assessment_case_id' => $case->id,
             'organization_id' => $organization->id, 'integration_client_id' => $client->id,
             'participant_id' => $participant->id, 'package_id' => $package->id,
-            'assessment_attempt_id' => (string) Str::ulid(), 'source_system' => 'CALLBACK_ORCHESTRATION_TEST',
+            'assessment_attempt_id' => $assessmentAttemptId, 'source_system' => 'CALLBACK_ORCHESTRATION_TEST',
             'external_candidate_id' => $key, 'funding_mode' => 'SPONSORED',
             'assessment_status' => 'UNDER_REVIEW', 'idempotency_key' => $key,
             'request_hash' => hash('sha256', $key),

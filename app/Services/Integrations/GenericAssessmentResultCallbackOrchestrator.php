@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Integrations;
 
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Jobs\DispatchGenericAssessmentResultCallback;
 use App\Models\GenericAssessmentResultVersion;
 use App\Security\RlsContext;
@@ -27,6 +29,7 @@ final readonly class GenericAssessmentResultCallbackOrchestrator
     public function __construct(
         private GenericAssessmentResultCallbackDispatcher $callback,
         private RlsContextRunner $runner,
+        private RetentionPolicy $retention,
     ) {}
 
     /** @return array{selected:int,queued:int,brokerFailures:int} */
@@ -369,7 +372,8 @@ final readonly class GenericAssessmentResultCallbackOrchestrator
                 'reasonCode' => $reasonCode,
                 ...$extra,
             ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
-            'occurred_at' => $at, 'expires_at' => $at->addYearsNoOverflow(2),
+            'occurred_at' => $at,
+            'expires_at' => $this->retention->expiresAt(RetentionDataClass::Audit, $at),
         ]);
     }
 }
