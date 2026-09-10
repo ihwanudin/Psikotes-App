@@ -231,7 +231,8 @@ final class AssessmentBillPaymentFinalizationTest extends OrganizationPaymentTes
         $fixture = AssessmentAccessFixture::create(identity: $identity);
         $snapshot = DB::table('assessment_charges')->where('id', $fixture['charge'])->value('price_snapshot');
         DB::table('assessment_participants')->where('id', $fixture['attempt'])->update(['assessment_status' => 'PROVISIONED']);
-        DB::table('assessment_entitlements')->where('id', $fixture['entitlement'])->update(['status' => 'locked', 'ready_at' => null]);
+        DB::table('assessment_entitlements')->where('assessment_participant_id', $fixture['attempt'])
+            ->update(['status' => 'locked', 'ready_at' => null]);
         DB::table('assessment_bill_items')->where('id', $fixture['item'])->update(['settled_at' => null]);
         DB::table('assessment_participants')->where('id', $fixture['attempt'])->update([
             'funding_mode' => 'INVOICED_TO_ORGANIZATION',

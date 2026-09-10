@@ -276,6 +276,7 @@ final class AssessmentBillWebhookDispatchTest extends OrganizationPaymentTestCas
         $branch = Branch::query()->create(['code' => $key, 'name' => 'Synthetic', 'ref_code' => $key]);
         $participant = Participant::query()->create([
             'branch_id' => $branch->id, 'referral_branch_id' => $branch->id, 'referral_source' => 'default',
+            'source_system' => 'SELEKSI_BEASISWA_JEPANG',
             'full_name' => 'Synthetic', 'gender' => 'male', 'birth_date' => '2000-01-01',
             'education_level' => 'SMA/SMK', 'intended_field' => 'UMUM', 'phone' => '+620000000000',
         ]);
