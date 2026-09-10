@@ -6,12 +6,15 @@ namespace Tests\Feature\Payments;
 
 use App\Enums\AdminRole;
 use App\Models\Admin;
+use App\Models\AssessmentCase;
 use App\Models\Branch;
 use App\Models\Order;
 use App\Models\Participant;
 use App\Models\PaymentMethod;
+use App\Models\TestPackage;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -29,9 +32,10 @@ final class ManualPaymentProofAccessTest extends TestCase
 
     public function test_authorized_branch_admin_gets_a_short_lived_url_and_access_is_audited(): void
     {
-        Carbon::setTestNow('2026-08-25 10:00:00');
+        Carbon::setTestNow('2024-02-29 10:15:00+07:00');
         [$branch, $order] = $this->orderWithProof('A');
         $admin = $this->admin($branch, canVerify: true);
+        $participant = $order->participant;
 
         $response = $this->actingAs($admin, 'admin')
             ->get("/admin/manual-payment-proofs/{$order->public_id}/open")
@@ -41,6 +45,23 @@ final class ManualPaymentProofAccessTest extends TestCase
         $query = parse_url($location, PHP_URL_QUERY);
         parse_str(is_string($query) ? $query : '', $parameters);
         $this->assertSame(now()->addMinutes(15)->getTimestamp(), (int) ($parameters['expiration'] ?? 0));
+        $audit = (array) DB::table('audit_logs')->sole();
+        $this->assertSame('2024-02-29 03:15:00', $audit['occurred_at']);
+        $this->assertSame('2029-02-28 03:15:00', $audit['expires_at']);
+        $this->assertSame([
+            'url_expires_at' => now()->addMinutes(15)->toIso8601String(),
+        ], json_decode((string) $audit['context'], true, 512, JSON_THROW_ON_ERROR));
+        foreach ([
+            $location,
+            $order->proof_object_key,
+            $participant->full_name,
+            $participant->phone,
+            $participant->birth_date?->format('Y-m-d'),
+            $admin->name,
+            $admin->email,
+        ] as $privateValue) {
+            $this->assertStringNotContainsString((string) $privateValue, (string) $audit['context']);
+        }
         $this->assertDatabaseHas('audit_logs', [
             'branch_id' => $branch->id,
             'actor_type' => 'admin',
@@ -49,6 +70,13 @@ final class ManualPaymentProofAccessTest extends TestCase
             'subject_type' => Order::class,
             'subject_id' => (string) $order->public_id,
         ]);
+
+        Carbon::setTestNow('2024-02-29 10:20:00+07:00');
+        $this->actingAs($admin, 'admin')
+            ->get("/admin/manual-payment-proofs/{$order->public_id}/open")
+            ->assertRedirect();
+
+        $this->assertDatabaseCount('audit_logs', 2);
     }
 
     public function test_guest_admin_without_ability_and_cross_branch_admin_are_denied_without_audit(): void
@@ -89,10 +117,22 @@ final class ManualPaymentProofAccessTest extends TestCase
             'name' => "Cabang {$suffix}",
             'ref_code' => "REF-{$suffix}",
         ]);
+        $package = TestPackage::query()->create([
+            'code' => "PACKAGE-{$suffix}",
+            'name' => "Paket {$suffix}",
+            'amount' => 250_000,
+            'currency' => 'IDR',
+            'is_active' => true,
+        ]);
+        foreach (['ist', 'dass21'] as $testType) {
+            $package->items()->create(['test_type' => $testType]);
+        }
         $participant = Participant::query()->create([
             'branch_id' => $branch->id,
             'referral_branch_id' => $branch->id,
             'referral_source' => 'default',
+            'package_id' => $package->id,
+            'source_system' => 'DIRECT_PUBLIC',
             'full_name' => "Peserta {$suffix}",
             'gender' => 'female',
             'birth_date' => '2001-04-15',
@@ -112,9 +152,19 @@ final class ManualPaymentProofAccessTest extends TestCase
         }
         $key = 'manual/'.Str::lower(Str::random(64)).'.jpg';
         Storage::disk('payment-proofs')->put($key, 'private-proof', 'private');
-        $order = Order::query()->create([
-            'public_id' => (string) Str::ulid(),
+        $orderPublicId = (string) Str::ulid();
+        $case = AssessmentCase::query()->create([
+            'public_id' => $orderPublicId,
             'participant_id' => $participant->id,
+            'organization_id' => $branch->id,
+            'package_id' => $package->id,
+            'origin' => 'DIRECT_PUBLIC',
+            'intended_field_snapshot' => 'KAIGO',
+        ]);
+        $order = Order::query()->create([
+            'public_id' => $orderPublicId,
+            'participant_id' => $participant->id,
+            'assessment_case_id' => $case->id,
             'payment_method_id' => $method->id,
             'status' => 'pending',
             'amount' => 250_000,

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Payments;
 
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Models\Admin;
 use App\Models\Order;
 use App\Security\RlsContextRunner;
@@ -15,7 +17,10 @@ use LogicException;
 
 final readonly class ManualPaymentProofUrlIssuer
 {
-    public function __construct(private RlsContextRunner $runner) {}
+    public function __construct(
+        private RlsContextRunner $runner,
+        private RetentionPolicy $retention,
+    ) {}
 
     public function issue(Admin $admin, string $publicId): string
     {
@@ -56,7 +61,8 @@ final readonly class ManualPaymentProofUrlIssuer
             throw new LogicException('Manual proof access requires the authenticated admin RLS context.');
         }
 
-        $this->runner->runAsService(function () use ($admin, $order, $expiresAt): void {
+        $occurredAt = CarbonImmutable::now()->utc();
+        $this->runner->runAsService(function () use ($admin, $order, $expiresAt, $occurredAt): void {
             DB::table('audit_logs')->insert([
                 'branch_id' => $order->participant->branch_id,
                 'actor_type' => 'admin',
@@ -67,8 +73,8 @@ final readonly class ManualPaymentProofUrlIssuer
                 'context' => json_encode([
                     'url_expires_at' => $expiresAt->toIso8601String(),
                 ], JSON_THROW_ON_ERROR),
-                'occurred_at' => now(),
-                'expires_at' => now()->addYears(2),
+                'occurred_at' => $occurredAt,
+                'expires_at' => $this->retention->expiresAt(RetentionDataClass::Audit, $occurredAt),
             ]);
         });
 
