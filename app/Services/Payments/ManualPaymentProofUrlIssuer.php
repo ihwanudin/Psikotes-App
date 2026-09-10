@@ -24,7 +24,8 @@ final readonly class ManualPaymentProofUrlIssuer
 
     public function issue(Admin $admin, string $publicId): string
     {
-        $expiresAt = CarbonImmutable::now()->addMinutes(
+        $occurredAt = CarbonImmutable::now('UTC');
+        $expiresAt = $occurredAt->addMinutes(
             (int) config('payments.manual_proof_temporary_url_minutes', 15),
         );
         $load = function () use ($admin, $publicId, $expiresAt): array {
@@ -61,7 +62,6 @@ final readonly class ManualPaymentProofUrlIssuer
             throw new LogicException('Manual proof access requires the authenticated admin RLS context.');
         }
 
-        $occurredAt = CarbonImmutable::now()->utc();
         $this->runner->runAsService(function () use ($admin, $order, $expiresAt, $occurredAt): void {
             DB::table('audit_logs')->insert([
                 'branch_id' => $order->participant->branch_id,

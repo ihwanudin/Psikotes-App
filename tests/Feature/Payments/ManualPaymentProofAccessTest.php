@@ -12,11 +12,13 @@ use App\Models\Order;
 use App\Models\Participant;
 use App\Models\PaymentMethod;
 use App\Models\TestPackage;
+use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Mockery;
 use Tests\TestCase;
 
 final class ManualPaymentProofAccessTest extends TestCase
@@ -36,6 +38,16 @@ final class ManualPaymentProofAccessTest extends TestCase
         [$branch, $order] = $this->orderWithProof('A');
         $admin = $this->admin($branch, canVerify: true);
         $participant = $order->participant;
+        $issuedAt = Carbon::parse('2024-02-29 03:15:00+00:00')->toImmutable();
+        $disk = Mockery::mock(FilesystemAdapter::class);
+        $disk->shouldReceive('temporaryUrl')->twice()->andReturnUsing(
+            function (string $path, \DateTimeInterface $expiresAt): string {
+                Carbon::setTestNow(Carbon::now()->addHour());
+
+                return 'https://private.example.test/synthetic-proof?expiration='.$expiresAt->getTimestamp();
+            },
+        );
+        Storage::shouldReceive('disk')->with('payment-proofs')->twice()->andReturn($disk);
 
         $response = $this->actingAs($admin, 'admin')
             ->get("/admin/manual-payment-proofs/{$order->public_id}/open")
@@ -44,12 +56,12 @@ final class ManualPaymentProofAccessTest extends TestCase
         $location = (string) $response->headers->get('Location');
         $query = parse_url($location, PHP_URL_QUERY);
         parse_str(is_string($query) ? $query : '', $parameters);
-        $this->assertSame(now()->addMinutes(15)->getTimestamp(), (int) ($parameters['expiration'] ?? 0));
+        $this->assertSame($issuedAt->addMinutes(15)->getTimestamp(), (int) ($parameters['expiration'] ?? 0));
         $audit = (array) DB::table('audit_logs')->sole();
         $this->assertSame('2024-02-29 03:15:00', $audit['occurred_at']);
         $this->assertSame('2029-02-28 03:15:00', $audit['expires_at']);
         $this->assertSame([
-            'url_expires_at' => now()->addMinutes(15)->toIso8601String(),
+            'url_expires_at' => $issuedAt->addMinutes(15)->toIso8601String(),
         ], json_decode((string) $audit['context'], true, 512, JSON_THROW_ON_ERROR));
         foreach ([
             $location,
