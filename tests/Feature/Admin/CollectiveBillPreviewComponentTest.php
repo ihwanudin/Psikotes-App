@@ -34,22 +34,19 @@ final class CollectiveBillPreviewComponentTest extends OrganizationPaymentTestCa
         parent::setUp();
         Filament::setCurrentPanel(Filament::getPanel('admin'));
         $this->fixtures = [];
-        $packages = [];
         foreach (['A', 'A', 'B', 'B', 'C', 'C', 'A', 'B', 'C', 'A'] as $index => $group) {
             $fixture = Fixture::create($index === 0 ? null : ['organization' => $this->fixtures[0]['organization']]);
-            if (! isset($packages[$group])) {
-                $packages[$group] = $fixture['package'];
-                DB::table('packages')->where('id', $fixture['package'])->update([
-                    'code' => 'SYN-'.$group, 'name' => 'Paket '.$group,
-                    'amount' => ['A' => 100, 'B' => 200, 'C' => 0][$group], 'consultation_amount' => $group === 'B' ? 50 : 30]);
-            }
+            $packageCode = 'SYN-'.$group.'-'.$index;
+            DB::table('packages')->where('id', $fixture['package'])->update([
+                'code' => $packageCode, 'name' => 'Paket '.$group,
+                'amount' => ['A' => 100, 'B' => 200, 'C' => 0][$group], 'consultation_amount' => $group === 'B' ? 50 : 30]);
             DB::table('assessment_participants')->where('id', $fixture['attempt'])->update([
-                'package_id' => $packages[$group], 'external_candidate_id' => 'KANDIDAT-'.$index,
-                'assessment_attempt_id' => 'ATTEMPT-'.$index, 'assessment_round_id' => 'Periode sintetis',
                 'metadata' => '{"checkout_contract_version":"checkout-v2","private":"PRIVATE-SENTINEL"}']);
             DB::table('integration_sources')->where('id', $fixture['source'])->update([
-                'allowed_assessment_packages' => json_encode(['SYN-'.$group], JSON_THROW_ON_ERROR)]);
+                'allowed_assessment_packages' => json_encode([$packageCode], JSON_THROW_ON_ERROR)]);
             DB::table('participants')->where('id', $fixture['participant'])->update(['full_name' => 'Peserta sintetis '.$index]);
+            $fixture['attemptLabel'] = (string) DB::table('assessment_participants')->where('id', $fixture['attempt'])
+                ->value('assessment_attempt_id');
             $this->fixtures[] = $fixture;
         }
         $this->foreign = Fixture::create();
@@ -76,7 +73,7 @@ final class CollectiveBillPreviewComponentTest extends OrganizationPaymentTestCa
         $component = $this->harness()->assertSet('selection', [])->assertSet('preview', null)
             ->assertSee('Tinjau')->assertDontSee('Hasil tinjauan sementara');
         foreach (range(0, 9) as $index) {
-            $component->assertSee('Peserta sintetis '.$index)->assertSee('ATTEMPT-'.$index);
+            $component->assertSee('Peserta sintetis '.$index)->assertSee($this->fixtures[$index]['attemptLabel']);
         }
         $component->set('selection', $this->mixedSelection())->call('review')->assertHasNoErrors()
             ->assertSet('preview.totalAmount', 1140)->assertSet('preview.paidCount', 8)->assertSet('preview.freeCount', 2)
@@ -124,7 +121,8 @@ final class CollectiveBillPreviewComponentTest extends OrganizationPaymentTestCa
     {
         DB::table('participants')->where('id', $this->fixtures[0]['participant'])->update(['full_name' => $name]);
         $this->harness()->set('selection', [Fixture::selection($this->fixtures[0])])->call('review')
-            ->assertSet('preview.items.0.participantName', $expected)->assertSee($expected)->assertSee('ATTEMPT-0');
+            ->assertSet('preview.items.0.participantName', $expected)->assertSee($expected)
+            ->assertSee($this->fixtures[0]['attemptLabel']);
         $this->assertSame($name, DB::table('participants')->where('id', $this->fixtures[0]['participant'])->value('full_name'));
     }
 
@@ -185,7 +183,7 @@ final class CollectiveBillPreviewComponentTest extends OrganizationPaymentTestCa
         $component = $this->harness()->set('selection', [Fixture::selection($this->fixtures[0])])->call('review');
         DB::table('admins')->where('id', $this->admin->id)->update(['branch_id' => $this->foreign['organization']]);
         $component->call('$refresh')->assertSet('preview', null)->assertDontSee('Peserta sintetis')
-            ->assertDontSee('ATTEMPT-0')->call('review')->assertSet('preview.totalAmount', null)
+            ->assertDontSee($this->fixtures[0]['attemptLabel'])->call('review')->assertSet('preview.totalAmount', null)
             ->assertSee('ASSESSMENT_NOT_AVAILABLE')->assertDontSee('Peserta sintetis');
     }
 
@@ -248,7 +246,8 @@ final class CollectiveBillPreviewComponentTest extends OrganizationPaymentTestCa
             ->assertSee('Peserta sintetis 0');
         DB::table('participants')->where('id', $this->fixtures[0]['participant'])->update(['full_name' => null]);
         $component->call('$refresh')->assertSet('preview', null)->assertDontSee('Peserta sintetis 0')
-            ->assertDontSee('Hasil tinjauan sementara')->assertSee('Nama belum dilengkapi')->assertSee('ATTEMPT-0');
+            ->assertDontSee('Hasil tinjauan sementara')->assertSee('Nama belum dilengkapi')
+            ->assertSee($this->fixtures[0]['attemptLabel']);
     }
 
     public function test_toggling_does_not_sanitize_malformed_hydrated_rows_into_valid_selection(): void
