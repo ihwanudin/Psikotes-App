@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace App\Http\Middleware;
 
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Models\IntegrationClient;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
+use Carbon\CarbonImmutable;
 use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -18,7 +21,10 @@ use Symfony\Component\HttpFoundation\Response;
 
 final readonly class AuthenticateSelectionResultPoll
 {
-    public function __construct(private RlsContextRunner $runner) {}
+    public function __construct(
+        private RlsContextRunner $runner,
+        private RetentionPolicy $retention,
+    ) {}
 
     public function handle(Request $request, Closure $next): Response
     {
@@ -136,8 +142,9 @@ final readonly class AuthenticateSelectionResultPoll
             $request->getPathInfo(),
             $request->getQueryString() ?? '',
         ]));
-        $at = now();
-        $writeAudit = static function () use ($clientReference, $requestReference, $reasonCode, $at): void {
+        $at = CarbonImmutable::now('UTC');
+        $expiresAt = $this->retention->expiresAt(RetentionDataClass::Audit, $at);
+        $writeAudit = static function () use ($clientReference, $requestReference, $reasonCode, $at, $expiresAt): void {
             DB::table('audit_logs')->insert([
                 'branch_id' => null,
                 'actor_type' => 'service',
@@ -151,7 +158,7 @@ final readonly class AuthenticateSelectionResultPoll
                     'reasonCode' => $reasonCode,
                 ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
                 'occurred_at' => $at,
-                'expires_at' => $at->copy()->addYears(2),
+                'expires_at' => $expiresAt,
             ]);
         };
         if ($this->runner->current()?->role === 'service') {

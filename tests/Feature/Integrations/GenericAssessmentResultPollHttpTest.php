@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Integrations;
 
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
+use App\Models\AssessmentCase;
 use App\Models\AssessmentParticipant;
 use App\Models\Branch;
 use App\Models\GenericAssessmentResultVersion;
@@ -14,6 +17,7 @@ use App\Providers\AppServiceProvider;
 use App\Security\RlsContextRunner;
 use App\Services\Integrations\GenericAssessmentResultOutbox;
 use App\Services\Integrations\GenericAssessmentResultStore;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -202,9 +206,12 @@ final class GenericAssessmentResultPollHttpTest extends TestCase
 
         $audits = DB::table('audit_logs')->where('action', 'selection_result_poll.authentication_denied')->get();
         $this->assertCount(2, $audits);
+        $reasonCodes = [];
         foreach ($audits as $audit) {
             $this->assertNull($audit->branch_id);
+            $this->assertSame('service', $audit->actor_type);
             $this->assertNull($audit->actor_id);
+            $this->assertSame(IntegrationClient::class, $audit->subject_type);
             $this->assertNull($audit->subject_id);
             $encoded = json_encode($audit, JSON_THROW_ON_ERROR);
             $this->assertStringNotContainsString($assessment->assessment_attempt_id, $encoded);
@@ -212,10 +219,25 @@ final class GenericAssessmentResultPollHttpTest extends TestCase
             $this->assertStringNotContainsString(self::CLIENT_SECRET, $encoded);
             $this->assertStringNotContainsString(self::CALLBACK_SECRET, $encoded);
             $context = json_decode((string) $audit->context, true, 512, JSON_THROW_ON_ERROR);
-            $this->assertContains($context['reasonCode'], ['SIGNATURE_INVALID', 'CLIENT_REGISTRY_UNAVAILABLE']);
-            $this->assertMatchesRegularExpression('/^[a-f0-9]{64}$/', $context['clientReference']);
-            $this->assertMatchesRegularExpression('/^[a-f0-9]{64}$/', $context['requestReference']);
+            $reasonCodes[] = $context['reasonCode'];
+            $this->assertSame(hash('sha256', $client->client_id), $context['clientReference']);
+            $this->assertSame(hash('sha256', implode("\n", [
+                'GET', $this->path($assessment->assessment_attempt_id), '',
+            ])), $context['requestReference']);
+            $anchor = CarbonImmutable::parse((string) $audit->occurred_at, 'UTC')->utc();
+            $this->assertSame(
+                app(RetentionPolicy::class)->expiresAt(RetentionDataClass::Audit, $anchor)->format('Y-m-d H:i:s.uP'),
+                CarbonImmutable::parse((string) $audit->expires_at, 'UTC')->utc()->format('Y-m-d H:i:s.uP'),
+            );
         }
+        $this->assertEqualsCanonicalizing(['SIGNATURE_INVALID', 'CLIENT_REGISTRY_UNAVAILABLE'], $reasonCodes);
+        $this->assertSame(
+            '2029-02-28 03:15:00.000000+00:00',
+            app(RetentionPolicy::class)->expiresAt(
+                RetentionDataClass::Audit,
+                CarbonImmutable::parse('2024-02-29 10:15:00+07:00')->utc(),
+            )->format('Y-m-d H:i:s.uP'),
+        );
     }
 
     public function test_rate_limit_precedes_authentication_audit_and_remains_private(): void
@@ -301,10 +323,20 @@ final class GenericAssessmentResultPollHttpTest extends TestCase
             'code' => 'R'.$key, 'name' => 'Synthetic result package',
             'amount' => 100, 'currency' => 'IDR', 'is_active' => true,
         ]);
+        $assessmentAttemptId = (string) Str::ulid();
+        $case = AssessmentCase::query()->create([
+            'public_id' => $assessmentAttemptId,
+            'participant_id' => $participant->id,
+            'organization_id' => $organization->id,
+            'package_id' => $package->id,
+            'origin' => 'INTEGRATED',
+            'intended_field_snapshot' => null,
+        ]);
         $assessment = AssessmentParticipant::query()->create([
             'organization_id' => $organization->id, 'integration_client_id' => $client->id,
             'participant_id' => $participant->id, 'package_id' => $package->id,
-            'assessment_attempt_id' => (string) Str::ulid(), 'source_system' => 'RESULT_HTTP_TEST',
+            'assessment_case_id' => $case->id,
+            'assessment_attempt_id' => $assessmentAttemptId, 'source_system' => 'RESULT_HTTP_TEST',
             'external_candidate_id' => $key, 'funding_mode' => 'SPONSORED',
             'assessment_status' => 'UNDER_REVIEW', 'idempotency_key' => $key,
             'request_hash' => hash('sha256', $key),
