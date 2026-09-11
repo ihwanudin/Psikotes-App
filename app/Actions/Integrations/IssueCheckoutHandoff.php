@@ -6,6 +6,8 @@ namespace App\Actions\Integrations;
 
 use App\Data\Integrations\CheckoutHandoffIssueInput;
 use App\Data\Integrations\CheckoutHandoffIssueResult;
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Enums\CheckoutHandoffIntent;
 use App\Enums\CheckoutSessionRecoveryState;
 use App\Models\AssessmentParticipant;
@@ -35,7 +37,10 @@ final readonly class IssueCheckoutHandoff
 
     private const string DESTINATION = 'integrated-checkout-session';
 
-    public function __construct(private RlsContextRunner $contexts) {}
+    public function __construct(
+        private RlsContextRunner $contexts,
+        private RetentionPolicy $retention,
+    ) {}
 
     public function execute(#[SensitiveParameter] CheckoutHandoffIssueInput $input): CheckoutHandoffIssueResult
     {
@@ -492,7 +497,8 @@ final readonly class IssueCheckoutHandoff
             },
             'subject_type' => AssessmentParticipant::class, 'subject_id' => (string) $attempt->id,
             'context' => json_encode($context, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
-            'occurred_at' => $now, 'expires_at' => $now->addYearsNoOverflow(2),
+            'occurred_at' => $now,
+            'expires_at' => $this->retention->expiresAt(RetentionDataClass::Audit, $now),
         ]);
     }
 

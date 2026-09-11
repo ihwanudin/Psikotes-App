@@ -9,6 +9,8 @@ use App\Actions\Integrations\IntegrationContractViolation;
 use App\Actions\Integrations\IssueCheckoutHandoff;
 use App\Data\Integrations\CheckoutHandoffIssueInput;
 use App\Data\Integrations\CheckoutHandoffIssueResult;
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Enums\CheckoutHandoffIntent;
 use App\Models\AssessmentParticipant;
 use App\Models\CheckoutHandoff;
@@ -87,6 +89,21 @@ final class CheckoutHandoffIssuanceTest extends OrganizationPaymentTestCase
             json_encode(DB::table('checkout_handoffs')->first(), JSON_THROW_ON_ERROR),
         );
         $audit = DB::table('audit_logs')->where('action', 'checkout_handoff.issued')->sole();
+        $handoff = CheckoutHandoff::query()->where('public_id', $first->handoffPublicId)->firstOrFail();
+        $anchor = CarbonImmutable::parse((string) $audit->occurred_at)->utc();
+        $this->assertTrue($handoff->issued_at->utc()->equalTo($anchor));
+        $this->assertTrue($handoff->expires_at->utc()->equalTo($anchor->addSeconds(600)));
+        $this->assertSame(
+            app(RetentionPolicy::class)->expiresAt(RetentionDataClass::Audit, $anchor)->format('Y-m-d H:i:s.uP'),
+            CarbonImmutable::parse((string) $audit->expires_at)->utc()->format('Y-m-d H:i:s.uP'),
+        );
+        $this->assertSame(
+            '2029-02-28 03:15:00.000000+00:00',
+            app(RetentionPolicy::class)->expiresAt(
+                RetentionDataClass::Audit,
+                CarbonImmutable::parse('2024-02-29 10:15:00+07:00')->utc(),
+            )->format('Y-m-d H:i:s.uP'),
+        );
         $encoded = json_encode($audit, JSON_THROW_ON_ERROR);
         $this->assertStringNotContainsString((string) $raw, $encoded);
         $this->assertStringNotContainsString($key, $encoded);
@@ -95,6 +112,8 @@ final class CheckoutHandoffIssuanceTest extends OrganizationPaymentTestCase
             'version', 'publicId', 'issueNumber', 'purpose', 'destination', 'sourceSystem',
             'issuedAt', 'expiresAt', 'revokedPrevious',
         ], array_keys($context));
+        $this->assertSame($handoff->issued_at->toISOString(), $context['issuedAt']);
+        $this->assertSame($handoff->expires_at->toISOString(), $context['expiresAt']);
         $this->assertSame($fixture['attempt']->organization_id, $audit->branch_id);
         $this->assertSame(AssessmentParticipant::class, $audit->subject_type);
         $this->assertSame((string) $fixture['attempt']->id, $audit->subject_id);
@@ -403,12 +422,24 @@ final class CheckoutHandoffIssuanceTest extends OrganizationPaymentTestCase
         } catch (IntegrationContractViolation $exception) {
             $this->assertSame('HANDOFF_REISSUE_REQUIRED', $exception->errorCode);
         }
+        $otherAttemptPublicId = (string) Str::ulid();
+        $otherCase = DB::table('assessment_cases')->insertGetId([
+            'public_id' => $otherAttemptPublicId,
+            'participant_id' => $fixture['attempt']->participant_id,
+            'organization_id' => $fixture['attempt']->organization_id,
+            'package_id' => $fixture['attempt']->package_id,
+            'origin' => 'INTEGRATED',
+            'intended_field_snapshot' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         $otherAttempt = AssessmentParticipant::query()->create([
             'integration_client_id' => $fixture['attempt']->integration_client_id,
             'organization_id' => $fixture['attempt']->organization_id,
             'participant_id' => $fixture['attempt']->participant_id,
             'package_id' => $fixture['attempt']->package_id,
-            'assessment_attempt_id' => (string) Str::ulid(),
+            'assessment_case_id' => $otherCase,
+            'assessment_attempt_id' => $otherAttemptPublicId,
             'source_system' => $fixture['attempt']->source_system,
             'external_candidate_id' => (string) Str::ulid(),
             'funding_mode' => $fixture['attempt']->funding_mode,
@@ -592,10 +623,22 @@ final class CheckoutHandoffIssuanceTest extends OrganizationPaymentTestCase
             ['package_id' => $package, 'test_type' => 'ist', 'sort_order' => 1],
             ['package_id' => $package, 'test_type' => 'dass21', 'sort_order' => 2],
         ]);
+        $attemptPublicId = (string) Str::ulid();
+        $case = DB::table('assessment_cases')->insertGetId([
+            'public_id' => $attemptPublicId,
+            'participant_id' => $participant,
+            'organization_id' => $organization,
+            'package_id' => $package,
+            'origin' => 'INTEGRATED',
+            'intended_field_snapshot' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         $attemptId = DB::table('assessment_participants')->insertGetId([
             'organization_id' => $organization, 'integration_client_id' => $clientId,
             'participant_id' => $participant, 'package_id' => $package,
-            'assessment_attempt_id' => (string) Str::ulid(), 'source_system' => 'HANDOFF_SOURCE',
+            'assessment_case_id' => $case,
+            'assessment_attempt_id' => $attemptPublicId, 'source_system' => 'HANDOFF_SOURCE',
             'external_candidate_id' => $key, 'funding_mode' => 'COMMERCIAL_SELF_PAY',
             'assessment_status' => 'PROVISIONED', 'idempotency_key' => $key,
             'request_hash' => hash('sha256', $key), 'logical_assessment_key' => hash('sha256', 'logical'.$key),
