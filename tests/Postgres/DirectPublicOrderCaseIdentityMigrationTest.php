@@ -57,6 +57,11 @@ final class DirectPublicOrderCaseIdentityMigrationTest extends TestCase
                     $this->assertTrue($security->relrowsecurity, $table);
                     $this->assertTrue($security->relforcerowsecurity, $table);
                 }
+                $entitlements = DB::table('entitlements')->where('order_id', $order)
+                    ->pluck('assessment_case_id', 'test_type');
+                $this->assertNull($entitlements['dass21']);
+                $this->assertSame($case->id, $entitlements['ist']);
+                DB::table('entitlements')->where('order_id', $order)->delete();
 
                 try {
                     $this->migrate('down');
@@ -298,7 +303,8 @@ final class DirectPublicOrderCaseIdentityMigrationTest extends TestCase
             $this->assertTrue(Schema::hasColumn('orders', 'assessment_case_id'));
         } finally {
             $this->cleanupConcurrentGraph($token, $fixture);
-            if (! Schema::hasColumn('orders', 'assessment_case_id')) {
+            if (! Schema::hasColumn('orders', 'assessment_case_id')
+                || ! Schema::hasColumn('entitlements', 'assessment_case_id')) {
                 $this->asOwner(fn () => $this->migrate('up'));
             }
         }
@@ -455,12 +461,24 @@ final class DirectPublicOrderCaseIdentityMigrationTest extends TestCase
         if ($direction === 'down' && Schema::hasTable('test_session_grants')) {
             (require database_path('migrations/2026_09_09_000700_create_test_session_grants.php'))->down();
         }
+        $genericRequirement = require database_path('migrations/2026_09_10_000400_enforce_generic_entitlement_case_identity.php');
+        $genericIdentity = require database_path('migrations/2026_09_10_000300_expand_generic_entitlement_case_identity.php');
+        if ($direction === 'down' && Schema::hasColumn('entitlements', 'assessment_case_id')) {
+            $genericRequirement->down();
+            $genericIdentity->down();
+        }
         $migration = require database_path('migrations/2026_09_09_000600_bind_direct_public_orders_to_assessment_cases.php');
         $operation = [$migration, $direction];
         if (! is_callable($operation)) {
             throw new RuntimeException("Migration operation {$direction} is unavailable.");
         }
-        $operation();
+        if ($direction === 'down' || ! Schema::hasColumn('orders', 'assessment_case_id')) {
+            $operation();
+        }
+        if ($direction === 'up' && ! Schema::hasColumn('entitlements', 'assessment_case_id')) {
+            $genericIdentity->up();
+            $genericRequirement->up();
+        }
         if ($direction === 'up' && ! Schema::hasTable('test_session_grants')) {
             (require database_path('migrations/2026_09_09_000700_create_test_session_grants.php'))->up();
         }

@@ -112,12 +112,12 @@ final class TestSessionGrantSecurityTest extends TestCase
     public function test_integrated_grant_is_bound_to_durable_checkout_price_and_settlement_facts(): void
     {
         app(RlsContextRunner::class)->runAsService(function (): void {
-            $valid = AssessmentAccessFixture::create();
+            $valid = $this->integratedFixture();
             $validSession = $this->boundSession($valid['participant'], (int) $valid['case']);
             DB::table('test_session_grants')->insert($this->integratedGrantRow($valid, $validSession));
             $this->assertSame(1, DB::table('test_session_grants')->where('test_session_id', $validSession)->count());
 
-            $unsettled = AssessmentAccessFixture::create();
+            $unsettled = $this->integratedFixture();
             $unsettledSession = $this->boundSession($unsettled['participant'], (int) $unsettled['case']);
             DB::table('assessment_bills')->where('id', $unsettled['bill'])->update(['status' => 'pending', 'paid_at' => null]);
             $this->assertSqlState('23514', fn () => DB::table('test_session_grants')
@@ -214,6 +214,7 @@ final class TestSessionGrantSecurityTest extends TestCase
         foreach (['dass21', 'ist'] as $type) {
             $id = DB::table('entitlements')->insertGetId([
                 'participant_id' => $participant, 'order_id' => $order, 'test_type' => $type,
+                'assessment_case_id' => $type === 'dass21' ? null : $case,
                 'status' => 'ready', 'ready_at' => now(), 'created_at' => now(), 'updated_at' => now(),
             ]);
             if ($type === 'ist') {
@@ -274,6 +275,21 @@ final class TestSessionGrantSecurityTest extends TestCase
             'assessment_participant_id' => $fixture['attempt'],
             'assessment_entitlement_id' => $fixture['entitlement'], 'created_at' => now(),
         ];
+    }
+
+    /** @return array<string,mixed> */
+    private function integratedFixture(): array
+    {
+        $fixture = AssessmentAccessFixture::create();
+        $settledAt = now()->subMinute();
+        DB::table('assessment_entitlements')->where('assessment_participant_id', $fixture['attempt'])
+            ->update(['ready_at' => $settledAt]);
+        DB::table('assessment_bill_items')->where('bill_id', $fixture['bill'])
+            ->update(['settled_at' => $settledAt]);
+        DB::table('assessment_bills')->where('id', $fixture['bill'])
+            ->update(['paid_at' => $settledAt]);
+
+        return $fixture;
     }
 
     private function assertSqlState(string $state, callable $operation): void

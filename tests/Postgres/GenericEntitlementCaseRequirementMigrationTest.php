@@ -15,6 +15,9 @@ use RuntimeException;
 
 final class GenericEntitlementCaseRequirementMigrationTest extends TestCase
 {
+    /** @var array<string,list<int>> */
+    private array $cleanupIds = [];
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -25,9 +28,15 @@ final class GenericEntitlementCaseRequirementMigrationTest extends TestCase
     protected function tearDown(): void
     {
         try {
-            $this->asOwner(function (): void {
-                DB::statement('ALTER TABLE entitlements DROP CONSTRAINT IF EXISTS entitlements_case_requirement_check');
-            });
+            $this->cleanupSyntheticRows();
+            try {
+                $this->asOwner(fn () => $this->migrate('down'));
+            } catch (RuntimeException) {
+                $this->asOwner(fn () => DB::statement(
+                    'ALTER TABLE entitlements DROP CONSTRAINT IF EXISTS entitlements_case_requirement_check',
+                ));
+            }
+            $this->asOwner(fn () => $this->migrate('up'));
         } finally {
             parent::tearDown();
         }
@@ -91,20 +100,21 @@ final class GenericEntitlementCaseRequirementMigrationTest extends TestCase
     {
         $participantId = app(RlsContextRunner::class)->runAsService(function (): int {
             $key = strtoupper(substr((string) Str::ulid(), 0, 20));
-            $branch = DB::table('branches')->insertGetId([
+            $branch = $this->remember('branches', DB::table('branches')->insertGetId([
                 'code' => $key, 'name' => 'invalid', 'ref_code' => $key,
                 'organization_code' => $key, 'display_name' => 'invalid',
-            ]);
-            $participant = DB::table('participants')->insertGetId([
+            ]));
+            $participant = $this->remember('participants', DB::table('participants')->insertGetId([
                 'branch_id' => $branch, 'referral_branch_id' => $branch, 'referral_source' => 'manual',
                 'package_id' => null, 'source_system' => 'RESULT_TEST', 'full_name' => 'invalid',
                 'intended_field' => 'KAIGO', 'phone' => '620000000000',
-            ]);
-            DB::table('entitlements')->insert([
+            ]));
+            $entitlement = DB::table('entitlements')->insertGetId([
                 'participant_id' => $participant, 'order_id' => null,
                 'assessment_case_id' => null, 'test_type' => 'ist', 'status' => 'ready',
                 'created_at' => now(), 'updated_at' => now(),
             ]);
+            $this->remember('entitlements', $entitlement);
 
             return $participant;
         });
@@ -172,24 +182,28 @@ final class GenericEntitlementCaseRequirementMigrationTest extends TestCase
         $this->asOwner(fn () => $this->migrate('up'));
         $graph = $this->integratedGraph('integrated');
         app(RlsContextRunner::class)->runAsService(function () use ($graph): void {
-            DB::table('entitlements')->insert($this->entitlementRow(
+            $entitlement = DB::table('entitlements')->insertGetId($this->entitlementRow(
                 $graph['participant'],
                 null,
                 $graph['case'],
                 'ist',
             ));
-            DB::table('entitlements')->insert($this->entitlementRow(
+            $this->remember('entitlements', $entitlement);
+            $dass = DB::table('entitlements')->insertGetId($this->entitlementRow(
                 $graph['participant'],
                 null,
                 null,
                 'dass21',
             ));
+            $this->remember('entitlements', $dass);
         });
-        $unmappedCase = app(RlsContextRunner::class)->runAsService(fn (): int => DB::table('assessment_cases')->insertGetId([
-            'public_id' => (string) Str::ulid(), 'participant_id' => $graph['participant'],
-            'organization_id' => $graph['branch'], 'package_id' => $graph['package'],
-            'origin' => 'INTEGRATED', 'created_at' => now(), 'updated_at' => now(),
-        ]));
+        $unmappedCase = app(RlsContextRunner::class)->runAsService(
+            fn (): int => $this->remember('assessment_cases', DB::table('assessment_cases')->insertGetId([
+                'public_id' => (string) Str::ulid(), 'participant_id' => $graph['participant'],
+                'organization_id' => $graph['branch'], 'package_id' => $graph['package'],
+                'origin' => 'INTEGRATED', 'created_at' => now(), 'updated_at' => now(),
+            ])),
+        );
         $this->assertRejected(fn () => DB::table('entitlements')->insert(
             $this->entitlementRow($graph['participant'], null, $unmappedCase, 'papi'),
         ));
@@ -211,57 +225,64 @@ final class GenericEntitlementCaseRequirementMigrationTest extends TestCase
     {
         return app(RlsContextRunner::class)->runAsService(function () use ($suffix): array {
             $key = strtoupper(substr((string) Str::ulid(), 0, 20));
-            $branch = DB::table('branches')->insertGetId([
+            $branch = $this->remember('branches', DB::table('branches')->insertGetId([
                 'code' => $key, 'name' => $suffix, 'ref_code' => $key,
                 'organization_code' => $key, 'display_name' => $suffix,
-            ]);
-            $package = DB::table('packages')->insertGetId([
+            ]));
+            $package = $this->remember('packages', DB::table('packages')->insertGetId([
                 'code' => 'req-'.$key, 'name' => $suffix, 'amount' => 99000,
                 'currency' => 'IDR', 'is_active' => true, 'created_at' => now(), 'updated_at' => now(),
-            ]);
+            ]));
             foreach (['dass21', 'ist', 'papi'] as $sort => $type) {
                 DB::table('package_items')->insert([
                     'package_id' => $package, 'test_type' => $type, 'sort_order' => $sort,
                     'created_at' => now(), 'updated_at' => now(),
                 ]);
             }
-            $participant = DB::table('participants')->insertGetId([
+            $participant = $this->remember('participants', DB::table('participants')->insertGetId([
                 'branch_id' => $branch, 'referral_branch_id' => $branch, 'referral_source' => 'manual',
                 'package_id' => $package, 'source_system' => 'DIRECT_PUBLIC', 'full_name' => $suffix,
                 'intended_field' => 'KAIGO', 'phone' => '620000000000',
-            ]);
+            ]));
             $publicId = (string) Str::ulid();
-            $case = DB::table('assessment_cases')->insertGetId([
+            $case = $this->remember('assessment_cases', DB::table('assessment_cases')->insertGetId([
                 'public_id' => $publicId, 'participant_id' => $participant, 'organization_id' => $branch,
                 'package_id' => $package, 'origin' => 'DIRECT_PUBLIC', 'created_at' => now(), 'updated_at' => now(),
-            ]);
-            $method = DB::table('payment_methods')->insertGetId([
+            ]));
+            $method = $this->remember('payment_methods', DB::table('payment_methods')->insertGetId([
                 'code' => 'req-'.$key, 'display_name' => $suffix, 'is_active' => true,
                 'created_at' => now(), 'updated_at' => now(),
-            ]);
-            $order = DB::table('orders')->insertGetId([
+            ]));
+            $order = $this->remember('orders', DB::table('orders')->insertGetId([
                 'public_id' => $publicId, 'participant_id' => $participant, 'assessment_case_id' => $case,
                 'payment_method_id' => $method, 'status' => 'paid', 'amount' => 99000,
                 'currency' => 'IDR', 'paid_at' => now()->subDay(), 'created_at' => now(), 'updated_at' => now(),
-            ]);
-            DB::table('entitlements')->insert($this->entitlementRow($participant, $order, null, 'dass21'));
-            $entitlement = DB::table('entitlements')->insertGetId(
-                $this->entitlementRow($participant, $order, $case, 'ist'),
+            ]));
+            $dass = DB::table('entitlements')->insertGetId(
+                $this->entitlementRow($participant, $order, null, 'dass21'),
             );
-            DB::table('entitlements')->insert($this->entitlementRow($participant, $order, $case, 'papi'));
-            $session = DB::table('test_sessions')->insertGetId([
+            $this->remember('entitlements', $dass);
+            $entitlement = $this->remember('entitlements', DB::table('entitlements')->insertGetId(
+                $this->entitlementRow($participant, $order, $case, 'ist'),
+            ));
+            $papi = DB::table('entitlements')->insertGetId(
+                $this->entitlementRow($participant, $order, $case, 'papi'),
+            );
+            $this->remember('entitlements', $papi);
+            $session = $this->remember('test_sessions', DB::table('test_sessions')->insertGetId([
                 'public_id' => (string) Str::ulid(), 'participant_id' => $participant,
                 'assessment_case_id' => $case, 'test_type' => 'ist', 'attempt_no' => 1,
                 'authorization_id' => (string) Str::ulid(), 'allocation_intent_id' => (string) Str::ulid(),
                 'duration_seconds' => 3600, 'status' => 'created', 'answers_revision' => 0,
                 'created_at' => now(), 'updated_at' => now(),
-            ]);
+            ]));
             DB::table('test_session_grants')->insert([
                 'test_session_id' => $session, 'assessment_case_id' => $case,
                 'participant_id' => $participant, 'organization_id' => $branch,
                 'test_type' => 'ist', 'origin' => 'DIRECT_PUBLIC', 'grant_kind' => 'entitlement',
                 'order_id' => $order, 'entitlement_id' => $entitlement, 'created_at' => now(),
             ]);
+            $this->remember('test_session_grants', $session);
 
             return compact('participant', 'case', 'order', 'entitlement');
         });
@@ -272,36 +293,36 @@ final class GenericEntitlementCaseRequirementMigrationTest extends TestCase
     {
         return app(RlsContextRunner::class)->runAsService(function () use ($suffix): array {
             $key = strtoupper(substr((string) Str::ulid(), 0, 20));
-            $branch = DB::table('branches')->insertGetId([
+            $branch = $this->remember('branches', DB::table('branches')->insertGetId([
                 'code' => $key, 'name' => $suffix, 'ref_code' => $key,
                 'organization_code' => $key, 'display_name' => $suffix,
-            ]);
-            $package = DB::table('packages')->insertGetId([
+            ]));
+            $package = $this->remember('packages', DB::table('packages')->insertGetId([
                 'code' => 'int-'.$key, 'name' => $suffix, 'amount' => 99000,
                 'currency' => 'IDR', 'is_active' => true, 'created_at' => now(), 'updated_at' => now(),
-            ]);
+            ]));
             foreach (['dass21', 'ist', 'papi'] as $sort => $type) {
                 DB::table('package_items')->insert([
                     'package_id' => $package, 'test_type' => $type, 'sort_order' => $sort,
                     'created_at' => now(), 'updated_at' => now(),
                 ]);
             }
-            $participant = DB::table('participants')->insertGetId([
+            $participant = $this->remember('participants', DB::table('participants')->insertGetId([
                 'branch_id' => $branch, 'referral_branch_id' => $branch, 'referral_source' => 'manual',
                 'package_id' => $package, 'source_system' => 'SYNTHETIC', 'full_name' => $suffix,
                 'intended_field' => 'UMUM', 'phone' => '620000000001',
-            ]);
+            ]));
             $publicId = (string) Str::ulid();
-            $case = DB::table('assessment_cases')->insertGetId([
+            $case = $this->remember('assessment_cases', DB::table('assessment_cases')->insertGetId([
                 'public_id' => $publicId, 'participant_id' => $participant, 'organization_id' => $branch,
                 'package_id' => $package, 'origin' => 'INTEGRATED', 'created_at' => now(), 'updated_at' => now(),
-            ]);
-            $client = DB::table('integration_clients')->insertGetId([
+            ]));
+            $client = $this->remember('integration_clients', DB::table('integration_clients')->insertGetId([
                 'organization_id' => $branch, 'client_id' => 'client-'.$key,
                 'credential_reference' => 'synthetic', 'result_delivery_mode' => 'POLL',
                 'enabled' => true, 'created_at' => now(), 'updated_at' => now(),
-            ]);
-            DB::table('assessment_participants')->insert([
+            ]));
+            $mapping = DB::table('assessment_participants')->insertGetId([
                 'assessment_case_id' => $case, 'integration_client_id' => $client,
                 'organization_id' => $branch, 'participant_id' => $participant, 'package_id' => $package,
                 'assessment_attempt_id' => $publicId, 'source_system' => 'SYNTHETIC',
@@ -311,6 +332,7 @@ final class GenericEntitlementCaseRequirementMigrationTest extends TestCase
                 'logical_assessment_key' => hash('sha256', 'logical-'.$key),
                 'created_at' => now(), 'updated_at' => now(),
             ]);
+            $this->remember('assessment_participants', $mapping);
 
             return compact('participant', 'case', 'branch', 'package');
         });
@@ -406,6 +428,60 @@ final class GenericEntitlementCaseRequirementMigrationTest extends TestCase
         } catch (QueryException $exception) {
             $this->assertSame('23514', $exception->getCode());
         }
+    }
+
+    private function remember(string $table, int $id): int
+    {
+        $this->cleanupIds[$table][] = $id;
+
+        return $id;
+    }
+
+    private function cleanupSyntheticRows(): void
+    {
+        if ($this->cleanupIds === []) {
+            return;
+        }
+        $ids = $this->cleanupIds;
+        $this->cleanupIds = [];
+        $this->asOwner(function () use ($ids): void {
+            $tables = [
+                'test_session_grants', 'test_sessions', 'entitlements', 'orders',
+                'assessment_participants', 'assessment_cases', 'integration_clients',
+                'participants', 'package_items', 'packages', 'payment_methods', 'branches',
+            ];
+            DB::transaction(function () use ($ids, $tables): void {
+                foreach ($tables as $table) {
+                    DB::statement("ALTER TABLE {$table} NO FORCE ROW LEVEL SECURITY");
+                    DB::statement("ALTER TABLE {$table} DISABLE TRIGGER USER");
+                }
+                try {
+                    if (($ids['test_session_grants'] ?? []) !== []) {
+                        DB::table('test_session_grants')
+                            ->whereIn('test_session_id', $ids['test_session_grants'])->delete();
+                    }
+                    foreach (['test_sessions', 'entitlements', 'orders', 'assessment_participants',
+                        'assessment_cases', 'integration_clients', 'participants'] as $table) {
+                        if (($ids[$table] ?? []) !== []) {
+                            DB::table($table)->whereIn('id', $ids[$table])->delete();
+                        }
+                    }
+                    if (($ids['packages'] ?? []) !== []) {
+                        DB::table('package_items')->whereIn('package_id', $ids['packages'])->delete();
+                    }
+                    foreach (['packages', 'payment_methods', 'branches'] as $table) {
+                        if (($ids[$table] ?? []) !== []) {
+                            DB::table($table)->whereIn('id', $ids[$table])->delete();
+                        }
+                    }
+                } finally {
+                    foreach (array_reverse($tables) as $table) {
+                        DB::statement("ALTER TABLE {$table} ENABLE TRIGGER USER");
+                        DB::statement("ALTER TABLE {$table} FORCE ROW LEVEL SECURITY");
+                    }
+                }
+            });
+        });
     }
 
     private function migration(): Migration

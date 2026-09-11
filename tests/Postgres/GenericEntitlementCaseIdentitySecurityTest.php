@@ -79,7 +79,12 @@ final class GenericEntitlementCaseIdentitySecurityTest extends TestCase
     {
         $this->asOwner(function (): void {
             $before = $this->securitySnapshot();
-            $this->migrateUp();
+            $this->requirementMigration('down');
+            try {
+                $this->migrateUp();
+            } finally {
+                $this->requirementMigration('up');
+            }
             $this->assertEquals($before, $this->securitySnapshot());
         });
     }
@@ -90,6 +95,7 @@ final class GenericEntitlementCaseIdentitySecurityTest extends TestCase
         $this->asOwner(function () use ($component): void {
             DB::beginTransaction();
             try {
+                $this->requirementMigration('down');
                 match ($component) {
                     'index' => DB::unprepared('DROP INDEX entitlements_case_test_type_unique; CREATE UNIQUE INDEX entitlements_case_test_type_unique ON entitlements (assessment_case_id, test_type) WHERE false'),
                     'foreign' => DB::unprepared('ALTER TABLE entitlements DROP CONSTRAINT entitlements_case_scope_fk; ALTER TABLE entitlements ADD CONSTRAINT entitlements_case_scope_fk FOREIGN KEY (assessment_case_id,participant_id) REFERENCES assessment_cases(id,participant_id) ON DELETE CASCADE DEFERRABLE'),
@@ -164,6 +170,15 @@ final class GenericEntitlementCaseIdentitySecurityTest extends TestCase
     {
         $migration = $this->migration();
         (new \ReflectionMethod($migration, 'up'))->invoke($migration);
+    }
+
+    private function requirementMigration(string $operation): void
+    {
+        $migration = require database_path('migrations/2026_09_10_000400_enforce_generic_entitlement_case_identity.php');
+        if (! $migration instanceof Migration || ! is_callable([$migration, $operation])) {
+            throw new RuntimeException("Requirement migration operation {$operation} is unavailable.");
+        }
+        (new \ReflectionMethod($migration, $operation))->invoke($migration);
     }
 
     private function migration(): Migration
