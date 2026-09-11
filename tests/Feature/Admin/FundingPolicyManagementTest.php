@@ -204,7 +204,7 @@ final class FundingPolicyManagementTest extends OrganizationPaymentTestCase
             'referral_source' => 'default', 'full_name' => 'Synthetic participant',
             'gender' => 'male', 'birth_date' => '2000-01-01', 'education_level' => 'SMA_SMK',
             'intended_field' => 'KAIGO', 'phone' => '620000000000',
-            'source_system' => 'LEGACY_SELECTION',
+            'source_system' => 'POLICY_TEST',
         ]);
         $method = DB::table('payment_methods')->insertGetId([
             'code' => 'synthetic', 'display_name' => 'Synthetic channel', 'is_active' => true,
