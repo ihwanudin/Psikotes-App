@@ -137,6 +137,8 @@ final class TestSessionCaseIdentityMigrationTest extends TestCase
                 $directPublic = require database_path('migrations/2026_09_09_000600_bind_direct_public_orders_to_assessment_cases.php');
                 $sessionCase = require database_path('migrations/2026_09_09_000400_harden_test_session_case_identity.php');
                 (require database_path('migrations/2026_09_09_000700_create_test_session_grants.php'))->down();
+                (require database_path('migrations/2026_09_10_000400_enforce_generic_entitlement_case_identity.php'))->down();
+                (require database_path('migrations/2026_09_10_000300_expand_generic_entitlement_case_identity.php'))->down();
                 $directPublic->down();
                 $before = $this->definitions();
                 $this->openFixtureTables();
@@ -168,6 +170,8 @@ final class TestSessionCaseIdentityMigrationTest extends TestCase
                 $directPublic = require database_path('migrations/2026_09_09_000600_bind_direct_public_orders_to_assessment_cases.php');
                 $legacySelection = require database_path('migrations/2026_09_09_000500_bind_legacy_selection_assessment_cases.php');
                 (require database_path('migrations/2026_09_09_000700_create_test_session_grants.php'))->down();
+                (require database_path('migrations/2026_09_10_000400_enforce_generic_entitlement_case_identity.php'))->down();
+                (require database_path('migrations/2026_09_10_000300_expand_generic_entitlement_case_identity.php'))->down();
                 $directPublic->down();
                 $legacySelection->down();
                 $this->corruptPostgres($component);
@@ -216,6 +220,12 @@ final class TestSessionCaseIdentityMigrationTest extends TestCase
         if ($direction === 'down' && Schema::hasTable('test_session_grants')) {
             (require database_path('migrations/2026_09_09_000700_create_test_session_grants.php'))->down();
         }
+        $genericRequirement = require database_path('migrations/2026_09_10_000400_enforce_generic_entitlement_case_identity.php');
+        $genericCase = require database_path('migrations/2026_09_10_000300_expand_generic_entitlement_case_identity.php');
+        if ($direction === 'down' && Schema::hasColumn('entitlements', 'assessment_case_id')) {
+            $genericRequirement->down();
+            $genericCase->down();
+        }
         $directPublic = require database_path('migrations/2026_09_09_000600_bind_direct_public_orders_to_assessment_cases.php');
         $legacySelection = require database_path('migrations/2026_09_09_000500_bind_legacy_selection_assessment_cases.php');
         $migration = require database_path('migrations/2026_09_09_000400_harden_test_session_case_identity.php');
@@ -235,6 +245,10 @@ final class TestSessionCaseIdentityMigrationTest extends TestCase
         }
         if ($direction === 'up' && ! Schema::hasColumn('orders', 'assessment_case_id')) {
             $directPublic->up();
+        }
+        if ($direction === 'up' && ! Schema::hasColumn('entitlements', 'assessment_case_id')) {
+            $genericCase->up();
+            $genericRequirement->up();
         }
         if ($direction === 'up' && ! Schema::hasTable('test_session_grants')) {
             (require database_path('migrations/2026_09_09_000700_create_test_session_grants.php'))->up();

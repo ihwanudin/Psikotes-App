@@ -15,6 +15,9 @@
             <file>tests/Postgres/DirectPublicOrderCaseIdentityMigrationTest.php</file>
             <file>tests/Postgres/TestSessionGrantSecurityTest.php</file>
             <file>tests/Postgres/TestSessionDefinitionSnapshotSecurityTest.php</file>
+            <file>tests/Postgres/GenericEntitlementCaseRequirementMigrationTest.php</file>
+            <file>tests/Postgres/GenericEntitlementCaseIdentityMigrationTest.php</file>
+            <file>tests/Postgres/GenericEntitlementCaseIdentitySecurityTest.php</file>
         </testsuite>
         <testsuite name="OrganizationPostgres">
             <directory>tests/Postgres</directory>
@@ -26,6 +29,9 @@
             <exclude>tests/Postgres/DirectPublicOrderCaseIdentityMigrationTest.php</exclude>
             <exclude>tests/Postgres/TestSessionGrantSecurityTest.php</exclude>
             <exclude>tests/Postgres/TestSessionDefinitionSnapshotSecurityTest.php</exclude>
+            <exclude>tests/Postgres/GenericEntitlementCaseRequirementMigrationTest.php</exclude>
+            <exclude>tests/Postgres/GenericEntitlementCaseIdentityMigrationTest.php</exclude>
+            <exclude>tests/Postgres/GenericEntitlementCaseIdentitySecurityTest.php</exclude>
         </testsuite>
     </testsuites>
     <php>

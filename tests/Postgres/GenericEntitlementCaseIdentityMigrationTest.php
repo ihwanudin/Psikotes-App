@@ -7,8 +7,10 @@ namespace Tests\Postgres;
 use App\Security\RlsContextRunner;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 
 final class GenericEntitlementCaseIdentityMigrationTest extends TestCase
 {
@@ -58,20 +60,42 @@ final class GenericEntitlementCaseIdentityMigrationTest extends TestCase
 
     public function test_service_can_use_compatibility_null_but_cannot_bind_dass_or_cross_case(): void
     {
-        app(RlsContextRunner::class)->runAsService(function (): void {
-            $first = $this->directGraph('first');
-            $second = $this->directGraph('second');
-            DB::table('entitlements')->insert($this->entitlement($first['participant'], null, 'papi'));
-            $this->assertDatabaseCount('entitlements', 5);
-            $this->assertSqlState('23514', fn () => DB::table('entitlements')->insert([
-                ...$this->entitlement($first['participant'], $first['order'], 'rmib'),
-                'assessment_case_id' => $second['case'],
-            ]));
-            $this->assertSqlState('23514', fn () => DB::table('entitlements')->where('id', $first['dass'])
-                ->update(['assessment_case_id' => $first['case']]));
-            $this->assertSqlState('P0001', fn () => DB::table('entitlements')->where('id', $first['generic'])
-                ->update(['assessment_case_id' => null]));
-        });
+        DB::rollBack();
+        $this->asOwner(fn () => $this->requirementMigration('down'));
+        try {
+            DB::beginTransaction();
+            app(RlsContextRunner::class)->runAsService(function (): void {
+                $before = DB::table('entitlements')->count();
+                $first = $this->directGraph('first');
+                $second = $this->directGraph('second');
+                DB::table('entitlements')->insert($this->entitlement($first['participant'], null, 'papi'));
+                $this->assertDatabaseCount('entitlements', $before + 5);
+                $this->assertSqlState('23514', fn () => DB::table('entitlements')->insert([
+                    ...$this->entitlement($first['participant'], $first['order'], 'rmib'),
+                    'assessment_case_id' => $second['case'],
+                ]));
+                $this->assertSqlState('23514', fn () => DB::table('entitlements')->where('id', $first['dass'])
+                    ->update(['assessment_case_id' => $first['case']]));
+                $this->assertSqlState('P0001', fn () => DB::table('entitlements')->where('id', $first['generic'])
+                    ->update(['assessment_case_id' => null]));
+            });
+            DB::rollBack();
+
+            $this->asOwner(fn () => $this->requirementMigration('up'));
+            DB::beginTransaction();
+            app(RlsContextRunner::class)->runAsService(function (): void {
+                $graph = $this->directGraph('enforced');
+                $this->assertSqlState('23514', fn () => DB::table('entitlements')->insert(
+                    $this->entitlement($graph['participant'], null, 'papi'),
+                ));
+            });
+        } finally {
+            if (DB::transactionLevel() > 0) {
+                DB::rollBack();
+            }
+            $this->asOwner(fn () => $this->requirementMigration('up'));
+            DB::beginTransaction();
+        }
     }
 
     /** @return array{branch:int,participant:int,case:int,order:int,generic:int,dass:int} */
@@ -143,5 +167,30 @@ final class GenericEntitlementCaseIdentityMigrationTest extends TestCase
     private function assertDatabaseCount(string $table, int $count): void
     {
         $this->assertSame($count, DB::table($table)->count());
+    }
+
+    private function requirementMigration(string $operation): void
+    {
+        $migration = require database_path('migrations/2026_09_10_000400_enforce_generic_entitlement_case_identity.php');
+        if (! is_object($migration) || ! is_callable([$migration, $operation])) {
+            throw new RuntimeException("Requirement migration operation {$operation} is unavailable.");
+        }[$migration, $operation]();
+    }
+
+    private function asOwner(callable $callback): void
+    {
+        $runtime = DB::getDefaultConnection();
+        $config = config('database.connections.'.$runtime);
+        config()->set('database.connections.generic_case_migration_owner', [...$config, 'username' => 'org_test_owner']);
+        DB::setDefaultConnection('generic_case_migration_owner');
+        Schema::clearResolvedInstance('db.schema');
+        try {
+            $callback();
+        } finally {
+            DB::setDefaultConnection($runtime);
+            Schema::clearResolvedInstance('db.schema');
+            DB::purge('generic_case_migration_owner');
+            config()->set('database.connections.generic_case_migration_owner', null);
+        }
     }
 }

@@ -41,8 +41,12 @@ final class AssessmentBillingMigrationTest extends TestCase
             $legacySelectionCaseMigration = require database_path('migrations/2026_09_09_000500_bind_legacy_selection_assessment_cases.php');
             $directPublicCaseMigration = require database_path('migrations/2026_09_09_000600_bind_direct_public_orders_to_assessment_cases.php');
             $sessionGrantMigration = require database_path('migrations/2026_09_09_000700_create_test_session_grants.php');
+            $genericCaseMigration = require database_path('migrations/2026_09_10_000300_expand_generic_entitlement_case_identity.php');
+            $genericCaseRequirementMigration = require database_path('migrations/2026_09_10_000400_enforce_generic_entitlement_case_identity.php');
             $assessmentCaseStructure = $this->assessmentCaseStructure();
             $sessionGrantMigration->down();
+            $genericCaseRequirementMigration->down();
+            $genericCaseMigration->down();
             $directPublicCaseMigration->down();
             $legacySelectionCaseMigration->down();
             $sessionCaseMigration->down();
@@ -56,7 +60,7 @@ final class AssessmentBillingMigrationTest extends TestCase
             $order = DB::table('orders')->insertGetId(['public_id' => (string) Str::ulid(), 'participant_id' => $fixture['participant'],
                 'payment_method_id' => $method, 'amount' => 100, 'currency' => 'IDR', 'status' => 'pending']);
             $legacyAccess = DB::table('entitlements')->insertGetId(['participant_id' => $fixture['participant'], 'order_id' => $order,
-                'test_type' => 'ist', 'status' => 'ready', 'ready_at' => now()]);
+                'test_type' => 'dass21', 'status' => 'ready', 'ready_at' => now()]);
             $legacyIds = ['orders' => $order, 'entitlements' => $legacyAccess, 'participants' => $fixture['participant'],
                 'branches' => $fixture['organization'], 'assessment_participants' => $fixture['attempt'], 'packages' => $fixture['package']];
             $legacy = [];
@@ -132,6 +136,8 @@ final class AssessmentBillingMigrationTest extends TestCase
             $sessionCaseMigration->up();
             $legacySelectionCaseMigration->up();
             $directPublicCaseMigration->up();
+            $genericCaseMigration->up();
+            $genericCaseRequirementMigration->up();
             $sessionGrantMigration->up();
             $this->assertEquals($assessmentCaseStructure, $this->assessmentCaseStructure());
             $source = DB::table('integration_sources')->insertGetId([

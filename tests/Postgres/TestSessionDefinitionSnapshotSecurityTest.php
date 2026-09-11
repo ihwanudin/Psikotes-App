@@ -357,13 +357,14 @@ final class TestSessionDefinitionSnapshotSecurityTest extends TestCase
         $order = DB::table('orders')->insertGetId([
             'public_id' => $publicId, 'participant_id' => $participant,
             'assessment_case_id' => $case, 'payment_method_id' => $method,
-            'status' => 'paid', 'amount' => 99000, 'currency' => 'IDR', 'paid_at' => now(),
+            'status' => 'paid', 'amount' => 99000, 'currency' => 'IDR', 'paid_at' => now()->subMinute(),
             'created_at' => now(), 'updated_at' => now(),
         ]);
         foreach (['dass21', 'ist'] as $type) {
             $id = DB::table('entitlements')->insertGetId([
                 'participant_id' => $participant, 'order_id' => $order, 'test_type' => $type,
-                'status' => 'ready', 'ready_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+                'assessment_case_id' => $type === 'dass21' ? null : $case,
+                'status' => 'ready', 'ready_at' => now()->subMinute(), 'created_at' => now(), 'updated_at' => now(),
             ]);
             if ($type === 'ist') {
                 $entitlement = $id;
