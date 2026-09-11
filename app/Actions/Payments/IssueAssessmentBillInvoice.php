@@ -8,6 +8,8 @@ use App\Contracts\PaymentProvider;
 use App\Data\Payments\AssessmentInvoicePermit;
 use App\Data\Payments\CreateInvoiceRequest;
 use App\Data\Payments\PaymentInvoice;
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Models\AssessmentBill;
 use App\Models\AssessmentBillItem;
 use App\Models\Branch;
@@ -15,6 +17,7 @@ use App\Models\OutboxMessage;
 use App\Security\RlsContextRunner;
 use App\Services\Payments\Exceptions\PaymentProviderException;
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -33,6 +36,7 @@ final readonly class IssueAssessmentBillInvoice
         private ClaimAssessmentBillInvoice $claim,
         private RlsContextRunner $contexts,
         private PersistAssessmentInvoiceOutcome $outcomes,
+        private RetentionPolicy $retention,
     ) {}
 
     /** @return array{decision: string, messageId: string} */
@@ -196,12 +200,14 @@ final readonly class IssueAssessmentBillInvoice
     }
 
     /** @param array<string, mixed> $extra */
-    private function audit(AssessmentInvoicePermit $permit, string $action, mixed $at, array $extra = []): void
+    private function audit(AssessmentInvoicePermit $permit, string $action, CarbonInterface $at, array $extra = []): void
     {
+        $anchor = CarbonImmutable::instance($at)->utc();
         DB::table('audit_logs')->insert(['branch_id' => $permit->organizationId, 'actor_type' => 'service', 'actor_id' => null,
             'action' => $action, 'subject_type' => AssessmentBill::class, 'subject_id' => (string) $permit->billId,
             'context' => json_encode(['messageId' => $permit->messageId, ...$extra], JSON_THROW_ON_ERROR),
-            'occurred_at' => $at, 'expires_at' => $at->copy()->addYears(2)]);
+            'occurred_at' => $anchor,
+            'expires_at' => $this->retention->expiresAt(RetentionDataClass::Audit, $anchor)]);
     }
 
     private function reportUnexpected(Throwable $exception, string $operation): void

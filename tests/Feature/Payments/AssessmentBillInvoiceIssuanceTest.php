@@ -11,6 +11,8 @@ use App\Actions\Payments\ReserveAssessmentBill;
 use App\Contracts\PaymentProvider;
 use App\Data\Payments\CreateInvoiceRequest;
 use App\Data\Payments\PaymentInvoice;
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Enums\AdminRole;
 use App\Enums\PayerType;
 use App\Models\Admin;
@@ -22,6 +24,7 @@ use App\Services\Integrations\DispatchIntegrationOutbox;
 use App\Services\Notifications\DispatchNotificationOutbox;
 use App\Services\Payments\Exceptions\PaymentProviderException;
 use App\Services\Payments\XenditProvider;
+use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Illuminate\Foundation\Testing\RefreshDatabaseState;
@@ -66,6 +69,13 @@ final class AssessmentBillInvoiceIssuanceTest extends OrganizationPaymentTestCas
         $organization = $this->fixtures[0]['organization'];
         for ($index = 1; $index < 10; $index++) {
             $this->fixtures[] = Fixture::create(['organization' => $organization]);
+        }
+        foreach ($this->fixtures as $fixture) {
+            DB::table('package_items')->insert([
+                'package_id' => $fixture['package'],
+                'test_type' => 'dass21',
+                'sort_order' => 2,
+            ]);
         }
         DB::table('assessment_participants')->where('organization_id', $organization)->update([
             'funding_mode' => 'INVOICED_TO_ORGANIZATION',
@@ -179,10 +189,27 @@ final class AssessmentBillInvoiceIssuanceTest extends OrganizationPaymentTestCas
     public function test_crash_after_permit_commit_before_post_never_rearms_or_creates(): void
     {
         $issuer = app(IssueAssessmentBillInvoice::class);
+        $messageExpiry = $this->intent->fresh()->expires_at;
         $permit = $issuer->consume($this->intent->message_id);
         $this->assertSame($this->intent->message_id, $permit?->messageId);
-        $this->assertSame('processing', $this->intent->fresh()->status);
-        $this->assertSame(1, $this->intent->fresh()->attempts);
+        $message = $this->intent->fresh();
+        $this->assertSame('processing', $message->status);
+        $this->assertSame(1, $message->attempts);
+        $this->assertTrue($messageExpiry->equalTo($message->expires_at));
+        $audit = DB::table('audit_logs')->where('action', 'assessment_bill.invoice_permit_consumed')->sole();
+        $anchor = CarbonImmutable::parse((string) $audit->occurred_at)->utc();
+        $this->assertTrue($message->updated_at->utc()->equalTo($anchor));
+        $this->assertSame(
+            app(RetentionPolicy::class)->expiresAt(RetentionDataClass::Audit, $anchor)->format('Y-m-d H:i:s.uP'),
+            CarbonImmutable::parse((string) $audit->expires_at)->utc()->format('Y-m-d H:i:s.uP'),
+        );
+        $this->assertSame(
+            '2029-02-28 03:15:00.000000+00:00',
+            app(RetentionPolicy::class)->expiresAt(
+                RetentionDataClass::Audit,
+                CarbonImmutable::parse('2024-02-29 10:15:00+07:00')->utc(),
+            )->format('Y-m-d H:i:s.uP'),
+        );
 
         $provider = $this->providerNeverCalled();
         app()->instance(PaymentProvider::class, $provider);
