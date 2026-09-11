@@ -26,11 +26,16 @@ final class GenericEntitlementCaseRequirementMigrationTest extends OrganizationP
     {
         $graph = $this->directGraph('valid');
         $before = $this->baseObjects();
+        $baseGuards = $this->caseGuards();
 
         $this->migrate('up');
         $this->migrate('up');
 
         $this->assertSame($before, $this->baseObjects());
+        $this->assertNotSame($baseGuards, $this->caseGuards());
+        foreach ($this->caseGuards() as $guard) {
+            $this->assertStringContainsString("assessment_case.origin = 'INTEGRATED'", (string) $guard['sql']);
+        }
         $this->assertSame($graph['entitlement'], DB::table('test_session_grants')->sole()->entitlement_id);
         $this->assertSame([], DB::select('PRAGMA foreign_key_check'));
         $this->assertRejected(fn () => DB::table('entitlements')->insert(
@@ -46,6 +51,7 @@ final class GenericEntitlementCaseRequirementMigrationTest extends OrganizationP
         $this->migrate('down');
         $this->migrate('down');
         $this->assertSame($before, $this->baseObjects());
+        $this->assertSame($baseGuards, $this->caseGuards());
         $this->assertSame([], DB::select('PRAGMA foreign_key_check'));
     }
 
@@ -114,6 +120,67 @@ final class GenericEntitlementCaseRequirementMigrationTest extends OrganizationP
         }
     }
 
+    public function test_idempotent_rerun_rejects_counterfeit_integrated_guard_without_delta(): void
+    {
+        $this->directGraph('counterfeit-guard');
+        $this->migrate('up');
+        DB::unprepared('DROP TRIGGER entitlements_case_insert_guard');
+        DB::unprepared(<<<'SQL'
+            CREATE TRIGGER entitlements_case_insert_guard BEFORE INSERT ON entitlements
+            BEGIN SELECT 1; END
+            SQL);
+        $before = $this->schema();
+
+        foreach (['up', 'down'] as $operation) {
+            try {
+                $this->migrate($operation);
+                $this->fail('Counterfeit integrated guard must fail closed.');
+            } catch (RuntimeException $exception) {
+                $this->assertStringContainsString('counterfeit or partial requirement and guard state', $exception->getMessage());
+            }
+            $this->assertSame($before, $this->schema());
+        }
+    }
+
+    public function test_exact_integrated_graph_is_accepted_and_prevents_unsafe_guard_rollback(): void
+    {
+        $this->migrate('up');
+        $graph = $this->integratedGraph('integrated');
+        DB::table('entitlements')->insert($this->entitlementRow(
+            $graph['participant'],
+            null,
+            $graph['case'],
+            'ist',
+        ));
+        DB::table('entitlements')->insert($this->entitlementRow(
+            $graph['participant'],
+            null,
+            null,
+            'dass21',
+        ));
+        $unmappedCase = DB::table('assessment_cases')->insertGetId([
+            'public_id' => (string) Str::ulid(), 'participant_id' => $graph['participant'],
+            'organization_id' => $graph['branch'], 'package_id' => $graph['package'],
+            'origin' => 'INTEGRATED', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->assertRejected(fn () => DB::table('entitlements')->insert(
+            $this->entitlementRow($graph['participant'], null, $unmappedCase, 'papi'),
+        ));
+        $before = $this->schema();
+
+        try {
+            $this->migrate('down');
+            $this->fail('Integrated entitlement history must prevent guard rollback.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('integrated entitlement history prevents guard rollback', $exception->getMessage());
+        }
+        $this->assertSame($before, $this->schema());
+        $this->assertSame([], DB::select('PRAGMA foreign_key_check'));
+
+        DB::table('entitlements')->where('participant_id', $graph['participant'])->delete();
+        $this->migrate('down');
+    }
+
     /** @return array{participant:int,case:int,order:int,entitlement:int,dass:int} */
     private function directGraph(string $suffix): array
     {
@@ -173,8 +240,55 @@ final class GenericEntitlementCaseRequirementMigrationTest extends OrganizationP
         return compact('participant', 'case', 'order', 'entitlement', 'dass');
     }
 
+    /** @return array{participant:int,case:int,branch:int,package:int} */
+    private function integratedGraph(string $suffix): array
+    {
+        $key = strtoupper(substr(hash('sha256', $suffix), 0, 20));
+        $branch = DB::table('branches')->insertGetId([
+            'code' => $key, 'name' => $suffix, 'ref_code' => $key,
+            'organization_code' => $key, 'display_name' => $suffix,
+        ]);
+        $package = DB::table('packages')->insertGetId([
+            'code' => 'package-'.$suffix, 'name' => $suffix, 'amount' => 99000,
+            'currency' => 'IDR', 'is_active' => true, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        foreach (['dass21', 'ist', 'papi'] as $sort => $type) {
+            DB::table('package_items')->insert([
+                'package_id' => $package, 'test_type' => $type, 'sort_order' => $sort,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+        $participant = DB::table('participants')->insertGetId([
+            'branch_id' => $branch, 'referral_branch_id' => $branch, 'referral_source' => 'manual',
+            'package_id' => $package, 'source_system' => 'SYNTHETIC', 'full_name' => $suffix,
+            'intended_field' => 'UMUM', 'phone' => '620000000001',
+        ]);
+        $publicId = (string) Str::ulid();
+        $case = DB::table('assessment_cases')->insertGetId([
+            'public_id' => $publicId, 'participant_id' => $participant, 'organization_id' => $branch,
+            'package_id' => $package, 'origin' => 'INTEGRATED', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $client = DB::table('integration_clients')->insertGetId([
+            'organization_id' => $branch, 'client_id' => 'client-'.$suffix,
+            'credential_reference' => 'synthetic', 'result_delivery_mode' => 'POLL',
+            'enabled' => true, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('assessment_participants')->insert([
+            'assessment_case_id' => $case, 'integration_client_id' => $client,
+            'organization_id' => $branch, 'participant_id' => $participant, 'package_id' => $package,
+            'assessment_attempt_id' => $publicId, 'source_system' => 'SYNTHETIC',
+            'external_candidate_id' => 'candidate-'.$suffix, 'funding_mode' => 'SPONSORED',
+            'assessment_status' => 'READY', 'result_version' => 0, 'idempotency_key' => 'key-'.$suffix,
+            'request_hash' => hash('sha256', 'request-'.$suffix),
+            'logical_assessment_key' => hash('sha256', 'logical-'.$suffix),
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        return compact('participant', 'case', 'branch', 'package');
+    }
+
     /** @return array<string,mixed> */
-    private function entitlementRow(int $participant, int $order, ?int $case, string $type): array
+    private function entitlementRow(int $participant, ?int $order, ?int $case, string $type): array
     {
         return [
             'participant_id' => $participant, 'order_id' => $order, 'assessment_case_id' => $case,
@@ -210,9 +324,19 @@ final class GenericEntitlementCaseRequirementMigrationTest extends OrganizationP
     private function baseObjects(): array
     {
         return array_values(array_map(static fn (object $row): array => (array) $row, DB::select(
-            "SELECT type,name,tbl_name,sql FROM sqlite_master WHERE name <> 'entitlements_case_requirement_check'
+            "SELECT type,name,tbl_name,sql FROM sqlite_master
+             WHERE name NOT IN ('entitlements_case_requirement_check','entitlements_case_insert_guard','entitlements_case_update_guard')
              AND ((tbl_name='entitlements' AND type IN ('index','trigger'))
                 OR (type='trigger' AND lower(sql) LIKE '%entitlements%')) ORDER BY type,name",
+        )));
+    }
+
+    /** @return list<array<string,mixed>> */
+    private function caseGuards(): array
+    {
+        return array_values(array_map(static fn (object $row): array => (array) $row, DB::select(
+            "SELECT name,sql FROM sqlite_master WHERE type='trigger'
+             AND name IN ('entitlements_case_insert_guard','entitlements_case_update_guard') ORDER BY name",
         )));
     }
 

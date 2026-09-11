@@ -129,6 +129,17 @@ final class GenericAssessmentProvisioningTest extends TestCase
         ] as $privateValue) {
             $this->assertStringNotContainsString($privateValue, $encodedAudit);
         }
+
+        $genericEntitlement = $this->getConnection()->table('entitlements')
+            ->where('participant_id', $participantId)
+            ->where('test_type', 'ist')
+            ->sole();
+        $dassEntitlement = $this->getConnection()->table('entitlements')
+            ->where('participant_id', $participantId)
+            ->where('test_type', 'dass21')
+            ->sole();
+        $this->assertSame($case->id, $genericEntitlement->assessment_case_id);
+        $this->assertNull($dassEntitlement->assessment_case_id);
     }
 
     public function test_provisioning_audit_retention_uses_a_no_overflow_leap_day_anchor(): void
@@ -236,6 +247,31 @@ final class GenericAssessmentProvisioningTest extends TestCase
         $this->assertDatabaseCount('assessment_participants', 2);
         $this->assertDatabaseCount('assessment_cases', 2);
         $this->assertDatabaseCount('outbox_messages', 2);
+    }
+
+    public function test_new_case_cannot_reuse_the_participants_existing_generic_entitlement(): void
+    {
+        $this->signedRequest($this->payload(), 'assessment:v1:first-case')->assertCreated();
+        $secondCase = [...$this->payload(), 'assessmentRoundId' => 'ROUND-2026-09'];
+
+        $this->withoutExceptionHandling();
+        try {
+            $this->signedRequest($secondCase, 'assessment:v1:second-case');
+            $this->fail('The old participant-scoped unique index must fail closed before case uniqueness contracts.');
+        } catch (QueryException) {
+            $this->addToAssertionCount(1);
+        }
+
+        $this->assertDatabaseCount('participants', 1);
+        $this->assertDatabaseCount('assessment_participants', 1);
+        $this->assertDatabaseCount('assessment_cases', 1);
+        $this->assertDatabaseCount('entitlements', 2);
+        $case = AssessmentCase::query()->sole();
+        $this->assertDatabaseHas('entitlements', [
+            'participant_id' => $case->participant_id,
+            'assessment_case_id' => $case->id,
+            'test_type' => 'ist',
+        ]);
     }
 
     public function test_two_clients_may_use_the_same_external_candidate_without_collision(): void
