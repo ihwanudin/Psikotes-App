@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Actions\Payments;
 
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Enums\PayerType;
 use App\Models\Admin;
 use App\Models\Branch;
@@ -11,13 +13,18 @@ use App\Models\IntegrationClient;
 use App\Models\IntegrationSource;
 use App\Policies\FundingPolicyPolicy;
 use App\Security\RlsContextRunner;
+use Carbon\CarbonImmutable;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 final readonly class UpdateFundingPolicy
 {
-    public function __construct(private RlsContextRunner $runner, private FundingPolicyPolicy $policy) {}
+    public function __construct(
+        private RlsContextRunner $runner,
+        private FundingPolicyPolicy $policy,
+        private RetentionPolicy $retention,
+    ) {}
 
     /** @param array<string, mixed> $input */
     public function forOrganization(Admin $admin, int $organizationId, array $input): Branch
@@ -116,7 +123,7 @@ final readonly class UpdateFundingPolicy
             return;
         }
         $target->fill($values)->save();
-        $at = now();
+        $at = CarbonImmutable::now('UTC');
         DB::table('audit_logs')->insert([
             'branch_id' => $organizationId,
             'actor_type' => 'admin',
@@ -126,7 +133,7 @@ final readonly class UpdateFundingPolicy
             'subject_id' => (string) $target->id,
             'context' => json_encode(['from' => $previous, 'to' => $values], JSON_THROW_ON_ERROR),
             'occurred_at' => $at,
-            'expires_at' => $at->copy()->addYears(2),
+            'expires_at' => $this->retention->expiresAt(RetentionDataClass::Audit, $at),
         ]);
     }
 }

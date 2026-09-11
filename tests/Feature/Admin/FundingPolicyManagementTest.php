@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Tests\Feature\Admin;
 
 use App\Actions\Payments\UpdateFundingPolicy;
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Enums\AdminRole;
 use App\Models\Admin;
 use App\Models\Branch;
@@ -12,6 +14,7 @@ use App\Models\IntegrationClient;
 use App\Models\IntegrationSource;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
+use Carbon\CarbonImmutable;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -81,8 +84,22 @@ final class FundingPolicyManagementTest extends OrganizationPaymentTestCase
             'from' => ['allowed_payer_types' => ['self'], 'locked_payer_type' => null],
             'to' => ['allowed_payer_types' => ['organization'], 'locked_payer_type' => 'organization'],
         ], json_decode($audit->context, true, flags: JSON_THROW_ON_ERROR));
-        $this->assertSame(now()->toDateTimeString(), $audit->occurred_at);
-        $this->assertSame(now()->addYears(2)->toDateTimeString(), $audit->expires_at);
+        $anchor = CarbonImmutable::parse((string) $audit->occurred_at, 'UTC')->utc();
+        $this->assertSame(
+            app(RetentionPolicy::class)->expiresAt(RetentionDataClass::Audit, $anchor)->format('Y-m-d H:i:s.uP'),
+            CarbonImmutable::parse((string) $audit->expires_at, 'UTC')->utc()->format('Y-m-d H:i:s.uP'),
+        );
+        $this->assertSame(
+            CarbonImmutable::instance(now())->utc()->startOfSecond()->format('Y-m-d H:i:s.uP'),
+            $anchor->format('Y-m-d H:i:s.uP'),
+        );
+        $this->assertSame(
+            '2029-02-28 03:15:00.000000+00:00',
+            app(RetentionPolicy::class)->expiresAt(
+                RetentionDataClass::Audit,
+                CarbonImmutable::parse('2024-02-29 10:15:00+07:00')->utc(),
+            )->format('Y-m-d H:i:s.uP'),
+        );
         $this->assertDatabaseCount('orders', 0);
         $this->assertDatabaseCount('entitlements', 0);
         $this->assertDatabaseCount('outbox_messages', 0);
@@ -187,6 +204,7 @@ final class FundingPolicyManagementTest extends OrganizationPaymentTestCase
             'referral_source' => 'default', 'full_name' => 'Synthetic participant',
             'gender' => 'male', 'birth_date' => '2000-01-01', 'education_level' => 'SMA_SMK',
             'intended_field' => 'KAIGO', 'phone' => '620000000000',
+            'source_system' => 'LEGACY_SELECTION',
         ]);
         $method = DB::table('payment_methods')->insertGetId([
             'code' => 'synthetic', 'display_name' => 'Synthetic channel', 'is_active' => true,
