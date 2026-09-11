@@ -6,6 +6,8 @@ namespace Tests\Feature\Payments;
 
 use App\Actions\Payments\PreviewAssessmentBill;
 use App\Actions\Payments\ReserveAssessmentBill;
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Enums\AdminRole;
 use App\Enums\PayerType;
 use App\Models\Admin;
@@ -16,6 +18,7 @@ use App\Models\Participant;
 use App\Models\TestPackage;
 use App\Security\RlsContextRunner;
 use App\Services\Payments\AssessmentPriceSnapshot;
+use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -41,10 +44,26 @@ final class AssessmentBillReservationTest extends OrganizationPaymentTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->fixture = Fixture::create();
+        $this->fixture = $this->createFixture();
         $this->admin = Admin::create(['branch_id' => $this->fixture['organization'], 'name' => 'Synthetic',
             'email' => 'reservation@example.test', 'password' => 'synthetic-password', 'role' => AdminRole::BranchAdmin]);
         $this->method = DB::table('payment_methods')->insertGetId(['code' => 'manual_transfer', 'display_name' => 'Synthetic', 'is_active' => true]);
+    }
+
+    /**
+     * @param  array<string, int>|null  $identity
+     * @return array<string, int>
+     */
+    private function createFixture(?array $identity = null, int $amount = 100): array
+    {
+        $fixture = Fixture::create($identity, $amount);
+        DB::table('package_items')->insert([
+            'package_id' => $fixture['package'],
+            'test_type' => 'dass21',
+            'sort_order' => 2,
+        ]);
+
+        return $fixture;
     }
 
     private function preview(array $selection, ?Participant $participant = null): array
@@ -63,12 +82,16 @@ final class AssessmentBillReservationTest extends OrganizationPaymentTestCase
     {
         $selection = [Fixture::selection($this->fixture, true)];
         for ($i = 1; $i < 10; $i++) {
-            $selection[] = Fixture::selection(Fixture::create(['organization' => $this->fixture['organization']]));
+            $selection[] = Fixture::selection($this->createFixture(['organization' => $this->fixture['organization']]));
         }
         $preview = $this->preview($selection);
         $bill = $this->reserve($selection, $preview['selectionHash']);
         $this->assertSame('reserved', $bill->status);
         $this->assertSame(1030, $bill->amount);
+        $this->assertSame('IDR', $bill->currency);
+        $this->assertSame('organization', $bill->payer_type);
+        $this->assertNull($bill->payer_participant_id);
+        $this->assertSame($this->method, $bill->payment_method_id);
         $this->assertSame(10, $bill->item_count);
         $this->assertMatchesRegularExpression('/^AB_[0-9A-HJKMNP-TV-Z]{26}$/', $bill->public_reference);
         $this->assertNull($bill->gateway_ref);
@@ -77,7 +100,28 @@ final class AssessmentBillReservationTest extends OrganizationPaymentTestCase
         $this->assertDatabaseCount('assessment_bill_items', 10);
         $this->assertSame(1030, (int) DB::table('assessment_bill_items')->sum('amount'));
         $this->assertSame(0, DB::table('assessment_bill_items')->whereNotNull('settled_at')->count());
-        $this->assertSame(1, DB::table('audit_logs')->where('action', 'assessment_bill.reserved')->count());
+        $audit = DB::table('audit_logs')->where('action', 'assessment_bill.reserved')->sole();
+        $anchor = CarbonImmutable::parse((string) $audit->occurred_at)->utc();
+        $this->assertSame(
+            app(RetentionPolicy::class)->expiresAt(RetentionDataClass::Audit, $anchor)->format('Y-m-d H:i:s.uP'),
+            CarbonImmutable::parse((string) $audit->expires_at)->utc()->format('Y-m-d H:i:s.uP'),
+        );
+        $this->assertSame(
+            '2029-02-28 03:15:00.000000+00:00',
+            app(RetentionPolicy::class)->expiresAt(
+                RetentionDataClass::Audit,
+                CarbonImmutable::parse('2024-02-29 10:15:00+07:00')->utc(),
+            )->format('Y-m-d H:i:s.uP'),
+        );
+        $this->assertSame([
+            'reference' => $bill->public_reference,
+            'selectionHash' => $bill->selection_hash,
+            'amount' => 1030,
+            'currency' => 'IDR',
+            'itemCount' => 10,
+            'payerType' => 'organization',
+            'paymentMethodId' => $this->method,
+        ], json_decode((string) $audit->context, true, flags: JSON_THROW_ON_ERROR));
         foreach (['assessment_entitlements', 'orders', 'entitlements', 'outbox_messages'] as $table) {
             $this->assertDatabaseCount($table, 0);
         }
@@ -125,7 +169,7 @@ final class AssessmentBillReservationTest extends OrganizationPaymentTestCase
 
     public function test_free_items_are_not_claimed_or_settled_and_all_free_requires_separate_flow(): void
     {
-        $free = Fixture::create(['organization' => $this->fixture['organization']], 0);
+        $free = $this->createFixture(['organization' => $this->fixture['organization']], 0);
         $selection = [Fixture::selection($free), Fixture::selection($this->fixture)];
         $bill = $this->reserve($selection, $this->preview($selection)['selectionHash']);
         $this->assertSame(100, $bill->amount);
@@ -187,7 +231,7 @@ final class AssessmentBillReservationTest extends OrganizationPaymentTestCase
     {
         $selection = [Fixture::selection($this->fixture)];
         for ($i = 1; $i < 10; $i++) {
-            $selection[] = Fixture::selection(Fixture::create(['organization' => $this->fixture['organization']]));
+            $selection[] = Fixture::selection($this->createFixture(['organization' => $this->fixture['organization']]));
         }
         $hash = $this->preview($selection)['selectionHash'];
         $count = 0;
@@ -214,7 +258,7 @@ final class AssessmentBillReservationTest extends OrganizationPaymentTestCase
 
     public function test_reordered_items_and_object_keys_replay_same_bill(): void
     {
-        $other = Fixture::create(['organization' => $this->fixture['organization']]);
+        $other = $this->createFixture(['organization' => $this->fixture['organization']]);
         $selection = [Fixture::selection($this->fixture), Fixture::selection($other, true)];
         $hash = $this->preview($selection)['selectionHash'];
         $bill = $this->reserve($selection, $hash);
@@ -242,7 +286,7 @@ final class AssessmentBillReservationTest extends OrganizationPaymentTestCase
 
     public function test_foreign_selection_and_self_identity_spoof_are_rejected(): void
     {
-        $foreign = Fixture::create();
+        $foreign = $this->createFixture();
         $hash = str_repeat('a', 64);
         $participant = Participant::findOrFail($this->fixture['participant']);
         $participant->branch_id = $foreign['organization'];
@@ -312,7 +356,7 @@ final class AssessmentBillReservationTest extends OrganizationPaymentTestCase
     public function test_configured_limit_is_enforced_before_any_write(): void
     {
         config()->set('assessment_billing.max_items', 2);
-        $other = Fixture::create(['organization' => $this->fixture['organization']]);
+        $other = $this->createFixture(['organization' => $this->fixture['organization']]);
         $selection = [Fixture::selection($this->fixture), Fixture::selection($other)];
         $this->assertSame(2, $this->reserve($selection, $this->preview($selection)['selectionHash'])->item_count);
         $this->expectException(InvalidArgumentException::class);
@@ -324,7 +368,7 @@ final class AssessmentBillReservationTest extends OrganizationPaymentTestCase
         $this->assertSame(100, config('assessment_billing.max_items'));
         $selection = [Fixture::selection($this->fixture)];
         for ($i = 1; $i < 100; $i++) {
-            $selection[] = Fixture::selection(Fixture::create(['organization' => $this->fixture['organization']]));
+            $selection[] = Fixture::selection($this->createFixture(['organization' => $this->fixture['organization']]));
         }
         $bill = $this->reserve($selection, $this->preview($selection)['selectionHash']);
         $this->assertSame(100, $bill->item_count);
@@ -358,7 +402,7 @@ final class AssessmentBillReservationTest extends OrganizationPaymentTestCase
     public function test_total_overflow_is_rejected_without_any_writes(): void
     {
         DB::table('packages')->where('id', $this->fixture['package'])->update(['amount' => PHP_INT_MAX]);
-        $other = Fixture::create(['organization' => $this->fixture['organization']], 1);
+        $other = $this->createFixture(['organization' => $this->fixture['organization']], 1);
         try {
             $this->reserve([Fixture::selection($this->fixture), Fixture::selection($other)], str_repeat('a', 64));
             $this->fail('Overflow accepted.');

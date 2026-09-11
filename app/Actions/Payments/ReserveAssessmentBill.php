@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Actions\Payments;
 
 use App\Data\Payments\AssessmentBillSelection;
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Enums\AdminRole;
 use App\Enums\PayerType;
 use App\Models\Admin;
@@ -16,6 +18,7 @@ use App\Models\Branch;
 use App\Models\Participant;
 use App\Models\PaymentMethod;
 use App\Security\RlsContextRunner;
+use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
@@ -26,7 +29,10 @@ use LogicException;
 /** Internal only: the caller authenticates the principal before entering service context. */
 final readonly class ReserveAssessmentBill
 {
-    public function __construct(private PreviewAssessmentBill $preview) {}
+    public function __construct(
+        private PreviewAssessmentBill $preview,
+        private RetentionPolicy $retention,
+    ) {}
 
     /** @param list<array{assessmentParticipantId: int, consultationRequested: bool}> $selection */
     public function execute(Admin|Participant $principal, array $selection, int $paymentMethodId, string $selectionHash, string $idempotencyKey): AssessmentBill
@@ -148,14 +154,15 @@ final readonly class ReserveAssessmentBill
                 'payer_type' => $input->payer->value, 'payer_participant_id' => $input->participantId,
                 'amount' => $charge->amount, 'currency' => 'IDR']);
         }
-        $at = now();
+        $at = CarbonImmutable::now('UTC');
         DB::table('audit_logs')->insert(['branch_id' => $input->organizationId,
             'actor_type' => $actor instanceof Admin ? 'admin' : 'participant', 'actor_id' => (string) $actor->id,
             'action' => 'assessment_bill.reserved', 'subject_type' => AssessmentBill::class, 'subject_id' => (string) $bill->id,
             'context' => json_encode(['reference' => $bill->public_reference, 'selectionHash' => $bill->selection_hash,
                 'amount' => $bill->amount, 'currency' => $bill->currency, 'itemCount' => $bill->item_count,
                 'payerType' => $bill->payer_type, 'paymentMethodId' => $method], JSON_THROW_ON_ERROR),
-            'occurred_at' => $at, 'expires_at' => $at->copy()->addYears(2)]);
+            'occurred_at' => $at,
+            'expires_at' => $this->retention->expiresAt(RetentionDataClass::Audit, $at)]);
 
         return $bill;
     }
