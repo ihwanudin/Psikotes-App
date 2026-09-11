@@ -5,12 +5,15 @@ declare(strict_types=1);
 namespace Tests\Feature\Auth;
 
 use App\Actions\Payments\ActivateSettledAssessment;
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Models\AssessmentCharge;
 use App\Models\AssessmentEntitlement;
 use App\Security\RlsContextRunner;
 use App\Services\Notifications\DispatchNotificationOutbox;
 use App\Services\ParticipantAuth\AssessmentEntitlementGate;
 use App\Services\ParticipantAuth\AssessmentPrincipal;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -52,8 +55,33 @@ final class SettledAssessmentActivationTest extends OrganizationPaymentTestCase
 
     public function test_settlement_activates_once_with_atomic_outbox_and_audit(): void
     {
+        $businessAt = now()->toImmutable();
         $this->assertSame(['ist'], $this->activate());
         $readyAt = AssessmentEntitlement::findOrFail($this->f['entitlement'])->ready_at;
+        $this->assertSame($businessAt->toDateTimeString(), $readyAt->toDateTimeString());
+        $outbox = DB::table('outbox_messages')->where('topic', 'assessment.activation')->sole();
+        $this->assertSame('pending', $outbox->status);
+        $this->assertSame(
+            $businessAt->utc()->startOfSecond()->addYears(2)->format('Y-m-d H:i:s.uP'),
+            CarbonImmutable::parse((string) $outbox->expires_at)->utc()->format('Y-m-d H:i:s.uP'),
+        );
+        $audit = DB::table('audit_logs')->where('action', 'assessment.activated')->sole();
+        $anchor = CarbonImmutable::parse((string) $audit->occurred_at)->utc();
+        $this->assertSame(
+            app(RetentionPolicy::class)->expiresAt(RetentionDataClass::Audit, $anchor)->format('Y-m-d H:i:s.uP'),
+            CarbonImmutable::parse((string) $audit->expires_at)->utc()->format('Y-m-d H:i:s.uP'),
+        );
+        $this->assertSame(
+            '2029-02-28 03:15:00.000000+00:00',
+            app(RetentionPolicy::class)->expiresAt(
+                RetentionDataClass::Audit,
+                CarbonImmutable::parse('2024-02-29 10:15:00+07:00')->utc(),
+            )->format('Y-m-d H:i:s.uP'),
+        );
+        $this->assertSame([
+            'charge_id' => $this->f['charge'],
+            'activated_count' => 1,
+        ], json_decode((string) $audit->context, true, flags: JSON_THROW_ON_ERROR));
         $this->travel(1)->minutes();
         $this->assertSame([], $this->activate());
         $this->assertTrue($readyAt->equalTo(AssessmentEntitlement::findOrFail($this->f['entitlement'])->ready_at));
@@ -102,8 +130,8 @@ final class SettledAssessmentActivationTest extends OrganizationPaymentTestCase
     public function test_missing_entitlements_are_created_only_for_purchased_tests(): void
     {
         DB::table('assessment_entitlements')->delete();
-        $this->assertSame(['ist'], $this->activate());
-        $this->assertDatabaseCount('assessment_entitlements', 1);
+        $this->assertSame(['dass21', 'ist'], $this->activate());
+        $this->assertDatabaseCount('assessment_entitlements', 2);
     }
 
     public function test_one_incomplete_member_does_not_block_others_and_can_retry_without_rebilling(): void
@@ -124,9 +152,9 @@ final class SettledAssessmentActivationTest extends OrganizationPaymentTestCase
     {
         $charge = AssessmentCharge::findOrFail($this->f['charge']);
         $snapshot = $charge->price_snapshot;
-        $snapshot['testTypes'][] = 'dass21';
         sort($snapshot['testTypes']);
         $charge->update(['price_snapshot' => $snapshot]);
+        DB::table('assessment_entitlements')->where('test_type', 'dass21')->update(['status' => 'locked', 'ready_at' => null]);
         DB::table('consent_records')->where('consent_type', 'dass')->update(['status' => 'declined']);
         $this->assertSame(['ist'], $this->activate());
         $this->assertDatabaseMissing('assessment_entitlements', ['test_type' => 'dass21', 'status' => 'ready']);
@@ -236,10 +264,11 @@ final class SettledAssessmentActivationTest extends OrganizationPaymentTestCase
     public function test_foreign_persisted_scope_cannot_activate_an_attempt(): void
     {
         $other = $this->pending();
+        $readyBefore = DB::table('assessment_entitlements')->where('status', 'ready')->count();
         foreach (['participant', 'organization', 'attempt'] as $field) {
             $this->assertSame([], $this->activate([...$this->f, $field => $other[$field]]));
         }
         $this->assertDatabaseCount('outbox_messages', 0);
-        $this->assertSame(0, DB::table('assessment_entitlements')->where('status', 'ready')->count());
+        $this->assertSame($readyBefore, DB::table('assessment_entitlements')->where('status', 'ready')->count());
     }
 }

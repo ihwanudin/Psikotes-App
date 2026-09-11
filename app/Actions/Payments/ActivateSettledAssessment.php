@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Actions\Payments;
 
 use App\Actions\Notifications\EnqueueAssessmentActivation;
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Models\AssessmentCharge;
 use App\Models\AssessmentEntitlement;
 use App\Models\AssessmentParticipant;
@@ -30,6 +32,7 @@ final readonly class ActivateSettledAssessment
         private AssessmentAccessPrerequisites $prerequisites,
         private EnqueueAssessmentActivation $outbox,
         private AssessmentSettlementReader $settlement,
+        private RetentionPolicy $retention,
     ) {}
 
     /** @return list<string> Newly activated types; unmet prerequisites are a no-op, not a batch failure. */
@@ -119,12 +122,13 @@ final readonly class ActivateSettledAssessment
                     $attempt->update(['assessment_status' => 'READY']);
                 }
                 $this->outbox->handle($attempt);
-                $at = $asOf ?? now()->toImmutable();
+                $at = ($asOf ?? now()->toImmutable())->utc();
                 DB::table('audit_logs')->insert(['branch_id' => $attempt->organization_id, 'actor_type' => 'system',
                     'actor_id' => null, 'action' => 'assessment.activated', 'subject_type' => AssessmentParticipant::class,
                     'subject_id' => (string) $attempt->id,
                     'context' => json_encode(['charge_id' => $charge->id, 'activated_count' => count($activated)], JSON_THROW_ON_ERROR),
-                    'occurred_at' => $at, 'expires_at' => $at->addYears(2)]);
+                    'occurred_at' => $at,
+                    'expires_at' => $this->retention->expiresAt(RetentionDataClass::Audit, $at)]);
             }
 
             return $activated;
