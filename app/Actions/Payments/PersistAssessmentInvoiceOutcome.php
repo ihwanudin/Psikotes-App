@@ -7,6 +7,8 @@ namespace App\Actions\Payments;
 use App\Data\Payments\AssessmentInvoicePermit;
 use App\Data\Payments\AssessmentInvoiceReconciliationPermit;
 use App\Data\Payments\PaymentInvoice;
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Models\AssessmentBill;
 use App\Models\AssessmentBillItem;
 use App\Models\AssessmentCharge;
@@ -20,6 +22,7 @@ use App\Models\PaymentMethod;
 use App\Models\TestPackage;
 use App\Security\RlsContextRunner;
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use DomainException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -32,7 +35,10 @@ final readonly class PersistAssessmentInvoiceOutcome
 {
     private const TOPIC = 'assessment.bill.invoice-issuance';
 
-    public function __construct(private RlsContextRunner $contexts) {}
+    public function __construct(
+        private RlsContextRunner $contexts,
+        private RetentionPolicy $retention,
+    ) {}
 
     /** @return array{decision: string, messageId: string} */
     public function execute(AssessmentInvoicePermit $permit, ?PaymentInvoice $invoice): array
@@ -228,12 +234,14 @@ final readonly class PersistAssessmentInvoiceOutcome
     }
 
     /** @param array<string, mixed> $extra */
-    private function audit(AssessmentInvoicePermit $permit, string $action, mixed $at, array $extra = []): void
+    private function audit(AssessmentInvoicePermit $permit, string $action, CarbonInterface $at, array $extra = []): void
     {
+        $anchor = CarbonImmutable::instance($at)->utc();
         DB::table('audit_logs')->insert(['branch_id' => $permit->organizationId, 'actor_type' => 'service', 'actor_id' => null,
             'action' => $action, 'subject_type' => AssessmentBill::class, 'subject_id' => (string) $permit->billId,
             'context' => json_encode(['messageId' => $permit->messageId, ...$extra], JSON_THROW_ON_ERROR),
-            'occurred_at' => $at, 'expires_at' => $at->copy()->addYears(2)]);
+            'occurred_at' => $anchor,
+            'expires_at' => $this->retention->expiresAt(RetentionDataClass::Audit, $anchor)]);
     }
 
     private function canonical(mixed $value): string

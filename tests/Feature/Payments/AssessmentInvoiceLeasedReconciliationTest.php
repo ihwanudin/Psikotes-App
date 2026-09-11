@@ -15,6 +15,8 @@ use App\Actions\Payments\ValidateAssessmentInvoiceReconciliationLease;
 use App\Contracts\PaymentProvider;
 use App\Data\Payments\AssessmentInvoiceReconciliationPermit;
 use App\Data\Payments\PaymentInvoice;
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Enums\AdminRole;
 use App\Enums\PayerType;
 use App\Models\Admin;
@@ -115,6 +117,7 @@ final class AssessmentInvoiceLeasedReconciliationTest extends OrganizationPaymen
     {
         $permit = $this->permit($state);
         $invoice = $this->invoice(Date::now()->subHour());
+        $messageExpiry = $this->intent->fresh()->expires_at;
 
         $result = $this->executeLeased($permit, $this->exactProvider($invoice));
 
@@ -129,6 +132,21 @@ final class AssessmentInvoiceLeasedReconciliationTest extends OrganizationPaymen
         $this->assertNull($message->reconciliation_next_at);
         $this->assertSame($permit->lookupGeneration, $message->reconciliation_lookup_attempts);
         $this->assertSame(1, DB::table('audit_logs')->where('action', 'assessment_bill.invoice_issued')->count());
+        $this->assertTrue($messageExpiry->equalTo($message->expires_at));
+        $audit = DB::table('audit_logs')->where('action', 'assessment_bill.invoice_issued')->sole();
+        $anchor = CarbonImmutable::parse((string) $audit->occurred_at)->utc();
+        $this->assertTrue($message->processed_at?->utc()->equalTo($anchor) === true);
+        $this->assertSame(
+            app(RetentionPolicy::class)->expiresAt(RetentionDataClass::Audit, $anchor)->format('Y-m-d H:i:s.uP'),
+            CarbonImmutable::parse((string) $audit->expires_at)->utc()->format('Y-m-d H:i:s.uP'),
+        );
+        $this->assertSame(
+            '2029-02-28 03:15:00.000000+00:00',
+            app(RetentionPolicy::class)->expiresAt(
+                RetentionDataClass::Audit,
+                CarbonImmutable::parse('2024-02-29 10:15:00+07:00')->utc(),
+            )->format('Y-m-d H:i:s.uP'),
+        );
     }
 
     /** @return iterable<string, array{string}> */
@@ -445,6 +463,11 @@ final class AssessmentInvoiceLeasedReconciliationTest extends OrganizationPaymen
     private function createFixture(): array
     {
         $fixture = Fixture::create();
+        DB::table('package_items')->insert([
+            'package_id' => $fixture['package'],
+            'test_type' => 'dass21',
+            'sort_order' => 2,
+        ]);
         foreach (['organization', 'participant', 'package', 'attempt', 'charge', 'bill', 'source', 'client'] as $key) {
             if (! is_int($fixture[$key] ?? null)) {
                 throw new RuntimeException('Synthetic billing fixture is invalid.');
