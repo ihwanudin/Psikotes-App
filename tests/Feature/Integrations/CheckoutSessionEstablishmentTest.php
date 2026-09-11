@@ -10,6 +10,8 @@ use App\Actions\Integrations\IssueCheckoutHandoff;
 use App\Data\Integrations\CheckoutHandoffIssueInput;
 use App\Data\Integrations\CheckoutSessionExchangeInput;
 use App\Data\Integrations\EstablishedCheckoutSession;
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Enums\CheckoutHandoffIntent;
 use App\Models\AssessmentParticipant;
 use App\Models\CheckoutHandoff;
@@ -64,6 +66,8 @@ final class CheckoutSessionEstablishmentTest extends OrganizationPaymentTestCase
     public function test_establish_consumes_and_creates_one_session_with_digest_only_and_safe_audits(): void
     {
         $fixture = $this->issued();
+        $handoffBefore = DB::table('checkout_handoffs')->where('id', $fixture['handoff'])
+            ->sole(['issued_at', 'expires_at']);
         $result = $this->establish($fixture['raw']);
         $selector = $result->rawSelector();
         $csrf = $result->rawCsrfToken();
@@ -82,6 +86,8 @@ final class CheckoutSessionEstablishmentTest extends OrganizationPaymentTestCase
         $this->assertTrue($session->established_at->equalTo($session->last_seen_at));
         $this->assertSame(30.0, $session->established_at->diffInMinutes($session->idle_expires_at));
         $this->assertSame(120.0, $session->established_at->diffInMinutes($session->absolute_expires_at));
+        $this->assertEquals($handoffBefore, DB::table('checkout_handoffs')->where('id', $fixture['handoff'])
+            ->sole(['issued_at', 'expires_at']));
         $this->assertArrayNotHasKey('selector_digest', $session->toArray());
         $this->assertArrayNotHasKey('csrf_digest', $session->toArray());
 
@@ -123,7 +129,7 @@ final class CheckoutSessionEstablishmentTest extends OrganizationPaymentTestCase
             ->where('action', 'checkout_session.established')->sole()->expires_at);
     }
 
-    public function test_established_audit_retention_starts_at_absolute_session_boundary(): void
+    public function test_established_audit_retention_uses_occurrence_anchor_without_extending_session_ttl(): void
     {
         config()->set('assessment_integration.checkout_session.idle_minutes', 120);
         config()->set('assessment_integration.checkout_session.absolute_minutes', 1440);
@@ -133,14 +139,26 @@ final class CheckoutSessionEstablishmentTest extends OrganizationPaymentTestCase
 
         $session = CheckoutSession::query()->sole();
         $audit = DB::table('audit_logs')->where('action', 'checkout_session.established')->sole();
+        $anchor = CarbonImmutable::parse($audit->occurred_at)->utc();
         $auditExpiry = CarbonImmutable::parse($audit->expires_at)->utc();
-        $expectedExpiry = CarbonImmutable::instance($session->absolute_expires_at)
-            ->utc()->addYearsNoOverflow(2);
+        $absoluteExpiry = CarbonImmutable::instance($session->absolute_expires_at)->utc();
 
-        $this->assertTrue($auditExpiry->equalTo($expectedExpiry));
-        $this->assertTrue($auditExpiry->greaterThan(
-            CarbonImmutable::instance($session->established_at)->utc()->addYearsNoOverflow(2),
+        $this->assertTrue(CarbonImmutable::instance($session->established_at)->utc()->equalTo($anchor));
+        $this->assertSame(120.0, $anchor->diffInMinutes($session->idle_expires_at));
+        $this->assertSame(1440.0, $anchor->diffInMinutes($absoluteExpiry));
+        $this->assertTrue($auditExpiry->equalTo(
+            app(RetentionPolicy::class)->expiresAt(RetentionDataClass::Audit, $anchor),
         ));
+        $this->assertFalse($auditExpiry->equalTo(
+            app(RetentionPolicy::class)->expiresAt(RetentionDataClass::Audit, $absoluteExpiry),
+        ));
+        $this->assertSame(
+            '2029-02-28 03:15:00.000000+00:00',
+            app(RetentionPolicy::class)->expiresAt(
+                RetentionDataClass::Audit,
+                CarbonImmutable::parse('2024-02-29 10:15:00+07:00')->utc(),
+            )->format('Y-m-d H:i:s.uP'),
+        );
     }
 
     public function test_config_and_ambient_authority_fail_closed_before_consumption(): void
@@ -294,10 +312,22 @@ final class CheckoutSessionEstablishmentTest extends OrganizationPaymentTestCase
         ]);
         DB::table('package_items')->insert(['package_id' => $package, 'test_type' => 'ist', 'sort_order' => 1]);
         DB::table('package_items')->insert(['package_id' => $package, 'test_type' => 'dass21', 'sort_order' => 2]);
+        $attemptPublicId = (string) Str::ulid();
+        $case = DB::table('assessment_cases')->insertGetId([
+            'public_id' => $attemptPublicId,
+            'participant_id' => $participant,
+            'organization_id' => $organization,
+            'package_id' => $package,
+            'origin' => 'INTEGRATED',
+            'intended_field_snapshot' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         $attempt = DB::table('assessment_participants')->insertGetId([
             'organization_id' => $organization, 'integration_client_id' => $client,
             'participant_id' => $participant, 'package_id' => $package,
-            'assessment_attempt_id' => (string) Str::ulid(), 'source_system' => $sourceSystem,
+            'assessment_case_id' => $case,
+            'assessment_attempt_id' => $attemptPublicId, 'source_system' => $sourceSystem,
             'external_candidate_id' => $key, 'funding_mode' => 'COMMERCIAL_SELF_PAY',
             'assessment_status' => 'PROVISIONED', 'idempotency_key' => $key,
             'request_hash' => hash('sha256', $key),

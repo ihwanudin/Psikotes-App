@@ -7,6 +7,8 @@ namespace App\Actions\Integrations;
 use App\Data\Integrations\CheckoutSessionExchangeInput;
 use App\Data\Integrations\CheckoutSessionScope;
 use App\Data\Integrations\EstablishedCheckoutSession;
+use App\Domain\Retention\RetentionDataClass;
+use App\Domain\Retention\RetentionPolicy;
 use App\Models\AssessmentParticipant;
 use App\Models\CheckoutHandoff;
 use App\Models\CheckoutSession;
@@ -27,6 +29,7 @@ final readonly class EstablishCheckoutSession
     public function __construct(
         private RlsContextRunner $contexts,
         private ConsumeCheckoutHandoffTransaction $consumer,
+        private RetentionPolicy $retention,
     ) {}
 
     public function execute(#[SensitiveParameter] CheckoutSessionExchangeInput $input): EstablishedCheckoutSession
@@ -150,7 +153,7 @@ final readonly class EstablishCheckoutSession
                 'absoluteExpiresAt' => $absoluteExpiresAt->toISOString(),
             ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
             'occurred_at' => $establishedAt,
-            'expires_at' => $absoluteExpiresAt->addYearsNoOverflow(2),
+            'expires_at' => $this->retention->expiresAt(RetentionDataClass::Audit, $establishedAt),
         ]);
     }
 }
