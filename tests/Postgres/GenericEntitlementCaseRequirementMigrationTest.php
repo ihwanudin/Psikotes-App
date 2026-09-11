@@ -37,6 +37,7 @@ final class GenericEntitlementCaseRequirementMigrationTest extends TestCase
     {
         $graph = $this->directGraph('valid');
         $before = $this->catalogSnapshot();
+        $baseGuard = $this->guardSnapshot();
 
         $this->asOwner(fn () => $this->migrate('up'));
         $this->asOwner(fn () => $this->migrate('up'));
@@ -54,6 +55,9 @@ final class GenericEntitlementCaseRequirementMigrationTest extends TestCase
         $this->assertFalse($constraint->condeferred);
         $this->assertFalse($constraint->connoinherit);
         $this->assertSame($before, $this->catalogSnapshot());
+        $this->assertNotSame($baseGuard, $this->guardSnapshot());
+        $this->assertStringContainsString("assessment_case.origin = 'INTEGRATED'", $this->guardSnapshot()['body']);
+        $this->assertStringContainsString('mapping.assessment_case_id = assessment_case.id', $this->guardSnapshot()['body']);
         $this->assertSame($graph['entitlement'], app(RlsContextRunner::class)->runAsService(
             fn (): int => DB::table('test_session_grants')->where('entitlement_id', $graph['entitlement'])
                 ->sole()->entitlement_id,
@@ -76,6 +80,7 @@ final class GenericEntitlementCaseRequirementMigrationTest extends TestCase
         $this->asOwner(fn () => $this->migrate('down'));
         $this->asOwner(fn () => $this->migrate('down'));
         $this->assertSame($before, $this->catalogSnapshot());
+        $this->assertSame($baseGuard, $this->guardSnapshot());
         $this->assertNull(DB::selectOne(
             "SELECT conname FROM pg_constraint WHERE conrelid='entitlements'::regclass
              AND conname='entitlements_case_requirement_check'",
@@ -84,7 +89,7 @@ final class GenericEntitlementCaseRequirementMigrationTest extends TestCase
 
     public function test_invalid_history_aborts_atomically_and_restores_force_rls(): void
     {
-        app(RlsContextRunner::class)->runAsService(function (): void {
+        $participantId = app(RlsContextRunner::class)->runAsService(function (): int {
             $key = strtoupper(substr((string) Str::ulid(), 0, 20));
             $branch = DB::table('branches')->insertGetId([
                 'code' => $key, 'name' => 'invalid', 'ref_code' => $key,
@@ -100,6 +105,8 @@ final class GenericEntitlementCaseRequirementMigrationTest extends TestCase
                 'assessment_case_id' => null, 'test_type' => 'ist', 'status' => 'ready',
                 'created_at' => now(), 'updated_at' => now(),
             ]);
+
+            return $participant;
         });
         $before = $this->catalogSnapshot();
 
@@ -115,6 +122,8 @@ final class GenericEntitlementCaseRequirementMigrationTest extends TestCase
             "SELECT conname FROM pg_constraint WHERE conrelid='entitlements'::regclass
              AND conname='entitlements_case_requirement_check'",
         ));
+        app(RlsContextRunner::class)->runAsService(fn () => DB::table('entitlements')
+            ->where('participant_id', $participantId)->delete());
     }
 
     public function test_counterfeit_named_constraint_is_rejected_without_catalog_delta(): void
@@ -133,6 +142,68 @@ final class GenericEntitlementCaseRequirementMigrationTest extends TestCase
             }
             $this->assertSame($before, $this->catalogSnapshot(includeRequirement: true));
         }
+    }
+
+    public function test_counterfeit_integrated_guard_is_rejected_without_catalog_delta(): void
+    {
+        $this->asOwner(fn () => $this->migrate('up'));
+        $exactBody = $this->guardSnapshot()['body'];
+        $this->asOwner(fn () => $this->replaceGuardBody('BEGIN RETURN NEW; END;'));
+        $before = $this->guardSnapshot();
+
+        try {
+            foreach (['up', 'down'] as $operation) {
+                try {
+                    $this->asOwner(fn () => $this->migrate($operation));
+                    $this->fail('Counterfeit integrated guard must fail closed.');
+                } catch (RuntimeException $exception) {
+                    $this->assertStringContainsString('counterfeit or partial requirement and guard state', $exception->getMessage());
+                }
+                $this->assertSame($before, $this->guardSnapshot());
+            }
+        } finally {
+            $this->asOwner(fn () => $this->replaceGuardBody($exactBody));
+            $this->asOwner(fn () => $this->migrate('down'));
+        }
+    }
+
+    public function test_exact_integrated_graph_is_accepted_and_prevents_unsafe_guard_rollback(): void
+    {
+        $this->asOwner(fn () => $this->migrate('up'));
+        $graph = $this->integratedGraph('integrated');
+        app(RlsContextRunner::class)->runAsService(function () use ($graph): void {
+            DB::table('entitlements')->insert($this->entitlementRow(
+                $graph['participant'],
+                null,
+                $graph['case'],
+                'ist',
+            ));
+            DB::table('entitlements')->insert($this->entitlementRow(
+                $graph['participant'],
+                null,
+                null,
+                'dass21',
+            ));
+        });
+        $unmappedCase = app(RlsContextRunner::class)->runAsService(fn (): int => DB::table('assessment_cases')->insertGetId([
+            'public_id' => (string) Str::ulid(), 'participant_id' => $graph['participant'],
+            'organization_id' => $graph['branch'], 'package_id' => $graph['package'],
+            'origin' => 'INTEGRATED', 'created_at' => now(), 'updated_at' => now(),
+        ]));
+        $this->assertRejected(fn () => DB::table('entitlements')->insert(
+            $this->entitlementRow($graph['participant'], null, $unmappedCase, 'papi'),
+        ));
+
+        try {
+            $this->asOwner(fn () => $this->migrate('down'));
+            $this->fail('Integrated entitlement history must prevent guard rollback.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('integrated entitlement history prevents guard rollback', $exception->getMessage());
+        }
+
+        app(RlsContextRunner::class)->runAsService(fn () => DB::table('entitlements')
+            ->where('participant_id', $graph['participant'])->delete());
+        $this->asOwner(fn () => $this->migrate('down'));
     }
 
     /** @return array{participant:int,case:int,order:int,entitlement:int} */
@@ -196,8 +267,57 @@ final class GenericEntitlementCaseRequirementMigrationTest extends TestCase
         });
     }
 
+    /** @return array{participant:int,case:int,branch:int,package:int} */
+    private function integratedGraph(string $suffix): array
+    {
+        return app(RlsContextRunner::class)->runAsService(function () use ($suffix): array {
+            $key = strtoupper(substr((string) Str::ulid(), 0, 20));
+            $branch = DB::table('branches')->insertGetId([
+                'code' => $key, 'name' => $suffix, 'ref_code' => $key,
+                'organization_code' => $key, 'display_name' => $suffix,
+            ]);
+            $package = DB::table('packages')->insertGetId([
+                'code' => 'int-'.$key, 'name' => $suffix, 'amount' => 99000,
+                'currency' => 'IDR', 'is_active' => true, 'created_at' => now(), 'updated_at' => now(),
+            ]);
+            foreach (['dass21', 'ist', 'papi'] as $sort => $type) {
+                DB::table('package_items')->insert([
+                    'package_id' => $package, 'test_type' => $type, 'sort_order' => $sort,
+                    'created_at' => now(), 'updated_at' => now(),
+                ]);
+            }
+            $participant = DB::table('participants')->insertGetId([
+                'branch_id' => $branch, 'referral_branch_id' => $branch, 'referral_source' => 'manual',
+                'package_id' => $package, 'source_system' => 'SYNTHETIC', 'full_name' => $suffix,
+                'intended_field' => 'UMUM', 'phone' => '620000000001',
+            ]);
+            $publicId = (string) Str::ulid();
+            $case = DB::table('assessment_cases')->insertGetId([
+                'public_id' => $publicId, 'participant_id' => $participant, 'organization_id' => $branch,
+                'package_id' => $package, 'origin' => 'INTEGRATED', 'created_at' => now(), 'updated_at' => now(),
+            ]);
+            $client = DB::table('integration_clients')->insertGetId([
+                'organization_id' => $branch, 'client_id' => 'client-'.$key,
+                'credential_reference' => 'synthetic', 'result_delivery_mode' => 'POLL',
+                'enabled' => true, 'created_at' => now(), 'updated_at' => now(),
+            ]);
+            DB::table('assessment_participants')->insert([
+                'assessment_case_id' => $case, 'integration_client_id' => $client,
+                'organization_id' => $branch, 'participant_id' => $participant, 'package_id' => $package,
+                'assessment_attempt_id' => $publicId, 'source_system' => 'SYNTHETIC',
+                'external_candidate_id' => 'candidate-'.$key, 'funding_mode' => 'SPONSORED',
+                'assessment_status' => 'READY', 'result_version' => 0, 'idempotency_key' => 'key-'.$key,
+                'request_hash' => hash('sha256', 'request-'.$key),
+                'logical_assessment_key' => hash('sha256', 'logical-'.$key),
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+
+            return compact('participant', 'case', 'branch', 'package');
+        });
+    }
+
     /** @return array<string,mixed> */
-    private function entitlementRow(int $participant, int $order, ?int $case, string $type): array
+    private function entitlementRow(int $participant, ?int $order, ?int $case, string $type): array
     {
         return [
             'participant_id' => $participant, 'order_id' => $order, 'assessment_case_id' => $case,
@@ -227,11 +347,55 @@ final class GenericEntitlementCaseRequirementMigrationTest extends TestCase
                    trigger.tgenabled::text,procedure.prosrc
             FROM pg_trigger trigger JOIN pg_proc procedure ON procedure.oid=trigger.tgfoid
             WHERE trigger.tgrelid='entitlements'::regclass AND NOT trigger.tgisinternal
+              AND trigger.tgname <> 'entitlements_case_identity_guard'
             UNION ALL
             SELECT 'policy',policyname,cmd,COALESCE(qual,''),COALESCE(with_check,'')
             FROM pg_policies WHERE schemaname='public' AND tablename='entitlements'
             ORDER BY kind,name
             SQL)));
+    }
+
+    /** @return array{type:int,enabled:string,namespace:string,name:string,security_definer:bool,config:string,language:string,body:string,definition:string} */
+    private function guardSnapshot(): array
+    {
+        $row = DB::selectOne(<<<'SQL'
+            SELECT trigger.tgtype type,trigger.tgenabled enabled,namespace.nspname namespace,
+                   function.proname name,function.prosecdef security_definer,
+                   function.proconfig::text config,language.lanname language,function.prosrc body,
+                   pg_get_triggerdef(trigger.oid,false) definition
+            FROM pg_trigger trigger JOIN pg_proc function ON function.oid=trigger.tgfoid
+            JOIN pg_namespace namespace ON namespace.oid=function.pronamespace
+            JOIN pg_language language ON language.oid=function.prolang
+            WHERE trigger.tgrelid='entitlements'::regclass AND NOT trigger.tgisinternal
+              AND trigger.tgname='entitlements_case_identity_guard'
+            SQL);
+        if ($row === null) {
+            throw new RuntimeException('Entitlement case guard unavailable.');
+        }
+
+        $data = (array) $row;
+
+        return [
+            'type' => (int) $data['type'],
+            'enabled' => (string) $data['enabled'],
+            'namespace' => (string) $data['namespace'],
+            'name' => (string) $data['name'],
+            'security_definer' => (bool) $data['security_definer'],
+            'config' => (string) $data['config'],
+            'language' => (string) $data['language'],
+            'body' => (string) $data['body'],
+            'definition' => (string) $data['definition'],
+        ];
+    }
+
+    private function replaceGuardBody(string $body): void
+    {
+        $sql = 'CREATE OR REPLACE FUNCTION app_private.guard_generic_entitlement_case_identity() RETURNS trigger '
+            .'LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $guard$'
+            .$body.'$guard$;';
+        if (! DB::statement($sql)) {
+            throw new RuntimeException('Unable to replace entitlement case guard.');
+        }
     }
 
     private function assertRejected(callable $operation): void

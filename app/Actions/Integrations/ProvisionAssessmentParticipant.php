@@ -87,12 +87,6 @@ final readonly class ProvisionAssessmentParticipant
 
                     $participant = $this->existingIdentity($client, $input) ?? $this->createParticipant($client, $package, $input);
                     $now = now()->toImmutable();
-                    foreach ($testTypes as $testType) {
-                        $participant->entitlements()->firstOrCreate(['test_type' => $testType], [
-                            'order_id' => null, 'status' => 'ready', 'ready_at' => $now,
-                        ]);
-                    }
-
                     $attemptId = (string) Str::ulid();
                     $case = AssessmentCase::query()->create([
                         'public_id' => $attemptId,
@@ -123,6 +117,14 @@ final readonly class ProvisionAssessmentParticipant
                         'logical_assessment_key' => $logicalKey,
                         'metadata' => $input['metadata'] ?? [],
                     ]);
+                    foreach ($testTypes as $testType) {
+                        $participant->entitlements()->firstOrCreate([
+                            'test_type' => $testType,
+                            'assessment_case_id' => $testType === 'dass21' ? null : $case->id,
+                        ], [
+                            'order_id' => null, 'status' => 'ready', 'ready_at' => $now,
+                        ]);
+                    }
 
                     DB::table('audit_logs')->insert([
                         'branch_id' => $client->organization_id,
