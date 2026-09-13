@@ -71,3 +71,16 @@ The runner also needed a safe way to select focused tests. Passing file paths af
 - Harness repair verdict: **READY** on the pre-R2 baseline and for the exact S4 scopes.
 - Integration verdict: **REPAIR-REQUIRED**. The full suite cannot be called green or stable until the R2 migration owner makes the new result-ledger foreign keys compatible with legacy rollback/truncation tests (or updates those fixtures under explicit ownership), then reruns the complete disposable suite.
 - No residual broken-pipe/Storage/Mockery flake was observed after the repair. The remaining failures are reproducible schema/teardown incompatibilities rather than an intermittent harness symptom.
+
+## Canonical acceptance — 2026-09-13
+
+- QA independently passed repair commit `2ce7eaaf2da602330299394b7867e6de8cf10708`, including the original zero-write and terminal-close Throwable probes.
+- PM approved the complete test-infrastructure stack for integration after QA.
+- Canonical patch-equivalent commits, in order: `ddb9f8b`, `57db75f`, `938b111`, `49a86ef`.
+- Candidate-to-canonical aggregate patch id: `888dc0d0ccaad464c838f0a4b96a11cde07d8cf2` on both sides.
+- Scope check: 26 changed paths, all under `tests/`, `tools/testing/`, or this handoff record; no production, migration, route, domain-contract, or feature-activation changes.
+- Fresh canonical Linux adversarial unit gate: `9 tests`, `29 assertions`, pass.
+- Fresh canonical representative ordered PostgreSQL filter (`AssessmentBillInvoiceIssuanceTest`): `6 tests`, `120 assertions`, pass.
+- PostgreSQL run label: `oncam.org-test-run=2d195d66eae64a8188154d4d72d8c38b`; exact cleanup: 0 containers and 0 networks.
+- Canonical `git diff --check` and worktree checks passed before this evidence update.
+- Acceptance is limited to test-harness reliability; it does not change F2 product readiness or the instrument manifest.
