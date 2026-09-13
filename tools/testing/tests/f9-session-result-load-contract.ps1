@@ -63,6 +63,9 @@ Assert-Contains $harness 'p99_ms' 'p99 must be reported.'
 Assert-Contains $harness 'error_rate' 'Error rate must be reported.'
 Assert-Contains $harness 'query_count' 'Query count must be reported.'
 Assert-Contains $harness 'query_time_ms' 'Cumulative query time must be reported.'
+Assert-Contains $harness 'pcntl_wifexited' 'Every child status must prove normal process exit.'
+Assert-Contains $harness 'pcntl_wexitstatus' 'Every child status must prove exact exit code zero.'
+Assert-Contains $harness 'WORKER_EXIT_STATUS_INVALID' 'Abnormal worker termination must fail closed.'
 
 $php = Get-Command php -ErrorAction SilentlyContinue
 if ($null -eq $php) { throw 'PHP CLI is required for the executable metric contract.' }
@@ -74,5 +77,8 @@ Assert-True ($metrics.p95_ms -eq 5.0) 'Known-vector p95 must use nearest-rank ma
 Assert-True ($metrics.p99_ms -eq 5.0) 'Known-vector p99 must use nearest-rank math.'
 Assert-True ($metrics.error_rate -eq 0.2) 'Error-rate math must be errors divided by requested operations.'
 Assert-True ($metrics.semantics -eq 'BASELINE_ONLY_NO_SLO') 'Self-test must preserve report-only semantics.'
+Assert-True ($metrics.worker_exit_zero_accepted -eq $true) 'Normal zero worker exit must be accepted.'
+Assert-True ($metrics.worker_exit_nonzero_rejected -eq $true) 'Nonzero worker exit must be rejected.'
+Assert-True ($metrics.worker_signal_rejected -eq $true) 'Signaled worker termination must be rejected.'
 
 Write-Output "f9-session-result-load-contract: PASS ($script:assertions assertions)"

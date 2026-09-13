@@ -37,6 +37,18 @@ function percentile(array $values, float $quantile): float
     return round((float) $values[$index], 6);
 }
 
+function workerExitAccepted(int $status): bool
+{
+    if (function_exists('pcntl_wifexited') && function_exists('pcntl_wexitstatus')) {
+        return pcntl_wifexited($status) && pcntl_wexitstatus($status) === 0;
+    }
+
+    // The host-side contract self-test may run on PHP without pcntl. POSIX wait
+    // status zero is the only accepted fallback value; the container requires
+    // pcntl before reaching measured work.
+    return $status === 0;
+}
+
 /** @param array<string,mixed> $value */
 function emit(array $value): never
 {
@@ -51,6 +63,9 @@ if (($argv[1] ?? '') === '--self-test') {
         'p99_ms' => percentile([1, 2, 3, 4, 5], 0.99),
         'error_rate' => 1 / 5,
         'semantics' => REPORT_SEMANTICS,
+        'worker_exit_zero_accepted' => workerExitAccepted(0),
+        'worker_exit_nonzero_rejected' => ! workerExitAccepted(1 << 8),
+        'worker_signal_rejected' => ! workerExitAccepted(9),
     ]);
 }
 
@@ -344,6 +359,7 @@ function executeConcurrent(string $boundary, array $work, array $readerChecksums
     $maximumConnections = 0;
     $lockWaitSamples = 0;
     $remaining = array_fill_keys($pids, true);
+    $workerStatuses = [];
     while ($remaining !== []) {
         $maximumConnections = max($maximumConnections, (int) DB::scalar(
             'SELECT count(*) FROM pg_stat_activity WHERE datname=current_database()',
@@ -356,11 +372,17 @@ function executeConcurrent(string $boundary, array $work, array $readerChecksums
             $status = 0;
             $waited = pcntl_waitpid($pid, $status, WNOHANG);
             if ($waited === $pid) {
+                $workerStatuses[$pid] = $status;
                 unset($remaining[$pid]);
             }
         }
         if ($remaining !== []) {
             usleep(5_000);
+        }
+    }
+    foreach ($pids as $pid) {
+        if (! array_key_exists($pid, $workerStatuses) || ! workerExitAccepted($workerStatuses[$pid])) {
+            throw new RuntimeException('WORKER_EXIT_STATUS_INVALID');
         }
     }
     $wallMs = (hrtime(true) - $started) / 1_000_000;
