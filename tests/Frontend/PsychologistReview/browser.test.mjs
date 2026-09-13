@@ -13,6 +13,46 @@ async (page) => {
             throw new Error(message);
         }
     };
+    const hasVisibleBorder = ({ borderColor, borderStyle, borderWidth }) => {
+        const hasTransparentColor =
+            borderColor === 'transparent' ||
+            /^rgba\(.*,\s*0(?:\.0+)?\)$/.test(borderColor) ||
+            /\/\s*0(?:\.0+)?\)$/.test(borderColor);
+
+        return (
+            Number.isFinite(borderWidth) &&
+            borderWidth > 0 &&
+            !['none', 'hidden'].includes(borderStyle) &&
+            !hasTransparentColor
+        );
+    };
+
+    assert(
+        hasVisibleBorder({
+            borderColor: 'rgb(245, 158, 11)',
+            borderStyle: 'solid',
+            borderWidth: 0.666667,
+        }),
+        'Visible-border predicate rejects a fractional CSS-pixel border',
+    );
+    assert(
+        !hasVisibleBorder({
+            borderColor: 'rgb(245, 158, 11)',
+            borderStyle: 'solid',
+            borderWidth: 0,
+        }) &&
+            !hasVisibleBorder({
+                borderColor: 'rgb(245, 158, 11)',
+                borderStyle: 'none',
+                borderWidth: 1,
+            }) &&
+            !hasVisibleBorder({
+                borderColor: 'rgba(245, 158, 11, 0)',
+                borderStyle: 'solid',
+                borderWidth: 1,
+            }),
+        'Visible-border predicate admits an invisible border',
+    );
 
     page.on('pageerror', (error) => browserErrors.push(error.message));
     page.on('console', (message) => {
@@ -79,15 +119,17 @@ async (page) => {
 
             return {
                 background: style.backgroundColor,
+                borderColor: style.borderTopColor,
+                borderStyle: style.borderTopStyle,
                 borderWidth: Number.parseFloat(style.borderTopWidth),
                 color: style.color,
             };
         });
     assert(
-        warningStyle.background !== 'rgba(0, 0, 0, 0)' &&
-            warningStyle.background !== warningStyle.color &&
-            warningStyle.borderWidth >= 1,
-        'Synthetic warning surface styles are not loaded',
+        warningStyle.background === 'rgb(255, 251, 235)' &&
+            warningStyle.borderColor === 'rgb(245, 158, 11)' &&
+            hasVisibleBorder(warningStyle),
+        'Synthetic warning surface is not amber or visibly bordered',
     );
     assert(
         await page
@@ -195,13 +237,15 @@ async (page) => {
             const style = getComputedStyle(element);
 
             return {
+                borderColor: style.borderTopColor,
+                borderStyle: style.borderTopStyle,
                 borderWidth: Number.parseFloat(style.borderTopWidth),
                 height: element.getBoundingClientRect().height,
             };
         },
     );
     assert(
-        formControlStyle.borderWidth >= 1 && formControlStyle.height >= 44,
+        hasVisibleBorder(formControlStyle) && formControlStyle.height >= 44,
         'Form control border or minimum target height is not loaded',
     );
 
@@ -210,6 +254,8 @@ async (page) => {
             const style = getComputedStyle(element);
 
             return {
+                borderColor: style.borderTopColor,
+                borderStyle: style.borderTopStyle,
                 borderWidth: Number.parseFloat(style.borderTopWidth),
                 overflowX: style.overflowX,
                 containsWidth: element.scrollWidth >= element.clientWidth,
@@ -217,7 +263,7 @@ async (page) => {
         },
     );
     assert(
-        tableContainerStyle.borderWidth >= 1 &&
+        hasVisibleBorder(tableContainerStyle) &&
             tableContainerStyle.overflowX === 'auto' &&
             tableContainerStyle.containsWidth,
         'Contained table styles are not loaded',

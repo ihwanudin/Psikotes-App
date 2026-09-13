@@ -3,7 +3,7 @@
         .psychologist-review-fixture { display: grid; gap: 1.5rem; min-width: 0; }
         .psychologist-review-fixture [class*="rounded-xl"][class*="border"] { border: 1px solid #d1d5db; border-radius: .75rem; background: #fff; padding: 1rem; }
         .psychologist-review-fixture [class*="border-2"] { border-width: 2px; border-color: #f59e0b; }
-        .psychologist-review-fixture [data-synthetic-warning] { border-color: #f59e0b; background: #fffbeb; color: #78350f; }
+        .psychologist-review-fixture [data-synthetic-warning][aria-labelledby] { border-color: #f59e0b; background: #fffbeb; color: #78350f; }
         .psychologist-review-fixture [data-review-state="g7-unresolved"][aria-labelledby] { border: 2px solid #f59e0b; background: #fffbeb; color: #78350f; }
         .psychologist-review-fixture [data-review-state="g7-resolution"][data-review-prominent="true"] { border: 2px solid #f59e0b; }
         .psychologist-review-fixture [data-validity-stop="V3"][role="alert"] { border: 2px solid #dc2626; background: #fef2f2; color: #7f1d1d; }
@@ -36,7 +36,7 @@
             .psychologist-review-fixture #instrument-summary-heading + p + dl { grid-template-columns: repeat(4, minmax(0, 1fr)); }
         }
         .dark .psychologist-review-fixture [class*="rounded-xl"][class*="border"] { border-color: #4b5563; background: #111827; color: #f9fafb; }
-        .dark .psychologist-review-fixture [data-synthetic-warning] { border-color: #d97706; background: #451a03; color: #fef3c7; }
+        .dark .psychologist-review-fixture [data-synthetic-warning][aria-labelledby] { border-color: #d97706; background: #451a03; color: #fef3c7; }
         .dark .psychologist-review-fixture [data-review-state="g7-unresolved"][aria-labelledby] { border-color: #f59e0b; background: #451a03; color: #fef3c7; }
         .dark .psychologist-review-fixture [data-review-state="g7-resolution"][data-review-prominent="true"] { border-color: #f59e0b; }
         .dark .psychologist-review-fixture [data-validity-stop="V3"][role="alert"] { border-color: #ef4444; background: #450a0a; color: #fee2e2; }
