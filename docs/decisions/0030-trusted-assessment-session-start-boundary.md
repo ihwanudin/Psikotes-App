@@ -36,8 +36,16 @@ Kontrak command adalah:
 execute(
     ParticipantPrincipal $principal,
     GenericAssessmentInstrument $instrument,
-): AssessmentSessionStartResult
+): AssessmentSessionAllocationResult
 ```
+
+`AssessmentSessionAllocationResult` adalah hasil alokasi/start generik yang
+memuat definition snapshot dan penanda replay. Tipe
+`AssessmentSessionStartResult` tetap khusus untuk action lama yang memulai sesi
+yang sudah dibuat berdasarkan public session ID; tipe lama itu tidak diubah,
+digunakan ulang, atau dijadikan union. Koreksi nama ini dibekukan pada checkpoint
+S0 tanggal 2026-09-13 setelah audit menemukan tabrakan semantik pada tipe yang
+sudah diterima.
 
 Aturan boundary:
 
@@ -59,6 +67,26 @@ Aturan boundary:
   membocorkan keberadaan record lintas tenant;
 - tidak ada API callback/closure generik yang dapat mengubah participant context
   menjadi service context.
+
+Mapping HTTP start yang stabil adalah:
+
+- `200` untuk alokasi baru maupun replay, dengan satu shape
+  `AssessmentSession` dan boolean `replayed`;
+- `422 INVALID_ASSESSMENT_START_REQUEST` untuk instrumen yang tidak termasuk
+  empat instrumen generik atau selector scope apa pun pada body/query;
+- `403 ASSESSMENT_NOT_AVAILABLE` untuk source/case/grant/entitlement yang
+  missing, foreign, revoked, stale, belum siap, atau tidak memiliki authority
+  retest; semua kondisi ini memakai pesan generik dan tanpa `details`;
+- `409 ASSESSMENT_START_CONFLICT` untuk history/kandidat yang ambigu atau
+  konflik start yang aman diulang, tanpa jumlah maupun identitas kasus;
+- `503 ASSESSMENT_DEFINITION_UNAVAILABLE` untuk manifest/catalog definition
+  yang missing, duplikat, atau invalid;
+- `503 ASSESSMENT_START_TEMPORARILY_UNAVAILABLE` bila retry serialisasi/deadlock
+  yang dibatasi telah habis.
+
+Kesalahan internal lain tetap `500` generik dan tidak boleh mengekspos exception,
+SQL, case, tenant, grant, atau definition payload. Controller adalah satu-satunya
+adapter exception-ke-HTTP; domain command tidak mengembalikan envelope error.
 
 Endpoint sesi lain yang membaca atau memutasi sesi yang sudah terbentuk tetap
 menggunakan participant bearer dan middleware `rls` sesuai matriks akses.

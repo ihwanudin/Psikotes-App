@@ -86,7 +86,7 @@ Fallback status: scheduler menjalankan `php artisan payments:reconcile-xendit --
 
 ## Peserta (JWT)
 - `GET  /api/me` · `GET /api/me/entitlements`
-- `POST /api/sessions/:test_type/start` hanya menerima `ist|papi|rmib|kraepelin`; `dass21` ditolak karena memakai penyimpanan dan alur terisolasi. Server menurunkan peserta, entitlement `ready`, konfigurasi, durasi, seed, dan nomor attempt dari state tepercaya. Alokasi/start bersifat atomik dan replay tidak memperpanjang `ends_at`; attempt yang telah dikonsumsi memerlukan otorisasi retest baru yang diaudit.
+- `POST /api/sessions/:test_type/start` hanya menerima `ist|papi|rmib|kraepelin`; `dass21` ditolak karena memakai penyimpanan dan alur terisolasi. Body dan query tidak menerima `case_id`, participant, attempt, origin, grant, entitlement, durasi, seed, timestamp, definition, atau selector scope lain. Server menurunkan seluruh authority dari principal dan state durable. Alokasi baru dan replay sama-sama mengembalikan `200` dengan satu shape `AssessmentSession` ditambah boolean `replayed`; replay tidak memperpanjang `ends_at` dan tidak membaca ulang definition catalog. Attempt yang telah dikonsumsi memerlukan otorisasi retest baru yang diaudit.
 - `GET  /sessions/:id` → `AssessmentSession` + waktu server (resume). State: `created|in_progress|submitted|scored|expired|void`; aksi peserta tertutup setelah `submitted`, `scored`, `expired`, atau `void`.
 - `POST /sessions/:id/answers` — autosave atomik `{mutation_id,revision,items:[{item_no,value}]}` untuk IST/PAPI/RMIB. `mutation_id` yang sama dan payload identik mengembalikan receipt semula; payload berbeda ditolak. Revisi baru wajib tepat `current_revision+1`, sehingga retry lama tidak dapat menimpa jawaban baru.
 - `POST /sessions/:id/events` — batch Kraepelin `{col,row,answer,client_ts_ms}[]` (insert-ignore per seq)
@@ -100,6 +100,17 @@ Fallback status: scheduler menjalankan `php artisan payments:reconcile-xendit --
 Deadline tulis persis `ends_at` berdasarkan waktu penerimaan server/database: request pada `ends_at` diterima, sedangkan request setelahnya ditolak atomik tanpa perubahan jawaban/revisi/ledger dan sesi aktif berubah menjadi `expired`. Waktu klien tidak memiliki otoritas. Autosave dan submit mengunci sesi atau memakai conditional update ekuivalen agar balapan menghasilkan satu urutan commit yang sah.
 
 Kode error sesi stabil: `ENTITLEMENT_NOT_READY`, `RETEST_NOT_AUTHORIZED`, `SESSION_NOT_FOUND`, `ATTEMPT_ALREADY_EXISTS`, `SESSION_NOT_STARTED`, `SESSION_CLOSED`, `DEADLINE_EXCEEDED`, `AUTOSAVE_STALE_REVISION`, `AUTOSAVE_REVISION_GAP`, `MUTATION_PAYLOAD_MISMATCH`, `INVALID_ANSWER_BATCH`, dan `INVALID_SESSION_TRANSITION`, dengan envelope `{error:{code,message,details}}`. Detail keberadaan resource lintas tenant tidak dibocorkan.
+
+Khusus endpoint start generik, mapping non-enumerating adalah: `422
+INVALID_ASSESSMENT_START_REQUEST` untuk instrumen/selector request invalid; `403
+ASSESSMENT_NOT_AVAILABLE` untuk authority missing, foreign, revoked, stale, belum
+siap, atau retest tanpa izin; `409 ASSESSMENT_START_CONFLICT` untuk history atau
+kandidat ambigu; `503 ASSESSMENT_DEFINITION_UNAVAILABLE` untuk definition
+missing/duplikat/invalid; dan `503
+ASSESSMENT_START_TEMPORARILY_UNAVAILABLE` setelah retry serialisasi/deadlock
+terbatas habis. Respons tersebut tidak memuat jumlah/ID kasus, detail tenant,
+grant, entitlement, definition, SQL, atau exception. Kontrak ini menggantikan
+`SESSION_ENGINE_PENDING` hanya setelah proof ADR-0030 S1-S4 diterima.
 
 Kontrak lengkap state, replay, RLS, migrasi, serta acceptance PostgreSQL dibekukan di `tasks/handoffs/f2-assessment-session-contract.md`. Generic session/answer/event tidak boleh menyimpan atau memproses respons DASS-21.
 
