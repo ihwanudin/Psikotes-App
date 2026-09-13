@@ -1,3 +1,7 @@
+param(
+    [string] $Filter = ''
+)
+
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
@@ -50,11 +54,19 @@ try {
     Assert-DockerSuccess 'Disposable database marker'
 
     Write-Output "Running PostgreSQL tests on disposable network $network (no published ports)."
+    $phpunitCommand = @(
+        'vendor/bin/phpunit',
+        '--configuration',
+        'phpunit.organization-postgres.xml'
+    )
+    if ($Filter -ne '') {
+        $phpunitCommand += @('--filter', $Filter)
+    }
     docker run --rm --pull=never --name $runnerContainer --label $label --network $network `
         --mount "type=bind,source=$workspace,target=/workspace,readonly" `
         --tmpfs /workspace/storage:rw --tmpfs /workspace/bootstrap/cache:rw `
         --workdir /workspace --env "ORG_TEST_RUN_ID=$runId" `
-        --entrypoint php psikotes-app:dev vendor/bin/phpunit --configuration phpunit.organization-postgres.xml
+        --entrypoint php psikotes-app:dev @phpunitCommand
     $testExitCode = $LASTEXITCODE
 }
 finally {
