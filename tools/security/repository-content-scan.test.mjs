@@ -823,7 +823,7 @@ test('only exact reserved synthetic contacts and unrelated long numbers pass PII
     );
 });
 
-test('repository-owned synthetic phone fixtures are exact and incomplete code literals are not identities', async () => {
+test('repository-owned synthetic phone fixtures are exact', async () => {
     const exactFixtures = [
         ['08', '0000000000'].join(''),
         ['08', '0000000001'].join(''),
@@ -839,22 +839,52 @@ test('repository-owned synthetic phone fixtures are exact and incomplete code li
         ['628', '111111111'].join(''),
         ['629', '999999999'].join(''),
     ];
-    const incompletePhp = [['628', '11111111'].join(''), "'.$suffix"].join('');
-    const incompletePadded = [
-        ['+628', '1234567'].join(''),
-        "'.str_pad($attempt)",
-    ].join('');
-
     await withRepository(
         {
-            'fixtures.txt': [
-                ...exactFixtures,
-                incompletePhp,
-                incompletePadded,
-            ].join('\n'),
+            'fixtures.txt': exactFixtures.join('\n'),
         },
         async (root) =>
             assert.deepEqual((await scan(root, 'pii')).findings, []),
+    );
+});
+
+test('only exact repository-owned incomplete phone literals pass PII profile', async () => {
+    const repeatedPrefix = ['628', '11111111'].join('');
+    const paddedPrefix = ['+628', '1234567'].join('');
+
+    await withRepository(
+        {
+            'tests/Feature/Admin/OrganizationInvitationTest.php': `<?php $phone = '${repeatedPrefix}'.$suffix;`,
+            'tests/Feature/Admin/OrganizationPortalIsolationTest.php': `<?php $phone = '${repeatedPrefix}'.$suffix;`,
+            'tests/Feature/Registration/ParticipantRegistrationTest.php': `<?php $phone = '${paddedPrefix}'.str_pad($attempt);`,
+        },
+        async (root) =>
+            assert.deepEqual((await scan(root, 'pii')).findings, []),
+    );
+});
+
+test('incomplete phone treatment rejects wrong paths and continuations', async () => {
+    const repeatedPrefix = ['628', '11111111'].join('');
+    const paddedPrefix = ['+628', '1234567'].join('');
+
+    await withRepository(
+        {
+            'records.php': `<?php $first = '${repeatedPrefix}'.$suffix;`,
+            'tests/Feature/Admin/OrganizationInvitationTest.php': `<?php $second = '${repeatedPrefix}'.trim($suffix);`,
+            'tests/Feature/Registration/ParticipantRegistrationTest.php': `<?php $third = '${paddedPrefix}'.$suffix;`,
+        },
+        async (root) => {
+            await assert.rejects(scan(root, 'pii'), (error) => {
+                assert.equal(
+                    error.findings.filter(
+                        ({ rule }) => rule === 'indonesian_phone',
+                    ).length,
+                    3,
+                );
+
+                return true;
+            });
+        },
     );
 });
 
@@ -865,6 +895,30 @@ test('realistic phones containing repeated or ascending digits remain PII', asyn
     await withRepository(
         {
             'records.txt': [repeated, ascending].join('\n'),
+        },
+        async (root) => {
+            await assert.rejects(scan(root, 'pii'), (error) => {
+                assert.equal(
+                    error.findings.filter(
+                        ({ rule }) => rule === 'indonesian_phone',
+                    ).length,
+                    2,
+                );
+
+                return true;
+            });
+        },
+    );
+});
+
+test('quoted realistic phones followed by dotted expressions remain PII', async () => {
+    const repeated = ['6281', '1111', '1119'].join('');
+    const ascending = ['+6281', '2345', '6781'].join('');
+
+    await withRepository(
+        {
+            'tests/Feature/Admin/OrganizationInvitationTest.php': `<?php $first = '${repeated}'.trim($suffix);`,
+            'records.php': `<?php $second = '${ascending}' . trim($suffix);`,
         },
         async (root) => {
             await assert.rejects(scan(root, 'pii'), (error) => {

@@ -38,6 +38,23 @@ const SYNTHETIC_PHONES = new Set([
     '6281234567890',
     '629999999999',
 ]);
+const INCOMPLETE_CODE_PHONE_LITERALS = Object.freeze([
+    Object.freeze({
+        path: 'tests/Feature/Admin/OrganizationInvitationTest.php',
+        digits: ['628', '11111111'].join(''),
+        suffix: "'.$suffix",
+    }),
+    Object.freeze({
+        path: 'tests/Feature/Admin/OrganizationPortalIsolationTest.php',
+        digits: ['628', '11111111'].join(''),
+        suffix: "'.$suffix",
+    }),
+    Object.freeze({
+        path: 'tests/Feature/Registration/ParticipantRegistrationTest.php',
+        digits: ['628', '1234567'].join(''),
+        suffix: "'.str_pad(",
+    }),
+]);
 const RULES = Object.freeze({
     secret: new Set([
         'aws_access_key',
@@ -563,7 +580,12 @@ function scanPii(relativePath, content) {
 
         if (
             !isSyntheticPhone(digits) &&
-            !isIncompleteCodeLiteral(content, match.index + match[0].length)
+            !isIncompleteCodeLiteral(
+                relativePath,
+                digits,
+                content,
+                match.index + match[0].length,
+            )
         ) {
             matches.push(
                 finding(
@@ -723,8 +745,13 @@ function isSyntheticPhone(digits) {
     return SYNTHETIC_PHONES.has(digits);
 }
 
-function isIncompleteCodeLiteral(content, end) {
-    return /^["']\s*\./.test(content.slice(end, end + 16));
+function isIncompleteCodeLiteral(relativePath, digits, content, end) {
+    return INCOMPLETE_CODE_PHONE_LITERALS.some(
+        (literal) =>
+            literal.path === relativePath &&
+            literal.digits === digits &&
+            content.startsWith(literal.suffix, end),
+    );
 }
 
 function looksLikeFilename(value) {
