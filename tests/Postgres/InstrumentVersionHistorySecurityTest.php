@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
+use Tests\Support\GenericResultLedgerMigrationFixture;
 
 final class InstrumentVersionHistorySecurityTest extends TestCase
 {
@@ -262,42 +263,44 @@ final class InstrumentVersionHistorySecurityTest extends TestCase
 
     public function test_non_bypass_table_owner_can_reverse_empty_migration_but_not_populated_history(): void
     {
-        $this->asNonBypassOwner(function (): void {
-            $migration = require database_path('migrations/2026_09_09_000100_harden_instrument_versions_history.php');
-            $identity = DB::selectOne('SELECT current_user AS name, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user');
+        $this->asOwner(function (): void {
+            $this->asNonBypassOwner(function (): void {
+                $migration = require database_path('migrations/2026_09_09_000100_harden_instrument_versions_history.php');
+                $identity = DB::selectOne('SELECT current_user AS name, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user');
 
-            $this->assertSame('instrument_history_owner', $identity->name);
-            $this->assertFalse($identity->rolsuper);
-            $this->assertFalse($identity->rolbypassrls);
+                $this->assertSame('instrument_history_owner', $identity->name);
+                $this->assertFalse($identity->rolsuper);
+                $this->assertFalse($identity->rolbypassrls);
 
-            DB::beginTransaction();
-            try {
-                $migration->down();
-                $this->assertFalse(DB::selectOne("SELECT relrowsecurity FROM pg_class WHERE oid = 'instrument_versions'::regclass")->relrowsecurity);
-                $migration->up();
-                $this->assertTrue(DB::selectOne("SELECT relforcerowsecurity FROM pg_class WHERE oid = 'instrument_versions'::regclass")->relforcerowsecurity);
-            } finally {
-                DB::rollBack();
-            }
-
-            DB::beginTransaction();
-            try {
-                DB::statement('ALTER TABLE instrument_versions NO FORCE ROW LEVEL SECURITY');
-                DB::table('instrument_versions')->insert($this->row('non-bypass-owner', 'v1'));
-                DB::statement('ALTER TABLE instrument_versions FORCE ROW LEVEL SECURITY');
-
+                DB::beginTransaction();
                 try {
                     $migration->down();
-                    $this->fail('A non-bypass table owner must refuse populated downgrade.');
-                } catch (RuntimeException $exception) {
-                    $this->assertStringContainsString('populated', $exception->getMessage());
+                    $this->assertFalse(DB::selectOne("SELECT relrowsecurity FROM pg_class WHERE oid = 'instrument_versions'::regclass")->relrowsecurity);
+                    $migration->up();
+                    $this->assertTrue(DB::selectOne("SELECT relforcerowsecurity FROM pg_class WHERE oid = 'instrument_versions'::regclass")->relforcerowsecurity);
+                } finally {
+                    DB::rollBack();
                 }
 
-                $this->assertTrue(DB::selectOne("SELECT relforcerowsecurity FROM pg_class WHERE oid = 'instrument_versions'::regclass")->relforcerowsecurity);
-                $this->assertNotNull(DB::selectOne("SELECT to_regclass('instrument_versions_one_active_code_unique') AS name")->name);
-            } finally {
-                DB::rollBack();
-            }
+                DB::beginTransaction();
+                try {
+                    DB::statement('ALTER TABLE instrument_versions NO FORCE ROW LEVEL SECURITY');
+                    DB::table('instrument_versions')->insert($this->row('non-bypass-owner', 'v1'));
+                    DB::statement('ALTER TABLE instrument_versions FORCE ROW LEVEL SECURITY');
+
+                    try {
+                        $migration->down();
+                        $this->fail('A non-bypass table owner must refuse populated downgrade.');
+                    } catch (RuntimeException $exception) {
+                        $this->assertStringContainsString('populated', $exception->getMessage());
+                    }
+
+                    $this->assertTrue(DB::selectOne("SELECT relforcerowsecurity FROM pg_class WHERE oid = 'instrument_versions'::regclass")->relforcerowsecurity);
+                    $this->assertNotNull(DB::selectOne("SELECT to_regclass('instrument_versions_one_active_code_unique') AS name")->name);
+                } finally {
+                    DB::rollBack();
+                }
+            });
         });
     }
 
@@ -336,6 +339,11 @@ final class InstrumentVersionHistorySecurityTest extends TestCase
     private function asOwner(callable $callback): void
     {
         $runtime = DB::getDefaultConnection();
+        if ($runtime === 'instrument_history_owner') {
+            GenericResultLedgerMigrationFixture::withoutLedger(fn (): mixed => $callback(DB::connection()));
+
+            return;
+        }
         $config = config('database.connections.'.$runtime);
         config()->set('database.connections.instrument_history_owner', [...$config, 'username' => 'org_test_owner']);
         DB::setDefaultConnection('instrument_history_owner');
@@ -344,7 +352,7 @@ final class InstrumentVersionHistorySecurityTest extends TestCase
         try {
             $owner = DB::connection();
             $this->assertSame('org_test_owner', $owner->selectOne('SELECT current_user AS name')->name);
-            $callback($owner);
+            GenericResultLedgerMigrationFixture::withoutLedger(fn (): mixed => $callback($owner));
         } finally {
             DB::setDefaultConnection($runtime);
             Schema::clearResolvedInstance('db.schema');

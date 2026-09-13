@@ -14,6 +14,7 @@ use Illuminate\Support\Str;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Tests\Support\ForkedProcessResult;
+use Tests\Support\GenericResultLedgerMigrationFixture;
 use Throwable;
 
 final class DirectPublicOrderCaseIdentityMigrationTest extends TestCase
@@ -261,41 +262,46 @@ final class DirectPublicOrderCaseIdentityMigrationTest extends TestCase
 
     public function test_migration_waiting_on_participants_does_not_deadlock_a_dass_replay(): void
     {
-        $this->asOwner(fn () => $this->migrate('down'));
+        $ledger = null;
+        $fixture = null;
         $token = (string) Str::uuid();
-        $input = [
-            'full_name' => 'Migration Replay', 'gender' => 'female',
-            'birth_date' => '2001-04-15', 'education_level' => 'SMA/SMK',
-            'intended_field' => 'KAIGO', 'phone' => '+6281234567800',
-            'email' => 'migration-replay@example.test', 'include_consultation' => false,
-        ];
-        $fixture = app(RlsContextRunner::class)->runAsService(function () use ($input, $token): array {
-            $graph = $this->baseGraph('migration-replay', ['dass21']);
-            $hashInput = [...$input, 'package_id' => $graph['package'], 'payment_method_code' => $graph['method_code']];
-            ksort($hashInput);
-            $payloadHash = hash_hmac(
-                'sha256', json_encode($hashInput, JSON_THROW_ON_ERROR), (string) config('app.key'),
-            );
-            DB::table('participants')->where('id', $graph['participant'])->update([
-                'registration_token' => $token, 'registration_payload_hash' => $payloadHash,
-            ]);
-            $order = $this->historicalOrder($graph, 'migration-replay');
-            DB::table('entitlements')->insert([
-                'participant_id' => $graph['participant'], 'order_id' => $order,
-                'test_type' => 'dass21', 'status' => 'locked', 'created_at' => now(), 'updated_at' => now(),
-            ]);
-
-            return $graph;
-        });
-        $replay = static function () use ($input, $fixture, $token): array {
-            $participant = app(RegisterParticipant::class)->handle(
-                $input, $fixture['package'], $fixture['method_code'], $token, null,
-            );
-
-            return ['participant' => $participant->id];
-        };
 
         try {
+            $this->asOwner(function () use (&$ledger): void {
+                $ledger = GenericResultLedgerMigrationFixture::suspend();
+                $this->migrate('down');
+            }, false);
+            $input = [
+                'full_name' => 'Migration Replay', 'gender' => 'female',
+                'birth_date' => '2001-04-15', 'education_level' => 'SMA/SMK',
+                'intended_field' => 'KAIGO', 'phone' => '+6281234567800',
+                'email' => 'migration-replay@example.test', 'include_consultation' => false,
+            ];
+            $fixture = app(RlsContextRunner::class)->runAsService(function () use ($input, $token): array {
+                $graph = $this->baseGraph('migration-replay', ['dass21']);
+                $hashInput = [...$input, 'package_id' => $graph['package'], 'payment_method_code' => $graph['method_code']];
+                ksort($hashInput);
+                $payloadHash = hash_hmac(
+                    'sha256', json_encode($hashInput, JSON_THROW_ON_ERROR), (string) config('app.key'),
+                );
+                DB::table('participants')->where('id', $graph['participant'])->update([
+                    'registration_token' => $token, 'registration_payload_hash' => $payloadHash,
+                ]);
+                $order = $this->historicalOrder($graph, 'migration-replay');
+                DB::table('entitlements')->insert([
+                    'participant_id' => $graph['participant'], 'order_id' => $order,
+                    'test_type' => 'dass21', 'status' => 'locked', 'created_at' => now(), 'updated_at' => now(),
+                ]);
+
+                return $graph;
+            });
+            $replay = static function () use ($input, $fixture, $token): array {
+                $participant = app(RegisterParticipant::class)->handle(
+                    $input, $fixture['package'], $fixture['method_code'], $token, null,
+                );
+
+                return ['participant' => $participant->id];
+            };
             $results = $this->migrationReplayRace($replay);
             $this->assertArrayNotHasKey('error', $results['replay']);
             $this->assertArrayNotHasKey('error', $results['migration']);
@@ -303,11 +309,16 @@ final class DirectPublicOrderCaseIdentityMigrationTest extends TestCase
             $this->assertTrue($results['migration']['migrated']);
             $this->assertTrue(Schema::hasColumn('orders', 'assessment_case_id'));
         } finally {
-            $this->cleanupConcurrentGraph($token, $fixture);
-            if (! Schema::hasColumn('orders', 'assessment_case_id')
-                || ! Schema::hasColumn('entitlements', 'assessment_case_id')) {
-                $this->asOwner(fn () => $this->migrate('up'));
+            if (is_array($fixture)) {
+                $this->cleanupConcurrentGraph($token, $fixture);
             }
+            $this->asOwner(function () use ($ledger): void {
+                if (! Schema::hasColumn('orders', 'assessment_case_id')
+                    || ! Schema::hasColumn('entitlements', 'assessment_case_id')) {
+                    $this->migrate('up');
+                }
+                $ledger?->restore();
+            }, false);
         }
     }
 
@@ -485,7 +496,7 @@ final class DirectPublicOrderCaseIdentityMigrationTest extends TestCase
         }
     }
 
-    private function asOwner(callable $operation): void
+    private function asOwner(callable $operation, bool $manageResultLedger = true): void
     {
         $runtime = DB::getDefaultConnection();
         $config = config('database.connections.'.$runtime);
@@ -493,7 +504,11 @@ final class DirectPublicOrderCaseIdentityMigrationTest extends TestCase
         DB::setDefaultConnection('direct_case_owner');
         Schema::clearResolvedInstance('db.schema');
         try {
-            $operation();
+            if ($manageResultLedger) {
+                GenericResultLedgerMigrationFixture::withoutLedger($operation);
+            } else {
+                $operation();
+            }
         } finally {
             DB::setDefaultConnection($runtime);
             Schema::clearResolvedInstance('db.schema');

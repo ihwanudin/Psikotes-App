@@ -13,6 +13,7 @@ use Illuminate\Support\Str;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
 use RuntimeException;
+use Tests\Support\GenericResultLedgerMigrationFixture;
 
 /** PostgreSQL-authoritative generic assessment session schema and RLS proof. */
 final class AssessmentSessionSchemaTest extends TestCase
@@ -254,22 +255,30 @@ final class AssessmentSessionSchemaTest extends TestCase
         config()->set('database.connections.assessment_session_ddl_test', [...$config, 'username' => 'org_test_owner']);
         $owner = DB::connection('assessment_session_ddl_test');
         try {
-            $owner->beginTransaction();
             DB::setDefaultConnection('assessment_session_ddl_test');
             Schema::clearResolvedInstance('db.schema');
-            $this->runMigration('down');
-            $this->assertFalse(Schema::hasTable('test_sessions'));
-            $this->runMigration('up');
+            GenericResultLedgerMigrationFixture::withoutLedger(function () use ($owner): void {
+                $owner->beginTransaction();
+                try {
+                    $this->runMigration('down');
+                    $this->assertFalse(Schema::hasTable('test_sessions'));
+                    $this->runMigration('up');
 
-            DB::statement("SELECT set_config('app.role', 'service', true)");
-            DB::table('test_sessions')->insert($this->sessionRow());
-            try {
-                $this->runMigration('down');
-                $this->fail('Populated rollback was accepted.');
-            } catch (RuntimeException $exception) {
-                $this->assertSame('Assessment session history prevents rollback.', $exception->getMessage());
-            }
-            $this->assertTrue(Schema::hasTable('test_sessions'));
+                    DB::statement("SELECT set_config('app.role', 'service', true)");
+                    DB::table('test_sessions')->insert($this->sessionRow());
+                    try {
+                        $this->runMigration('down');
+                        $this->fail('Populated rollback was accepted.');
+                    } catch (RuntimeException $exception) {
+                        $this->assertSame('Assessment session history prevents rollback.', $exception->getMessage());
+                    }
+                    $this->assertTrue(Schema::hasTable('test_sessions'));
+                } finally {
+                    if ($owner->transactionLevel() > 0) {
+                        $owner->rollBack();
+                    }
+                }
+            });
         } finally {
             if ($owner->transactionLevel() > 0) {
                 $owner->rollBack();
