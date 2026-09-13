@@ -20,6 +20,7 @@ use Illuminate\Support\Str;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Tests\Support\AssessmentPreviewFixture as Fixture;
+use Tests\Support\ForkedProcessResult;
 use Throwable;
 
 /** Real independent runtime connections; committed synthetic fixtures are removed by exact IDs. */
@@ -267,10 +268,10 @@ final class AssessmentBillReservationTest extends TestCase
                     } catch (Throwable $e) {
                         $result = ['error' => $e->getMessage(), 'class' => $e::class];
                     }
-                    fwrite($pair[1], json_encode($result, JSON_THROW_ON_ERROR)."\n");
-                    fclose($pair[1]);
-                    DB::disconnect('pgsql');
-                    exit(0);
+                    ForkedProcessResult::sendAndExit($pair[1], $result,
+                        static function (): void {
+                            DB::disconnect('pgsql');
+                        });
                 }
                 fclose($pair[1]);
                 stream_set_timeout($pair[0], 15);

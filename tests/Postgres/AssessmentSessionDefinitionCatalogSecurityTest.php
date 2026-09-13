@@ -566,15 +566,23 @@ final class AssessmentSessionDefinitionCatalogSecurityTest extends TestCase
                     'event' => 'result', 'accepted' => true, 'sqlstate' => null,
                 ]);
             } catch (QueryException $exception) {
-                $this->writeWorkerEvent($pair[1], [
-                    'event' => 'result', 'accepted' => false,
-                    'sqlstate' => $exception->errorInfo[0] ?? null,
-                ]);
+                try {
+                    $this->writeWorkerEvent($pair[1], [
+                        'event' => 'result', 'accepted' => false,
+                        'sqlstate' => $exception->errorInfo[0] ?? null,
+                    ]);
+                } catch (\Throwable) {
+                    // The parent owns the useful failure after closing the channel.
+                }
             } catch (\Throwable $exception) {
-                $this->writeWorkerEvent($pair[1], [
-                    'event' => 'unexpected', 'type' => $exception::class,
-                    'message' => $exception->getMessage(),
-                ]);
+                try {
+                    $this->writeWorkerEvent($pair[1], [
+                        'event' => 'unexpected', 'type' => $exception::class,
+                        'message' => $exception->getMessage(),
+                    ]);
+                } catch (\Throwable) {
+                    // The parent owns the useful failure after closing the channel.
+                }
             }
             fclose($pair[1]);
             DB::disconnect('pgsql');

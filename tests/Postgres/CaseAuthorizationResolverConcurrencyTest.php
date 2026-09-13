@@ -123,11 +123,15 @@ final class CaseAuthorizationResolverConcurrencyTest extends TestCase
                 });
                 $this->write($pair[1], ['event' => 'committed']);
             } catch (Throwable $exception) {
-                $this->write($pair[1], [
-                    'event' => $exception instanceof CaseAuthorizationRejected ? 'rejected' : 'unexpected',
-                    'type' => $exception::class,
-                    'message' => $exception->getMessage(),
-                ]);
+                try {
+                    $this->write($pair[1], [
+                        'event' => $exception instanceof CaseAuthorizationRejected ? 'rejected' : 'unexpected',
+                        'type' => $exception::class,
+                        'message' => $exception->getMessage(),
+                    ]);
+                } catch (Throwable) {
+                    // The parent owns the useful failure after closing the channel.
+                }
             }
             fclose($pair[1]);
             DB::disconnect('pgsql');

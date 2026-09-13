@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
+use Tests\Support\ForkedProcessResult;
 use Throwable;
 
 final class DirectPublicOrderCaseIdentityMigrationTest extends TestCase
@@ -580,10 +581,10 @@ final class DirectPublicOrderCaseIdentityMigrationTest extends TestCase
                     } catch (Throwable $exception) {
                         $result = ['class' => $exception::class, 'error' => $exception->getMessage()];
                     }
-                    fwrite($pair[1], json_encode($result, JSON_THROW_ON_ERROR)."\n");
-                    fclose($pair[1]);
-                    DB::disconnect('pgsql');
-                    exit(0);
+                    ForkedProcessResult::sendAndExit($pair[1], $result,
+                        static function (): void {
+                            DB::disconnect('pgsql');
+                        });
                 }
                 fclose($pair[1]);
                 stream_set_timeout($pair[0], 15);
@@ -678,10 +679,10 @@ final class DirectPublicOrderCaseIdentityMigrationTest extends TestCase
                 } catch (Throwable $exception) {
                     $result = ['class' => $exception::class, 'error' => $exception->getMessage()];
                 }
-                fwrite($replayPair[1], json_encode($result, JSON_THROW_ON_ERROR)."\n");
-                fclose($replayPair[1]);
-                DB::disconnect('pgsql');
-                exit(0);
+                ForkedProcessResult::sendAndExit($replayPair[1], $result,
+                    static function (): void {
+                        DB::disconnect('pgsql');
+                    });
             }
             fclose($replayPair[1]);
             stream_set_timeout($replayPair[0], 20);
@@ -719,7 +720,7 @@ final class DirectPublicOrderCaseIdentityMigrationTest extends TestCase
                 } catch (Throwable $exception) {
                     $result = ['class' => $exception::class, 'error' => $exception->getMessage()];
                 }
-                fwrite($migrationPair[1], json_encode($result, JSON_THROW_ON_ERROR)."\n");
+                ForkedProcessResult::sendOrExitFailure($migrationPair[1], $result);
                 fgets($migrationPair[1]);
                 fclose($migrationPair[1]);
                 exit(0);
