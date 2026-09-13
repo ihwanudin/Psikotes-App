@@ -52,8 +52,40 @@ function Get-TextSha256([string] $text) {
     }
 }
 
+function ConvertTo-StableSchemaExpression([string] $expression) {
+    $literalPattern = "'(?:''|[^'])*'"
+    $sourceItemPattern = "$literalPattern::character varying"
+    $restoredItemPattern = "\($literalPattern::character varying\)::text"
+    $sourceArrayPattern = "\(ARRAY\[(?<items>\s*$sourceItemPattern(?:\s*,\s*$sourceItemPattern)*)\]\)::text\[\]"
+    $restoredArrayPattern = "ARRAY\[(?<items>\s*$restoredItemPattern(?:\s*,\s*$restoredItemPattern)*)\]"
+    $canonicalizeArray = {
+        param([System.Text.RegularExpressions.Match] $match)
+
+        $literals = [regex]::Matches($match.Groups['items'].Value, $literalPattern) |
+            ForEach-Object { $_.Value }
+        return 'ARRAY[' + ($literals -join ', ') + ']::text[]'
+    }.GetNewClosure()
+
+    $stable = [regex]::Replace($expression, $sourceArrayPattern, $canonicalizeArray)
+    return [regex]::Replace($stable, $restoredArrayPattern, $canonicalizeArray)
+}
+
+function ConvertTo-StableSchemaManifest([string] $manifest) {
+    $canonicalizeExpression = {
+        param([System.Text.RegularExpressions.Match] $match)
+
+        $expressionBytes = [Convert]::FromBase64String($match.Groups['payload'].Value)
+        $expression = [System.Text.Encoding]::UTF8.GetString($expressionBytes)
+        $stableExpression = ConvertTo-StableSchemaExpression $expression
+        $stableBytes = [System.Text.Encoding]::UTF8.GetBytes($stableExpression)
+        return 'F9EXPR{' + [Convert]::ToBase64String($stableBytes) + '}'
+    }
+
+    return [regex]::Replace($manifest, 'F9EXPR\{(?<payload>[A-Za-z0-9+/=]*)\}', $canonicalizeExpression)
+}
+
 function Get-SchemaManifest([string] $database) {
-    return Invoke-Psql $database @'
+    $manifest = Invoke-Psql $database @'
 WITH objects(kind, identity, definition) AS (
     SELECT 'relation', format('%I.%I', n.nspname, c.relname),
         concat_ws('|', n.nspname, c.relname, c.relkind, c.relpersistence,
@@ -77,10 +109,9 @@ WITH objects(kind, identity, definition) AS (
             COALESCE(x.confrelid::regclass::text, ''), COALESCE(x.confkey::text, ''),
             x.confupdtype, x.confdeltype, x.confmatchtype, x.condeferrable,
             x.condeferred, x.convalidated,
-            CASE WHEN x.contype='c' THEN regexp_replace(lower(replace(replace(replace(
-                COALESCE(pg_get_expr(x.conbin, x.conrelid), ''),
-                '::character varying', ''), '::text[]', ''), '::text', '')),
-                '[[:space:]()]', '', 'g') ELSE '' END)
+            CASE WHEN x.contype='c' THEN 'F9EXPR{' || replace(encode(convert_to(
+                COALESCE(pg_get_expr(x.conbin, x.conrelid), ''), 'UTF8'), 'base64'), E'\n', '') || '}'
+                ELSE '' END)
     FROM pg_constraint x
     JOIN pg_class c ON c.oid = x.conrelid
     JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -92,14 +123,12 @@ WITH objects(kind, identity, definition) AS (
             index_row.indisunique, index_row.indisprimary, index_row.indisexclusion,
             index_row.indisvalid, index_row.indisready, index_row.indislive,
             index_row.indisclustered, index_row.indisreplident,
-            regexp_replace(lower(replace(replace(replace(
+            'F9EXPR{' || replace(encode(convert_to(
                 COALESCE(pg_get_expr(index_row.indexprs, index_row.indrelid), ''),
-                '::character varying', ''), '::text[]', ''), '::text', '')),
-                '[[:space:]()]', '', 'g'),
-            regexp_replace(lower(replace(replace(replace(
+                'UTF8'), 'base64'), E'\n', '') || '}',
+            'F9EXPR{' || replace(encode(convert_to(
                 COALESCE(pg_get_expr(index_row.indpred, index_row.indrelid), ''),
-                '::character varying', ''), '::text[]', ''), '::text', '')),
-                '[[:space:]()]', '', 'g'))
+                'UTF8'), 'base64'), E'\n', '') || '}')
     FROM pg_index index_row
     JOIN pg_class index_relation ON index_relation.oid = index_row.indexrelid
     JOIN pg_class table_relation ON table_relation.oid = index_row.indrelid
@@ -114,12 +143,10 @@ WITH objects(kind, identity, definition) AS (
     UNION ALL
     SELECT 'policy', format('%I.%I', schemaname, policyname),
         concat_ws('|', schemaname, tablename, policyname, permissive, cmd, roles::text,
-            regexp_replace(lower(replace(replace(replace(COALESCE(qual, ''),
-                '::character varying', ''), '::text[]', ''), '::text', '')),
-                '[[:space:]()]', '', 'g'),
-            regexp_replace(lower(replace(replace(replace(COALESCE(with_check, ''),
-                '::character varying', ''), '::text[]', ''), '::text', '')),
-                '[[:space:]()]', '', 'g'))
+            'F9EXPR{' || replace(encode(convert_to(COALESCE(qual, ''), 'UTF8'),
+                'base64'), E'\n', '') || '}',
+            'F9EXPR{' || replace(encode(convert_to(COALESCE(with_check, ''), 'UTF8'),
+                'base64'), E'\n', '') || '}')
     FROM pg_policies WHERE schemaname IN ('public', 'dass')
     UNION ALL
     SELECT 'function', format('%I.%I(%s)', n.nspname, p.proname,
@@ -141,6 +168,7 @@ WITH objects(kind, identity, definition) AS (
 SELECT string_agg(kind || '|' || identity || '|' || definition, E'\n'
     ORDER BY kind, identity, definition) FROM objects;
 '@
+    return ConvertTo-StableSchemaManifest $manifest
 }
 
 function Get-SchemaFingerprint([string] $database) {
@@ -164,7 +192,11 @@ SELECT jsonb_build_object(
 
 function Get-SequenceFingerprint([string] $database) {
     $sequenceManifest = Invoke-Psql $database @'
-SELECT string_agg(format('%I.%I|%s|%s', schemaname, sequencename, last_value, cycle), E'\n'
+SELECT string_agg(format('%I.%I|%s|%s|%s|%s|%s|%s|%s|%s',
+        schemaname, sequencename, data_type, start_value, min_value, max_value,
+        increment_by, cycle, cache_size,
+        query_to_xml(format('SELECT last_value, is_called FROM %I.%I', schemaname, sequencename),
+            false, true, '')::text), E'\n'
     ORDER BY schemaname, sequencename)
 FROM pg_sequences WHERE schemaname IN ('public', 'dass');
 '@
