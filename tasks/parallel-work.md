@@ -314,12 +314,12 @@ combined); unchecked acceptance remains open until its evidence passes review.
 |---|---|---|---|---|---|
 | `01a05839-3b39-7d83-b59f-9e7432d7883e` | P15/P16 participant browser preparation | preserved detached worktree `d4ea`; implementation uses a task-owned temporary worktree from main `7567ad6` | `tools/testing/tests/Browser/checkout-session.browser.mjs` and `tools/testing/tests/Browser/serve-checkout-session.php` only | R1-R2 only: add one fixed synthetic mounted-confirmation alias and verify the missing-profile/current-consent/DASS-required form plus its test-only enhancer; no submit/provider/outbound | prior contract checkpoint accepted as main-equivalent `f0f2af1`/`563fa6e`; new increment active at cursor `62e007d3-56d1-4cb5-b394-bdcad652fb3e:3`; stop before R3 |
 | `01a05839-3b48-7801-8175-0392e8764c23` | F2 durable session-grant verification | detached worktree `14a0`; review target is main `d9c0b55` at baseline `7567ad6` | read-only migration/test inspection plus disposable PostgreSQL execution | Prove or reject FORCE-RLS, immutable typed origin FK, no privilege delegation, one-to-one binding, rerun/down safety, and cleanup | dispatched; no source edits or commit allowed; accept only after command evidence and P1/P2 review |
-| `01a05839-3b18-73e0-8fdc-8db3b02f835d` | F9 retention command/scheduler safety | detached worktree `6e61`; review target is main `9559237` at baseline `7567ad6` | read-only executor/test/operations-pattern audit | Freeze the smallest default-inert command/scheduler slice, locks, retry/failure behavior, redacted observability, tests, and stop conditions | dispatched; no purge/runtime/edit/commit allowed; implementation waits for coordinator review |
+| `01a05839-3b18-73e0-8fdc-8db3b02f835d` | F9 retention command boundary | preserved detached worktree `6e61`; implementation uses a task-owned temporary worktree from main `77ec241` | new `PurgeExpiredAuditLogsCommand.php` and its new Feature test only | Add a one-batch, exact-true-config, redacted command boundary with strict limit, rollback/context proof, and no retry; config and scheduler remain coordinator-owned | safety audit accepted; implementation active; no real purge/runtime and no config/routes edit |
 
-The two newly resumed audit tasks are read-only. The frontend owns only its two
-recorded browser-harness files. None owns migrations, routes, lockfiles, ADR
-numbering, canonical checklists, or the dirty root files. The next increment is
-sent only after each result is independently reviewed.
+The F2 verification remains read-only. Frontend and F9 each own only their two
+recorded files in task-owned temporary worktrees. None owns migrations, routes,
+config, lockfiles, ADR numbering, canonical checklists, or the dirty root files.
+The next increment is sent only after each result is independently reviewed.
 
 Coordinator fixture repair `48a5bd8` binds the five previously modified
 checkout/payer test fixtures to their exact assessment cases and preserves the
