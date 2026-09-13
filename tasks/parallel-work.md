@@ -390,3 +390,12 @@ reliability (factory/teardown only) and scan-gate reliability
 (scanner/profile/tests only). Their task IDs, exact branches, and ownership are
 recorded here only after worktree setup is ready; both forbid migrations,
 shared routes/API/DTO/ADR/checklists, and feature implementation.
+
+Both recovery tasks remain setup-pending from intended start branch
+`codex/f2-wave1-integration`: Test Reliability has client setup ID
+`client-new-thread:32abbed9-740e-4c30-a6c6-4de72fa7a89d`, and Security Scan
+Gate has client setup ID
+`client-new-thread:cf785283-cd57-46cf-83f7-649cdd94bfd3`. These client IDs are
+not task IDs and confer no active file ownership. The Tech Lead will replace
+this pending-only record with exact task IDs, host/worktree/branch, and owned
+files only after setup completes.
