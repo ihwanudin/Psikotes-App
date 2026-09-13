@@ -470,7 +470,7 @@ if ((int) $sessionCounts['participants'] !== $expectedParticipants
     || (int) $sessionCounts['started'] !== $startDatasetSize
     || (int) $sessionCounts['results'] !== $readerDatasetSize
     || (int) $sessionCounts['sources'] !== $readerDatasetSize * 9) {
-    throw new RuntimeException('FIRST_ROOT_CAUSE: unexpected rows or partial writes detected.');
+    throw new RuntimeException('FIRST_ROOT_CAUSE: unexpected rows or partial writes detected: '.json_encode($sessionCounts, JSON_THROW_ON_ERROR));
 }
 foreach ([0, $warmupOperations, $startDatasetSize - 1] as $index) {
     $item = $dataset['start'][$index];
@@ -489,4 +489,5 @@ $report['correctness'] = [
     'started_once' => (int) $sessionCounts['started'], 'results' => (int) $sessionCounts['results'],
     'sources' => (int) $sessionCounts['sources'], 'replay_samples' => 3,
 ];
+file_put_contents($outputDirectory.'/report.json', json_encode($report, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES), LOCK_EX);
 emit($report);
