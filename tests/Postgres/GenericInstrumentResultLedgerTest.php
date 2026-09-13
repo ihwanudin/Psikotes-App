@@ -106,6 +106,35 @@ final class GenericInstrumentResultLedgerTest extends TestCase
                 ));
             }
         }
+        $sequences = DB::select(<<<'SQL'
+            SELECT sequence.relname,pg_get_userbyid(sequence.relowner) owner,
+                pg_get_userbyid(table_row.relowner) table_owner,attribute.attname,
+                pg_get_expr(default_value.adbin,default_value.adrelid) default_value,
+                has_sequence_privilege('psikotes_runtime', sequence.oid, 'USAGE') runtime_usage,
+                has_sequence_privilege('psikotes_runtime', sequence.oid, 'SELECT') runtime_select,
+                has_sequence_privilege('psikotes_runtime', sequence.oid, 'UPDATE') runtime_update
+            FROM pg_class sequence
+            JOIN pg_depend dependency ON dependency.classid='pg_class'::regclass
+              AND dependency.objid=sequence.oid AND dependency.deptype='a'
+            JOIN pg_class table_row ON table_row.oid=dependency.refobjid
+            JOIN pg_attribute attribute ON attribute.attrelid=table_row.oid
+              AND attribute.attnum=dependency.refobjsubid
+            JOIN pg_attrdef default_value ON default_value.adrelid=table_row.oid
+              AND default_value.adnum=attribute.attnum
+            WHERE sequence.relkind='S' AND sequence.relname IN (
+                'generic_instrument_results_id_seq',
+                'generic_instrument_result_sources_id_seq'
+            ) ORDER BY sequence.relname
+            SQL);
+        $this->assertCount(2, $sequences);
+        foreach ($sequences as $sequence) {
+            $this->assertSame($sequence->table_owner, $sequence->owner);
+            $this->assertSame('id', $sequence->attname);
+            $this->assertSame("nextval('{$sequence->relname}'::regclass)", $sequence->default_value);
+            $this->assertTrue($sequence->runtime_usage);
+            $this->assertTrue($sequence->runtime_select);
+            $this->assertFalse($sequence->runtime_update);
+        }
 
         $fixture = app(RlsContextRunner::class)->runAsService(fn (): array => $this->fixture());
         $row = $this->resultRow($fixture);
@@ -237,21 +266,170 @@ final class GenericInstrumentResultLedgerTest extends TestCase
                     DROP POLICY generic_instrument_results_service_select
                         ON generic_instrument_results;
                     CREATE POLICY generic_instrument_results_service_select
-                        ON generic_instrument_results FOR SELECT TO psikotes_runtime USING (true);
+                        ON generic_instrument_results FOR SELECT TO psikotes_runtime
+                        USING (app_private.app_role() = 'service' OR true);
                     SQL);
                 $counterfeit = $this->definitions();
 
+                $exception = null;
                 try {
                     (require database_path('migrations/2026_09_13_000100_create_generic_instrument_result_ledger.php'))->up();
-                    $this->fail('Counterfeit result ledger security must be rejected.');
-                } catch (RuntimeException $exception) {
-                    $this->assertStringContainsString('policy predicate is not exact', $exception->getMessage());
+                } catch (RuntimeException $caught) {
+                    $exception = $caught;
                 }
+                $this->assertNotNull($exception, 'Counterfeit result ledger security must be rejected.');
+                $this->assertStringContainsString('policy predicate is not exact', $exception->getMessage());
                 $this->assertEquals($counterfeit, $this->definitions());
             } finally {
                 DB::rollBack();
             }
         });
+    }
+
+    public function test_owner_rerun_rejects_same_name_counterfeit_checks_without_mutation(): void
+    {
+        $this->asOwner(function (): void {
+            DB::beginTransaction();
+            try {
+                DB::statement('ALTER TABLE generic_instrument_results DROP CONSTRAINT generic_instrument_results_contract_check');
+                DB::statement('ALTER TABLE generic_instrument_results ADD CONSTRAINT generic_instrument_results_contract_check CHECK (true)');
+                DB::statement('ALTER TABLE generic_instrument_result_sources DROP CONSTRAINT generic_instrument_result_sources_contract_check');
+                DB::statement('ALTER TABLE generic_instrument_result_sources ADD CONSTRAINT generic_instrument_result_sources_contract_check CHECK (true)');
+                $counterfeit = $this->definitions();
+
+                $exception = null;
+                try {
+                    (require database_path('migrations/2026_09_13_000100_create_generic_instrument_result_ledger.php'))->up();
+                } catch (RuntimeException $caught) {
+                    $exception = $caught;
+                }
+                $this->assertNotNull($exception, 'Counterfeit result ledger checks must be rejected.');
+                $this->assertStringContainsString('check constraint is not exact', $exception->getMessage());
+                $this->assertEquals($counterfeit, $this->definitions());
+            } finally {
+                DB::rollBack();
+            }
+        });
+    }
+
+    public function test_owner_rerun_rejects_excess_runtime_sequence_grant_without_mutation(): void
+    {
+        $this->asOwner(function (): void {
+            DB::beginTransaction();
+            try {
+                DB::statement('GRANT UPDATE ON SEQUENCE generic_instrument_results_id_seq TO psikotes_runtime');
+                $counterfeit = $this->definitions();
+
+                $exception = null;
+                try {
+                    (require database_path('migrations/2026_09_13_000100_create_generic_instrument_result_ledger.php'))->up();
+                } catch (RuntimeException $caught) {
+                    $exception = $caught;
+                }
+                $this->assertNotNull($exception, 'Excess runtime sequence privilege must be rejected.');
+                $this->assertStringContainsString('sequence', $exception->getMessage());
+                $this->assertEquals($counterfeit, $this->definitions());
+            } finally {
+                DB::rollBack();
+            }
+        });
+    }
+
+    public function test_owner_rerun_rejects_missing_runtime_sequence_grant_without_mutation(): void
+    {
+        $this->asOwner(function (): void {
+            DB::beginTransaction();
+            try {
+                DB::statement('REVOKE SELECT ON SEQUENCE generic_instrument_result_sources_id_seq FROM psikotes_runtime');
+                $counterfeit = $this->definitions();
+
+                $exception = null;
+                try {
+                    (require database_path('migrations/2026_09_13_000100_create_generic_instrument_result_ledger.php'))->up();
+                } catch (RuntimeException $caught) {
+                    $exception = $caught;
+                }
+                $this->assertNotNull($exception, 'Missing runtime sequence privilege must be rejected.');
+                $this->assertStringContainsString('sequence', $exception->getMessage());
+                $this->assertEquals($counterfeit, $this->definitions());
+            } finally {
+                DB::rollBack();
+            }
+        });
+    }
+
+    public function test_contract_checks_reject_representative_invalid_parent_and_source_rows(): void
+    {
+        app(RlsContextRunner::class)->runAsService(function (): void {
+            $fixture = $this->fixture();
+            $row = $this->resultRow($fixture);
+            $this->assertSqlState('23514', fn () => DB::table('generic_instrument_results')->insert([
+                ...$row, 'sealed_source_checksum' => str_repeat('A', 64),
+            ]));
+
+            $result = DB::table('generic_instrument_results')->insertGetId($row);
+            $this->assertSqlState('23514', fn () => DB::table('generic_instrument_result_sources')->insert([
+                ...$this->sourceRow($result), 'level' => 6,
+            ]));
+            $this->assertSame(0, DB::table('generic_instrument_result_sources')->count());
+        });
+    }
+
+    public function test_sqlite_rerun_rejects_counterfeit_trigger_body_without_mutation(): void
+    {
+        $runtime = DB::getDefaultConnection();
+        config()->set('database.connections.result_ledger_sqlite', [
+            'driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '',
+            'foreign_key_constraints' => true,
+        ]);
+        DB::setDefaultConnection('result_ledger_sqlite');
+        Schema::clearResolvedInstance('db.schema');
+        try {
+            DB::statement(<<<'SQL'
+                CREATE TABLE instrument_versions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT NOT NULL,
+                    version TEXT NOT NULL, source_file TEXT NOT NULL, checksum TEXT NOT NULL,
+                    UNIQUE (code, version)
+                )
+                SQL);
+            DB::statement(<<<'SQL'
+                CREATE TABLE test_sessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT, public_id TEXT NOT NULL,
+                    assessment_case_id INTEGER NOT NULL, participant_id INTEGER NOT NULL,
+                    test_type TEXT NOT NULL, attempt_no INTEGER NOT NULL,
+                    status TEXT NOT NULL, submitted_at TEXT NULL, answers_revision INTEGER NOT NULL,
+                    session_definition_version TEXT NULL,
+                    session_definition_provenance TEXT NULL,
+                    session_definition_checksum TEXT NULL,
+                    session_definition_payload TEXT NULL
+                )
+                SQL);
+            DB::statement('CREATE UNIQUE INDEX test_sessions_grant_scope_unique ON test_sessions (id, assessment_case_id, participant_id, test_type)');
+            $migration = require database_path('migrations/2026_09_13_000100_create_generic_instrument_result_ledger.php');
+            $migration->up();
+            DB::unprepared(<<<'SQL'
+                DROP TRIGGER generic_instrument_results_guard_update;
+                CREATE TRIGGER generic_instrument_results_guard_update
+                BEFORE UPDATE ON generic_instrument_results FOR EACH ROW
+                BEGIN SELECT RAISE(ABORT, 'counterfeit'); END;
+                SQL);
+            $counterfeit = DB::select("SELECT type,name,sql FROM sqlite_master WHERE name LIKE 'generic_instrument_result%' OR name='instrument_versions_result_scope_unique' ORDER BY type,name");
+
+            $exception = null;
+            try {
+                $migration->up();
+            } catch (RuntimeException $caught) {
+                $exception = $caught;
+            }
+            $this->assertNotNull($exception, 'Counterfeit SQLite guard must be rejected.');
+            $this->assertStringContainsString('SQLite definition is not exact', $exception->getMessage());
+            $this->assertEquals($counterfeit, DB::select("SELECT type,name,sql FROM sqlite_master WHERE name LIKE 'generic_instrument_result%' OR name='instrument_versions_result_scope_unique' ORDER BY type,name"));
+        } finally {
+            DB::setDefaultConnection($runtime);
+            Schema::clearResolvedInstance('db.schema');
+            DB::purge('result_ledger_sqlite');
+            config()->set('database.connections.result_ledger_sqlite', null);
+        }
     }
 
     /** @return array<string,mixed> */
@@ -386,6 +564,17 @@ final class GenericInstrumentResultLedgerTest extends TestCase
             'indexes' => DB::select("SELECT indexname,indexdef FROM pg_indexes WHERE schemaname='public' AND (tablename IN ('generic_instrument_results','generic_instrument_result_sources') OR indexname='instrument_versions_result_scope_unique') ORDER BY indexname"),
             'triggers' => DB::select("SELECT tgrelid::regclass::text relation,tgname,pg_get_triggerdef(oid,false) definition FROM pg_trigger WHERE NOT tgisinternal AND tgrelid IN ('generic_instrument_results'::regclass,'generic_instrument_result_sources'::regclass) ORDER BY relation,tgname"),
             'policies' => DB::select("SELECT tablename,policyname,cmd,roles,qual,with_check FROM pg_policies WHERE tablename IN ('generic_instrument_results','generic_instrument_result_sources') ORDER BY tablename,policyname"),
+            'sequences' => DB::select(<<<'SQL'
+                SELECT class.relname,pg_get_userbyid(class.relowner) owner,
+                    has_sequence_privilege('psikotes_runtime', class.oid, 'USAGE') runtime_usage,
+                    has_sequence_privilege('psikotes_runtime', class.oid, 'SELECT') runtime_select,
+                    has_sequence_privilege('psikotes_runtime', class.oid, 'UPDATE') runtime_update
+                FROM pg_class class
+                WHERE class.relkind='S' AND class.relname IN (
+                    'generic_instrument_results_id_seq',
+                    'generic_instrument_result_sources_id_seq'
+                ) ORDER BY class.relname
+                SQL),
         ];
     }
 

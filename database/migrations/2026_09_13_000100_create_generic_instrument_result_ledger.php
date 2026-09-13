@@ -15,6 +15,18 @@ return new class extends Migration
 
     private const INSTRUMENT_SCOPE = 'instrument_versions_result_scope_unique';
 
+    /** @var array<string,string> */
+    private const SQLITE_DEFINITION_HASHES = [
+        'index:instrument_versions_result_scope_unique' => '6b43464d3dcfa053fbd327edf2d2a4a62e0379b7b52249019d3fc6f50f09ecbc',
+        'table:generic_instrument_result_sources' => '716e0c623e39563e1b3f25f257566963a361a9bc441101e669f84389bb296245',
+        'table:generic_instrument_results' => '44c80ae421760c03f07da0d88305ea7c7d98605c2723ad676d38cd5bc5739049',
+        'trigger:generic_instrument_result_sources_guard_delete' => '44ec41f46fb9dfd0e059e502bb285b49ffbbcb24108754cd3e028abeefebd0ba',
+        'trigger:generic_instrument_result_sources_guard_update' => 'f90fdc105f3e75e800ae696597d5935112d39df3e6de299fcf3756304fadd14a',
+        'trigger:generic_instrument_results_guard_delete' => '40b8a19a1f04a41ec69fbacdf5d75395328f28159c8fe418931d348d15229f0e',
+        'trigger:generic_instrument_results_guard_insert' => '311c21c7fded6ab2d1e31a16f922b61373a7562543a1746fae8eb0c83d42004e',
+        'trigger:generic_instrument_results_guard_update' => 'ed5bfbed0e4980ba4ca356a05504c59b63c7887b1da6312cf6f3624e8b10889e',
+    ];
+
     public function up(): void
     {
         $this->transactional(function (): void {
@@ -412,6 +424,27 @@ return new class extends Migration
                 throw new RuntimeException("Generic instrument result ledger {$name} shape is not exact.");
             }
         }
+        $checkDefinitions = collect(DB::select(<<<'SQL'
+            SELECT conname,pg_get_constraintdef(oid,false) definition
+            FROM pg_constraint WHERE conname IN (
+                'generic_instrument_results_contract_check',
+                'generic_instrument_result_sources_contract_check'
+            ) ORDER BY conname
+            SQL))->pluck('definition', 'conname')->all();
+        $expectedChecks = [
+            'generic_instrument_result_sources_contract_check' => <<<'SQL'
+                CHECK (((ordinal > 0) AND (raw_score >= 0) AND ((level >= 1) AND (level <= 5)) AND ((length((source_code)::text) >= 1) AND (length((source_code)::text) <= 32)) AND ((source_code)::text = btrim((source_code)::text)) AND ((source_code)::text !~ '[[:space:][:cntrl:]]'::text) AND (length(btrim((category)::text)) > 0) AND ((band_low IS NOT NULL) OR (band_high IS NOT NULL)) AND ((band_low IS NULL) OR (band_high IS NULL) OR (band_low <= band_high))))
+                SQL,
+            'generic_instrument_results_contract_check' => <<<'SQL'
+                CHECK (((public_id ~ '^[0-7][0-9A-HJKMNP-TV-Z]{25}$'::text) AND (session_public_id ~ '^[0-7][0-9A-HJKMNP-TV-Z]{25}$'::text) AND ((instrument_code)::text = ANY ((ARRAY['ist'::character varying, 'papi'::character varying, 'rmib'::character varying, 'kraepelin'::character varying])::text[])) AND (attempt_no > 0) AND (answers_revision > 0) AND (sealed_source_checksum ~ '^[0-9a-f]{64}$'::text) AND (session_definition_checksum ~ '^[0-9a-f]{64}$'::text) AND (instrument_checksum ~ '^[0-9a-f]{64}$'::text) AND (result_checksum ~ '^[0-9a-f]{64}$'::text) AND ((length((session_definition_version)::text) >= 1) AND (length((session_definition_version)::text) <= 100)) AND ((session_definition_version)::text = btrim((session_definition_version)::text)) AND ((session_definition_version)::text !~ '[[:space:][:cntrl:]]'::text) AND ((length((session_definition_provenance)::text) >= 1) AND (length((session_definition_provenance)::text) <= 255)) AND ((session_definition_provenance)::text = btrim((session_definition_provenance)::text)) AND ((session_definition_provenance)::text !~ '[[:space:][:cntrl:]]'::text) AND ((length((result_contract_version)::text) >= 1) AND (length((result_contract_version)::text) <= 100)) AND ((result_contract_version)::text = btrim((result_contract_version)::text)) AND ((result_contract_version)::text !~ '[[:space:][:cntrl:]]'::text) AND (jsonb_typeof(session_definition_payload) = 'object'::text) AND (jsonb_typeof(result_payload) = 'object'::text)))
+                SQL,
+        ];
+        foreach ($expectedChecks as $name => $expected) {
+            if (! isset($checkDefinitions[$name])
+                || $this->normalize($checkDefinitions[$name]) !== $this->normalize($expected)) {
+                throw new RuntimeException("Generic instrument result ledger {$name} check constraint is not exact.");
+            }
+        }
 
         $foreignDefinitions = collect(DB::select(<<<'SQL'
             SELECT conname,pg_get_constraintdef(oid,false) definition
@@ -474,7 +507,7 @@ return new class extends Migration
         }
 
         $policies = collect(DB::select(<<<'SQL'
-            SELECT tablename,policyname,cmd,roles,qual,with_check
+            SELECT tablename,policyname,permissive,cmd,roles,qual,with_check
             FROM pg_policies WHERE tablename IN (
                 'generic_instrument_results','generic_instrument_result_sources'
             ) ORDER BY tablename,policyname
@@ -487,10 +520,53 @@ return new class extends Migration
         ]) {
             throw new RuntimeException('Generic instrument result ledger policies are not exact.');
         }
+        $expectedPolicies = [
+            'generic_instrument_result_sources_service_insert' => ['PERMISSIVE', 'INSERT', '{psikotes_runtime}', null, "(app_private.app_role() = 'service'::text)"],
+            'generic_instrument_result_sources_service_select' => ['PERMISSIVE', 'SELECT', '{psikotes_runtime}', "(app_private.app_role() = 'service'::text)", null],
+            'generic_instrument_results_service_insert' => ['PERMISSIVE', 'INSERT', '{psikotes_runtime}', null, "(app_private.app_role() = 'service'::text)"],
+            'generic_instrument_results_service_select' => ['PERMISSIVE', 'SELECT', '{psikotes_runtime}', "(app_private.app_role() = 'service'::text)", null],
+        ];
         foreach ($policies as $policy) {
-            if ($policy->roles !== '{psikotes_runtime}'
-                || ! str_contains(($policy->qual ?? '').($policy->with_check ?? ''), "app_private.app_role() = 'service'")) {
+            $state = (array) $policy;
+            if (! isset($expectedPolicies[(string) $state['policyname']])
+                || [$state['permissive'], $state['cmd'], $state['roles'], $state['qual'], $state['with_check']]
+                    !== $expectedPolicies[(string) $state['policyname']]) {
                 throw new RuntimeException('Generic instrument result ledger policy predicate is not exact.');
+            }
+        }
+
+        $sequences = DB::select(<<<'SQL'
+            SELECT sequence.relname,pg_get_userbyid(sequence.relowner) owner,
+                pg_get_userbyid(table_row.relowner) table_owner,attribute.attname,
+                pg_get_expr(default_value.adbin,default_value.adrelid) default_value,
+                has_sequence_privilege('psikotes_runtime', sequence.oid, 'USAGE') runtime_usage,
+                has_sequence_privilege('psikotes_runtime', sequence.oid, 'SELECT') runtime_select,
+                has_sequence_privilege('psikotes_runtime', sequence.oid, 'UPDATE') runtime_update
+            FROM pg_class sequence
+            JOIN pg_depend dependency ON dependency.classid='pg_class'::regclass
+              AND dependency.objid=sequence.oid AND dependency.deptype='a'
+            JOIN pg_class table_row ON table_row.oid=dependency.refobjid
+            JOIN pg_attribute attribute ON attribute.attrelid=table_row.oid
+              AND attribute.attnum=dependency.refobjsubid
+            JOIN pg_attrdef default_value ON default_value.adrelid=table_row.oid
+              AND default_value.adnum=attribute.attnum
+            WHERE sequence.relkind='S' AND sequence.relname IN (
+                'generic_instrument_results_id_seq',
+                'generic_instrument_result_sources_id_seq'
+            ) ORDER BY sequence.relname
+            SQL);
+        $expectedSequenceDefaults = [
+            'generic_instrument_result_sources_id_seq' => "nextval('generic_instrument_result_sources_id_seq'::regclass)",
+            'generic_instrument_results_id_seq' => "nextval('generic_instrument_results_id_seq'::regclass)",
+        ];
+        if (count($sequences) !== 2) {
+            throw new RuntimeException('Generic instrument result ledger sequence ownership is incomplete.');
+        }
+        foreach ($sequences as $sequence) {
+            if ($sequence->owner !== $sequence->table_owner || $sequence->attname !== 'id'
+                || ($expectedSequenceDefaults[$sequence->relname] ?? null) !== $sequence->default_value
+                || ! $sequence->runtime_usage || ! $sequence->runtime_select || $sequence->runtime_update) {
+                throw new RuntimeException('Generic instrument result ledger sequence state is not exact.');
             }
         }
 
@@ -575,28 +651,22 @@ return new class extends Migration
 
     private function assertSqliteState(): void
     {
-        foreach ([self::PARENT, self::CHILD] as $table) {
-            if (DB::select("PRAGMA table_info('{$table}')") === []) {
-                throw new RuntimeException("Generic instrument result ledger {$table} columns are incomplete.");
-            }
+        $actual = [];
+        foreach (DB::select(<<<'SQL'
+            SELECT type,name,sql FROM sqlite_master
+            WHERE (name IN (
+                'generic_instrument_results','generic_instrument_result_sources',
+                'instrument_versions_result_scope_unique'
+            ) OR name LIKE 'generic_instrument_result%guard%')
+              AND sql IS NOT NULL ORDER BY type,name
+            SQL) as $definition) {
+            $state = (array) $definition;
+            $actual[(string) $state['type'].':'.(string) $state['name']] = hash(
+                'sha256', $this->normalize((string) $state['sql']),
+            );
         }
-        $support = collect(DB::select("PRAGMA index_info('".self::INSTRUMENT_SCOPE."')"))
-            ->pluck('name')->all();
-        if ($support !== ['id', 'code', 'version', 'source_file', 'checksum']) {
-            throw new RuntimeException('Generic instrument result ledger SQLite instrument scope is not exact.');
-        }
-        $triggers = collect(DB::select(<<<'SQL'
-            SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'generic_instrument_result%'
-            ORDER BY name
-            SQL))->pluck('name')->all();
-        if ($triggers !== [
-            'generic_instrument_result_sources_guard_delete',
-            'generic_instrument_result_sources_guard_update',
-            'generic_instrument_results_guard_delete',
-            'generic_instrument_results_guard_insert',
-            'generic_instrument_results_guard_update',
-        ]) {
-            throw new RuntimeException('Generic instrument result ledger SQLite guards are not exact.');
+        if ($actual !== self::SQLITE_DEFINITION_HASHES) {
+            throw new RuntimeException('Generic instrument result ledger SQLite definition is not exact.');
         }
     }
 
