@@ -22,6 +22,7 @@ use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
+use Tests\Support\ForkedProcessResult;
 use Throwable;
 
 /** PostgreSQL-authoritative P13 recovery serialization and revocation races. */
@@ -249,10 +250,10 @@ final class CheckoutHandoffRecoveryConcurrencyTest extends TestCase
                         'rawPresent' => false,
                     ];
                 }
-                fwrite($pair[1], json_encode($payload, JSON_THROW_ON_ERROR)."\n");
-                fclose($pair[1]);
-                DB::disconnect('pgsql');
-                exit(0);
+                ForkedProcessResult::sendAndExit($pair[1], $payload,
+                    static function (): void {
+                        DB::disconnect('pgsql');
+                    });
             }
             fclose($pair[1]);
             stream_set_timeout($pair[0], 15);
