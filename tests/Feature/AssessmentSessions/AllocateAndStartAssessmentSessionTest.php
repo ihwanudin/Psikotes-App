@@ -481,6 +481,7 @@ final class AllocateAndStartAssessmentSessionTest extends OrganizationPaymentTes
             $id = DB::table('entitlements')->insertGetId([
                 'participant_id' => $participant,
                 'order_id' => $order,
+                'assessment_case_id' => $type === 'dass21' ? null : $case,
                 'test_type' => $type,
                 'status' => 'ready',
                 'ready_at' => now()->subSecond(),
