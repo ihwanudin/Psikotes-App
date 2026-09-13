@@ -126,6 +126,9 @@ final readonly class ScoreSealedIstAnswerSet
             || ! is_string($payload)) {
             throw self::invalid();
         }
+        if (! hash_equals($row->checksum, hash('sha256', $payload))) {
+            throw self::invalid();
+        }
 
         try {
             $data = json_decode($payload, true, 512, JSON_THROW_ON_ERROR | JSON_BIGINT_AS_STRING);
