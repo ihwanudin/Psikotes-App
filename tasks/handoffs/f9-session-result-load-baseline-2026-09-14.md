@@ -274,6 +274,27 @@ any teardown defect is separately emitted as `CLEANUP_FAILURE`; either condition
 exits nonzero. The contract's ten added static assertions brought the total to 62. A normal exact-label full run is recorded after this repair in the final
 candidate addendum.
 
+Final post-cleanup-repair run label:
+`oncam.f9-session-result-load=69f82b4d8d4a4094bd51b99a6a1bf15e`.
+Each cell contains iterations 1/2/3; query count remained exactly 192 for start
+and 768 for reader.
+
+| Boundary |   C | Wall ms                        | ops/s                       | p50 ms                   | p95 ms                      | p99 ms                      | max ms                   | DB query ms                 |
+| -------- | --: | ------------------------------ | --------------------------- | ------------------------ | --------------------------- | --------------------------- | ------------------------ | --------------------------- |
+| start    |   1 | 1067.107 / 895.244 / 1276.297  | 59.975 / 71.489 / 50.145    | 14.023 / 12.188 / 18.029 | 19.536 / 15.698 / 21.450    | 63.760 / 62.814 / 93.894    | same as p99              | 827.79 / 681.19 / 967.39    |
+| reader   |   1 | 2099.827 / 2266.287 / 3471.483 | 121.915 / 112.960 / 73.744  | 7.752 / 8.195 / 10.908   | 11.212 / 12.637 / 26.799    | 12.182 / 14.022 / 51.665    | 35.052 / 31.980 / 57.667 | 1303.32 / 1393.98 / 2185.09 |
+| start    |   4 | 435.388 / 421.375 / 475.481    | 146.995 / 151.884 / 134.601 | 18.549 / 17.061 / 18.882 | 71.547 / 69.345 / 80.102    | 77.239 / 72.858 / 91.661    | same as p99              | 1147.12 / 1049.35 / 1223.62 |
+| reader   |   4 | 820.285 / 797.041 / 1022.510   | 312.087 / 321.188 / 250.364 | 11.050 / 10.257 / 11.039 | 14.429 / 12.346 / 14.589    | 42.232 / 50.397 / 41.102    | 43.886 / 55.979 / 51.915 | 1834.72 / 1801.49 / 1931.58 |
+| start    |   8 | 446.623 / 639.462 / 543.282    | 143.297 / 100.084 / 117.803 | 26.499 / 38.324 / 32.704 | 124.472 / 171.421 / 124.742 | 145.727 / 224.891 / 138.404 | same as p99              | 2033.49 / 2830.53 / 2313.46 |
+| reader   |   8 | 801.551 / 835.608 / 726.783    | 319.381 / 306.364 / 352.237 | 16.271 / 16.715 / 15.225 | 25.629 / 30.394 / 24.341    | 68.529 / 76.232 / 79.357    | 80.405 / 81.568 / 89.036 | 2878.52 / 3122.09 / 2808.97 |
+
+All 2,880 measured operations completed with zero errors and the same exact
+736-session/672-start/64-result/576-source/replay invariants. Connections were
+2/5/9; lock-wait samples, temp files/bytes, deadlocks, and conflicts were zero.
+Runner cleanup reported containers 0, networks 0, temp removed `True`; an
+independent exact-label/temp inventory also returned 0/0/0. These slower local
+values further confirm material host variance and remain baseline-only.
+
 ## Correctness and static verification
 
 - PHP and PowerShell parsers: zero errors.
