@@ -344,3 +344,27 @@ workers are active from baseline `a522f47`: four-instrument authority manifest,
 ADR-0030 start-flow readiness, and vertical instrument UI readiness. Their exact
 outputs and ownership are recorded in the integration handoff. No production
 file is worker-owned in this audit wave.
+
+## Tech Lead Wave 1 dispatch — 2026-09-13
+
+PM accepted a new integration target on `codex/f2-wave1-integration`. The clean
+functional base is the atomic S1/S2 stack at `5d043a1`; governance-only overlay
+`11763b3` was replayed as `3c92c5c`. The next accepted order is R0, then S3.
+F5 commit `2a078db`, the dirty S4 candidate, and release report `686b189` remain
+outside implementation acceptance. Product/release status remains partial.
+
+Only two workers are initially dependency-unblocked. S3 is intentionally not
+dispatched until the R0 integration commit has passed Tech Lead review and can
+serve as its exact base.
+
+| Task/thread ID | Lane and phase | Branch/worktree | Baseline | Exclusive ownership | Increment and acceptance | Status / next checkpoint |
+|---|---|---|---|---|---|---|
+| `/root/wave1_r0_r1` | F2 R0 integration and smallest R1 IST result contract | `codex/f2-r0-persistence-seam`; `C:/Users/ThinkPad/.codex/worktrees/r0-wave1/Psikotes` | functional `5d043a1`; governance overlay `3c92c5c` | `app/Domain/AssessmentResults/**`, `app/Services/AssessmentResults/**`, `tests/Unit/AssessmentResults/**`, and `tests/Feature/AssessmentResults/**` only | Integrate accepted `db8b1c1` without persistence/HTTP claims, then add one synthetic, unwired IST adapter and strict immutable result DTO test-first. No migration, queue, route, active catalog, or DASS/Kraepelin expansion. | active; first checkpoint is the clean R0 commit and focused/static evidence |
+| `/root/wave1_s4_pg` | F2 S4 PostgreSQL runtime-role repair; sole migration owner | `codex/f2-s4-runtime-role-repair`; `C:/Users/ThinkPad/.codex/worktrees/case-schema-sept10/Psikotes` | divergent six-commit stack ending `1a51347` | migration `2026_09_10_000500_contract_generic_entitlement_uniqueness.php`, `phpunit.organization-postgres.xml`, and its four recorded focused migration tests only | Keep DDL owner-only; prove behavioral insert/duplicate/tenant denial through `psikotes_runtime`; require green disposable PostgreSQL, RLS/concurrency/rollback evidence, and exact-label cleanup. | active repair candidate; cannot integrate before Tech Lead review |
+| pending after R0 review | F2 S3 trusted participant start integration | new clean branch/worktree from the accepted R0 baseline | pending R0 result commit | `StartParticipantAssessmentSession.php`, `AllocateAndStartAssessmentSession.php`, and their focused tests only | Reintegrate the audited S3 delta, preserve `93dd8ea` patch equivalence, and rerun the 56-test/242-assertion focused matrix plus static gates. No S5 HTTP wiring. | blocked on R0 landing; no worker owns these files yet |
+
+Coordinator retains sole ownership of shared routes, DTO/API contracts, ADRs,
+lockfiles, canonical checklists, and this dispatch record. No live migration,
+deployment, real payment, scheduler, outbound action, or feature activation is
+authorized. Worker completion remains review-pending until the Tech Lead
+inspects the exact commit and independently reruns risk-proportionate gates.
