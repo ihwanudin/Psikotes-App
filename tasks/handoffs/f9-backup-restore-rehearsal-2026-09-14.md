@@ -21,7 +21,7 @@ in the canonical acceptance matrix, and no T-01..T-28 status changes here.
   `C:/Users/ThinkPad/.codex/worktrees/f9-backup-restore/Psikotes`.
 - Exact baseline: `8bde313b0feafcbe5b79038267c3a3890e42f4d3`.
 - Rehearsed implementation commit:
-  `a2aee8e9df8e6233211a27d749dc2513322b943c`.
+  `3f4012d3433a07eb8d642af8094b3eedc274ab1c`.
 - Final evidence commit: reported to the coordinator after commit because a
   commit cannot embed its own SHA.
 - Exclusive repository writes:
@@ -76,20 +76,28 @@ The custom archive is created with `pg_dump --format=custom`, inspected with
 `pg_restore --list`, and restored with `pg_restore --single-transaction
 --exit-on-error --no-owner`. Source and destination must match on:
 
-- relations, columns/defaults/nullability, constraints including normalized
-  CHECK semantics, indexes including normalized expression/predicate semantics,
-  triggers, policies including normalized USING/WITH CHECK semantics, functions,
-  RLS/FORCE-RLS flags, owners, and explicit ACLs;
+- relations, columns/defaults/nullability, constraints including compared CHECK
+  expressions, indexes including compared expression/predicate definitions,
+  triggers, policies including compared USING/WITH CHECK expressions, functions,
+  RLS/FORCE-RLS flags, relation owners, and explicit relation ACLs;
 - exact row/value JSON for the seven graph tables, including stored checksums;
-- public and DASS sequence state;
+- public and DASS sequence definitions (type, start, minimum, maximum,
+  increment, cycle, and cache) plus direct per-sequence `last_value` and
+  `is_called` state;
 - explicit graph cardinality `1|1|1|1|1|9`.
 
-PostgreSQL can re-deparse equivalent array casts differently after dump/restore.
-The schema manifest therefore normalizes only redundant `character varying` and
-`text` casts, parentheses, whitespace, and case; operators, literals, columns,
-functions, membership, and Boolean logic remain in the fingerprint. Archive
-inspection plus exit-on-error restoration and the structural catalog manifest
-remain independent gates.
+PostgreSQL can re-deparse one observed family of equivalent string-literal array
+casts differently after dump/restore. The schema manifest applies one narrow,
+token-preserving canonicalization: an array whose every member is a quoted
+string literal cast from `character varying`, represented either with an outer
+`text[]` cast or per-member `text` casts, is rendered in one common form. No
+case-folding, whitespace removal, or generic parenthesis removal occurs. Literal
+bytes, quoted-identifier case, and unrelated Boolean grouping therefore remain
+distinguishable. Contract regressions exercise both equivalence and those three
+non-equivalences. Expressions are base64-delimited before the manifest transform
+so unrelated catalog definitions are untouched. Archive inspection plus
+exit-on-error restoration and the structural catalog manifest remain independent
+gates.
 
 A byte-truncated copy is restored into a separate clean database using the same
 single-transaction/exit-on-error flags. Success is forbidden; after the expected
@@ -106,6 +114,16 @@ RED was recorded before the runner existed:
 Backup/restore runner is missing.
 ```
 
+The Tech Lead repair contract was then made RED before implementation:
+
+```text
+Sequence fingerprint must include the sequence data type.
+```
+
+That repair contract also added executable expression regressions and static
+coverage requirements for every sequence definition/state field described
+above.
+
 GREEN contract command:
 
 ```powershell
@@ -116,7 +134,7 @@ powershell -NoProfile -ExecutionPolicy Bypass `
 Result:
 
 ```text
-postgres-backup-restore-contract: PASS (24 assertions)
+postgres-backup-restore-contract: PASS (37 assertions)
 ```
 
 Rehearsal command (run twice from the clean implementation commit):
@@ -132,11 +150,11 @@ powershell -NoProfile -ExecutionPolicy Bypass `
 Run 1:
 
 ```text
-label=oncam.f9-backup-restore=6eaa4f92231e4db4bf6f2591baaf077d
-dump_elapsed_ms=397 restore_elapsed_ms=759 archive_bytes=452708
-schema_sha256=d1b181e91d7e32595e56919a2273aeb19c71cfb86f7ef80971d75cdc7f595cf7
+label=oncam.f9-backup-restore=e94e799e1abd46e2aee8903868efbe17
+dump_elapsed_ms=434 restore_elapsed_ms=659 archive_bytes=452708
+schema_sha256=d4ddb82b5f96267e40f110f745632e6f2f8781ba83bbb5eff6990701ca2d9f17
 data_sha256=9be4a78414c35d41becabb3c844141c1dc7b7dd505677595b9212e906417e125
-sequence_sha256=abfe78e60afb6c85de3d025ac016553fff1cc17ac0d75cdc8fb11800f371500b
+sequence_sha256=f848bfc8f2debe756e02d53aa8576b4fb851c1c75ece2e59cd7767ad01985768
 graph=1|1|1|1|1|9 corrupt_restore_exit=1 corrupt_partial_state=0
 cleanup containers=0 networks=0 temp_removed=True
 ```
@@ -144,11 +162,11 @@ cleanup containers=0 networks=0 temp_removed=True
 Run 2:
 
 ```text
-label=oncam.f9-backup-restore=1452937a1f504433a260f8f0d4c28e05
-dump_elapsed_ms=381 restore_elapsed_ms=676 archive_bytes=452708
-schema_sha256=d1b181e91d7e32595e56919a2273aeb19c71cfb86f7ef80971d75cdc7f595cf7
+label=oncam.f9-backup-restore=65f6aa6acf11487fb2a90c3fae583e40
+dump_elapsed_ms=424 restore_elapsed_ms=674 archive_bytes=452708
+schema_sha256=d4ddb82b5f96267e40f110f745632e6f2f8781ba83bbb5eff6990701ca2d9f17
 data_sha256=9be4a78414c35d41becabb3c844141c1dc7b7dd505677595b9212e906417e125
-sequence_sha256=abfe78e60afb6c85de3d025ac016553fff1cc17ac0d75cdc8fb11800f371500b
+sequence_sha256=f848bfc8f2debe756e02d53aa8576b4fb851c1c75ece2e59cd7767ad01985768
 graph=1|1|1|1|1|9 corrupt_restore_exit=1 corrupt_partial_state=0
 cleanup containers=0 networks=0 temp_removed=True
 ```
@@ -157,7 +175,7 @@ The measured times and archive size describe this small synthetic local run
 only. They are not capacity results and do not establish RPO or RTO.
 
 Security verification before staging this handoff passed the repository
-scanner suite at 50/50 and both PII and SECRET profiles at 1,397 tracked paths
+scanner suite at 50/50 and both PII and SECRET profiles at 1,398 tracked paths
 across index and working-tree snapshots. The final staged three-file candidate
 is rerun after this file enters the index; that result is reported with the
 immutable commit because this handoff is not edited afterward.
