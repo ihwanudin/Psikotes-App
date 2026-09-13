@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
-import { crc32, deflateRawSync } from 'node:zlib';
+import { crc32, deflateRawSync, deflateSync } from 'node:zlib';
 
 import {
     parseTrackedEntries,
@@ -144,7 +144,8 @@ function docx(parts = [], { replace = true } = {}) {
         },
         {
             name: 'word/document.xml',
-            content: '<?xml version="1.0"?><w:document><w:t>safe</w:t></w:document>',
+            content:
+                '<?xml version="1.0"?><w:document><w:t>safe</w:t></w:document>',
         },
     ];
 
@@ -159,6 +160,63 @@ function docx(parts = [], { replace = true } = {}) {
     }
 
     return zip(entries);
+}
+
+function pngChunk(type, content = Buffer.alloc(0)) {
+    const name = Buffer.from(type, 'ascii');
+    const header = Buffer.alloc(8);
+    header.writeUInt32BE(content.length, 0);
+    name.copy(header, 4);
+    const checksum = Buffer.alloc(4);
+    checksum.writeUInt32BE(crc32(Buffer.concat([name, content])), 0);
+
+    return Buffer.concat([header, content, checksum]);
+}
+
+function png(
+    metadata = [],
+    imageData = deflateSync(Buffer.from([0, 0, 0, 0, 0])),
+) {
+    const header = Buffer.alloc(13);
+    header.writeUInt32BE(1, 0);
+    header.writeUInt32BE(1, 4);
+    header[8] = 8;
+    header[9] = 6;
+
+    return Buffer.concat([
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+        pngChunk('IHDR', header),
+        ...metadata,
+        pngChunk('IDAT', imageData),
+        pngChunk('IEND'),
+    ]);
+}
+
+function dibIcon(payload = Buffer.alloc(0)) {
+    const width = 32;
+    const height = 32;
+    const xor = Buffer.alloc(width * height * 4);
+    payload.copy(xor, 0, 0, Math.min(payload.length, xor.length));
+    const mask = Buffer.alloc(Math.ceil(width / 32) * 4 * height);
+    const dib = Buffer.alloc(40);
+    dib.writeUInt32LE(40, 0);
+    dib.writeInt32LE(width, 4);
+    dib.writeInt32LE(height * 2, 8);
+    dib.writeUInt16LE(1, 12);
+    dib.writeUInt16LE(32, 14);
+    dib.writeUInt32LE(xor.length, 20);
+    const image = Buffer.concat([dib, xor, mask]);
+    const icon = Buffer.alloc(22);
+    icon.writeUInt16LE(1, 2);
+    icon.writeUInt16LE(1, 4);
+    icon[6] = width;
+    icon[7] = height;
+    icon.writeUInt16LE(1, 10);
+    icon.writeUInt16LE(32, 12);
+    icon.writeUInt32LE(image.length, 14);
+    icon.writeUInt32LE(icon.length, 18);
+
+    return Buffer.concat([icon, image]);
 }
 
 function mutate(bytes, signature, fieldOffset, size, value) {
@@ -261,7 +319,9 @@ test('DOCX scans document metadata comments headers and relationships without ex
             ]) {
                 await assert.rejects(scan(root, kind), (error) => {
                     assert.deepEqual(
-                        [...new Set(error.findings.map(({ rule }) => rule))].sort(),
+                        [
+                            ...new Set(error.findings.map(({ rule }) => rule)),
+                        ].sort(),
                         rules,
                     );
                     const report = JSON.stringify(error);
@@ -409,10 +469,9 @@ test('DOCX rejects traversal duplicate encrypted descriptor ZIP64 special-mode a
     );
     const scenarios = [
         docx([{ name: '../hidden.xml', content: '<hidden/>' }]),
-        docx(
-            [{ name: 'word/document.xml', content: '<duplicate/>' }],
-            { replace: false },
-        ),
+        docx([{ name: 'word/document.xml', content: '<duplicate/>' }], {
+            replace: false,
+        }),
         docx([
             {
                 name: 'word/link.xml',
@@ -430,7 +489,10 @@ test('DOCX rejects traversal duplicate encrypted descriptor ZIP64 special-mode a
         await withRepository(
             { 'requirements.docx': file },
             async (root) =>
-                assert.rejects(scan(root, 'secret'), /malformed or unsupported/i),
+                assert.rejects(
+                    scan(root, 'secret'),
+                    /malformed or unsupported/i,
+                ),
             { max_blob_bytes: 1024 * 1024 },
         );
     }
@@ -445,11 +507,17 @@ test('DOCX rejects decompression bombs unsupported media and unsafe XML without 
                 content: `<w:document>${'x'.repeat(2048)}</w:document>`,
             },
         ]),
-        docx([{ name: 'word/media/image1.png', content: Buffer.from([0x89, 0x50]) }]),
+        docx([
+            {
+                name: 'word/media/image1.png',
+                content: Buffer.from([0x89, 0x50]),
+            },
+        ]),
         docx([
             {
                 name: 'word/document.xml',
-                content: '<!DOCTYPE x [<!ENTITY y "unsafe">]><w:document>&y;</w:document>',
+                content:
+                    '<!DOCTYPE x [<!ENTITY y "unsafe">]><w:document>&y;</w:document>',
             },
         ]),
         docx([
@@ -494,7 +562,9 @@ test('tracked Markdown ZIP scans every entry with redacted ordinal identifiers',
                 ['pii', 'indonesian_phone'],
             ]) {
                 await assert.rejects(scan(root, kind), (error) => {
-                    assert(error.findings.some((finding) => finding.rule === rule));
+                    assert(
+                        error.findings.some((finding) => finding.rule === rule),
+                    );
                     const report = JSON.stringify(error);
 
                     for (const innerName of innerNames) {
@@ -535,13 +605,19 @@ test('both staged and working-tree Markdown ZIP snapshots are scanned', async ()
             );
 
             await assert.rejects(scan(root, 'secret'), (error) => {
-                assert(error.findings.some(({ rule }) => rule === 'aws_access_key'));
+                assert(
+                    error.findings.some(
+                        ({ rule }) => rule === 'aws_access_key',
+                    ),
+                );
 
                 return true;
             });
             await assert.rejects(scan(root, 'pii'), (error) => {
                 assert(
-                    error.findings.some(({ rule }) => rule === 'indonesian_phone'),
+                    error.findings.some(
+                        ({ rule }) => rule === 'indonesian_phone',
+                    ),
                 );
 
                 return true;
@@ -587,7 +663,11 @@ test('Markdown ZIP delegates UTF decoding to the repository scanner', async () =
         { 'files.zip': zip([{ name: 'utf16.md', content }]) },
         async (root) => {
             await assert.rejects(scan(root, 'secret'), (error) => {
-                assert(error.findings.some(({ rule }) => rule === 'aws_access_key'));
+                assert(
+                    error.findings.some(
+                        ({ rule }) => rule === 'aws_access_key',
+                    ),
+                );
 
                 return true;
             });
@@ -600,14 +680,20 @@ test('scanner implementation and tests contain no detectable secret or PII liter
     const scanner = await readFile(
         new URL('./repository-content-scan.mjs', import.meta.url),
     );
-    const ooxml = await readFile(new URL('./ooxml-content.mjs', import.meta.url));
+    const ooxml = await readFile(
+        new URL('./ooxml-content.mjs', import.meta.url),
+    );
     const zipText = await readFile(
         new URL('./zip-text-content.mjs', import.meta.url),
+    );
+    const imageContent = await readFile(
+        new URL('./image-content.mjs', import.meta.url),
     );
     const tests = await readFile(new URL(import.meta.url));
 
     await withRepository(
         {
+            'image-content.mjs': imageContent,
             'ooxml.mjs': ooxml,
             'scanner.mjs': scanner,
             'scanner.test.mjs': tests,
@@ -737,6 +823,41 @@ test('only exact reserved synthetic contacts and unrelated long numbers pass PII
     );
 });
 
+test('repository-owned synthetic phone fixtures are exact and incomplete code literals are not identities', async () => {
+    const exactFixtures = [
+        ['08', '0000000000'].join(''),
+        ['08', '0000000001'].join(''),
+        ['08', '0000000002'].join(''),
+        ['08', '0000000003'].join(''),
+        ['08', '0000000004'].join(''),
+        ['08', '0000000005'].join(''),
+        ['0812', '00000000'].join(''),
+        ['62', '0000000001'].join(''),
+        ['62', '0000000999'].join(''),
+        ['628', '000000000'].join(''),
+        ['628', '00123456'].join(''),
+        ['628', '111111111'].join(''),
+        ['629', '999999999'].join(''),
+    ];
+    const incompletePhp = [['628', '11111111'].join(''), "'.$suffix"].join('');
+    const incompletePadded = [
+        ['+628', '1234567'].join(''),
+        "'.str_pad($attempt)",
+    ].join('');
+
+    await withRepository(
+        {
+            'fixtures.txt': [
+                ...exactFixtures,
+                incompletePhp,
+                incompletePadded,
+            ].join('\n'),
+        },
+        async (root) =>
+            assert.deepEqual((await scan(root, 'pii')).findings, []),
+    );
+});
+
 test('realistic phones containing repeated or ascending digits remain PII', async () => {
     const repeated = ['6281', '1111', '1119'].join('');
     const ascending = ['+6281', '2345', '6781'].join('');
@@ -798,15 +919,112 @@ test('control characters in reported paths are encoded against log injection', (
     assert.match(encoded, /^[\x20-\x7e]+$/);
 });
 
-test('binary PNG and ICO blobs fail closed without a content extractor', async () => {
+test('strict clean PNG and ICO images pass both profiles by magic bytes', async () => {
+    await withRepository(
+        {
+            'asset-without-extension': png(),
+            'favicon.ico': dibIcon(),
+        },
+        async (root) => {
+            assert.deepEqual((await scan(root, 'secret')).findings, []);
+            assert.deepEqual((await scan(root, 'pii')).findings, []);
+        },
+        { max_blob_bytes: 1024 * 1024 },
+    );
+});
+
+test('PNG text metadata and ICO raster bytes remain secret and PII scan surfaces', async () => {
+    const token = secretCanary();
+    const phone = ['+62', '81297538641'].join('');
+    const compressedText = Buffer.concat([
+        Buffer.from('audit\0\0', 'latin1'),
+        deflateSync(Buffer.from(token)),
+    ]);
+    const internationalText = Buffer.concat([
+        Buffer.from('contact\0\0\0\0\0', 'utf8'),
+        Buffer.from(phone),
+    ]);
+
+    await withRepository(
+        {
+            'metadata.png': png([
+                pngChunk('zTXt', compressedText),
+                pngChunk('iTXt', internationalText),
+            ]),
+            'embedded.ico': dibIcon(Buffer.from(`${token}\n${phone}`)),
+        },
+        async (root) => {
+            await assert.rejects(scan(root, 'secret'), (error) => {
+                assert.deepEqual(
+                    new Set(
+                        error.findings.map(
+                            ({ path, rule }) => `${path}:${rule}`,
+                        ),
+                    ),
+                    new Set([
+                        'embedded.ico#frame-0001:aws_access_key',
+                        'metadata.png#text-0001:aws_access_key',
+                    ]),
+                );
+
+                return true;
+            });
+            await assert.rejects(scan(root, 'pii'), (error) => {
+                assert.deepEqual(
+                    new Set(
+                        error.findings.map(
+                            ({ path, rule }) => `${path}:${rule}`,
+                        ),
+                    ),
+                    new Set([
+                        'embedded.ico#frame-0001:indonesian_phone',
+                        'metadata.png#text-0002:indonesian_phone',
+                    ]),
+                );
+
+                return true;
+            });
+        },
+        { max_blob_bytes: 1024 * 1024 },
+    );
+});
+
+test('PNG and ICO classifiers reject malformed, ambiguous, and hidden metadata carriers', async () => {
+    const corrupted = Buffer.from(png());
+    corrupted[corrupted.length - 1] ^= 0xff;
+    const unknownAncillary = png([pngChunk('vpAg', Buffer.from('hidden'))]);
+    const invalidRaster = png([], Buffer.from('not-a-zlib-stream'));
+    const truncatedIcon = dibIcon().subarray(0, 64);
+
     for (const [name, bytes] of [
-        ['asset.png', Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00])],
-        ['asset.ico', Buffer.from([0x00, 0x00, 0x01, 0x00, 0xff])],
+        ['corrupted.png', corrupted],
+        ['unknown.png', unknownAncillary],
+        ['invalid-raster.png', invalidRaster],
+        ['truncated.ico', truncatedIcon],
     ]) {
         await withRepository({ [name]: bytes }, async (root) => {
-            await assert.rejects(scan(root, 'secret'), /encoding/i);
+            await assert.rejects(scan(root, 'secret'), /image/i);
         });
     }
+});
+
+test('PNG metadata decompression is bounded across all chunks', async () => {
+    const compressed = deflateSync(Buffer.alloc(700, 0x41));
+    const carrier = png([
+        pngChunk('zTXt', Buffer.concat([Buffer.from('first\0\0'), compressed])),
+        pngChunk(
+            'zTXt',
+            Buffer.concat([Buffer.from('second\0\0'), compressed]),
+        ),
+    ]);
+
+    await withRepository(
+        { 'aggregate-bomb.png': carrier },
+        async (root) => {
+            await assert.rejects(scan(root, 'secret'), /image/i);
+        },
+        { max_blob_bytes: 1024 },
+    );
 });
 
 test('PII fingerprint exceptions are forbidden without private fingerprint authority', async () => {
