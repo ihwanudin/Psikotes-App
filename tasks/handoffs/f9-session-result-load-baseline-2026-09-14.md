@@ -71,7 +71,8 @@ Git archive of that SHA. It uses pinned `psikotes-app:dev` and
 published ports, PostgreSQL tmpfs, task temp outside the repository, a read-only
 real vendor bind, and synthetic data only. The migrated owner is replaced before
 work by `psikotes_runtime`; the harness verifies `NOSUPERUSER` and
-`NOBYPASSRLS`. Every boundary call uses service context and a transaction.
+`NOBYPASSRLS`. Start calls enter the action's own service transaction. Reader
+calls run inside a caller-owned service transaction, as required by its contract.
 
 No identifier, SQL binding, token, raw answer, participant value, or result
 payload is emitted. Query observations contain only counts and cumulative time.
@@ -103,6 +104,11 @@ math (`1/5` → `0.2`).
 
 Adversarial calls with the baseline SHA instead of HEAD and with warmup `0` both
 failed before provisioning with exit 1. Exact-label inventory remained empty.
+After TL review, an untracked probe file was added and deleted only through
+`apply_patch`. With the probe present, the exact candidate SHA run failed before
+Docker provisioning with exit 1 and the message `Dirty tracked or untracked
+worktree refused before provisioning.` Global exact-label inventory was zero
+containers and zero networks; deletion restored a clean tree.
 
 Two harness defects were found before accepted measurements:
 
@@ -204,14 +210,60 @@ change occurred between runs. It is direct evidence that this local setup has
 material run-to-run variance and is unsuitable for a threshold until a PM-owned
 SLO and a calibrated, controlled environment exist.
 
+## TL worker-exit repair and superseding runs
+
+TL review found that worker `waitpid` statuses were collected but not checked.
+The contract was made RED on the missing normal-exit assertion, then GREEN at
+52 assertions. The harness now requires `pcntl_wifexited($status)` and exact
+`pcntl_wexitstatus($status) === 0` for every child. Missing, nonzero, and signaled
+status throws the identifier-free `WORKER_EXIT_STATUS_INVALID`, even if a
+plausible metrics file exists. The executable metric self-test accepts status
+zero and rejects encoded exit-one and signal-nine statuses. This is commit
+`96cb53f`; no product code or workload changed.
+
+The two full runs below supersede the earlier performance tables for final
+candidate review. Each table cell lists the three measured iterations in order.
+Query count remained exactly 192 per start iteration and 768 per reader
+iteration.
+
+| Run/label | Boundary | C | Wall ms | ops/s | p50 ms | p95 ms | p99 ms | max ms | DB query ms |
+|---|---|---:|---|---|---|---|---|---|---|
+| `6ccdbd...` | start | 1 | 530.153 / 555.503 / 539.616 | 120.720 / 115.211 / 118.603 | 6.926 / 7.328 / 7.141 | 10.848 / 10.866 / 9.509 | 36.144 / 40.732 / 38.232 | same as p99 | 403.80 / 430.40 / 420.37 |
+| `6ccdbd...` | reader | 1 | 1240.366 / 1118.894 / 1011.189 | 206.391 / 228.797 / 253.167 | 4.108 / 4.109 / 3.715 | 7.086 / 4.994 / 4.380 | 8.807 / 6.611 / 4.672 | 20.611 / 22.226 / 21.405 | 755.65 / 680.98 / 609.64 |
+| `6ccdbd...` | start | 4 | 266.297 / 275.010 / 331.469 | 240.333 / 232.719 / 193.080 | 9.950 / 10.793 / 13.084 | 38.376 / 47.552 / 55.941 | 47.315 / 54.025 / 61.233 | same as p99 | 632.33 / 673.18 / 822.58 |
+| `6ccdbd...` | reader | 4 | 436.765 / 576.760 / 558.095 | 586.128 / 443.859 / 458.704 | 5.750 / 7.396 / 7.315 | 6.634 / 8.948 / 8.661 | 25.232 / 33.055 / 35.250 | 26.252 / 35.876 / 37.388 | 1008.38 / 1272.68 / 1292.17 |
+| `6ccdbd...` | start | 8 | 315.480 / 366.564 / 357.987 | 202.866 / 174.594 / 178.778 | 18.143 / 18.221 / 22.179 | 75.467 / 81.247 / 82.035 | 85.649 / 90.458 / 99.254 | same as p99 | 1302.61 / 1393.88 / 1554.92 |
+| `6ccdbd...` | reader | 8 | 455.064 / 526.627 / 488.844 | 562.559 / 486.112 / 523.685 | 9.768 / 10.470 / 10.391 | 12.667 / 15.236 / 12.474 | 45.410 / 48.503 / 49.210 | 54.174 / 51.070 / 53.754 | 1765.85 / 1884.31 / 1863.16 |
+| `c14430...` | start | 1 | 497.818 / 538.951 / 511.063 | 128.561 / 118.749 / 125.229 | 6.277 / 6.822 / 6.753 | 8.712 / 11.060 / 8.913 | 35.758 / 35.531 / 33.660 | same as p99 | 368.98 / 411.97 / 393.17 |
+| `c14430...` | reader | 1 | 1015.240 / 1029.459 / 1147.198 | 252.157 / 248.674 / 223.152 | 3.459 / 3.681 / 3.933 | 5.664 / 4.873 / 6.010 | 6.501 / 6.316 / 7.734 | 17.612 / 20.067 / 24.717 | 617.18 / 621.20 / 699.85 |
+| `c14430...` | start | 4 | 294.139 / 314.819 / 321.975 | 217.584 / 203.292 / 198.773 | 11.672 / 12.358 / 12.822 | 46.152 / 52.075 / 56.272 | 50.375 / 60.068 / 63.266 | same as p99 | 719.34 / 781.57 / 818.67 |
+| `c14430...` | reader | 4 | 539.384 / 584.681 / 584.044 | 474.616 / 437.845 / 438.323 | 7.001 / 7.577 / 7.621 | 8.096 / 9.256 / 9.177 | 34.459 / 32.196 / 33.557 | 38.928 / 32.824 / 35.484 | 1228.07 / 1339.96 / 1339.81 |
+| `c14430...` | start | 8 | 322.703 / 409.239 / 433.180 | 198.325 / 156.388 / 147.745 | 18.257 / 24.759 / 24.674 | 78.772 / 111.208 / 100.110 | 92.217 / 121.572 / 113.750 | same as p99 | 1342.84 / 1871.95 / 1791.24 |
+| `c14430...` | reader | 8 | 497.961 / 488.347 / 529.470 | 514.096 / 524.218 / 483.502 | 10.149 / 10.344 / 10.673 | 13.152 / 12.560 / 12.913 | 47.991 / 49.020 / 49.734 | 51.699 / 54.888 / 53.518 | 1829.78 / 1897.03 / 1927.07 |
+
+Full labels were
+`oncam.f9-session-result-load=6ccdbd04f2774eda8a3002395d46a3f0` and
+`oncam.f9-session-result-load=c144302740d549c2b7679e087c8906a0`.
+Each run completed 2,880/2,880 measured calls with zero errors, exact
+736/736 participants/sessions, 672 started exactly once, 64 results/576 ordered
+sources, and three unchanged replay samples. Connections were 2/5/9; sampled
+lock waits, temp files/bytes, deadlocks, and conflicts were zero; cleanup was
+containers 0, networks 0, temp removed `True`.
+
+Superseding run median ops/s changed by approximately +5.6%, +8.7%, -12.6%,
+-4.4%, -12.5%, and -1.8% across start-1, reader-1, start-4, reader-4,
+start-8, and reader-8. Median p95 changed by -17.8%, +13.4%, +9.5%, +6.0%,
++23.2%, and +1.9%. This mixed, material spread remains host-noise evidence,
+not a regression/improvement judgment or an SLO.
+
 ## Correctness and static verification
 
 - PHP and PowerShell parsers: zero errors.
 - `git diff --check`: pass.
 - Relevant SQLite boundary regression in a disposable app container:
   `StartAssessmentSessionTest` plus `LoadPersistedIstResultTest`, 9 tests / 73
-  assertions, pass; label `4f991b1414e14b09bd857cd840fefbcf`, cleanup
-  containers 0.
+  assertions, pass. The final post-repair rerun used label
+  `1a831ab78c7643efbbc8be30f49394b0` and cleaned to containers 0.
 - Repository security scanner: 50/50 pass.
 - PII and SECRET profile results are run on the final staged four-file state and
   reported with the immutable candidate SHA.
