@@ -31,6 +31,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use JsonException;
+use LogicException;
 use RuntimeException;
 
 /**
@@ -57,24 +58,22 @@ final class AllocateAndStartAssessmentSession
         $this->clock = $clock ?? static fn (): DateTimeImmutable => new DateTimeImmutable('now');
     }
 
-    public function execute(
-        AssessmentPrincipal|ParticipantPrincipal $principal,
-        string $testType,
+    public function executeIntegrated(
+        AssessmentPrincipal $principal,
+        GenericAssessmentInstrument $instrument,
     ): AssessmentSessionAllocationResult {
-        // This typed boundary intentionally executes before RLS setup or any SQL.
-        $instrument = GenericAssessmentInstrument::fromExternal($testType);
-        $attemptLimit = $this->contexts->current() === null ? self::MAX_TRANSACTION_ATTEMPTS : 1;
+        $this->assertCleanOuterBoundary();
 
-        for ($attempt = 1; $attempt <= $attemptLimit; $attempt++) {
+        for ($attempt = 1; $attempt <= self::MAX_TRANSACTION_ATTEMPTS; $attempt++) {
             try {
                 /** @var AssessmentSessionAllocationResult $result */
                 $result = $this->contexts->runAsService(
-                    fn (): AssessmentSessionAllocationResult => $this->withinTransaction($principal, $instrument),
+                    fn (): AssessmentSessionAllocationResult => $this->withinIntegratedTransaction($principal, $instrument),
                 );
 
                 return $result;
             } catch (QueryException $exception) {
-                if ($attempt === $attemptLimit || ! $this->isRetryableTransactionFailure($exception)) {
+                if ($attempt === self::MAX_TRANSACTION_ATTEMPTS || ! $this->isRetryableTransactionFailure($exception)) {
                     throw $exception;
                 }
             }
@@ -83,8 +82,29 @@ final class AllocateAndStartAssessmentSession
         throw new RuntimeException('Assessment session allocation exhausted its transaction attempts.');
     }
 
-    private function withinTransaction(
-        AssessmentPrincipal|ParticipantPrincipal $principal,
+    public function allocateSelectedParticipantForUpdate(
+        ParticipantPrincipal $principal,
+        GenericAssessmentInstrument $instrument,
+        CaseAuthorization $authorization,
+    ): AssessmentSessionAllocationResult {
+        $this->assertServiceTransaction();
+        if ($authorization->participantId !== $principal->participantId
+            || $authorization->organizationId !== $principal->branchId
+            || $authorization->instrument !== $instrument
+            || $authorization->origin === CaseAuthorizationOrigin::Integrated) {
+            throw new InvalidAssessmentSessionState('Selected participant authorization scope changed before allocation.');
+        }
+
+        $replay = $this->replay($principal, $instrument, $authorization->origin, $authorization);
+        if ($replay !== null) {
+            return $replay;
+        }
+
+        return $this->allocateNew($principal, $instrument, $authorization);
+    }
+
+    private function withinIntegratedTransaction(
+        AssessmentPrincipal $principal,
         GenericAssessmentInstrument $instrument,
     ): AssessmentSessionAllocationResult {
         $participant = $this->lockParticipant($principal);
@@ -95,9 +115,7 @@ final class AllocateAndStartAssessmentSession
             return $replay;
         }
 
-        $authorization = $principal instanceof AssessmentPrincipal
-            ? $this->authorizations->resolveIntegratedForUpdate($principal, $instrument)
-            : $this->authorizations->resolveParticipantForUpdate($principal, $instrument);
+        $authorization = $this->authorizations->resolveIntegratedForUpdate($principal, $instrument);
         if ($authorization->origin !== $origin) {
             throw new InvalidAssessmentSessionState('Resolved authorization origin changed during allocation.');
         }
@@ -108,10 +126,18 @@ final class AllocateAndStartAssessmentSession
             return $replay;
         }
 
+        return $this->allocateNew($principal, $instrument, $authorization);
+    }
+
+    private function allocateNew(
+        AssessmentPrincipal|ParticipantPrincipal $principal,
+        GenericAssessmentInstrument $instrument,
+        CaseAuthorization $authorization,
+    ): AssessmentSessionAllocationResult {
         $grant = $this->grantIdentity($principal, $authorization);
         $authorizationId = $this->authorizationId($authorization->origin, $authorization->grantKind, $authorization->grantId);
         $intentId = $this->intentId($authorization->origin, $authorization->grantKind, $authorization->grantId, $instrument);
-        $history = $this->lockHistory($authorization->participantId, $instrument);
+        $history = $this->lockHistory($authorization->participantId, $instrument, $authorization->caseId);
         $newSessionPublicId = (string) Str::ulid();
         $decision = $this->allocationPolicy->decide(
             $this->attempts($history),
@@ -215,6 +241,7 @@ final class AllocateAndStartAssessmentSession
         AssessmentPrincipal|ParticipantPrincipal $principal,
         GenericAssessmentInstrument $instrument,
         CaseAuthorizationOrigin $origin,
+        ?CaseAuthorization $authorization = null,
     ): ?AssessmentSessionAllocationResult {
         $query = DB::table('test_session_grants')
             ->where('participant_id', $principal->participantId)
@@ -225,6 +252,10 @@ final class AllocateAndStartAssessmentSession
             ->where('origin', $origin->value);
         if ($principal instanceof AssessmentPrincipal) {
             $query->where('assessment_participant_id', $principal->assessmentParticipantId);
+        }
+        if ($authorization !== null) {
+            $query->where('assessment_case_id', $authorization->caseId)
+                ->where('entitlement_id', $authorization->grantId);
         }
         $grants = $query->orderBy('test_session_id')->lockForUpdate()->limit(2)->get();
         if ($grants->count() > 1) {
@@ -242,7 +273,7 @@ final class AllocateAndStartAssessmentSession
             throw new InvalidAssessmentSessionState('Assessment session grant has no session.');
         }
         $session = (array) $sessionRow;
-        $history = $this->lockHistory($principal->participantId, $instrument);
+        $history = $this->lockHistory($principal->participantId, $instrument, $authorization?->caseId);
         $serverTime = $this->serverTime();
         if ($history->count() !== 1 || (int) ($session['attempt_no'] ?? 0) !== 1) {
             throw new InvalidAssessmentSessionState('Only one first attempt can be replayed.');
@@ -349,11 +380,19 @@ final class AllocateAndStartAssessmentSession
     }
 
     /** @return Collection<int, array<string, mixed>> */
-    private function lockHistory(int $participantId, GenericAssessmentInstrument $instrument): Collection
-    {
-        return DB::table('test_sessions')
+    private function lockHistory(
+        int $participantId,
+        GenericAssessmentInstrument $instrument,
+        ?int $caseId = null,
+    ): Collection {
+        $query = DB::table('test_sessions')
             ->where('participant_id', $participantId)
-            ->where('test_type', $instrument->value)
+            ->where('test_type', $instrument->value);
+        if ($caseId !== null) {
+            $query->where('assessment_case_id', $caseId);
+        }
+
+        return $query
             ->orderBy('attempt_no')
             ->orderBy('id')
             ->lockForUpdate()
@@ -420,10 +459,14 @@ final class AllocateAndStartAssessmentSession
         $table = $authorization->grantKind === CaseAuthorizationGrantKind::AssessmentEntitlement
             ? 'assessment_entitlements'
             : 'entitlements';
-        $updated = DB::table($table)
+        $query = DB::table($table)
             ->where('id', $authorization->grantId)
             ->where('participant_id', $authorization->participantId)
-            ->where('test_type', $authorization->instrument->value)
+            ->where('test_type', $authorization->instrument->value);
+        if ($authorization->grantKind === CaseAuthorizationGrantKind::Entitlement) {
+            $query->where('assessment_case_id', $authorization->caseId);
+        }
+        $updated = $query
             ->where('status', 'ready')
             ->whereNotNull('ready_at')
             ->whereNull('started_at')
@@ -584,6 +627,20 @@ final class AllocateAndStartAssessmentSession
     private function timestamp(DateTimeImmutable $time): string
     {
         return $this->utc($time)->format('Y-m-d H:i:s.uP');
+    }
+
+    private function assertCleanOuterBoundary(): void
+    {
+        if ($this->contexts->current() !== null || DB::transactionLevel() !== 0) {
+            throw new LogicException('Assessment session allocation must own its outer service transaction.');
+        }
+    }
+
+    private function assertServiceTransaction(): void
+    {
+        if ($this->contexts->current()?->role !== 'service' || DB::transactionLevel() < 1) {
+            throw new LogicException('Selected participant allocation requires an active service transaction.');
+        }
     }
 
     private function isRetryableTransactionFailure(QueryException $exception): bool

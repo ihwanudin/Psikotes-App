@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace Tests\Feature\AssessmentSessions;
 
 use App\Actions\AssessmentSessions\AllocateAndStartAssessmentSession;
+use App\Actions\AssessmentSessions\StartParticipantAssessmentSession;
 use App\Contracts\AssessmentSessionDefinitionAuthority;
 use App\Domain\AssessmentSessions\AssessmentAttemptAllocationPolicy;
 use App\Domain\AssessmentSessions\AssessmentSessionDeadlinePolicy;
+use App\Domain\AssessmentSessions\AssessmentSessionSelectionPolicy;
 use App\Domain\AssessmentSessions\AssessmentSessionStateMachine;
 use App\Domain\AssessmentSessions\CaseAuthorization;
 use App\Domain\AssessmentSessions\CaseAuthorizationRejected;
@@ -18,6 +20,7 @@ use App\Domain\AssessmentSessions\UnsupportedGenericAssessmentInstrument;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
 use App\Services\AssessmentSessions\CaseAuthorizationResolver;
+use App\Services\AssessmentSessions\ParticipantAssessmentSessionCandidates;
 use App\Services\ParticipantAuth\AssessmentPrincipal;
 use App\Services\ParticipantAuth\ParticipantPrincipal;
 use DateTimeImmutable;
@@ -48,7 +51,7 @@ final class AllocateAndStartAssessmentSessionTest extends OrganizationPaymentTes
 
         $result = $this->action($authority)->execute(
             new ParticipantPrincipal($fixture['participant'], $fixture['branch']),
-            'ist',
+            GenericAssessmentInstrument::Ist,
         );
 
         $session = DB::table('test_sessions')->where('public_id', $result->sessionId)->sole();
@@ -79,9 +82,10 @@ final class AllocateAndStartAssessmentSessionTest extends OrganizationPaymentTes
         $authority = new FakeAssessmentSessionDefinitionAuthority;
         $principal = new ParticipantPrincipal($fixture['participant'], $fixture['branch']);
         $action = $this->action($authority);
-        $created = $action->execute($principal, 'ist');
+        $created = $action->execute($principal, GenericAssessmentInstrument::Ist);
 
-        $replayed = $this->action($authority, '2026-09-10T02:01:00.123456+00:00')->execute($principal, 'ist');
+        $replayed = $this->action($authority, '2026-09-10T02:01:00.123456+00:00')
+            ->execute($principal, GenericAssessmentInstrument::Ist);
 
         $this->assertTrue($replayed->replayed);
         $this->assertSame($created->sessionId, $replayed->sessionId);
@@ -99,9 +103,9 @@ final class AllocateAndStartAssessmentSessionTest extends OrganizationPaymentTes
         $fixture = AssessmentAccessFixture::create('ist');
         $authority = new FakeAssessmentSessionDefinitionAuthority;
 
-        $result = $this->action($authority)->execute(
+        $result = $this->allocator($authority)->executeIntegrated(
             new AssessmentPrincipal($fixture['participant'], $fixture['organization'], $fixture['attempt']),
-            'ist',
+            GenericAssessmentInstrument::Ist,
         );
 
         $session = DB::table('test_sessions')->where('public_id', $result->sessionId)->sole();
@@ -119,7 +123,7 @@ final class AllocateAndStartAssessmentSessionTest extends OrganizationPaymentTes
 
         $result = $this->action(new FakeAssessmentSessionDefinitionAuthority)->execute(
             new ParticipantPrincipal($fixture['participant'], $fixture['branch']),
-            'ist',
+            GenericAssessmentInstrument::Ist,
         );
 
         $session = DB::table('test_sessions')->where('public_id', $result->sessionId)->sole();
@@ -139,7 +143,7 @@ final class AllocateAndStartAssessmentSessionTest extends OrganizationPaymentTes
         });
 
         try {
-            $this->action($authority)->execute(new ParticipantPrincipal(999, 999), 'dass21');
+            GenericAssessmentInstrument::fromExternal('dass21');
             $this->fail('DASS must never enter the generic allocator.');
         } catch (UnsupportedGenericAssessmentInstrument) {
             $this->assertSame([], $queries);
@@ -169,10 +173,10 @@ final class AllocateAndStartAssessmentSessionTest extends OrganizationPaymentTes
         try {
             $this->action($authority)->execute(
                 new ParticipantPrincipal($fixture['participant'], $fixture['branch']),
-                'ist',
+                GenericAssessmentInstrument::Ist,
             );
             $this->fail('Historical unbound sessions must block allocation.');
-        } catch (InvalidAssessmentSessionState) {
+        } catch (InvalidAssessmentSessionState|CaseAuthorizationRejected) {
             $this->assertSame(0, $authority->calls);
             $this->assertSame(1, DB::table('test_sessions')->count());
             $this->assertSame(0, DB::table('test_session_grants')->count());
@@ -184,7 +188,7 @@ final class AllocateAndStartAssessmentSessionTest extends OrganizationPaymentTes
         $fixture = $this->participantGraph(direct: true);
         $authority = new FakeAssessmentSessionDefinitionAuthority;
         $principal = new ParticipantPrincipal($fixture['participant'], $fixture['branch']);
-        $this->action($authority)->execute($principal, 'ist');
+        $this->action($authority)->execute($principal, GenericAssessmentInstrument::Ist);
         $session = DB::table('test_sessions')->sole();
         DB::table('test_sessions')->where('id', $session->id)->update([
             'status' => 'submitted',
@@ -193,7 +197,7 @@ final class AllocateAndStartAssessmentSessionTest extends OrganizationPaymentTes
         ]);
 
         try {
-            $this->action($authority)->execute($principal, 'ist');
+            $this->action($authority)->execute($principal, GenericAssessmentInstrument::Ist);
             $this->fail('A terminal attempt must not be replayed or retested.');
         } catch (InvalidAssessmentSessionState) {
             $this->assertSame(1, $authority->calls);
@@ -206,13 +210,13 @@ final class AllocateAndStartAssessmentSessionTest extends OrganizationPaymentTes
         $fixture = $this->participantGraph(direct: true);
         $authority = new FakeAssessmentSessionDefinitionAuthority;
         $principal = new ParticipantPrincipal($fixture['participant'], $fixture['branch']);
-        $this->action($authority)->execute($principal, 'ist');
+        $this->action($authority)->execute($principal, GenericAssessmentInstrument::Ist);
         DB::table('participants')->where('id', $fixture['participant'])->update([
             'source_system' => 'SELEKSI_BEASISWA_JEPANG',
         ]);
 
         try {
-            $this->action($authority)->execute($principal, 'ist');
+            $this->action($authority)->execute($principal, GenericAssessmentInstrument::Ist);
             $this->fail('A changed origin graph must not replay an old grant.');
         } catch (CaseAuthorizationRejected) {
             $this->assertSame(1, $authority->calls);
@@ -231,7 +235,7 @@ final class AllocateAndStartAssessmentSessionTest extends OrganizationPaymentTes
                 new RlsContext('participant', $fixture['branch'], $fixture['participant']),
                 fn () => $this->action($authority)->execute(
                     new ParticipantPrincipal($fixture['participant'], $fixture['branch']),
-                    'ist',
+                    GenericAssessmentInstrument::Ist,
                 ),
             );
             $this->fail('Participant context must not elevate itself to service.');
@@ -258,7 +262,7 @@ final class AllocateAndStartAssessmentSessionTest extends OrganizationPaymentTes
         try {
             $this->action($authority)->execute(
                 new ParticipantPrincipal($fixture['participant'], $fixture['branch']),
-                'ist',
+                GenericAssessmentInstrument::Ist,
             );
             $this->fail('Injected source failure must escape the allocator.');
         } catch (QueryException) {
@@ -267,6 +271,63 @@ final class AllocateAndStartAssessmentSessionTest extends OrganizationPaymentTes
             $this->assertSame(0, DB::table('test_session_grants')->count());
             $this->assertSame('ready', DB::table('entitlements')->where('id', $fixture['entitlement'])->value('status'));
             $this->assertSame(1, $authority->calls);
+        }
+    }
+
+    public function test_session_insert_failure_rolls_back_without_source_transition(): void
+    {
+        $fixture = $this->participantGraph(direct: true);
+        $authority = new FakeAssessmentSessionDefinitionAuthority;
+        DB::unprepared("CREATE TEMP TRIGGER allocator_session_insert_failure BEFORE INSERT ON test_sessions
+            BEGIN SELECT RAISE(ABORT, 'injected session insert failure'); END");
+
+        try {
+            $this->action($authority)->execute(
+                new ParticipantPrincipal($fixture['participant'], $fixture['branch']),
+                GenericAssessmentInstrument::Ist,
+            );
+            $this->fail('Injected session insert failure must escape the allocator.');
+        } catch (QueryException) {
+            DB::unprepared('DROP TRIGGER allocator_session_insert_failure');
+            $this->assertSame(1, $authority->calls);
+            $this->assertAllocatorRolledBack($fixture);
+        }
+    }
+
+    public function test_grant_insert_failure_rolls_back_the_session_and_source_transition(): void
+    {
+        $fixture = $this->participantGraph(direct: true);
+        $authority = new FakeAssessmentSessionDefinitionAuthority;
+        DB::unprepared("CREATE TEMP TRIGGER allocator_grant_insert_failure BEFORE INSERT ON test_session_grants
+            BEGIN SELECT RAISE(ABORT, 'injected grant insert failure'); END");
+
+        try {
+            $this->action($authority)->execute(
+                new ParticipantPrincipal($fixture['participant'], $fixture['branch']),
+                GenericAssessmentInstrument::Ist,
+            );
+            $this->fail('Injected grant insert failure must escape the allocator.');
+        } catch (QueryException) {
+            DB::unprepared('DROP TRIGGER allocator_grant_insert_failure');
+            $this->assertSame(1, $authority->calls);
+            $this->assertAllocatorRolledBack($fixture);
+        }
+    }
+
+    public function test_definition_failure_leaves_no_writes_or_context_state(): void
+    {
+        $fixture = $this->participantGraph(direct: true);
+        $failure = new RuntimeException('synthetic definition failure');
+
+        try {
+            $this->action(new ThrowingAssessmentSessionDefinitionAuthority($failure))->execute(
+                new ParticipantPrincipal($fixture['participant'], $fixture['branch']),
+                GenericAssessmentInstrument::Ist,
+            );
+            $this->fail('Definition failure must escape the command.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame($failure, $exception);
+            $this->assertAllocatorRolledBack($fixture);
         }
     }
 
@@ -280,7 +341,7 @@ final class AllocateAndStartAssessmentSessionTest extends OrganizationPaymentTes
         try {
             $this->action($authority)->execute(
                 new ParticipantPrincipal($fixture['participant'], $fixture['branch']),
-                'ist',
+                GenericAssessmentInstrument::Ist,
             );
             $this->fail('Injected final transition failure must escape the allocator.');
         } catch (QueryException) {
@@ -303,7 +364,7 @@ final class AllocateAndStartAssessmentSessionTest extends OrganizationPaymentTes
 
         $result = $this->action($authority)->execute(
             new ParticipantPrincipal($fixture['participant'], $fixture['branch']),
-            'ist',
+            GenericAssessmentInstrument::Ist,
         );
 
         $this->assertFalse($result->replayed);
@@ -326,7 +387,7 @@ final class AllocateAndStartAssessmentSessionTest extends OrganizationPaymentTes
         try {
             $this->action($authority)->execute(
                 new ParticipantPrincipal($fixture['participant'], $fixture['branch']),
-                'ist',
+                GenericAssessmentInstrument::Ist,
             );
             $this->fail('A fourth transaction attempt must never be made.');
         } catch (QueryException $exception) {
@@ -348,7 +409,7 @@ final class AllocateAndStartAssessmentSessionTest extends OrganizationPaymentTes
         try {
             $this->action($authority)->execute(
                 new ParticipantPrincipal($fixture['participant'], $fixture['branch']),
-                'ist',
+                GenericAssessmentInstrument::Ist,
             );
             $this->fail("SQLSTATE {$sqlState} must not be retried.");
         } catch (QueryException $exception) {
@@ -369,7 +430,7 @@ final class AllocateAndStartAssessmentSessionTest extends OrganizationPaymentTes
         try {
             $this->action($authority)->execute(
                 new ParticipantPrincipal($fixture['participant'], $fixture['branch']),
-                'ist',
+                GenericAssessmentInstrument::Ist,
             );
             $this->fail('Generic failures must not be retried.');
         } catch (RuntimeException $exception) {
@@ -481,6 +542,7 @@ final class AllocateAndStartAssessmentSessionTest extends OrganizationPaymentTes
             $id = DB::table('entitlements')->insertGetId([
                 'participant_id' => $participant,
                 'order_id' => $order,
+                'assessment_case_id' => $type === 'dass21' ? null : $case,
                 'test_type' => $type,
                 'status' => 'ready',
                 'ready_at' => now()->subSecond(),
@@ -518,7 +580,20 @@ final class AllocateAndStartAssessmentSessionTest extends OrganizationPaymentTes
     }
 
     private function action(
-        FakeAssessmentSessionDefinitionAuthority $authority,
+        AssessmentSessionDefinitionAuthority $authority,
+        string $now = self::NOW,
+    ): StartParticipantAssessmentSession {
+        return new StartParticipantAssessmentSession(
+            app(RlsContextRunner::class),
+            app(ParticipantAssessmentSessionCandidates::class),
+            new AssessmentSessionSelectionPolicy,
+            app(CaseAuthorizationResolver::class),
+            $this->allocator($authority, $now),
+        );
+    }
+
+    private function allocator(
+        AssessmentSessionDefinitionAuthority $authority,
         string $now = self::NOW,
     ): AllocateAndStartAssessmentSession {
         return new AllocateAndStartAssessmentSession(
@@ -530,6 +605,19 @@ final class AllocateAndStartAssessmentSessionTest extends OrganizationPaymentTes
             new AssessmentSessionDeadlinePolicy,
             static fn (): DateTimeImmutable => new DateTimeImmutable($now),
         );
+    }
+}
+
+final readonly class ThrowingAssessmentSessionDefinitionAuthority implements AssessmentSessionDefinitionAuthority
+{
+    public function __construct(private RuntimeException $failure) {}
+
+    public function issueForNewSession(
+        GenericAssessmentInstrument $instrument,
+        CaseAuthorization $authorization,
+        string $sessionPublicId,
+    ): SessionDefinition {
+        throw $this->failure;
     }
 }
 
