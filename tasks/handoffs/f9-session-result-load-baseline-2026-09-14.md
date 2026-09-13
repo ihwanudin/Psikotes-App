@@ -313,6 +313,31 @@ launcher loaded two Composer autoloaders. Its exact label
 runner copied `vendor/bin` rather than invoking the read-only vendor launcher;
 no repository file changed for this diagnostic.
 
+## Canonical integration verification
+
+PM and independent QA approved the repaired candidate
+`fc92598b5808d4f4d1f3acc05e60d11f651b04be` for patch-equivalent integration.
+It was integrated on base `537ae7b41e921e252c2dbef9bc983e23f00cd0d4`
+as stack `78b083af5d7694a04c401f1433698fc156551be1`. The canonical
+base-to-stack diff has stable patch ID
+`1fadedc6123f55e080469e35ca9decc62580db42`, adds exactly the four files listed
+in this handoff, and all four canonical blobs are byte-identical to the approved
+candidate.
+
+On the canonical stack, the 62-assertion harness contract, PHP Pint, pinned
+config-free Prettier, PHP syntax, and `git diff --check` all passed. The full
+canonical smoke used exact label
+`oncam.f9-session-result-load=db8044ce318243c48f88145e6b1974c9` and completed
+all 2,880 measured operations with zero errors. It reproduced exactly 736
+participants/sessions, 672 `started_once` sessions, 64 results, 576 result
+sources, and three replay checks. Observed database connections were 2/5/9;
+lock-wait samples, temp files/bytes, deadlocks, and conflicts were zero. Runner
+cleanup reported containers 0, networks 0, and temp removed `True`.
+
+The canonical run's timings were materially slower than the repaired candidate
+run under current-host contention. They remain descriptive evidence only: this
+lane makes no regression, capacity, or SLO claim.
+
 ## Remaining gates
 
 This lane does not establish Kraepelin-specific load behavior, a representative
@@ -322,5 +347,6 @@ It also does not close manifest, activation, observability, backup/PITR,
 scheduler/alerting, deployment, or launch authority. Those remain separate
 PM-owned decisions and evidence lanes.
 
-Review status: **implementation complete; Tech Lead and independent QA review
-required before integration.**
+Review status: **PM and independent QA approved; patch-equivalent canonical
+integration and post-integration smoke complete. F9 remains PARTIAL and release
+authority remains NO-GO.**
