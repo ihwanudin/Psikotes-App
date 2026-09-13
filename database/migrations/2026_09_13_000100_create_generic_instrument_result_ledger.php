@@ -392,6 +392,7 @@ return new class extends Migration
         $constraintShapes = [];
         foreach (DB::select(<<<'SQL'
             SELECT constraint_row.conname,constraint_row.contype,
+                constraint_row.condeferrable,constraint_row.condeferred,
                 string_agg(attribute.attname,',' ORDER BY key.ordinality) columns
             FROM pg_constraint constraint_row
             JOIN unnest(constraint_row.conkey) WITH ORDINALITY key(attnum,ordinality) ON true
@@ -400,24 +401,26 @@ return new class extends Migration
             WHERE constraint_row.conrelid IN (
                 'generic_instrument_results'::regclass,
                 'generic_instrument_result_sources'::regclass
-            ) GROUP BY constraint_row.conname,constraint_row.contype
+            ) GROUP BY constraint_row.conname,constraint_row.contype,
+                constraint_row.condeferrable,constraint_row.condeferred
             ORDER BY constraint_row.conname
             SQL) as $row) {
             $shape = (array) $row;
             $constraintShapes[(string) $shape['conname']] = [
                 (string) $shape['contype'], (string) $shape['columns'],
+                (bool) $shape['condeferrable'], (bool) $shape['condeferred'],
             ];
         }
         $expectedShapes = [
-            'generic_instrument_result_sources_code_unique' => ['u', 'result_id,source_code'],
-            'generic_instrument_result_sources_order_unique' => ['u', 'result_id,ordinal'],
-            'generic_instrument_result_sources_parent_fk' => ['f', 'result_id'],
-            'generic_instrument_result_sources_pkey' => ['p', 'id'],
-            'generic_instrument_results_instrument_version_fk' => ['f', 'instrument_version_id,instrument_code,instrument_version,instrument_source_file,instrument_checksum'],
-            'generic_instrument_results_pkey' => ['p', 'id'],
-            'generic_instrument_results_public_id_unique' => ['u', 'public_id'],
-            'generic_instrument_results_session_scope_fk' => ['f', 'session_id,assessment_case_id,participant_id,instrument_code'],
-            'generic_instrument_results_session_unique' => ['u', 'session_id'],
+            'generic_instrument_result_sources_code_unique' => ['u', 'result_id,source_code', false, false],
+            'generic_instrument_result_sources_order_unique' => ['u', 'result_id,ordinal', false, false],
+            'generic_instrument_result_sources_parent_fk' => ['f', 'result_id', false, false],
+            'generic_instrument_result_sources_pkey' => ['p', 'id', false, false],
+            'generic_instrument_results_instrument_version_fk' => ['f', 'instrument_version_id,instrument_code,instrument_version,instrument_source_file,instrument_checksum', false, false],
+            'generic_instrument_results_pkey' => ['p', 'id', false, false],
+            'generic_instrument_results_public_id_unique' => ['u', 'public_id', false, false],
+            'generic_instrument_results_session_scope_fk' => ['f', 'session_id,assessment_case_id,participant_id,instrument_code', false, false],
+            'generic_instrument_results_session_unique' => ['u', 'session_id', false, false],
         ];
         foreach ($expectedShapes as $name => $shape) {
             if (($constraintShapes[$name] ?? null) !== $shape) {
@@ -504,6 +507,53 @@ return new class extends Migration
                     throw new RuntimeException("Generic instrument result ledger {$table} grant is excessive.");
                 }
             }
+        }
+
+        $aclRows = collect(DB::select(<<<'SQL'
+            SELECT class.relname,pg_get_userbyid(class.relowner) owner,
+                pg_get_userbyid(acl.grantor) grantor,
+                CASE WHEN acl.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(acl.grantee) END grantee,
+                acl.privilege_type,acl.is_grantable
+            FROM pg_class class
+            CROSS JOIN LATERAL aclexplode(COALESCE(
+                class.relacl,
+                acldefault(CASE WHEN class.relkind='S' THEN 'S'::"char" ELSE 'r'::"char" END, class.relowner)
+            )) acl
+            WHERE class.oid IN (
+                'public.generic_instrument_results'::regclass,
+                'public.generic_instrument_result_sources'::regclass,
+                'public.generic_instrument_results_id_seq'::regclass,
+                'public.generic_instrument_result_sources_id_seq'::regclass
+            ) AND acl.grantee <> class.relowner
+            ORDER BY class.relname,grantee,acl.privilege_type
+            SQL));
+        if ($aclRows->isEmpty()
+            || $aclRows->contains(static function (object $row): bool {
+                $state = (array) $row;
+
+                return $state['grantor'] !== $state['owner'];
+            })) {
+            throw new RuntimeException('Generic instrument result ledger ACL grantor is not its relation owner.');
+        }
+        $acl = $aclRows->map(static function (object $row): array {
+            $state = (array) $row;
+
+            return [$state['relname'], $state['grantor'], $state['grantee'],
+                $state['privilege_type'], (bool) $state['is_grantable']];
+        })->all();
+        $firstAcl = (array) $aclRows->first();
+        $owner = (string) $firstAcl['owner'];
+        if ($acl !== [
+            ['generic_instrument_result_sources', $owner, 'psikotes_runtime', 'INSERT', false],
+            ['generic_instrument_result_sources', $owner, 'psikotes_runtime', 'SELECT', false],
+            ['generic_instrument_result_sources_id_seq', $owner, 'psikotes_runtime', 'SELECT', false],
+            ['generic_instrument_result_sources_id_seq', $owner, 'psikotes_runtime', 'USAGE', false],
+            ['generic_instrument_results', $owner, 'psikotes_runtime', 'INSERT', false],
+            ['generic_instrument_results', $owner, 'psikotes_runtime', 'SELECT', false],
+            ['generic_instrument_results_id_seq', $owner, 'psikotes_runtime', 'SELECT', false],
+            ['generic_instrument_results_id_seq', $owner, 'psikotes_runtime', 'USAGE', false],
+        ]) {
+            throw new RuntimeException('Generic instrument result ledger ACL topology is not exact.');
         }
 
         $policies = collect(DB::select(<<<'SQL'
