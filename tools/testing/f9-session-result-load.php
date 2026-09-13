@@ -453,17 +453,17 @@ foreach ($profiles as $concurrency) {
 if ($startOffset !== $startDatasetSize) {
     throw new RuntimeException('Start workload did not consume its exact fixed dataset.');
 }
-$sessionCounts = (array) DB::selectOne(<<<'SQL'
-    SELECT count(*) FILTER (WHERE source_system='F9_LOAD_SYNTHETIC') AS participants,
-      (SELECT count(*) FROM test_sessions s JOIN participants p ON p.id=s.participant_id
-       WHERE p.source_system='F9_LOAD_SYNTHETIC') AS sessions,
-      (SELECT count(*) FROM test_sessions s JOIN participants p ON p.id=s.participant_id
-       WHERE p.source_system='F9_LOAD_SYNTHETIC' AND s.status='in_progress'
-         AND s.started_at IS NOT NULL AND s.ends_at>s.started_at) AS started,
-      (SELECT count(*) FROM generic_instrument_results) AS results,
-      (SELECT count(*) FROM generic_instrument_result_sources) AS sources
-    FROM participants
-    SQL);
+$sessionCounts = app(RlsContextRunner::class)->runAsService(static fn (): array => (array) DB::selectOne(<<<'SQL'
+        SELECT count(*) FILTER (WHERE source_system='F9_LOAD_SYNTHETIC') AS participants,
+          (SELECT count(*) FROM test_sessions s JOIN participants p ON p.id=s.participant_id
+           WHERE p.source_system='F9_LOAD_SYNTHETIC') AS sessions,
+          (SELECT count(*) FROM test_sessions s JOIN participants p ON p.id=s.participant_id
+           WHERE p.source_system='F9_LOAD_SYNTHETIC' AND s.status='in_progress'
+             AND s.started_at IS NOT NULL AND s.ends_at>s.started_at) AS started,
+          (SELECT count(*) FROM generic_instrument_results) AS results,
+          (SELECT count(*) FROM generic_instrument_result_sources) AS sources
+        FROM participants
+        SQL));
 $expectedParticipants = $startDatasetSize + $readerDatasetSize;
 if ((int) $sessionCounts['participants'] !== $expectedParticipants
     || (int) $sessionCounts['sessions'] !== $expectedParticipants
@@ -474,14 +474,16 @@ if ((int) $sessionCounts['participants'] !== $expectedParticipants
 }
 foreach ([0, $warmupOperations, $startDatasetSize - 1] as $index) {
     $item = $dataset['start'][$index];
-    $before = DB::table('test_sessions')->where('public_id', $item['public_id'])->sole();
-    $replay = app(StartAssessmentSession::class)->execute($item['participant'], $item['public_id']);
-    $after = DB::table('test_sessions')->where('public_id', $item['public_id'])->sole();
-    if (! $replay->accepted || ! $replay->replayed || $replay->status !== 'in_progress'
-        || (string) $before->started_at !== (string) $after->started_at
-        || (string) $before->ends_at !== (string) $after->ends_at) {
-        throw new RuntimeException('FIRST_ROOT_CAUSE: session replay invariant failed.');
-    }
+    app(RlsContextRunner::class)->runAsService(function () use ($item): void {
+        $before = DB::table('test_sessions')->where('public_id', $item['public_id'])->sole();
+        $replay = app(StartAssessmentSession::class)->execute($item['participant'], $item['public_id']);
+        $after = DB::table('test_sessions')->where('public_id', $item['public_id'])->sole();
+        if (! $replay->accepted || ! $replay->replayed || $replay->status !== 'in_progress'
+            || (string) $before->started_at !== (string) $after->started_at
+            || (string) $before->ends_at !== (string) $after->ends_at) {
+            throw new RuntimeException('FIRST_ROOT_CAUSE: session replay invariant failed.');
+        }
+    });
 }
 
 $report['correctness'] = [
