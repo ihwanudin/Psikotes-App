@@ -1,6 +1,50 @@
 <x-filament-panels::page>
+    <style>
+        .psychologist-review-fixture { display: grid; gap: 1.5rem; min-width: 0; }
+        .psychologist-review-fixture [class*="rounded-xl"][class*="border"] { border: 1px solid #d1d5db; border-radius: .75rem; background: #fff; padding: 1rem; }
+        .psychologist-review-fixture [class*="border-2"] { border-width: 2px; border-color: #f59e0b; }
+        .psychologist-review-fixture [data-synthetic-warning] { border-color: #f59e0b; background: #fffbeb; color: #78350f; }
+        .psychologist-review-fixture [data-review-state="g7-unresolved"][aria-labelledby] { border: 2px solid #f59e0b; background: #fffbeb; color: #78350f; }
+        .psychologist-review-fixture [data-review-state="g7-resolution"][data-review-prominent="true"] { border: 2px solid #f59e0b; }
+        .psychologist-review-fixture [data-validity-stop="V3"][role="alert"] { border: 2px solid #dc2626; background: #fef2f2; color: #7f1d1d; }
+        .psychologist-review-fixture #review-panel { display: grid; gap: 1.5rem; min-width: 0; }
+        .psychologist-review-fixture nav { display: flex; flex-wrap: wrap; gap: .5rem; }
+        .psychologist-review-fixture button { min-height: 2.75rem; border: 1px solid #9ca3af; border-radius: .5rem; padding: .5rem 1rem; }
+        .psychologist-review-fixture button:hover { background: #f3f4f6; }
+        .psychologist-review-fixture button:focus-visible,
+        .psychologist-review-fixture select:focus-visible,
+        .psychologist-review-fixture textarea:focus-visible { outline: 3px solid #2563eb; outline-offset: 2px; }
+        .psychologist-review-fixture select,
+        .psychologist-review-fixture textarea { width: 100%; min-height: 2.75rem; border: 1px solid #9ca3af; border-radius: .5rem; background: #fff; padding: .625rem .75rem; color: #111827; }
+        .psychologist-review-fixture textarea { min-height: 5.5rem; resize: vertical; }
+        .psychologist-review-fixture [name="validate_fixture"] { border-color: #1d4ed8; background: #1d4ed8; color: #fff; font-weight: 700; }
+        .psychologist-review-fixture [name="validate_fixture"]:hover { background: #1e40af; }
+        .psychologist-review-fixture button:disabled { cursor: not-allowed; opacity: .6; }
+        .psychologist-review-fixture [aria-label="Tabel aspek dan sumber level"] { overflow-x: auto; padding: 0; }
+        .psychologist-review-fixture table { width: 100%; min-width: 48rem; border-collapse: collapse; }
+        .psychologist-review-fixture th,
+        .psychologist-review-fixture td { border-top: 1px solid #e5e7eb; padding: .75rem; text-align: left; vertical-align: top; }
+        .psychologist-review-fixture [class*="grid"] { display: grid; gap: 1rem; min-width: 0; }
+        .psychologist-review-fixture label { display: block; margin-top: .75rem; font-weight: 600; }
+        @media (min-width: 640px) {
+            .psychologist-review-fixture dl[class*="sm:grid-cols"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .psychologist-review-fixture #dass-detail-heading + p + dl { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        }
+        @media (min-width: 1024px) {
+            .psychologist-review-fixture #review-panel > [class*="grid"],
+            .psychologist-review-fixture fieldset > [class*="grid"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .psychologist-review-fixture #instrument-summary-heading + p + dl { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+        }
+        .dark .psychologist-review-fixture [class*="rounded-xl"][class*="border"] { border-color: #4b5563; background: #111827; color: #f9fafb; }
+        .dark .psychologist-review-fixture [data-synthetic-warning] { border-color: #d97706; background: #451a03; color: #fef3c7; }
+        .dark .psychologist-review-fixture [data-review-state="g7-unresolved"][aria-labelledby] { border-color: #f59e0b; background: #451a03; color: #fef3c7; }
+        .dark .psychologist-review-fixture [data-review-state="g7-resolution"][data-review-prominent="true"] { border-color: #f59e0b; }
+        .dark .psychologist-review-fixture [data-validity-stop="V3"][role="alert"] { border-color: #ef4444; background: #450a0a; color: #fee2e2; }
+        .dark .psychologist-review-fixture select,
+        .dark .psychologist-review-fixture textarea { border-color: #6b7280; background: #111827; color: #f9fafb; }
+    </style>
     <div
-        class="min-w-0 space-y-6"
+        class="psychologist-review-fixture min-w-0 space-y-6"
         data-fixture-id="{{ $fixture['fixtureId'] }}"
         x-data="{ draftTouched: false }"
         x-on:input="draftTouched = true"
@@ -8,7 +52,7 @@
         x-on:beforeunload.window="if (draftTouched) { $event.preventDefault(); $event.returnValue = '' }"
         x-on:review-focus.window="$nextTick(() => requestAnimationFrame(() => document.getElementById($event.detail.target)?.focus()))"
     >
-        <section class="rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100" aria-labelledby="synthetic-heading">
+        <section data-synthetic-warning class="rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100" aria-labelledby="synthetic-heading">
             <h2 id="synthetic-heading" class="font-bold">DATA SINTETIS — BUKAN LAPORAN NYATA</h2>
             <p class="mt-1">Halaman ini hanya menguji kesiapan UI. Perubahan bersifat sementara, tidak disimpan, dan tidak membuat tanda tangan.</p>
             <p class="mt-1 font-medium">Perubahan draf akan hilang jika halaman dimuat ulang atau ditutup.</p>
@@ -92,13 +136,23 @@
                     </div>
 
                     @if ($g7FinalLevel === null)
-                        <section class="rounded-xl border-2 border-amber-400 p-4" aria-labelledby="g7-queue-heading">
+                        <section data-review-state="g7-unresolved" class="rounded-xl border-2 border-amber-400 p-4" aria-labelledby="g7-queue-heading">
                             <h3 id="g7-queue-heading" class="font-semibold">Antrean tinjauan G7 — belum terselesaikan</h3>
                             <ol class="mt-2 list-decimal pl-5">
                                 <li><strong>C4 — Stres dan stabilitas</strong>: level sumber 2 dan 4, selisih 2; narasi otomatis ditahan.</li>
                             </ol>
                         </section>
                     @endif
+
+                    <section class="rounded-xl border border-gray-200 p-4 dark:border-gray-700" aria-labelledby="instrument-summary-heading">
+                        <h3 id="instrument-summary-heading" class="font-semibold">Ringkasan instrumen sintetis</h3>
+                        <p class="mt-1 text-sm">Bukti mentah sintetis untuk tinjauan internal psikolog.</p>
+                        <dl class="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                            @foreach ($fixture['internal']['instrumentSummaries'] as $summary)
+                                <div><dt class="font-medium">{{ $summary['instrument'] }}</dt><dd>{{ $summary['summary'] }}</dd></div>
+                            @endforeach
+                        </dl>
+                    </section>
 
                     <div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700" tabindex="0" aria-label="Tabel aspek dan sumber level">
                         <table class="w-full min-w-[48rem] border-collapse text-left text-sm">
@@ -142,7 +196,7 @@
                             @endif
                         </fieldset>
 
-                        <fieldset class="min-w-0 rounded-xl border-2 border-amber-400 p-4">
+                        <fieldset data-review-state="g7-resolution" data-review-prominent="true" class="min-w-0 rounded-xl border-2 border-amber-400 p-4">
                             <legend class="px-1 font-semibold">Resolusi G7 — C4</legend>
                             <p>Level sumber 2 dan 4 memiliki selisih 2. Narasi otomatis ditahan.</p>
                             <label for="g7-final-level" class="mt-3 block font-medium">Tetapkan level final</label>

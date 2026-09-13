@@ -72,6 +72,23 @@ async (page) => {
             .isVisible(),
         'Temporary draft-loss warning is missing',
     );
+    const warningStyle = await page
+        .locator('[data-synthetic-warning]')
+        .evaluate((element) => {
+            const style = getComputedStyle(element);
+
+            return {
+                background: style.backgroundColor,
+                borderWidth: Number.parseFloat(style.borderTopWidth),
+                color: style.color,
+            };
+        });
+    assert(
+        warningStyle.background !== 'rgba(0, 0, 0, 0)' &&
+            warningStyle.background !== warningStyle.color &&
+            warningStyle.borderWidth >= 1,
+        'Synthetic warning surface styles are not loaded',
+    );
     assert(
         await page
             .getByText('Kategori umum DASS-21', { exact: true })
@@ -87,6 +104,12 @@ async (page) => {
     assert(
         (await page.getByText('Depresi (x2)', { exact: true }).count()) === 0,
         'DASS subscale leaked into HPP DOM',
+    );
+    assert(
+        (await page
+            .getByRole('heading', { name: 'Ringkasan instrumen sintetis' })
+            .count()) === 0,
+        'Raw instrument summary leaked into HPP DOM',
     );
     results.push('HPP/internal projection separation: PASS');
 
@@ -113,6 +136,12 @@ async (page) => {
         'Internal DASS detail is missing',
     );
     assert(
+        await page
+            .getByRole('heading', { name: 'Ringkasan instrumen sintetis' })
+            .isVisible(),
+        'Internal raw instrument summary is missing',
+    );
+    assert(
         (await internalButton.getAttribute('aria-pressed')) === 'true',
         'Projection button state is not announced',
     );
@@ -120,6 +149,16 @@ async (page) => {
     const queue = page.getByRole('heading', { name: /Antrean tinjauan G7/ });
     const table = page.getByRole('table', { name: 'Sumber level psikotes' });
     assert(await queue.isVisible(), 'Labelled unresolved G7 queue is missing');
+    assert(
+        await page
+            .locator('[data-review-state="g7-unresolved"]')
+            .evaluate(
+                (element) =>
+                    Number.parseFloat(getComputedStyle(element).borderTopWidth) >=
+                    2,
+            ),
+        'Unresolved G7 state is not visually prominent',
+    );
     assert(
         await queue.evaluate(
             (element, tableElement) =>
@@ -150,6 +189,59 @@ async (page) => {
             `Control ${index} has no hover treatment`,
         );
     }
+
+    const formControlStyle = await page.locator('#g6-final-level').evaluate(
+        (element) => {
+            const style = getComputedStyle(element);
+
+            return {
+                borderWidth: Number.parseFloat(style.borderTopWidth),
+                height: element.getBoundingClientRect().height,
+            };
+        },
+    );
+    assert(
+        formControlStyle.borderWidth >= 1 && formControlStyle.height >= 44,
+        'Form control border or minimum target height is not loaded',
+    );
+
+    const tableContainerStyle = await table.locator('..').evaluate(
+        (element) => {
+            const style = getComputedStyle(element);
+
+            return {
+                borderWidth: Number.parseFloat(style.borderTopWidth),
+                overflowX: style.overflowX,
+                containsWidth: element.scrollWidth >= element.clientWidth,
+            };
+        },
+    );
+    assert(
+        tableContainerStyle.borderWidth >= 1 &&
+            tableContainerStyle.overflowX === 'auto' &&
+            tableContainerStyle.containsWidth,
+        'Contained table styles are not loaded',
+    );
+
+    const validationButtonStyle = await page
+        .getByRole('button', { name: 'Validasi kesiapan sintetis' })
+        .evaluate((element) => {
+            const style = getComputedStyle(element);
+
+            return {
+                background: style.backgroundColor,
+                color: style.color,
+                height: element.getBoundingClientRect().height,
+            };
+        });
+    assert(
+        !['rgba(0, 0, 0, 0)', 'rgb(255, 255, 255)'].includes(
+            validationButtonStyle.background,
+        ) &&
+            validationButtonStyle.background !== validationButtonStyle.color &&
+            validationButtonStyle.height >= 44,
+        'Primary validation control styles are not loaded',
+    );
 
     await page.locator('#g6-final-level').selectOption('4');
     await page
@@ -327,6 +419,29 @@ async (page) => {
             .getByRole('button', { name: /Tanda tangan|Publikasi/ })
             .count()) === 0,
         'V3 exposed signing actions',
+    );
+    const v3Style = await page.locator('[data-validity-stop="V3"]').evaluate(
+        (element) => {
+            const style = getComputedStyle(element);
+
+            return {
+                background: style.backgroundColor,
+                borderColor: style.borderTopColor,
+                borderWidth: Number.parseFloat(style.borderTopWidth),
+            };
+        },
+    );
+    const v3BorderChannels = v3Style.borderColor
+        .match(/\d+(?:\.\d+)?/g)
+        ?.slice(0, 3)
+        .map(Number);
+    assert(
+        v3Style.borderWidth >= 2 &&
+            v3Style.background !== 'rgba(0, 0, 0, 0)' &&
+            v3BorderChannels?.length === 3 &&
+            v3BorderChannels[0] > v3BorderChannels[1] * 2 &&
+            v3BorderChannels[0] > v3BorderChannels[2] * 2,
+        'V3 stop state is not visibly red and prominent',
     );
     results.push('V3 stop state: PASS');
 
