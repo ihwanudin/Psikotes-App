@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
+use Throwable;
 
 final class GenericInstrumentResultLedgerTest extends TestCase
 {
@@ -224,6 +225,66 @@ final class GenericInstrumentResultLedgerTest extends TestCase
         });
     }
 
+    public function test_two_runtime_connections_race_one_initial_result_for_the_same_session(): void
+    {
+        $fixture = app(RlsContextRunner::class)->runAsService(fn (): array => $this->fixture());
+        $row = app(RlsContextRunner::class)->runAsService(fn (): array => $this->resultRow($fixture));
+        $rows = [
+            [...$row, 'public_id' => (string) Str::ulid()],
+            [...$row, 'public_id' => (string) Str::ulid()],
+        ];
+        DB::commit();
+        DB::purge('pgsql');
+        $workers = [];
+
+        try {
+            $workers[] = $this->startInsertWorker($rows[0]);
+            $workers[] = $this->startInsertWorker($rows[1]);
+            foreach ($workers as $worker) {
+                fwrite($worker['socket'], "go\n");
+            }
+            $read = [$workers[0]['socket'], $workers[1]['socket']];
+            $write = null;
+            $except = null;
+            $this->assertSame(1, stream_select($read, $write, $except, 10));
+            $holder = reset($read) === $workers[0]['socket'] ? 0 : 1;
+            $waiter = $holder === 0 ? 1 : 0;
+            $this->assertSame('inserted', $this->readInsertEvent($workers[$holder]['socket'])['event']);
+
+            $deadline = microtime(true) + 5;
+            do {
+                $waiting = DB::selectOne('SELECT wait_event_type FROM pg_stat_activity WHERE pid = ?', [
+                    $workers[$waiter]['backend'],
+                ]);
+                if ($waiting?->wait_event_type === 'Lock') {
+                    break;
+                }
+                usleep(10_000);
+            } while (microtime(true) < $deadline);
+            $this->assertSame('Lock', $waiting?->wait_event_type);
+
+            fwrite($workers[$holder]['socket'], "release\n");
+            $committed = $this->readInsertEvent($workers[$holder]['socket']);
+            $rejected = $this->readInsertEvent($workers[$waiter]['socket']);
+            $this->assertSame('committed', $committed['event']);
+            $this->assertSame('sqlstate', $rejected['event']);
+            $this->assertSame('23505', $rejected['state']);
+
+            app(RlsContextRunner::class)->runAsService(function () use ($fixture): void {
+                $this->assertSame(1, DB::table('generic_instrument_results')
+                    ->where('session_id', $fixture['session'])->count());
+                $this->assertSame(0, DB::table('generic_instrument_result_sources')
+                    ->whereIn('result_id', DB::table('generic_instrument_results')
+                        ->select('id')->where('session_id', $fixture['session']))->count());
+            });
+        } finally {
+            $this->stopInsertWorkers($workers);
+            $this->asOwner(function (): void {
+                DB::statement('TRUNCATE TABLE generic_instrument_result_sources, generic_instrument_results RESTART IDENTITY');
+            });
+        }
+    }
+
     public function test_owner_rerun_is_unchanged_and_populated_down_refuses_atomically(): void
     {
         $this->asOwner(function (): void {
@@ -327,7 +388,7 @@ final class GenericInstrumentResultLedgerTest extends TestCase
                     $exception = $caught;
                 }
                 $this->assertNotNull($exception, 'Excess runtime sequence privilege must be rejected.');
-                $this->assertStringContainsString('sequence', $exception->getMessage());
+                $this->assertStringContainsString('not exact', $exception->getMessage());
                 $this->assertEquals($counterfeit, $this->definitions());
             } finally {
                 DB::rollBack();
@@ -350,7 +411,54 @@ final class GenericInstrumentResultLedgerTest extends TestCase
                     $exception = $caught;
                 }
                 $this->assertNotNull($exception, 'Missing runtime sequence privilege must be rejected.');
-                $this->assertStringContainsString('sequence', $exception->getMessage());
+                $this->assertStringContainsString('not exact', $exception->getMessage());
+                $this->assertEquals($counterfeit, $this->definitions());
+            } finally {
+                DB::rollBack();
+            }
+        });
+    }
+
+    public function test_owner_rerun_rejects_runtime_grant_option_without_mutation(): void
+    {
+        $this->asOwner(function (): void {
+            DB::beginTransaction();
+            try {
+                DB::statement('GRANT SELECT ON generic_instrument_results TO psikotes_runtime WITH GRANT OPTION');
+                $counterfeit = $this->definitions();
+
+                $exception = null;
+                try {
+                    (require database_path('migrations/2026_09_13_000100_create_generic_instrument_result_ledger.php'))->up();
+                } catch (RuntimeException $caught) {
+                    $exception = $caught;
+                }
+                $this->assertNotNull($exception, 'Runtime WITH GRANT OPTION must be rejected.');
+                $this->assertStringContainsString('ACL', $exception->getMessage());
+                $this->assertEquals($counterfeit, $this->definitions());
+            } finally {
+                DB::rollBack();
+            }
+        });
+    }
+
+    public function test_owner_rerun_rejects_deferred_unique_constraint_without_mutation(): void
+    {
+        $this->asOwner(function (): void {
+            DB::beginTransaction();
+            try {
+                DB::statement('ALTER TABLE generic_instrument_result_sources DROP CONSTRAINT generic_instrument_result_sources_order_unique');
+                DB::statement('ALTER TABLE generic_instrument_result_sources ADD CONSTRAINT generic_instrument_result_sources_order_unique UNIQUE (result_id, ordinal) DEFERRABLE INITIALLY DEFERRED');
+                $counterfeit = $this->definitions();
+
+                $exception = null;
+                try {
+                    (require database_path('migrations/2026_09_13_000100_create_generic_instrument_result_ledger.php'))->up();
+                } catch (RuntimeException $caught) {
+                    $exception = $caught;
+                }
+                $this->assertNotNull($exception, 'Deferred result uniqueness must be rejected.');
+                $this->assertStringContainsString('shape is not exact', $exception->getMessage());
                 $this->assertEquals($counterfeit, $this->definitions());
             } finally {
                 DB::rollBack();
@@ -555,6 +663,99 @@ final class GenericInstrumentResultLedgerTest extends TestCase
         }
     }
 
+    /** @param array<string,mixed> $row
+     * @return array{pid:int,backend:int,socket:resource}
+     */
+    private function startInsertWorker(array $row): array
+    {
+        $this->assertTrue(function_exists('pcntl_fork'), 'Result uniqueness concurrency requires pcntl; never skip.');
+        $pair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
+        if ($pair === false || ($pid = pcntl_fork()) === -1) {
+            throw new RuntimeException('Unable to create result insert worker.');
+        }
+        if ($pid === 0) {
+            fclose($pair[0]);
+            stream_set_timeout($pair[1], 20);
+            try {
+                DB::purge('pgsql');
+                $identity = DB::selectOne(
+                    'SELECT pg_backend_pid() pid,current_user name,rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user',
+                );
+                if ($identity->name !== 'psikotes_runtime' || $identity->rolsuper || $identity->rolbypassrls) {
+                    throw new RuntimeException('Result insert worker must be runtime NOBYPASSRLS.');
+                }
+                DB::statement("SET lock_timeout = '12s'");
+                DB::statement("SET statement_timeout = '15s'");
+                $this->writeInsertEvent($pair[1], ['event' => 'ready', 'backend' => (int) $identity->pid]);
+                if (fgets($pair[1]) !== "go\n") {
+                    throw new RuntimeException('Result insert barrier timed out.');
+                }
+                app(RlsContextRunner::class)->runAsService(function () use ($row, $pair): void {
+                    DB::table('generic_instrument_results')->insert($row);
+                    $this->writeInsertEvent($pair[1], ['event' => 'inserted']);
+                    if (fgets($pair[1]) !== "release\n") {
+                        throw new RuntimeException('Result commit barrier timed out.');
+                    }
+                });
+                $this->writeInsertEvent($pair[1], ['event' => 'committed']);
+            } catch (QueryException $exception) {
+                $this->writeInsertEvent($pair[1], [
+                    'event' => 'sqlstate', 'state' => $exception->errorInfo[0] ?? null,
+                ]);
+            } catch (Throwable $exception) {
+                $this->writeInsertEvent($pair[1], [
+                    'event' => 'unexpected', 'type' => $exception::class,
+                    'message' => $exception->getMessage(),
+                ]);
+            }
+            fclose($pair[1]);
+            DB::disconnect('pgsql');
+            exit(0);
+        }
+        fclose($pair[1]);
+        stream_set_timeout($pair[0], 20);
+        $ready = $this->readInsertEvent($pair[0]);
+        $this->assertSame('ready', $ready['event'], json_encode($ready, JSON_THROW_ON_ERROR));
+
+        return ['pid' => $pid, 'backend' => $ready['backend'], 'socket' => $pair[0]];
+    }
+
+    /** @param resource $socket
+     * @return array<string,mixed>
+     */
+    private function readInsertEvent($socket): array
+    {
+        $line = fgets($socket);
+        if (! is_string($line)) {
+            throw new RuntimeException('Result insert worker did not report an event.');
+        }
+        $event = json_decode($line, true, flags: JSON_THROW_ON_ERROR);
+        if (! is_array($event) || ! is_string($event['event'] ?? null)) {
+            throw new RuntimeException('Result insert worker event is invalid.');
+        }
+
+        return $event;
+    }
+
+    /** @param resource $socket
+     * @param  array<string,mixed>  $event
+     */
+    private function writeInsertEvent($socket, array $event): void
+    {
+        fwrite($socket, json_encode($event, JSON_THROW_ON_ERROR)."\n");
+    }
+
+    /** @param list<array{pid:int,backend:int,socket:resource}> $workers */
+    private function stopInsertWorkers(array $workers): void
+    {
+        foreach ($workers as $worker) {
+            fclose($worker['socket']);
+            pcntl_waitpid($worker['pid'], $status);
+            $this->assertTrue(pcntl_wifexited($status));
+            $this->assertSame(0, pcntl_wexitstatus($status));
+        }
+    }
+
     /** @return array<string,mixed> */
     private function definitions(): array
     {
@@ -564,6 +765,24 @@ final class GenericInstrumentResultLedgerTest extends TestCase
             'indexes' => DB::select("SELECT indexname,indexdef FROM pg_indexes WHERE schemaname='public' AND (tablename IN ('generic_instrument_results','generic_instrument_result_sources') OR indexname='instrument_versions_result_scope_unique') ORDER BY indexname"),
             'triggers' => DB::select("SELECT tgrelid::regclass::text relation,tgname,pg_get_triggerdef(oid,false) definition FROM pg_trigger WHERE NOT tgisinternal AND tgrelid IN ('generic_instrument_results'::regclass,'generic_instrument_result_sources'::regclass) ORDER BY relation,tgname"),
             'policies' => DB::select("SELECT tablename,policyname,cmd,roles,qual,with_check FROM pg_policies WHERE tablename IN ('generic_instrument_results','generic_instrument_result_sources') ORDER BY tablename,policyname"),
+            'acl' => DB::select(<<<'SQL'
+                SELECT class.relname,pg_get_userbyid(class.relowner) owner,
+                    pg_get_userbyid(acl.grantor) grantor,
+                    CASE WHEN acl.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(acl.grantee) END grantee,
+                    acl.privilege_type,acl.is_grantable
+                FROM pg_class class
+                CROSS JOIN LATERAL aclexplode(COALESCE(
+                    class.relacl,
+                    acldefault(CASE WHEN class.relkind='S' THEN 'S'::"char" ELSE 'r'::"char" END, class.relowner)
+                )) acl
+                WHERE class.oid IN (
+                    'public.generic_instrument_results'::regclass,
+                    'public.generic_instrument_result_sources'::regclass,
+                    'public.generic_instrument_results_id_seq'::regclass,
+                    'public.generic_instrument_result_sources_id_seq'::regclass
+                ) AND acl.grantee <> class.relowner
+                ORDER BY class.relname,grantee,acl.privilege_type
+                SQL),
             'sequences' => DB::select(<<<'SQL'
                 SELECT class.relname,pg_get_userbyid(class.relowner) owner,
                     has_sequence_privilege('psikotes_runtime', class.oid, 'USAGE') runtime_usage,
