@@ -300,3 +300,29 @@ the new F2 migration in this wave. No worker may edit routes, lockfiles, ADR
 numbering, or canonical checklists in this wave. Shared contracts must use the
 exclusive ownership recorded above and be integrated by the coordinator before
 any dependent allocator slice begins.
+
+## Resume dispatch — 2026-09-13
+
+Coordinator resume baseline is `7567ad6` on
+`codex/organization-payment-spec`. The root worktree contains five pre-existing
+modified checkout integration tests and untracked ADR-0026; they remain outside
+all worker scopes. Formal checklist completion was recalculated as 81/100 in
+`tasks/todo.md` and 92/120 in `tasks/organization-payment/todo.md` (173/220
+combined); unchecked acceptance remains open until its evidence passes review.
+
+| Task/thread ID | Lane and phase | Branch/worktree | Exclusive ownership | Increment and acceptance | Status / next checkpoint |
+|---|---|---|---|---|---|
+| `01a05839-3b39-7d83-b59f-9e7432d7883e` | P15/P16 participant browser preparation | preserved detached worktree `d4ea`; implementation uses a task-owned temporary worktree from main `7567ad6` | `tools/testing/tests/Browser/checkout-session.browser.mjs` and `tools/testing/tests/Browser/serve-checkout-session.php` only | R1-R2 only: add one fixed synthetic mounted-confirmation alias and verify the missing-profile/current-consent/DASS-required form plus its test-only enhancer; no submit/provider/outbound | prior contract checkpoint accepted as main-equivalent `f0f2af1`/`563fa6e`; new increment active at cursor `62e007d3-56d1-4cb5-b394-bdcad652fb3e:3`; stop before R3 |
+| `01a05839-3b48-7801-8175-0392e8764c23` | F2 durable session-grant verification | detached worktree `14a0`; review target is main `d9c0b55` at baseline `7567ad6` | read-only migration/test inspection plus disposable PostgreSQL execution | Prove or reject FORCE-RLS, immutable typed origin FK, no privilege delegation, one-to-one binding, rerun/down safety, and cleanup | dispatched; no source edits or commit allowed; accept only after command evidence and P1/P2 review |
+| `01a05839-3b18-73e0-8fdc-8db3b02f835d` | F9 retention command/scheduler safety | detached worktree `6e61`; review target is main `9559237` at baseline `7567ad6` | read-only executor/test/operations-pattern audit | Freeze the smallest default-inert command/scheduler slice, locks, retry/failure behavior, redacted observability, tests, and stop conditions | dispatched; no purge/runtime/edit/commit allowed; implementation waits for coordinator review |
+
+The two newly resumed audit tasks are read-only. The frontend owns only its two
+recorded browser-harness files. None owns migrations, routes, lockfiles, ADR
+numbering, canonical checklists, or the dirty root files. The next increment is
+sent only after each result is independently reviewed.
+
+Coordinator fixture repair `48a5bd8` binds the five previously modified
+checkout/payer test fixtures to their exact assessment cases and preserves the
+main-package DASS-21 inventory. The focused organization-payment run passed
+70 tests/2,181 assertions, Pint passed, and `git diff --cached --check` was
+clean. Untracked ADR-0026 remains excluded and unmodified.
