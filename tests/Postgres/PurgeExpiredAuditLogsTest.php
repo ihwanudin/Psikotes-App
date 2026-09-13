@@ -34,6 +34,14 @@ final class PurgeExpiredAuditLogsTest extends TestCase
         CarbonImmutable::setTestNow($cutoff);
         $runner = app(RlsContextRunner::class);
 
+        // The PostgreSQL suite shares one disposable database. Some preceding
+        // fixtures intentionally commit audit rows, so isolate this test's
+        // global retention queue inside the outer transaction. tearDown()
+        // rolls this deletion back together with this test's own fixtures.
+        $runner->runAsService(static function (): void {
+            DB::table('audit_logs')->delete();
+        });
+
         [$branches, $expired, $future] = $runner->runAsService(function () use ($cutoff): array {
             $branches = [
                 $this->branch('RETENTION-PG-A'),
