@@ -125,7 +125,7 @@ final class ScoreSealedIstAnswerSetTest extends OrganizationPaymentTestCase
         $cases = [
             'wrong code' => ['code' => 'dass21'],
             'version mismatch' => ['version' => $private],
-            'invalid checksum' => ['checksum' => $private],
+            'payload checksum mismatch' => ['checksum' => str_repeat('a', 64)],
             'invalid source file' => ['source_file' => "bad\nfile.json"],
             'invalid payload' => ['payload' => '{'],
         ];
