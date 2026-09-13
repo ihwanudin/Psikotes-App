@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Feature\AssessmentSessions;
 
+use App\Domain\AssessmentSessions\AssessmentSessionHistoryKey;
+use App\Domain\AssessmentSessions\AssessmentSessionSelectionCandidate;
+use App\Domain\AssessmentSessions\AssessmentSessionStatus;
 use App\Domain\AssessmentSessions\CaseAuthorization;
 use App\Domain\AssessmentSessions\CaseAuthorizationGrantKind;
 use App\Domain\AssessmentSessions\CaseAuthorizationOrigin;
@@ -12,6 +15,7 @@ use App\Domain\AssessmentSessions\GenericAssessmentInstrument;
 use App\Domain\AssessmentSessions\UnsupportedGenericAssessmentInstrument;
 use App\Security\RlsContextRunner;
 use App\Services\AssessmentSessions\CaseAuthorizationResolver;
+use App\Services\AssessmentSessions\ParticipantAssessmentSessionCandidates;
 use App\Services\ParticipantAuth\AssessmentPrincipal;
 use App\Services\ParticipantAuth\ParticipantPrincipal;
 use Closure;
@@ -64,6 +68,135 @@ final class CaseAuthorizationResolverTest extends OrganizationPaymentTestCase
         $this->assertSame($fixture['package'], $authorization->packageId);
     }
 
+    public function test_it_rechecks_the_exact_case_from_a_trusted_selected_candidate(): void
+    {
+        $fixture = $this->participantGraph('DIRECT_PUBLIC', true);
+        $publicId = (string) DB::table('assessment_cases')->where('id', $fixture['case'])->value('public_id');
+        $candidate = new AssessmentSessionSelectionCandidate(
+            new AssessmentSessionHistoryKey($publicId, GenericAssessmentInstrument::Ist),
+            $fixture['participant'],
+            $fixture['branch'],
+            CaseAuthorizationOrigin::DirectPublic,
+            'entitlement:'.$fixture['entitlement'],
+            true,
+            null,
+            null,
+            null,
+            false,
+        );
+
+        $authorization = $this->asService(fn (): CaseAuthorization => $this->resolver()
+            ->resolveSelectedParticipantForUpdate(
+                new ParticipantPrincipal($fixture['participant'], $fixture['branch']),
+                $candidate,
+            ));
+
+        $this->assertSame($fixture['case'], $authorization->caseId);
+        $this->assertSame($fixture['entitlement'], $authorization->grantId);
+    }
+
+    public function test_selected_candidate_recheck_preserves_the_exact_case_when_another_case_is_not_ready(): void
+    {
+        DB::statement('DROP INDEX IF EXISTS entitlements_participant_id_test_type_unique');
+        $fixture = $this->participantGraph('DIRECT_PUBLIC', true);
+        $selected = $this->projectedCandidate($fixture);
+        $this->insertDirectCase($fixture, 'pending');
+
+        $authorization = $this->asService(fn (): CaseAuthorization => $this->resolver()
+            ->resolveSelectedParticipantForUpdate(
+                new ParticipantPrincipal($fixture['participant'], $fixture['branch']),
+                $selected,
+            ));
+
+        $this->assertSame($fixture['case'], $authorization->caseId);
+        $this->assertSame($fixture['entitlement'], $authorization->grantId);
+    }
+
+    public function test_selected_legacy_candidate_rechecks_its_exact_selection_source(): void
+    {
+        $fixture = $this->participantGraph('SELEKSI_BEASISWA_JEPANG', false);
+        $candidate = $this->projectedCandidate($fixture);
+
+        $authorization = $this->asService(fn (): CaseAuthorization => $this->resolver()
+            ->resolveSelectedParticipantForUpdate(
+                new ParticipantPrincipal($fixture['participant'], $fixture['branch']),
+                $candidate,
+            ));
+
+        $this->assertSame($fixture['case'], $authorization->caseId);
+        $this->assertSame(CaseAuthorizationOrigin::LegacySelection, $authorization->origin);
+    }
+
+    public function test_selected_candidate_rejects_source_drift_without_writing(): void
+    {
+        $fixture = $this->participantGraph('DIRECT_PUBLIC', true);
+        $candidate = $this->projectedCandidate($fixture);
+        DB::table('entitlements')->where('id', $fixture['entitlement'])->update([
+            'status' => 'locked',
+            'ready_at' => null,
+            'updated_at' => now(),
+        ]);
+
+        try {
+            $this->asService(fn (): CaseAuthorization => $this->resolver()
+                ->resolveSelectedParticipantForUpdate(
+                    new ParticipantPrincipal($fixture['participant'], $fixture['branch']),
+                    $candidate,
+                ));
+            $this->fail('A stale selected candidate was accepted.');
+        } catch (CaseAuthorizationRejected) {
+            $this->assertDatabaseCount('test_sessions', 0);
+            $this->assertDatabaseCount('test_session_grants', 0);
+        }
+    }
+
+    public function test_live_candidate_rechecks_the_durable_session_and_grant_identity(): void
+    {
+        $fixture = $this->participantGraph('DIRECT_PUBLIC', true);
+        $sessionPublicId = $this->insertLiveSessionGrant($fixture);
+        $candidate = $this->projectedCandidate($fixture);
+
+        $authorization = $this->asService(fn (): CaseAuthorization => $this->resolver()
+            ->resolveSelectedParticipantForUpdate(
+                new ParticipantPrincipal($fixture['participant'], $fixture['branch']),
+                $candidate,
+            ));
+
+        $this->assertSame($fixture['case'], $authorization->caseId);
+        $this->assertSame($sessionPublicId, $candidate->sessionPublicId);
+    }
+
+    public function test_live_candidate_rejects_replay_identity_drift_without_writing(): void
+    {
+        $fixture = $this->participantGraph('DIRECT_PUBLIC', true);
+        $this->insertLiveSessionGrant($fixture);
+        $candidate = $this->projectedCandidate($fixture);
+        $candidate = new AssessmentSessionSelectionCandidate(
+            $candidate->historyKey,
+            $candidate->participantId,
+            $candidate->organizationId,
+            $candidate->origin,
+            $candidate->durableSourceGrantId,
+            $candidate->eligibleForAllocation,
+            (string) Str::ulid(),
+            $candidate->sessionStatus,
+            $candidate->assessmentParticipantId,
+            $candidate->retestCandidate,
+        );
+
+        try {
+            $this->asService(fn (): CaseAuthorization => $this->resolver()
+                ->resolveSelectedParticipantForUpdate(
+                    new ParticipantPrincipal($fixture['participant'], $fixture['branch']),
+                    $candidate,
+                ));
+            $this->fail('A replay with drifted durable identity was accepted.');
+        } catch (CaseAuthorizationRejected) {
+            $this->assertDatabaseCount('test_sessions', 1);
+            $this->assertDatabaseCount('test_session_grants', 1);
+        }
+    }
+
     public function test_it_resolves_the_exact_legacy_selection_grant(): void
     {
         $fixture = $this->participantGraph('SELEKSI_BEASISWA_JEPANG', false);
@@ -111,11 +244,8 @@ final class CaseAuthorizationResolverTest extends OrganizationPaymentTestCase
     public function test_direct_graph_rejects_package_or_entitlement_composition_drift(): void
     {
         $fixture = $this->participantGraph('DIRECT_PUBLIC', true);
-        DB::table('entitlements')->insert([
-            'participant_id' => $fixture['participant'], 'order_id' => null,
-            'test_type' => 'papi', 'status' => 'ready', 'ready_at' => now(),
-            'created_at' => now(), 'updated_at' => now(),
-        ]);
+        DB::table('package_items')->where('package_id', $fixture['package'])
+            ->where('test_type', 'ist')->delete();
 
         $this->assertRejected($fixture);
     }
@@ -148,6 +278,7 @@ final class CaseAuthorizationResolverTest extends OrganizationPaymentTestCase
         foreach (['dass21', 'ist'] as $type) {
             DB::table('entitlements')->insert([
                 'participant_id' => $fixture['participant'], 'order_id' => $order,
+                'assessment_case_id' => $type === 'dass21' ? null : $case,
                 'test_type' => $type, 'status' => 'ready', 'ready_at' => now(),
                 'created_at' => now(), 'updated_at' => now(),
             ]);
@@ -209,7 +340,7 @@ final class CaseAuthorizationResolverTest extends OrganizationPaymentTestCase
         }
     }
 
-    public function test_public_contract_cannot_accept_dass_or_opaque_authorization_identifiers(): void
+    public function test_public_contract_keeps_old_entrypoints_and_accepts_only_a_typed_selected_candidate(): void
     {
         $reflection = new \ReflectionClass(CaseAuthorizationResolver::class);
         foreach (['resolveIntegratedForUpdate', 'resolveParticipantForUpdate'] as $methodName) {
@@ -219,10 +350,13 @@ final class CaseAuthorizationResolverTest extends OrganizationPaymentTestCase
             $this->assertSame(GenericAssessmentInstrument::class, (string) $parameters[1]->getType());
         }
 
+        $selected = $reflection->getMethod('resolveSelectedParticipantForUpdate')->getParameters();
+        $this->assertCount(2, $selected);
+        $this->assertSame(ParticipantPrincipal::class, (string) $selected[0]->getType());
+        $this->assertSame(AssessmentSessionSelectionCandidate::class, (string) $selected[1]->getType());
+
         $source = file_get_contents(app_path('Services/AssessmentSessions/CaseAuthorizationResolver.php'));
         $this->assertIsString($source);
-        $this->assertStringNotContainsString('authorization_id', $source);
-        $this->assertStringNotContainsString('allocation_intent_id', $source);
         $this->assertStringNotContainsString('dass21', $source);
     }
 
@@ -273,6 +407,7 @@ final class CaseAuthorizationResolverTest extends OrganizationPaymentTestCase
         foreach (['dass21', 'ist'] as $type) {
             $id = DB::table('entitlements')->insertGetId([
                 'participant_id' => $participant, 'order_id' => $order, 'test_type' => $type,
+                'assessment_case_id' => $type === 'dass21' ? null : $case,
                 'status' => 'ready', 'ready_at' => now(), 'created_at' => now(), 'updated_at' => now(),
             ]);
             if ($type === 'ist') {
@@ -291,6 +426,99 @@ final class CaseAuthorizationResolverTest extends OrganizationPaymentTestCase
             'status' => 'paid', 'amount' => 0, 'currency' => 'IDR', 'paid_at' => now(),
             'created_at' => now(), 'updated_at' => now(),
         ]);
+    }
+
+    /** @param array{branch:int,participant:int,package:int,case:int,entitlement:int} $fixture */
+    private function projectedCandidate(array $fixture): AssessmentSessionSelectionCandidate
+    {
+        $projection = app(RlsContextRunner::class)->runAsService(
+            fn () => app(ParticipantAssessmentSessionCandidates::class)->project(
+                new ParticipantPrincipal($fixture['participant'], $fixture['branch']),
+                GenericAssessmentInstrument::Ist,
+            ),
+        );
+
+        return $projection->candidates[0];
+    }
+
+    /** @param array{branch:int,participant:int,package:int} $fixture */
+    private function insertDirectCase(array $fixture, string $orderStatus): int
+    {
+        $publicId = (string) Str::ulid();
+        $case = DB::table('assessment_cases')->insertGetId([
+            'public_id' => $publicId,
+            'participant_id' => $fixture['participant'],
+            'organization_id' => $fixture['branch'],
+            'package_id' => $fixture['package'],
+            'origin' => 'DIRECT_PUBLIC',
+            'intended_field_snapshot' => 'KAIGO',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $order = DB::table('orders')->insertGetId([
+            'public_id' => $publicId,
+            'participant_id' => $fixture['participant'],
+            'assessment_case_id' => $case,
+            'status' => $orderStatus,
+            'amount' => 99000,
+            'currency' => 'IDR',
+            'paid_at' => $orderStatus === 'paid' ? now() : null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('entitlements')->insert([
+            'participant_id' => $fixture['participant'],
+            'order_id' => $order,
+            'assessment_case_id' => $case,
+            'test_type' => 'ist',
+            'status' => 'ready',
+            'ready_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return $case;
+    }
+
+    /** @param array{branch:int,participant:int,package:int,case:int,entitlement:int} $fixture */
+    private function insertLiveSessionGrant(array $fixture): string
+    {
+        $sessionPublicId = (string) Str::ulid();
+        $session = DB::table('test_sessions')->insertGetId([
+            'public_id' => $sessionPublicId,
+            'participant_id' => $fixture['participant'],
+            'assessment_case_id' => $fixture['case'],
+            'test_type' => 'ist',
+            'attempt_no' => 1,
+            'authorization_id' => 'grant:v1:DIRECT_PUBLIC:entitlement:'.$fixture['entitlement'],
+            'allocation_intent_id' => 'allocation:v1:DIRECT_PUBLIC:entitlement:'.$fixture['entitlement'].':ist',
+            'duration_seconds' => 600,
+            'status' => AssessmentSessionStatus::InProgress->value,
+            'started_at' => now()->subMinute(),
+            'ends_at' => now()->addMinutes(9),
+            'answers_revision' => 0,
+            'created_at' => now()->subMinute(),
+            'updated_at' => now(),
+        ]);
+        DB::table('test_session_grants')->insert([
+            'test_session_id' => $session,
+            'assessment_case_id' => $fixture['case'],
+            'participant_id' => $fixture['participant'],
+            'organization_id' => $fixture['branch'],
+            'test_type' => 'ist',
+            'origin' => 'DIRECT_PUBLIC',
+            'grant_kind' => 'entitlement',
+            'order_id' => DB::table('orders')->where('assessment_case_id', $fixture['case'])->value('id'),
+            'entitlement_id' => $fixture['entitlement'],
+            'created_at' => now(),
+        ]);
+        DB::table('entitlements')->where('id', $fixture['entitlement'])->update([
+            'status' => 'in_progress',
+            'started_at' => now()->subMinute(),
+            'updated_at' => now(),
+        ]);
+
+        return $sessionPublicId;
     }
 
     /** @param array{branch:int,participant:int} $fixture */
