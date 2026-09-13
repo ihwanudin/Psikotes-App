@@ -6,22 +6,37 @@ import process from 'node:process';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
-import {
-    extractDocxTextParts,
-    OoxmlContentError,
-} from './ooxml-content.mjs';
+import { extractDocxTextParts, OoxmlContentError } from './ooxml-content.mjs';
 import {
     extractZipTextParts,
     ZipTextContentError,
 } from './zip-text-content.mjs';
+import {
+    extractImageTextParts,
+    imageKind,
+    ImageContentError,
+} from './image-content.mjs';
 
 const KINDS = new Set(['secret', 'pii']);
 const SYNTHETIC_PHONES = new Set([
+    '080000000000',
+    '080000000001',
+    '080000000002',
+    '080000000003',
+    '080000000004',
+    '080000000005',
+    '081200000000',
     '620000000000',
+    '620000000001',
+    '620000000999',
+    '628000000000',
+    '62800123456',
     '628111111110',
+    '628111111111',
     '628123456789',
     '6281234567800',
     '6281234567890',
+    '629999999999',
 ]);
 const RULES = Object.freeze({
     secret: new Set([
@@ -375,6 +390,24 @@ function scanBlob(kind, relativePath, bytes) {
 function scanSnapshot(kind, relativePath, bytes, maximum) {
     const lowerPath = relativePath.toLowerCase();
 
+    if (imageKind(bytes) !== null) {
+        try {
+            return extractImageTextParts(bytes, {
+                maxTotalBytes: maximum,
+            }).flatMap(({ reportId, bytes: content }) =>
+                scanBlob(kind, `${relativePath}#${reportId}`, content),
+            );
+        } catch (error) {
+            if (error instanceof ImageContentError) {
+                throw new ScanFailure(
+                    `Tracked image is malformed or unsupported: ${relativePath}`,
+                );
+            }
+
+            throw error;
+        }
+    }
+
     if (!lowerPath.endsWith('.docx') && !lowerPath.endsWith('.zip')) {
         return scanBlob(kind, relativePath, bytes);
     }
@@ -528,7 +561,10 @@ function scanPii(relativePath, content) {
     for (const match of content.matchAll(phone)) {
         const digits = match[0].replace(/\D/g, '');
 
-        if (!isSyntheticPhone(digits)) {
+        if (
+            !isSyntheticPhone(digits) &&
+            !isIncompleteCodeLiteral(content, match.index + match[0].length)
+        ) {
             matches.push(
                 finding(
                     'pii',
@@ -685,6 +721,10 @@ function isSyntheticEmail(value) {
 
 function isSyntheticPhone(digits) {
     return SYNTHETIC_PHONES.has(digits);
+}
+
+function isIncompleteCodeLiteral(content, end) {
+    return /^["']\s*\./.test(content.slice(end, end + 16));
 }
 
 function looksLikeFilename(value) {
