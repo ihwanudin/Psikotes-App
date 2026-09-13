@@ -218,7 +218,7 @@ function seedDataset(int $startCount, int $readerCount): array
                 'allocation_intent_id' => strtoupper((string) Str::ulid()),
                 'duration_seconds' => 540, 'status' => 'submitted', 'answers_revision' => 1,
                 'started_at' => '2026-09-14 00:00:00.000000+00:00',
-                'ends_at' => '2026-09-14 00:09:00.000000+00:00', 'submitted_at' => $submittedAt,
+                'ends_at' => '2026-09-14 00:30:00.000000+00:00', 'submitted_at' => $submittedAt,
                 'session_definition_version' => $definition->version,
                 'session_definition_provenance' => $definition->provenance,
                 'session_definition_checksum' => $definition->checksum,
