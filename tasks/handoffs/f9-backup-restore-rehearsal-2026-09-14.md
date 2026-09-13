@@ -220,5 +220,7 @@ retention/immutability, scheduling, alert ownership, access control, WAL/base
 backup and PITR procedure, representative production-like data volume, and
 approved RPO/RTO. None may be inferred from this rehearsal.
 
-Review status: **implementation complete; pending Tech Lead review and
-independent QA. Do not integrate from this handoff alone.**
+Review status: **Tech Lead and independent QA passed; PM approved; canonical
+integration and post-integration execution verification completed.** The
+bounded local rehearsal is accepted as evidence, while F9 remains `partial` and
+release status remains `NO-GO` pending the operational gates above.
