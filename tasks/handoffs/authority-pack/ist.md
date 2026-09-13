@@ -1,0 +1,107 @@
+# IST authority decision pack
+
+Date: 2026-09-14
+
+Candidate baseline: `274c43de45f9f16e4a3f8cb33e377f697d6e9f73`
+
+Requested branch: `codex/f2-wave1-integration`
+
+Observed checkout: detached HEAD at the exact candidate baseline; no content
+drift was present before this file was created.
+
+## Decision
+
+**BLOCKED — readiness 0/4. Import-ready: NO. Start-ready: NO.**
+
+IST scoring rules are versioned and accepted, but they do not authorize an
+administration form. No reviewed evidence package currently binds the complete
+fixed participant-visible content, its canonical administration version and
+provenance, the two-phase ME timing, usage rights, and an instrument-specific
+approval. No manifest, seed, catalog row, or session-start activation may be
+derived from this pack.
+
+## Decision-ready evidence matrix
+
+| Decision field                | Evidence available at candidate baseline                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Required final evidence or attachment                                                                                                                                                                                                                                | Authority decision                                                                                                | Status           |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ---------------- |
+| Final evidence package        | Scoring keys and norms exist, and the timing workbook supplies a structure table. The inspected sources do not contain a complete approved delivery package covering instructions, all item texts/options, and FA/WU figural assets.                                                                                                                                                                                                                                                                                                                                                                                 | One immutable, access-controlled IST administration package plus a signed manifest enumerating every participant-visible file and asset.                                                                                                                             | The package must be reviewed as a whole; scoring artifacts cannot substitute for the administration form.         | **BLOCKED**      |
+| Provenance and source         | Source precedence is PRD 1.3 -> final psychologist confirmation -> Tabel Lookup Skoring v1.1 -> golden test -> non-conflicting older technical material (ADR-0028). The timing evidence cited by the manifest audit is `D:/LSI/Psikotes/PSIKOTEST LSI/PSIKOTEST/Master Kamus Tes IST.xlsx`, sheet `Struktur Tes IST`, cells `A7:C17`, SHA-256 `23ceadf36db46a08a4466515f3ff794fce2f6126e10f5fbe8c8455bffff47bf8`. A second file with the same name exists at `D:/LSI/Psikotes/PSIKOTEST LSI/Master Kamus Tes IST.xlsx` with a different SHA-256, `9252223c6a52498a10d44cd8fba0ed9c935b0c500773072a078233f38d2932c3`. | A provenance statement must identify the exact authoritative path/source edition, issuer or custodian, issue date, chain of custody, and which duplicate workbook is authoritative.                                                                                  | Filename similarity is not provenance. The duplicate-file mismatch must be resolved explicitly.                   | **BLOCKED**      |
+| Administration version        | `F2-2026.09` is the normalization-data version under `SCORING-4.3.0`; it is not an IST form version. No canonical administration-form version is assigned.                                                                                                                                                                                                                                                                                                                                                                                                                                                           | A unique, immutable IST administration version named by the authorized approver and bound to the final package.                                                                                                                                                      | Do not reuse the scoring-data version as the form version.                                                        | **BLOCKED**      |
+| Checksums                     | Current Git object bytes for `database/seeders/data/ist.json` hash to SHA-256 `05b01f7e9a5e62116304db399748d9c5603ddea581756c542876d33045c019b5`. The earlier four-instrument audit records `283f59df8c5a48c4c581e0e7db3014cf125275f0ab7b793300396619f5a7e6f9`; that value does not match the candidate baseline and must not be repeated as verified file evidence. Neither value is a catalog `template_checksum`.                                                                                                                                                                                                 | A checksum inventory for every approved source/asset, followed by the canonical `SessionDefinition::checksumFor(...)` value computed only after the entire definition is complete. The discrepancy in the audit's JSON hash also requires correction or explanation. | A source-file hash identifies bytes only; it does not confer approval, provenance, or rights.                     | **BLOCKED**      |
+| Duration                      | SPEC v4.3 §4.1 and the cited timing workbook support nine subtests totaling 4,320 seconds: SE 360, WA 360, AN 420, GE 480, RA 600, ZR 600, FA 420, WU 540, ME 540. The same workbook also says “sekitar 75 menit,” while the summed durations equal 72 minutes; an older technical diagram says 90 minutes. PRD FR-08 requires two timers for ME, but no reviewed source divides the 540 seconds into learn and recall phases.                                                                                                                                                                                       | Signed timing schedule with exact seconds for every phase, including the ME learn/recall split, plus an explicit resolution of the 72/approximately-75/90-minute descriptions.                                                                                       | The 4,320-second sum is evidence, not sufficient final timer authority while ME is unresolved.                    | **BLOCKED**      |
+| Subtest encoding              | Ordered codes SE, WA, AN, GE, RA, ZR, FA, WU, ME are established. The current catalog shape provides one duration per subtest and therefore cannot represent the required two ME timers without a reviewed encoding decision.                                                                                                                                                                                                                                                                                                                                                                                        | Approved ordered subtest payload with exact `code`, `duration_seconds`, and `item_count` for every runtime segment; include the chosen ME representation and any contract change approved by the coordinator.                                                        | No implicit extra code or timer phase may be invented.                                                            | **BLOCKED**      |
+| Item count and text authority | SCORING-4.3.0 establishes 176 scored items: SE20, WA20, AN20, GE16, RA20, ZR20, FA20, WU20, ME20. `ist.json` contains keys/norms, not the complete licensed question form. PRD FR-08 separately requires FA/WU figural assets, and FR-08b requires fixed order with no item or option randomization.                                                                                                                                                                                                                                                                                                                 | Approved, fixed, ordered inventory of 176 item texts/options, all instructions, answer-response encoding, and every figural asset, with item-to-key linkage reviewed without exposing protected content in this pack.                                                | Counts and keys do not establish text/asset authority.                                                            | **BLOCKED**      |
+| Rights and license            | PRD §10 and §14 name IST usage rights as a pre-go-live prerequisite. No license, permission letter, procurement record, rights-holder statement, territory/channel restriction, expiry, or redistribution condition was found in the reviewed repository evidence.                                                                                                                                                                                                                                                                                                                                                   | Executed license or written authorization identifying the rights holder, licensee, exact IST form/version, digital/web administration scope, territories, participant population, term, storage/display restrictions, and permitted derivative or translated assets. | Rights must be established by documentary evidence; silence is not permission.                                    | **BLOCKED**      |
+| Named approver                | PRD 1.3 names **Rizqi Ulin Nuha, S.Psi., Psikolog — SILP-D8A35113BB4D** as the psychometric responsible person. No instrument-specific signed approval for this IST administration package was found. No named rights/licensing approver is established by the reviewed evidence.                                                                                                                                                                                                                                                                                                                                    | Dated approval signed by the named psychometric authority for content, order, timing, encoding, provenance, and checksum; separately attach authorization from the rights holder or its authorized representative.                                                   | The PRD role identifies the required psychometric review path but is not evidence that this package was approved. | **BLOCKED**      |
+| Import-ready acceptance       | The immutable catalog requires exact instrument, version, provenance, total duration, ordered subtests with duration and count, fixed randomization declaration, complete canonical content, and matching checksum. Multiple required fields remain unapproved.                                                                                                                                                                                                                                                                                                                                                      | Completed manifest and attachments above; typed validation; reviewed catalog-import procedure; disposable PostgreSQL acceptance; no production activation.                                                                                                           | Import acceptance remains fail-closed.                                                                            | **BLOCKED — NO** |
+| Start-ready acceptance        | ADR-0030 requires a unique active server-side definition inside the trusted atomic start command. No approved definition can be imported or activated from current evidence.                                                                                                                                                                                                                                                                                                                                                                                                                                         | Import-ready acceptance first; then unique active-row verification, provider checksum validation, trusted-start integration evidence, and the relevant PostgreSQL/HTTP/browser gates.                                                                                | Start readiness cannot precede import readiness.                                                                  | **BLOCKED — NO** |
+
+## Four-gate readiness
+
+| Gate                              | Acceptance condition                                                                                                 | Result      |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ----------- |
+| 1. Canonical content and identity | Complete fixed administration package, canonical form version, immutable provenance, and verified checksum inventory | **BLOCKED** |
+| 2. Administration encoding        | Exact ordered subtests, item counts, all phase durations, and representable ME two-timer encoding                    | **BLOCKED** |
+| 3. Rights                         | Executed evidence authorizing this exact digital IST form and assets                                                 | **BLOCKED** |
+| 4. Named approval                 | Instrument-specific sign-off binding gates 1-3 and the final canonical checksum                                      | **BLOCKED** |
+
+**Readiness: 0/4.** Import-ready and start-ready remain **NO**.
+
+## Required attachments
+
+1. `IST administration manifest` identifying the canonical form/version,
+   provenance, custodian, issue date, fixed ordering, and all file hashes.
+2. `IST content inventory` covering all 176 texts/options, instructions,
+   response encoding, and FA/WU assets.
+3. `IST timing and encoding decision` resolving ME learn/recall seconds, the
+   runtime representation, and the conflicting total-duration descriptions.
+4. `IST rights evidence` covering digital administration and protected assets.
+5. `IST psychometric approval` signed and dated by the named authority, binding
+   the exact manifest and checksum inventory.
+6. `IST import validation record` containing canonical template checksum,
+   typed validation, and disposable PostgreSQL results after gates 1-5 pass.
+
+## Unanswered questions
+
+1. Which of the two different `Master Kamus Tes IST.xlsx` files is the
+   authoritative source, and what chain of custody establishes that choice?
+2. What is the canonical administration-form version, distinct from
+   `F2-2026.09`?
+3. What are the exact ME learning and recall durations, and how must those two
+   timers be encoded in the runtime definition?
+4. Which total-duration statement is approved: 72 minutes, approximately 75
+   minutes, 90 minutes, or another explicitly supplied value?
+5. Where is the complete approved fixed set of 176 texts/options,
+   instructions, response encodings, and FA/WU assets?
+6. Who owns or controls the relevant rights, and what permission covers web
+   delivery, storage, display, and any translated or adapted material?
+7. Will Rizqi Ulin Nuha approve this exact package, and who is the named
+   licensing signatory with authority to bind the rights holder/licensee?
+8. Why do the current `ist.json` bytes and the checksum printed in the earlier
+   manifest audit disagree, and which checksum record will be formally
+   corrected?
+
+## Tech Lead then QA handoff contract
+
+**Tech Lead review first:** verify that the final attachments map losslessly to
+the typed `SessionDefinition` fields, decide the ME two-timer representation,
+recompute the canonical checksum, and confirm that no scoring version or raw
+file hash is being promoted to administration authority.
+
+**QA review second:** only after Tech Lead acceptance, verify all attachment
+hashes, fixed order/counts, timer boundaries including both ME phases, negative
+cases for missing or altered evidence, typed import validation, unique active
+definition behavior, and fail-closed start behavior. QA must return the pack to
+`BLOCKED` if any attachment, approval, rights term, or hash binding is absent.
+
+## Sources reviewed
+
+- PRD 1.3 FINAL (2026-09-08), especially FR-05, FR-08, FR-08b, §10, and §14.
+- SPEC v4.3 §§4.1, 8A.5, 13, and 14.
+- SCORING-4.3.0 §§1 and 3.
+- ADR-0028 and ADR-0029.
+- `tasks/f2-f9-acceptance.md`.
+- `tasks/handoffs/f2-four-instrument-authority-manifest-audit.md`.
+- `tasks/handoffs/f2-adr0030-start-flow-readiness.md`.
+- `tasks/handoffs/integration-2026-09-13-wave1.md` and
+  `tasks/parallel-work.md`.
