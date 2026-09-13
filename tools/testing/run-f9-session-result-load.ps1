@@ -99,6 +99,9 @@ exec php tools/testing/f9-session-result-load.php --concurrency=1,4,8 --warmup=3
         '--mount', "type=bind,source=$tempRoot,target=/run-output",
         '--tmpfs', '/tmp/load-app/storage:rw', '--tmpfs', '/tmp/load-app/bootstrap/cache:rw',
         '--env', "F9_LOAD_RUN_ID=$runId", '--env', 'F9_LOAD_OUTPUT=/run-output',
+        '--env', 'APP_ENV=testing',
+        '--env', 'APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+        '--env', 'APP_DEBUG=false', '--env', 'APP_URL=http://localhost',
         '--entrypoint', 'sh', 'psikotes-app:dev', '-euc', $shell
     )
     & docker @dockerArgs
