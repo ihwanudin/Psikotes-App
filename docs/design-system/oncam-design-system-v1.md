@@ -22,11 +22,11 @@ Product progress remains governed by the repository acceptance checklists. At th
 
 The JSON uses three layers. Every semantic and component value is an alias; raw values exist only in primitives.
 
-| Layer | Purpose | Example | Change rule |
-|---|---|---|---|
-| Primitive | Stable raw palette and scales | `primitive.color.brand.green` | Change only with brand/system approval |
-| Semantic | Meaning in a light or dark mode | `semantic.light.color.action.primary.background` | Change when product meaning changes |
-| Component | State-specific consumption | `component.light.button.primary.background.default` | Change when a component contract changes |
+| Layer     | Purpose                         | Example                                             | Change rule                              |
+| --------- | ------------------------------- | --------------------------------------------------- | ---------------------------------------- |
+| Primitive | Stable raw palette and scales   | `primitive.color.brand.green`                       | Change only with brand/system approval   |
+| Semantic  | Meaning in a light or dark mode | `semantic.light.color.action.primary.background`    | Change when product meaning changes      |
+| Component | State-specific consumption      | `component.light.button.primary.background.default` | Change when a component contract changes |
 
 References use DTCG-style braces, for example `{semantic.light.color.action.primary.background}`. Consumers must resolve aliases, reject missing references and cycles, and preserve the three-layer boundary. Component code should not consume primitives directly.
 
@@ -39,15 +39,15 @@ References use DTCG-style braces, for example `{semantic.light.color.action.prim
 
 ### Typography
 
-| Role | Token | Size | Guidance |
-|---|---|---:|---|
-| Supporting/meta | `semantic.shared.font.body.sm` | 14px | Never below 12px; do not use gold |
-| Body/control | `semantic.shared.font.body.md` | 16px | Default readable interface copy |
-| Lead | `semantic.shared.font.body.lg` | 18px | Introductory or emphasized copy |
-| Heading small | `semantic.shared.font.heading.sm` | 20px | Card and section headings |
-| Heading medium | `semantic.shared.font.heading.md` | 24px | Page subsections |
-| Heading large | `semantic.shared.font.heading.lg` | 30px | Page title |
-| Display | `semantic.shared.font.heading.xl` | 36px | Sparse landing/report moments only |
+| Role            | Token                             | Size | Guidance                           |
+| --------------- | --------------------------------- | ---: | ---------------------------------- |
+| Supporting/meta | `semantic.shared.font.body.sm`    | 14px | Never below 12px; do not use gold  |
+| Body/control    | `semantic.shared.font.body.md`    | 16px | Default readable interface copy    |
+| Lead            | `semantic.shared.font.body.lg`    | 18px | Introductory or emphasized copy    |
+| Heading small   | `semantic.shared.font.heading.sm` | 20px | Card and section headings          |
+| Heading medium  | `semantic.shared.font.heading.md` | 24px | Page subsections                   |
+| Heading large   | `semantic.shared.font.heading.lg` | 30px | Page title                         |
+| Display         | `semantic.shared.font.heading.xl` | 36px | Sparse landing/report moments only |
 
 Body copy uses 1.5 line height; long-form guidance uses 1.625; headings use 1.2. Controls and headings are semibold. All-caps text is reserved for short metadata and must use the wide tracking token. Text must remain usable at 200% browser zoom without clipping or loss.
 
@@ -64,37 +64,37 @@ Body copy uses 1.5 line height; long-form guidance uses 1.625; headings use 1.2.
 
 WCAG 2.2 AA thresholds used here are 4.5:1 for normal text, 3:1 for large text, and 3:1 for meaningful non-text boundaries and focus indicators. The matrix uses sRGB relative luminance and unrounded ratios for pass/fail decisions; displayed ratios are rounded to two decimals.
 
-| Use | Foreground | Background | Ratio | Acceptance |
-|---|---:|---:|---:|---|
-| Primary text/button label | `#FFFFFF` | `#005F41` | 7.74:1 | PASS normal text |
-| Soft-neutral text/button label | `#F7F7F7` | `#005F41` | 7.22:1 | PASS normal text |
-| Gold accent on green | `#D4AF37` | `#005F41` | 3.68:1 | PASS large text/non-text only; FAIL normal text |
-| White on gold | `#FFFFFF` | `#D4AF37` | 2.10:1 | FAIL; prohibited for text/UI boundary |
-| Deep green on gold | `#004530` | `#D4AF37` | 5.27:1 | PASS normal text |
-| Primary light text | `#0E1713` | `#FFFFFF` | 18.25:1 | PASS normal text |
-| Secondary light text | `#4B5851` | `#FFFFFF` | 7.46:1 | PASS normal text |
-| Muted light text | `#637169` | `#FFFFFF` | 5.13:1 | PASS normal text |
-| Secondary text on soft neutral | `#4B5851` | `#F7F7F7` | 6.97:1 | PASS normal text |
-| Primary text on soft neutral | `#0E1713` | `#F7F7F7` | 17.04:1 | PASS normal text |
-| Primary dark text | `#F7F7F7` | `#17231E` | 15.13:1 | PASS normal text |
-| Secondary dark text | `#B7C0BB` | `#17231E` | 8.70:1 | PASS normal text |
-| Muted dark text | `#87948D` | `#17231E` | 5.13:1 | PASS normal text |
-| Light focus ring | `#005F41` | `#FFFFFF` | 7.74:1 | PASS non-text |
-| Dark focus ring | `#76C7A6` | `#17231E` | 8.10:1 | PASS non-text |
-| Light input boundary | `#87948D` | `#FFFFFF` | 3.16:1 | PASS non-text |
-| Dark input boundary | `#87948D` | `#24312B` | 4.29:1 | PASS non-text |
-| Light success | `#145C3B` | `#E8F4ED` | 7.09:1 | PASS normal text |
-| Light warning | `#6B4600` | `#FFF4D6` | 7.66:1 | PASS normal text |
-| Light error | `#8F1D14` | `#FFF1EF` | 8.11:1 | PASS normal text |
-| Light info | `#07527A` | `#E8F4FA` | 7.51:1 | PASS normal text |
-| Dark success | `#A9E2C4` | `#123A2A` | 8.63:1 | PASS normal text |
-| Dark warning | `#F4D37A` | `#3D2A00` | 9.44:1 | PASS normal text |
-| Dark error | `#F6B0A8` | `#4A1712` | 8.22:1 | PASS normal text |
-| Dark info | `#9BD5F0` | `#0A3247` | 8.44:1 | PASS normal text |
-| Dark success boundary | `#5EB98B` | `#17231E` | 6.78:1 | PASS non-text |
-| Dark warning boundary | `#D4AF37` | `#17231E` | 7.71:1 | PASS non-text |
-| Dark error boundary | `#E46B60` | `#17231E` | 5.07:1 | PASS non-text |
-| Dark info boundary | `#3FA6D6` | `#17231E` | 5.89:1 | PASS non-text |
+| Use                            | Foreground | Background |   Ratio | Acceptance                                      |
+| ------------------------------ | ---------: | ---------: | ------: | ----------------------------------------------- |
+| Primary text/button label      |  `#FFFFFF` |  `#005F41` |  7.74:1 | PASS normal text                                |
+| Soft-neutral text/button label |  `#F7F7F7` |  `#005F41` |  7.22:1 | PASS normal text                                |
+| Gold accent on green           |  `#D4AF37` |  `#005F41` |  3.68:1 | PASS large text/non-text only; FAIL normal text |
+| White on gold                  |  `#FFFFFF` |  `#D4AF37` |  2.10:1 | FAIL; prohibited for text/UI boundary           |
+| Deep green on gold             |  `#004530` |  `#D4AF37` |  5.27:1 | PASS normal text                                |
+| Primary light text             |  `#0E1713` |  `#FFFFFF` | 18.25:1 | PASS normal text                                |
+| Secondary light text           |  `#4B5851` |  `#FFFFFF` |  7.46:1 | PASS normal text                                |
+| Muted light text               |  `#637169` |  `#FFFFFF` |  5.13:1 | PASS normal text                                |
+| Secondary text on soft neutral |  `#4B5851` |  `#F7F7F7` |  6.97:1 | PASS normal text                                |
+| Primary text on soft neutral   |  `#0E1713` |  `#F7F7F7` | 17.04:1 | PASS normal text                                |
+| Primary dark text              |  `#F7F7F7` |  `#17231E` | 15.13:1 | PASS normal text                                |
+| Secondary dark text            |  `#B7C0BB` |  `#17231E` |  8.70:1 | PASS normal text                                |
+| Muted dark text                |  `#87948D` |  `#17231E` |  5.13:1 | PASS normal text                                |
+| Light focus ring               |  `#005F41` |  `#FFFFFF` |  7.74:1 | PASS non-text                                   |
+| Dark focus ring                |  `#76C7A6` |  `#17231E` |  8.10:1 | PASS non-text                                   |
+| Light input boundary           |  `#87948D` |  `#FFFFFF` |  3.16:1 | PASS non-text                                   |
+| Dark input boundary            |  `#87948D` |  `#24312B` |  4.29:1 | PASS non-text                                   |
+| Light success                  |  `#145C3B` |  `#E8F4ED` |  7.09:1 | PASS normal text                                |
+| Light warning                  |  `#6B4600` |  `#FFF4D6` |  7.66:1 | PASS normal text                                |
+| Light error                    |  `#8F1D14` |  `#FFF1EF` |  8.11:1 | PASS normal text                                |
+| Light info                     |  `#07527A` |  `#E8F4FA` |  7.51:1 | PASS normal text                                |
+| Dark success                   |  `#A9E2C4` |  `#123A2A` |  8.63:1 | PASS normal text                                |
+| Dark warning                   |  `#F4D37A` |  `#3D2A00` |  9.44:1 | PASS normal text                                |
+| Dark error                     |  `#F6B0A8` |  `#4A1712` |  8.22:1 | PASS normal text                                |
+| Dark info                      |  `#9BD5F0` |  `#0A3247` |  8.44:1 | PASS normal text                                |
+| Dark success boundary          |  `#5EB98B` |  `#17231E` |  6.78:1 | PASS non-text                                   |
+| Dark warning boundary          |  `#D4AF37` |  `#17231E` |  7.71:1 | PASS non-text                                   |
+| Dark error boundary            |  `#E46B60` |  `#17231E` |  5.07:1 | PASS non-text                                   |
+| Dark info boundary             |  `#3FA6D6` |  `#17231E` |  5.89:1 | PASS non-text                                   |
 
 Disabled controls are exempt from WCAG contrast requirements and are therefore **not applicable**, not claimed as passing. They still require an explicit disabled attribute/state, a stable label, and more than opacity alone when confusion is plausible. Decorative logo pixels are not text contrast claims.
 
@@ -106,12 +106,12 @@ The approved artwork is a vertically stacked mark, ONCAM wordmark, and “ONLINE
 
 ### Asset matrix
 
-| Variant | Repository asset | Exact source | Intended surface | Production status |
-|---|---|---|---|---|
-| Full color | `public/brand/oncam-logo-full-color.png` | `D:/ONCAM/Logo ONCAM/21.904.ONLINE CAREER MENTOR/PNG/1_ONLINE CAREER MENTOR.png` | White or soft-neutral light surface | Existing, approved |
-| Mono dark | `public/brand/oncam-logo-mono-dark.png` | `D:/ONCAM/Logo ONCAM/21.904.ONLINE CAREER MENTOR/PNG/2_ONLINE CAREER MENTOR.png` | Light surface requiring one-color reproduction | Candidate exact copy |
-| Reversed light | `public/brand/oncam-logo-reversed.png` | `D:/ONCAM/Logo ONCAM/21.904.ONLINE CAREER MENTOR/PNG/3_ONLINE CAREER MENTOR.png` | ONCAM green or sufficiently dark neutral surface | Candidate exact copy |
-| Gold-on-green reference | None | `D:/ONCAM/Logo ONCAM/21.904.ONLINE CAREER MENTOR/JPG/3_ONLINE CAREER MENTOR.jpg` | Visual reference only | Prohibited as a production asset |
+| Variant                 | Repository asset                         | Exact source                                                                     | Intended surface                                 | Production status                |
+| ----------------------- | ---------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------ | -------------------------------- |
+| Full color              | `public/brand/oncam-logo-full-color.png` | `D:/ONCAM/Logo ONCAM/21.904.ONLINE CAREER MENTOR/PNG/1_ONLINE CAREER MENTOR.png` | White or soft-neutral light surface              | Existing, approved               |
+| Mono dark               | `public/brand/oncam-logo-mono-dark.png`  | `D:/ONCAM/Logo ONCAM/21.904.ONLINE CAREER MENTOR/PNG/2_ONLINE CAREER MENTOR.png` | Light surface requiring one-color reproduction   | Candidate exact copy             |
+| Reversed light          | `public/brand/oncam-logo-reversed.png`   | `D:/ONCAM/Logo ONCAM/21.904.ONLINE CAREER MENTOR/PNG/3_ONLINE CAREER MENTOR.png` | ONCAM green or sufficiently dark neutral surface | Candidate exact copy             |
+| Gold-on-green reference | None                                     | `D:/ONCAM/Logo ONCAM/21.904.ONLINE CAREER MENTOR/JPG/3_ONLINE CAREER MENTOR.jpg` | Visual reference only                            | Prohibited as a production asset |
 
 All approved PNGs are 1200×1027 RGBA at 72 dpi and have identical alpha geometry. PNG 1 uses exact `#005F41` and `#D4AF37`; PNG 2 uses `#000000`; PNG 3 uses `#F7F7F7`.
 
@@ -132,27 +132,27 @@ The JSON defines shared geometry and light/dark state colors for buttons, inputs
 
 ### Buttons
 
-| State | Primary | Secondary/quiet | Behavior |
-|---|---|---|---|
-| Default | Green background, white text | Surface background, green or primary text, visible boundary | Native `button` or link semantics |
-| Hover | Deliberate darker/lighter alias | Deliberate surface/border alias | Pointer hover only; not a substitute for focus |
-| Active | Stronger pressed alias | Stronger pressed alias | Immediate feedback; no layout shift |
-| Focus-visible | 3px mode-specific ring with offset | Same | Must remain visible against page and control |
-| Disabled | Disabled aliases and 0.72 opacity | Same | Native `disabled` or `aria-disabled` plus guarded action |
-| Loading | Retain label or accessible status text | Same | Prevent duplicate submission; do not expose spinner alone |
+| State         | Primary                                | Secondary/quiet                                             | Behavior                                                  |
+| ------------- | -------------------------------------- | ----------------------------------------------------------- | --------------------------------------------------------- |
+| Default       | Green background, white text           | Surface background, green or primary text, visible boundary | Native `button` or link semantics                         |
+| Hover         | Deliberate darker/lighter alias        | Deliberate surface/border alias                             | Pointer hover only; not a substitute for focus            |
+| Active        | Stronger pressed alias                 | Stronger pressed alias                                      | Immediate feedback; no layout shift                       |
+| Focus-visible | 3px mode-specific ring with offset     | Same                                                        | Must remain visible against page and control              |
+| Disabled      | Disabled aliases and 0.72 opacity      | Same                                                        | Native `disabled` or `aria-disabled` plus guarded action  |
+| Loading       | Retain label or accessible status text | Same                                                        | Prevent duplicate submission; do not expose spinner alone |
 
 Primary actions use green—not gold. Destructive actions use error semantics and require an explicit destructive label/icon.
 
 ### Inputs and field groups
 
-| State | Requirement |
-|---|---|
-| Default | Persistent visible label, 44px minimum target, 3:1 boundary, instructions before input |
-| Hover | Boundary emphasis without layout shift |
-| Focus-visible | Mode focus ring and focused border; programmatic label remains associated |
-| Disabled/read-only | Visually distinct and programmatically exposed; do not use placeholder as label |
-| Error | Error border plus icon/message; connect message with `aria-describedby`; move focus only when workflow requires it |
-| Success | Success border plus confirmation text/icon; do not announce routine validation noisily |
+| State              | Requirement                                                                                                        |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| Default            | Persistent visible label, 44px minimum target, 3:1 boundary, instructions before input                             |
+| Hover              | Boundary emphasis without layout shift                                                                             |
+| Focus-visible      | Mode focus ring and focused border; programmatic label remains associated                                          |
+| Disabled/read-only | Visually distinct and programmatically exposed; do not use placeholder as label                                    |
+| Error              | Error border plus icon/message; connect message with `aria-describedby`; move focus only when workflow requires it |
+| Success            | Success border plus confirmation text/icon; do not announce routine validation noisily                             |
 
 Checkboxes and radios retain native keyboard behavior. Group labels use `fieldset`/`legend` where appropriate. Instrument response choices must expose the complete option label and selected state to assistive technology.
 
@@ -179,12 +179,12 @@ Checkboxes and radios retain native keyboard behavior. Group labels use `fieldse
 
 Every future consuming screen must be checked at exactly 320, 390, 768, and 1280 CSS px, plus 200% zoom. Device-specific snapshots may supplement but not replace these widths.
 
-| Width | Layout contract | Acceptance |
-|---:|---|---|
-| 320 | Single-column; 16px page inset; full-width primary controls where useful; 160px logo | No page-level horizontal scroll; labels and timers do not truncate; 44px targets |
-| 390 | Single-column; 16–20px inset; 176px logo | Long choices wrap without clipping; actions remain reachable with on-screen keyboard |
-| 768 | One or two columns only when reading order is preserved; 24px inset; 192px logo | Keyboard order matches visual order; tables use contained overflow when needed |
-| 1280 | Centered container up to 1280px; readable measure up to 72ch; 220px logo | Content does not become over-wide; dense staff tables remain scannable |
+| Width | Layout contract                                                                      | Acceptance                                                                           |
+| ----: | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+|   320 | Single-column; 16px page inset; full-width primary controls where useful; 160px logo | No page-level horizontal scroll; labels and timers do not truncate; 44px targets     |
+|   390 | Single-column; 16–20px inset; 176px logo                                             | Long choices wrap without clipping; actions remain reachable with on-screen keyboard |
+|   768 | One or two columns only when reading order is preserved; 24px inset; 192px logo      | Keyboard order matches visual order; tables use contained overflow when needed       |
+|  1280 | Centered container up to 1280px; readable measure up to 72ch; 220px logo             | Content does not become over-wide; dense staff tables remain scannable               |
 
 Shared acceptance at all widths:
 
@@ -207,13 +207,13 @@ This stage does not perform the following work. A separately owned implementatio
 
 Recommended variable mapping examples:
 
-| JSON token | Future CSS/Tailwind alias | Typical consumer |
-|---|---|---|
-| `semantic.light.color.surface.page` | `--color-surface-page` | Participant shell |
-| `semantic.light.color.text.primary` | `--color-text-primary` | Body text |
-| `semantic.light.color.action.primary.background` | `--color-action-primary` | Primary action |
-| `component.light.input.border.focus` | `--input-border-focus` | Field primitive |
-| `component.light.status.warning.*` | `--status-warning-*` | Timer/risk badge |
+| JSON token                                       | Future CSS/Tailwind alias | Typical consumer  |
+| ------------------------------------------------ | ------------------------- | ----------------- |
+| `semantic.light.color.surface.page`              | `--color-surface-page`    | Participant shell |
+| `semantic.light.color.text.primary`              | `--color-text-primary`    | Body text         |
+| `semantic.light.color.action.primary.background` | `--color-action-primary`  | Primary action    |
+| `component.light.input.border.focus`             | `--input-border-focus`    | Field primitive   |
+| `component.light.status.warning.*`               | `--status-warning-*`      | Timer/risk badge  |
 
 ## 8. Filament/Livewire handoff
 

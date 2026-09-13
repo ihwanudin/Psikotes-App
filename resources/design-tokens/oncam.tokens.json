@@ -75,12 +75,7 @@
           ]
         },
         "mono": {
-          "$value": [
-            "ui-monospace",
-            "SFMono-Regular",
-            "Consolas",
-            "monospace"
-          ]
+          "$value": ["ui-monospace", "SFMono-Regular", "Consolas", "monospace"]
         }
       },
       "size": {
@@ -313,8 +308,12 @@
           "disabledBackground": { "$value": "{primitive.color.neutral.100}" },
           "disabledForeground": { "$value": "{primitive.color.neutral.600}" },
           "disabledBorder": { "$value": "{primitive.color.neutral.300}" },
-          "selectedBackground": { "$value": "{primitive.color.brand.greenSoft}" },
-          "selectedForeground": { "$value": "{primitive.color.brand.greenDeep}" }
+          "selectedBackground": {
+            "$value": "{primitive.color.brand.greenSoft}"
+          },
+          "selectedForeground": {
+            "$value": "{primitive.color.brand.greenDeep}"
+          }
         },
         "status": {
           "success": {
@@ -402,7 +401,9 @@
           "disabledForeground": { "$value": "{primitive.color.neutral.300}" },
           "disabledBorder": { "$value": "{primitive.color.neutral.700}" },
           "selectedBackground": { "$value": "{primitive.color.neutral.700}" },
-          "selectedForeground": { "$value": "{primitive.color.brand.softNeutral}" }
+          "selectedForeground": {
+            "$value": "{primitive.color.brand.softNeutral}"
+          }
         },
         "status": {
           "success": {
@@ -491,232 +492,504 @@
     "light": {
       "button": {
         "primary": {
-          "defaultBackground": { "$value": "{semantic.light.color.action.primary.background}" },
-          "defaultForeground": { "$value": "{semantic.light.color.action.primary.foreground}" },
-          "defaultBorder": { "$value": "{semantic.light.color.action.primary.border}" },
-          "hoverBackground": { "$value": "{semantic.light.color.action.primary.hover}" },
-          "activeBackground": { "$value": "{semantic.light.color.action.primary.active}" },
+          "defaultBackground": {
+            "$value": "{semantic.light.color.action.primary.background}"
+          },
+          "defaultForeground": {
+            "$value": "{semantic.light.color.action.primary.foreground}"
+          },
+          "defaultBorder": {
+            "$value": "{semantic.light.color.action.primary.border}"
+          },
+          "hoverBackground": {
+            "$value": "{semantic.light.color.action.primary.hover}"
+          },
+          "activeBackground": {
+            "$value": "{semantic.light.color.action.primary.active}"
+          },
           "focusRing": { "$value": "{semantic.light.color.state.focusRing}" },
-          "focusOffset": { "$value": "{semantic.light.color.state.focusOffset}" },
-          "disabledBackground": { "$value": "{semantic.light.color.state.disabledBackground}" },
-          "disabledForeground": { "$value": "{semantic.light.color.state.disabledForeground}" },
-          "disabledBorder": { "$value": "{semantic.light.color.state.disabledBorder}" }
+          "focusOffset": {
+            "$value": "{semantic.light.color.state.focusOffset}"
+          },
+          "disabledBackground": {
+            "$value": "{semantic.light.color.state.disabledBackground}"
+          },
+          "disabledForeground": {
+            "$value": "{semantic.light.color.state.disabledForeground}"
+          },
+          "disabledBorder": {
+            "$value": "{semantic.light.color.state.disabledBorder}"
+          }
         },
         "secondary": {
-          "defaultBackground": { "$value": "{semantic.light.color.action.secondary.background}" },
-          "defaultForeground": { "$value": "{semantic.light.color.action.secondary.foreground}" },
-          "defaultBorder": { "$value": "{semantic.light.color.action.secondary.border}" },
-          "hoverBackground": { "$value": "{semantic.light.color.action.secondary.hover}" },
-          "activeBackground": { "$value": "{semantic.light.color.action.secondary.active}" },
+          "defaultBackground": {
+            "$value": "{semantic.light.color.action.secondary.background}"
+          },
+          "defaultForeground": {
+            "$value": "{semantic.light.color.action.secondary.foreground}"
+          },
+          "defaultBorder": {
+            "$value": "{semantic.light.color.action.secondary.border}"
+          },
+          "hoverBackground": {
+            "$value": "{semantic.light.color.action.secondary.hover}"
+          },
+          "activeBackground": {
+            "$value": "{semantic.light.color.action.secondary.active}"
+          },
           "focusRing": { "$value": "{semantic.light.color.state.focusRing}" }
         },
         "destructive": {
-          "defaultBackground": { "$value": "{semantic.light.color.action.destructive.background}" },
-          "defaultForeground": { "$value": "{semantic.light.color.action.destructive.foreground}" },
-          "defaultBorder": { "$value": "{semantic.light.color.action.destructive.border}" },
-          "hoverBackground": { "$value": "{semantic.light.color.action.destructive.hover}" },
-          "activeBackground": { "$value": "{semantic.light.color.action.destructive.active}" },
-          "focusRing": { "$value": "{semantic.light.color.status.error.border}" }
+          "defaultBackground": {
+            "$value": "{semantic.light.color.action.destructive.background}"
+          },
+          "defaultForeground": {
+            "$value": "{semantic.light.color.action.destructive.foreground}"
+          },
+          "defaultBorder": {
+            "$value": "{semantic.light.color.action.destructive.border}"
+          },
+          "hoverBackground": {
+            "$value": "{semantic.light.color.action.destructive.hover}"
+          },
+          "activeBackground": {
+            "$value": "{semantic.light.color.action.destructive.active}"
+          },
+          "focusRing": {
+            "$value": "{semantic.light.color.status.error.border}"
+          }
         }
       },
       "input": {
-        "defaultBackground": { "$value": "{semantic.light.color.surface.base}" },
-        "defaultForeground": { "$value": "{semantic.light.color.text.primary}" },
+        "defaultBackground": {
+          "$value": "{semantic.light.color.surface.base}"
+        },
+        "defaultForeground": {
+          "$value": "{semantic.light.color.text.primary}"
+        },
         "defaultBorder": { "$value": "{semantic.light.color.border.default}" },
         "placeholder": { "$value": "{semantic.light.color.text.muted}" },
         "hoverBorder": { "$value": "{semantic.light.color.border.strong}" },
         "focusBorder": { "$value": "{semantic.light.color.state.focusRing}" },
         "focusRing": { "$value": "{semantic.light.color.state.focusRing}" },
-        "disabledBackground": { "$value": "{semantic.light.color.state.disabledBackground}" },
-        "disabledForeground": { "$value": "{semantic.light.color.state.disabledForeground}" },
-        "disabledBorder": { "$value": "{semantic.light.color.state.disabledBorder}" },
-        "errorBorder": { "$value": "{semantic.light.color.status.error.border}" },
-        "errorForeground": { "$value": "{semantic.light.color.status.error.foreground}" },
-        "successBorder": { "$value": "{semantic.light.color.status.success.border}" },
-        "successForeground": { "$value": "{semantic.light.color.status.success.foreground}" },
-        "warningBorder": { "$value": "{semantic.light.color.status.warning.border}" },
-        "warningForeground": { "$value": "{semantic.light.color.status.warning.foreground}" }
+        "disabledBackground": {
+          "$value": "{semantic.light.color.state.disabledBackground}"
+        },
+        "disabledForeground": {
+          "$value": "{semantic.light.color.state.disabledForeground}"
+        },
+        "disabledBorder": {
+          "$value": "{semantic.light.color.state.disabledBorder}"
+        },
+        "errorBorder": {
+          "$value": "{semantic.light.color.status.error.border}"
+        },
+        "errorForeground": {
+          "$value": "{semantic.light.color.status.error.foreground}"
+        },
+        "successBorder": {
+          "$value": "{semantic.light.color.status.success.border}"
+        },
+        "successForeground": {
+          "$value": "{semantic.light.color.status.success.foreground}"
+        },
+        "warningBorder": {
+          "$value": "{semantic.light.color.status.warning.border}"
+        },
+        "warningForeground": {
+          "$value": "{semantic.light.color.status.warning.foreground}"
+        }
       },
       "card": {
-        "defaultBackground": { "$value": "{semantic.light.color.surface.raised}" },
-        "defaultForeground": { "$value": "{semantic.light.color.text.primary}" },
+        "defaultBackground": {
+          "$value": "{semantic.light.color.surface.raised}"
+        },
+        "defaultForeground": {
+          "$value": "{semantic.light.color.text.primary}"
+        },
         "defaultBorder": { "$value": "{semantic.light.color.border.subtle}" },
         "defaultShadow": { "$value": "{semantic.shared.shadow.rest}" },
         "hoverBorder": { "$value": "{semantic.light.color.border.default}" },
         "hoverShadow": { "$value": "{semantic.shared.shadow.raised}" },
-        "activeBackground": { "$value": "{semantic.light.color.surface.sunken}" },
+        "activeBackground": {
+          "$value": "{semantic.light.color.surface.sunken}"
+        },
         "focusRing": { "$value": "{semantic.light.color.state.focusRing}" },
-        "disabledBackground": { "$value": "{semantic.light.color.state.disabledBackground}" },
-        "disabledForeground": { "$value": "{semantic.light.color.state.disabledForeground}" },
-        "errorBorder": { "$value": "{semantic.light.color.status.error.border}" },
-        "successBorder": { "$value": "{semantic.light.color.status.success.border}" },
-        "warningBorder": { "$value": "{semantic.light.color.status.warning.border}" }
+        "disabledBackground": {
+          "$value": "{semantic.light.color.state.disabledBackground}"
+        },
+        "disabledForeground": {
+          "$value": "{semantic.light.color.state.disabledForeground}"
+        },
+        "errorBorder": {
+          "$value": "{semantic.light.color.status.error.border}"
+        },
+        "successBorder": {
+          "$value": "{semantic.light.color.status.success.border}"
+        },
+        "warningBorder": {
+          "$value": "{semantic.light.color.status.warning.border}"
+        }
       },
       "navigation": {
-        "defaultBackground": { "$value": "{semantic.light.color.surface.base}" },
-        "defaultForeground": { "$value": "{semantic.light.color.text.secondary}" },
-        "hoverBackground": { "$value": "{semantic.light.color.surface.sunken}" },
+        "defaultBackground": {
+          "$value": "{semantic.light.color.surface.base}"
+        },
+        "defaultForeground": {
+          "$value": "{semantic.light.color.text.secondary}"
+        },
+        "hoverBackground": {
+          "$value": "{semantic.light.color.surface.sunken}"
+        },
         "hoverForeground": { "$value": "{semantic.light.color.text.primary}" },
-        "activeBackground": { "$value": "{semantic.light.color.state.selectedBackground}" },
-        "activeForeground": { "$value": "{semantic.light.color.state.selectedForeground}" },
+        "activeBackground": {
+          "$value": "{semantic.light.color.state.selectedBackground}"
+        },
+        "activeForeground": {
+          "$value": "{semantic.light.color.state.selectedForeground}"
+        },
         "focusRing": { "$value": "{semantic.light.color.state.focusRing}" },
-        "disabledForeground": { "$value": "{semantic.light.color.state.disabledForeground}" }
+        "disabledForeground": {
+          "$value": "{semantic.light.color.state.disabledForeground}"
+        }
       },
       "table": {
         "background": { "$value": "{semantic.light.color.surface.base}" },
         "foreground": { "$value": "{semantic.light.color.text.primary}" },
-        "headerBackground": { "$value": "{semantic.light.color.surface.sunken}" },
+        "headerBackground": {
+          "$value": "{semantic.light.color.surface.sunken}"
+        },
         "headerForeground": { "$value": "{semantic.light.color.text.primary}" },
         "border": { "$value": "{semantic.light.color.border.subtle}" },
         "rowHover": { "$value": "{semantic.light.color.surface.canvas}" },
-        "rowSelected": { "$value": "{semantic.light.color.state.selectedBackground}" },
-        "rowSelectedForeground": { "$value": "{semantic.light.color.state.selectedForeground}" },
+        "rowSelected": {
+          "$value": "{semantic.light.color.state.selectedBackground}"
+        },
+        "rowSelectedForeground": {
+          "$value": "{semantic.light.color.state.selectedForeground}"
+        },
         "rowFocus": { "$value": "{semantic.light.color.state.focusRing}" },
-        "rowDisabledForeground": { "$value": "{semantic.light.color.state.disabledForeground}" }
+        "rowDisabledForeground": {
+          "$value": "{semantic.light.color.state.disabledForeground}"
+        }
       },
       "status": {
-        "infoBackground": { "$value": "{semantic.light.color.status.info.background}" },
-        "infoForeground": { "$value": "{semantic.light.color.status.info.foreground}" },
+        "infoBackground": {
+          "$value": "{semantic.light.color.status.info.background}"
+        },
+        "infoForeground": {
+          "$value": "{semantic.light.color.status.info.foreground}"
+        },
         "infoBorder": { "$value": "{semantic.light.color.status.info.border}" },
-        "successBackground": { "$value": "{semantic.light.color.status.success.background}" },
-        "successForeground": { "$value": "{semantic.light.color.status.success.foreground}" },
-        "successBorder": { "$value": "{semantic.light.color.status.success.border}" },
-        "warningBackground": { "$value": "{semantic.light.color.status.warning.background}" },
-        "warningForeground": { "$value": "{semantic.light.color.status.warning.foreground}" },
-        "warningBorder": { "$value": "{semantic.light.color.status.warning.border}" },
-        "errorBackground": { "$value": "{semantic.light.color.status.error.background}" },
-        "errorForeground": { "$value": "{semantic.light.color.status.error.foreground}" },
-        "errorBorder": { "$value": "{semantic.light.color.status.error.border}" }
+        "successBackground": {
+          "$value": "{semantic.light.color.status.success.background}"
+        },
+        "successForeground": {
+          "$value": "{semantic.light.color.status.success.foreground}"
+        },
+        "successBorder": {
+          "$value": "{semantic.light.color.status.success.border}"
+        },
+        "warningBackground": {
+          "$value": "{semantic.light.color.status.warning.background}"
+        },
+        "warningForeground": {
+          "$value": "{semantic.light.color.status.warning.foreground}"
+        },
+        "warningBorder": {
+          "$value": "{semantic.light.color.status.warning.border}"
+        },
+        "errorBackground": {
+          "$value": "{semantic.light.color.status.error.background}"
+        },
+        "errorForeground": {
+          "$value": "{semantic.light.color.status.error.foreground}"
+        },
+        "errorBorder": {
+          "$value": "{semantic.light.color.status.error.border}"
+        }
       },
       "alert": {
-        "infoBackground": { "$value": "{semantic.light.color.status.info.background}" },
-        "infoForeground": { "$value": "{semantic.light.color.status.info.foreground}" },
+        "infoBackground": {
+          "$value": "{semantic.light.color.status.info.background}"
+        },
+        "infoForeground": {
+          "$value": "{semantic.light.color.status.info.foreground}"
+        },
         "infoBorder": { "$value": "{semantic.light.color.status.info.border}" },
-        "successBackground": { "$value": "{semantic.light.color.status.success.background}" },
-        "successForeground": { "$value": "{semantic.light.color.status.success.foreground}" },
-        "successBorder": { "$value": "{semantic.light.color.status.success.border}" },
-        "warningBackground": { "$value": "{semantic.light.color.status.warning.background}" },
-        "warningForeground": { "$value": "{semantic.light.color.status.warning.foreground}" },
-        "warningBorder": { "$value": "{semantic.light.color.status.warning.border}" },
-        "errorBackground": { "$value": "{semantic.light.color.status.error.background}" },
-        "errorForeground": { "$value": "{semantic.light.color.status.error.foreground}" },
-        "errorBorder": { "$value": "{semantic.light.color.status.error.border}" },
+        "successBackground": {
+          "$value": "{semantic.light.color.status.success.background}"
+        },
+        "successForeground": {
+          "$value": "{semantic.light.color.status.success.foreground}"
+        },
+        "successBorder": {
+          "$value": "{semantic.light.color.status.success.border}"
+        },
+        "warningBackground": {
+          "$value": "{semantic.light.color.status.warning.background}"
+        },
+        "warningForeground": {
+          "$value": "{semantic.light.color.status.warning.foreground}"
+        },
+        "warningBorder": {
+          "$value": "{semantic.light.color.status.warning.border}"
+        },
+        "errorBackground": {
+          "$value": "{semantic.light.color.status.error.background}"
+        },
+        "errorForeground": {
+          "$value": "{semantic.light.color.status.error.foreground}"
+        },
+        "errorBorder": {
+          "$value": "{semantic.light.color.status.error.border}"
+        },
         "focusRing": { "$value": "{semantic.light.color.state.focusRing}" }
       }
     },
     "dark": {
       "button": {
         "primary": {
-          "defaultBackground": { "$value": "{semantic.dark.color.action.primary.background}" },
-          "defaultForeground": { "$value": "{semantic.dark.color.action.primary.foreground}" },
-          "defaultBorder": { "$value": "{semantic.dark.color.action.primary.border}" },
-          "hoverBackground": { "$value": "{semantic.dark.color.action.primary.hover}" },
-          "activeBackground": { "$value": "{semantic.dark.color.action.primary.active}" },
+          "defaultBackground": {
+            "$value": "{semantic.dark.color.action.primary.background}"
+          },
+          "defaultForeground": {
+            "$value": "{semantic.dark.color.action.primary.foreground}"
+          },
+          "defaultBorder": {
+            "$value": "{semantic.dark.color.action.primary.border}"
+          },
+          "hoverBackground": {
+            "$value": "{semantic.dark.color.action.primary.hover}"
+          },
+          "activeBackground": {
+            "$value": "{semantic.dark.color.action.primary.active}"
+          },
           "focusRing": { "$value": "{semantic.dark.color.state.focusRing}" },
-          "focusOffset": { "$value": "{semantic.dark.color.state.focusOffset}" },
-          "disabledBackground": { "$value": "{semantic.dark.color.state.disabledBackground}" },
-          "disabledForeground": { "$value": "{semantic.dark.color.state.disabledForeground}" },
-          "disabledBorder": { "$value": "{semantic.dark.color.state.disabledBorder}" }
+          "focusOffset": {
+            "$value": "{semantic.dark.color.state.focusOffset}"
+          },
+          "disabledBackground": {
+            "$value": "{semantic.dark.color.state.disabledBackground}"
+          },
+          "disabledForeground": {
+            "$value": "{semantic.dark.color.state.disabledForeground}"
+          },
+          "disabledBorder": {
+            "$value": "{semantic.dark.color.state.disabledBorder}"
+          }
         },
         "secondary": {
-          "defaultBackground": { "$value": "{semantic.dark.color.action.secondary.background}" },
-          "defaultForeground": { "$value": "{semantic.dark.color.action.secondary.foreground}" },
-          "defaultBorder": { "$value": "{semantic.dark.color.action.secondary.border}" },
-          "hoverBackground": { "$value": "{semantic.dark.color.action.secondary.hover}" },
-          "activeBackground": { "$value": "{semantic.dark.color.action.secondary.active}" },
+          "defaultBackground": {
+            "$value": "{semantic.dark.color.action.secondary.background}"
+          },
+          "defaultForeground": {
+            "$value": "{semantic.dark.color.action.secondary.foreground}"
+          },
+          "defaultBorder": {
+            "$value": "{semantic.dark.color.action.secondary.border}"
+          },
+          "hoverBackground": {
+            "$value": "{semantic.dark.color.action.secondary.hover}"
+          },
+          "activeBackground": {
+            "$value": "{semantic.dark.color.action.secondary.active}"
+          },
           "focusRing": { "$value": "{semantic.dark.color.state.focusRing}" }
         },
         "destructive": {
-          "defaultBackground": { "$value": "{semantic.dark.color.action.destructive.background}" },
-          "defaultForeground": { "$value": "{semantic.dark.color.action.destructive.foreground}" },
-          "defaultBorder": { "$value": "{semantic.dark.color.action.destructive.border}" },
-          "hoverBackground": { "$value": "{semantic.dark.color.action.destructive.hover}" },
-          "activeBackground": { "$value": "{semantic.dark.color.action.destructive.active}" },
+          "defaultBackground": {
+            "$value": "{semantic.dark.color.action.destructive.background}"
+          },
+          "defaultForeground": {
+            "$value": "{semantic.dark.color.action.destructive.foreground}"
+          },
+          "defaultBorder": {
+            "$value": "{semantic.dark.color.action.destructive.border}"
+          },
+          "hoverBackground": {
+            "$value": "{semantic.dark.color.action.destructive.hover}"
+          },
+          "activeBackground": {
+            "$value": "{semantic.dark.color.action.destructive.active}"
+          },
           "focusRing": { "$value": "{semantic.dark.color.status.error.border}" }
         }
       },
       "input": {
-        "defaultBackground": { "$value": "{semantic.dark.color.surface.raised}" },
+        "defaultBackground": {
+          "$value": "{semantic.dark.color.surface.raised}"
+        },
         "defaultForeground": { "$value": "{semantic.dark.color.text.primary}" },
         "defaultBorder": { "$value": "{semantic.dark.color.border.default}" },
         "placeholder": { "$value": "{semantic.dark.color.text.muted}" },
         "hoverBorder": { "$value": "{semantic.dark.color.border.strong}" },
         "focusBorder": { "$value": "{semantic.dark.color.state.focusRing}" },
         "focusRing": { "$value": "{semantic.dark.color.state.focusRing}" },
-        "disabledBackground": { "$value": "{semantic.dark.color.state.disabledBackground}" },
-        "disabledForeground": { "$value": "{semantic.dark.color.state.disabledForeground}" },
-        "disabledBorder": { "$value": "{semantic.dark.color.state.disabledBorder}" },
-        "errorBorder": { "$value": "{semantic.dark.color.status.error.border}" },
-        "errorForeground": { "$value": "{semantic.dark.color.status.error.foreground}" },
-        "successBorder": { "$value": "{semantic.dark.color.status.success.border}" },
-        "successForeground": { "$value": "{semantic.dark.color.status.success.foreground}" },
-        "warningBorder": { "$value": "{semantic.dark.color.status.warning.border}" },
-        "warningForeground": { "$value": "{semantic.dark.color.status.warning.foreground}" }
+        "disabledBackground": {
+          "$value": "{semantic.dark.color.state.disabledBackground}"
+        },
+        "disabledForeground": {
+          "$value": "{semantic.dark.color.state.disabledForeground}"
+        },
+        "disabledBorder": {
+          "$value": "{semantic.dark.color.state.disabledBorder}"
+        },
+        "errorBorder": {
+          "$value": "{semantic.dark.color.status.error.border}"
+        },
+        "errorForeground": {
+          "$value": "{semantic.dark.color.status.error.foreground}"
+        },
+        "successBorder": {
+          "$value": "{semantic.dark.color.status.success.border}"
+        },
+        "successForeground": {
+          "$value": "{semantic.dark.color.status.success.foreground}"
+        },
+        "warningBorder": {
+          "$value": "{semantic.dark.color.status.warning.border}"
+        },
+        "warningForeground": {
+          "$value": "{semantic.dark.color.status.warning.foreground}"
+        }
       },
       "card": {
-        "defaultBackground": { "$value": "{semantic.dark.color.surface.raised}" },
+        "defaultBackground": {
+          "$value": "{semantic.dark.color.surface.raised}"
+        },
         "defaultForeground": { "$value": "{semantic.dark.color.text.primary}" },
         "defaultBorder": { "$value": "{semantic.dark.color.border.subtle}" },
         "defaultShadow": { "$value": "{semantic.shared.shadow.none}" },
         "hoverBorder": { "$value": "{semantic.dark.color.border.default}" },
         "hoverShadow": { "$value": "{semantic.shared.shadow.raised}" },
-        "activeBackground": { "$value": "{semantic.dark.color.surface.sunken}" },
+        "activeBackground": {
+          "$value": "{semantic.dark.color.surface.sunken}"
+        },
         "focusRing": { "$value": "{semantic.dark.color.state.focusRing}" },
-        "disabledBackground": { "$value": "{semantic.dark.color.state.disabledBackground}" },
-        "disabledForeground": { "$value": "{semantic.dark.color.state.disabledForeground}" },
-        "errorBorder": { "$value": "{semantic.dark.color.status.error.border}" },
-        "successBorder": { "$value": "{semantic.dark.color.status.success.border}" },
-        "warningBorder": { "$value": "{semantic.dark.color.status.warning.border}" }
+        "disabledBackground": {
+          "$value": "{semantic.dark.color.state.disabledBackground}"
+        },
+        "disabledForeground": {
+          "$value": "{semantic.dark.color.state.disabledForeground}"
+        },
+        "errorBorder": {
+          "$value": "{semantic.dark.color.status.error.border}"
+        },
+        "successBorder": {
+          "$value": "{semantic.dark.color.status.success.border}"
+        },
+        "warningBorder": {
+          "$value": "{semantic.dark.color.status.warning.border}"
+        }
       },
       "navigation": {
         "defaultBackground": { "$value": "{semantic.dark.color.surface.base}" },
-        "defaultForeground": { "$value": "{semantic.dark.color.text.secondary}" },
+        "defaultForeground": {
+          "$value": "{semantic.dark.color.text.secondary}"
+        },
         "hoverBackground": { "$value": "{semantic.dark.color.surface.raised}" },
         "hoverForeground": { "$value": "{semantic.dark.color.text.primary}" },
-        "activeBackground": { "$value": "{semantic.dark.color.state.selectedBackground}" },
-        "activeForeground": { "$value": "{semantic.dark.color.state.selectedForeground}" },
+        "activeBackground": {
+          "$value": "{semantic.dark.color.state.selectedBackground}"
+        },
+        "activeForeground": {
+          "$value": "{semantic.dark.color.state.selectedForeground}"
+        },
         "focusRing": { "$value": "{semantic.dark.color.state.focusRing}" },
-        "disabledForeground": { "$value": "{semantic.dark.color.state.disabledForeground}" }
+        "disabledForeground": {
+          "$value": "{semantic.dark.color.state.disabledForeground}"
+        }
       },
       "table": {
         "background": { "$value": "{semantic.dark.color.surface.base}" },
         "foreground": { "$value": "{semantic.dark.color.text.primary}" },
-        "headerBackground": { "$value": "{semantic.dark.color.surface.raised}" },
+        "headerBackground": {
+          "$value": "{semantic.dark.color.surface.raised}"
+        },
         "headerForeground": { "$value": "{semantic.dark.color.text.primary}" },
         "border": { "$value": "{semantic.dark.color.border.subtle}" },
         "rowHover": { "$value": "{semantic.dark.color.surface.raised}" },
-        "rowSelected": { "$value": "{semantic.dark.color.state.selectedBackground}" },
-        "rowSelectedForeground": { "$value": "{semantic.dark.color.state.selectedForeground}" },
+        "rowSelected": {
+          "$value": "{semantic.dark.color.state.selectedBackground}"
+        },
+        "rowSelectedForeground": {
+          "$value": "{semantic.dark.color.state.selectedForeground}"
+        },
         "rowFocus": { "$value": "{semantic.dark.color.state.focusRing}" },
-        "rowDisabledForeground": { "$value": "{semantic.dark.color.state.disabledForeground}" }
+        "rowDisabledForeground": {
+          "$value": "{semantic.dark.color.state.disabledForeground}"
+        }
       },
       "status": {
-        "infoBackground": { "$value": "{semantic.dark.color.status.info.background}" },
-        "infoForeground": { "$value": "{semantic.dark.color.status.info.foreground}" },
+        "infoBackground": {
+          "$value": "{semantic.dark.color.status.info.background}"
+        },
+        "infoForeground": {
+          "$value": "{semantic.dark.color.status.info.foreground}"
+        },
         "infoBorder": { "$value": "{semantic.dark.color.status.info.border}" },
-        "successBackground": { "$value": "{semantic.dark.color.status.success.background}" },
-        "successForeground": { "$value": "{semantic.dark.color.status.success.foreground}" },
-        "successBorder": { "$value": "{semantic.dark.color.status.success.border}" },
-        "warningBackground": { "$value": "{semantic.dark.color.status.warning.background}" },
-        "warningForeground": { "$value": "{semantic.dark.color.status.warning.foreground}" },
-        "warningBorder": { "$value": "{semantic.dark.color.status.warning.border}" },
-        "errorBackground": { "$value": "{semantic.dark.color.status.error.background}" },
-        "errorForeground": { "$value": "{semantic.dark.color.status.error.foreground}" },
+        "successBackground": {
+          "$value": "{semantic.dark.color.status.success.background}"
+        },
+        "successForeground": {
+          "$value": "{semantic.dark.color.status.success.foreground}"
+        },
+        "successBorder": {
+          "$value": "{semantic.dark.color.status.success.border}"
+        },
+        "warningBackground": {
+          "$value": "{semantic.dark.color.status.warning.background}"
+        },
+        "warningForeground": {
+          "$value": "{semantic.dark.color.status.warning.foreground}"
+        },
+        "warningBorder": {
+          "$value": "{semantic.dark.color.status.warning.border}"
+        },
+        "errorBackground": {
+          "$value": "{semantic.dark.color.status.error.background}"
+        },
+        "errorForeground": {
+          "$value": "{semantic.dark.color.status.error.foreground}"
+        },
         "errorBorder": { "$value": "{semantic.dark.color.status.error.border}" }
       },
       "alert": {
-        "infoBackground": { "$value": "{semantic.dark.color.status.info.background}" },
-        "infoForeground": { "$value": "{semantic.dark.color.status.info.foreground}" },
+        "infoBackground": {
+          "$value": "{semantic.dark.color.status.info.background}"
+        },
+        "infoForeground": {
+          "$value": "{semantic.dark.color.status.info.foreground}"
+        },
         "infoBorder": { "$value": "{semantic.dark.color.status.info.border}" },
-        "successBackground": { "$value": "{semantic.dark.color.status.success.background}" },
-        "successForeground": { "$value": "{semantic.dark.color.status.success.foreground}" },
-        "successBorder": { "$value": "{semantic.dark.color.status.success.border}" },
-        "warningBackground": { "$value": "{semantic.dark.color.status.warning.background}" },
-        "warningForeground": { "$value": "{semantic.dark.color.status.warning.foreground}" },
-        "warningBorder": { "$value": "{semantic.dark.color.status.warning.border}" },
-        "errorBackground": { "$value": "{semantic.dark.color.status.error.background}" },
-        "errorForeground": { "$value": "{semantic.dark.color.status.error.foreground}" },
-        "errorBorder": { "$value": "{semantic.dark.color.status.error.border}" },
+        "successBackground": {
+          "$value": "{semantic.dark.color.status.success.background}"
+        },
+        "successForeground": {
+          "$value": "{semantic.dark.color.status.success.foreground}"
+        },
+        "successBorder": {
+          "$value": "{semantic.dark.color.status.success.border}"
+        },
+        "warningBackground": {
+          "$value": "{semantic.dark.color.status.warning.background}"
+        },
+        "warningForeground": {
+          "$value": "{semantic.dark.color.status.warning.foreground}"
+        },
+        "warningBorder": {
+          "$value": "{semantic.dark.color.status.warning.border}"
+        },
+        "errorBackground": {
+          "$value": "{semantic.dark.color.status.error.background}"
+        },
+        "errorForeground": {
+          "$value": "{semantic.dark.color.status.error.foreground}"
+        },
+        "errorBorder": {
+          "$value": "{semantic.dark.color.status.error.border}"
+        },
         "focusRing": { "$value": "{semantic.dark.color.state.focusRing}" }
       }
     }
