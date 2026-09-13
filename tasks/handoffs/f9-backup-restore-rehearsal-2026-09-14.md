@@ -174,6 +174,31 @@ cleanup containers=0 networks=0 temp_removed=True
 The measured times and archive size describe this small synthetic local run
 only. They are not capacity results and do not establish RPO or RTO.
 
+## Canonical integration verification
+
+After independent QA PASS and explicit PM approval, the audited patch was
+integrated patch-equivalently onto canonical baseline
+`8bde313b0feafcbe5b79038267c3a3890e42f4d3`. The integrated implementation and
+evidence stack was `1d8c09a693ce14db4e46ee4bee5e6a0babeb2e0e`; its aggregate stable patch ID
+was `9c795252c45f2cf0df378e9da12c715174228054`, and all three file blobs matched
+candidate `0f1fabdc998ea2e196751398d851e282fa6cbe4d` exactly.
+
+The 37-assertion contract passed on the clean canonical worktree. A fresh full
+canonical rehearsal then reported:
+
+```text
+label=oncam.f9-backup-restore=0a495a6db7e8461992c9bcb3721cbbaa
+dump_elapsed_ms=596 restore_elapsed_ms=1283 archive_bytes=452708
+schema_sha256=d4ddb82b5f96267e40f110f745632e6f2f8781ba83bbb5eff6990701ca2d9f17
+data_sha256=9be4a78414c35d41becabb3c844141c1dc7b7dd505677595b9212e906417e125
+sequence_sha256=f848bfc8f2debe756e02d53aa8576b4fb851c1c75ece2e59cd7767ad01985768
+graph=1|1|1|1|1|9 corrupt_restore_exit=1 corrupt_partial_state=0
+cleanup containers=0 networks=0 temp_removed=True
+```
+
+These canonical results preserve the same bounded claim: local logical restore
+rehearsal only. F9 remains `partial`, and release status remains `NO-GO`.
+
 Security verification before staging this handoff passed the repository
 scanner suite at 50/50 and both PII and SECRET profiles at 1,398 tracked paths
 across index and working-tree snapshots. The final staged three-file candidate
