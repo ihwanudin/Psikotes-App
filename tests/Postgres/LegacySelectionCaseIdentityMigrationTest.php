@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\TestCase;
+use Tests\Support\GenericResultLedgerMigrationFixture;
 
 final class LegacySelectionCaseIdentityMigrationTest extends TestCase
 {
@@ -192,7 +193,7 @@ final class LegacySelectionCaseIdentityMigrationTest extends TestCase
         DB::setDefaultConnection('legacy_selection_case_owner');
         Schema::clearResolvedInstance('db.schema');
         try {
-            $operation();
+            GenericResultLedgerMigrationFixture::withoutLedger($operation);
         } finally {
             DB::setDefaultConnection($runtime);
             Schema::clearResolvedInstance('db.schema');

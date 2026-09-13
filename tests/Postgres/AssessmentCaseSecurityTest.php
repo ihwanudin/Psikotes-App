@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
+use Tests\Support\GenericResultLedgerMigrationFixture;
 
 final class AssessmentCaseSecurityTest extends TestCase
 {
@@ -349,7 +350,7 @@ final class AssessmentCaseSecurityTest extends TestCase
 
         try {
             $this->assertSame('org_test_owner', DB::selectOne('SELECT current_user AS name')->name);
-            $callback();
+            GenericResultLedgerMigrationFixture::withoutLedger($callback);
         } finally {
             DB::setDefaultConnection($runtime);
             Schema::clearResolvedInstance('db.schema');

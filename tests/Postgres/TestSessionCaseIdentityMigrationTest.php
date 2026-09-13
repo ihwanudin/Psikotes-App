@@ -12,6 +12,7 @@ use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
+use Tests\Support\GenericResultLedgerMigrationFixture;
 
 final class TestSessionCaseIdentityMigrationTest extends TestCase
 {
@@ -439,7 +440,7 @@ final class TestSessionCaseIdentityMigrationTest extends TestCase
         Schema::clearResolvedInstance('db.schema');
         try {
             $this->assertSame('org_test_owner', DB::selectOne('SELECT current_user name')->name);
-            $callback();
+            GenericResultLedgerMigrationFixture::withoutLedger($callback);
         } finally {
             DB::setDefaultConnection($runtime);
             Schema::clearResolvedInstance('db.schema');
