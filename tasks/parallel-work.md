@@ -370,3 +370,14 @@ lockfiles, canonical checklists, and this dispatch record. No live migration,
 deployment, real payment, scheduler, outbound action, or feature activation is
 authorized. Worker completion remains review-pending until the Tech Lead
 inspects the exact commit and independently reruns risk-proportionate gates.
+
+S5 HTTP cutover was evaluated immediately after S4 acceptance and is held. The
+four-instrument authority manifest remains 0/4 start-ready, so production cannot
+bind `AssessmentSessionDefinitionAuthority` to an approved IST, PAPI, RMIB, or
+Kraepelin definition. A controller lane would therefore provide either a
+synthetic success path or only `SESSION_ENGINE_PENDING`; both violate the S5
+readiness stop condition and would not be meaningful implementation. No S5
+worker is dispatched, the open slot is reserved for review, and shared route,
+request, controller, and API-contract files remain Tech Lead-only. Re-evaluate
+only after at least one approved start-ready manifest entry exists and the S0-S4
+proof required by ADR-0030 remains green.
