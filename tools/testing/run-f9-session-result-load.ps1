@@ -43,6 +43,8 @@ $tempRoot = Join-Path ([IO.Path]::GetTempPath()) "oncam-f9-load-$runId"
 $archive = Join-Path $tempRoot 'snapshot.tar'
 $networkCreated = $false
 $exitCode = 1
+$primaryFailure = $null
+$cleanupFailures = @()
 
 function Assert-DockerSuccess([string] $operation) {
     if ($LASTEXITCODE -ne 0) { throw "$operation failed; no live application resource was targeted." }
@@ -112,28 +114,103 @@ exec php tools/testing/f9-session-result-load.php --concurrency=1,4,8 --warmup=3
         throw "FIRST_ROOT_CAUSE: disposable load harness exited $exitCode."
     }
 }
+catch {
+    $primaryFailure = $_.Exception.Message
+    $exitCode = 1
+}
 finally {
     foreach ($container in @($runnerContainer, $databaseContainer)) {
-        $containerId = docker ps --all --quiet --filter "name=^/$container$" --filter "label=$label"
-        if ($LASTEXITCODE -eq 0 -and $containerId -and $containerId -match '^[a-f0-9]{12,64}$') {
-            docker rm --force $containerId | Out-Null
+        $containerIds = @(docker ps --all --quiet --filter "name=^/$container$" --filter "label=$label" 2>$null)
+        $containerLookupExit = $LASTEXITCODE
+        if ($containerLookupExit -ne 0) {
+            $cleanupFailures += "CONTAINER_LOOKUP_FAILED:$container"
+        }
+        elseif ($containerIds.Count -gt 1 -or ($containerIds.Count -eq 1 -and $containerIds[0] -notmatch '^[a-f0-9]{12,64}$')) {
+            $cleanupFailures += "CONTAINER_LOOKUP_INVALID:$container"
+        }
+        elseif ($containerIds.Count -eq 1) {
+            docker rm --force $containerIds[0] | Out-Null
+            $containerRemoveExit = $LASTEXITCODE
+            if ($containerRemoveExit -ne 0) {
+                $cleanupFailures += "CONTAINER_REMOVE_FAILED:$container"
+            }
         }
     }
     if ($networkCreated) {
+        $parsedNetworkLabels = $null
         $networkLabels = docker network inspect --format '{{json .Labels}}' $network 2>$null
-        if ($LASTEXITCODE -eq 0 -and ($networkLabels | ConvertFrom-Json).$labelKey -eq $runId) {
+        $networkInspectExit = $LASTEXITCODE
+        if ($networkInspectExit -ne 0 -or [string]::IsNullOrWhiteSpace($networkLabels)) {
+            $cleanupFailures += 'NETWORK_INSPECT_FAILED'
+        }
+        else {
+            try {
+                $parsedNetworkLabels = $networkLabels | ConvertFrom-Json -ErrorAction Stop
+            }
+            catch {
+                $parsedNetworkLabels = $null
+                $cleanupFailures += 'NETWORK_INSPECT_INVALID'
+            }
+            if ($null -ne $parsedNetworkLabels -and $parsedNetworkLabels.$labelKey -ne $runId) {
+                $cleanupFailures += 'NETWORK_LABEL_MISMATCH'
+            }
+        }
+        if ($networkInspectExit -eq 0 -and $null -ne $parsedNetworkLabels -and $parsedNetworkLabels.$labelKey -eq $runId) {
             docker network rm $network | Out-Null
+            $networkRemoveExit = $LASTEXITCODE
+            if ($networkRemoveExit -ne 0) {
+                $cleanupFailures += 'NETWORK_REMOVE_FAILED'
+            }
         }
     }
-    $remainingContainers = @(docker ps --all --quiet --filter "label=$label").Count
-    $remainingNetworks = @(docker network ls --quiet --filter "label=$label").Count
+
+    $remainingContainerIds = @(docker ps --all --quiet --filter "label=$label" 2>$null)
+    $containerInventoryExit = $LASTEXITCODE
+    if ($containerInventoryExit -ne 0) {
+        $cleanupFailures += 'CONTAINER_INVENTORY_FAILED'
+        $remainingContainers = 'UNKNOWN'
+    }
+    else {
+        $remainingContainers = $remainingContainerIds.Count
+    }
+    $remainingNetworkIds = @(docker network ls --quiet --filter "label=$label" 2>$null)
+    $networkInventoryExit = $LASTEXITCODE
+    if ($networkInventoryExit -ne 0) {
+        $cleanupFailures += 'NETWORK_INVENTORY_FAILED'
+        $remainingNetworks = 'UNKNOWN'
+    }
+    else {
+        $remainingNetworks = $remainingNetworkIds.Count
+    }
     if (Test-Path -LiteralPath $tempRoot) {
-        Remove-Item -LiteralPath $tempRoot -Recurse -Force
+        try {
+            Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction Stop
+        }
+        catch {
+            $cleanupFailures += 'TEMP_REMOVE_FAILED'
+        }
     }
     $tempRemoved = -not (Test-Path -LiteralPath $tempRoot)
-    Write-Output "cleanup containers=$remainingContainers networks=$remainingNetworks temp_removed=$tempRemoved"
-    if ($remainingContainers -ne 0 -or $remainingNetworks -ne 0 -or -not $tempRemoved) {
-        throw 'Exact-label cleanup attestation failed.'
+    if (-not $tempRemoved) {
+        $cleanupFailures += 'TEMP_ATTESTATION_FAILED'
     }
+    if ($containerInventoryExit -eq 0 -and $remainingContainers -ne 0) {
+        $cleanupFailures += 'CONTAINER_RESIDUE'
+    }
+    if ($networkInventoryExit -eq 0 -and $remainingNetworks -ne 0) {
+        $cleanupFailures += 'NETWORK_RESIDUE'
+    }
+    Write-Output "cleanup containers=$remainingContainers networks=$remainingNetworks temp_removed=$tempRemoved"
+}
+
+if ($null -ne $primaryFailure) {
+    [Console]::Error.WriteLine("PRIMARY_FAILURE: $primaryFailure")
+}
+if ($cleanupFailures.Count -ne 0) {
+    [Console]::Error.WriteLine("CLEANUP_FAILURE: $($cleanupFailures -join ',')")
+    exit 1
+}
+if ($null -ne $primaryFailure) {
+    exit 1
 }
 exit $exitCode
