@@ -334,9 +334,20 @@ final class CheckoutPaymentHttpBoundaryTest extends OrganizationPaymentTestCase
             ['package_id' => $package, 'test_type' => 'dass21', 'sort_order' => 2],
         ]);
         $attempt = (string) Str::ulid();
+        $case = DB::table('assessment_cases')->insertGetId([
+            'public_id' => $attempt,
+            'participant_id' => $participant,
+            'organization_id' => $organization,
+            'package_id' => $package,
+            'origin' => 'INTEGRATED',
+            'intended_field_snapshot' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         DB::table('assessment_participants')->insert([
             'organization_id' => $organization, 'integration_client_id' => $client,
             'participant_id' => $participant, 'package_id' => $package,
+            'assessment_case_id' => $case,
             'assessment_attempt_id' => $attempt, 'source_system' => $source,
             'external_candidate_id' => $key, 'funding_mode' => 'COMMERCIAL_SELF_PAY',
             'assessment_status' => 'PROVISIONED', 'idempotency_key' => $key,

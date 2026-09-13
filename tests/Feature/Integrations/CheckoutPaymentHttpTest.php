@@ -291,10 +291,20 @@ final class CheckoutPaymentHttpTest extends OrganizationPaymentTestCase
             ['package_id' => $package, 'test_type' => 'dass21', 'sort_order' => 2],
         ]);
         $attemptPublicId = (string) Str::ulid();
+        $case = DB::table('assessment_cases')->insertGetId([
+            'public_id' => $attemptPublicId,
+            'participant_id' => $participant,
+            'organization_id' => $organization,
+            'package_id' => $package,
+            'origin' => 'INTEGRATED',
+            'intended_field_snapshot' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         $attempt = DB::table('assessment_participants')->insertGetId([
             'organization_id' => $organization, 'integration_client_id' => $client,
             'participant_id' => $participant, 'package_id' => $package,
-            'assessment_attempt_id' => $attemptPublicId, 'source_system' => $sourceSystem,
+            'assessment_case_id' => $case, 'assessment_attempt_id' => $attemptPublicId, 'source_system' => $sourceSystem,
             'external_candidate_id' => $key, 'funding_mode' => $funding,
             'assessment_status' => 'PROVISIONED', 'idempotency_key' => $key,
             'request_hash' => hash('sha256', $key), 'logical_assessment_key' => hash('sha256', 'logical'.$key),

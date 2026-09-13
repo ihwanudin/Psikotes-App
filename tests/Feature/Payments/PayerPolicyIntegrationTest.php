@@ -87,19 +87,44 @@ final class PayerPolicyIntegrationTest extends OrganizationPaymentTestCase
         $participant = DB::table('participants')->insertGetId([
             'branch_id' => $this->organization->id, 'referral_branch_id' => $this->organization->id,
             'referral_source' => 'default', 'full_name' => 'Synthetic payer test',
+            'package_id' => $this->package->id,
             'gender' => 'male', 'birth_date' => '2000-01-01', 'education_level' => 'SMA_SMK',
             'intended_field' => 'KAIGO', 'phone' => '620000000000',
+        ]);
+        DB::table('package_items')->insert([
+            ['package_id' => $this->package->id, 'test_type' => 'dass21'],
+            ['package_id' => $this->package->id, 'test_type' => 'ist'],
         ]);
         $method = DB::table('payment_methods')->insertGetId([
             'code' => 'synthetic', 'display_name' => 'Synthetic', 'is_active' => false,
         ]);
+        $orderId = null;
+        $case = null;
         foreach (['pending', 'paid'] as $status) {
-            DB::table('orders')->insert([
-                'public_id' => (string) Str::ulid(), 'participant_id' => $participant,
-                'payment_method_id' => $method, 'amount' => 1, 'currency' => 'IDR', 'status' => $status,
+            $publicId = (string) Str::ulid();
+            $case = DB::table('assessment_cases')->insertGetId([
+                'public_id' => $publicId,
+                'participant_id' => $participant,
+                'organization_id' => $this->organization->id,
+                'package_id' => $this->package->id,
+                'origin' => 'DIRECT_PUBLIC',
+                'intended_field_snapshot' => 'KAIGO',
+                'created_at' => now()->toDateTimeString(),
+                'updated_at' => now()->toDateTimeString(),
+            ]);
+            $orderId = DB::table('orders')->insertGetId([
+                'public_id' => $publicId, 'participant_id' => $participant,
+                'assessment_case_id' => $case, 'payment_method_id' => $method,
+                'amount' => 1, 'currency' => 'IDR', 'status' => $status,
             ]);
         }
-        DB::table('entitlements')->insert(['participant_id' => $participant, 'test_type' => 'ist', 'status' => 'locked']);
+        DB::table('entitlements')->insert([
+            'participant_id' => $participant,
+            'order_id' => $orderId,
+            'assessment_case_id' => $case,
+            'test_type' => 'ist',
+            'status' => 'locked',
+        ]);
         $ordersBefore = DB::table('orders')->orderBy('id')->get()->toArray();
         $entitlementsBefore = DB::table('entitlements')->get()->toArray();
 
