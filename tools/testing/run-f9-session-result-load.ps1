@@ -106,7 +106,9 @@ exec php tools/testing/f9-session-result-load.php --concurrency=1,4,8 --warmup=3
     )
     & docker @dockerArgs
     $exitCode = $LASTEXITCODE
-    if ($exitCode -ne 0) {
+    $reportPath = Join-Path $tempRoot 'report.json'
+    if ($exitCode -ne 0 -or -not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+        $exitCode = 1
         throw "FIRST_ROOT_CAUSE: disposable load harness exited $exitCode."
     }
 }
