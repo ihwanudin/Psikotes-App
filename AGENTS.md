@@ -12,7 +12,7 @@ These rules apply to every Codex session and delegated task in this repository.
 ## Parallel-work authority
 
 - `tasks/parallel-work.md` is the canonical ownership, dependency, and resume protocol for phases F1-F9.
-- Use at most three worker tasks at once while the current task remains coordinator/integrator.
+- Use at most five worker tasks at once while the current task remains coordinator/integrator.
 - A worker may modify only its assigned directories and files. Shared contracts, routes, migrations, lockfiles, ADR numbering, and canonical checklists belong to the coordinator unless explicitly assigned.
 - One task owns database migrations at a time. Freeze shared DTO/API contracts before backend, frontend, or psychometric work proceeds in parallel.
 - Do not dispatch a duplicate continuation to a task that is still running. Review its commit and verification evidence before giving it another increment.
