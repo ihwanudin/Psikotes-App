@@ -1,0 +1,83 @@
+{
+    "verdict": "REPAIR-REQUIRED",
+    "scope": "testing-only F5 psychologist review fixture; not production F5 completion evidence",
+    "dispatch_base": "537ae7b41e921e252c2dbef9bc983e23f00cd0d4",
+    "route": "/admin/psychologist-review-fixture",
+    "browser_checks": {
+        "passed": 21,
+        "failed": 2,
+        "total": 23,
+        "unexpected_console_or_page_errors": 0,
+        "expected_denial_404_console_entries": 3,
+        "unexpected_write_routes": 0,
+        "request_count": 171
+    },
+    "access": {
+        "guest": "redirected to /admin/login; fixture content absent",
+        "super_admin": "404 concealed denial; fixture content absent",
+        "branch_admin": "404 concealed denial; fixture content absent",
+        "staff": "404 concealed denial; fixture content absent",
+        "psychologist": "allowed",
+        "production_cross_tenant": "not verifiable from this non-persistent synthetic fixture"
+    },
+    "responsive_geometry": [
+        {
+            "requested_width": 320,
+            "client_width": 305,
+            "document_width": 305,
+            "passed": true
+        },
+        {
+            "requested_width": 390,
+            "client_width": 375,
+            "document_width": 375,
+            "passed": true
+        },
+        {
+            "requested_width": 768,
+            "client_width": 753,
+            "document_width": 753,
+            "passed": true
+        },
+        {
+            "requested_width": 1280,
+            "client_width": 1265,
+            "document_width": 1265,
+            "passed": true
+        }
+    ],
+    "style_observations": {
+        "synthetic_warning": {
+            "background": "rgb(255, 255, 255)",
+            "border_width": 0.666667,
+            "color": "rgb(120, 53, 15)"
+        },
+        "g7_unresolved": {
+            "border_width": 2,
+            "border_color": "rgb(245, 158, 11)"
+        },
+        "form_control": { "border_width": 0.666667, "height": 44 },
+        "primary_button": {
+            "background": "rgb(29, 78, 216)",
+            "color": "rgb(255, 255, 255)",
+            "height": 44
+        },
+        "v3": {
+            "background": "rgb(254, 242, 242)",
+            "border_color": "rgb(220, 38, 38)",
+            "border_width": 2
+        }
+    },
+    "database_after_run": {
+        "admins": 4,
+        "branches": 1,
+        "sessions": 35,
+        "other_nonempty_business_tables": 0
+    },
+    "screenshots": {
+        "guest-login-390.png": "58a6b616108dce6e3a4762c57b153abe5dafae0973434d7be648f213c8dc939f",
+        "psychologist-internal-320.png": "2ec28eb3efc84fca1e07cb318e0b906394c83de47b3b53fc4d68513351e5ebf2",
+        "psychologist-internal-768.png": "e928da448d3cd473da01f447644dc5bd9d3352da5b8a35b4a123a14ca4bc7956",
+        "psychologist-v3-1280.png": "18b7853d127672d7a8046564cd5cf3959aa6fb367b2e744de3afd94b5bccdfec"
+    }
+}
