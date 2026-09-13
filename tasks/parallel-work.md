@@ -364,6 +364,7 @@ serve as its exact base.
 | `/root/wave1_s3` | F2 S3 trusted participant start integration | `codex/f2-s3-start-integration`; `C:/Users/ThinkPad/.codex/worktrees/s3-wave1/Psikotes` | accepted R0 integration `24af4e7` | `StartParticipantAssessmentSession.php`, `AllocateAndStartAssessmentSession.php`, and their focused tests only | Reintegrate the audited S3 delta, preserve `93dd8ea` patch equivalence, and rerun the 56-test/242-assertion focused matrix plus static gates. No S5 HTTP wiring. | `4230860` accepted and integrated as `29b5f32`: all four blobs equal the audited source, focused 56/242, syntax/Pint/diff/secret gates green; PostgreSQL remains S4-owned |
 | `/root/wave1_f5_fixture` | F5 testing-only review-contract fixture repair | `codex/f5-fixture-contract-repair`; `C:/Users/ThinkPad/.codex/worktrees/f5-wave1/Psikotes` | accepted integration head `4bb3464`; quarantined candidate `2a078db` | exactly the fixture page class/view and their Feature/browser tests | Close audited V2/blocker/recalculation/G7 ordering/focus/draft-loss/role-denial/format gaps test-first while preserving testing-only discovery, dual abilities, and permanently unbound persistence. No production signing, publishing, route, DTO, or state-machine work. | accepted as `3ca31c4` + `fef6add` + `e1cdf73` after two repair reviews; independent 24 tests/301 assertions plus PHPStan/Pint/ESLint/Prettier/diff and refreshed 320/1280/V3 visual inspection green; testing-only evidence, not production F5 completion |
 | `/root/wave1_s4_pg` (reused) | F2 R2 immutable IST result ledger; sole migration owner | `codex/f2-r2-ist-result-ledger`; `C:/Users/ThinkPad/.codex/worktrees/r2-wave1/Psikotes` | accepted schema stack ends at `0ae490b`; R2b worker `a704bc8` is integrated as `bf87484` | migration and existing PostgreSQL ledger test are frozen; writer scope was exactly new `PersistSealedIstResult.php` and its new Feature test | Add the exact-replay, caller-transaction-owned writer over the accepted append-only schema. No reuse of Selection result history; no DASS, A1-D5, correction/retest, route, queue, report, or activation. | **R2 ACCEPTED for schema plus unwired IST writer.** Independent QA passed exact two-file scope, SQLite 4/88, explicit PG runtime NOBYPASSRLS concurrency 1/26, Pint/PHPStan/syntax/diff, and cleanup 0/0; PM authorized canonical integration. F2 remains PARTIAL and all HTTP/queue/report/session mutation/activation stays out of scope |
+| `/root/wave1_r2c_reader` | F2 R2c immutable IST ledger reader | `codex/f2-r2c-ist-result-reader`; `C:/Users/ThinkPad/.codex/worktrees/r2c-wave1/Psikotes` | canonical `dabe77e` | exactly four new files: `PersistedIstResult.php`, `LoadPersistedIstResult.php`, and their Unit/Feature tests | Add a service-context, caller-transaction-owned, read-only fail-closed boundary that verifies the accepted IST parent/payload/checksum and nine ordered source rows. Include SQLite adversaries and an explicit PostgreSQL runtime-role sandbox proof. | **ACTIVE.** No migration ownership; schema remains frozen. PAPI/RMIB/Kraepelin persistence is blocked by undefined generic source-row semantics, and F3 persistence remains blocked on the complete R3 source graph. No manifest, HTTP, queue, report, session mutation, or activation work |
 
 Coordinator retains sole ownership of shared routes, DTO/API contracts, ADRs,
 lockfiles, canonical checklists, and this dispatch record. No live migration,
@@ -391,14 +392,18 @@ reliability (factory/teardown only) and scan-gate reliability
 recorded here only after worktree setup is ready; both forbid migrations,
 shared routes/API/DTO/ADR/checklists, and feature implementation.
 
-Both recovery tasks remain setup-pending from intended start branch
-`codex/f2-wave1-integration`: Test Reliability has client setup ID
-`client-new-thread:32abbed9-740e-4c30-a6c6-4de72fa7a89d`, and Security Scan
-Gate has client setup ID
-`client-new-thread:cf785283-cd57-46cf-83f7-649cdd94bfd3`. These client IDs are
-not task IDs and confer no active file ownership. The Tech Lead will replace
-this pending-only record with exact task IDs, host/worktree/branch, and owned
-files only after setup completes.
+Both recovery setups are now addressable from their intended integration
+baseline. Test Reliability resolved to `codex/test-harness-reliability` at
+`C:/Users/ThinkPad/.codex/worktrees/5ffe/Psikotes`; its repair stack ends at
+`71fd720` and its evidence record at `6425d0b`. Security Scan Gate resolved to
+`codex/security-binary-content-gate` at
+`C:/Users/ThinkPad/.codex/worktrees/c4e5/Psikotes`; its implementation is
+`310b8a1` and evidence record `a053e56`. The original client setup IDs were
+`client-new-thread:32abbed9-740e-4c30-a6c6-4de72fa7a89d` and
+`client-new-thread:cf785283-cd57-46cf-83f7-649cdd94bfd3`; they remain setup
+identifiers, not task IDs. Both candidate stacks are review-pending and confer
+ownership only over the files enumerated in their handoff reports; neither is
+implicitly integrated by this resolution.
 
 Independent QA subsequently downgraded R2a at the PM gate despite reproducing
 12 PostgreSQL tests/97 assertions. The verifier does not yet prove exact ACL
@@ -438,4 +443,6 @@ reports, session mutation, feature activation, and any broader F2 completion
 claim. Tech Lead post-integration verification on `bf87484` repeated SQLite at
 4/88 and PostgreSQL at 1/26 with run label
 `oncam.r2b-tl=5d7d9bc290d345b8b50429997140b7c5`; the latter again cleaned up to 0
-containers/0 networks.
+containers/0 networks. The R2 worker is closed after handoff, and its sole
+migration ownership is explicitly released; the accepted migration remains
+frozen until a future lane is separately assigned.
