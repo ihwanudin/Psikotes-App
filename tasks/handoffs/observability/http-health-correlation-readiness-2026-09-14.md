@@ -113,13 +113,13 @@ controller or preserves the exact 503 response.
 
 ## Decision matrix
 
-| Capability | Existing positive evidence | Blocking evidence | Verdict | Required authority or next proof |
-| --- | --- | --- | --- | --- |
+| Capability                   | Existing positive evidence                                                  | Blocking evidence                                                                                                                               | Verdict            | Required authority or next proof                                                                                                                          |
+| ---------------------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Dependency health controller | DB query, Redis ping, redacted 503 body, focused mocked test, Compose probe | Stateful `web` middleware can fail before controller; `/up` semantics are not frozen; no executable dependency-down HTTP probe in this checkout | **NOT-VERIFIABLE** | Coordinator-owned route/middleware decision, explicit `/up` versus `/health` semantics, then disposable real HTTP probes for DB-down and Redis-down paths |
-| Correlation propagation | Safe public ULIDs exist in narrow domain contracts | No accepted header name/trust rule, generation rule, response header, log-context middleware, proxy rule, or outbound propagation contract | **NOT-VERIFIABLE** | Freeze the HTTP correlation contract and trusted-boundary behavior before implementation |
-| Structured failure signal | Health exception detail is not logged or returned | Prose event, no stable event/context schema, stderr JSON formatting is environment-dependent | **NOT-VERIFIABLE** | Freeze event schema and committed structured formatter behavior; verify actual stderr output under induced local failure |
-| Bounded HTTP cardinality | No observed forbidden HTTP metric labels | No HTTP RED instrument, exporter, dimension schema, or approved backend | **NOT-VERIFIABLE** | Freeze vendor-neutral metric names and bounded dimensions; backend/export destination remains an operational decision |
-| Alerts/SLO/ownership | Deployment prose names possible monitoring categories | No approved threshold, duration, notification destination, runbook owner, or SLO | **NOT-VERIFIABLE** | PM/operations must supply authority; this lane must not invent it |
+| Correlation propagation      | Safe public ULIDs exist in narrow domain contracts                          | No accepted header name/trust rule, generation rule, response header, log-context middleware, proxy rule, or outbound propagation contract      | **NOT-VERIFIABLE** | Freeze the HTTP correlation contract and trusted-boundary behavior before implementation                                                                  |
+| Structured failure signal    | Health exception detail is not logged or returned                           | Prose event, no stable event/context schema, stderr JSON formatting is environment-dependent                                                    | **NOT-VERIFIABLE** | Freeze event schema and committed structured formatter behavior; verify actual stderr output under induced local failure                                  |
+| Bounded HTTP cardinality     | No observed forbidden HTTP metric labels                                    | No HTTP RED instrument, exporter, dimension schema, or approved backend                                                                         | **NOT-VERIFIABLE** | Freeze vendor-neutral metric names and bounded dimensions; backend/export destination remains an operational decision                                     |
+| Alerts/SLO/ownership         | Deployment prose names possible monitoring categories                       | No approved threshold, duration, notification destination, runbook owner, or SLO                                                                | **NOT-VERIFIABLE** | PM/operations must supply authority; this lane must not invent it                                                                                         |
 
 ## Probe contract
 
@@ -138,8 +138,32 @@ Exit codes are fail-closed:
 
 The in-memory adversarial self-test rejects a health mutation without dependency
 failure handling, DTO-only correlation, prose-only logging, and a metric label
-containing `user_id`. It accepts only the corresponding complete synthetic
+containing `user_id`. The cardinality vectors cover both same-line and multiline
+label declarations. A separate bounded vector proves that an unrelated
+`attributes=['user_id']` declaration after the metric statement does not create
+a false positive. It accepts only the corresponding complete synthetic
 contracts. These synthetic vectors test the scanner, not the application.
+
+## Tech Lead repair
+
+Tech Lead review of candidate `01e2b85dd1a302330c74646863195b980acd7c4b`
+found that the original forbidden-label expression stopped at the first newline.
+A multiline metric label list could therefore contain `user_id` after the safe
+dimensions and be incorrectly classified `VERIFIED_STATIC`.
+
+The regression was added before the implementation change and failed with:
+
+```text
+Multiline unbounded user label was accepted.
+```
+
+The scanner now selects only a label/attribute declaration associated with an
+`http_request_duration`, `http_request_errors`, or `http_request_total` marker.
+The scan is limited to 2,048 characters, does not cross a semicolon, and stops
+before another HTTP metric marker. Forbidden dimensions are evaluated across
+newlines inside the selected bracketed declaration. This closes the multiline
+bypass without scanning unrelated attribute declarations elsewhere in the
+application source.
 
 ## Verification evidence
 
@@ -152,7 +176,7 @@ PASS; zero parse errors
 Adversarial scanner contract:
 
 ```text
-SELF_TEST=PASS cases=8 temp_resources=0
+SELF_TEST=PASS cases=10 temp_resources=0
 exit=0
 ```
 
@@ -206,5 +230,5 @@ independent QA lane run disposable real HTTP probes for correlation echo,
 cross-request isolation, DB-down and Redis-down response behavior, actual JSON
 stderr events, secret/PII redaction, and bounded metric dimensions.
 
-Review status: **candidate pending Tech Lead review, then independent QA; slot
-closed without production edits.**
+Review status: **repair candidate pending Tech Lead re-review; QA was not
+contacted; slot closed without production edits.**

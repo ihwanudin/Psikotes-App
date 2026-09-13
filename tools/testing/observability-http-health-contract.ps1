@@ -73,9 +73,19 @@ function Test-StructuredFailureContract([string] $LoggingConfig, [string] $Healt
 function Test-BoundedCardinalityContract([string] $ComposerSource, [string] $ApplicationSource) {
     $hasMetricsDependency = $ComposerSource -match '(?i)opentelemetry|prometheus|prom-client|statsd'
     $hasHttpMetric = $ApplicationSource -match '(?i)http_request_(duration|errors|total)'
-    $hasBoundedDimensions = $ApplicationSource -match '(?i)route_template' `
-        -and $ApplicationSource -match '(?i)status_class'
-    $forbiddenLabel = $ApplicationSource -match "(?i)(labelNames|labels|attributes)[^\r\n]*(user_?id|participant_?id|request_?id|correlation_?id|email|raw_?url|error_?message)"
+    $metricLabelPattern = [regex]::new(
+        '\bhttp_request_(?:duration|errors|total)\w*\b(?:(?!;|\bhttp_request_)[\s\S]){0,2048}?' +
+        '\b(?:labelNames|labels|attributes)\s*(?:=>|=|:)\s*(?<declaration>\[[^\]]{0,2048}\])',
+        [Text.RegularExpressions.RegexOptions]::IgnoreCase
+    )
+    $metricLabelDeclarations = @($metricLabelPattern.Matches($ApplicationSource) |
+        ForEach-Object { $_.Groups['declaration'].Value })
+    $hasBoundedDimensions = @($metricLabelDeclarations | Where-Object {
+        $_ -match '(?i)\broute_template\b' -and $_ -match '(?i)\bstatus_class\b'
+    }).Count -ne 0
+    $forbiddenLabel = @($metricLabelDeclarations | Where-Object {
+        $_ -match '(?i)\b(user_?id|participant_?id|request_?id|correlation_?id|email|raw_?url|error_?message)\b'
+    }).Count -ne 0
     $checks = [ordered]@{
         metricsDependency = $hasMetricsDependency
         httpMetricContract = $hasHttpMetric
@@ -124,7 +134,29 @@ if ($SelfTest) {
         "http_request_duration labelNames=['route_template','user_id']"
     Assert-True ($badMetrics.status -eq 'NOT_VERIFIABLE') 'Unbounded user label was accepted.'
 
-    Write-Output 'SELF_TEST=PASS cases=8 temp_resources=0'
+    $multilineBadMetrics = Test-BoundedCardinalityContract `
+        'open-telemetry/opentelemetry' `
+        @"
+http_request_duration_seconds
+labelNames = [
+    'route_template',
+    'status_class',
+    'user_id',
+]
+"@
+    Assert-True ($multilineBadMetrics.status -eq 'NOT_VERIFIABLE') `
+        'Multiline unbounded user label was accepted.'
+
+    $boundedMetricsWithUnrelatedAttributes = Test-BoundedCardinalityContract `
+        'open-telemetry/opentelemetry' `
+        @"
+http_request_duration_seconds labelNames=['route_template','status_class'];
+unrelated_audit_record attributes=['user_id']
+"@
+    Assert-True ($boundedMetricsWithUnrelatedAttributes.status -eq 'VERIFIED_STATIC') `
+        'An unrelated attribute declaration caused a metric-label false positive.'
+
+    Write-Output 'SELF_TEST=PASS cases=10 temp_resources=0'
     exit 0
 }
 
