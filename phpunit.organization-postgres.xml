@@ -7,6 +7,10 @@
          failOnSkipped="true">
     <testsuites>
         <testsuite name="OrganizationPostgresSchemaBoundary">
+            <!-- Intentional ordered compatibility boundary: this test proves exact contracted
+                 preconditions, restores the legacy constraint for older migration tests, and
+                 the dedicated uniqueness test below restores the contracted state afterward. -->
+            <file>tests/Postgres/GenericEntitlementUniquenessCompatibilityBoundaryTest.php</file>
             <file>tests/Postgres/AssessmentBillingMigrationTest.php</file>
             <file>tests/Postgres/AssessmentCaseBackfillMigrationTest.php</file>
             <file>tests/Postgres/AssessmentCaseSecurityTest.php</file>
@@ -16,12 +20,14 @@
             <file>tests/Postgres/TestSessionGrantSecurityTest.php</file>
             <file>tests/Postgres/TestSessionDefinitionSnapshotSecurityTest.php</file>
             <file>tests/Postgres/GenericEntitlementCaseRequirementMigrationTest.php</file>
+            <file>tests/Postgres/GenericEntitlementCaseUniquenessMigrationTest.php</file>
             <file>tests/Postgres/GenericEntitlementCaseIdentityMigrationTest.php</file>
             <file>tests/Postgres/GenericEntitlementCaseIdentitySecurityTest.php</file>
         </testsuite>
         <testsuite name="OrganizationPostgres">
             <directory>tests/Postgres</directory>
             <exclude>tests/Postgres/AssessmentBillingMigrationTest.php</exclude>
+            <exclude>tests/Postgres/GenericEntitlementUniquenessCompatibilityBoundaryTest.php</exclude>
             <exclude>tests/Postgres/AssessmentCaseBackfillMigrationTest.php</exclude>
             <exclude>tests/Postgres/AssessmentCaseSecurityTest.php</exclude>
             <exclude>tests/Postgres/TestSessionCaseIdentityMigrationTest.php</exclude>
@@ -30,6 +36,7 @@
             <exclude>tests/Postgres/TestSessionGrantSecurityTest.php</exclude>
             <exclude>tests/Postgres/TestSessionDefinitionSnapshotSecurityTest.php</exclude>
             <exclude>tests/Postgres/GenericEntitlementCaseRequirementMigrationTest.php</exclude>
+            <exclude>tests/Postgres/GenericEntitlementCaseUniquenessMigrationTest.php</exclude>
             <exclude>tests/Postgres/GenericEntitlementCaseIdentityMigrationTest.php</exclude>
             <exclude>tests/Postgres/GenericEntitlementCaseIdentitySecurityTest.php</exclude>
         </testsuite>

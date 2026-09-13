@@ -20,7 +20,18 @@ final class GenericEntitlementCaseIdentityMigrationTest extends OrganizationPaym
     {
         parent::setUp();
         $this->assertSame(0, Artisan::call('migrate', ['--force' => true]));
+        $this->invokeMigration('2026_09_10_000500_contract_generic_entitlement_uniqueness.php', 'down');
+        $this->invokeMigration('2026_09_10_000400_enforce_generic_entitlement_case_identity.php', 'down');
         $this->migrateDown();
+    }
+
+    protected function tearDown(): void
+    {
+        try {
+            $this->assertSame(0, Artisan::call('migrate:fresh', ['--force' => true]));
+        } finally {
+            parent::tearDown();
+        }
     }
 
     public function test_exact_direct_and_selection_entitlements_are_bound_while_dass_remains_unbound(): void
@@ -337,5 +348,14 @@ final class GenericEntitlementCaseIdentityMigrationTest extends OrganizationPaym
         }
 
         return $migration;
+    }
+
+    private function invokeMigration(string $filename, string $operation): void
+    {
+        $migration = require database_path('migrations/'.$filename);
+        if (! $migration instanceof Migration || ! in_array($operation, ['up', 'down'], true)) {
+            throw new RuntimeException('Migration boundary is unavailable.');
+        }
+        (new \ReflectionMethod($migration, $operation))->invoke($migration);
     }
 }
