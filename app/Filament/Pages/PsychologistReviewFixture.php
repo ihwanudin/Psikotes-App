@@ -307,6 +307,7 @@ final class PsychologistReviewFixture extends Page
     {
         $v3 = $this->scenario === 'v3';
         $v2 = $this->scenario === 'v2';
+        $clusters = $this->narrativeClusters();
 
         return [
             'fixtureId' => 'F5-SYNTHETIC-REVIEW-001',
@@ -345,19 +346,18 @@ final class PsychologistReviewFixture extends Page
                     'reporting' => 'synthetic-reporting-v1',
                 ],
                 'iq' => 104,
-                'aspects' => $this->aspects(),
+                'aspects' => $this->aspects($v3),
                 'systemLabel' => $v3 ? null : 'DIPERTIMBANGKAN',
                 'recalculatedLabel' => $v3 ? null : 'DIPERTIMBANGKAN',
                 'finalLabel' => $v3 || $this->previewInvalidated ? null : $this->previewFinalLabel,
+                'labelOverride' => [
+                    'changed' => ! $v3 && $this->labelFinal !== 'DIPERTIMBANGKAN',
+                    'reason' => ! $v3 && $this->labelFinal !== 'DIPERTIMBANGKAN' ? $this->labelReason : null,
+                ],
                 'guardrails' => $v3 ? ['G3 — VALIDITY_V3'] : ['G7 — SOURCE_LEVEL_SPREAD'],
             ],
             'hpp' => [
-                'clusters' => [
-                    'A' => ['id' => $this->clusterDrafts['A'], 'jp' => '一般能力は十分な水準です。'],
-                    'B' => ['id' => $this->clusterDrafts['B'], 'jp' => '作業方法は概ね体系的です。'],
-                    'C' => ['id' => $this->clusterDrafts['C'], 'jp' => 'C4項目は専門家の確認待ちです。'],
-                    'D' => ['id' => $this->clusterDrafts['D'], 'jp' => '職業興味は希望分野を支持しています。'],
-                ],
+                'clusters' => $clusters,
                 'generalDass' => [
                     'category' => 'Normal',
                     'narrativeId' => 'Kondisi dalam batas normal pada skrining ini.',
@@ -392,21 +392,34 @@ final class PsychologistReviewFixture extends Page
                     'flags' => [],
                 ],
             ],
+            'reviewDraft' => [
+                'procedureNote' => ! $v3 && $this->procedureNote !== '' ? $this->procedureNote : null,
+                'accompanimentConditions' => ! $v3 && $this->accompanimentConditions !== '' ? $this->accompanimentConditions : null,
+                'clusters' => $clusters,
+            ],
+            'signingReadiness' => [
+                'canSign' => false,
+                'blockerCodes' => $this->blockingCodes,
+                'persistenceAuthorityBound' => false,
+            ],
         ];
     }
 
     /** @return list<array<string, mixed>> */
-    private function aspects(): array
+    private function aspects(bool $v3): array
     {
-        return array_values(array_map(function (string $aspect): array {
+        return array_values(array_map(function (string $aspect) use ($v3): array {
             $isG7 = $aspect === 'C4';
+            $isG6 = $aspect === 'A2';
+            $finalLevel = $isG6 ? $this->g6FinalLevel : ($isG7 && $this->g7FinalLevel !== null ? $this->g7FinalLevel : 3);
+            $changed = ! $v3 && ($isG6 || $isG7) && $finalLevel !== 3;
 
             return [
                 'code' => $aspect,
                 'label' => self::ASPECT_LABELS[$aspect],
                 'critical' => in_array($aspect, ['A1', 'B2', 'C4', 'C5'], true),
                 'systemLevel' => 3,
-                'finalLevel' => $isG7 && $this->g7FinalLevel !== null ? $this->g7FinalLevel : 3,
+                'finalLevel' => $finalLevel,
                 'standard' => 3,
                 'zone' => 'OK',
                 'sources' => $isG7
@@ -420,9 +433,26 @@ final class PsychologistReviewFixture extends Page
                     'state' => $isG7 && $this->g7FinalLevel === null ? 'UNRESOLVED' : ($isG7 ? 'RESOLVED' : 'NOT_REQUIRED'),
                     'spread' => $isG7 ? 2 : 0,
                     'reasonCode' => $isG7 ? 'SOURCE_LEVEL_SPREAD' : null,
+                    'finalLevel' => ! $v3 && $isG7 ? $this->g7FinalLevel : null,
+                    'reason' => $isG7 && $changed ? $this->g7Reason : null,
+                ],
+                'override' => [
+                    'changed' => $changed,
+                    'reason' => $changed ? ($isG6 ? $this->g6Reason : $this->g7Reason) : null,
                 ],
             ];
         }, self::ASPECTS));
+    }
+
+    /** @return array{A: array{id: string, jp: string}, B: array{id: string, jp: string}, C: array{id: string, jp: string}, D: array{id: string, jp: string}} */
+    private function narrativeClusters(): array
+    {
+        return [
+            'A' => ['id' => $this->clusterDrafts['A'], 'jp' => '一般能力は十分な水準です。'],
+            'B' => ['id' => $this->clusterDrafts['B'], 'jp' => '作業方法は概ね体系的です。'],
+            'C' => ['id' => $this->clusterDrafts['C'], 'jp' => 'C4項目は専門家の確認待ちです。'],
+            'D' => ['id' => $this->clusterDrafts['D'], 'jp' => '職業興味は希望分野を支持しています。'],
+        ];
     }
 
     /** @return array<mixed> */
