@@ -5,8 +5,11 @@ declare(strict_types=1);
 namespace App\Filament\Pages;
 
 use App\Domain\Eligibility\AspectSourceDiscrepancyPolicy;
+use App\Domain\Eligibility\EligibilityDecisionSnapshot;
 use App\Domain\Review\G7AspectResolution;
 use App\Domain\Review\ProfessionalOverridePolicy;
+use App\Domain\Review\ReportSigningPrerequisitePolicy;
+use App\Domain\Review\ReviewedEligibilityDecision;
 use App\Enums\AdminAbility;
 use App\Models\Admin;
 use BackedEnum;
@@ -73,6 +76,29 @@ final class PsychologistReviewFixture extends Page
 
     public string $g7Reason = '';
 
+    public string $procedureNote = '';
+
+    public string $accompanimentConditions = '';
+
+    public string $labelFinal = 'DIPERTIMBANGKAN';
+
+    public string $labelReason = '';
+
+    /** @var array{A: string, B: string, C: string, D: string} */
+    public array $clusterDrafts = [
+        'A' => 'Kemampuan umum berada pada taraf cukup.',
+        'B' => 'Cara kerja menunjukkan pola yang cukup terarah.',
+        'C' => 'Aspek C4 menunggu tinjauan profesional.',
+        'D' => 'Minat kerja mendukung bidang tujuan.',
+    ];
+
+    #[Locked]
+    public ?string $targetField = 'KAIGO';
+
+    public bool $previewInvalidated = false;
+
+    public ?string $previewFinalLabel = 'DIPERTIMBANGKAN';
+
     /** @var list<string> */
     public array $blockingCodes = [];
 
@@ -105,12 +131,24 @@ final class PsychologistReviewFixture extends Page
     {
         $this->authorizeReviewer();
         $requestedScenario = $scenario ?? request()->query('scenario', 'review');
-        abort_unless(is_string($requestedScenario) && in_array($requestedScenario, ['review', 'v3'], true), 404);
+        abort_unless(is_string($requestedScenario) && in_array($requestedScenario, ['review', 'v2', 'v3', 'missing-field'], true), 404);
 
         $this->scenario = $requestedScenario;
-        $this->blockingCodes = $requestedScenario === 'v3'
-            ? ['VALIDITY_V3', 'PERSISTENCE_AUTHORITY_UNBOUND']
-            : ['G7_ASPECTS_UNRESOLVED', 'PERSISTENCE_AUTHORITY_UNBOUND'];
+        if ($requestedScenario === 'missing-field') {
+            $this->targetField = null;
+        }
+
+        $this->refreshBlockingCodes();
+    }
+
+    public function mountCanAuthorizeAccess(): void
+    {
+        $this->authorizeReviewer();
+    }
+
+    public function hydrateCanAuthorizeAccess(): void
+    {
+        $this->authorizeReviewer();
     }
 
     public function hydrate(): void
@@ -124,6 +162,7 @@ final class PsychologistReviewFixture extends Page
         abort_unless($this->scenario !== 'v3' && in_array($panel, ['hpp', 'internal'], true), 404);
 
         $this->activePanel = $panel;
+        $this->dispatch('review-focus', target: 'projection-heading');
     }
 
     public function updatedG6FinalLevel(): void
@@ -131,7 +170,14 @@ final class PsychologistReviewFixture extends Page
         $this->authorizeReviewer();
         if ($this->g6FinalLevel === 3) {
             $this->g6Reason = '';
+            $this->previewFinalLabel = $this->labelFinal;
+            $this->previewInvalidated = false;
+
+            return;
         }
+
+        $this->previewFinalLabel = null;
+        $this->previewInvalidated = true;
     }
 
     public function updatedG7FinalLevel(): void
@@ -140,6 +186,33 @@ final class PsychologistReviewFixture extends Page
         if ($this->g7FinalLevel === 3) {
             $this->g7Reason = '';
         }
+    }
+
+    public function updatedLabelFinal(): void
+    {
+        $this->authorizeReviewer();
+        if ($this->labelFinal === 'DIPERTIMBANGKAN') {
+            $this->labelReason = '';
+        }
+    }
+
+    public function focusBlocker(string $code): void
+    {
+        $this->authorizeReviewer();
+        $target = match ($code) {
+            'V2_PROCEDURE_NOTE_REQUIRED' => 'procedure-note',
+            'ACCOMPANIMENT_CONDITIONS_REQUIRED' => 'accompaniment-conditions',
+            'G7_ASPECTS_UNRESOLVED' => 'g7-final-level',
+            'OVERRIDE_REASON_MIN_LENGTH' => $this->labelFinal !== 'DIPERTIMBANGKAN' ? 'label-reason' : 'g6-reason',
+            'TARGET_FIELD_REQUIRED' => 'target-field-status',
+            'NARRATIVE_CLUSTER_A_REQUIRED' => 'cluster-a-id',
+            'NARRATIVE_CLUSTER_B_REQUIRED' => 'cluster-b-id',
+            'NARRATIVE_CLUSTER_C_REQUIRED' => 'cluster-c-id',
+            'NARRATIVE_CLUSTER_D_REQUIRED' => 'cluster-d-id',
+            default => 'readiness-heading',
+        };
+
+        $this->dispatch('review-focus', target: $target);
     }
 
     public function validateDraft(): void
@@ -154,22 +227,27 @@ final class PsychologistReviewFixture extends Page
             return;
         }
 
-        $blocking = [];
+        $overrides = [];
+        $levelOverride = null;
 
         try {
-            (new ProfessionalOverridePolicy)->levelOverride([
+            $levelOverride = (new ProfessionalOverridePolicy)->levelOverride([
                 'aspect' => 'A2',
                 'system_level' => 3,
                 'final_level' => $this->g6FinalLevel,
                 'reason' => $this->g6FinalLevel === 3 ? null : $this->g6Reason,
             ]);
+            if ($levelOverride['changed']) {
+                $overrides[] = ['type' => 'level', 'aspect' => 'A2', 'reason' => $this->g6Reason];
+            }
         } catch (InvalidArgumentException) {
-            $blocking[] = 'OVERRIDE_REASON_MIN_LENGTH';
             $this->addError('g6Reason', 'Perubahan level memerlukan alasan minimal 20 karakter.');
+            $overrides[] = ['type' => 'level', 'aspect' => 'A2', 'reason' => $this->g6Reason];
         }
 
+        $unresolvedG7 = [];
         if ($this->g7FinalLevel === null) {
-            $blocking[] = 'G7_ASPECTS_UNRESOLVED';
+            $unresolvedG7[] = 'C4';
             $this->addError('g7FinalLevel', 'Aspek C4 harus ditetapkan sebelum siap ditandatangani.');
         } else {
             try {
@@ -179,14 +257,36 @@ final class PsychologistReviewFixture extends Page
                     $this->g7FinalLevel,
                     $this->g7FinalLevel === 3 ? null : $this->g7Reason,
                 );
+                if ($this->g7FinalLevel !== 3) {
+                    $overrides[] = ['type' => 'level', 'aspect' => 'C4', 'reason' => $this->g7Reason];
+                }
             } catch (InvalidArgumentException) {
-                $blocking[] = 'OVERRIDE_REASON_MIN_LENGTH';
                 $this->addError('g7Reason', 'Perubahan hasil G7 memerlukan alasan minimal 20 karakter.');
+                $overrides[] = ['type' => 'level', 'aspect' => 'C4', 'reason' => $this->g7Reason];
             }
         }
 
-        $blocking[] = 'PERSISTENCE_AUTHORITY_UNBOUND';
-        $this->blockingCodes = array_values(array_unique($blocking));
+        $labelOverride = null;
+        try {
+            $labelOverride = (new ProfessionalOverridePolicy)->labelOverride([
+                'system_label' => 'DIPERTIMBANGKAN',
+                'final_label' => $this->labelFinal,
+                'reason' => $this->labelFinal === 'DIPERTIMBANGKAN' ? null : $this->labelReason,
+            ]);
+            if ($labelOverride['changed']) {
+                $overrides[] = ['type' => 'label', 'aspect' => null, 'reason' => $this->labelReason];
+            }
+        } catch (InvalidArgumentException) {
+            $this->addError('labelReason', 'Perubahan label memerlukan alasan minimal 20 karakter.');
+            $overrides[] = ['type' => 'label', 'aspect' => null, 'reason' => $this->labelReason];
+        }
+
+        $this->refreshBlockingCodes($unresolvedG7, $overrides);
+        $this->addBlockerFieldErrors();
+
+        if (! $this->getErrorBag()->has('g6Reason') && $levelOverride !== null) {
+            $this->recomputePreview($levelOverride, $labelOverride);
+        }
         $this->readinessMessage = 'Belum dapat ditandatangani';
 
         Notification::make()
@@ -206,6 +306,7 @@ final class PsychologistReviewFixture extends Page
     private function fixture(): array
     {
         $v3 = $this->scenario === 'v3';
+        $v2 = $this->scenario === 'v2';
 
         return [
             'fixtureId' => 'F5-SYNTHETIC-REVIEW-001',
@@ -214,7 +315,7 @@ final class PsychologistReviewFixture extends Page
                 'origin' => 'DIRECT_PUBLIC',
                 'organizationLabel' => 'Cabang Sintetis Salatiga',
                 'packageLabel' => 'Paket Psikotes Sintetis',
-                'intendedField' => 'KAIGO',
+                'intendedField' => $this->scenario === 'missing-field' ? null : $this->targetField,
             ],
             'participant' => [
                 'testNumber' => 'TEST-SYNTHETIC-001',
@@ -227,8 +328,8 @@ final class PsychologistReviewFixture extends Page
                 'expectedSnapshotHash' => null,
             ],
             'validity' => [
-                'status' => $v3 ? 'V3' : 'V1',
-                'procedureNote' => null,
+                'status' => $v3 ? 'V3' : ($v2 ? 'V2' : 'V1'),
+                'procedureNote' => $this->procedureNote !== '' ? $this->procedureNote : null,
                 'findings' => $v3
                     ? ['Identitas sintetis tidak dapat diverifikasi.']
                     : ['Pemeriksaan sintetis lengkap.'],
@@ -247,15 +348,15 @@ final class PsychologistReviewFixture extends Page
                 'aspects' => $this->aspects(),
                 'systemLabel' => $v3 ? null : 'DIPERTIMBANGKAN',
                 'recalculatedLabel' => $v3 ? null : 'DIPERTIMBANGKAN',
-                'finalLabel' => $v3 ? null : 'DIPERTIMBANGKAN',
+                'finalLabel' => $v3 || $this->previewInvalidated ? null : $this->previewFinalLabel,
                 'guardrails' => $v3 ? ['G3 — VALIDITY_V3'] : ['G7 — SOURCE_LEVEL_SPREAD'],
             ],
             'hpp' => [
                 'clusters' => [
-                    'A' => ['id' => 'Kemampuan umum berada pada taraf cukup.', 'jp' => '一般能力は十分な水準です。'],
-                    'B' => ['id' => 'Cara kerja menunjukkan pola yang cukup terarah.', 'jp' => '作業方法は概ね体系的です。'],
-                    'C' => ['id' => 'Aspek C4 menunggu tinjauan profesional.', 'jp' => 'C4項目は専門家の確認待ちです。'],
-                    'D' => ['id' => 'Minat kerja mendukung bidang tujuan.', 'jp' => '職業興味は希望分野を支持しています。'],
+                    'A' => ['id' => $this->clusterDrafts['A'], 'jp' => '一般能力は十分な水準です。'],
+                    'B' => ['id' => $this->clusterDrafts['B'], 'jp' => '作業方法は概ね体系的です。'],
+                    'C' => ['id' => $this->clusterDrafts['C'], 'jp' => 'C4項目は専門家の確認待ちです。'],
+                    'D' => ['id' => $this->clusterDrafts['D'], 'jp' => '職業興味は希望分野を支持しています。'],
                 ],
                 'generalDass' => [
                     'category' => 'Normal',
@@ -305,7 +406,7 @@ final class PsychologistReviewFixture extends Page
                 'label' => self::ASPECT_LABELS[$aspect],
                 'critical' => in_array($aspect, ['A1', 'B2', 'C4', 'C5'], true),
                 'systemLevel' => 3,
-                'finalLevel' => 3,
+                'finalLevel' => $isG7 && $this->g7FinalLevel !== null ? $this->g7FinalLevel : 3,
                 'standard' => 3,
                 'zone' => 'OK',
                 'sources' => $isG7
@@ -316,7 +417,7 @@ final class PsychologistReviewFixture extends Page
                     : [['sourceCode' => 'SYNTHETIC_'.$aspect, 'sourceVersion' => 'synthetic-v1', 'level' => 3]],
                 'g7' => [
                     'required' => $isG7,
-                    'state' => $isG7 ? 'UNRESOLVED' : 'NOT_REQUIRED',
+                    'state' => $isG7 && $this->g7FinalLevel === null ? 'UNRESOLVED' : ($isG7 ? 'RESOLVED' : 'NOT_REQUIRED'),
                     'spread' => $isG7 ? 2 : 0,
                     'reasonCode' => $isG7 ? 'SOURCE_LEVEL_SPREAD' : null,
                 ],
@@ -332,6 +433,90 @@ final class PsychologistReviewFixture extends Page
             'sources' => [
                 ['source' => 'PAPI_E', 'level' => 2],
                 ['source' => 'KRAEPELIN_HANKER', 'level' => 4],
+            ],
+        ]);
+    }
+
+    /**
+     * @param  list<string>|null  $unresolvedG7
+     * @param  list<array{type: string, aspect: string|null, reason: string|null}>  $overrides
+     */
+    private function refreshBlockingCodes(?array $unresolvedG7 = null, array $overrides = []): void
+    {
+        $v3 = $this->scenario === 'v3';
+        $result = (new ReportSigningPrerequisitePolicy)->evaluate([
+            'validity' => $v3 ? 'V3' : ($this->scenario === 'v2' ? 'V2' : 'V1'),
+            'procedure_note' => $this->procedureNote,
+            'label' => $v3 ? null : $this->labelFinal,
+            'accompaniment_conditions' => $this->accompanimentConditions,
+            'unresolved_g7_aspects' => $unresolvedG7 ?? ($v3 ? [] : ['C4']),
+            'overrides' => $overrides,
+            'target_field' => $this->scenario === 'missing-field' ? null : $this->targetField,
+            'narrative_clusters' => $this->clusterDrafts,
+        ]);
+
+        $this->blockingCodes = [...$result['blocking_reason_codes'], 'PERSISTENCE_AUTHORITY_UNBOUND'];
+    }
+
+    private function addBlockerFieldErrors(): void
+    {
+        $fields = [
+            'V2_PROCEDURE_NOTE_REQUIRED' => ['procedureNote', 'Catatan prosedur wajib untuk validitas V2.'],
+            'ACCOMPANIMENT_CONDITIONS_REQUIRED' => ['accompanimentConditions', 'Syarat pendampingan wajib untuk label DIPERTIMBANGKAN.'],
+            'TARGET_FIELD_REQUIRED' => ['targetField', 'Bidang tujuan wajib ditetapkan.'],
+            'NARRATIVE_CLUSTER_A_REQUIRED' => ['clusterDrafts.A', 'Narasi klaster A wajib diisi.'],
+            'NARRATIVE_CLUSTER_B_REQUIRED' => ['clusterDrafts.B', 'Narasi klaster B wajib diisi.'],
+            'NARRATIVE_CLUSTER_C_REQUIRED' => ['clusterDrafts.C', 'Narasi klaster C wajib diisi.'],
+            'NARRATIVE_CLUSTER_D_REQUIRED' => ['clusterDrafts.D', 'Narasi klaster D wajib diisi.'],
+        ];
+
+        foreach ($fields as $code => [$field, $message]) {
+            if (in_array($code, $this->blockingCodes, true)) {
+                $this->addError($field, $message);
+            }
+        }
+    }
+
+    /**
+     * @param  array<mixed>  $levelOverride
+     * @param  array<mixed>|null  $labelOverride
+     */
+    private function recomputePreview(array $levelOverride, ?array $labelOverride): void
+    {
+        $reviewed = ReviewedEligibilityDecision::create(
+            $this->baselineEligibility(),
+            $levelOverride['changed'] ? [$levelOverride] : [],
+            $labelOverride !== null && $labelOverride['changed'] ? $labelOverride : null,
+        )->toArray();
+
+        $this->previewFinalLabel = $reviewed['final_decision']['label'];
+        $this->previewInvalidated = false;
+    }
+
+    private function baselineEligibility(): EligibilityDecisionSnapshot
+    {
+        $contents = file_get_contents(database_path('seeders/data/reporting.json'));
+        $configuration = is_string($contents) ? json_decode($contents, true, flags: JSON_THROW_ON_ERROR) : null;
+        if (! is_array($configuration)) {
+            throw new InvalidArgumentException('Synthetic reporting fixture is unavailable.');
+        }
+
+        return EligibilityDecisionSnapshot::create([
+            'levels' => array_fill_keys(self::ASPECTS, 3),
+            'field_code' => 'KAIGO',
+            'iq' => 104,
+            'validity' => 'V1',
+            'standard_configuration' => [
+                'standard_version' => $configuration['standard_version'],
+                'base_standards' => $configuration['base_standards'],
+                'fields' => $configuration['fields'],
+            ],
+            'eligibility_source_versions' => [
+                'ist' => 'synthetic-ist-v1',
+                'papi' => 'synthetic-papi-v1',
+                'kraepelin' => 'synthetic-kraepelin-v1',
+                'rmib' => 'synthetic-rmib-v1',
+                'reporting' => $configuration['standard_version'],
             ],
         ]);
     }
