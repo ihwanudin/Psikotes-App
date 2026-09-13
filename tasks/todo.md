@@ -1,5 +1,10 @@
 # F1 Task Checklist
 
+Checklist F1 ini tetap utuh. Checklist kanonik F2-F9 dan status T-01..T-28 per
+lapisan domain, persistence, PostgreSQL/RLS, HTTP, UI, dan browser E2E berada di
+[`tasks/f2-f9-acceptance.md`](f2-f9-acceptance.md). Jangan menjumlahkan rasio
+checklist yang berbeda sebagai persentase proyek; gunakan exit gate fase.
+
 ## Task 1: Establish repository baseline
 
 **Description:** Inisialisasi Git, buat branch `f1/foundation`, lindungi secrets/build artifacts, dan dokumentasikan toolchain yang dipin.

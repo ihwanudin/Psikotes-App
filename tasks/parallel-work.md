@@ -327,3 +327,20 @@ checkout/payer test fixtures to their exact assessment cases and preserves the
 main-package DASS-21 inventory. The focused organization-payment run passed
 70 tests/2,181 assertions, Pint passed, and `git diff --cached --check` was
 clean. Untracked ADR-0026 remains excluded and unmodified.
+
+## Wave 1 acceptance and next dispatch — 2026-09-13
+
+Wave 1 is accepted in
+[`tasks/handoffs/integration-2026-09-13-wave1.md`](handoffs/integration-2026-09-13-wave1.md).
+F2 fixture-time repair is integrated as `83cd0a2`, F9 suite isolation as
+`a522f47`, and the inert retention command as `7b496e0`. Independent focused
+PostgreSQL passed 15 tests/74 assertions and the fresh full suite passed
+533 tests/5,679 assertions. The old frontend R1-R2 dispatch is superseded by
+the broader main-history confirmation coverage and must not be re-dispatched.
+
+The canonical F2-F9 phase and T-01..T-28 matrix is
+[`tasks/f2-f9-acceptance.md`](f2-f9-acceptance.md). Three disjoint, report-only
+workers are active from baseline `a522f47`: four-instrument authority manifest,
+ADR-0030 start-flow readiness, and vertical instrument UI readiness. Their exact
+outputs and ownership are recorded in the integration handoff. No production
+file is worker-owned in this audit wave.

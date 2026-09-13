@@ -116,6 +116,15 @@ Toolchain + repository
 
 ## Verification strategy
 
+F2-F9 are continued through the phase-exit plan and six-layer acceptance matrix
+in [`tasks/f2-f9-acceptance.md`](f2-f9-acceptance.md). The existing F1 plan and
+checklist remain authoritative for F1; later-phase work does not mark an F1 item
+complete indirectly. The immediate critical path is: approve a four-instrument
+definition manifest, implement the ADR-0030 start boundary, deliver one vertical
+instrument slice through authoritative result persistence, then connect F3/F4,
+F5 review, and F6 documents. F9 runs continuously without activating production
+features before their operational authority exists.
+
 - PHPUnit/Pest feature tests untuk HTTP, auth, payment, referral, consent, dan upload.
 - PostgreSQL integration tests memakai role aplikasi nyata; SQLite tidak boleh menjadi bukti RLS.
 - Contract tests untuk fake payment/notification/storage adapters; sandbox Xendit hanya setelah credential tersedia.
