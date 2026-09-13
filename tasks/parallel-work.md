@@ -364,7 +364,7 @@ serve as its exact base.
 | `/root/wave1_s3` | F2 S3 trusted participant start integration | `codex/f2-s3-start-integration`; `C:/Users/ThinkPad/.codex/worktrees/s3-wave1/Psikotes` | accepted R0 integration `24af4e7` | `StartParticipantAssessmentSession.php`, `AllocateAndStartAssessmentSession.php`, and their focused tests only | Reintegrate the audited S3 delta, preserve `93dd8ea` patch equivalence, and rerun the 56-test/242-assertion focused matrix plus static gates. No S5 HTTP wiring. | `4230860` accepted and integrated as `29b5f32`: all four blobs equal the audited source, focused 56/242, syntax/Pint/diff/secret gates green; PostgreSQL remains S4-owned |
 | `/root/wave1_f5_fixture` | F5 testing-only review-contract fixture repair | `codex/f5-fixture-contract-repair`; `C:/Users/ThinkPad/.codex/worktrees/f5-wave1/Psikotes` | accepted integration head `4bb3464`; quarantined candidate `2a078db` | exactly the fixture page class/view and their Feature/browser tests | Close audited V2/blocker/recalculation/G7 ordering/focus/draft-loss/role-denial/format gaps test-first while preserving testing-only discovery, dual abilities, and permanently unbound persistence. No production signing, publishing, route, DTO, or state-machine work. | accepted as `3ca31c4` + `fef6add` + `e1cdf73` after two repair reviews; independent 24 tests/301 assertions plus PHPStan/Pint/ESLint/Prettier/diff and refreshed 320/1280/V3 visual inspection green; testing-only evidence, not production F5 completion |
 | `/root/wave1_s4_pg` (reused) | F2 R2 immutable IST result ledger; sole migration owner | `codex/f2-r2-ist-result-ledger`; `C:/Users/ThinkPad/.codex/worktrees/r2-wave1/Psikotes` | accepted schema stack ends at `0ae490b`; R2b worker `a704bc8` is integrated as `bf87484` | migration and existing PostgreSQL ledger test are frozen; writer scope was exactly new `PersistSealedIstResult.php` and its new Feature test | Add the exact-replay, caller-transaction-owned writer over the accepted append-only schema. No reuse of Selection result history; no DASS, A1-D5, correction/retest, route, queue, report, or activation. | **R2 ACCEPTED for schema plus unwired IST writer.** Independent QA passed exact two-file scope, SQLite 4/88, explicit PG runtime NOBYPASSRLS concurrency 1/26, Pint/PHPStan/syntax/diff, and cleanup 0/0; PM authorized canonical integration. F2 remains PARTIAL and all HTTP/queue/report/session mutation/activation stays out of scope |
-| `/root/wave1_r2c_reader` | F2 R2c immutable IST ledger reader | `codex/f2-r2c-ist-result-reader`; `C:/Users/ThinkPad/.codex/worktrees/r2c-wave1/Psikotes` | canonical `dabe77e` | exactly four new files: `PersistedIstResult.php`, `LoadPersistedIstResult.php`, and their Unit/Feature tests | Add a service-context, caller-transaction-owned, read-only fail-closed boundary that verifies the accepted IST parent/payload/checksum and nine ordered source rows. Include SQLite adversaries and an explicit PostgreSQL runtime-role sandbox proof. | **ACTIVE.** No migration ownership; schema remains frozen. PAPI/RMIB/Kraepelin persistence is blocked by undefined generic source-row semantics, and F3 persistence remains blocked on the complete R3 source graph. No manifest, HTTP, queue, report, session mutation, or activation work |
+| `/root/wave1_r2c_reader` | F2 R2c immutable IST ledger reader | `codex/f2-r2c-ist-result-reader`; `C:/Users/ThinkPad/.codex/worktrees/r2c-wave1/Psikotes` | canonical `dabe77e` | exactly four new files: `PersistedIstResult.php`, `LoadPersistedIstResult.php`, and their Unit/Feature tests | Add a service-context, caller-transaction-owned, read-only fail-closed boundary that verifies the accepted IST parent/payload/checksum and nine ordered source rows. Include SQLite adversaries and an explicit PostgreSQL runtime-role sandbox proof. | **R2c ACCEPTED.** QA passed the strict decoded-JSON numeric repair; the patch-equivalent canonical stack is `d5989e8` + `4fb3731`, with 9/60 local and 1/15 PostgreSQL runtime-role evidence. No migration, manifest, HTTP, queue, report, session mutation, raw-answer reconstruction, or activation work |
 
 Coordinator retains sole ownership of shared routes, DTO/API contracts, ADRs,
 lockfiles, canonical checklists, and this dispatch record. No live migration,
@@ -446,3 +446,19 @@ claim. Tech Lead post-integration verification on `bf87484` repeated SQLite at
 containers/0 networks. The R2 worker is closed after handoff, and its sole
 migration ownership is explicitly released; the accepted migration remains
 frozen until a future lane is separately assigned.
+
+R2c worker commits `ddcd0207` + `91f9f38` were independently reviewed and
+integrated patch-equivalently as `d5989e8` + `4fb3731`; aggregate patch id
+`55ee4702bec44f173336fc97c77ea7caa0ee9df2` matches on both sides. QA first
+rejected numeric-string coercion in correctly re-signed decoded JSON, then
+passed the repair which requires native JSON integers across all payload
+numeric fields while retaining canonical database-driver numeric strings only
+for parent/source rows. Tech Lead post-integration verification passed the
+combined reader suite at 9 tests/60 assertions, Pint, scoped PHPStan, syntax,
+diff, and the explicit PostgreSQL runtime-role reader at 1/15 under
+`psikotes_runtime` without superuser or `BYPASSRLS`. That run used label
+`oncam.org-test-run=c45447c0955f439e89071988b205ac4f` and cleaned up to 0
+containers/0 networks. The lane adds only the four internal reader/DTO/test
+files; the worker is closed and no migration, HTTP, queue, report, F3,
+manifest, active-catalog lookup, raw-answer reconstruction, or activation is
+claimed.
