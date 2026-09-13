@@ -125,3 +125,16 @@ scanner suite and both repository profiles are authoritative for this lane.
 Review and cherry-pick `310b8a1` onto the current integration head. The patch has
 no file overlap with `83f7c54..8e83be4`; rerun the three final gates after
 integration because the target branch advanced while this lane was active.
+
+## Canonical acceptance — 2026-09-13
+
+- QA independently passed repair commit `e4f15a1bab7932ebb945aabc94af04ab977db430`, including the original quoted-concatenation exploit and exact path/continuation boundaries.
+- PM approved the repository content-scanner stack for integration after QA.
+- Canonical patch-equivalent commits, in order: `d74ad4a`, `515d226`, `c6b1ca5`.
+- Candidate-to-canonical aggregate patch id: `42b9807fcefcb75edef74e949d301bd7e08a48ff` on both sides.
+- Canonical `image-content.mjs` blob: `31908575865c64f05d5a78753d8bf41db581cf9c`, byte-identical to the accepted candidate and QA evidence.
+- Scope check: four changed paths, limited to three files under `tools/security/` and this handoff record; no policy, assets, product code, configuration, lockfiles, migrations, routes, contracts, or activation.
+- Fresh canonical scanner suite: `50 tests`, `50 passed`, including realistic repeated/ascending phones, quoted concatenations, wrong paths, and wrong continuations.
+- Fresh canonical PII and SECRET profiles each passed `1,389` tracked paths across index and working-tree snapshots.
+- Node syntax, project-equivalent config-free Prettier, `git diff --check`, and clean-worktree checks passed before this evidence update.
+- Acceptance removes the scanner blocker only; it does not change F2 product readiness or the instrument manifest.
