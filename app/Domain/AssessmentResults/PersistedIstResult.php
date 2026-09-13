@@ -67,7 +67,7 @@ final readonly class PersistedIstResult
      */
     private static function hydrateExact(array $parent, array $sources): self
     {
-        $parentId = self::positiveInteger($parent['id'] ?? null);
+        $parentId = self::databasePositiveInteger($parent['id'] ?? null);
         $publicId = self::uppercaseUlid($parent['public_id'] ?? null);
         $createdAt = self::timestamp($parent['created_at'] ?? null);
         if (($parent['instrument_code'] ?? null) !== 'ist'
@@ -103,13 +103,13 @@ final readonly class PersistedIstResult
         $submittedAt = self::timestamp($payload['submittedAt'] ?? null);
         $sealedSourceChecksum = self::checksum($payload['sealedSourceChecksum'] ?? null);
 
-        if (self::positiveInteger($parent['assessment_case_id'] ?? null) !== $assessmentCaseId
-            || self::positiveInteger($parent['session_id'] ?? null) !== $sessionId
-            || self::positiveInteger($parent['participant_id'] ?? null) !== $participantId
+        if (self::databasePositiveInteger($parent['assessment_case_id'] ?? null) !== $assessmentCaseId
+            || self::databasePositiveInteger($parent['session_id'] ?? null) !== $sessionId
+            || self::databasePositiveInteger($parent['participant_id'] ?? null) !== $participantId
             || self::uppercaseUlid($parent['session_public_id'] ?? null) !== $sessionPublicId
-            || self::positiveInteger($parent['attempt_no'] ?? null) !== $attemptNo
+            || self::databasePositiveInteger($parent['attempt_no'] ?? null) !== $attemptNo
             || self::timestamp($parent['submitted_at'] ?? null) !== $submittedAt
-            || self::positiveInteger($parent['answers_revision'] ?? null) !== $answersRevision
+            || self::databasePositiveInteger($parent['answers_revision'] ?? null) !== $answersRevision
             || self::checksum($parent['sealed_source_checksum'] ?? null) !== $sealedSourceChecksum
             || $payload['resultContractVersion'] !== $parent['result_contract_version']) {
             throw self::invalid();
@@ -125,7 +125,7 @@ final readonly class PersistedIstResult
         }
 
         $scoringSource = self::scoringSource($payload['scoringSource'] ?? null);
-        if (self::positiveInteger($parent['instrument_version_id'] ?? null) !== $scoringSource['id']
+        if (self::databasePositiveInteger($parent['instrument_version_id'] ?? null) !== $scoringSource['id']
             || ($parent['instrument_version'] ?? null) !== $scoringSource['version']
             || ($parent['instrument_source_file'] ?? null) !== $scoringSource['sourceFile']
             || ($parent['instrument_checksum'] ?? null) !== $scoringSource['checksum']) {
@@ -261,17 +261,17 @@ final readonly class PersistedIstResult
         }
         foreach ($rows as $offset => $row) {
             $expected = $subtests[$offset];
-            if (self::positiveInteger($row['id'] ?? null) < 1
-                || self::positiveInteger($row['result_id'] ?? null) !== $parentId
-                || self::positiveInteger($row['ordinal'] ?? null) !== $offset + 1
+            if (self::databasePositiveInteger($row['id'] ?? null) < 1
+                || self::databasePositiveInteger($row['result_id'] ?? null) !== $parentId
+                || self::databasePositiveInteger($row['ordinal'] ?? null) !== $offset + 1
                 || ($row['source_code'] ?? null) !== $expected['code']
-                || self::nonNegativeInteger($row['raw_score'] ?? null) !== $expected['rawScore']
-                || self::integer($row['standard_score'] ?? null) !== $expected['standardScore']
-                || self::integer($row['source_score'] ?? null) !== $expected['sourceScore']
-                || self::level($row['level'] ?? null) !== $expected['level']
+                || self::databaseNonNegativeInteger($row['raw_score'] ?? null) !== $expected['rawScore']
+                || self::databaseInteger($row['standard_score'] ?? null) !== $expected['standardScore']
+                || self::databaseInteger($row['source_score'] ?? null) !== $expected['sourceScore']
+                || self::databaseLevel($row['level'] ?? null) !== $expected['level']
                 || self::category($row['category'] ?? null) !== $expected['category']
-                || self::nullableInteger($row['band_low'] ?? null) !== $expected['band']['lo']
-                || self::nullableInteger($row['band_high'] ?? null) !== $expected['band']['hi']
+                || self::databaseNullableInteger($row['band_low'] ?? null) !== $expected['band']['lo']
+                || self::databaseNullableInteger($row['band_high'] ?? null) !== $expected['band']['hi']
                 || self::timestamp($row['created_at'] ?? null) !== $createdAt) {
                 throw self::invalid();
             }
@@ -348,14 +348,11 @@ final readonly class PersistedIstResult
 
     private static function integer(mixed $value): int
     {
-        if (is_int($value)) {
-            return $value;
-        }
-        if (! is_string($value) || preg_match('/\A(?:0|-?[1-9][0-9]*)\z/', $value) !== 1) {
+        if (! is_int($value)) {
             throw self::invalid();
         }
 
-        return filter_var($value, FILTER_VALIDATE_INT, FILTER_NULL_ON_FAILURE) ?? throw self::invalid();
+        return $value;
     }
 
     private static function positiveInteger(mixed $value): int
@@ -386,6 +383,53 @@ final readonly class PersistedIstResult
     private static function level(mixed $value): int
     {
         $level = self::integer($value);
+        if ($level < 1 || $level > 5) {
+            throw self::invalid();
+        }
+
+        return $level;
+    }
+
+    private static function databaseInteger(mixed $value): int
+    {
+        if (is_int($value)) {
+            return $value;
+        }
+        if (! is_string($value) || preg_match('/\A(?:0|-?[1-9][0-9]*)\z/', $value) !== 1) {
+            throw self::invalid();
+        }
+
+        return filter_var($value, FILTER_VALIDATE_INT, FILTER_NULL_ON_FAILURE) ?? throw self::invalid();
+    }
+
+    private static function databasePositiveInteger(mixed $value): int
+    {
+        $integer = self::databaseInteger($value);
+        if ($integer < 1) {
+            throw self::invalid();
+        }
+
+        return $integer;
+    }
+
+    private static function databaseNonNegativeInteger(mixed $value): int
+    {
+        $integer = self::databaseInteger($value);
+        if ($integer < 0) {
+            throw self::invalid();
+        }
+
+        return $integer;
+    }
+
+    private static function databaseNullableInteger(mixed $value): ?int
+    {
+        return $value === null ? null : self::databaseInteger($value);
+    }
+
+    private static function databaseLevel(mixed $value): int
+    {
+        $level = self::databaseInteger($value);
         if ($level < 1 || $level > 5) {
             throw self::invalid();
         }

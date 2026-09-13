@@ -60,6 +60,64 @@ final class PersistedIstResultTest extends TestCase
         }
     }
 
+    public function test_it_rejects_correctly_resigned_numeric_strings_in_every_payload_numeric_class(): void
+    {
+        [$parent, $sources, $payload] = $this->fixture();
+        $paths = [
+            ['assessmentCaseId'], ['sessionId'], ['participantId'], ['attemptNo'], ['answersRevision'],
+            ['scoringSource', 'id'],
+            ['sessionDefinition', 'total_duration_seconds'],
+            ['sessionDefinition', 'subtests', 0, 'duration_seconds'],
+            ['sessionDefinition', 'subtests', 0, 'item_count'],
+            ['subtests', 0, 'rawScore'], ['subtests', 0, 'standardScore'],
+            ['subtests', 0, 'sourceScore'], ['subtests', 0, 'level'],
+            ['subtests', 0, 'band', 'lo'], ['subtests', 0, 'band', 'hi'],
+            ['iq', 'rawTotal'], ['iq', 'iq'], ['iq', 'level'],
+            ['iq', 'sourceScores', 0], ['iq', 'band', 'lo'], ['iq', 'band', 'hi'],
+        ];
+
+        foreach ($paths as $path) {
+            $wrongType = $this->resign($this->replaceWithNumericString($payload, $path));
+
+            try {
+                PersistedIstResult::hydrate([
+                    ...$parent,
+                    'result_payload' => json_encode($wrongType, JSON_THROW_ON_ERROR),
+                    'result_checksum' => $wrongType['resultChecksum'],
+                ], $sources);
+                $this->fail('A re-signed numeric string must not cross the persisted JSON boundary: '.implode('.', $path));
+            } catch (UnexpectedValueException $exception) {
+                $this->assertSame('IST_RESULT_READ_INVALID', $exception->getMessage());
+            }
+        }
+    }
+
+    public function test_database_driver_numeric_strings_remain_compatible_with_strict_payload_numbers(): void
+    {
+        [$parent, $sources] = $this->fixture();
+        foreach ([
+            'id', 'assessment_case_id', 'session_id', 'participant_id', 'attempt_no',
+            'answers_revision', 'instrument_version_id',
+        ] as $column) {
+            $parent[$column] = (string) $parent[$column];
+        }
+        foreach ($sources as &$source) {
+            foreach ([
+                'id', 'result_id', 'ordinal', 'raw_score', 'standard_score', 'source_score',
+                'level', 'band_low', 'band_high',
+            ] as $column) {
+                $source[$column] = (string) $source[$column];
+            }
+        }
+        unset($source);
+
+        $result = PersistedIstResult::hydrate($parent, $sources);
+
+        $this->assertSame(4, $result->sessionId);
+        $this->assertSame(100, $result->iq['iq']);
+        $this->assertSame(90, $result->subtests[0]['band']['lo']);
+    }
+
     public function test_it_rejects_missing_reordered_duplicate_or_divergent_sources(): void
     {
         [$parent, $sources] = $this->fixture();
@@ -166,6 +224,59 @@ final class PersistedIstResultTest extends TestCase
         foreach ($value as $key => $entry) {
             $value[$key] = $this->canonicalize($entry);
         }
+
+        return $value;
+    }
+
+    /** @param array<string,mixed> $payload
+     * @return array<string,mixed>
+     */
+    private function resign(array $payload): array
+    {
+        unset($payload['resultChecksum']);
+        $payload = $this->canonicalize($payload);
+        $checksum = hash('sha256', 'sealed-ist-result:v1|'.json_encode(
+            $payload,
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION,
+        ));
+
+        return $this->canonicalize([...$payload, 'resultChecksum' => $checksum]);
+    }
+
+    /**
+     * @param  array<string,mixed>  $payload
+     * @param  non-empty-list<int|string>  $path
+     * @return array<string,mixed>
+     */
+    private function replaceWithNumericString(array $payload, array $path): array
+    {
+        $segment = array_shift($path);
+        if (! is_string($segment)) {
+            throw new UnexpectedValueException('Invalid test payload path.');
+        }
+        if ($path === []) {
+            $payload[$segment] = (string) $payload[$segment];
+
+            return $payload;
+        }
+        $payload[$segment] = $this->replaceNestedNumericString($payload[$segment] ?? null, $path);
+
+        return $payload;
+    }
+
+    /** @param non-empty-list<int|string> $path */
+    private function replaceNestedNumericString(mixed $value, array $path): mixed
+    {
+        if (! is_array($value)) {
+            throw new UnexpectedValueException('Invalid test payload path.');
+        }
+        $segment = array_shift($path);
+        if ($path === []) {
+            $value[$segment] = (string) $value[$segment];
+
+            return $value;
+        }
+        $value[$segment] = $this->replaceNestedNumericString($value[$segment] ?? null, $path);
 
         return $value;
     }
