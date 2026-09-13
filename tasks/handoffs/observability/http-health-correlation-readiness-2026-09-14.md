@@ -180,9 +180,10 @@ SELF_TEST=PASS cases=10 temp_resources=0
 exit=0
 ```
 
-Repository probe at the exact dispatch SHA:
+Repository probe at repaired candidate `e2455a1659bb16887707db79fd88411bdb5c1e99`:
 
 ```text
+commit=e2455a1659bb16887707db79fd88411bdb5c1e99
 overall=NOT_VERIFIABLE
 healthFailClosed=NOT_VERIFIABLE
 correlationPropagation=NOT_VERIFIABLE
