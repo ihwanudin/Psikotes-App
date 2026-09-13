@@ -313,13 +313,14 @@ combined); unchecked acceptance remains open until its evidence passes review.
 | Task/thread ID | Lane and phase | Branch/worktree | Exclusive ownership | Increment and acceptance | Status / next checkpoint |
 |---|---|---|---|---|---|
 | `01a05839-3b39-7d83-b59f-9e7432d7883e` | P15/P16 participant browser preparation | preserved detached worktree `d4ea`; implementation uses a task-owned temporary worktree from main `7567ad6` | `tools/testing/tests/Browser/checkout-session.browser.mjs` and `tools/testing/tests/Browser/serve-checkout-session.php` only | R1-R2 only: add one fixed synthetic mounted-confirmation alias and verify the missing-profile/current-consent/DASS-required form plus its test-only enhancer; no submit/provider/outbound | prior contract checkpoint accepted as main-equivalent `f0f2af1`/`563fa6e`; new increment active at cursor `62e007d3-56d1-4cb5-b394-bdcad652fb3e:3`; stop before R3 |
-| `01a05839-3b48-7801-8175-0392e8764c23` | F2 durable session-grant verification | detached worktree `14a0`; review target is main `d9c0b55` at baseline `7567ad6` | read-only migration/test inspection plus disposable PostgreSQL execution | Prove or reject FORCE-RLS, immutable typed origin FK, no privilege delegation, one-to-one binding, rerun/down safety, and cleanup | dispatched; no source edits or commit allowed; accept only after command evidence and P1/P2 review |
+| `01a05839-3b48-7801-8175-0392e8764c23`, repair `/root/f2_pg_regression` | F2 durable session-grant verification | read-only audit at main `7567ad6`; repair on coordinator worktree after task-service retry failed | `tests/Postgres/TestSessionGrantSecurityTest.php` only for repair; migration stays frozen | Add PostgreSQL canonical unchanged-rerun and populated-down/no-delta regressions after static migration audit found no source P1/P2 | audit repair-required: disposable runner produced zero tests due bind-mount D-state and cleaned its labeled resources; repair worker active, acceptance remains provisional |
 | `01a05839-3b18-73e0-8fdc-8db3b02f835d` | F9 retention command boundary | preserved detached worktree `6e61`; implementation uses a task-owned temporary worktree from main `77ec241` | new `PurgeExpiredAuditLogsCommand.php` and its new Feature test only | Add a one-batch, exact-true-config, redacted command boundary with strict limit, rollback/context proof, and no retry; config and scheduler remain coordinator-owned | safety audit accepted; implementation active; no real purge/runtime and no config/routes edit |
 
-The F2 verification remains read-only. Frontend and F9 each own only their two
-recorded files in task-owned temporary worktrees. None owns migrations, routes,
-config, lockfiles, ADR numbering, canonical checklists, or the dirty root files.
-The next increment is sent only after each result is independently reviewed.
+The F2 repair owns only its recorded PostgreSQL test file. Frontend and F9 each
+own only their two recorded files in task-owned temporary worktrees. None owns
+migrations, routes, config, lockfiles, ADR numbering, canonical checklists, or
+untracked ADR-0026. The next increment is sent only after each result is
+independently reviewed.
 
 Coordinator fixture repair `48a5bd8` binds the five previously modified
 checkout/payer test fixtures to their exact assessment cases and preserves the
