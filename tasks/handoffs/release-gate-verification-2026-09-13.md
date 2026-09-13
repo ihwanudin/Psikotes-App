@@ -206,3 +206,36 @@ passes independent QA should the full ordered disposable PostgreSQL suite and
 security profiles be rerun for a new release-gate verdict.
 
 Review status: **repair-required; pending independent QA review**.
+
+## Canonical fixture-repair acceptance — 2026-09-14
+
+The historical REPAIR-REQUIRED result above remains the immutable RED record.
+PM subsequently authorized the disjoint test-fixture charter, and independent
+Tech Lead plus QA review accepted worker commit
+`8b28e8338a5cdec5bf126e0b7c8a54e3db9f148c`. It is integrated
+patch-equivalently as `539f372`; candidate and canonical stable patch id is
+`c167eec8a83f1d92861a16c1bf09ad2255a26b39`.
+
+The accepted diff is exactly the new
+`tests/Support/GenericResultLedgerMigrationFixture.php` plus the eight
+inventoried PostgreSQL fixture tests. It changes no migration, schema,
+production code, route, contract, tool, configuration, lockfile, checklist, or
+feature state. The helper preserves initially present/absent ledger state,
+rejects partial state before mutation, restores in `finally`, rolls back only
+callback-opened transaction levels, and explicitly spans the one forked
+historical-migration window through an owner connection.
+
+Independent QA passed the full ordered PostgreSQL suite at 554 tests/5,863
+assertions with zero failures, errors, skips, or risky tests, plus the three
+state/owner/fork boundaries at 3/31. Tech Lead post-integration verification
+then passed the same boundary 3/31 and full ordered 554/5,863. The canonical
+labels were `oncam.org-test-run=efe6191638cc49a19b72d910cbc2b878`
+(boundary) and `oncam.org-test-run=19b338618b934026b40458921ee1371a`
+(full); both cleaned to 0 containers/0 networks. Fresh canonical PII and SECRET
+profiles each passed 1,395 tracked paths across index and working-tree
+snapshots. PHP syntax and Pint passed all nine files; diff and worktree checks
+were clean before this evidence update.
+
+The PostgreSQL/security regression subgate is now green. This is not a release,
+deployment, feature activation, or F1-F9 phase-exit approval; the authority and
+end-to-end blockers recorded above remain open.
