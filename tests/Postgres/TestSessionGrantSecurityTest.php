@@ -125,6 +125,49 @@ final class TestSessionGrantSecurityTest extends TestCase
         });
     }
 
+    public function test_owner_canonical_rerun_preserves_definitions_security_and_data(): void
+    {
+        $this->asOwner(function (): void {
+            DB::beginTransaction();
+            try {
+                DB::statement("SELECT set_config('app.role', 'service', true)");
+                $fixture = $this->directFixture();
+                DB::table('test_session_grants')->insert($this->grantRow($fixture));
+                $before = $this->grantDefinitions();
+
+                (require database_path('migrations/2026_09_09_000700_create_test_session_grants.php'))->up();
+
+                $this->assertEquals($before, $this->grantDefinitions());
+            } finally {
+                DB::rollBack();
+            }
+        });
+    }
+
+    public function test_owner_populated_down_refuses_without_partial_schema_security_or_data_mutation(): void
+    {
+        $this->asOwner(function (): void {
+            DB::beginTransaction();
+            try {
+                DB::statement("SELECT set_config('app.role', 'service', true)");
+                $fixture = $this->directFixture();
+                DB::table('test_session_grants')->insert($this->grantRow($fixture));
+                $before = $this->grantDefinitions();
+
+                try {
+                    (require database_path('migrations/2026_09_09_000700_create_test_session_grants.php'))->down();
+                    $this->fail('Populated test session grant history must refuse rollback.');
+                } catch (RuntimeException $exception) {
+                    $this->assertSame('Test session grant history prevents rollback.', $exception->getMessage());
+                }
+
+                $this->assertEquals($before, $this->grantDefinitions());
+            } finally {
+                DB::rollBack();
+            }
+        });
+    }
+
     #[DataProvider('counterfeitDefinitions')]
     public function test_owner_rerun_rejects_counterfeit_full_definitions_without_delta(string $component): void
     {
@@ -205,17 +248,18 @@ final class TestSessionGrantSecurityTest extends TestCase
             'code' => 'METHOD-'.$key, 'display_name' => $key, 'is_active' => true,
             'created_at' => now(), 'updated_at' => now(),
         ]);
+        $settledAt = now()->subMinute();
         $order = DB::table('orders')->insertGetId([
             'public_id' => $publicId, 'participant_id' => $participant,
             'assessment_case_id' => $case, 'payment_method_id' => $paymentMethod,
-            'status' => 'paid', 'amount' => 99000, 'currency' => 'IDR', 'paid_at' => now(),
+            'status' => 'paid', 'amount' => 99000, 'currency' => 'IDR', 'paid_at' => $settledAt,
             'created_at' => now(), 'updated_at' => now(),
         ]);
         foreach (['dass21', 'ist'] as $type) {
             $id = DB::table('entitlements')->insertGetId([
                 'participant_id' => $participant, 'order_id' => $order, 'test_type' => $type,
                 'assessment_case_id' => $type === 'dass21' ? null : $case,
-                'status' => 'ready', 'ready_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+                'status' => 'ready', 'ready_at' => $settledAt, 'created_at' => now(), 'updated_at' => now(),
             ]);
             if ($type === 'ist') {
                 $entitlement = $id;
@@ -309,10 +353,49 @@ final class TestSessionGrantSecurityTest extends TestCase
     private function grantDefinitions(): array
     {
         return [
+            'columns' => DB::select(<<<'SQL'
+                SELECT attribute.attname,format_type(attribute.atttypid,attribute.atttypmod) type,
+                       attribute.attnotnull,
+                       pg_get_expr(default_value.adbin,default_value.adrelid) default_value
+                FROM pg_attribute attribute
+                LEFT JOIN pg_attrdef default_value
+                  ON default_value.adrelid=attribute.attrelid AND default_value.adnum=attribute.attnum
+                WHERE attribute.attrelid='test_session_grants'::regclass
+                  AND attribute.attnum>0 AND NOT attribute.attisdropped
+                ORDER BY attribute.attnum
+                SQL),
             'constraints' => DB::select("SELECT conname,pg_get_constraintdef(oid,false) definition FROM pg_constraint WHERE conrelid='test_session_grants'::regclass ORDER BY conname"),
+            'indexes' => DB::select(<<<'SQL'
+                SELECT indexname,indexdef
+                FROM pg_indexes
+                WHERE schemaname='public' AND (
+                    indexname='test_session_grants_pkey'
+                    OR indexname LIKE '%\_grant\_scope\_unique' ESCAPE '\'
+                    OR indexname IN (
+                        'test_session_grants_assessment_entitlement_unique',
+                        'test_session_grants_entitlement_unique'
+                    )
+                )
+                ORDER BY indexname
+                SQL),
             'trigger' => DB::select("SELECT pg_get_triggerdef(oid,false) definition FROM pg_trigger WHERE tgrelid='test_session_grants'::regclass AND NOT tgisinternal ORDER BY tgname"),
             'function' => DB::select("SELECT pg_get_functiondef(proc.oid) definition,pg_get_userbyid(proc.proowner) owner FROM pg_proc proc JOIN pg_namespace namespace ON namespace.oid=proc.pronamespace WHERE namespace.nspname='app_private' AND proc.proname='guard_test_session_grant_identity'"),
             'table' => DB::select("SELECT relrowsecurity,relforcerowsecurity,pg_get_userbyid(relowner) owner FROM pg_class WHERE oid='test_session_grants'::regclass"),
+            'policies' => DB::select(<<<'SQL'
+                SELECT policyname,permissive,roles,cmd,qual,with_check
+                FROM pg_policies
+                WHERE schemaname='public' AND tablename='test_session_grants'
+                ORDER BY policyname
+                SQL),
+            'acl' => DB::select(<<<'SQL'
+                SELECT CASE WHEN acl.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(acl.grantee) END grantee,
+                       acl.privilege_type,acl.is_grantable
+                FROM pg_class class
+                CROSS JOIN LATERAL aclexplode(COALESCE(class.relacl,acldefault('r',class.relowner))) acl
+                WHERE class.oid='test_session_grants'::regclass AND acl.grantee <> class.relowner
+                ORDER BY grantee,privilege_type
+                SQL),
+            'data' => DB::select('SELECT * FROM test_session_grants ORDER BY test_session_id'),
         ];
     }
 
