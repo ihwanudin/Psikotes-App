@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
+use Tests\Support\ForkedProcessResult;
 use Throwable;
 
 /** PostgreSQL-authoritative P14a2 consume/session atomicity and recovery races. */
@@ -217,10 +218,10 @@ final class CheckoutSessionEstablishmentConcurrencyTest extends TestCase
                 } catch (Throwable $exception) {
                     $result = ['unexpected' => $exception::class, 'message' => $exception->getMessage()];
                 }
-                fwrite($pair[1], json_encode($result, JSON_THROW_ON_ERROR)."\n");
-                fclose($pair[1]);
-                DB::disconnect('pgsql');
-                exit(0);
+                ForkedProcessResult::sendAndExit($pair[1], $result,
+                    static function (): void {
+                        DB::disconnect('pgsql');
+                    });
             }
             fclose($pair[1]);
             stream_set_timeout($pair[0], 20);

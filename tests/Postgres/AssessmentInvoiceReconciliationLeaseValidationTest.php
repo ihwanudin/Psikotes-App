@@ -31,6 +31,7 @@ use Mockery;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Tests\Support\AssessmentPreviewFixture as Fixture;
+use Tests\Support\ForkedProcessResult;
 use Throwable;
 
 /** PostgreSQL-authoritative organization-first serialization and rotated-token fence proof. */
@@ -262,10 +263,10 @@ final class AssessmentInvoiceReconciliationLeaseValidationTest extends TestCase
             } catch (Throwable $exception) {
                 $result = ['error' => $exception->getMessage(), 'class' => $exception::class];
             }
-            fwrite($pair[1], json_encode($result, JSON_THROW_ON_ERROR)."\n");
-            fclose($pair[1]);
-            DB::disconnect('pgsql');
-            exit(0);
+            ForkedProcessResult::sendAndExit($pair[1], $result,
+                static function (): void {
+                    DB::disconnect('pgsql');
+                });
         }
         fclose($pair[1]);
         stream_set_timeout($pair[0], 15);
@@ -312,10 +313,10 @@ final class AssessmentInvoiceReconciliationLeaseValidationTest extends TestCase
             } catch (Throwable $exception) {
                 $result = ['error' => $exception->getMessage(), 'class' => $exception::class];
             }
-            fwrite($pair[1], json_encode($result, JSON_THROW_ON_ERROR)."\n");
-            fclose($pair[1]);
-            DB::disconnect('pgsql');
-            exit(0);
+            ForkedProcessResult::sendAndExit($pair[1], $result,
+                static function (): void {
+                    DB::disconnect('pgsql');
+                });
         }
         fclose($pair[1]);
         stream_set_timeout($pair[0], 15);
@@ -378,10 +379,10 @@ final class AssessmentInvoiceReconciliationLeaseValidationTest extends TestCase
                 } catch (Throwable $exception) {
                     $result = ['error' => $exception->getMessage(), 'class' => $exception::class];
                 }
-                fwrite($pair[1], json_encode($result, JSON_THROW_ON_ERROR)."\n");
-                fclose($pair[1]);
-                DB::disconnect('pgsql');
-                exit(0);
+                ForkedProcessResult::sendAndExit($pair[1], $result,
+                    static function (): void {
+                        DB::disconnect('pgsql');
+                    });
             }
             fclose($pair[1]);
             stream_set_timeout($pair[0], 15);
