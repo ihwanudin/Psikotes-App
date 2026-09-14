@@ -38,7 +38,25 @@ F8 remains deferred until explicitly approved.
 
 ## Maximum active layout
 
-Use no more than three worker tasks in parallel while the current task acts as coordinator/integrator.
+Use no more than five **ACTIVE worker tasks** in parallel. Product Manager,
+Tech Lead/coordinator-integrator, and PMO governance/review tasks do not consume
+worker slots.
+
+Count capacity by worker task, not by branch, worktree, candidate commit, or
+handoff record:
+
+- `SETUP` does not count until the real task and isolated worktree are reported,
+  the exact baseline and clean status are verified, exclusive scope is accepted,
+  and work begins.
+- A worker executing implementation, documentation, audit, test, or independent
+  QA evidence is `ACTIVE` and consumes one slot.
+- A finished implementation waiting in the QA queue does not consume a slot;
+  the independent QA worker consumes one only while its QA task is `ACTIVE`.
+- `IDLE`, `COMPLETED`, and genuinely `BLOCKED` tasks do not consume slots. A task
+  that resumes work must reacquire an available slot before becoming `ACTIVE`.
+
+The five-worker ceiling never relaxes exclusive-path ownership, sole migration
+ownership, shared-contract ownership, or the serial integration rules below.
 
 ### Initial wave
 
