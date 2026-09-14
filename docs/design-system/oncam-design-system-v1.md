@@ -105,6 +105,12 @@ WCAG 2.2 AA thresholds used here are 4.5:1 for normal text, 3:1 for large text, 
 | Dark warning boundary          |  `#D4AF37` |  `#17231E` |  7.71:1 | PASS non-text                                   |
 | Dark error boundary            |  `#E46B60` |  `#17231E` |  5.07:1 | PASS non-text                                   |
 | Dark info boundary             |  `#3FA6D6` |  `#17231E` |  5.89:1 | PASS non-text                                   |
+| Light destructive default      |  `#FFFFFF` |  `#B42318` |  6.57:1 | PASS normal text                                |
+| Light destructive hover        |  `#FFFFFF` |  `#8F1D14` |  8.92:1 | PASS normal text                                |
+| Light destructive active       |  `#FFFFFF` |  `#4A1712` | 14.76:1 | PASS normal text                                |
+| Dark destructive default       |  `#FFFFFF` |  `#4A1712` | 14.76:1 | PASS normal text                                |
+| Dark destructive hover         |  `#FFFFFF` |  `#8F1D14` |  8.92:1 | PASS normal text                                |
+| Dark destructive active        |  `#FFFFFF` |  `#B42318` |  6.57:1 | PASS normal text                                |
 
 Disabled controls are exempt from WCAG contrast requirements and are therefore **not applicable**, not claimed as passing. They still require an explicit disabled attribute/state, a stable label, and more than opacity alone when confusion is plausible. Decorative logo pixels are not text contrast claims.
 
@@ -152,6 +158,8 @@ The JSON defines shared geometry and light/dark state colors for buttons, inputs
 | Loading       | Retain label or accessible status text | Same                                                        | Prevent duplicate submission; do not expose spinner alone |
 
 Primary actions use green—not gold. Destructive actions use error semantics and require an explicit destructive label/icon.
+
+Enabled destructive buttons use the existing white action-label primitive in both modes. Their backgrounds progress through distinct error tones for default, hover, and active feedback; dark status messages retain the softer error foreground because status surfaces and action controls are separate semantic roles.
 
 Primary, secondary, and destructive button families each expose explicit disabled background, foreground, and border aliases in both modes. Disabled contrast remains not applicable; the native disabled state and accessible label remain required.
 

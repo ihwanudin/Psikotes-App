@@ -416,7 +416,7 @@
           },
           "destructive": {
             "background": { "$value": "{primitive.color.error.900}" },
-            "foreground": { "$value": "{primitive.color.error.200}" },
+            "foreground": { "$value": "{primitive.color.brand.white}" },
             "border": { "$value": "{primitive.color.error.500}" },
             "hover": { "$value": "{primitive.color.error.800}" },
             "active": { "$value": "{primitive.color.error.700}" },
