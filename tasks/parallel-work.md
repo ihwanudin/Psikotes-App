@@ -50,7 +50,7 @@ handoff record:
   and work begins.
 - A worker executing implementation, documentation, audit, test, or independent
   QA evidence is `ACTIVE` and consumes one slot.
-- A finished implementation waiting in the QA queue does not consume a slot;
+- A finished worker output in the QA queue does not consume a slot;
   the independent QA worker consumes one only while its QA task is `ACTIVE`.
 - `IDLE`, `COMPLETED`, and genuinely `BLOCKED` tasks do not consume slots. A task
   that resumes work must reacquire an available slot before becoming `ACTIVE`.
