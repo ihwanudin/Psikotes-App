@@ -5,6 +5,7 @@ import react from '@vitejs/plugin-react';
 import laravel from 'laravel-vite-plugin';
 import { bunny } from 'laravel-vite-plugin/fonts';
 import { defineConfig } from 'vite';
+import { oncamTokenRuntimeBridge } from './tools/design-tokens/oncam-runtime-bridge.mjs';
 
 export default defineConfig({
     plugins: [
@@ -23,6 +24,7 @@ export default defineConfig({
                 plugins: ['babel-plugin-react-compiler'],
             },
         }),
+        oncamTokenRuntimeBridge(),
         tailwindcss(),
         wayfinder({
             formVariants: true,
