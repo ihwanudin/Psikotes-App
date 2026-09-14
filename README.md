@@ -46,8 +46,9 @@ sudah dipasang atau divalidasi.
 ## Setup development tanpa secret nyata
 
 Prasyarat sesuai image yang dipin: Docker dengan Compose, atau PHP 8.3.26,
-Composer 2.9.4, Node 24.11.0, npm 11.6.1, PostgreSQL 17, dan Redis 8.2.
-Dependensi dikunci di `composer.lock` dan `package-lock.json`.
+Composer 2.9.4, Node 24.11.0, npm yang kompatibel dengan lockfile v3,
+PostgreSQL 17, dan Redis 8.2. Dependensi aplikasi dikunci di `composer.lock`
+dan `package-lock.json`; versi executable npm tidak dipin oleh repository.
 
 1. Salin `.env.example` ke `.env` lokal yang tidak di-commit.
 2. Ganti seluruh `change-this-*` dan field kosong yang wajib dengan nilai acak

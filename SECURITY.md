@@ -60,9 +60,13 @@ boleh memengaruhi zona atau label kelayakan.
 ## Pembayaran dan webhook Xendit
 
 Xendit dan transfer manual memakai state machine order yang sama tetapi jalur
-input berbeda. Hanya transisi pertama `pending→paid` yang membuka entitlement.
-Order, entitlement, event ledger, dan sinyal outbox berubah atomik dalam konteks
-service RLS.
+input dan ledger berbeda. Hanya transisi pertama `pending→paid` yang membuka
+entitlement. Untuk Xendit, `PaymentWebhookProcessor` mengklaim baris
+`payment_webhook_events`; transaksi service RLS dapat menyimpan event serta
+mengubah order, entitlement, audit, dan outbox secara atomik. Verifikasi transfer
+manual melalui `VerifyManualTransfer` tidak membuat baris webhook event;
+transaksinya mengubah order, entitlement/outbox saat approval membuka akses, dan
+audit secara atomik.
 
 `POST /webhooks/xendit` memverifikasi `x-callback-token` secara konstan-waktu
 sebelum normalisasi. Invoice reference, merchant reference, amount, dan currency
@@ -72,10 +76,13 @@ money yang salah menghasilkan respons generik `WEBHOOK_REJECTED` tanpa token
 atau body di log.
 
 Respons konflik atau penolakan tidak boleh "diperbaiki" dengan update langsung:
-bekukan tindakan manual, catat waktu/status/error code aman, bandingkan order dan
-event ledger dengan dashboard provider, lalu gunakan rekonsiliasi read-only.
-Metode Xendit tetap OFF dan tidak ada bukti provider live/sandbox pada candidate
-ini.
+bekukan tindakan manual, catat waktu/status/error code aman, lalu bandingkan
+order dan event ledger dengan dashboard provider. Hanya setelah credential
+Xendit, target environment, serta otorisasi operator/provider disetujui, gunakan
+`payments:reconcile-xendit`. Command ini melakukan network status call ke
+provider dan dapat menyimpan payment event serta mengubah order, entitlement,
+audit, dan outbox; command ini bukan rekonsiliasi read-only. Metode Xendit tetap
+OFF dan tidak ada bukti provider live/sandbox pada candidate ini.
 
 ## Notifikasi dan dead-letter
 

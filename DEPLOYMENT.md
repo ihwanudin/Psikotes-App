@@ -101,20 +101,27 @@ Seluruh schedule memakai `onOneServer`; pekerjaan periodik yang berpotensi
 tumpang tindih juga memakai `withoutOverlapping`. Audit purge ada sebagai
 command inert dan **tidak** terdaftar pada scheduler.
 
-## Restart and health procedure
+## Reviewed recreate/update and health procedure
 
-Sesudah setiap perubahan image/config, restart worker agar tidak menjalankan
-kode atau credential lama:
+`docker compose restart` tidak mengadopsi image baru atau membuat ulang
+container setelah perubahan config/env. Untuk release yang sudah direview,
+tetapkan `APP_IMAGE_TAG` immutable yang disetujui. Sediakan image itu dengan
+`docker compose build app` dari source/commit yang direview, atau ambil image
+berdigest tepat lewat prosedur registry yang direview; jangan memakai `latest`.
+Setelah identitas image diverifikasi, validasi hasil render lalu recreate
+keempat service proses dengan image dan konfigurasi baru:
 
 ```powershell
-docker compose restart queue integrations-queue scheduler
+docker compose config --quiet
+docker compose up -d --no-deps --force-recreate app queue integrations-queue scheduler
 docker compose ps
 php artisan schedule:list
 ```
 
-Verifikasi bahwa worker mendengarkan queue yang tepat, Redis dapat dijangkau,
-dan `REDIS_QUEUE_RETRY_AFTER` lebih besar dari timeout worker (default 150 >
-120 detik). Jangan menjalankan dua scheduler tanpa distributed lock bersama.
+Pastikan identitas image aktual sama dengan tag/digest yang direview. Verifikasi
+bahwa app sehat, worker mendengarkan queue yang tepat, Redis dapat dijangkau,
+dan `REDIS_QUEUE_RETRY_AFTER` lebih besar dari timeout worker (default 150 > 120
+detik). Jangan menjalankan dua scheduler tanpa distributed lock bersama.
 
 `/health` melakukan query PostgreSQL dan Redis ping serta controller memiliki
 respons redacted 503. Namun route masih berada dalam middleware `web` dengan
@@ -182,12 +189,16 @@ metode `xendit` tetap OFF.
 
 `POST /webhooks/xendit` dapat menghasilkan:
 
-- `WEBHOOK_REJECTED` (401/422): token, payload, reference, nominal, currency,
-  atau transition tidak valid. Jangan log token/body atau mengubah order;
+- `WEBHOOK_REJECTED` (401): callback token tidak valid;
+- `WEBHOOK_REJECTED` (422): payload/status tidak dapat dinormalisasi, atau
+  reference, nominal, currency, maupun bill/order tidak cocok. Jangan log
+  token/body atau mengubah order;
 - `WEBHOOK_CONFLICT` (409): event ID yang sama memiliki intent berbeda. Bekukan
   tindakan manual, cocokkan invoice/order/event ledger dengan dashboard;
-- 200 `received`: dapat berarti applied, duplicate, ignored, atau terminal
-  invalid-transition yang sengaja tidak membuka kembali state.
+- 200 `received`: dapat berarti applied, duplicate, ignored, atau
+  `invalid_transition`. Untuk `invalid_transition`, event dicatat rejected
+  dengan error code tersebut, state terminal order dipertahankan, dan controller
+  sengaja tetap merespons 200.
 
 `payments:reconcile-xendit` adalah rekonsiliasi **state-changing**, bukan
 diagnostic read-only. Command melakukan network status call ke provider untuk
@@ -241,8 +252,17 @@ Urutan ini adalah target runbook, bukan bukti bahwa deployment telah terjadi:
 5. aktifkan satu boundary setelah credential+evidence+owner disetujui;
 6. baru pertimbangkan production dari commit yang direview.
 
-Rollback aplikasi memakai tag image sebelumnya dan restart ketiga process
-services. Rollback database hanya mengikuti migration-specific reviewed plan;
-`migrate:rollback`, destructive migration, atau restore tidak boleh dijalankan
-sebagai respons default. Jangan menggunakan `latest`, `migrate:fresh`, atau
-owner credential untuk runtime verification.
+Rollback aplikasi menetapkan kembali `APP_IMAGE_TAG` immutable sebelumnya yang
+sudah direview dan menyediakan image tepat itu lewat build/registry procedure
+yang direview. Lalu validasi hasil render dan recreate keempat service:
+
+```powershell
+docker compose config --quiet
+docker compose up -d --no-deps --force-recreate app queue integrations-queue scheduler
+```
+
+Setelah recreate, verifikasi health app, identitas image, subscription queue,
+dan schedule. Rollback database hanya mengikuti migration-specific reviewed
+plan; `migrate:rollback`, destructive migration, atau restore tidak boleh
+dijalankan sebagai respons default. Jangan menggunakan `latest`,
+`migrate:fresh`, atau owner credential untuk runtime verification.

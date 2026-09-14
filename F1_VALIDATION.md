@@ -15,8 +15,10 @@ Status: **F1 PARTIAL; Task 18 OPEN; Task 19 OPEN; release NO-GO**
 
 Status bukan sinonim marketing. `PROVEN` pada satu lapisan tidak menutup gate
 end-to-end. Checklist F1 dihitung ulang dari `tasks/todo.md`: **81/100** check
-tercentang; enam check Task 19 tetap kosong. Matriks F2-F9 tetap 0/9 phase exit
-complete dan 0/28 acceptance row complete pada seluruh lapisan end-to-end.
+tercentang dan 19 masih terbuka; Task 18 adalah 3/6 tercentang (3 terbuka),
+sedangkan Task 19 adalah 0/5 tercentang (5 terbuka). Matriks F2-F9 tetap 0/9
+phase exit complete dan 0/28 acceptance row complete pada seluruh lapisan
+end-to-end.
 
 ## Evidence matrix
 
