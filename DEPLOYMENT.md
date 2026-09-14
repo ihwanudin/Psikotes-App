@@ -125,7 +125,12 @@ semantik route dan probe HTTP DB-down/Redis-down disposable diterima.
 
 ## Notification outbox incident flow
 
-Pemeriksaan read-only/dispatcher terkontrol:
+`notifications:dispatch-outbox` **bukan diagnostic read-only**. Command ini
+memilih row outbox yang sudah due lalu mengantrekan job delivery. Ketika worker
+mengonsumsi job, claim menaikkan `attempts`, mengubah status, menulis audit, dan
+dapat memanggil endpoint live n8n/WAHA melalui notifier. Jalankan command hanya
+dengan otorisasi outbound/provider yang eksplisit dan environment tujuan yang
+telah diverifikasi. `queue:failed` sendiri hanya menginventarisasi failed job.
 
 ```powershell
 php artisan notifications:dispatch-outbox --limit=100
@@ -184,7 +189,13 @@ metode `xendit` tetap OFF.
 - 200 `received`: dapat berarti applied, duplicate, ignored, atau terminal
   invalid-transition yang sengaja tidak membuka kembali state.
 
-Fallback read-only terhadap status provider:
+`payments:reconcile-xendit` adalah rekonsiliasi **state-changing**, bukan
+diagnostic read-only. Command melakukan network status call ke provider untuk
+setiap kandidat lalu meneruskan hasilnya melalui `PaymentWebhookProcessor`.
+Pemrosesan dapat menyimpan payment event serta mengubah order, entitlement,
+audit, dan outbox secara transaksional. Jalankan hanya dengan credential Xendit
+development/target yang disetujui, environment yang telah diverifikasi, dan
+otorisasi operator/provider yang eksplisit.
 
 ```powershell
 php artisan payments:reconcile-xendit --limit=100
