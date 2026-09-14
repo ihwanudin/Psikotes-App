@@ -43,7 +43,8 @@ All question and instruction copy is synthetic. Result and post-submit content i
 | Tes yang tersedia            |
 | [Name]  [Status text + icon] |
 | Why unavailable, if needed   |
-| [Mulai / Lanjutkan]          |
+| [Baca instruksi] or         |
+| [Buka sesi aktif]           |
 +------------------------------+
 
 768 / 1280
@@ -60,8 +61,10 @@ Annotations:
 
 - Current `lobby.tsx` is a read-only reference, not a file to modify. The future action appears only after the start/read contract and authority gates close.
 - A status chip uses `component.{mode}.status.*` and includes visible text. “Ready” is never green alone.
-- Selecting an assessment opens I0 Resume check. The action becomes busy and unavailable to duplicate activation.
-- Instructions use one `h1`, an approved instruction section under `h2`, and one primary start/resume action. No guessed duration, item count, subtest, or copyright-restricted content appears.
+- For a `ready` assessment, “Baca instruksi” opens I1 before any start request. Instructions use one `h1`, an approved instruction section under `h2`, and the sole primary “Mulai” action. The instruction projection must be available without creating or starting a session; otherwise the UI enters B0, does not call start, and invents no fallback copy.
+- “Mulai” invokes the atomic start boundary once. A successful new or replayed `in_progress` response enters Q0 directly with the server-derived timer visible; there is no second confirmation action.
+- For an `in_progress` assessment or active-route reload, “Buka sesi aktif” performs the authoritative caller-owned read and enters Q0 directly. A polite in-flow announcement may say that the session resumed and time continued; it never blocks behind another action.
+- No guessed duration, item count, subtest, or copyright-restricted content appears.
 
 ## 3. Active question shell
 
@@ -124,6 +127,7 @@ Annotations:
 - The question is a `fieldset`; synthetic prompt is the `legend`. Radio labels contain the complete visible option text. Source order equals display and keyboard order.
 - Options use a single column at 320/390. At 768, two columns are allowed only when each full label remains readable and source order is unambiguous; otherwise retain one column. At 1280, the question column stays bounded by `semantic.shared.size.contentMeasure` rather than stretching.
 - Timer uses tabular figures, is text-labeled, and never changes document title every second. Threshold announcements are sparse and approved separately.
+- On first Q0 render after atomic start or resume/read, the timer is visible from returned `server_time` and deadline data. A replayed response may add one polite non-blocking “Sesi aktif dilanjutkan; waktu tetap berjalan” announcement beside the status; it never inserts an interstitial.
 - “Previous” appears only if authoritative navigation permits it. “Next” is unavailable while saving and becomes available after receipt or reconciliation.
 - Active selection uses radio state plus shape/border/text, not color alone. Hover is supplementary; keyboard and touch do not require it.
 - No gesture-only navigation, question carousel, drag interaction, or hidden future question is used.

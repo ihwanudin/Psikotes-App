@@ -22,8 +22,8 @@ Question and instruction fixtures must be synthetic. Result and post-submit beha
 |---|---|---|---|
 | A01 | Landmarks / all | Exactly one `main`; a visible or focus-revealed skip link is first; repeated header/nav/status areas have accessible names where needed. | Accessibility-tree snapshot and keyboard recording at 320 and 1280. |
 | A02 | Headings / all | One page `h1`; sections descend without skipped levels; state changes do not create duplicate hidden headings; current question has a stable heading/legend target. | DOM assertion for every rendered state. |
-| A03 | Focus order / L1, I1/I2, Q0, U0, R0 | Tab order follows mobile DOM order: page identity -> context -> timer/status if interactive -> question choices -> navigation/actions -> auxiliary help. CSS rearrangement at 768/1280 does not alter meaning. | Keyboard trace at all four widths. |
-| A04 | Route/state focus / I0->I1/I2, navigation Q0->Q0, D0, R0 | On page/state navigation, focus moves once to the new `h1` or current item heading/legend. Routine save updates never steal focus. Server-confirmed closure moves focus to the closure heading only when the prior control is invalid. | Focus event log for success, deadline, and resume paths. |
+| A03 | Focus order / L1, I1, I0, Q0, U0, R0 | Tab order follows mobile DOM order: page identity -> context -> timer/status if interactive -> question choices -> navigation/actions -> auxiliary help. CSS rearrangement at 768/1280 does not alter meaning. | Keyboard trace at all four widths. |
+| A04 | Route/state focus / L1->I1->I0->Q0 and L1/I0->Q0 resume, navigation Q0->Q0, D0, R0 | Pre-start instructions receive heading focus before start. After the sole start action or an authoritative resume/read, focus moves directly to the current item heading/legend; no timed interstitial receives focus. Routine save/resume announcements never steal focus. Server-confirmed closure moves focus to the closure heading only when the prior control is invalid. | Focus event log for new-start, replay/resume, deadline, and question-navigation paths. |
 | A05 | Focus restoration / U0, conflict, mobile menu if present | Cancel/Escape from submit confirmation restores focus to its trigger. After conflict reconciliation, focus returns to the current item heading/legend. Closing any menu restores focus to its trigger. | Automated active-element assertions plus manual keyboard check. |
 | A06 | Focus visible / all interactive | Every keyboard-operable control displays a non-obscured focus indicator using `component.{mode}.*.focusRing` or `semantic.{mode}.color.state.focusRing`; focused content is not hidden by sticky status/footer. | Screenshots in both modes and computed-style contrast inspection. |
 | A07 | Radio semantics / Q0 | One `fieldset` with a descriptive `legend`; each native radio has a complete programmatic label; group source order is fixed; checked and disabled states are exposed. Tab enters the group; arrows change selection; Space selects according to native behavior. | Accessibility tree, keyboard test, and DOM assertions. |
@@ -57,14 +57,15 @@ Question and instruction fixtures must be synthetic. Result and post-submit beha
 | A35 | Instrument authority / I1/Q0 | No UI fallback invents instruction, duration, subtest, item count, prompt, option, version, seed, or asset. Missing participant-safe authority enters B0 and returns to lobby. | Negative fixture with absent/invalid definition projection. |
 | A36 | External effects / all | Synthetic acceptance emits no payment, provider, notification, camera, analytics, or other unexpected outbound request. No proctor action or final report fetch is implied by this flow. | Network allowlist assertion. |
 | A37 | Forced colors / all | With a forced-colors mode active, native radio state, boundaries, focus, buttons, alerts, disabled state, and status text remain perceivable; authored backgrounds or icons do not erase system focus/selection cues. | Forced-colors screenshots and keyboard trace for Q0, C0, D0, and U0. |
+| A38 | Atomic start and replay / I1/I0/Q0 | Approved pre-start instructions are rendered before any start call. The one “Mulai” activation invokes start once; new and replayed `in_progress` success both render Q0 immediately with the server-derived timer. Replay/resume status is polite and non-blocking; no second confirmation/continue action appears while time runs. | Ordered request/focus trace proving instructions precede start, one start request per activation, and direct Q0 entry for new and replayed success. |
 
 ## 3. State coverage traceability
 
 | Journey state | Primary accessibility acceptance IDs |
 |---|---|
 | Lobby loading/ready/unavailable | A01–A06, A18–A23, A27–A28, A37 |
-| Resume check/instructions | A02–A06, A16, A18–A25, A27–A28, A35, A37 |
-| Active question | A02–A11, A18–A25, A27–A32, A35, A37 |
+| Pre-start instructions/opening/resume | A02–A06, A16, A18–A25, A27–A28, A35, A37–A38 |
+| Active question | A02–A11, A18–A25, A27–A32, A35, A37–A38 |
 | Saving/saved | A04, A06, A08, A10, A18, A24–A26, A29–A32, A37 |
 | Offline/retrying | A04, A06, A10, A12, A18, A21–A26, A30–A32, A37 |
 | Conflict | A04–A06, A13–A14, A18–A26, A31, A37 |
@@ -88,4 +89,4 @@ The paths above point to the existing ONCAM source; they are not replacement val
 
 ## 5. Exit criteria and known blockers
 
-Accessibility acceptance is not complete until every applicable A01–A37 row has passing runtime evidence across its named states and widths. This matrix does not approve a participant-safe item DTO, real instrument content, start activation, result read, or production release. PAPI and IST authority remain blocked; FE-1 remains blocked; release remains **NO-GO**.
+Accessibility acceptance is not complete until every applicable A01–A38 row has passing runtime evidence across its named states and widths. This matrix does not approve a participant-safe pre-start instruction/item DTO, real instrument content, start activation, result read, or production release. PAPI and IST authority remain blocked; FE-1 remains blocked; release remains **NO-GO**.

@@ -27,12 +27,12 @@ The stable session authority used here is limited to the canonical lifecycle and
 
 ```text
 Lobby
-  | ready item selected
-  v
-Resume check / instructions
-  | start or resume accepted
-  v
-Active question <---- authoritative refresh ---- Conflict
+  | ready item selected                       | active item reopened
+  v                                           v
+Pre-start instructions -- sole Mulai ------> Opening / authoritative read
+  | authority unavailable                     | new or replayed in_progress
+  v                                           v
+Authority blocked                            Active question <---- authoritative refresh ---- Conflict
   | select                                   ^       |
   v                                          |       | reconcile / retry
 Saving -------- accepted receipt ------------+-------+
@@ -58,12 +58,11 @@ Every state below names its entry, participant action, system feedback, exit, an
 | ID / state | Entry | Participant action | System feedback | Normal exit | Recovery / exceptional exit |
 |---|---|---|---|---|---|
 | L0 Lobby loading | Participant opens the existing lobby with a session token | Wait; use skip link if present | Busy status names the load; stable skeleton reserves space | Profile and entitlement read succeeds -> L1 | Auth/network failure -> L2; retry only when safe and offered |
-| L1 Lobby ready | Profile and entitlements are available | Review identity; choose one explicitly available assessment | Each item has name plus text status; unavailable states explain why | Start/resume selection -> I0 | Entitlement changes -> refresh list without exposing another participant/session |
+| L1 Lobby ready | Profile and entitlements are available | Review identity; choose an explicitly `ready` assessment to read instructions, or open an explicitly `in_progress` assessment | Each item has name plus text status; unavailable states explain why | `ready` -> I1; `in_progress` -> I0 authoritative read | Entitlement changes -> refresh list without exposing another participant/session |
 | L2 Lobby unavailable | Missing/expired token or read failure | Reopen trusted invitation or retry a recoverable network read | Alert explains the safe next step; no internal or cross-tenant detail | Valid access restored -> L0 | Persistent auth failure stays L2; no assessment controls |
-| I0 Resume check | A start/resume intent is made | Wait for authoritative session state | Busy label: “Memeriksa sesi…”; controls prevent duplicate start | Existing `in_progress` -> I2; new `created`/start-ready -> I1 | Stable start error -> E0; definition/authority unavailable -> B0 |
-| I1 Instructions | Server has authorized a session but content projection is not yet active | Read approved instructions; acknowledge any required confirmation; choose “Mulai” | Instrument name/version may appear only from the participant-safe projection; duration is server-provided | Start succeeds -> Q0 | Leave before start -> L1 if allowed by frozen contract; error -> E0 |
-| I2 Resume summary | Server returns an existing `in_progress` attempt | Review “Sesi ditemukan”; choose “Lanjutkan” | Shows attempt identity, accepted progress, and deadline only if supplied by frozen DTO; explicitly says time continued while away | Resume/read succeeds -> Q0 | Closed/late -> D0; conflict -> C0; auth/not found -> E0 |
-| Q0 Active question | Authoritative read supplies one writable current item | Read legend; choose one response using native radio behavior; optionally navigate only after save acceptance | Heading identifies position without revealing hidden content; timer and save state are persistent, non-color cues | Selection -> S0; eligible accepted navigation -> next Q0 | Offline -> O0; conflict -> C0; deadline/closed -> D0; invalid projection -> B0 |
+| I1 Pre-start instructions | A participant chooses an explicitly `ready` assessment before any session-start request | Read the approved pre-start instruction projection; acknowledge any required confirmation; invoke the sole “Mulai” action | No assessment timer is running. Instrument identity/instructions appear only from an approved participant-safe pre-start source; synthetic copy describes structure only | “Mulai” invokes the atomic start boundary once -> I0 | Leave -> L1; missing/unapproved instruction authority -> B0 without calling start; no fallback copy is invented |
+| I0 Opening / authoritative read | The sole “Mulai” action invoked atomic start, or an already-active route/lobby item invoked caller-owned session read | Wait; no second confirmation or continue action | Busy label: “Membuka sesi…”; controls prevent duplicate activation | New or replayed `in_progress` response -> Q0 directly, with timer visible from returned server state | Closed/late -> D0; conflict -> C0; auth/not found -> E0; definition/authority unavailable -> B0 |
+| Q0 Active question | Atomic start or authoritative read supplies one writable current item in `in_progress` | Read legend; choose one response using native radio behavior; optionally navigate only after save acceptance | Heading identifies position without revealing hidden content; timer and save state are immediately visible, persistent non-color cues. A replay/resume adds one non-blocking polite announcement that the active session and its running time were resumed | Selection -> S0; eligible accepted navigation -> next Q0 | Offline -> O0; conflict -> C0; deadline/closed -> D0; invalid projection -> B0 |
 | S0 Saving | A valid selection creates the exact next revision and a new mutation ID | Continue reading; do not trigger duplicate submission; may change selection, which becomes one coalesced pending value | Status text/icon says “Menyimpan…”; selected radio remains visible; navigation is unavailable until receipt/reconciliation | Accepted receipt -> S1, then next Q0 when requested | Transport failure -> O0; revision error -> C0; validation -> E0; deadline/closed -> D0 |
 | S1 Saved | Receipt matches session, mutation, revision, and item | Continue to next item or remain | Polite atomic status: “Jawaban tersimpan”; never announces every timer tick | Next -> Q0; submit eligibility -> U0 | Later authoritative mismatch -> C0; deadline -> D0 |
 | O0 Offline / retrying | Connectivity loss or transport uncertainty before receipt | Keep the page open; optionally invoke “Coba lagi” when enabled; may change current selection | Persistent warning icon/text: “Belum tersimpan—menunggu koneksi”; timer continues; no false success | Identical retry accepted or authoritative read proves value -> S1/Q0 | Latest same-tab pending value is coalesced; no durable local storage; deadline -> D0; conflict -> C0 |
@@ -87,8 +86,8 @@ Messages are examples of safe intent, not frozen product copy. Preserve stable m
 | `UNAUTHENTICATED` | L2 | End local access context and direct the participant back to the trusted invitation path. |
 | `ENTITLEMENT_NOT_READY`, `RETEST_NOT_AUTHORIZED` | L1/B0 | Explain that the assessment is not available; do not distinguish hidden authority records. |
 | `SESSION_NOT_FOUND` | L2/E0 | Say the session cannot be opened; disclose no existence or tenant detail. |
-| `ATTEMPT_ALREADY_EXISTS` | I0/I2 | Re-read and offer resume when the caller-owned active session is returned by the frozen read flow. |
-| `SESSION_NOT_STARTED` | I1 | Return to instructions/start state. |
+| `ATTEMPT_ALREADY_EXISTS` | I0/E0 | Refresh the caller-owned session state; if an accessible `in_progress` session is returned, enter Q0 directly, otherwise show the safe conflict recovery. Never show a second confirmation while time runs. |
+| `SESSION_NOT_STARTED` | E0 | Re-read authoritative state before offering any action; never treat this as a browser-held pre-start session. |
 | `AUTOSAVE_STALE_REVISION`, `AUTOSAVE_REVISION_GAP` | C0 | Refresh authoritative revision and selection; never last-write-wins. |
 | `MUTATION_PAYLOAD_MISMATCH` | E0 | Stop automatic retry, discard the unsafe mutation ID, re-read, and require deliberate selection review. |
 | `INVALID_ANSWER_BATCH` | E0/Q0 | Keep the current item visible, associate the safe error with the group, and allow correction only if still writable. |
@@ -120,7 +119,7 @@ This example intentionally has no scoring meaning and must never enter a product
 - At displayed zero, immediately prevent new choices/writes and check server state. Only the server can confirm whether a receipt was on time.
 - Maintain one answer request in flight and at most one coalesced latest pending selection in memory for the same tab. Do not persist sensitive responses to `localStorage` or IndexedDB without a separate security/retention decision.
 - Reuse a mutation ID only for a byte-equivalent retry. Advance the revision only after an accepted receipt. A changed selection is a new logical mutation after reconciliation.
-- Browser back/reload returns through I0/I2; it does not construct a session from client storage.
+- Browser back/reload from an active route returns through I0 authoritative read and then directly to Q0; it does not construct a session from client storage or show pre-start instructions while time runs.
 - Do not advance to another item until the current answer has an accepted receipt or the authoritative resume/read proves the value already exists.
 - Submission seals answers. Canceling U0 restores focus to the submit trigger; successful submit moves to R0 without exposing an invented result.
 
@@ -144,4 +143,4 @@ Gold remains decorative/accent-only and is never the primary action or sole stat
 
 ## 9. Handoff gates
 
-Before implementation, the contract owner must freeze the participant-safe start/resume/read item projection and any additive errors; the authority owner must approve the exact licensed form, instructions, ordering, duration, version, checksum, rights, and instrument sign-off. Before any result UI, the result-read consumer/DTO contract and approved post-submit copy must be frozen. These artifacts close none of those gates and do not change release **NO-GO**.
+Before implementation, the contract owner must freeze an approved participant-safe pre-start instruction projection available without starting the timer, plus the start/resume/read item projection and any additive errors; the authority owner must approve the exact licensed form, instructions, ordering, duration, version, checksum, rights, and instrument sign-off. Before any result UI, the result-read consumer/DTO contract and approved post-submit copy must be frozen. These artifacts close none of those gates and do not change release **NO-GO**.
