@@ -1,4 +1,4 @@
-# Participant assessment wireframes v1
+# Participant assessment wireframes v1 — PAPI-first
 
 Status: **annotated text wireframes; artifact-only; no runtime or visual readiness claim**
 
@@ -6,7 +6,7 @@ Companion flow: `docs/ux/participant-assessment-flow-v1.md`
 
 Token source: `resources/design-tokens/oncam.tokens.json`
 
-All question and instruction copy is synthetic. Result and post-submit content is provisional and blocked until the result-read consumer/DTO contract is frozen.
+All question and instruction copy is synthetic. These active-question wireframes apply only to the future PAPI fixed-order forced-choice slice. They do not define RMIB ranking, Kraepelin grid/event entry, or IST subtest/asset/two-timer interaction; those require separate authority-backed UX artifacts after their gates close. DASS-21 remains separate. Result and post-submit content is provisional and blocked until the result-read consumer/DTO contract is frozen.
 
 ## 1. Shared page anatomy
 
@@ -19,7 +19,7 @@ All question and instruction copy is synthetic. Result and post-submit content i
 |  Journey heading                                                   |
 |  Context / approved instructions                                   |
 |                                                                    |
-|  [Question or state panel]                    [Progress summary]    |
+|  [PAPI question or state panel]               [Progress summary]    |
 |                                                                    |
 |  [Secondary action]                            [Primary action]     |
 +------------------------------------------------------------------+
@@ -65,21 +65,22 @@ Annotations:
 - “Mulai” invokes the atomic start boundary once. A successful new or replayed `in_progress` response enters Q0 directly with the server-derived timer visible; there is no second confirmation action.
 - For an `in_progress` assessment or active-route reload, “Buka sesi aktif” performs the authoritative caller-owned read and enters Q0 directly. A polite in-flow announcement may say that the session resumed and time continued; it never blocks behind another action.
 - No guessed duration, item count, subtest, or copyright-restricted content appears.
+- If approved PAPI instruction/content authority is unavailable, B0 offers “Kembali ke lobby.” That action performs an authoritative lobby read through L0 before L1 or L2 is rendered; it does not use cached entitlement state.
 
-## 3. Active question shell
+## 3. PAPI active question shell
 
 ```text
 320
 +------------------------------+
 | Assessment name              |
-| Question placeholder 04/10   |
+| Question [position]/[total]  |
 | Time: 12:34  Saved [icon]    |
 |------------------------------|
 | Synthetic prompt / legend    |
 |                              |
-| ( ) Placeholder option A     |
+| ( ) Placeholder option one   |
 |                              |
-| ( ) Placeholder option B     |
+| ( ) Placeholder option two   |
 |------------------------------|
 | [Previous if authorized]     |
 | [Next — waits for receipt]   |
@@ -88,12 +89,12 @@ Annotations:
 390
 +------------------------------------+
 | Assessment name       Time: 12:34  |
-| Question placeholder 04/10         |
+| Question [position]/[total]        |
 | Saved [icon + text]                |
 |------------------------------------|
 | Synthetic prompt / legend          |
-| [ ( ) Placeholder option A       ] |
-| [ ( ) Placeholder option B       ] |
+| [ ( ) Placeholder option one     ] |
+| [ ( ) Placeholder option two     ] |
 |------------------------------------|
 | [Previous]              [Next]     |
 +------------------------------------+
@@ -102,9 +103,9 @@ Annotations:
 +----------------------------------------------------------+
 | Assessment name            Time: 12:34 | Saved [icon]     |
 |----------------------------------------------------------|
-| Question placeholder 04/10                                |
+| Question [position]/[total]                               |
 | Synthetic prompt / legend                                 |
-| [ ( ) Placeholder A ]  [ ( ) Placeholder B ]             |
+| [ ( ) Placeholder one ]  [ ( ) Placeholder two ]         |
 |----------------------------------------------------------|
 | Progress/help in flow       [Previous] [Next]             |
 +----------------------------------------------------------+
@@ -114,10 +115,10 @@ Annotations:
 | Assessment name                        Time: 12:34 | Saved [icon] |
 |------------------------------------------------------------------|
 | Main question column (readable measure) | Progress / session facts|
-| Question placeholder 04/10              | Current position         |
+| Question [position]/[total]              | Current position         |
 | Synthetic prompt / legend               | Connection text + icon   |
-| [ ( ) Placeholder option A ]            | Approved help only       |
-| [ ( ) Placeholder option B ]            |                          |
+| [ ( ) Placeholder option one ]          | Approved help only       |
+| [ ( ) Placeholder option two ]          |                          |
 | [Previous]                    [Next]     |                          |
 +------------------------------------------------------------------+
 ```
@@ -129,8 +130,8 @@ Annotations:
 - Timer uses tabular figures, is text-labeled, and never changes document title every second. Threshold announcements are sparse and approved separately.
 - On first Q0 render after atomic start or resume/read, the timer is visible from returned `server_time` and deadline data. A replayed response may add one polite non-blocking “Sesi aktif dilanjutkan; waktu tetap berjalan” announcement beside the status; it never inserts an interstitial.
 - “Previous” appears only if authoritative navigation permits it. “Next” is unavailable while saving and becomes available after receipt or reconciliation.
-- Active selection uses radio state plus shape/border/text, not color alone. Hover is supplementary; keyboard and touch do not require it.
-- No gesture-only navigation, question carousel, drag interaction, or hidden future question is used.
+- Active PAPI selection uses radio state plus shape/border/text, not color alone. Hover is supplementary; keyboard and touch do not require it.
+- No gesture-only navigation, question carousel, drag interaction, or hidden future PAPI question is used. This prohibition describes the PAPI slice; it does not specify the future accessible ranking alternative required for RMIB.
 
 ## 4. Saving, offline, and conflict overlays-in-flow
 
@@ -223,16 +224,16 @@ Unknown outcome / recovery
 +------------------------------------------+
 ```
 
-This is a holding-state wireframe only. It renders no score, band, dimension, recommendation, report URL, finalization state, release time, ETA, or staff-review detail. Its heading, fields, actions, endpoint, and navigation remain **provisional/blocked** until the result-read consumer/DTO contract and approved post-submit content are frozen.
+This is a holding-state wireframe only. It renders no score, band, dimension, recommendation, report URL, finalization state, release time, ETA, or staff-review detail. Its heading, fields, actions, endpoint, and navigation remain **provisional/blocked** until the result-read consumer/DTO contract and approved post-submit content are frozen. “Return to lobby” performs an authoritative lobby read through L0, then renders L1 or L2; it is not a result-read action.
 
 ## 8. Cross-width behavior
 
-| Width | Layout                                                                                   | Actions and status                                                                                   | Text/reflow acceptance                                                                           |
-| ----: | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-|   320 | One column; compact text identity; no sidebar; full-width panels                         | Stack actions; timer/save state wrap onto separate lines; minimum target token retained              | No page-level horizontal scroll; labels wrap; no clipped prompt/control at 200% zoom             |
-|   390 | One column with slightly larger gutter/rhythm                                            | Two short actions may share a row only when target size and 8px separation remain; otherwise stack   | 35–60 character readable line target; long tokens wrap safely                                    |
-|   768 | One main column; optional auxiliary block below or beside when reading order stays clear | Status may share header row; alerts stay adjacent to their cause                                     | Orientation changes preserve content/action access; no nested scrolling                          |
-|  1280 | Bounded main question column plus secondary session facts                                | Primary actions align at end of main column; persistent status stays visible without obscuring focus | Main prose remains at content-measure token; unused width becomes whitespace, not stretched text |
+| Width | Layout                                                                                   | Actions and status                                                                                                              | Text/reflow acceptance                                                                           |
+| ----: | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+|   320 | One column; compact text identity; no sidebar; full-width panels                         | Stack actions; timer/save state wrap onto separate lines; minimum target token retained                                         | No page-level horizontal scroll; labels wrap; no clipped prompt/control at 200% zoom             |
+|   390 | One column with slightly larger gutter/rhythm                                            | Two short actions may share a row only when target size and `semantic.shared.space.inlineSm` separation remain; otherwise stack | 35–60 character readable line target; long tokens wrap safely                                    |
+|   768 | One main column; optional auxiliary block below or beside when reading order stays clear | Status may share header row; alerts stay adjacent to their cause                                                                | Orientation changes preserve content/action access; no nested scrolling                          |
+|  1280 | Bounded main question column plus secondary session facts                                | Primary actions align at end of main column; persistent status stays visible without obscuring focus                            | Main prose remains at content-measure token; unused width becomes whitespace, not stretched text |
 
 At browser zoom up to 200%, layouts reflow as if at a narrower viewport. At 400% zoom and a 1280 CSS-pixel viewport, essential content and controls remain available in one dimension without two-dimensional page scrolling, except a component with a documented essential exception (none is currently expected for PAPI forced choice).
 
