@@ -179,6 +179,7 @@ Conflict (blocking)
 - When the local display reaches zero, choices and write/navigation actions become unavailable immediately. One assertive atomic announcement states closure; ticking never uses an assertive region.
 - The current selection remains visible but read-only so the transition is understandable. Server refresh determines whether the session is expired, submitted, scored, or void.
 - Focus moves to the closure heading only once after server-confirmed transition. If a closure banner appears while a control is focused, preserve focus until the in-flight event completes unless the control has become invalid; then move focus predictably to the closure heading.
+- “Kembali ke lobby” performs an authoritative lobby read through L0 and renders L1 or L2. It does not rely on cached entitlement state or reopen the closed session.
 - At all widths, actions wrap vertically before labels truncate. No fixed footer covers content.
 
 ## 6. Submit and processing
