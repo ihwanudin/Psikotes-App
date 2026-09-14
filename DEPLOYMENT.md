@@ -1,81 +1,237 @@
-# DEPLOYMENT.md (v4.1 — Docker Compose di VPS)
+# Deployment and operations runbook
 
-## Environment
-| Env | Cara jalan | DB |
-|---|---|---|
-| dev | `docker compose up --build` (app, queue, scheduler, Redis, Postgres lokal) | Postgres lokal (kontainer) |
-| staging | Docker Compose di VPS staging, domain `staging.psikotes.oncam.id` | Postgres terpisah (VPS/managed), migrasi diuji di sini dulu |
-| production | Docker Compose di VPS produksi, domain `psikotes.oncam.id` | Postgres produksi (PITR aktif) |
+Status: **documentation candidate only; release NO-GO**. Tidak ada deployment,
+provider call, migration aktif, scheduler activation, atau outbound notification
+yang dijalankan untuk closeout ini.
 
-Kontainer terpisah (semua env): `app` (PHP-FPM+Nginx, Laravel+Inertia+Filament dalam satu build), `queue` (Laravel Queue worker — render PDF/Browsershot, rakit narasi, sinkron Drive, notifikasi WAHA/n8n), `scheduler` (Laravel Scheduler), `redis`, dan `postgres`. Ketiga proses Laravel memakai image/config yang sama. Redis & Postgres hanya berada di jaringan Docker internal dan tidak memiliki host port; hanya `app` yang memublikasikan `${APP_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-8000}` untuk reverse proxy lokal.
+## Runtime topology and trust boundary
 
-## Menjalankan stack development
+| Service | Peran | Credential database |
+| --- | --- | --- |
+| `app` | Nginx + PHP-FPM; Laravel/Inertia/Filament; `/health` | runtime |
+| `queue` | Redis `notifications,default`; tries 5; timeout 120s | runtime |
+| `integrations-queue` | Redis `integrations`; tries 5; timeout 120s | runtime |
+| `scheduler` | `php artisan schedule:work` | runtime |
+| `migrate` | `php artisan migrate --database=pgsql_migration --force` | owner only |
+| `postgres` | PostgreSQL 17.6; internal network | owner bootstrap + runtime role |
+| `redis` | queue/cache/session; internal network | Redis password |
 
-1. Salin `.env.example` menjadi `.env`, lalu ganti password runtime database, owner database, Redis, dan seluruh placeholder secret development. Kedua password database wajib berbeda.
-2. Jalankan `php artisan key:generate` untuk membuat `APP_KEY` lokal; jangan commit `.env`.
-3. Jalankan `docker compose up --build -d`.
-4. Periksa `docker compose ps`; `postgres`, `redis`, dan `app` harus sehat.
-5. Buka `http://localhost:8000/health`. Respons siap adalah `{"status":"ok"}`; kegagalan dependency menghasilkan status HTTP 503 tanpa detail koneksi.
-6. Jalankan migrasi owner secara terpisah dengan `docker compose --profile tools run --rm migrate`. Service web/queue/scheduler hanya memakai role `psikotes_runtime` yang bukan pemilik tabel dan tidak memiliki `BYPASSRLS`.
+Hanya `app` memublikasikan `${APP_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-8000}`.
+PostgreSQL dan Redis tidak memiliki host port. Service Laravel memakai image,
+configuration contract, dan volume storage yang sama. `compose.tunnel.yaml`
+menambah cloudflared opsional dengan token file di `.secrets/`; file/token
+tersebut bukan bagian Git dan tunnel tidak terbukti live.
 
-Pada PostgreSQL managed, role cluster mungkin harus dibuat oleh DBA terlebih dahulu. Jalankan `database/schema/postgres_roles.sql` sebagai role yang memiliki `CREATEROLE`, lalu atur `LOGIN PASSWORD` melalui secret manager/provider; jangan menaruh password di berkas SQL atau Git.
+## Credential inventory (nama saja, tanpa nilai)
 
-Docker Compose otomatis membaca `.env`. Volume bernama `postgres-data`, `redis-data`, dan `app-storage` mempertahankan state development saat kontainer dibuat ulang.
+| Boundary | Variable/reference | Penanggung jawab minimum |
+| --- | --- | --- |
+| Laravel | `APP_KEY` | platform |
+| PostgreSQL runtime | `DB_RUNTIME_USERNAME`, `DB_RUNTIME_PASSWORD` | platform/DBA |
+| PostgreSQL owner | `DB_OWNER_USERNAME`, `DB_OWNER_PASSWORD` | DBA; migrate only |
+| Redis | `REDIS_PASSWORD` | platform |
+| Participant JWT | `PARTICIPANT_JWT_SECRET` | security/platform |
+| Selection provisioning | `SELECTION_INTEGRATION_CLIENT_SECRET` | both app owners |
+| Selection result callback | `SELECTION_RESULT_CALLBACK_SECRET` | both app owners |
+| Generic integrations | `ASSESSMENT_INTEGRATION_CREDENTIALS_JSON` containing credential references | integration owner |
+| n8n | `N8N_WEBHOOK_URL`, `N8N_WEBHOOK_TOKEN` | notification owner |
+| WAHA (workflow side) | `WAHA_URL`, `WAHA_TOKEN` | notification owner |
+| Xendit | `XENDIT_SECRET_KEY`, `XENDIT_CALLBACK_TOKEN` | finance/platform |
+| Private object storage | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION`, `AWS_BUCKET`, `AWS_ENDPOINT`/`FILESYSTEM_S3_ENDPOINT` | storage owner |
+| Identity/payment disks | `IDENTITY_FILESYSTEM_*`, `PAYMENT_PROOF_FILESYSTEM_*` | storage/security |
+| Shared Drive archive | `DRIVE_SA_JSON`, `DRIVE_SHARED_FOLDER_ID` | archive owner |
+| Error tracker | `SENTRY_DSN` or approved equivalent | operations |
+| Cloudflare tunnel | `.secrets/cloudflare_tunnel_token` | platform |
 
-## Langkah deploy
-1. Migrasi DB: `docker compose --profile tools run --rm migrate` (staging dulu; memakai koneksi owner terpisah). Migrasi destruktif WAJIB tag git `pre-{aksi}` + backup manual sebelum jalan — aturan CLAUDE.md.
-2. Build image: `docker compose build` → push ke registry (atau build langsung di VPS untuk skala saat ini) → smoke test di staging.
-3. Deploy produksi: `docker compose pull && docker compose up -d` (rolling — `app` baru naik, health check lulus, baru kontainer lama dimatikan). Production hanya dari `main` yang sudah direview.
-4. Restart queue worker setelah tiap deploy (`docker compose restart queue`) agar kode lama di worker tidak terus jalan.
-5. Validasi data sumber dengan `python -m unittest discover -s tools/extract/tests -v`, lalu seed instrumen memakai `php artisan db:seed --class=InstrumentSeeder`. Versi yang sudah tersimpan immutable; revisi norma wajib memakai versi baru dan bump `engine_version`.
+Gunakan secret manager/environment deployment. Jangan masukkan nilai ke Git,
+chat, command history, resolved Compose output, screenshot, atau incident note.
+Credential owner dan runtime harus berbeda. Xendit, Selection, n8n, WAHA, Drive,
+S3, monitoring, dan tunnel tetap tidak aktif sampai owner dan evidence tersedia.
 
-## Integrasi Selection App — Beasiswa Jepang
+## Development/bootstrap sequence
 
-Gunakan domain produksi berikut:
+1. Buat `.env` lokal dari `.env.example`; ganti placeholder dengan nilai acak
+   development. Jangan memakai production secret/data.
+2. Validasi tanpa mencetak resolved configuration:
 
-- Selection App: `https://seleksi.beasiswajepang.id`
-- Psikotes: `https://psikotes.oncam.id`
-- Cabang psikotes: `BEASISWA-JEPANG` (`Program Beasiswa Jepang`)
+   ```powershell
+   docker compose config --quiet
+   ```
 
-Kedua aplikasi harus memakai nilai acak yang sama untuk `PSYCHOTEST_CLIENT_SECRET` di Selection App dan `SELECTION_INTEGRATION_CLIENT_SECRET` di psikotes. Secret minimal 32 byte, berbeda dari `APP_KEY`, `PARTICIPANT_JWT_SECRET`, serta secret webhook. Jangan kirim nilainya melalui chat atau menyimpannya di Git.
+3. Setelah start local stack diizinkan:
 
-Urutan aktivasi aman:
+   ```powershell
+   docker compose up --build -d
+   docker compose ps
+   docker compose --profile tools run --rm migrate
+   ```
 
-1. Deploy kedua image dengan integrasi tetap nonaktif.
-2. Jalankan migrasi psikotes menggunakan service `migrate`, kemudian jalankan `BranchSeeder` dan pastikan cabang `BEASISWA-JEPANG` aktif.
-3. Pasang seluruh secret dan URL HTTPS, lalu jalankan `docker compose config --quiet` tanpa mencetak hasil konfigurasi ke log publik.
-4. Aktifkan `SELECTION_INTEGRATION_ENABLED=true` pada psikotes lebih dahulu dan recreate `app`.
-5. Pastikan `GET https://psikotes.oncam.id/health` mengembalikan HTTP 200.
-6. Aktifkan `PSYCHOTEST_INTEGRATION_ENABLED=true` pada Selection App.
-7. Gunakan satu kandidat sintetis berstatus lolos administrasi untuk smoke test: provisioning harus menghasilkan entitlement IST `ready`, tiket harus sampai ke `/participant/lobby`, dan pemakaian tiket kedua harus ditolak HTTP 409.
-8. Hapus kandidat sintetis setelah bukti audit dan hasil smoke test dicatat.
+4. Pastikan migrasi dijalankan `migrate`, bukan `app`/worker. Untuk managed
+   PostgreSQL, DBA membuat role terlebih dahulu; password tidak ditaruh dalam
+   `database/schema/postgres_roles.sql`.
+5. Periksa `GET /health` dan daftar proses/schedule sebelum test. `/up` juga
+   terdaftar oleh Laravel, tetapi semantics liveness-vs-readiness belum dibekukan.
 
-Kill switch integrasi adalah `PSYCHOTEST_INTEGRATION_ENABLED=false` di Selection App. Matikan sisi Selection lebih dahulu agar tiket baru tidak diterbitkan. Jika perlu mematikan sisi psikotes, tunggu TTL tiket (default lima menit) atau terima bahwa tiket yang belum dipakai akan gagal. Token lobby yang sudah terbit tetap berlaku sampai TTL JWT peserta; rotasi `PARTICIPANT_JWT_SECRET` membatalkan seluruh sesi peserta dan hanya boleh dilakukan saat insiden keamanan.
+Pada candidate ini `docker compose config --quiet` lulus dengan placeholder
+ephemeral. Artisan tidak dapat diboot karena `vendor/autoload.php` tidak ada;
+perintah berikut adalah runbook yang harus diverifikasi pada checkout lengkap.
 
-## Secrets (`.env` di server, TIDAK di git — lihat `.env.example`)
-`APP_KEY`, `DB_*` (host/port/db/user/password Postgres privat), `REDIS_*`, `PARTICIPANT_JWT_SECRET`, `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_DEFAULT_REGION`/`AWS_BUCKET` + `AWS_ENDPOINT` atau alias lama `FILESYSTEM_S3_ENDPOINT` (object storage S3-compatible), `IDENTITY_FILESYSTEM_DRIVER=s3`, `IDENTITY_FILESYSTEM_ROOT=identity`, `PAYMENT_PROOF_FILESYSTEM_DRIVER=s3`, `PAYMENT_PROOF_FILESYSTEM_ROOT=payment-proofs`, `DRIVE_SA_JSON` (base64, service account) + `DRIVE_SHARED_FOLDER_ID`, `WAHA_URL`/`WAHA_TOKEN` atau `N8N_WEBHOOK_URL`, `XENDIT_SECRET_KEY` + `XENDIT_CALLBACK_TOKEN`, `SENTRY_DSN` (atau Laravel error tracker pilihan).
+## Pre-deploy and process checks
 
-Bucket/prefix identitas dan bukti transfer wajib private dan tidak boleh diberi public-read policy/CDN. Smoke test staging harus membuktikan upload bekerja, URL langsung permanen tidak tersedia, URL sementara kedaluwarsa setelah 15 menit, serta audit penerbitan URL tercatat. Masa retensi khusus foto dokumen identitas, selfie awal, dan bukti transfer belum ditetapkan oleh dokumen kebijakan; keputusan hukum/psikolog dan job purge otomatis wajib selesai sebelum production launch. Penggantian bukti transfer `pending` sudah menghapus object lama setelah commit, tetapi bukan pengganti kebijakan retensi akhir.
+```powershell
+php artisan list --raw
+php artisan schedule:list
+php artisan route:list --path=health
+php artisan route:list --path=webhooks
+docker compose ps
+docker compose logs --since=15m app queue integrations-queue scheduler
+```
 
-## Operasi transfer manual
+Jangan menyalin payload/authorization header dari log. Expected schedule dari
+`routes/console.php`:
 
-- Aktifkan kanal `manual_transfer` hanya setelah rekening/instruksi operasional siap. Peserta mengunggah JPG/JPEG/PNG/PDF maksimal 5.000 KB dari halaman konfirmasi registrasi; order dan entitlement tetap `pending`/`locked`.
-- Admin berkemampuan verifikasi membuka `Pembayaran → Transfer Manual`, meninjau bukti melalui URL 15 menit, lalu memilih Setujui atau Tolak. Jika bukti diganti setelah dibuka, aksi gagal dan admin harus memuat ulang serta meninjau bukti terbaru.
-- Setujui mengubah `pending→paid`, membuka entitlement, dan menulis `manual_transfer.approved` dalam satu transaksi. Tolak menyimpan alasan dan menulis `manual_transfer.rejected`, tanpa membuka entitlement. Replay status sama tidak mengulang audit/sinyal finansial; status terminal berlawanan tidak boleh ditimpa.
-- Ledger komisi belum tersedia pada schema F1 saat ini. Integrasi ledger berikutnya wajib mengonsumsi hanya transisi/audit pertama secara idempoten, bukan setiap klik aksi admin.
+- `test-numbers:prepare-month`: tanggal 1 pukul 00:00 pada timezone config;
+- `payments:reconcile-xendit`: tiap 5 menit;
+- `notifications:dispatch-outbox`: tiap menit;
+- `integrations:dispatch-outbox`: tiap menit;
+- `integrations:reconcile-callbacks`: tiap 5 menit;
+- callback hasil generic: tiap 5 menit hanya bila feature flag aktif.
 
-## Rollback
-- `app`/`queue`: `docker compose up -d --no-deps app` dengan tag image sebelumnya (image versioned per rilis, bukan `latest`) — cepat karena image lama masih ada di registry/lokal.
-- DB: migrasi selalu berpasangan up/down (`php artisan migrate:rollback`); data instrumen versioned (`instrument_versions`) — rollback = aktifkan versi sebelumnya, JANGAN edit in-place.
-- Tag git `pre-{aksi}` sebelum operasi berisiko (aturan CLAUDE.md).
+Seluruh schedule memakai `onOneServer`; pekerjaan periodik yang berpotensi
+tumpang tindih juga memakai `withoutOverlapping`. Audit purge ada sebagai
+command inert dan **tidak** terdaftar pada scheduler.
 
-## Backup & monitoring
-Postgres PITR (WAL archiving / `pg_basebackup`) + dump harian terenkripsi ke object storage S3-compatible (`backups/`, retensi 30 hari); uji restore per kuartal. Monitoring: error tracker (Sentry atau setara, terpasang di `app` dan `queue`), log terpusat (Docker logging driver → agregator pilihan), uptime eksternal (healthcheck `/health` tiap 1 menit — Laravel route ringan yang cek DB+Redis), alert webhook gagal beruntun & antrean PDF macet (queue depth Redis dipantau).
+## Restart and health procedure
 
-## Operasi Xendit Invoice
+Sesudah setiap perubahan image/config, restart worker agar tidak menjalankan
+kode atau credential lama:
 
-- Gunakan hanya secret key Xendit dengan izin Money-in Read/Write dan simpan `XENDIT_SECRET_KEY` serta `XENDIT_CALLBACK_TOKEN` di secret manager/environment, tidak di repository. Daftarkan callback HTTPS ke `POST /webhooks/xendit` pada dashboard Xendit.
-- Scheduler wajib hidup; `payments:reconcile-xendit --limit=100` berjalan tiap lima menit sebagai fallback callback. Jalankan manual saat insiden setelah memeriksa log `xendit_api_request`, `payment_webhook_processed`, dan `xendit_status_reconciliation_*`.
-- Salah token/payload menghasilkan `WEBHOOK_REJECTED`; jangan mencatat token atau body callback. `WEBHOOK_CONFLICT` berarti event ID dipakai untuk intent berbeda dan perlu rekonsiliasi terhadap dashboard Xendit sebelum tindakan manual.
-- Contract test sandbox: set key `xnd_development_...`, lalu jalankan `php artisan test --group=sandbox`. Tes menolak key non-development, membuat satu invoice IDR 10.000, memeriksa status, lalu meng-expire invoice tersebut.
-- Hosted Invoice API adalah integrasi legacy. Xendit sekarang merekomendasikan Payment Session untuk integrasi baru; migrasi harus diperlakukan sebagai perubahan adapter/kontrak tersendiri, bukan penggantian diam-diam. Lihat [panduan migrasi resmi Xendit](https://docs.xendit.co/docs/migrate-to-payment-session.md).
+```powershell
+docker compose restart queue integrations-queue scheduler
+docker compose ps
+php artisan schedule:list
+```
+
+Verifikasi bahwa worker mendengarkan queue yang tepat, Redis dapat dijangkau,
+dan `REDIS_QUEUE_RETRY_AFTER` lebih besar dari timeout worker (default 150 >
+120 detik). Jangan menjalankan dua scheduler tanpa distributed lock bersama.
+
+`/health` melakukan query PostgreSQL dan Redis ping serta controller memiliki
+respons redacted 503. Namun route masih berada dalam middleware `web` dengan
+session Redis; dependency failure dapat terjadi sebelum controller. Karena itu
+mocked controller test dan Compose healthcheck belum membuktikan HTTP
+dependency-down fail-closed. Perlakukan `/health` sebagai bukti parsial sampai
+semantik route dan probe HTTP DB-down/Redis-down disposable diterima.
+
+## Notification outbox incident flow
+
+Pemeriksaan read-only/dispatcher terkontrol:
+
+```powershell
+php artisan notifications:dispatch-outbox --limit=100
+php artisan queue:failed
+```
+
+Jangan menjalankan dispatcher manual bila provider live belum diizinkan. Outbox
+memilih topic `participant.activation`, due/unexpired, `attempts < 5`, status
+`pending|failed`, atau `processing` yang stale lebih dari 10 menit. Job queue
+mencoba lima kali; delivery service menulis retry 30/120/600/1800 detik.
+
+Diagnosis tanpa membaca payload:
+
+- `n8n_not_configured`: URL/token tidak tersedia pada environment worker;
+- `n8n_connection_failed` atau notifier failure: periksa network/provider dan
+  idempotency key sebelum retry;
+- `notification_payload_invalid`/`notification_contract_invalid`: hentikan
+  retry; ini defect/data-contract incident;
+- `notification_order_not_paid`: jangan kirim; rekonsiliasi state order;
+- attempts 5 atau entry `failed_jobs`: dead-letter. Jangan membuat message baru,
+  mengubah counter/status, atau mass `queue:retry` sebelum outcome n8n/WAHA
+  direkonsiliasi.
+
+Kegagalan notifikasi tidak boleh mengubah order `paid` atau entitlement `ready`.
+Tidak ada bukti live n8n/WAHA dalam closeout ini.
+
+## Manual transfer verification
+
+Aktifkan `manual_transfer` hanya setelah rekening, instruksi, reviewer, storage
+private, dan retensi operasional disetujui. Peserta mengunggah bukti dari sesi
+registrasi; browser tidak mengirim order/participant ID. Admin berkemampuan dan
+ber-scope tepat membuka URL sementara, lalu keputusan mengikat object key yang
+telah ditinjau sehingga replacement concurrent gagal tertutup.
+
+- Approve pertama mengubah `pending→paid`, membuka entitlement, dan membuat
+  outbox dalam transaksi; replay identik adalah no-op.
+- Reject menyimpan alasan tanpa membuka entitlement; keputusan terminal
+  berlawanan tidak boleh menimpa state.
+- Jangan mengunduh ke lokasi publik, menyalin URL/object key ke tiket insiden,
+  atau memakai bukti/data peserta nyata untuk smoke test.
+- Retensi/purge bukti belum disetujui hukum/psikolog; replacement pending yang
+  membersihkan object lama bukan kebijakan retensi terminal.
+
+## Xendit webhook and reconciliation incident flow
+
+Prerequisite aktivasi: credential development Xendit, callback HTTPS, approval
+finance/security, sandbox contract test, dan full synthetic E2E. Sebelum itu
+metode `xendit` tetap OFF.
+
+`POST /webhooks/xendit` dapat menghasilkan:
+
+- `WEBHOOK_REJECTED` (401/422): token, payload, reference, nominal, currency,
+  atau transition tidak valid. Jangan log token/body atau mengubah order;
+- `WEBHOOK_CONFLICT` (409): event ID yang sama memiliki intent berbeda. Bekukan
+  tindakan manual, cocokkan invoice/order/event ledger dengan dashboard;
+- 200 `received`: dapat berarti applied, duplicate, ignored, atau terminal
+  invalid-transition yang sengaja tidak membuka kembali state.
+
+Fallback read-only terhadap status provider:
+
+```powershell
+php artisan payments:reconcile-xendit --limit=100
+```
+
+Command hanya memilih order Xendit `pending` dengan `gateway_ref`, menerima
+limit 1-500, dan exit failure bila ada lookup/rejection/conflict gagal. Tinjau
+event log aman `xendit_api_request`, `payment_webhook_processed`,
+`xendit_status_reconciliation_failed`, dan completion counters. Jangan memakai
+rekonsiliasi sebagai alasan membuat invoice kedua atau replay callback mentah.
+
+Invoice API yang dipakai adalah legacy. Migrasi ke Payment Session memerlukan
+perubahan adapter/kontrak terpisah; jangan mengganti diam-diam saat insiden.
+
+## Backup, restore, monitoring, and retention status
+
+Repository memiliki bukti **bounded local logical dump/restore**: custom archive,
+single-transaction restore, schema/data/sequence comparison, dan corrupt-archive
+rejection. Bukti itu tidak menetapkan encryption, off-host/object-storage
+retention, WAL/base backup, PITR, production volume, RPO, atau RTO.
+
+Target `pg_basebackup`/WAL + dump terenkripsi, object storage `backups/`, restore
+berkala, error tracker, log aggregation, uptime eksternal, queue-depth alert,
+threshold, destination, escalation owner, dan SLO semuanya memerlukan keputusan
+dan bukti operasional terpisah. Tidak ada yang boleh diklaim live dari dokumen
+ini. Audit observability 2026-09-14 juga menyatakan correlation/structured HTTP
+metrics dan dependency-down HTTP behavior `NOT-VERIFIABLE`.
+
+Command `retention:purge-expired-audits --limit=1000` tersedia tetapi inert dan
+tidak dijadwalkan. Retensi/purge identity evidence, selfie, payment proof, serta
+consent membutuhkan keputusan hukum/psikolog. Jangan aktifkan purge sebelum
+hold/exception, owner, backup/restore, audit, dan rollback disetujui.
+
+## Staging, production, rollback
+
+Urutan ini adalah target runbook, bukan bukti bahwa deployment telah terjadi:
+
+1. review immutable image/tag dan backup/restore evidence;
+2. deploy ke staging dengan provider/feature flags OFF;
+3. jalankan owner-only migration dan smoke test sintetis;
+4. validasi route, RLS runtime role, worker/scheduler, upload private, dan
+   negative security paths;
+5. aktifkan satu boundary setelah credential+evidence+owner disetujui;
+6. baru pertimbangkan production dari commit yang direview.
+
+Rollback aplikasi memakai tag image sebelumnya dan restart ketiga process
+services. Rollback database hanya mengikuti migration-specific reviewed plan;
+`migrate:rollback`, destructive migration, atau restore tidak boleh dijalankan
+sebagai respons default. Jangan menggunakan `latest`, `migrate:fresh`, atau
+owner credential untuk runtime verification.

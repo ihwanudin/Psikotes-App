@@ -1,71 +1,122 @@
 # psikotes.oncam.id
 
-Sistem psikotes daring multi-cabang LSI untuk CPMI tujuan Jepang. Instrumen: IST, PAPI Kostick, RMIB, Kraepelin, dan DASS-21 pada jalur terpisah. Hasil psikotes memakai skala aspek 1–5 dan model Grey Area terhadap standar bidang; laporan wajib ditinjau psikolog sebelum terbit.
+Sistem psikotes daring multi-organisasi untuk CPMI tujuan Jepang. Laravel
+melayani Inertia/React untuk peserta dan Filament/Livewire untuk operator.
+PostgreSQL dengan RLS menjadi batas data utama; DASS-21 tetap terpisah dari
+jalur kelayakan. Laporan tidak boleh terbit tanpa tinjauan psikolog.
 
-Stack: Laravel · Inertia.js+React (peserta) · Filament/Livewire (admin/staf/psikolog) · PostgreSQL+RLS · Docker Compose (VPS) · object storage S3-compatible · Shared Drive (arsip) · WAHA/n8n · Xendit.
+Status saat ini: **F1 parsial dan release NO-GO**. Alur transfer manual dan
+sejumlah kontrak foundation sudah memiliki bukti lokal, tetapi Xendit sandbox
+end-to-end belum dijalankan, metode Xendit harus tetap OFF, dan Task 19 maupun
+Task 18 belum boleh dinyatakan selesai. Lihat `F1_VALIDATION.md` untuk matriks
+`PROVEN`/`NOT-RUN`/`NOT-VERIFIABLE`/`BLOCKED`.
 
-## Peta dokumen
-| Baca | Untuk |
-|---|---|
-| SPEC.md | Spesifikasi fungsional (sumber kebenaran) |
-| PANDUAN-EKSEKUSI.md | Urutan fase dan gerbang; SPEC.md menang bila ada konflik versi |
-| CLAUDE.md | Aturan kerja AI — dibaca otomatis Claude Code |
-| tasks/parallel-work.md | Acuan kanonik pembagian F1-F9, ownership paralel, handoff, dan resume setelah sesi terhenti |
-| SCORING_ALGORITHM.md | Semua logika skor (kanonik) — status draft/final per bagian |
-| ARCHITECTURE / DATABASE_SCHEMA / API_CONTRACT / SECURITY | Teknis |
-| DEPLOYMENT / PRIVACY_POLICY / CHANGELOG | Operasional |
+## Dokumen kanonis
 
-## Status implementasi
+| Dokumen | Kegunaan |
+| --- | --- |
+| `SPEC.md` | Perilaku produk dan fase F1-F9 |
+| `SCORING_ALGORITHM.md` | Kontrak skoring kanonis |
+| `tasks/parallel-work.md` | Ownership, dependensi, resume, dan status integrasi |
+| `tasks/todo.md` | Checklist F1; hitung ulang dari checkbox, jangan dari chat |
+| `tasks/f2-f9-acceptance.md` | Matriks exit gate F2-F9 |
+| `DATABASE_SCHEMA.md` / `API_CONTRACT.md` | Skema/RLS dan kontrak HTTP |
+| `SECURITY.md` / `DEPLOYMENT.md` | Batas keamanan dan runbook operasi |
 
-- F0 selesai: ekstraksi instrumen dan 11 gate otomatis lulus. Lihat `F0_VALIDATION.md`.
-- F1 berjalan: stack Docker lokal, PostgreSQL/Redis, queue, scheduler, notifikasi n8n/WAHA, dan halaman status peserta telah diverifikasi. Harga paket resmi sudah diterapkan dan alur end-to-end Transfer Manual sudah lulus pada PostgreSQL nyata. Task 18 masih menunggu validasi Xendit sandbox; bukti berada di `F1_VALIDATION.md`.
+## Topologi runtime
 
-## Toolchain F1
+`compose.yaml` mendefinisikan:
 
-- PHP 8.3.26
-- Composer 2.9.4 melalui `php D:\laragon\bin\composer\composer.phar`
-- Node.js 24.11.0 dan npm 11.6.1
-- Target: Laravel 13, Inertia 3 + React 19 + TypeScript + Tailwind 4, Filament 5
-- Docker Desktop tersedia lokal. Bila executable belum masuk `PATH` pada shell lama, buka terminal baru atau tambahkan direktori CLI Docker Desktop ke `PATH`.
+- `app`: PHP-FPM, Nginx, Laravel, dan health check `/health`;
+- `queue`: Redis queue `notifications,default`, lima percobaan, timeout 120 detik;
+- `integrations-queue`: queue `integrations`, terpisah dari notifikasi peserta;
+- `scheduler`: `php artisan schedule:work`;
+- `migrate`: profile `tools`, koneksi owner `pgsql_migration` saja;
+- `postgres` dan `redis`: hanya network internal `backend`, tanpa host port.
 
-Bootstrap dependency dilakukan dari branch utama starter kit React resmi Laravel karena rilis Packagist `v1.0.1` masih memakai Laravel 12. Dependensi dikunci di `composer.lock` dan `package-lock.json`; instalasi awal dilakukan tanpa lifecycle scripts, kemudian package discovery, test, lint, typecheck, build, dan audit dijalankan eksplisit.
+`app`, `queue`, `integrations-queue`, dan `scheduler` memakai role runtime
+`psikotes_runtime`. Role tersebut harus `NOSUPERUSER`, `NOBYPASSRLS`, dan bukan
+pemilik tabel. Hanya service `migrate` yang menerima credential owner.
 
-Semua metode pembayaran dikendalikan dengan status aktif/nonaktif. Kanal yang nonaktif tidak ditampilkan dan tidak menerima order baru; order historis tetap dipertahankan.
+Object storage S3-compatible, arsip Shared Drive, n8n/WAHA, Xendit, monitoring
+eksternal, dan backup off-host adalah integrasi/configuration target. Keberadaan
+konfigurasi atau adapter di repository bukan bukti bahwa layanan live tersebut
+sudah dipasang atau divalidasi.
 
-Harga awal layanan dibaca dari `database/seeders/data/service-catalog.json` lalu disimpan ke database agar dapat dikelola melalui panel admin. Katalog awal: IST, PAPI Kostick, RMIB, dan Kraepelin masing-masing Rp99.000 serta menyertakan DASS-21 secara otomatis; paket semua tes Rp200.000; paket DASS-21 mandiri gratis; konsultasi psikolog opsional Rp50.000. Seeder mempertahankan harga dan status aktivasi yang sudah diubah admin.
+## Setup development tanpa secret nyata
 
-Secret JWT peserta harus berupa random key dan tidak boleh disalin dari contoh:
+Prasyarat sesuai image yang dipin: Docker dengan Compose, atau PHP 8.3.26,
+Composer 2.9.4, Node 24.11.0, npm 11.6.1, PostgreSQL 17, dan Redis 8.2.
+Dependensi dikunci di `composer.lock` dan `package-lock.json`.
+
+1. Salin `.env.example` ke `.env` lokal yang tidak di-commit.
+2. Ganti seluruh `change-this-*` dan field kosong yang wajib dengan nilai acak
+   khusus development. Jangan memakai credential production atau data peserta.
+3. Buat dua key acak terpisah dengan PHP, lalu simpan masing-masing sebagai
+   `APP_KEY` dan `PARTICIPANT_JWT_SECRET` lokal:
+
+   ```powershell
+   php -r "echo 'base64:'.base64_encode(random_bytes(32)), PHP_EOL;"
+   php -r "echo 'base64:'.base64_encode(random_bytes(32)), PHP_EOL;"
+   ```
+
+4. Validasi interpolasi Compose tanpa menampilkan resolved configuration:
+
+   ```powershell
+   docker compose config --quiet
+   ```
+
+5. Setelah operator memang mengizinkan start local stack, jalankan service dan
+   migrasi dengan dua langkah terpisah:
+
+   ```powershell
+   docker compose up --build -d
+   docker compose --profile tools run --rm migrate
+   docker compose ps
+   ```
+
+6. Verifikasi `GET http://localhost:8000/health`, lalu jalankan test yang relevan.
+   Jangan memakai `migrate:fresh`, reset schema, atau data nyata sebagai smoke
+   test. Instruksi deployment, restart, dan diagnosis ada di `DEPLOYMENT.md`.
+
+Untuk menjalankan test di host, pasang dependensi tepat dari lockfile pada
+checkout development yang diizinkan, lalu gunakan suite terfokus sebelum suite
+penuh:
 
 ```powershell
-php -r "echo 'base64:'.base64_encode(random_bytes(32)), PHP_EOL;"
+composer install --no-interaction
+npm ci --ignore-scripts
+php artisan test
+npm run lint:check
+npm run types:check
 ```
 
-Simpan hasilnya hanya sebagai `PARTICIPANT_JWT_SECRET` di environment deployment. Keputusan kredensial dan batas entitlement gate dicatat di `docs/decisions/0001-participant-credentials.md`.
+Langkah instalasi tersebut tidak dijalankan pada closeout dokumentasi ini.
 
-Konfigurasi produksi gagal saat boot bila boundary utama tidak lengkap, termasuk HTTPS, PostgreSQL/Redis, secure cookie, JWT peserta, dan—ketika diaktifkan—kontrak Selection App. Urutan aktivasi `seleksi.beasiswajepang.id` ke `psikotes.oncam.id`, smoke test, serta rollback tersedia di `DEPLOYMENT.md`.
+Pada checkout dokumentasi ini hanya `docker compose config --quiet` yang dapat
+dijalankan aman. `vendor/autoload.php` tidak tersedia, sehingga daftar Artisan,
+schedule, route, dan test dicatat `NOT-VERIFIABLE`, bukan dianggap lulus.
 
-## Operasi notifikasi aktivasi
+## Batas pembayaran dan notifikasi
 
-Notifikasi produksi dikirim Laravel Queue ke webhook n8n; n8n kemudian memanggil WAHA. Konfigurasikan `N8N_WEBHOOK_URL` HTTPS dan `N8N_WEBHOOK_TOKEN`, jalankan scheduler, serta pastikan worker mendengarkan queue `notifications`:
+Semua metode pembayaran default OFF. Kanal OFF tidak tampil dan tidak menerima
+order baru; order historis tetap dapat dibaca/diproses idempoten. Xendit tidak
+boleh diaktifkan sebelum credential sandbox dan alur invoice → callback
+terautentikasi → entitlement → notifikasi fake → login lulus.
 
-```powershell
-php artisan schedule:work
-php artisan queue:work redis --queue=notifications,default --tries=5 --timeout=120
-```
+Notifikasi peserta memakai transactional outbox. Scheduler menyeleksi pesan due
+dengan `notifications:dispatch-outbox`; job dikirim ke queue `notifications`.
+Kegagalan notifier tidak mengubah order `paid` atau entitlement `ready`. Adapter
+n8n, workflow deduplikasi, dan fake notifier memiliki bukti repository, tetapi
+tidak ada klaim pengiriman live n8n/WAHA pada closeout ini.
 
-`REDIS_QUEUE_RETRY_AFTER` harus lebih besar dari timeout worker (contoh menyediakan 150 detik). Semua instance harus memakai Redis cache bersama agar unique-job lock bekerja lintas node.
+## Aturan kontribusi singkat
 
-Pemeriksaan operator:
-
-```powershell
-php artisan schedule:list
-php artisan notifications:dispatch-outbox --limit=100
-php artisan queue:failed
-```
-
-- `outbox_messages.status=failed` dan `attempts<5`: scheduler akan mencoba lagi setelah `available_at`.
-- `attempts=5`: perbaiki konfigurasi/provider lebih dahulu, lalu evaluasi audit sebelum retry manual; jangan membuat pesan baru karena `deduplication_key` sengaja unik.
-- `last_error=n8n_not_configured`: URL/token belum masuk ke environment queue worker.
-- Kegagalan notifikasi tidak boleh mengubah order `paid` atau entitlement `ready`.
-
-Workflow n8n wajib mengautentikasi Bearer token dan melakukan deduplikasi atomik berdasarkan `idempotency_key` sebelum `POST /api/sendText` ke WAHA. File siap impor dan petunjuk pemasangan tersedia di `n8n/README.md`; lihat keputusan dan kontrak data di `docs/decisions/0003-notification-delivery-boundary.md`.
+- Jangan commit `.env`, key, token, credential JSON, bukti identitas/pembayaran,
+  atau data peserta.
+- Route/controller bertenant harus mengikuti kontrak RLS; job bertenant wajib
+  membawa middleware konteks RLS. Pengecualian start-session ADR-0030 hanya sah
+  melalui command service sempit yang disetujui.
+- Migrasi dijalankan owner; aplikasi dan worker selalu memakai runtime role.
+- Jangan mengaktifkan provider, scheduler purge, integrasi, atau deployment hanya
+  karena implementasi atau dokumentasinya tersedia.
