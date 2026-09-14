@@ -13,6 +13,7 @@ const MODES = new Set(['shared', 'light', 'dark']);
 const LAYERS = new Set(['primitive', 'semantic', 'component']);
 const ALIAS_PATTERN = /^\{([^{}]+)\}$/;
 const SAFE_STRING_PATTERN = /^[^;{}\r\n]+$/;
+const CSS_NUMBER_PATTERN = /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/;
 const CASE_INSENSITIVE_PATHS = platform() === 'win32';
 const VIRTUAL_IMPORT_PATTERN =
     /@import\s+['"]virtual:oncam-design-tokens\.css['"]\s*;/g;
@@ -260,6 +261,186 @@ function assertSafeString(value, path, type) {
     return value.trim();
 }
 
+function numericValue(token, suffix = '') {
+    if (suffix && !token.endsWith(suffix)) {
+        return undefined;
+    }
+
+    const number = suffix ? token.slice(0, -suffix.length) : token;
+
+    return CSS_NUMBER_PATTERN.test(number) ? Number(number) : undefined;
+}
+
+function inRange(value, minimum, maximum) {
+    return value !== undefined && value >= minimum && value <= maximum;
+}
+
+function validAlpha(token) {
+    const percentage = numericValue(token, '%');
+
+    return token.endsWith('%')
+        ? inRange(percentage, 0, 100)
+        : inRange(numericValue(token), 0, 1);
+}
+
+function validRgbChannel(token) {
+    const percentage = numericValue(token, '%');
+
+    return token.endsWith('%')
+        ? inRange(percentage, 0, 100)
+        : inRange(numericValue(token), 0, 255);
+}
+
+function validPercentage(token) {
+    return token.endsWith('%') && inRange(numericValue(token, '%'), 0, 100);
+}
+
+function validUnitInterval(token) {
+    return token.endsWith('%')
+        ? inRange(numericValue(token, '%'), 0, 100)
+        : inRange(numericValue(token), 0, 1);
+}
+
+function validHue(token) {
+    for (const unit of ['deg', 'grad', 'rad', 'turn']) {
+        if (token.endsWith(unit)) {
+            return numericValue(token, unit) !== undefined;
+        }
+    }
+
+    return numericValue(token) !== undefined;
+}
+
+function splitModernColor(body) {
+    const slashParts = body.split('/').map((part) => part.trim());
+
+    if (slashParts.length > 2 || slashParts.some((part) => !part)) {
+        return undefined;
+    }
+
+    const channels = slashParts[0].split(/\s+/);
+    const alpha = slashParts[1];
+
+    if (alpha?.includes(' ') || alpha?.includes(',')) {
+        return undefined;
+    }
+
+    return { channels, alpha };
+}
+
+function validFunctionalColor(value) {
+    const match = value.match(/^([a-z]+)\(([^()]*)\)$/i);
+
+    if (!match) {
+        return false;
+    }
+
+    const name = match[1].toLowerCase();
+    const body = match[2].trim();
+
+    if (!body || /[^0-9a-zA-Z%+.,/\s-]/.test(body)) {
+        return false;
+    }
+
+    if (name === 'rgb' || name === 'rgba') {
+        if (body.includes(',')) {
+            const parts = body.split(',').map((part) => part.trim());
+            const expected = name === 'rgba' ? 4 : 3;
+
+            return (
+                parts.length === expected &&
+                parts.slice(0, 3).every(validRgbChannel) &&
+                (parts.length === 3 || validAlpha(parts[3]))
+            );
+        }
+
+        const parsed = splitModernColor(body);
+
+        return (
+            parsed !== undefined &&
+            parsed.channels.length === 3 &&
+            parsed.channels.every(validRgbChannel) &&
+            (parsed.alpha === undefined || validAlpha(parsed.alpha))
+        );
+    }
+
+    if (name === 'hsl' || name === 'hsla') {
+        if (body.includes(',')) {
+            const parts = body.split(',').map((part) => part.trim());
+            const expected = name === 'hsla' ? 4 : 3;
+
+            return (
+                parts.length === expected &&
+                validHue(parts[0]) &&
+                validPercentage(parts[1]) &&
+                validPercentage(parts[2]) &&
+                (parts.length === 3 || validAlpha(parts[3]))
+            );
+        }
+
+        const parsed = splitModernColor(body);
+
+        return (
+            parsed !== undefined &&
+            parsed.channels.length === 3 &&
+            validHue(parsed.channels[0]) &&
+            validPercentage(parsed.channels[1]) &&
+            validPercentage(parsed.channels[2]) &&
+            (parsed.alpha === undefined || validAlpha(parsed.alpha))
+        );
+    }
+
+    if (
+        !['oklch', 'oklab', 'lab', 'lch'].includes(name) ||
+        body.includes(',')
+    ) {
+        return false;
+    }
+
+    const parsed = splitModernColor(body);
+
+    if (!parsed || parsed.channels.length !== 3) {
+        return false;
+    }
+
+    const [lightness, second, third] = parsed.channels;
+    const alphaIsValid = parsed.alpha === undefined || validAlpha(parsed.alpha);
+
+    if (!alphaIsValid) {
+        return false;
+    }
+
+    if (name === 'oklch') {
+        return (
+            validUnitInterval(lightness) &&
+            inRange(numericValue(second), 0, 1) &&
+            validHue(third)
+        );
+    }
+
+    if (name === 'oklab') {
+        return (
+            validUnitInterval(lightness) &&
+            inRange(numericValue(second), -0.5, 0.5) &&
+            inRange(numericValue(third), -0.5, 0.5)
+        );
+    }
+
+    if (name === 'lab') {
+        return (
+            validPercentage(lightness) &&
+            inRange(numericValue(second), -125, 125) &&
+            inRange(numericValue(third), -125, 125)
+        );
+    }
+
+    return (
+        validPercentage(lightness) &&
+        inRange(numericValue(second), 0, 150) &&
+        validHue(third)
+    );
+}
+
 function serializePrimitive(leaf) {
     const { path, resolvedType: type, value } = leaf;
 
@@ -267,10 +448,10 @@ function serializePrimitive(leaf) {
         const serialized = assertSafeString(value, path, type);
 
         if (
-            !/^#[0-9a-f]{3,8}$/i.test(serialized) &&
-            !/^(?:rgb|rgba|hsl|hsla|oklch|oklab|lab|lch)\([^;{}\r\n]+\)$/i.test(
+            !/^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(
                 serialized,
-            )
+            ) &&
+            !validFunctionalColor(serialized)
         ) {
             fail(path, `unsupported color value ${JSON.stringify(value)}`);
         }
@@ -292,9 +473,22 @@ function serializePrimitive(leaf) {
         return serialized;
     }
 
-    if (type === 'number' || type === 'fontWeight') {
+    if (type === 'number') {
         if (typeof value !== 'number' || !Number.isFinite(value)) {
             fail(path, `unsupported ${type} value ${JSON.stringify(value)}`);
+        }
+
+        return String(value);
+    }
+
+    if (type === 'fontWeight') {
+        if (
+            typeof value !== 'number' ||
+            !Number.isInteger(value) ||
+            value < 1 ||
+            value > 1000
+        ) {
+            fail(path, `unsupported fontWeight value ${JSON.stringify(value)}`);
         }
 
         return String(value);
@@ -343,7 +537,11 @@ function serializePrimitive(leaf) {
             value.length !== 4 ||
             value.some(
                 (entry) => typeof entry !== 'number' || !Number.isFinite(entry),
-            )
+            ) ||
+            value[0] < 0 ||
+            value[0] > 1 ||
+            value[2] < 0 ||
+            value[2] > 1
         ) {
             fail(
                 path,

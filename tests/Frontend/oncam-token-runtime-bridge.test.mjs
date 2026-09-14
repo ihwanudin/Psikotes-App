@@ -263,6 +263,131 @@ test('fails closed with actionable paths for collisions, dangling aliases, cycle
             /primitive\.shadow\.sm.*shadow/i,
         );
     });
+
+    await t.test('malformed and out-of-range colors', () => {
+        for (const value of [
+            '#12345',
+            'rgb(not-a-color)',
+            'rgb(256 0 0)',
+            'rgb(0 0)',
+            'rgb(0 0 0 / 101%)',
+            'hsl(0 50 50%)',
+            'oklch(120% 0.2 30)',
+            'rgb(0 0 0); @import "https://example.test/x.css"',
+        ]) {
+            const tokens = clone(canonical);
+            tokens.primitive.color.brand.green.$value = value;
+            assert.throws(
+                () => transformOncamTokens(tokens),
+                /primitive\.color\.brand\.green.*color/i,
+                value,
+            );
+        }
+    });
+
+    await t.test('out-of-range or malformed cubic bezier values', () => {
+        for (const value of [
+            [-0.01, 0, 0, 1],
+            [0.2, 0, 1.01, 1],
+            [0.2, 0, 1],
+            ['0.2', 0, 0, 1],
+        ]) {
+            const tokens = clone(canonical);
+            tokens.primitive.motion.easing.standard.$value = value;
+            assert.throws(
+                () => transformOncamTokens(tokens),
+                /primitive\.motion\.easing\.standard.*cubicBezier/i,
+                JSON.stringify(value),
+            );
+        }
+    });
+
+    await t.test('out-of-range or malformed font weights', () => {
+        for (const value of [0, 1001, 450.5, '600']) {
+            const tokens = clone(canonical);
+            tokens.primitive.font.weight.semibold.$value = value;
+            assert.throws(
+                () => transformOncamTokens(tokens),
+                /primitive\.font\.weight\.semibold.*fontWeight/i,
+                String(value),
+            );
+        }
+    });
+});
+
+test('accepts strictly valid supported functional colors', async () => {
+    const canonical = await canonicalTokens();
+    const cases = [
+        'rgb(0 95 65)',
+        'rgb(0 95 65 / 80%)',
+        'rgba(0, 95, 65, 0.8)',
+        'hsl(161deg 100% 19%)',
+        'hsla(161, 100%, 19%, 0.8)',
+        'oklch(45% 0.1 160 / 0.8)',
+        'oklab(45% -0.1 0.05)',
+        'lab(45% -10 5)',
+        'lch(45% 20 160)',
+    ];
+
+    for (const value of cases) {
+        const tokens = clone(canonical);
+        tokens.primitive.color.brand.green.$value = value;
+        const result = transformOncamTokens(tokens);
+        assert.match(
+            result.css,
+            new RegExp(
+                `--oncam-primitive-color-brand-green: ${value.replace(
+                    /[.*+?^${}()|[\]\\]/g,
+                    '\\$&',
+                )};`,
+            ),
+            value,
+        );
+        assert.deepEqual(result.census, {
+            total: 538,
+            primitive: 102,
+            semantic: 188,
+            component: 248,
+        });
+    }
+});
+
+test('accepts exact supported hex, cubic bezier, and font-weight boundaries', async () => {
+    const canonical = await canonicalTokens();
+
+    for (const color of ['#abc', '#abcd', '#aabbcc', '#aabbccdd']) {
+        const tokens = clone(canonical);
+        tokens.primitive.color.brand.green.$value = color;
+        assert.match(
+            transformOncamTokens(tokens).css,
+            new RegExp(`--oncam-primitive-color-brand-green: ${color};`),
+        );
+    }
+
+    for (const weight of [1, 1000]) {
+        const tokens = clone(canonical);
+        tokens.primitive.font.weight.semibold.$value = weight;
+        assert.match(
+            transformOncamTokens(tokens).css,
+            new RegExp(`--oncam-primitive-font-weight-semibold: ${weight};`),
+        );
+    }
+
+    for (const easing of [
+        [0, -2, 1, 3],
+        [1, 0, 0, 1],
+    ]) {
+        const tokens = clone(canonical);
+        tokens.primitive.motion.easing.standard.$value = easing;
+        assert.match(
+            transformOncamTokens(tokens).css,
+            new RegExp(
+                `--oncam-primitive-motion-easing-standard: cubic-bezier\\(${easing.join(
+                    ', ',
+                )}\\);`,
+            ),
+        );
+    }
 });
 
 test('rejects raw semantic values and cross-mode aliases', async () => {
