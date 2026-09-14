@@ -227,12 +227,12 @@ This is a holding-state wireframe only. It renders no score, band, dimension, re
 
 ## 8. Cross-width behavior
 
-| Width | Layout | Actions and status | Text/reflow acceptance |
-|---:|---|---|---|
-| 320 | One column; compact text identity; no sidebar; full-width panels | Stack actions; timer/save state wrap onto separate lines; minimum target token retained | No page-level horizontal scroll; labels wrap; no clipped prompt/control at 200% zoom |
-| 390 | One column with slightly larger gutter/rhythm | Two short actions may share a row only when target size and 8px separation remain; otherwise stack | 35–60 character readable line target; long tokens wrap safely |
-| 768 | One main column; optional auxiliary block below or beside when reading order stays clear | Status may share header row; alerts stay adjacent to their cause | Orientation changes preserve content/action access; no nested scrolling |
-| 1280 | Bounded main question column plus secondary session facts | Primary actions align at end of main column; persistent status stays visible without obscuring focus | Main prose remains at content-measure token; unused width becomes whitespace, not stretched text |
+| Width | Layout                                                                                   | Actions and status                                                                                   | Text/reflow acceptance                                                                           |
+| ----: | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+|   320 | One column; compact text identity; no sidebar; full-width panels                         | Stack actions; timer/save state wrap onto separate lines; minimum target token retained              | No page-level horizontal scroll; labels wrap; no clipped prompt/control at 200% zoom             |
+|   390 | One column with slightly larger gutter/rhythm                                            | Two short actions may share a row only when target size and 8px separation remain; otherwise stack   | 35–60 character readable line target; long tokens wrap safely                                    |
+|   768 | One main column; optional auxiliary block below or beside when reading order stays clear | Status may share header row; alerts stay adjacent to their cause                                     | Orientation changes preserve content/action access; no nested scrolling                          |
+|  1280 | Bounded main question column plus secondary session facts                                | Primary actions align at end of main column; persistent status stays visible without obscuring focus | Main prose remains at content-measure token; unused width becomes whitespace, not stretched text |
 
 At browser zoom up to 200%, layouts reflow as if at a narrower viewport. At 400% zoom and a 1280 CSS-pixel viewport, essential content and controls remain available in one dimension without two-dimensional page scrolling, except a component with a documented essential exception (none is currently expected for PAPI forced choice).
 
