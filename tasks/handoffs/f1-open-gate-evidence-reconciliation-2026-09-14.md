@@ -221,15 +221,15 @@ The staged candidate contained exactly this one new report: 238 inserted lines
 and no other path. `git diff --cached --check` exited 0 with no output. Both
 candidate-inclusive repository profiles exited 0 across index and working-tree
 snapshots: SECRET passed **1,424 tracked paths** and PII passed **1,424 tracked
-paths**. After recording those results, QA restages this same report and repeats
-the two profiles plus diff/scope checks before commit so no unscanned edit enters
-the immutable candidate. The after SHA and clean/detached state are reported to
-PM, Tech Lead, and PMO because a commit cannot contain its own identifier.
+paths**. After recording that first candidate-inclusive pass, QA restaged the same
+one-file, 238-line candidate and repeated both profiles plus final scope/diff checks.
+Both final profiles passed 1,424 tracked paths, then QA created the immutable
+candidate; its SHA is reported externally because self-embedding is impossible.
 
 ## Handoff
 
-- Review status: **NO-GO; evidence candidate complete, pending immutable commit
-  and independent PM/Tech Lead review**.
+- Review status: **NO-GO; immutable evidence candidate complete and awaiting
+  independent PM/Tech Lead/PMO review**.
 - QA does not integrate or edit canonical checklists.
 - Next dependency: provide a lockfile-matched development vendor tree in a new
   authorized clean evidence worktree, then rerun the exact focused commands;
