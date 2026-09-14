@@ -20,13 +20,13 @@ Product progress remains governed by the repository acceptance checklists. At th
 
 ## 2. Token architecture
 
-The JSON uses three layers. Every semantic and component value is an alias; raw values exist only in primitives.
+The JSON uses three layers. Every semantic and component value is an alias; raw values exist only in primitives. The repaired graph contains 538 leaf tokens: 102 primitive, 188 semantic, and 248 component tokens.
 
-| Layer     | Purpose                         | Example                                             | Change rule                              |
-| --------- | ------------------------------- | --------------------------------------------------- | ---------------------------------------- |
-| Primitive | Stable raw palette and scales   | `primitive.color.brand.green`                       | Change only with brand/system approval   |
-| Semantic  | Meaning in a light or dark mode | `semantic.light.color.action.primary.background`    | Change when product meaning changes      |
-| Component | State-specific consumption      | `component.light.button.primary.background.default` | Change when a component contract changes |
+| Layer     | Purpose                         | Example                                            | Change rule                              |
+| --------- | ------------------------------- | -------------------------------------------------- | ---------------------------------------- |
+| Primitive | Stable raw palette and scales   | `primitive.color.brand.green`                      | Change only with brand/system approval   |
+| Semantic  | Meaning in a light or dark mode | `semantic.light.color.action.primary.background`   | Change when product meaning changes      |
+| Component | State-specific consumption      | `component.light.button.primary.defaultBackground` | Change when a component contract changes |
 
 References use DTCG-style braces, for example `{semantic.light.color.action.primary.background}`. Consumers must resolve aliases, reject missing references and cycles, and preserve the three-layer boundary. Component code should not consume primitives directly.
 
@@ -74,15 +74,25 @@ WCAG 2.2 AA thresholds used here are 4.5:1 for normal text, 3:1 for large text, 
 | Primary light text             |  `#0E1713` |  `#FFFFFF` | 18.25:1 | PASS normal text                                |
 | Secondary light text           |  `#4B5851` |  `#FFFFFF` |  7.46:1 | PASS normal text                                |
 | Muted light text               |  `#637169` |  `#FFFFFF` |  5.13:1 | PASS normal text                                |
+| Light placeholder text         |  `#637169` |  `#FFFFFF` |  5.13:1 | PASS normal text                                |
 | Secondary text on soft neutral |  `#4B5851` |  `#F7F7F7` |  6.97:1 | PASS normal text                                |
 | Primary text on soft neutral   |  `#0E1713` |  `#F7F7F7` | 17.04:1 | PASS normal text                                |
 | Primary dark text              |  `#F7F7F7` |  `#17231E` | 15.13:1 | PASS normal text                                |
 | Secondary dark text            |  `#B7C0BB` |  `#17231E` |  8.70:1 | PASS normal text                                |
 | Muted dark text                |  `#87948D` |  `#17231E` |  5.13:1 | PASS normal text                                |
+| Dark placeholder text          |  `#B7C0BB` |  `#24312B` |  7.28:1 | PASS normal text                                |
 | Light focus ring               |  `#005F41` |  `#FFFFFF` |  7.74:1 | PASS non-text                                   |
 | Dark focus ring                |  `#76C7A6` |  `#17231E` |  8.10:1 | PASS non-text                                   |
 | Light input boundary           |  `#87948D` |  `#FFFFFF` |  3.16:1 | PASS non-text                                   |
 | Dark input boundary            |  `#87948D` |  `#24312B` |  4.29:1 | PASS non-text                                   |
+| Light read-only text           |  `#35423C` |  `#F7F7F7` |  9.82:1 | PASS normal text                                |
+| Light read-only boundary       |  `#637169` |  `#F7F7F7` |  4.79:1 | PASS non-text                                   |
+| Dark read-only text            |  `#B7C0BB` |  `#24312B` |  7.28:1 | PASS normal text                                |
+| Dark read-only boundary        |  `#87948D` |  `#24312B` |  4.29:1 | PASS non-text                                   |
+| Light neutral status text      |  `#35423C` |  `#EEEEEC` |  9.06:1 | PASS normal text                                |
+| Light neutral status boundary  |  `#637169` |  `#EEEEEC` |  4.41:1 | PASS non-text                                   |
+| Dark neutral status text       |  `#B7C0BB` |  `#24312B` |  7.28:1 | PASS normal text                                |
+| Dark neutral status boundary   |  `#87948D` |  `#24312B` |  4.29:1 | PASS non-text                                   |
 | Light success                  |  `#145C3B` |  `#E8F4ED` |  7.09:1 | PASS normal text                                |
 | Light warning                  |  `#6B4600` |  `#FFF4D6` |  7.66:1 | PASS normal text                                |
 | Light error                    |  `#8F1D14` |  `#FFF1EF` |  8.11:1 | PASS normal text                                |
@@ -143,16 +153,19 @@ The JSON defines shared geometry and light/dark state colors for buttons, inputs
 
 Primary actions use green—not gold. Destructive actions use error semantics and require an explicit destructive label/icon.
 
+Primary, secondary, and destructive button families each expose explicit disabled background, foreground, and border aliases in both modes. Disabled contrast remains not applicable; the native disabled state and accessible label remain required.
+
 ### Inputs and field groups
 
-| State              | Requirement                                                                                                        |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------ |
-| Default            | Persistent visible label, 44px minimum target, 3:1 boundary, instructions before input                             |
-| Hover              | Boundary emphasis without layout shift                                                                             |
-| Focus-visible      | Mode focus ring and focused border; programmatic label remains associated                                          |
-| Disabled/read-only | Visually distinct and programmatically exposed; do not use placeholder as label                                    |
-| Error              | Error border plus icon/message; connect message with `aria-describedby`; move focus only when workflow requires it |
-| Success            | Success border plus confirmation text/icon; do not announce routine validation noisily                             |
+| State         | Requirement                                                                                                        |
+| ------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Default       | Persistent visible label, 44px minimum target, 3:1 boundary, instructions before input                             |
+| Hover         | Boundary emphasis without layout shift                                                                             |
+| Focus-visible | Mode focus ring and focused border; programmatic label remains associated                                          |
+| Disabled      | Uses disabled aliases and is programmatically unavailable; disabled contrast is not claimed                        |
+| Read-only     | Uses distinct readable background, foreground, and boundary aliases plus the native `readonly` state               |
+| Error         | Error border plus icon/message; connect message with `aria-describedby`; move focus only when workflow requires it |
+| Success       | Success border plus confirmation text/icon; do not announce routine validation noisily                             |
 
 Checkboxes and radios retain native keyboard behavior. Group labels use `fieldset`/`legend` where appropriate. Instrument response choices must expose the complete option label and selected state to assistive technology.
 
@@ -173,7 +186,7 @@ Checkboxes and radios retain native keyboard behavior. Group labels use `fieldse
 
 - Badge variants are success, warning, error, info, and neutral. Each includes a text label and optional icon. Do not present a colored dot alone.
 - Alerts use a tinted surface, readable text, and a 3:1 boundary/icon treatment. Use `role="alert"` only for urgent, newly injected information; routine guidance is a labeled region or status message.
-- Success, warning, error, and info are operational semantic families. They may use non-brand primitives to maintain reliable meaning and contrast.
+- Success, warning, error, info, and neutral are operational semantic families. They may use non-brand primitives to maintain reliable meaning and contrast. Neutral badges have explicit background, foreground, and boundary aliases in both modes.
 
 ## 6. Responsive acceptance
 
@@ -207,13 +220,15 @@ This stage does not perform the following work. A separately owned implementatio
 
 Recommended variable mapping examples:
 
-| JSON token                                       | Future CSS/Tailwind alias | Typical consumer  |
-| ------------------------------------------------ | ------------------------- | ----------------- |
-| `semantic.light.color.surface.page`              | `--color-surface-page`    | Participant shell |
-| `semantic.light.color.text.primary`              | `--color-text-primary`    | Body text         |
-| `semantic.light.color.action.primary.background` | `--color-action-primary`  | Primary action    |
-| `component.light.input.border.focus`             | `--input-border-focus`    | Field primitive   |
-| `component.light.status.warning.*`               | `--status-warning-*`      | Timer/risk badge  |
+| JSON token                                       | Future CSS/Tailwind alias | Typical consumer        |
+| ------------------------------------------------ | ------------------------- | ----------------------- |
+| `semantic.light.color.surface.canvas`            | `--color-surface-canvas`  | Participant shell       |
+| `semantic.light.color.text.primary`              | `--color-text-primary`    | Body text               |
+| `semantic.light.color.action.primary.background` | `--color-action-primary`  | Primary action          |
+| `component.light.input.focusBorder`              | `--input-border-focus`    | Field primitive         |
+| `component.light.status.warningBackground`       | `--status-warning-bg`     | Timer/risk badge        |
+| `component.light.status.warningForeground`       | `--status-warning-fg`     | Timer/risk badge text   |
+| `component.light.status.warningBorder`           | `--status-warning-border` | Timer/risk badge border |
 
 ## 8. Filament/Livewire handoff
 
@@ -234,6 +249,7 @@ A separately owned staff-theme change should map the same semantic contract thro
 - [x] ONCAM green remains the primary action color; gold is constrained to accent/decorative use.
 - [x] Typography uses the existing product stack.
 - [x] Component default, hover, active, focus-visible, disabled, error/success/warning states are specified where applicable.
+- [x] Secondary/destructive disabled buttons, read-only inputs, neutral status badges, and accessible placeholder text have paired light/dark aliases.
 - [x] WCAG contrast decisions include text, focus, boundaries, status, failed pairs, and not-applicable disabled cases.
 - [x] Logo variants, contexts, clear space, minimum/responsive sizes, aspect ratio, alt behavior, and prohibited treatments are specified.
 - [x] Responsive criteria explicitly cover 320, 390, 768, and 1280.

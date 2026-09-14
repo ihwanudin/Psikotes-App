@@ -264,6 +264,7 @@
           "primary": { "$value": "{primitive.color.neutral.950}" },
           "secondary": { "$value": "{primitive.color.neutral.600}" },
           "muted": { "$value": "{primitive.color.neutral.500}" },
+          "placeholder": { "$value": "{primitive.color.neutral.500}" },
           "inverse": { "$value": "{primitive.color.brand.white}" },
           "link": { "$value": "{primitive.color.brand.green}" },
           "linkHover": { "$value": "{primitive.color.brand.greenDeep}" }
@@ -286,14 +287,28 @@
             "foreground": { "$value": "{primitive.color.brand.green}" },
             "border": { "$value": "{primitive.color.brand.green}" },
             "hover": { "$value": "{primitive.color.brand.greenSoft}" },
-            "active": { "$value": "{primitive.color.neutral.100}" }
+            "active": { "$value": "{primitive.color.neutral.100}" },
+            "disabledBackground": {
+              "$value": "{primitive.color.neutral.100}"
+            },
+            "disabledForeground": {
+              "$value": "{primitive.color.neutral.600}"
+            },
+            "disabledBorder": { "$value": "{primitive.color.neutral.300}" }
           },
           "destructive": {
             "background": { "$value": "{primitive.color.error.700}" },
             "foreground": { "$value": "{primitive.color.brand.white}" },
             "border": { "$value": "{primitive.color.error.700}" },
             "hover": { "$value": "{primitive.color.error.800}" },
-            "active": { "$value": "{primitive.color.error.900}" }
+            "active": { "$value": "{primitive.color.error.900}" },
+            "disabledBackground": {
+              "$value": "{primitive.color.neutral.100}"
+            },
+            "disabledForeground": {
+              "$value": "{primitive.color.neutral.600}"
+            },
+            "disabledBorder": { "$value": "{primitive.color.neutral.300}" }
           }
         },
         "accent": {
@@ -308,6 +323,11 @@
           "disabledBackground": { "$value": "{primitive.color.neutral.100}" },
           "disabledForeground": { "$value": "{primitive.color.neutral.600}" },
           "disabledBorder": { "$value": "{primitive.color.neutral.300}" },
+          "readOnlyBackground": {
+            "$value": "{primitive.color.brand.softNeutral}"
+          },
+          "readOnlyForeground": { "$value": "{primitive.color.neutral.700}" },
+          "readOnlyBorder": { "$value": "{primitive.color.neutral.500}" },
           "selectedBackground": {
             "$value": "{primitive.color.brand.greenSoft}"
           },
@@ -339,6 +359,12 @@
             "foreground": { "$value": "{primitive.color.info.800}" },
             "border": { "$value": "{primitive.color.info.700}" },
             "icon": { "$value": "{primitive.color.info.700}" }
+          },
+          "neutral": {
+            "background": { "$value": "{primitive.color.neutral.100}" },
+            "foreground": { "$value": "{primitive.color.neutral.700}" },
+            "border": { "$value": "{primitive.color.neutral.500}" },
+            "icon": { "$value": "{primitive.color.neutral.600}" }
           }
         }
       }
@@ -356,6 +382,7 @@
           "primary": { "$value": "{primitive.color.brand.softNeutral}" },
           "secondary": { "$value": "{primitive.color.neutral.300}" },
           "muted": { "$value": "{primitive.color.neutral.400}" },
+          "placeholder": { "$value": "{primitive.color.neutral.300}" },
           "inverse": { "$value": "{primitive.color.neutral.950}" },
           "link": { "$value": "{primitive.color.brand.greenLight}" },
           "linkHover": { "$value": "{primitive.color.brand.greenSoft}" }
@@ -378,14 +405,28 @@
             "foreground": { "$value": "{primitive.color.brand.softNeutral}" },
             "border": { "$value": "{primitive.color.neutral.400}" },
             "hover": { "$value": "{primitive.color.neutral.700}" },
-            "active": { "$value": "{primitive.color.neutral.600}" }
+            "active": { "$value": "{primitive.color.neutral.600}" },
+            "disabledBackground": {
+              "$value": "{primitive.color.neutral.800}"
+            },
+            "disabledForeground": {
+              "$value": "{primitive.color.neutral.300}"
+            },
+            "disabledBorder": { "$value": "{primitive.color.neutral.700}" }
           },
           "destructive": {
             "background": { "$value": "{primitive.color.error.900}" },
             "foreground": { "$value": "{primitive.color.error.200}" },
             "border": { "$value": "{primitive.color.error.500}" },
             "hover": { "$value": "{primitive.color.error.800}" },
-            "active": { "$value": "{primitive.color.error.700}" }
+            "active": { "$value": "{primitive.color.error.700}" },
+            "disabledBackground": {
+              "$value": "{primitive.color.neutral.800}"
+            },
+            "disabledForeground": {
+              "$value": "{primitive.color.neutral.300}"
+            },
+            "disabledBorder": { "$value": "{primitive.color.neutral.700}" }
           }
         },
         "accent": {
@@ -400,6 +441,9 @@
           "disabledBackground": { "$value": "{primitive.color.neutral.800}" },
           "disabledForeground": { "$value": "{primitive.color.neutral.300}" },
           "disabledBorder": { "$value": "{primitive.color.neutral.700}" },
+          "readOnlyBackground": { "$value": "{primitive.color.neutral.800}" },
+          "readOnlyForeground": { "$value": "{primitive.color.neutral.300}" },
+          "readOnlyBorder": { "$value": "{primitive.color.neutral.400}" },
           "selectedBackground": { "$value": "{primitive.color.neutral.700}" },
           "selectedForeground": {
             "$value": "{primitive.color.brand.softNeutral}"
@@ -429,6 +473,12 @@
             "foreground": { "$value": "{primitive.color.info.200}" },
             "border": { "$value": "{primitive.color.info.500}" },
             "icon": { "$value": "{primitive.color.info.200}" }
+          },
+          "neutral": {
+            "background": { "$value": "{primitive.color.neutral.800}" },
+            "foreground": { "$value": "{primitive.color.neutral.300}" },
+            "border": { "$value": "{primitive.color.neutral.400}" },
+            "icon": { "$value": "{primitive.color.neutral.300}" }
           }
         }
       }
@@ -537,7 +587,16 @@
           "activeBackground": {
             "$value": "{semantic.light.color.action.secondary.active}"
           },
-          "focusRing": { "$value": "{semantic.light.color.state.focusRing}" }
+          "focusRing": { "$value": "{semantic.light.color.state.focusRing}" },
+          "disabledBackground": {
+            "$value": "{semantic.light.color.action.secondary.disabledBackground}"
+          },
+          "disabledForeground": {
+            "$value": "{semantic.light.color.action.secondary.disabledForeground}"
+          },
+          "disabledBorder": {
+            "$value": "{semantic.light.color.action.secondary.disabledBorder}"
+          }
         },
         "destructive": {
           "defaultBackground": {
@@ -557,6 +616,15 @@
           },
           "focusRing": {
             "$value": "{semantic.light.color.status.error.border}"
+          },
+          "disabledBackground": {
+            "$value": "{semantic.light.color.action.destructive.disabledBackground}"
+          },
+          "disabledForeground": {
+            "$value": "{semantic.light.color.action.destructive.disabledForeground}"
+          },
+          "disabledBorder": {
+            "$value": "{semantic.light.color.action.destructive.disabledBorder}"
           }
         }
       },
@@ -568,7 +636,7 @@
           "$value": "{semantic.light.color.text.primary}"
         },
         "defaultBorder": { "$value": "{semantic.light.color.border.default}" },
-        "placeholder": { "$value": "{semantic.light.color.text.muted}" },
+        "placeholder": { "$value": "{semantic.light.color.text.placeholder}" },
         "hoverBorder": { "$value": "{semantic.light.color.border.strong}" },
         "focusBorder": { "$value": "{semantic.light.color.state.focusRing}" },
         "focusRing": { "$value": "{semantic.light.color.state.focusRing}" },
@@ -580,6 +648,15 @@
         },
         "disabledBorder": {
           "$value": "{semantic.light.color.state.disabledBorder}"
+        },
+        "readOnlyBackground": {
+          "$value": "{semantic.light.color.state.readOnlyBackground}"
+        },
+        "readOnlyForeground": {
+          "$value": "{semantic.light.color.state.readOnlyForeground}"
+        },
+        "readOnlyBorder": {
+          "$value": "{semantic.light.color.state.readOnlyBorder}"
         },
         "errorBorder": {
           "$value": "{semantic.light.color.status.error.border}"
@@ -707,6 +784,15 @@
         },
         "errorBorder": {
           "$value": "{semantic.light.color.status.error.border}"
+        },
+        "neutralBackground": {
+          "$value": "{semantic.light.color.status.neutral.background}"
+        },
+        "neutralForeground": {
+          "$value": "{semantic.light.color.status.neutral.foreground}"
+        },
+        "neutralBorder": {
+          "$value": "{semantic.light.color.status.neutral.border}"
         }
       },
       "alert": {
@@ -795,7 +881,16 @@
           "activeBackground": {
             "$value": "{semantic.dark.color.action.secondary.active}"
           },
-          "focusRing": { "$value": "{semantic.dark.color.state.focusRing}" }
+          "focusRing": { "$value": "{semantic.dark.color.state.focusRing}" },
+          "disabledBackground": {
+            "$value": "{semantic.dark.color.action.secondary.disabledBackground}"
+          },
+          "disabledForeground": {
+            "$value": "{semantic.dark.color.action.secondary.disabledForeground}"
+          },
+          "disabledBorder": {
+            "$value": "{semantic.dark.color.action.secondary.disabledBorder}"
+          }
         },
         "destructive": {
           "defaultBackground": {
@@ -813,7 +908,18 @@
           "activeBackground": {
             "$value": "{semantic.dark.color.action.destructive.active}"
           },
-          "focusRing": { "$value": "{semantic.dark.color.status.error.border}" }
+          "focusRing": {
+            "$value": "{semantic.dark.color.status.error.border}"
+          },
+          "disabledBackground": {
+            "$value": "{semantic.dark.color.action.destructive.disabledBackground}"
+          },
+          "disabledForeground": {
+            "$value": "{semantic.dark.color.action.destructive.disabledForeground}"
+          },
+          "disabledBorder": {
+            "$value": "{semantic.dark.color.action.destructive.disabledBorder}"
+          }
         }
       },
       "input": {
@@ -822,7 +928,7 @@
         },
         "defaultForeground": { "$value": "{semantic.dark.color.text.primary}" },
         "defaultBorder": { "$value": "{semantic.dark.color.border.default}" },
-        "placeholder": { "$value": "{semantic.dark.color.text.muted}" },
+        "placeholder": { "$value": "{semantic.dark.color.text.placeholder}" },
         "hoverBorder": { "$value": "{semantic.dark.color.border.strong}" },
         "focusBorder": { "$value": "{semantic.dark.color.state.focusRing}" },
         "focusRing": { "$value": "{semantic.dark.color.state.focusRing}" },
@@ -834,6 +940,15 @@
         },
         "disabledBorder": {
           "$value": "{semantic.dark.color.state.disabledBorder}"
+        },
+        "readOnlyBackground": {
+          "$value": "{semantic.dark.color.state.readOnlyBackground}"
+        },
+        "readOnlyForeground": {
+          "$value": "{semantic.dark.color.state.readOnlyForeground}"
+        },
+        "readOnlyBorder": {
+          "$value": "{semantic.dark.color.state.readOnlyBorder}"
         },
         "errorBorder": {
           "$value": "{semantic.dark.color.status.error.border}"
@@ -953,7 +1068,18 @@
         "errorForeground": {
           "$value": "{semantic.dark.color.status.error.foreground}"
         },
-        "errorBorder": { "$value": "{semantic.dark.color.status.error.border}" }
+        "errorBorder": {
+          "$value": "{semantic.dark.color.status.error.border}"
+        },
+        "neutralBackground": {
+          "$value": "{semantic.dark.color.status.neutral.background}"
+        },
+        "neutralForeground": {
+          "$value": "{semantic.dark.color.status.neutral.foreground}"
+        },
+        "neutralBorder": {
+          "$value": "{semantic.dark.color.status.neutral.border}"
+        }
       },
       "alert": {
         "infoBackground": {
