@@ -45,3 +45,22 @@ These rules apply to every Codex session and delegated task in this repository.
   ambiguity for a joint decision rather than silently resolving it by
   loosening a constraint, deleting a check, or picking one side without
   recording why.
+
+## Ownership ledger (as of 2026-09-16, baseline commit 463783c)
+
+This checkpoint reconciles `codex/organization-payment-spec` onto
+`codex/f2-wave1-integration`. Full PHP suite: 3,379 tests, 3,370 passing, 0
+errors, 0 failures, 9 known skips. Disposable PostgreSQL: 554 tests, 5,863
+assertions, green. No `app/` production code changed by the reconciliation
+itself. Known open item: `tasks/handoffs/sqlite-test-isolation-known-issue-2026-09-16.md`
+(SQLite-only test-order guard, not a production issue).
+
+| Owner | Scope | Exclusive paths | Forbidden |
+|---|---|---|---|
+| Codex | Remaining Grup C reconciliation: `f2-r0/r2/r2c/s3/s4`, `f5-fixture-*`, `f9-*`, `test-harness-reliability(-qa)`, `security-binary-content-gate`, `test-fixture-ledger-compat`, `release-gate-verification` | Existing `app/`, `database/migrations/`, `tests/` outside GLM's paths below | GLM's exclusive paths below; `composer.json`/`composer.lock`/`package.json`/lockfiles unless explicitly coordinated with the coordinator |
+| GLM | F6 — Result documents (participant HPP report + internal report rendering). Status per `tasks/parallel-work.md`: unstarted ("Open"), depends on a stable F5 review/signature contract that is **not yet final** — build against **fixture/mock data only**, do not wire to live F5 output yet. | New only: `app/Domain/Report/**`, `app/Services/ReportRendering/**`, `resources/views/reports/**`, `tests/Feature/Reports/**`, `tests/Unit/Report/**` | Any existing file outside those new paths, any migration, any existing test, `composer.json`/`package.json`/lockfiles, `AGENTS.md`, `tasks/parallel-work.md`, `tasks/f2-f9-acceptance.md` |
+| Claude (coordinator) | Cross-tool verification, canonical docs, merge/promotion gatekeeping | `AGENTS.md`, `tasks/parallel-work.md`, `tasks/f2-f9-acceptance.md`, cross-branch reconciliation | — |
+
+GLM works on its own branch (`glm/f6-hpp-report-draft`, branched from this
+checkpoint) and does not merge into the reconciliation branch or `main`
+without the coordinator's verification, per the rules above.
