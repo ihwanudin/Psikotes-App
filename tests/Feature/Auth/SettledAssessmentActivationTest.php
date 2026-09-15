@@ -253,7 +253,7 @@ final class SettledAssessmentActivationTest extends OrganizationPaymentTestCase
 
     public function test_legacy_ready_entitlement_cannot_activate_unpaid_attempt(): void
     {
-        DB::table('entitlements')->insert(['participant_id' => $this->f['participant'], 'test_type' => 'ist', 'status' => 'ready', 'ready_at' => now()]);
+        $this->createCaseScopedGenericEntitlement();
         DB::table('assessment_bill_items')->update(['settled_at' => null]);
         $this->assertSame([], $this->activate());
         $this->assertDatabaseHas('assessment_entitlements', ['status' => 'locked']);
@@ -270,5 +270,20 @@ final class SettledAssessmentActivationTest extends OrganizationPaymentTestCase
         }
         $this->assertDatabaseCount('outbox_messages', 0);
         $this->assertSame($readyBefore, DB::table('assessment_entitlements')->where('status', 'ready')->count());
+    }
+
+    private function createCaseScopedGenericEntitlement(): void
+    {
+        DB::table('participants')->where('id', $this->f['participant'])->update([
+            'package_id' => $this->f['package'],
+            'source_system' => 'P6B_TEST',
+        ]);
+        DB::table('entitlements')->insert([
+            'participant_id' => $this->f['participant'],
+            'assessment_case_id' => $this->f['case'],
+            'test_type' => 'ist',
+            'status' => 'ready',
+            'ready_at' => now(),
+        ]);
     }
 }

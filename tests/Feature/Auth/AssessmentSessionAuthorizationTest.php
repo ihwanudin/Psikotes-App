@@ -128,7 +128,7 @@ final class AssessmentSessionAuthorizationTest extends OrganizationPaymentTestCa
     {
         $next = Fixture::create(identity: $this->f);
         DB::table('assessment_bills')->where('id', $next['bill'])->update(['status' => 'pending', 'paid_at' => null]);
-        Entitlement::query()->create(['participant_id' => $this->f['participant'], 'test_type' => 'ist', 'status' => 'ready']);
+        $this->createCaseScopedGenericEntitlement();
         $this->withToken($this->token())->postJson(self::URL)->assertStatus(501);
         $this->withToken($this->token($next))->postJson(self::URL)->assertForbidden();
         $legacy = app(ParticipantJwt::class)->issue($this->f['participant'], $this->f['organization']);
@@ -229,7 +229,7 @@ final class AssessmentSessionAuthorizationTest extends OrganizationPaymentTestCa
 
     public function test_controller_does_not_fall_back_from_malformed_assessment_principal_to_legacy(): void
     {
-        Entitlement::query()->create(['participant_id' => $this->f['participant'], 'test_type' => 'ist', 'status' => 'ready']);
+        $this->createCaseScopedGenericEntitlement();
         $request = StartAssessmentSessionRequest::create(self::URL, 'POST');
         $request->attributes->set('assessment_principal', ['participantId' => $this->f['participant']]);
         $request->attributes->set('participant_principal', new ParticipantPrincipal($this->f['participant'], $this->f['organization']));
@@ -264,5 +264,19 @@ final class AssessmentSessionAuthorizationTest extends OrganizationPaymentTestCa
         $f ??= $this->f;
 
         return app(AssessmentAccessToken::class)->issue(new AssessmentPrincipal($f['participant'], $f['organization'], $f['attempt']));
+    }
+
+    private function createCaseScopedGenericEntitlement(): void
+    {
+        DB::table('participants')->where('id', $this->f['participant'])->update([
+            'package_id' => $this->f['package'],
+            'source_system' => 'P6B_TEST',
+        ]);
+        Entitlement::query()->create([
+            'participant_id' => $this->f['participant'],
+            'assessment_case_id' => $this->f['case'],
+            'test_type' => 'ist',
+            'status' => 'ready',
+        ]);
     }
 }

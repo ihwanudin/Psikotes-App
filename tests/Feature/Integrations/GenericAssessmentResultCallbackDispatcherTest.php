@@ -359,11 +359,19 @@ final class GenericAssessmentResultCallbackDispatcherTest extends TestCase
             'code' => 'R'.$key, 'name' => 'Synthetic result package',
             'amount' => 100, 'currency' => 'IDR', 'is_active' => true,
         ]);
+        $attemptPublicId = (string) Str::ulid();
+        $case = DB::table('assessment_cases')->insertGetId([
+            'public_id' => $attemptPublicId, 'participant_id' => $participant->id,
+            'organization_id' => $organization->id, 'package_id' => $package->id,
+            'origin' => 'INTEGRATED', 'intended_field_snapshot' => null,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
 
         return AssessmentParticipant::query()->create([
             'organization_id' => $organization->id, 'integration_client_id' => $client->id,
             'participant_id' => $participant->id, 'package_id' => $package->id,
-            'assessment_attempt_id' => (string) Str::ulid(), 'source_system' => 'RESULT_CALLBACK_TEST',
+            'assessment_case_id' => $case, 'assessment_attempt_id' => $attemptPublicId,
+            'source_system' => 'RESULT_CALLBACK_TEST',
             'external_candidate_id' => $key, 'funding_mode' => 'SPONSORED',
             'assessment_status' => 'UNDER_REVIEW', 'idempotency_key' => $key,
             'request_hash' => hash('sha256', $key),

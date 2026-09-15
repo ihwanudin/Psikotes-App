@@ -18,6 +18,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Support\Facades\Date;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
@@ -77,12 +78,20 @@ final class AssessmentResultIntegrationTest extends TestCase
             'education_level' => 'SMA', 'intended_field' => 'UMUM',
             'phone' => '628111111111', 'email' => 'private@example.test', 'test_number' => 'TEST-001',
         ]);
+        $attemptPublicId = (string) Str::ulid();
+        $case = DB::table('assessment_cases')->insertGetId([
+            'public_id' => $attemptPublicId, 'participant_id' => $participant->id,
+            'organization_id' => $organization->id, 'package_id' => $package->id,
+            'origin' => 'INTEGRATED', 'intended_field_snapshot' => null,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
         $this->assessment = AssessmentParticipant::query()->create([
             'integration_client_id' => $this->client->id,
             'organization_id' => $organization->id,
             'participant_id' => $participant->id,
             'package_id' => $package->id,
-            'assessment_attempt_id' => (string) Str::ulid(),
+            'assessment_case_id' => $case,
+            'assessment_attempt_id' => $attemptPublicId,
             'source_system' => 'SAKURA_SELECTION',
             'external_candidate_id' => 'CAND-001',
             'external_process_id' => 'PROCESS-001',

@@ -199,23 +199,57 @@ final class FundingPolicyManagementTest extends OrganizationPaymentTestCase
 
     public function test_switching_off_preserves_existing_orders_entitlements_and_channels(): void
     {
+        $package = DB::table('packages')->insertGetId([
+            'code' => 'POLICY-PACKAGE',
+            'name' => 'Synthetic policy package',
+            'amount' => 1,
+            'currency' => 'IDR',
+            'is_active' => true,
+        ]);
+        foreach (['dass21', 'ist'] as $sortOrder => $testType) {
+            DB::table('package_items')->insert([
+                'package_id' => $package,
+                'test_type' => $testType,
+                'sort_order' => $sortOrder,
+            ]);
+        }
         $participant = DB::table('participants')->insertGetId([
             'branch_id' => $this->organization->id, 'referral_branch_id' => $this->organization->id,
             'referral_source' => 'default', 'full_name' => 'Synthetic participant',
             'gender' => 'male', 'birth_date' => '2000-01-01', 'education_level' => 'SMA_SMK',
             'intended_field' => 'KAIGO', 'phone' => '620000000000',
-            'source_system' => 'POLICY_TEST',
+            'package_id' => $package, 'source_system' => 'DIRECT_PUBLIC',
         ]);
         $method = DB::table('payment_methods')->insertGetId([
             'code' => 'synthetic', 'display_name' => 'Synthetic channel', 'is_active' => true,
         ]);
+        $orderIds = [];
+        $caseIds = [];
         foreach (['paid', 'pending'] as $status) {
-            DB::table('orders')->insert([
-                'public_id' => (string) str()->ulid(), 'participant_id' => $participant,
+            $publicId = (string) str()->ulid();
+            $caseIds[] = DB::table('assessment_cases')->insertGetId([
+                'public_id' => $publicId,
+                'participant_id' => $participant,
+                'organization_id' => $this->organization->id,
+                'package_id' => $package,
+                'origin' => 'DIRECT_PUBLIC',
+                'intended_field_snapshot' => 'KAIGO',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            $orderIds[] = DB::table('orders')->insertGetId([
+                'public_id' => $publicId, 'participant_id' => $participant,
+                'assessment_case_id' => $caseIds[array_key_last($caseIds)],
                 'payment_method_id' => $method, 'amount' => 1, 'currency' => 'IDR', 'status' => $status,
             ]);
         }
-        DB::table('entitlements')->insert(['participant_id' => $participant, 'test_type' => 'ist', 'status' => 'locked']);
+        DB::table('entitlements')->insert([
+            'participant_id' => $participant,
+            'order_id' => $orderIds[0],
+            'assessment_case_id' => $caseIds[0],
+            'test_type' => 'ist',
+            'status' => 'locked',
+        ]);
         $orders = DB::table('orders')->orderBy('id')->get()->toArray();
         $entitlements = DB::table('entitlements')->get()->toArray();
         $methods = DB::table('payment_methods')->get()->toArray();

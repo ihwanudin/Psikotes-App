@@ -15,6 +15,7 @@ use Tests\OrganizationPaymentTestCase;
 
 final class CheckoutHandoffSchemaTest extends OrganizationPaymentTestCase
 {
+    protected function tearDown(): void { try { $this->assertSame(0, \Illuminate\Support\Facades\Artisan::call('migrate:fresh', ['--force' => true, '--no-interaction' => true])); } finally { parent::tearDown(); } }
     protected function setUp(): void
     {
         parent::setUp();
@@ -114,10 +115,16 @@ final class CheckoutHandoffSchemaTest extends OrganizationPaymentTestCase
             }
         }
 
+        $mismatchedClientAttemptId = (string) Str::ulid();
+        $mismatchedClientCase = DB::table('assessment_cases')->insertGetId([
+            'public_id' => $mismatchedClientAttemptId, 'participant_id' => $foreign['participant'],
+            'organization_id' => $foreign['organization'], 'package_id' => $foreign['package'],
+            'origin' => 'INTEGRATED', 'created_at' => now(), 'updated_at' => now(),
+        ]);
         $mismatchedClientAttempt = DB::table('assessment_participants')->insertGetId([
             'organization_id' => $foreign['organization'], 'integration_client_id' => $graph['client'],
             'participant_id' => $foreign['participant'], 'package_id' => $foreign['package'],
-            'assessment_attempt_id' => (string) Str::ulid(), 'source_system' => 'HANDOFF_SOURCE',
+            'assessment_case_id' => $mismatchedClientCase, 'assessment_attempt_id' => $mismatchedClientAttemptId, 'source_system' => 'HANDOFF_SOURCE',
             'external_candidate_id' => (string) Str::ulid(), 'funding_mode' => 'COMMERCIAL_SELF_PAY',
             'assessment_status' => 'PROVISIONED', 'idempotency_key' => (string) Str::ulid(),
             'request_hash' => hash('sha256', 'cross-organization-request'),
@@ -208,15 +215,20 @@ final class CheckoutHandoffSchemaTest extends OrganizationPaymentTestCase
         $package = DB::table('packages')->insertGetId([
             'code' => $key, 'name' => 'Synthetic', 'amount' => 100, 'currency' => 'IDR',
         ]);
+        $case = DB::table('assessment_cases')->insertGetId([
+            'public_id' => $key, 'participant_id' => $participant,
+            'organization_id' => $organization, 'package_id' => $package,
+            'origin' => 'INTEGRATED', 'created_at' => now(), 'updated_at' => now(),
+        ]);
         $attempt = DB::table('assessment_participants')->insertGetId([
             'organization_id' => $organization, 'integration_client_id' => $client, 'participant_id' => $participant,
-            'package_id' => $package, 'assessment_attempt_id' => $key, 'source_system' => 'HANDOFF_SOURCE',
+            'package_id' => $package, 'assessment_case_id' => $case, 'assessment_attempt_id' => $key, 'source_system' => 'HANDOFF_SOURCE',
             'external_candidate_id' => $key, 'funding_mode' => 'COMMERCIAL_SELF_PAY',
             'assessment_status' => 'PROVISIONED', 'idempotency_key' => $key,
             'request_hash' => hash('sha256', $key), 'logical_assessment_key' => hash('sha256', 'logical'.$key),
         ]);
 
-        return compact('organization', 'participant', 'client', 'source', 'package', 'attempt');
+        return compact('organization', 'participant', 'client', 'source', 'package', 'case', 'attempt');
     }
 
     /** @param array{organization:int,participant:int,client:int,source:int,package:int,attempt:int} $graph

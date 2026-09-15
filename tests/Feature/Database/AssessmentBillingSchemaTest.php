@@ -21,6 +21,7 @@ use Tests\OrganizationPaymentTestCase;
 
 final class AssessmentBillingSchemaTest extends OrganizationPaymentTestCase
 {
+    protected function tearDown(): void { try { $this->assertSame(0, \Illuminate\Support\Facades\Artisan::call('migrate:fresh', ['--force' => true, '--no-interaction' => true])); } finally { parent::tearDown(); } }
     private AssessmentParticipant $attempt;
 
     private int $method;
@@ -38,9 +39,15 @@ final class AssessmentBillingSchemaTest extends OrganizationPaymentTestCase
         $participant = Participant::create(['branch_id' => $organization->id, 'referral_branch_id' => $organization->id,
             'referral_source' => 'default', 'full_name' => 'Synthetic', 'gender' => 'male',
             'birth_date' => '2000-01-01', 'education_level' => 'SMA_SMK', 'intended_field' => 'UMUM', 'phone' => '620000000000']);
+        $attemptId = (string) Str::ulid();
+        $case = DB::table('assessment_cases')->insertGetId([
+            'public_id' => $attemptId, 'participant_id' => $participant->id,
+            'organization_id' => $organization->id, 'package_id' => $package->id,
+            'origin' => 'INTEGRATED', 'created_at' => now(), 'updated_at' => now(),
+        ]);
         $this->attempt = AssessmentParticipant::create(['integration_client_id' => $client->id,
             'organization_id' => $organization->id, 'participant_id' => $participant->id, 'package_id' => $package->id,
-            'assessment_attempt_id' => (string) Str::ulid(), 'source_system' => 'BILL_TEST', 'external_candidate_id' => 'C-1',
+            'assessment_case_id' => $case, 'assessment_attempt_id' => $attemptId, 'source_system' => 'BILL_TEST', 'external_candidate_id' => 'C-1',
             'funding_mode' => 'COMMERCIAL_SELF_PAY', 'assessment_status' => 'PROVISIONED',
             'idempotency_key' => 'attempt:1', 'request_hash' => str_repeat('a', 64), 'logical_assessment_key' => str_repeat('b', 64)]);
         $this->method = DB::table('payment_methods')->insertGetId(['code' => 'test_manual', 'display_name' => 'Synthetic', 'is_active' => false]);
@@ -115,8 +122,20 @@ final class AssessmentBillingSchemaTest extends OrganizationPaymentTestCase
 
     public function test_populated_rollback_preserves_legacy_rows_and_can_upgrade_again(): void
     {
+        $legacyParticipant = Participant::create([
+            'branch_id' => $this->attempt->organization_id,
+            'referral_branch_id' => $this->attempt->organization_id,
+            'referral_source' => 'default',
+            'source_system' => 'INTEGRATED',
+            'full_name' => 'Legacy billing order',
+            'gender' => 'male',
+            'birth_date' => '2000-01-01',
+            'education_level' => 'SMA_SMK',
+            'intended_field' => 'UMUM',
+            'phone' => '620000000001',
+        ]);
         $legacyId = DB::table('orders')->insertGetId(['public_id' => (string) Str::ulid(),
-            'participant_id' => $this->attempt->participant_id, 'payment_method_id' => $this->method,
+            'participant_id' => $legacyParticipant->id, 'payment_method_id' => $this->method,
             'amount' => 150000, 'currency' => 'IDR', 'status' => 'pending']);
         $legacy = DB::table('orders')->where('id', $legacyId)->first();
         AssessmentCharge::create($this->chargeData());

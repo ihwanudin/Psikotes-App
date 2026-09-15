@@ -7,6 +7,7 @@ namespace Tests\Feature\Integrations;
 use App\Models\AssessmentCase;
 use App\Models\AssessmentParticipant;
 use App\Models\Branch;
+use App\Models\Entitlement;
 use App\Models\IntegrationClient;
 use App\Models\IntegrationSource;
 use App\Models\TestPackage;
@@ -249,28 +250,38 @@ final class GenericAssessmentProvisioningTest extends TestCase
         $this->assertDatabaseCount('outbox_messages', 2);
     }
 
-    public function test_new_case_cannot_reuse_the_participants_existing_generic_entitlement(): void
+    public function test_new_case_gets_its_own_generic_entitlement_but_duplicate_case_grant_is_rejected(): void
     {
         $this->signedRequest($this->payload(), 'assessment:v1:first-case')->assertCreated();
         $secondCase = [...$this->payload(), 'assessmentRoundId' => 'ROUND-2026-09'];
 
-        $this->withoutExceptionHandling();
-        try {
-            $this->signedRequest($secondCase, 'assessment:v1:second-case');
-            $this->fail('The old participant-scoped unique index must fail closed before case uniqueness contracts.');
-        } catch (QueryException) {
-            $this->addToAssertionCount(1);
-        }
+        $this->signedRequest($secondCase, 'assessment:v1:second-case')->assertCreated();
 
         $this->assertDatabaseCount('participants', 1);
-        $this->assertDatabaseCount('assessment_participants', 1);
-        $this->assertDatabaseCount('assessment_cases', 1);
-        $this->assertDatabaseCount('entitlements', 2);
-        $case = AssessmentCase::query()->sole();
-        $this->assertDatabaseHas('entitlements', [
-            'participant_id' => $case->participant_id,
-            'assessment_case_id' => $case->id,
+        $this->assertDatabaseCount('assessment_participants', 2);
+        $this->assertDatabaseCount('assessment_cases', 2);
+        // DASS remains participant-scoped; generic instruments are case-scoped.
+        $this->assertDatabaseCount('entitlements', 3);
+        $cases = AssessmentCase::query()->orderBy('id')->get();
+        $this->assertCount(2, $cases);
+        foreach ($cases as $case) {
+            $this->assertDatabaseHas('entitlements', [
+                'participant_id' => $case->participant_id,
+                'assessment_case_id' => $case->id,
+                'test_type' => 'ist',
+            ]);
+        }
+
+        $existing = Entitlement::query()->where('assessment_case_id', $cases->first()->id)
+            ->where('test_type', 'ist')->sole();
+        $this->expectException(QueryException::class);
+        Entitlement::query()->create([
+            'participant_id' => $existing->participant_id,
+            'assessment_case_id' => $existing->assessment_case_id,
+            'order_id' => null,
             'test_type' => 'ist',
+            'status' => 'ready',
+            'ready_at' => now(),
         ]);
     }
 

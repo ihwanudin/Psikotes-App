@@ -18,8 +18,24 @@ final class AssessmentCaseSchemaTest extends OrganizationPaymentTestCase
     {
         parent::setUp();
         $this->assertSame(0, Artisan::call('migrate', ['--force' => true]));
+        $this->rollbackCaseIdentityDescendants();
         $phaseTwo = require database_path('migrations/2026_09_09_000300_backfill_integrated_assessment_cases.php');
         $phaseTwo->down();
+    }
+
+    protected function tearDown(): void
+    {
+        try {
+            // This class manually walks migrations down to inspect historical
+            // states.  Restore the complete final baseline so later
+            // DatabaseTruncation tests never inherit a partial SQLite schema.
+            $this->assertSame(0, Artisan::call('migrate:fresh', [
+                '--force' => true,
+                '--no-interaction' => true,
+            ]));
+        } finally {
+            parent::tearDown();
+        }
     }
 
     public function test_sqlite_schema_exposes_universal_case_and_nullable_phase_one_links(): void
@@ -184,6 +200,23 @@ final class AssessmentCaseSchemaTest extends OrganizationPaymentTestCase
 
         $migration->up();
         $this->assertTrue(Schema::hasTable('assessment_cases'));
+    }
+
+    private function rollbackCaseIdentityDescendants(): void
+    {
+        // Phase-one tests must observe the state that really existed after
+        // 000200.  Rollback is therefore descendant -> ancestor, matching the
+        // reviewed deployment policy; no test treats an ancestor rollback with
+        // active dependants as a supported success path.
+        (require database_path('migrations/2026_09_13_000100_create_generic_instrument_result_ledger.php'))->down();
+        (require database_path('migrations/2026_09_10_000500_contract_generic_entitlement_uniqueness.php'))->down();
+        (require database_path('migrations/2026_09_10_000400_enforce_generic_entitlement_case_identity.php'))->down();
+        (require database_path('migrations/2026_09_10_000300_expand_generic_entitlement_case_identity.php'))->down();
+        (require database_path('migrations/2026_09_10_000100_add_test_session_definition_snapshots.php'))->down();
+        (require database_path('migrations/2026_09_09_000700_create_test_session_grants.php'))->down();
+        (require database_path('migrations/2026_09_09_000600_bind_direct_public_orders_to_assessment_cases.php'))->down();
+        (require database_path('migrations/2026_09_09_000500_bind_legacy_selection_assessment_cases.php'))->down();
+        (require database_path('migrations/2026_09_09_000400_harden_test_session_case_identity.php'))->down();
     }
 
     /** @return array{branch:int,package:int,participant:int,client:int} */

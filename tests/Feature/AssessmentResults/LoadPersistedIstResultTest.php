@@ -14,6 +14,7 @@ use App\Services\AssessmentResults\LoadPersistedIstResult;
 use App\Services\AssessmentResults\PersistSealedIstResult;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Application;
+use Illuminate\Foundation\Testing\RefreshDatabaseState;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use LogicException;
@@ -58,7 +59,13 @@ final class LoadPersistedIstResultTest extends TestCase
         if ($this->isPostgresRun()) {
             return;
         }
-        parent::tearDown();
+        try {
+            parent::tearDown();
+        } finally {
+            // migrate:fresh replaces the in-memory PDO. DatabaseTruncation
+            // must not retain its previous migrated flag for the next class.
+            RefreshDatabaseState::$migrated = false;
+        }
     }
 
     public function test_service_context_and_caller_transaction_are_required(): void

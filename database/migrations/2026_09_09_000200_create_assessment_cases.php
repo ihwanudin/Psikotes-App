@@ -254,11 +254,27 @@ return new class extends Migration
     private function dropPhaseOneSchema(): void
     {
         if (DB::getDriverName() === 'sqlite') {
-            DB::statement('DROP INDEX test_sessions_assessment_case_idx');
-            DB::statement('ALTER TABLE test_sessions DROP COLUMN assessment_case_id');
-            DB::statement('DROP INDEX assessment_participants_case_unique');
-            DB::statement('ALTER TABLE assessment_participants DROP COLUMN assessment_case_id');
-            Schema::drop('assessment_cases');
+            // SQLite cannot DROP COLUMN while its inline FK remains in the
+            // table definition. Rebuild through the schema grammar, preserving
+            // pre-existing cross-table triggers and support indexes.
+            $triggers = $this->sqliteReferencingTriggers();
+            $indexes = $this->sqliteIndexes();
+            $this->dropSqliteObjects($triggers, $indexes);
+            try {
+                DB::statement('DROP INDEX test_sessions_assessment_case_idx');
+                Schema::table('test_sessions', function (Blueprint $table): void {
+                    $table->dropForeign(['assessment_case_id']);
+                    $table->dropColumn('assessment_case_id');
+                });
+                DB::statement('DROP INDEX assessment_participants_case_unique');
+                Schema::table('assessment_participants', function (Blueprint $table): void {
+                    $table->dropForeign(['assessment_case_id']);
+                    $table->dropColumn('assessment_case_id');
+                });
+                Schema::drop('assessment_cases');
+            } finally {
+                $this->restoreSqliteObjects($triggers, $indexes);
+            }
 
             return;
         }
@@ -274,5 +290,51 @@ return new class extends Migration
             $table->dropColumn('assessment_case_id');
         });
         Schema::drop('assessment_cases');
+    }
+
+    /** @return list<object{name:string,sql:string}> */
+    private function sqliteReferencingTriggers(): array
+    {
+        return DB::select(<<<'SQL'
+            SELECT name, sql FROM sqlite_master
+            WHERE type = 'trigger' AND sql IS NOT NULL
+              AND (lower(sql) LIKE '%assessment_participants%'
+                OR lower(sql) LIKE '%test_sessions%')
+            SQL);
+    }
+
+    /** @return list<object{name:string,sql:string}> */
+    private function sqliteIndexes(): array
+    {
+        return DB::select(<<<'SQL'
+            SELECT name, sql FROM sqlite_master
+            WHERE type = 'index' AND sql IS NOT NULL
+              AND (
+                (tbl_name = 'test_sessions' AND name <> 'test_sessions_assessment_case_idx')
+                OR (tbl_name = 'assessment_participants' AND name <> 'assessment_participants_case_unique')
+              )
+            SQL);
+    }
+
+    /** @param list<object{name:string,sql:string}> $triggers @param list<object{name:string,sql:string}> $indexes */
+    private function dropSqliteObjects(array $triggers, array $indexes): void
+    {
+        foreach ($triggers as $trigger) {
+            DB::unprepared('DROP TRIGGER "'.str_replace('"', '""', $trigger->name).'"');
+        }
+        foreach ($indexes as $index) {
+            DB::unprepared('DROP INDEX "'.str_replace('"', '""', $index->name).'"');
+        }
+    }
+
+    /** @param list<object{name:string,sql:string}> $triggers @param list<object{name:string,sql:string}> $indexes */
+    private function restoreSqliteObjects(array $triggers, array $indexes): void
+    {
+        foreach ($indexes as $index) {
+            DB::unprepared($index->sql);
+        }
+        foreach ($triggers as $trigger) {
+            DB::unprepared($trigger->sql);
+        }
     }
 };

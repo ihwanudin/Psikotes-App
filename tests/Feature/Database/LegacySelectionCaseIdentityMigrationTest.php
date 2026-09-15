@@ -21,6 +21,15 @@ final class LegacySelectionCaseIdentityMigrationTest extends OrganizationPayment
         $this->migrate('down');
     }
 
+    protected function tearDown(): void
+    {
+        try {
+            $this->assertSame(0, Artisan::call('migrate:fresh', ['--force' => true, '--no-interaction' => true]));
+        } finally {
+            parent::tearDown();
+        }
+    }
+
     public function test_historical_selection_mapping_gets_an_opaque_case_without_inventing_package_or_field(): void
     {
         $fixture = $this->legacyFixture('history');

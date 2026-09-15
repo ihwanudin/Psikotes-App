@@ -88,31 +88,89 @@ return new class extends Migration
 
     private function changeSqlite(bool $nullable): void
     {
+        // Later SQLite-only contracts (for example the direct-order case guard)
+        // read participants while Laravel temporarily renames this table during
+        // a column change. Preserve those cross-table objects around both
+        // rebuilds; PostgreSQL never enters this path.
+        $triggers = $this->sqliteReferencingTriggers();
+        $indexes = $this->sqliteProfileIndexes();
+        $this->dropSqliteObjects($triggers, $indexes);
+
         if (! $nullable) {
             DB::statement('DROP TRIGGER assessment_participants_checkout_funding_insert');
             DB::statement('DROP TRIGGER assessment_participants_checkout_funding_update');
         }
-        Schema::table('participants', function (Blueprint $table) use ($nullable): void {
-            $table->string('full_name', 200)->nullable($nullable)->change();
-            $table->string('gender', 16)->nullable($nullable)->change();
-            $table->date('birth_date')->nullable($nullable)->change();
-            $table->string('education_level', 64)->nullable($nullable)->change();
-            $table->string('intended_field', 24)->nullable($nullable)->change();
-            $table->string('phone', 32)->nullable($nullable)->change();
-        });
-        Schema::table('assessment_participants', function (Blueprint $table) use ($nullable): void {
-            $table->string('funding_mode', 40)->nullable($nullable)->change();
-        });
-        if ($nullable) {
-            // SQLite cannot ADD CHECK; enforce the same predicate for INSERT and every UPDATE.
-            foreach (['insert' => 'INSERT', 'update' => 'UPDATE'] as $name => $event) {
-                DB::statement("CREATE TRIGGER assessment_participants_checkout_funding_{$name}
-                    BEFORE {$event} ON assessment_participants WHEN NEW.funding_mode IS NULL AND
-                    CASE WHEN json_valid(NEW.metadata) THEN COALESCE(
-                        json_extract(NEW.metadata, '$.checkout_contract_version') = 'checkout-v2'
-                        AND NEW.assessment_status IN ('PROVISIONED', 'REVOKED', 'VOID'), 0) ELSE 0 END = 0
-                    BEGIN SELECT RAISE(ABORT, 'assessment_participants_checkout_funding_check'); END");
+        try {
+            Schema::table('participants', function (Blueprint $table) use ($nullable): void {
+                $table->string('full_name', 200)->nullable($nullable)->change();
+                $table->string('gender', 16)->nullable($nullable)->change();
+                $table->date('birth_date')->nullable($nullable)->change();
+                $table->string('education_level', 64)->nullable($nullable)->change();
+                $table->string('intended_field', 24)->nullable($nullable)->change();
+                $table->string('phone', 32)->nullable($nullable)->change();
+            });
+            Schema::table('assessment_participants', function (Blueprint $table) use ($nullable): void {
+                $table->string('funding_mode', 40)->nullable($nullable)->change();
+            });
+            if ($nullable) {
+                // SQLite cannot ADD CHECK; enforce the same predicate for INSERT and every UPDATE.
+                foreach (['insert' => 'INSERT', 'update' => 'UPDATE'] as $name => $event) {
+                    DB::statement("CREATE TRIGGER assessment_participants_checkout_funding_{$name}
+                        BEFORE {$event} ON assessment_participants WHEN NEW.funding_mode IS NULL AND
+                        CASE WHEN json_valid(NEW.metadata) THEN COALESCE(
+                            json_extract(NEW.metadata, '$.checkout_contract_version') = 'checkout-v2'
+                            AND NEW.assessment_status IN ('PROVISIONED', 'REVOKED', 'VOID'), 0) ELSE 0 END = 0
+                        BEGIN SELECT RAISE(ABORT, 'assessment_participants_checkout_funding_check'); END");
+                }
             }
+        } finally {
+            $this->restoreSqliteObjects($triggers, $indexes);
+        }
+    }
+
+    /** @return list<object{name:string,sql:string}> */
+    private function sqliteReferencingTriggers(): array
+    {
+        return DB::select(<<<'SQL'
+            SELECT name, sql FROM sqlite_master
+            WHERE type = 'trigger' AND sql IS NOT NULL
+              AND lower(sql) LIKE '%participants%'
+              AND name NOT IN (
+                'assessment_participants_checkout_funding_insert',
+                'assessment_participants_checkout_funding_update'
+              )
+            SQL);
+    }
+
+    /** @return list<object{name:string,sql:string}> */
+    private function sqliteProfileIndexes(): array
+    {
+        return DB::select(<<<'SQL'
+            SELECT name, sql FROM sqlite_master
+            WHERE type = 'index' AND sql IS NOT NULL
+              AND tbl_name IN ('participants', 'assessment_participants')
+            SQL);
+    }
+
+    /** @param list<object{name:string,sql:string}> $triggers @param list<object{name:string,sql:string}> $indexes */
+    private function dropSqliteObjects(array $triggers, array $indexes): void
+    {
+        foreach ($triggers as $trigger) {
+            DB::unprepared('DROP TRIGGER "'.str_replace('"', '""', $trigger->name).'"');
+        }
+        foreach ($indexes as $index) {
+            DB::unprepared('DROP INDEX "'.str_replace('"', '""', $index->name).'"');
+        }
+    }
+
+    /** @param list<object{name:string,sql:string}> $triggers @param list<object{name:string,sql:string}> $indexes */
+    private function restoreSqliteObjects(array $triggers, array $indexes): void
+    {
+        foreach ($indexes as $index) {
+            DB::unprepared($index->sql);
+        }
+        foreach ($triggers as $trigger) {
+            DB::unprepared($trigger->sql);
         }
     }
 };

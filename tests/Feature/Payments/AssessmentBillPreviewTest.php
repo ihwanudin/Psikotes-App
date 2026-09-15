@@ -29,13 +29,25 @@ final class AssessmentBillPreviewTest extends OrganizationPaymentTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->fixture = Fixture::create();
+        $this->fixture = $this->fixture();
     }
 
     private function preview(?array $selection = null, PayerType $payer = PayerType::Organization, ?int $participant = null): array
     {
         return app(RlsContextRunner::class)->runAsService(fn () => app(PreviewAssessmentBill::class)->execute(
             $this->fixture['organization'], $selection ?? [Fixture::selection($this->fixture)], $payer, $participant));
+    }
+
+    private function fixture(?array $identity = null, int $amount = 100): array
+    {
+        $fixture = Fixture::create($identity, $amount);
+        DB::table('package_items')->insert([
+            'package_id' => $fixture['package'],
+            'test_type' => 'dass21',
+            'sort_order' => 2,
+        ]);
+
+        return $fixture;
     }
 
     public function test_preview_reads_dynamic_prices_and_is_read_only(): void
@@ -54,7 +66,7 @@ final class AssessmentBillPreviewTest extends OrganizationPaymentTestCase
 
     public function test_free_items_are_separate_and_hash_is_order_independent(): void
     {
-        $free = Fixture::create(['organization' => $this->fixture['organization']], 0);
+        $free = $this->fixture(['organization' => $this->fixture['organization']], 0);
         $list = [Fixture::selection($free), Fixture::selection($this->fixture)];
         $result = $this->preview($list);
         $this->assertSame(100, $result['totalAmount']);
@@ -68,7 +80,7 @@ final class AssessmentBillPreviewTest extends OrganizationPaymentTestCase
 
     public function test_foreign_and_missing_attempts_are_indistinguishable_and_no_partial_total(): void
     {
-        $foreign = Fixture::create();
+        $foreign = $this->fixture();
         $foreignResult = $this->preview([Fixture::selection($foreign)]);
         $missing = $this->preview([['assessmentParticipantId' => 999999, 'consultationRequested' => false]]);
         $this->assertSame($missing['items'][0]['reason'], $foreignResult['items'][0]['reason']);
@@ -100,7 +112,7 @@ final class AssessmentBillPreviewTest extends OrganizationPaymentTestCase
     public function test_configured_limit_and_limit_plus_one(): void
     {
         config()->set('assessment_billing.max_items', 2);
-        $other = Fixture::create(['organization' => $this->fixture['organization']]);
+        $other = $this->fixture(['organization' => $this->fixture['organization']]);
         $selection = [Fixture::selection($this->fixture), Fixture::selection($other)];
         $this->assertSame(200, $this->preview($selection)['totalAmount']);
         $this->expectException(InvalidArgumentException::class);
@@ -111,7 +123,7 @@ final class AssessmentBillPreviewTest extends OrganizationPaymentTestCase
     {
         $selection = [Fixture::selection($this->fixture)];
         for ($index = 1; $index < 10; $index++) {
-            $selection[] = Fixture::selection(Fixture::create(['organization' => $this->fixture['organization']]));
+            $selection[] = Fixture::selection($this->fixture(['organization' => $this->fixture['organization']]));
         }
         $this->assertSame(1000, $this->preview($selection)['totalAmount']);
         $this->assertDatabaseCount('assessment_bills', 0);
@@ -145,7 +157,7 @@ final class AssessmentBillPreviewTest extends OrganizationPaymentTestCase
     public function test_total_overflow_rejects_whole_preview(): void
     {
         DB::table('packages')->where('id', $this->fixture['package'])->update(['amount' => PHP_INT_MAX]);
-        $other = Fixture::create(['organization' => $this->fixture['organization']], 1);
+        $other = $this->fixture(['organization' => $this->fixture['organization']], 1);
         $this->expectException(DomainException::class);
         $this->expectExceptionMessage('TOTAL_OVERFLOW');
         $this->preview([Fixture::selection($this->fixture), Fixture::selection($other)]);

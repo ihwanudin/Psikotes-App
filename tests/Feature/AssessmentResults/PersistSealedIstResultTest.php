@@ -12,6 +12,7 @@ use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
 use App\Services\AssessmentResults\PersistSealedIstResult;
 use Illuminate\Foundation\Application;
+use Illuminate\Foundation\Testing\RefreshDatabaseState;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use LogicException;
@@ -70,7 +71,13 @@ final class PersistSealedIstResultTest extends TestCase
             return;
         }
 
-        parent::tearDown();
+        try {
+            parent::tearDown();
+        } finally {
+            // Keep DatabaseTruncation from reusing a migrated flag whose PDO
+            // was discarded by this class's migrate:fresh setup.
+            RefreshDatabaseState::$migrated = false;
+        }
     }
 
     public function test_it_appends_one_result_and_all_ordered_sources_without_owning_the_transaction(): void

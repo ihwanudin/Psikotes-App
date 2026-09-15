@@ -23,6 +23,15 @@ final class TestSessionCaseIdentityMigrationTest extends OrganizationPaymentTest
         $this->migrate('down');
     }
 
+    protected function tearDown(): void
+    {
+        try {
+            $this->assertSame(0, Artisan::call('migrate:fresh', ['--force' => true, '--no-interaction' => true]));
+        } finally {
+            parent::tearDown();
+        }
+    }
+
     public function test_it_backfills_only_unique_candidates_and_keeps_zero_candidate_nullable(): void
     {
         $unique = $this->graph('unique');
@@ -356,6 +365,15 @@ final class TestSessionCaseIdentityMigrationTest extends OrganizationPaymentTest
 
     private function migrate(string $direction): void
     {
+        if ($direction === 'down') {
+            $entitlementsSql = DB::scalar("SELECT sql FROM sqlite_master WHERE type='table' AND name='entitlements'");
+            if (is_string($entitlementsSql) && str_contains($entitlementsSql, 'entitlements_case_requirement_check')) {
+                (require database_path('migrations/2026_09_10_000400_enforce_generic_entitlement_case_identity.php'))->down();
+            }
+            if (Schema::hasColumn('entitlements', 'assessment_case_id')) {
+                (require database_path('migrations/2026_09_10_000300_expand_generic_entitlement_case_identity.php'))->down();
+            }
+        }
         if ($direction === 'down' && Schema::hasTable('test_session_grants')) {
             (require database_path('migrations/2026_09_09_000700_create_test_session_grants.php'))->down();
         }

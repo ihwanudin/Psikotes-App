@@ -65,6 +65,9 @@ final class AssessmentInvoiceReconciliationLeaseValidationTest extends Organizat
         config()->set('assessment_billing.invoice_reconciliation_cooldown_seconds', 300);
         config()->set('assessment_billing.invoice_reconciliation_max_lookups', 12);
         $this->fixture = $this->createFixture();
+        DB::table('package_items')->insert([
+            'package_id' => $this->fixture['package'], 'test_type' => 'dass21', 'sort_order' => 2,
+        ]);
         DB::table('assessment_participants')->where('id', $this->fixture['attempt'])->update([
             'funding_mode' => 'INVOICED_TO_ORGANIZATION',
             'metadata' => '{"checkout_contract_version":"checkout-v2","checkout_initial_funding_mode":null}',

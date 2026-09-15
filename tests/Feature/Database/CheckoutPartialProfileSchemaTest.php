@@ -12,6 +12,7 @@ use App\Services\ParticipantAuth\AssessmentPrincipal;
 use App\Services\ParticipantAuth\Exceptions\EntitlementLocked;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
@@ -31,6 +32,20 @@ final class CheckoutPartialProfileSchemaTest extends OrganizationPaymentTestCase
         // Fresh memory connection per application, without a surrounding test transaction:
         // SQLite rebuilds need FK PRAGMAs outside transactions, as Laravel's migrator does.
         $this->artisan('migrate', ['--force' => true])->assertExitCode(0);
+    }
+
+    protected function tearDown(): void
+    {
+        try {
+            // This class invokes a migration directly to inspect both schema
+            // directions. Restore the final baseline for following tests.
+            $this->assertSame(0, Artisan::call('migrate:fresh', [
+                '--force' => true,
+                '--no-interaction' => true,
+            ]));
+        } finally {
+            parent::tearDown();
+        }
     }
 
     private function migration(): Migration
@@ -137,6 +152,12 @@ final class CheckoutPartialProfileSchemaTest extends OrganizationPaymentTestCase
         $row = (array) DB::table('assessment_participants')->find($f['attempt']);
         unset($row['id']);
         $row['assessment_attempt_id'] = (string) Str::ulid();
+        $row['assessment_case_id'] = DB::table('assessment_cases')->insertGetId([
+            'public_id' => $row['assessment_attempt_id'], 'participant_id' => $row['participant_id'],
+            'organization_id' => $row['organization_id'], 'package_id' => $row['package_id'],
+            'origin' => 'INTEGRATED', 'intended_field_snapshot' => null,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
         $row['idempotency_key'] = 'invalid-new';
         $row['logical_assessment_key'] = hash('sha256', 'invalid-new');
         try {

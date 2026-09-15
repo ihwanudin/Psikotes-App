@@ -13,6 +13,7 @@ use App\Models\IntegrationClient;
 use App\Models\Participant;
 use App\Models\TestPackage;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -68,12 +69,20 @@ final class OrganizationPortalIsolationTest extends TestCase
             'education_level' => 'SMA', 'intended_field' => 'UMUM',
             'phone' => '62811111111'.$suffix, 'test_number' => 'TEST-'.$suffix,
         ]);
+        $attemptPublicId = (string) Str::ulid();
+        $case = DB::table('assessment_cases')->insertGetId([
+            'public_id' => $attemptPublicId, 'participant_id' => $participant->id,
+            'organization_id' => $organization->id, 'package_id' => $package->id,
+            'origin' => 'INTEGRATED', 'intended_field_snapshot' => null,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
         $mapping = AssessmentParticipant::query()->create([
             'integration_client_id' => $client->id,
             'organization_id' => $organization->id,
             'participant_id' => $participant->id,
             'package_id' => $package->id,
-            'assessment_attempt_id' => (string) Str::ulid(),
+            'assessment_case_id' => $case,
+            'assessment_attempt_id' => $attemptPublicId,
             'source_system' => 'PORTAL_ONLY',
             'external_candidate_id' => 'CAND-'.$suffix,
             'funding_mode' => 'SPONSORED',

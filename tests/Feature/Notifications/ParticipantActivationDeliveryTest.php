@@ -257,6 +257,7 @@ final class ParticipantActivationDeliveryTest extends TestCase
         $entitlements = collect(['ist', 'papi'])->map(fn (string $testType): Entitlement => Entitlement::query()->create([
             'participant_id' => $participant->id,
             'order_id' => $order->id,
+            'assessment_case_id' => $case->id,
             'test_type' => $testType,
             'status' => 'ready',
             'ready_at' => now(),

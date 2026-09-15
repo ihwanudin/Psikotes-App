@@ -18,6 +18,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
 use Tests\TestCase;
+use Tests\Support\DirectPublicPaymentFixture;
 
 final class ManualTransferFilamentTest extends TestCase
 {
@@ -122,9 +123,12 @@ final class ManualTransferFilamentTest extends TestCase
             ])->save();
         }
 
+        $publicId = (string) Str::ulid();
+        $case = DirectPublicPaymentFixture::caseFor($participant, $branch, $publicId, 250_000);
         $order = Order::query()->create([
-            'public_id' => (string) Str::ulid(),
+            'public_id' => $publicId,
             'participant_id' => $participant->id,
+            'assessment_case_id' => $case->id,
             'payment_method_id' => $method->id,
             'status' => 'pending',
             'amount' => 250_000,
@@ -140,6 +144,7 @@ final class ManualTransferFilamentTest extends TestCase
         $entitlement = Entitlement::query()->create([
             'participant_id' => $participant->id,
             'order_id' => $order->id,
+            'assessment_case_id' => $case->id,
             'test_type' => 'ist',
             'status' => 'locked',
         ]);

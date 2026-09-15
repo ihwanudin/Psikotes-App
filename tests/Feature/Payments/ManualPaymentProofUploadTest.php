@@ -13,6 +13,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
+use Tests\Support\DirectPublicPaymentFixture;
 use Tests\TestCase;
 
 final class ManualPaymentProofUploadTest extends TestCase
@@ -217,6 +218,8 @@ final class ManualPaymentProofUploadTest extends TestCase
             'intended_field' => 'KAIGO',
             'phone' => '+6281234567890',
         ]);
+        $orderPublicId = (string) Str::ulid();
+        $case = DirectPublicPaymentFixture::caseFor($participant, $branch, $orderPublicId, 250_000);
         $method = new PaymentMethod;
         $method->forceFill([
             'code' => $methodCode,
@@ -224,8 +227,9 @@ final class ManualPaymentProofUploadTest extends TestCase
             'is_active' => true,
         ])->save();
         $order = Order::query()->create([
-            'public_id' => (string) Str::ulid(),
+            'public_id' => $orderPublicId,
             'participant_id' => $participant->id,
+            'assessment_case_id' => $case->id,
             'payment_method_id' => $method->id,
             'status' => $status,
             'amount' => 250_000,

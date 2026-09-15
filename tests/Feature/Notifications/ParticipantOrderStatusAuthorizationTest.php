@@ -129,6 +129,9 @@ final class ParticipantOrderStatusAuthorizationTest extends TestCase
             'branch_id' => $this->branch->id,
             'referral_branch_id' => $this->branch->id,
             'referral_source' => 'default',
+            // These authorization fixtures cover the retained non-direct order status endpoint.
+            // A direct-public participant would correctly require an exact assessment case.
+            'source_system' => 'STATUS_AUTH_TEST',
             'full_name' => $name,
             'gender' => 'female',
             'birth_date' => '2001-04-15',

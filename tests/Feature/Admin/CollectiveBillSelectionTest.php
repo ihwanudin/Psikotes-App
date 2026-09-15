@@ -38,6 +38,9 @@ final class CollectiveBillSelectionTest extends OrganizationPaymentTestCase
         parent::setUp();
         Filament::setCurrentPanel(Filament::getPanel('admin'));
         $this->own = Fixture::create();
+        DB::table('package_items')->insert([
+            'package_id' => $this->own['package'], 'test_type' => 'dass21', 'sort_order' => 2,
+        ]);
         $this->admin = Admin::create(['branch_id' => $this->own['organization'], 'name' => 'Admin cabang sintetis',
             'email' => 'collective-core@example.test', 'password' => 'synthetic-only', 'role' => AdminRole::BranchAdmin]);
         $this->actingAs($this->admin, 'admin');
@@ -49,6 +52,9 @@ final class CollectiveBillSelectionTest extends OrganizationPaymentTestCase
     public function test_preview_then_confirmation_delegates_to_one_canonical_bill_and_replays(): void
     {
         $other = Fixture::create(['organization' => $this->own['organization']]);
+        DB::table('package_items')->insert([
+            'package_id' => $other['package'], 'test_type' => 'dass21', 'sort_order' => 2,
+        ]);
         $selection = [Fixture::selection($this->own, true), Fixture::selection($other)];
         $action = app(CreateCollectiveBillAction::class);
         $preview = $action->preview($selection);

@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use LogicException;
 use Tests\TestCase;
+use Tests\Support\DirectPublicPaymentFixture;
 
 final class PaymentEventApplierTest extends TestCase
 {
@@ -208,9 +209,12 @@ final class PaymentEventApplierTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+        $orderPublicId = (string) Str::ulid();
+        $case = DirectPublicPaymentFixture::caseFor($participant, $branch, $orderPublicId, 350_000);
         $order = Order::query()->create([
-            'public_id' => (string) Str::ulid(),
+            'public_id' => $orderPublicId,
             'participant_id' => $participant->id,
+            'assessment_case_id' => $case->id,
             'payment_method_id' => $paymentMethodId,
             'status' => 'pending',
             'amount' => 350_000,
@@ -221,6 +225,7 @@ final class PaymentEventApplierTest extends TestCase
         $entitlement = Entitlement::query()->create([
             'participant_id' => $participant->id,
             'order_id' => $order->id,
+            'assessment_case_id' => $case->id,
             'test_type' => 'ist',
             'status' => 'locked',
         ]);

@@ -15,6 +15,10 @@ use Tests\OrganizationPaymentTestCase;
 
 final class AssessmentSessionDefinitionCatalogSchemaTest extends OrganizationPaymentTestCase
 {
+    protected function tearDown(): void
+    {
+        try { parent::tearDown(); } finally { \Illuminate\Foundation\Testing\RefreshDatabaseState::$migrated = false; }
+    }
     use RefreshDatabase;
 
     public function test_catalog_starts_empty_with_exact_columns_and_indexes(): void

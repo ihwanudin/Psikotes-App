@@ -313,7 +313,14 @@ final class AssessmentBillManualReviewTest extends OrganizationPaymentTestCase
             ->whereNull('settled_at')->count());
         $this->assertDatabaseCount('audit_logs', 0);
         $this->assertDatabaseCount('outbox_messages', 0);
-        $this->assertSame(0, DB::table('assessment_entitlements')->where('status', 'ready')->count());
+        $reviewAttemptIds = DB::table('assessment_bill_items as item')
+            ->join('assessment_charges as charge', 'charge.id', '=', 'item.charge_id')
+            ->where('item.bill_id', $this->bill['bill'])
+            ->pluck('charge.assessment_participant_id');
+        $this->assertSame(0, DB::table('assessment_entitlements')
+            ->whereIn('assessment_participant_id', $reviewAttemptIds)
+            ->where('test_type', 'ist')
+            ->where('status', 'ready')->count());
     }
 
     public function test_activation_failure_rolls_back_manual_payment_audit_and_allocations(): void

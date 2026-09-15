@@ -276,6 +276,9 @@ final class AssessmentBillWebhookDispatchTest extends OrganizationPaymentTestCas
         $branch = Branch::query()->create(['code' => $key, 'name' => 'Synthetic', 'ref_code' => $key]);
         $participant = Participant::query()->create([
             'branch_id' => $branch->id, 'referral_branch_id' => $branch->id, 'referral_source' => 'default',
+            // This fixture exercises the retained non-direct payment route; it must not inherit the
+            // DIRECT_PUBLIC default, which correctly requires an exact direct-public case on orders.
+            'source_system' => 'LEGACY_BILL',
             'full_name' => 'Synthetic', 'gender' => 'male', 'birth_date' => '2000-01-01',
             'education_level' => 'SMA/SMK', 'intended_field' => 'UMUM', 'phone' => '+620000000000',
         ]);
@@ -290,7 +293,8 @@ final class AssessmentBillWebhookDispatchTest extends OrganizationPaymentTestCas
         ]);
         $entitlement = Entitlement::query()->create([
             'participant_id' => $participant->id, 'order_id' => $order->id,
-            'test_type' => 'ist', 'status' => 'locked',
+            // A non-direct order has no assessment case. DASS remains deliberately case-free.
+            'test_type' => 'dass21', 'status' => 'locked',
         ]);
 
         return [$order, $entitlement];

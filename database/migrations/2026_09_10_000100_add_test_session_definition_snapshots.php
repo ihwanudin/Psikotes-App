@@ -109,10 +109,19 @@ return new class extends Migration
                 throw new RuntimeException('Test session definition snapshot history prevents rollback.');
             }
 
-            $this->removeEnforcement($driver);
-            Schema::table('test_sessions', function (Blueprint $table): void {
-                $table->dropColumn(self::COLUMNS);
+            $indexes = $this->sqliteSessionIndexes();
+            $this->withoutSqliteSessionIndexes($driver, $indexes, function () use ($driver): void {
+                $this->withoutSqliteReferencingTriggers($driver, [
+                    'test_sessions_definition_snapshot_insert_guard',
+                    'test_sessions_definition_snapshot_update_guard',
+                ], function () use ($driver): void {
+                    $this->removeEnforcement($driver);
+                    Schema::table('test_sessions', function (Blueprint $table): void {
+                        $table->dropColumn(self::COLUMNS);
+                    });
+                });
             });
+            $this->restoreSqliteSessionIndexes($driver, $indexes);
         });
     }
 
@@ -685,6 +694,82 @@ return new class extends Migration
 
         DB::unprepared('DROP TRIGGER IF EXISTS test_sessions_definition_snapshot_update_guard');
         DB::unprepared('DROP TRIGGER IF EXISTS test_sessions_definition_snapshot_insert_guard');
+    }
+
+    /** @return list<array{name:string,sql:string}> */
+    private function sqliteSessionIndexes(): array
+    {
+        if (DB::getDriverName() !== 'sqlite') {
+            return [];
+        }
+
+        return array_values(collect(DB::select(<<<'SQL'
+            SELECT name, sql FROM sqlite_master
+            WHERE type = 'index' AND tbl_name = 'test_sessions' AND sql IS NOT NULL
+            ORDER BY name
+        SQL))->map(fn (object $index): array => (array) $index)
+            ->map(fn (array $index): array => ['name' => (string) $index['name'], 'sql' => (string) $index['sql']])
+            ->all());
+    }
+
+    /** @param list<array{name:string,sql:string}> $indexes */
+    private function withoutSqliteSessionIndexes(string $driver, array $indexes, callable $operation): void
+    {
+        if ($driver !== 'sqlite') {
+            $operation();
+
+            return;
+        }
+        foreach ($indexes as $index) {
+            DB::statement('DROP INDEX "'.str_replace('"', '""', $index['name']).'"');
+        }
+        $operation();
+    }
+
+    /** @param list<array{name:string,sql:string}> $indexes */
+    private function restoreSqliteSessionIndexes(string $driver, array $indexes): void
+    {
+        if ($driver !== 'sqlite') {
+            return;
+        }
+        $existing = collect(DB::select("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='test_sessions'"))
+            ->pluck('name')->all();
+        foreach ($indexes as $index) {
+            if (! in_array($index['name'], $existing, true)
+                && DB::connection()->getPdo()->exec($index['sql']) === false) {
+                throw new RuntimeException('Failed to restore a test session index.');
+            }
+        }
+    }
+
+    /** @param list<string> $excluded */
+    private function withoutSqliteReferencingTriggers(string $driver, array $excluded, callable $operation): void
+    {
+        if ($driver !== 'sqlite') {
+            $operation();
+
+            return;
+        }
+        $triggers = collect(DB::select(<<<'SQL'
+            SELECT name, sql FROM sqlite_master
+            WHERE type = 'trigger' AND sql IS NOT NULL
+              AND lower(sql) LIKE '%test_sessions%'
+            ORDER BY name
+        SQL))->map(fn (object $trigger): array => (array) $trigger)
+            ->reject(fn (array $trigger): bool => in_array((string) $trigger['name'], $excluded, true))
+            ->all();
+        foreach ($triggers as $trigger) {
+            DB::statement('DROP TRIGGER "'.str_replace('"', '""', $trigger['name']).'"');
+        }
+        try {
+            $operation();
+        } finally {
+            foreach ($triggers as $trigger) {
+                if (DB::connection()->getPdo()->exec($trigger['sql']) === false) {
+                    throw new RuntimeException('Failed to restore a test-session-referencing SQLite trigger.');
+                }
+            }
+        }
     }
 
     private function normalize(string $sql): string

@@ -285,6 +285,7 @@ final class ManualTransferVerificationTest extends TestCase
         ]);
         $entitlement = Entitlement::query()->create([
             'participant_id' => $participant->id,
+            'assessment_case_id' => $case->id,
             'order_id' => $order->id,
             'test_type' => 'ist',
             'status' => 'locked',

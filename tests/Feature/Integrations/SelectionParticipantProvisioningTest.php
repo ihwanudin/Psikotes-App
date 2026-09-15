@@ -211,21 +211,22 @@ final class SelectionParticipantProvisioningTest extends TestCase
         $this->assertDatabaseCount('assessment_cases', 1);
     }
 
-    public function test_replay_fails_closed_when_a_generic_entitlement_loses_its_case_binding(): void
+    public function test_generic_entitlement_case_binding_cannot_be_removed(): void
     {
         $payload = $this->payload();
         $key = 'psychotest-participant:v1:corrupt-entitlement-case';
         $this->signedRequest($payload, $key)->assertCreated();
-        DB::unprepared('DROP TRIGGER entitlements_case_update_guard');
-        DB::table('entitlements')->where('test_type', 'ist')->update(['assessment_case_id' => null]);
-
-        $this->signedRequest($payload, $key)
-            ->assertConflict()
-            ->assertJsonPath('error.code', 'IDEMPOTENCY_CONFLICT');
+        try {
+            DB::table('entitlements')->where('test_type', 'ist')->update(['assessment_case_id' => null]);
+            $this->fail('Generic entitlement case binding was removed.');
+        } catch (QueryException $exception) {
+            $this->assertStringContainsString('generic entitlement requires an exact case source graph', $exception->getMessage());
+        }
 
         $this->assertDatabaseCount('participants', 1);
         $this->assertDatabaseCount('assessment_cases', 1);
         $this->assertDatabaseCount('entitlements', 2);
+        $this->assertNotNull(DB::table('entitlements')->where('test_type', 'ist')->sole()->assessment_case_id);
     }
 
     public function test_idempotency_key_and_candidate_from_different_rows_fail_closed(): void

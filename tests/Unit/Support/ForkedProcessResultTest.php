@@ -12,10 +12,18 @@ use Throwable;
 
 final class ForkedProcessResultTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        if (! function_exists('pcntl_fork') || ! function_exists('pcntl_waitpid')) {
+            $this->markTestSkipped('PCNTL is unavailable on this PHP platform.');
+        }
+    }
+
     public function test_closed_result_channel_cannot_return_control_to_inherited_test_runner(): void
     {
-        $pair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
-        $this->assertNotFalse($pair);
+        $pair = $this->openUnixSocketPairOrSkip();
         $pid = pcntl_fork();
         $this->assertNotSame(-1, $pid);
 
@@ -42,8 +50,7 @@ final class ForkedProcessResultTest extends TestCase
 
     public function test_closed_intermediate_channel_terminates_before_follow_up_barrier(): void
     {
-        $pair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
-        $this->assertNotFalse($pair);
+        $pair = $this->openUnixSocketPairOrSkip();
         $pid = pcntl_fork();
         $this->assertNotSame(-1, $pid);
 
@@ -166,6 +173,18 @@ final class ForkedProcessResultTest extends TestCase
 
         $this->assertTrue(pcntl_wifexited($status));
         $this->assertSame($expectedExitCode, pcntl_wexitstatus($status));
+    }
+
+    /** @return array{0: resource, 1: resource} */
+    private function openUnixSocketPairOrSkip(): array
+    {
+        $pair = @stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
+
+        if ($pair === false) {
+            $this->markTestSkipped('Unix socket pairs are unavailable on this PHP platform.');
+        }
+
+        return $pair;
     }
 
     /** @return resource */

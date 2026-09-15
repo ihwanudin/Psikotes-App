@@ -17,6 +17,10 @@ use Tests\Support\AssessmentAccessFixture;
 
 final class TestSessionGrantSchemaTest extends OrganizationPaymentTestCase
 {
+    protected function tearDown(): void
+    {
+        try { parent::tearDown(); } finally { \Illuminate\Foundation\Testing\RefreshDatabaseState::$migrated = false; }
+    }
     use RefreshDatabase;
 
     public function test_migration_is_additive_and_never_guesses_historical_grants(): void
@@ -120,9 +124,10 @@ final class TestSessionGrantSchemaTest extends OrganizationPaymentTestCase
         $orderless = $this->directGraph('orderless');
         DB::table('package_items')->insert(['package_id' => $orderless['package'], 'test_type' => 'papi',
             'sort_order' => 3, 'created_at' => now(), 'updated_at' => now()]);
-        DB::table('entitlements')->insert(['participant_id' => $orderless['participant'], 'order_id' => null,
-            'test_type' => 'papi', 'status' => 'ready', 'ready_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
-        $this->assertRejected(fn () => $this->insertGrant($this->directGrant($orderless)), 'exact durable source graph');
+        $this->assertRejected(fn () => DB::table('entitlements')->insert([
+            'participant_id' => $orderless['participant'], 'assessment_case_id' => $orderless['case'], 'order_id' => null,
+            'test_type' => 'papi', 'status' => 'ready', 'ready_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]), 'exact case source graph');
 
         $drift = $this->directGraph('composition-drift');
         DB::table('package_items')->insert(['package_id' => $drift['package'], 'test_type' => 'papi',
@@ -294,7 +299,8 @@ final class TestSessionGrantSchemaTest extends OrganizationPaymentTestCase
         ]);
         foreach (['dass21', 'ist'] as $type) {
             $id = DB::table('entitlements')->insertGetId([
-                'participant_id' => $participant, 'order_id' => $order, 'test_type' => $type,
+                'participant_id' => $participant, 'assessment_case_id' => $type === 'dass21' ? null : $case,
+                'order_id' => $order, 'test_type' => $type,
                 'status' => 'ready', 'ready_at' => now(), 'created_at' => now(), 'updated_at' => now(),
             ]);
             if ($type === 'ist') {
@@ -365,7 +371,7 @@ final class TestSessionGrantSchemaTest extends OrganizationPaymentTestCase
             'assessment_case_id' => $case, 'idempotency_key' => 'key-'.$key,
             'request_hash' => hash('sha256', $key), 'created_at' => now(), 'updated_at' => now()]);
         $entitlement = DB::table('entitlements')->insertGetId(['participant_id' => $participant,
-            'order_id' => null, 'test_type' => 'ist', 'status' => 'ready', 'ready_at' => now(),
+            'assessment_case_id' => $case, 'order_id' => null, 'test_type' => 'ist', 'status' => 'ready', 'ready_at' => now(),
             'created_at' => now(), 'updated_at' => now()]);
         $session = $this->createBoundSession($participant, $case);
 

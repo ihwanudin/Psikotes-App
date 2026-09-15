@@ -297,6 +297,9 @@ final class AssessmentInvoiceReconciliationCoordinatorTest extends OrganizationP
     private function prepareInvoice(string $key): array
     {
         $fixture = Fixture::create();
+        DB::table('package_items')->insert([
+            'package_id' => $fixture['package'], 'test_type' => 'dass21', 'sort_order' => 2,
+        ]);
         DB::table('assessment_participants')->where('id', $fixture['attempt'])->update([
             'funding_mode' => 'INVOICED_TO_ORGANIZATION',
             'metadata' => '{"checkout_contract_version":"checkout-v2","checkout_initial_funding_mode":null}',

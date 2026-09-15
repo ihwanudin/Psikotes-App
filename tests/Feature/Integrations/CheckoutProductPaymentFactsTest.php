@@ -44,7 +44,7 @@ final class CheckoutProductPaymentFactsTest extends OrganizationPaymentTestCase
     {
         $snapshot = AssessmentCharge::findOrFail($this->fixture['charge'])->price_snapshot;
         DB::table('packages')->update(['name' => 'CHANGED_PRIVATE_CATALOG', 'amount' => 999]);
-        DB::table('package_items')->update(['test_type' => 'papi']);
+        DB::table('package_items')->where('test_type', 'ist')->update(['test_type' => 'papi']);
         DB::table('assessment_bills')->update(['invoice_url' => 'https://synthetic.invalid/PRIVATE', 'gateway_ref' => 'PRIVATE']);
         app(RlsContextRunner::class)->runAsService(function () use ($snapshot): void {
             $attempt = AssessmentParticipant::findOrFail($this->fixture['attempt']);
@@ -53,7 +53,7 @@ final class CheckoutProductPaymentFactsTest extends OrganizationPaymentTestCase
             DB::enableQueryLog();
             try {
                 $facts = app(CheckoutPaymentFactsReader::class)->projectAt($attempt, $this->asOf);
-                $this->assertSame(['product' => ['packageLabel' => $snapshot['packageName'], 'source' => 'charge_snapshot', 'testTypes' => ['ist']],
+                $this->assertSame(['product' => ['packageLabel' => $snapshot['packageName'], 'source' => 'charge_snapshot', 'testTypes' => ['dass21', 'ist']],
                     'payment' => ['payer' => 'organization', 'state' => 'paid', 'amountIdr' => 100,
                         'amountSource' => 'charge_snapshot', 'consultationRequested' => false, 'actionAvailable' => false]], $facts->toArray());
                 $this->assertSame($facts->toArray(), json_decode(json_encode($facts, JSON_THROW_ON_ERROR), true));
@@ -77,7 +77,6 @@ final class CheckoutProductPaymentFactsTest extends OrganizationPaymentTestCase
     {
         $this->removeCharge();
         DB::table('packages')->update(['name' => 'Own catalogue', 'amount' => null, 'consultation_amount' => null]);
-        DB::table('package_items')->insert(['package_id' => $this->fixture['package'], 'test_type' => 'dass21', 'sort_order' => 9]);
         app(RlsContextRunner::class)->runAsService(function (): void {
             $attempt = AssessmentParticipant::with('package.items')->findOrFail($this->fixture['attempt']);
             $reader = app(CheckoutPaymentFactsReader::class);

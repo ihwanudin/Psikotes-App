@@ -120,14 +120,27 @@ final class ParticipantNameDisplayTest extends OrganizationPaymentTestCase
     /** @return array{Participant, AssessmentParticipant, Order} */
     private function records(string $suffix, Branch $branch, ?string $name): array
     {
+        $package = TestPackage::create(['code' => 'DISPLAY-'.$suffix, 'name' => 'Synthetic', 'amount' => 100, 'currency' => 'IDR']);
+        DB::table('package_items')->insert([
+            ['package_id' => $package->id, 'test_type' => 'dass21', 'sort_order' => 1, 'created_at' => now(), 'updated_at' => now()],
+            ['package_id' => $package->id, 'test_type' => 'ist', 'sort_order' => 2, 'created_at' => now(), 'updated_at' => now()],
+        ]);
         $participant = Participant::create(['branch_id' => $branch->id, 'referral_branch_id' => $branch->id,
             'referral_source' => 'default', 'full_name' => $name, 'gender' => 'female', 'birth_date' => '2000-01-01',
-            'education_level' => 'SMA_SMK', 'intended_field' => 'UMUM', 'phone' => '620000000000']);
-        $package = TestPackage::create(['code' => 'DISPLAY-'.$suffix, 'name' => 'Synthetic', 'amount' => 100, 'currency' => 'IDR']);
+            'education_level' => 'SMA_SMK', 'intended_field' => 'UMUM', 'phone' => '620000000000',
+            'package_id' => $package->id, 'source_system' => 'DIRECT_PUBLIC']);
         $client = IntegrationClient::create(['organization_id' => $branch->id, 'client_id' => 'display-'.$suffix,
             'credential_reference' => 'synthetic-only']);
+        $attemptPublicId = (string) Str::ulid();
+        $case = DB::table('assessment_cases')->insertGetId([
+            'public_id' => $attemptPublicId, 'participant_id' => $participant->id,
+            'organization_id' => $branch->id, 'package_id' => $package->id,
+            'origin' => 'INTEGRATED', 'intended_field_snapshot' => null,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
         $attempt = AssessmentParticipant::create(['organization_id' => $branch->id, 'integration_client_id' => $client->id,
-            'participant_id' => $participant->id, 'package_id' => $package->id, 'assessment_attempt_id' => (string) Str::ulid(),
+            'participant_id' => $participant->id, 'package_id' => $package->id, 'assessment_case_id' => $case,
+            'assessment_attempt_id' => $attemptPublicId,
             'source_system' => 'DISPLAY', 'external_candidate_id' => 'CANDIDATE-'.$suffix, 'funding_mode' => 'COMMERCIAL_SELF_PAY',
             'assessment_status' => 'PROVISIONED', 'idempotency_key' => 'display-'.$suffix,
             'request_hash' => hash('sha256', $suffix), 'logical_assessment_key' => hash('sha256', 'display-'.$suffix)]);
@@ -136,8 +149,16 @@ final class ParticipantNameDisplayTest extends OrganizationPaymentTestCase
             $method = new PaymentMethod;
             $method->forceFill(['code' => 'manual_transfer', 'display_name' => 'Synthetic manual', 'is_active' => false])->save();
         }
-        $order = Order::create(['public_id' => str_pad('01'.$suffix, 26, '0'), 'participant_id' => $participant->id,
-            'payment_method_id' => $method->id, 'amount' => 100, 'currency' => 'IDR', 'status' => 'pending']);
+        $orderPublicId = (string) Str::ulid();
+        $orderCase = DB::table('assessment_cases')->insertGetId([
+            'public_id' => $orderPublicId, 'participant_id' => $participant->id,
+            'organization_id' => $branch->id, 'package_id' => $package->id,
+            'origin' => 'DIRECT_PUBLIC', 'intended_field_snapshot' => null,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $order = Order::create(['public_id' => $orderPublicId, 'participant_id' => $participant->id,
+            'assessment_case_id' => $orderCase, 'payment_method_id' => $method->id,
+            'amount' => 100, 'currency' => 'IDR', 'status' => 'pending']);
 
         return [$participant, $attempt, $order];
     }

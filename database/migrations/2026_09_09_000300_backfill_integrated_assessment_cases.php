@@ -187,12 +187,14 @@ return new class extends Migration
                 self::SCOPE_UNIQUE,
             );
         });
-        Schema::table('assessment_participants', function (Blueprint $table): void {
-            $table->foreign(
-                ['assessment_case_id', 'assessment_attempt_id', 'participant_id', 'organization_id', 'package_id'],
-            )->references(['id', 'public_id', 'participant_id', 'organization_id', 'package_id'])
-                ->on('assessment_cases')->restrictOnDelete();
-            $table->unsignedBigInteger('assessment_case_id')->nullable(false)->change();
+        $this->withoutSqliteReferencingTriggers($driver, function (): void {
+            Schema::table('assessment_participants', function (Blueprint $table): void {
+                $table->foreign(
+                    ['assessment_case_id', 'assessment_attempt_id', 'participant_id', 'organization_id', 'package_id'],
+                )->references(['id', 'public_id', 'participant_id', 'organization_id', 'package_id'])
+                    ->on('assessment_cases')->restrictOnDelete();
+                $table->unsignedBigInteger('assessment_case_id')->nullable(false)->change();
+            });
         });
         $this->restoreSqliteTriggers($triggers);
         $this->addSqliteGuards();
@@ -216,16 +218,22 @@ return new class extends Migration
         ]);
         DB::unprepared('DROP TRIGGER IF EXISTS assessment_participants_case_insert_guard');
         DB::unprepared('DROP TRIGGER IF EXISTS assessment_participants_case_update_guard');
-        Schema::table('assessment_participants', function (Blueprint $table): void {
-            $table->dropForeign([
-                'assessment_case_id', 'assessment_attempt_id', 'participant_id', 'organization_id', 'package_id',
-            ]);
-            $table->dropForeign(['assessment_case_id']);
-            $table->dropUnique('assessment_participants_case_unique');
-            $table->dropColumn('assessment_case_id');
+        $indexes = $this->sqliteParticipantIndexes(['assessment_participants_case_unique']);
+        $this->withoutSqliteParticipantIndexes($indexes, function () use ($driver): void {
+            $this->withoutSqliteReferencingTriggers($driver, function (): void {
+                Schema::table('assessment_participants', function (Blueprint $table): void {
+                    $table->dropForeign([
+                        'assessment_case_id', 'assessment_attempt_id', 'participant_id', 'organization_id', 'package_id',
+                    ]);
+                    $table->dropForeign(['assessment_case_id']);
+                    $table->dropUnique('assessment_participants_case_unique');
+                    $table->dropColumn('assessment_case_id');
+                });
+            });
         });
         DB::statement('ALTER TABLE assessment_participants ADD COLUMN assessment_case_id INTEGER NULL REFERENCES assessment_cases(id) ON DELETE RESTRICT');
         DB::statement('CREATE UNIQUE INDEX assessment_participants_case_unique ON assessment_participants (assessment_case_id)');
+        $this->restoreSqliteIndexes($indexes);
         $this->restoreSqliteTriggers($triggers);
         Schema::table('assessment_cases', function (Blueprint $table): void {
             $table->dropUnique(self::SCOPE_UNIQUE);
@@ -380,6 +388,64 @@ return new class extends Migration
             }
             if (DB::connection()->getPdo()->exec($sql) === false) {
                 throw new RuntimeException('Failed to restore an assessment participant trigger.');
+            }
+        }
+    }
+
+    /** @param list<string> $excluded
+     * @return list<array{name:string,sql:string}>
+     */
+    private function sqliteParticipantIndexes(array $excluded = []): array
+    {
+        return array_values(collect(DB::select(<<<'SQL'
+            SELECT name, sql FROM sqlite_master
+            WHERE type = 'index' AND tbl_name = 'assessment_participants' AND sql IS NOT NULL
+            ORDER BY name
+        SQL))->map(fn (object $index): array => (array) $index)
+            ->reject(fn (array $index): bool => in_array($index['name'], $excluded, true))
+            ->map(fn (array $index): array => ['name' => (string) $index['name'], 'sql' => (string) $index['sql']])
+            ->all());
+    }
+
+    /** @param list<array{name:string,sql:string}> $indexes */
+    private function withoutSqliteParticipantIndexes(array $indexes, Closure $operation): void
+    {
+        foreach ($indexes as $index) {
+            DB::statement('DROP INDEX "'.str_replace('"', '""', $index['name']).'"');
+        }
+        $operation();
+    }
+
+    /** @param list<array{name:string,sql:string}> $indexes */
+    private function restoreSqliteIndexes(array $indexes): void
+    {
+        $existing = collect(DB::select("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='assessment_participants'"))
+            ->pluck('name')->all();
+        foreach ($indexes as $index) {
+            if (! in_array($index['name'], $existing, true)
+                && DB::connection()->getPdo()->exec($index['sql']) === false) {
+                throw new RuntimeException('Failed to restore an assessment participant index.');
+            }
+        }
+    }
+
+    private function withoutSqliteReferencingTriggers(string $driver, Closure $operation): void
+    {
+        if ($driver !== 'sqlite') {
+            $operation();
+
+            return;
+        }
+        $triggers = collect(DB::select("SELECT name, sql FROM sqlite_master WHERE type='trigger' AND sql LIKE '%assessment_participants%'"))
+            ->map(fn (object $trigger): array => (array) $trigger)->all();
+        foreach ($triggers as $trigger) {
+            DB::statement('DROP TRIGGER "'.str_replace('"', '""', (string) $trigger['name']).'"');
+        }
+        try {
+            $operation();
+        } finally {
+            foreach ($triggers as $trigger) {
+                DB::unprepared((string) $trigger['sql']);
             }
         }
     }

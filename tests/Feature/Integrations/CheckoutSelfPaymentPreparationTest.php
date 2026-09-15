@@ -45,6 +45,8 @@ final class CheckoutSelfPaymentPreparationTest extends OrganizationPaymentTestCa
     protected function setUp(): void
     {
         parent::setUp();
+        // SQLite cross-class ordering can retain a stale migration flag; see tasks/handoffs/sqlite-test-isolation-known-issue-2026-09-16.md.
+        $this->restoreSchemaBaselineIfMissing();
         config()->set('assessment_integration.checkout_handoff.enabled', true);
         config()->set('assessment_integration.checkout_handoff.ttl_seconds', 600);
         config()->set('assessment_integration.checkout_session', [
@@ -55,6 +57,13 @@ final class CheckoutSelfPaymentPreparationTest extends OrganizationPaymentTestCa
         $this->method = DB::table('payment_methods')->insertGetId([
             'code' => 'xendit', 'display_name' => 'Synthetic Xendit', 'is_active' => true,
         ]);
+    }
+
+    private function restoreSchemaBaselineIfMissing(): void
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('branches') || ! \Illuminate\Support\Facades\Schema::hasTable('payment_methods')) {
+            $this->assertSame(0, \Illuminate\Support\Facades\Artisan::call('migrate:fresh', ['--force' => true, '--no-interaction' => true]));
+        }
     }
 
     public function test_positive_self_payment_creates_once_and_exact_replay_returns_same_preparation(): void
@@ -953,9 +962,16 @@ final class CheckoutSelfPaymentPreparationTest extends OrganizationPaymentTestCa
             ['package_id' => $package, 'test_type' => 'dass21', 'sort_order' => 2],
         ]);
         $attemptPublicId = (string) Str::ulid();
+        $case = DB::table('assessment_cases')->insertGetId([
+            'public_id' => $attemptPublicId, 'participant_id' => $participant,
+            'organization_id' => $organization, 'package_id' => $package,
+            'origin' => 'INTEGRATED', 'intended_field_snapshot' => null,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
         $attempt = DB::table('assessment_participants')->insertGetId([
             'organization_id' => $organization, 'integration_client_id' => $client,
             'participant_id' => $participant, 'package_id' => $package,
+            'assessment_case_id' => $case,
             'assessment_attempt_id' => $attemptPublicId, 'source_system' => $sourceSystem,
             'external_candidate_id' => $key, 'funding_mode' => $funding,
             'assessment_status' => 'PROVISIONED', 'idempotency_key' => $key,

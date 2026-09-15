@@ -15,6 +15,10 @@ use Tests\OrganizationPaymentTestCase;
 
 final class TestSessionDefinitionSnapshotSchemaTest extends OrganizationPaymentTestCase
 {
+    protected function tearDown(): void
+    {
+        try { parent::tearDown(); } finally { \Illuminate\Foundation\Testing\RefreshDatabaseState::$migrated = false; }
+    }
     use RefreshDatabase;
 
     public function test_snapshot_columns_are_nullable_additive_and_unindexed(): void
@@ -397,6 +401,9 @@ final class TestSessionDefinitionSnapshotSchemaTest extends OrganizationPaymentT
         foreach (['dass21', 'ist'] as $type) {
             $id = DB::table('entitlements')->insertGetId([
                 'participant_id' => $participant, 'order_id' => $order, 'test_type' => $type,
+                // Generic instruments are case-scoped after the identity migration;
+                // DASS deliberately remains outside that scope.
+                'assessment_case_id' => $type === 'dass21' ? null : $case,
                 'status' => 'ready', 'ready_at' => now(), 'created_at' => now(), 'updated_at' => now(),
             ]);
             if ($type === 'ist') {

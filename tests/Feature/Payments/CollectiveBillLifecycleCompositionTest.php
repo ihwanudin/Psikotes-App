@@ -59,12 +59,21 @@ final class CollectiveBillLifecycleCompositionTest extends OrganizationPaymentTe
     protected function setUp(): void
     {
         parent::setUp();
+        // SQLite cross-class ordering can retain a stale migration flag; see tasks/handoffs/sqlite-test-isolation-known-issue-2026-09-16.md.
+        $this->restoreSchemaBaselineIfMissing();
         $this->freezeTime();
         Http::preventStrayRequests();
         Http::fake([]);
         Bus::fake();
         Queue::fake();
         config()->set('assessment_integration.checkout.enabled', true);
+    }
+
+    private function restoreSchemaBaselineIfMissing(): void
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('branches') || ! \Illuminate\Support\Facades\Schema::hasTable('payment_methods')) {
+            $this->assertSame(0, \Illuminate\Support\Facades\Artisan::call('migrate:fresh', ['--force' => true, '--no-interaction' => true]));
+        }
     }
 
     protected function tearDown(): void
@@ -88,15 +97,15 @@ final class CollectiveBillLifecycleCompositionTest extends OrganizationPaymentTe
         $selection = $expectedSnapshots = $participants = [];
         foreach ([100, 200, 300, 100, 200, 300, 100, 200, 300, 100] as $index => $base) {
             $fixture = AssessmentPreviewFixture::create($organization === null ? null : ['organization' => $organization], $base);
+            DB::table('package_items')->insert([
+                'package_id' => $fixture['package'], 'test_type' => 'dass21', 'sort_order' => 2,
+            ]);
             $organization = $fixture['organization'];
             $consultation = in_array($index, [1, 3, 5, 9], true);
             $selection[] = ['assessmentParticipantId' => (int) $fixture['attempt'], 'consultationRequested' => $consultation];
             $participants[$fixture['attempt']] = $fixture['participant'];
             DB::table('participants')->where('id', $fixture['participant'])->update(['full_name' => 'Composition participant '.($index + 1)]);
             DB::table('packages')->where('id', $fixture['package'])->update(['name' => 'Composition package '.($index + 1)]);
-            DB::table('package_items')->insert([
-                'package_id' => $fixture['package'], 'test_type' => 'dass21', 'sort_order' => 2,
-            ]);
             DB::table('assessment_participants')->where('id', $fixture['attempt'])->update([
                 'funding_mode' => 'INVOICED_TO_ORGANIZATION',
                 'metadata' => '{"checkout_contract_version":"checkout-v2","checkout_initial_funding_mode":null}',

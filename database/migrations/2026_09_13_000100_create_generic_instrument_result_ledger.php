@@ -19,7 +19,7 @@ return new class extends Migration
     private const SQLITE_DEFINITION_HASHES = [
         'index:instrument_versions_result_scope_unique' => '6b43464d3dcfa053fbd327edf2d2a4a62e0379b7b52249019d3fc6f50f09ecbc',
         'table:generic_instrument_result_sources' => '716e0c623e39563e1b3f25f257566963a361a9bc441101e669f84389bb296245',
-        'table:generic_instrument_results' => '44c80ae421760c03f07da0d88305ea7c7d98605c2723ad676d38cd5bc5739049',
+        'table:generic_instrument_results' => 'cda76947a94661ff1fba80a5facf01a30d6360034eae20d46ea5ecdda2288060',
         'trigger:generic_instrument_result_sources_guard_delete' => '44ec41f46fb9dfd0e059e502bb285b49ffbbcb24108754cd3e028abeefebd0ba',
         'trigger:generic_instrument_result_sources_guard_update' => 'f90fdc105f3e75e800ae696597d5935112d39df3e6de299fcf3756304fadd14a',
         'trigger:generic_instrument_results_guard_delete' => '40b8a19a1f04a41ec69fbacdf5d75395328f28159c8fe418931d348d15229f0e',
@@ -118,11 +118,19 @@ return new class extends Migration
 
             $table->unique('public_id', 'generic_instrument_results_public_id_unique');
             $table->unique('session_id', 'generic_instrument_results_session_unique');
-            $table->foreign(
-                ['session_id', 'assessment_case_id', 'participant_id', 'instrument_code'],
-                'generic_instrument_results_session_scope_fk',
-            )->references(['id', 'assessment_case_id', 'participant_id', 'test_type'])
-                ->on('test_sessions')->restrictOnUpdate()->restrictOnDelete();
+            if ($driver === 'pgsql') {
+                $table->foreign(
+                    ['session_id', 'assessment_case_id', 'participant_id', 'instrument_code'],
+                    'generic_instrument_results_session_scope_fk',
+                )->references(['id', 'assessment_case_id', 'participant_id', 'test_type'])
+                    ->on('test_sessions')->restrictOnUpdate()->restrictOnDelete();
+            } else {
+                // Rebuilding a predecessor SQLite table can replace a composite
+                // parent index. The SQLite guard enforces the exact session scope;
+                // this stable FK preserves referential deletion protection.
+                $table->foreign('session_id', 'generic_instrument_results_session_scope_fk')
+                    ->references('id')->on('test_sessions')->restrictOnUpdate()->restrictOnDelete();
+            }
             $table->foreign(
                 ['instrument_version_id', 'instrument_code', 'instrument_version',
                     'instrument_source_file', 'instrument_checksum'],

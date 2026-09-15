@@ -13,6 +13,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Tests\Support\DirectPublicPaymentFixture;
 use Tests\TestCase;
 
 final class XenditWebhookTest extends TestCase
@@ -186,6 +187,8 @@ final class XenditWebhookTest extends TestCase
             'phone' => '+6281234567890',
             'test_number' => 'LSI-202608-000001-ABCDEF',
         ]);
+        $orderPublicId = (string) Str::ulid();
+        $case = DirectPublicPaymentFixture::caseFor($participant, $branch, $orderPublicId, 350_000);
         $paymentMethodId = DB::table('payment_methods')->insertGetId([
             'code' => 'xendit',
             'display_name' => 'Xendit Invoice',
@@ -194,8 +197,9 @@ final class XenditWebhookTest extends TestCase
             'updated_at' => now(),
         ]);
         $order = Order::query()->create([
-            'public_id' => (string) Str::ulid(),
+            'public_id' => $orderPublicId,
             'participant_id' => $participant->id,
+            'assessment_case_id' => $case->id,
             'payment_method_id' => $paymentMethodId,
             'status' => 'pending',
             'amount' => 350_000,
@@ -205,6 +209,7 @@ final class XenditWebhookTest extends TestCase
         ]);
         $entitlement = Entitlement::query()->create([
             'participant_id' => $participant->id,
+            'assessment_case_id' => $case->id,
             'order_id' => $order->id,
             'test_type' => 'ist',
             'status' => 'locked',

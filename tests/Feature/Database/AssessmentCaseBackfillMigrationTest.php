@@ -22,12 +22,34 @@ final class AssessmentCaseBackfillMigrationTest extends OrganizationPaymentTestC
     {
         parent::setUp();
         $this->assertSame(0, Artisan::call('migrate', ['--force' => true]));
+        // Recreate the point immediately before 000300.  Later SQLite
+        // triggers reference test_sessions and orders fields which are absent
+        // at that historical point, so reverse them before phase-two teardown.
+        (require database_path('migrations/2026_09_13_000100_create_generic_instrument_result_ledger.php'))->down();
+        (require database_path('migrations/2026_09_10_000500_contract_generic_entitlement_uniqueness.php'))->down();
+        (require database_path('migrations/2026_09_10_000400_enforce_generic_entitlement_case_identity.php'))->down();
+        (require database_path('migrations/2026_09_10_000300_expand_generic_entitlement_case_identity.php'))->down();
+        (require database_path('migrations/2026_09_10_000100_add_test_session_definition_snapshots.php'))->down();
         (require database_path('migrations/2026_09_09_000700_create_test_session_grants.php'))->down();
         (require database_path('migrations/2026_09_09_000600_bind_direct_public_orders_to_assessment_cases.php'))->down();
         (require database_path('migrations/2026_09_09_000500_bind_legacy_selection_assessment_cases.php'))->down();
         (require database_path('migrations/2026_09_09_000400_harden_test_session_case_identity.php'))->down();
         $this->migration = require database_path('migrations/2026_09_09_000300_backfill_integrated_assessment_cases.php');
         $this->migration->down();
+    }
+
+    protected function tearDown(): void
+    {
+        try {
+            // setUp deliberately moves to the pre-000300 historical schema.
+            // It must never leak that partial schema to later truncation tests.
+            $this->assertSame(0, Artisan::call('migrate:fresh', [
+                '--force' => true,
+                '--no-interaction' => true,
+            ]));
+        } finally {
+            parent::tearDown();
+        }
     }
 
     public function test_it_backfills_only_unbound_integrated_attempts_and_enforces_the_link(): void

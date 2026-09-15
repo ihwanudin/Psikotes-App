@@ -153,7 +153,7 @@ final class AttemptEntitlementGateTest extends OrganizationPaymentTestCase
     public function test_legacy_entitlement_cannot_substitute_for_attempt_entitlement(): void
     {
         DB::table('assessment_entitlements')->delete();
-        DB::table('entitlements')->insert(['participant_id' => $this->f['participant'], 'test_type' => 'ist', 'status' => 'ready', 'ready_at' => now()]);
+        $this->createCaseScopedGenericEntitlement();
         $this->expectException(EntitlementLocked::class);
         $this->gate();
     }
@@ -173,11 +173,12 @@ final class AttemptEntitlementGateTest extends OrganizationPaymentTestCase
 
     public function test_test_type_must_belong_to_paid_snapshot_not_current_catalogue(): void
     {
-        DB::table('package_items')->where('package_id', $this->f['package'])->update(['test_type' => 'papi']);
+        DB::table('package_items')->where('package_id', $this->f['package'])->where('test_type', 'ist')
+            ->update(['test_type' => 'papi']);
         DB::table('packages')->where('id', $this->f['package'])->update(['amount' => 999, 'is_active' => false]);
         DB::table('branches')->where('id', $this->f['organization'])->update(['allowed_payer_types' => '[]']);
         $this->assertSame($this->f['entitlement'], $this->gate());
-        DB::table('assessment_entitlements')->update(['test_type' => 'papi']);
+        DB::table('assessment_entitlements')->where('id', $this->f['entitlement'])->update(['test_type' => 'papi']);
         $this->expectException(EntitlementLocked::class);
         $this->gate(type: 'papi');
     }
@@ -213,5 +214,20 @@ final class AttemptEntitlementGateTest extends OrganizationPaymentTestCase
     {
         $this->expectException(LogicException::class);
         app(AssessmentEntitlementGate::class)->assertReady(new AssessmentPrincipal($this->f['participant'], $this->f['organization'], $this->f['attempt']), 'ist');
+    }
+
+    private function createCaseScopedGenericEntitlement(): void
+    {
+        DB::table('participants')->where('id', $this->f['participant'])->update([
+            'package_id' => $this->f['package'],
+            'source_system' => 'P6B_TEST',
+        ]);
+        DB::table('entitlements')->insert([
+            'participant_id' => $this->f['participant'],
+            'assessment_case_id' => $this->f['case'],
+            'test_type' => 'ist',
+            'status' => 'ready',
+            'ready_at' => now(),
+        ]);
     }
 }

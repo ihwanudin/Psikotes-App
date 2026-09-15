@@ -8,6 +8,7 @@ use App\Models\Branch;
 use App\Models\Order;
 use App\Models\Participant;
 use Database\Seeders\PaymentMethodSeeder;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -210,7 +211,7 @@ final class ParticipantRegistrationTest extends TestCase
         $this->assertNull(DB::table('entitlements')->where('test_type', 'dass21')->sole()->assessment_case_id);
     }
 
-    public function test_replay_fails_closed_when_a_generic_entitlement_loses_its_case_binding(): void
+    public function test_generic_entitlement_case_binding_cannot_be_removed(): void
     {
         $this->branch('CENTRAL', 'CENTRAL-REF', isDefault: true);
         $token = (string) Str::uuid();
@@ -220,19 +221,18 @@ final class ParticipantRegistrationTest extends TestCase
             ->post('/registrations', $payload)
             ->assertRedirect('/registration/received');
         $participant = Participant::query()->sole();
-        DB::unprepared('DROP TRIGGER entitlements_case_update_guard');
-        $participant->entitlements()->where('test_type', 'ist')->update(['assessment_case_id' => null]);
-
-        $this->withSession(['registration.token' => $token])
-            ->from('/register')
-            ->post('/registrations', $payload)
-            ->assertRedirect('/register')
-            ->assertSessionHasErrors('_registration_token');
+        try {
+            $participant->entitlements()->where('test_type', 'ist')->update(['assessment_case_id' => null]);
+            $this->fail('Generic entitlement case binding was removed.');
+        } catch (QueryException $exception) {
+            $this->assertStringContainsString('generic entitlement requires an exact case source graph', $exception->getMessage());
+        }
 
         $this->assertDatabaseCount('participants', 1);
         $this->assertDatabaseCount('orders', 1);
         $this->assertDatabaseCount('assessment_cases', 1);
         $this->assertDatabaseCount('entitlements', 2);
+        $this->assertNotNull($participant->entitlements()->where('test_type', 'ist')->sole()->assessment_case_id);
     }
 
     public function test_standalone_dass_registration_remains_without_a_case_binding(): void

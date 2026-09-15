@@ -6,11 +6,15 @@ namespace Tests\Feature\Auth;
 
 use App\Models\Branch;
 use App\Models\Entitlement;
+use App\Models\Order;
 use App\Models\Participant;
 use App\Services\ParticipantAuth\ParticipantJwt;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Date;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Tests\TestCase;
+use Tests\Support\DirectPublicPaymentFixture;
 
 final class ParticipantApiAuthorizationTest extends TestCase
 {
@@ -51,8 +55,8 @@ final class ParticipantApiAuthorizationTest extends TestCase
     {
         $first = $this->participant('Ayu Pratiwi', 'LSI-202608-000001-ABCDEF');
         $second = $this->participant('Bima Saputra', 'LSI-202608-000002-ABCDEF');
-        Entitlement::query()->create(['participant_id' => $first->id, 'test_type' => 'ist', 'status' => 'locked']);
-        Entitlement::query()->create(['participant_id' => $second->id, 'test_type' => 'papi', 'status' => 'ready']);
+        $this->createCaseScopedEntitlement($first, 'ist', 'locked');
+        $this->createCaseScopedEntitlement($second, 'dass21', 'ready');
         $token = $this->token($first);
 
         $profile = $this->withToken($token)->getJson('/api/me')->assertOk();
@@ -64,7 +68,7 @@ final class ParticipantApiAuthorizationTest extends TestCase
         $entitlements = $this->withToken($token)->getJson('/api/me/entitlements')->assertOk();
         $entitlements->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.test_type', 'ist')
-            ->assertJsonMissing(['test_type' => 'papi']);
+            ->assertJsonMissing(['test_type' => 'dass21']);
     }
 
     public function test_deleted_participant_token_is_rejected(): void
@@ -81,7 +85,7 @@ final class ParticipantApiAuthorizationTest extends TestCase
     public function test_locked_entitlement_cannot_start_a_session(): void
     {
         $participant = $this->participant('Ayu Pratiwi', 'LSI-202608-000001-ABCDEF');
-        Entitlement::query()->create(['participant_id' => $participant->id, 'test_type' => 'ist', 'status' => 'locked']);
+        $this->createCaseScopedEntitlement($participant, 'ist', 'locked');
 
         $this->withToken($this->token($participant))
             ->postJson('/api/sessions/ist/start')
@@ -114,5 +118,35 @@ final class ParticipantApiAuthorizationTest extends TestCase
     private function token(Participant $participant): string
     {
         return app(ParticipantJwt::class)->issue($participant->id, $participant->branch_id);
+    }
+
+    private function createCaseScopedEntitlement(Participant $participant, string $testType, string $status): Entitlement
+    {
+        $publicId = (string) Str::ulid();
+        $case = DirectPublicPaymentFixture::caseFor($participant, $this->branch, $publicId, 100);
+        $method = DB::table('payment_methods')->insertGetId([
+            'code' => 'method-'.$publicId,
+            'display_name' => 'Synthetic payment method',
+            'is_active' => true,
+        ]);
+        $order = Order::query()->create([
+            'public_id' => $publicId,
+            'participant_id' => $participant->id,
+            'assessment_case_id' => $case->id,
+            'payment_method_id' => $method,
+            'status' => 'paid',
+            'amount' => 100,
+            'currency' => 'IDR',
+            'paid_at' => now(),
+        ]);
+
+        return Entitlement::query()->create([
+            'participant_id' => $participant->id,
+            'order_id' => $order->id,
+            'assessment_case_id' => $testType === 'dass21' ? null : $case->id,
+            'test_type' => $testType,
+            'status' => $status,
+            'ready_at' => $status === 'ready' ? now() : null,
+        ]);
     }
 }

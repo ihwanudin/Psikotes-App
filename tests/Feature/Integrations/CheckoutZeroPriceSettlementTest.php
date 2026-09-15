@@ -36,6 +36,8 @@ final class CheckoutZeroPriceSettlementTest extends OrganizationPaymentTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // SQLite cross-class ordering can retain a stale migration flag; see tasks/handoffs/sqlite-test-isolation-known-issue-2026-09-16.md.
+        $this->restoreSchemaBaselineIfMissing();
         config()->set('assessment_integration.checkout_handoff.enabled', true);
         config()->set('assessment_integration.checkout_handoff.ttl_seconds', 600);
         config()->set('assessment_integration.checkout_session', [
@@ -48,6 +50,13 @@ final class CheckoutZeroPriceSettlementTest extends OrganizationPaymentTestCase
             $provider->expects($this->never())->method($method);
         }
         app()->instance(PaymentProvider::class, $provider);
+    }
+
+    private function restoreSchemaBaselineIfMissing(): void
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('branches') || ! \Illuminate\Support\Facades\Schema::hasTable('payment_methods')) {
+            $this->assertSame(0, \Illuminate\Support\Facades\Artisan::call('migrate:fresh', ['--force' => true, '--no-interaction' => true]));
+        }
     }
 
     public function test_self_zero_is_settled_and_activated_atomically_then_replays_without_duplicates(): void

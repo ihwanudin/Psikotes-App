@@ -64,10 +64,20 @@ return new class extends Migration
                 throw new RuntimeException('Legacy Selection case history prevents rollback.');
             }
 
-            $this->removeEnforcement($driver);
-            Schema::table('selection_participants', function (Blueprint $table): void {
-                $table->dropColumn('assessment_case_id');
+            $indexes = $this->sqliteSelectionIndexes([self::UNIQUE]);
+            $this->withoutSqliteSelectionIndexes($driver, $indexes, function () use ($driver): void {
+                $this->withoutSqliteReferencingTriggers($driver, [
+                    'selection_participants_case_insert_guard',
+                    'selection_participants_case_update_guard',
+                    'selection_participants_case_delete_guard',
+                ], function () use ($driver): void {
+                    $this->removeEnforcement($driver);
+                    Schema::table('selection_participants', function (Blueprint $table): void {
+                        $table->dropColumn('assessment_case_id');
+                    });
+                });
             });
+            $this->restoreSqliteSelectionIndexes($driver, $indexes);
 
             if ($driver === 'pgsql') {
                 DB::statement('ALTER TABLE assessment_cases FORCE ROW LEVEL SECURITY');
@@ -133,12 +143,18 @@ return new class extends Migration
 
     private function enforce(string $driver): void
     {
-        Schema::table('selection_participants', function (Blueprint $table): void {
-            $table->unique('assessment_case_id', self::UNIQUE);
-            $table->foreign(['assessment_case_id', 'participant_id'], self::FOREIGN)
-                ->references(['id', 'participant_id'])->on('assessment_cases')->restrictOnDelete();
-            $table->unsignedBigInteger('assessment_case_id')->nullable(false)->change();
+        $indexes = $this->sqliteSelectionIndexes();
+        $this->withoutSqliteSelectionIndexes($driver, $indexes, function () use ($driver): void {
+            $this->withoutSqliteReferencingTriggers($driver, [], function (): void {
+                Schema::table('selection_participants', function (Blueprint $table): void {
+                    $table->unique('assessment_case_id', self::UNIQUE);
+                    $table->foreign(['assessment_case_id', 'participant_id'], self::FOREIGN)
+                        ->references(['id', 'participant_id'])->on('assessment_cases')->restrictOnDelete();
+                    $table->unsignedBigInteger('assessment_case_id')->nullable(false)->change();
+                });
+            });
         });
+        $this->restoreSqliteSelectionIndexes($driver, $indexes);
 
         if ($driver === 'pgsql') {
             DB::unprepared(<<<'SQL'
@@ -225,5 +241,84 @@ return new class extends Migration
                 : self::FOREIGN);
             $table->dropUnique(self::UNIQUE);
         });
+    }
+
+    /** @param list<string> $excluded
+     * @return list<array{name:string,sql:string}>
+     */
+    private function sqliteSelectionIndexes(array $excluded = []): array
+    {
+        if (DB::getDriverName() !== 'sqlite') {
+            return [];
+        }
+
+        return array_values(collect(DB::select(<<<'SQL'
+            SELECT name, sql FROM sqlite_master
+            WHERE type = 'index' AND tbl_name = 'selection_participants' AND sql IS NOT NULL
+            ORDER BY name
+        SQL))->map(fn (object $index): array => (array) $index)
+            ->reject(fn (array $index): bool => in_array((string) $index['name'], $excluded, true))
+            ->map(fn (array $index): array => ['name' => (string) $index['name'], 'sql' => (string) $index['sql']])
+            ->all());
+    }
+
+    /** @param list<array{name:string,sql:string}> $indexes */
+    private function withoutSqliteSelectionIndexes(string $driver, array $indexes, callable $operation): void
+    {
+        if ($driver !== 'sqlite') {
+            $operation();
+
+            return;
+        }
+        foreach ($indexes as $index) {
+            DB::statement('DROP INDEX "'.str_replace('"', '""', $index['name']).'"');
+        }
+        $operation();
+    }
+
+    /** @param list<array{name:string,sql:string}> $indexes */
+    private function restoreSqliteSelectionIndexes(string $driver, array $indexes): void
+    {
+        if ($driver !== 'sqlite') {
+            return;
+        }
+        $existing = collect(DB::select("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='selection_participants'"))
+            ->pluck('name')->all();
+        foreach ($indexes as $index) {
+            if (! in_array($index['name'], $existing, true)
+                && DB::connection()->getPdo()->exec($index['sql']) === false) {
+                throw new RuntimeException('Failed to restore a selection participant index.');
+            }
+        }
+    }
+
+    /** @param list<string> $excluded */
+    private function withoutSqliteReferencingTriggers(string $driver, array $excluded, callable $operation): void
+    {
+        if ($driver !== 'sqlite') {
+            $operation();
+
+            return;
+        }
+        $triggers = collect(DB::select(<<<'SQL'
+            SELECT name, sql FROM sqlite_master
+            WHERE type = 'trigger' AND sql IS NOT NULL
+              AND lower(sql) LIKE '%selection_participants%'
+            ORDER BY name
+        SQL))->map(fn (object $trigger): array => (array) $trigger)
+            ->reject(fn (array $trigger): bool => in_array((string) $trigger['name'], $excluded, true))
+            ->all();
+        foreach ($triggers as $trigger) {
+            DB::statement('DROP TRIGGER "'.str_replace('"', '""', $trigger['name']).'"');
+        }
+        try {
+            $operation();
+        } finally {
+            foreach ($triggers as $trigger) {
+                if (DB::connection()->getPdo()->exec($trigger['sql']) === false) {
+                    throw new RuntimeException('Failed to restore a selection-participant-referencing SQLite trigger.');
+                }
+            }
+        }
     }
 };

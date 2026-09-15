@@ -403,12 +403,20 @@ final class CheckoutHandoffRecoveryTest extends OrganizationPaymentTestCase
     private function sameClientAttempt(array $state): array
     {
         $key = (string) Str::ulid();
+        $attemptPublicId = (string) Str::ulid();
+        $case = DB::table('assessment_cases')->insertGetId([
+            'public_id' => $attemptPublicId, 'participant_id' => $state['attempt']->participant_id,
+            'organization_id' => $state['attempt']->organization_id, 'package_id' => $state['attempt']->package_id,
+            'origin' => 'INTEGRATED', 'intended_field_snapshot' => null,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
         $attempt = AssessmentParticipant::query()->create([
             'organization_id' => $state['attempt']->organization_id,
             'integration_client_id' => $state['client']->id,
             'participant_id' => $state['attempt']->participant_id,
             'package_id' => $state['attempt']->package_id,
-            'assessment_attempt_id' => (string) Str::ulid(),
+            'assessment_case_id' => $case,
+            'assessment_attempt_id' => $attemptPublicId,
             'source_system' => $state['sourceSystem'],
             'external_candidate_id' => $key,
             'funding_mode' => 'COMMERCIAL_SELF_PAY',
@@ -457,10 +465,17 @@ final class CheckoutHandoffRecoveryTest extends OrganizationPaymentTestCase
             ['package_id' => $package, 'test_type' => 'ist', 'sort_order' => 1],
             ['package_id' => $package, 'test_type' => 'dass21', 'sort_order' => 2],
         ]);
+        $attemptPublicId = (string) Str::ulid();
+        $case = DB::table('assessment_cases')->insertGetId([
+            'public_id' => $attemptPublicId, 'participant_id' => $participant,
+            'organization_id' => $organization, 'package_id' => $package,
+            'origin' => 'INTEGRATED', 'intended_field_snapshot' => null,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
         $attempt = DB::table('assessment_participants')->insertGetId([
             'organization_id' => $organization, 'integration_client_id' => $clientId,
             'participant_id' => $participant, 'package_id' => $package,
-            'assessment_attempt_id' => (string) Str::ulid(), 'source_system' => 'HANDOFF_RECOVERY_SOURCE',
+            'assessment_case_id' => $case, 'assessment_attempt_id' => $attemptPublicId, 'source_system' => 'HANDOFF_RECOVERY_SOURCE',
             'external_candidate_id' => $key, 'funding_mode' => 'COMMERCIAL_SELF_PAY',
             'assessment_status' => 'PROVISIONED', 'idempotency_key' => $key,
             'request_hash' => hash('sha256', $key),

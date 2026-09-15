@@ -91,12 +91,11 @@ final class PaymentOperationsSchemaTest extends TestCase
 
     public function test_disabling_a_payment_method_preserves_historical_orders(): void
     {
-        [$participantId, $methodId] = $this->seedParticipantAndPaymentMethod();
+        $graph = $this->seedDirectPaymentGraph();
 
         $orderId = DB::table('orders')->insertGetId([
-            'public_id' => (string) Str::ulid(),
-            'participant_id' => $participantId,
-            'payment_method_id' => $methodId,
+            'public_id' => $graph['public_id'], 'assessment_case_id' => $graph['case'],
+            'participant_id' => $graph['participant'], 'payment_method_id' => $graph['method'],
             'status' => 'pending',
             'amount' => 500000,
             'currency' => 'IDR',
@@ -104,18 +103,17 @@ final class PaymentOperationsSchemaTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        DB::table('payment_methods')->where('id', $methodId)->update(['is_active' => false]);
+        DB::table('payment_methods')->where('id', $graph['method'])->update(['is_active' => false]);
 
-        $this->assertDatabaseHas('orders', ['id' => $orderId, 'payment_method_id' => $methodId]);
+        $this->assertDatabaseHas('orders', ['id' => $orderId, 'payment_method_id' => $graph['method']]);
     }
 
     public function test_gateway_references_are_unique_when_present(): void
     {
-        [$participantId, $methodId] = $this->seedParticipantAndPaymentMethod();
+        $graph = $this->seedDirectPaymentGraph();
         $order = [
-            'public_id' => (string) Str::ulid(),
-            'participant_id' => $participantId,
-            'payment_method_id' => $methodId,
+            'public_id' => $graph['public_id'], 'assessment_case_id' => $graph['case'],
+            'participant_id' => $graph['participant'], 'payment_method_id' => $graph['method'],
             'status' => 'pending',
             'amount' => 500000,
             'currency' => 'IDR',
@@ -127,16 +125,26 @@ final class PaymentOperationsSchemaTest extends TestCase
         DB::table('orders')->insert($order);
 
         $this->expectException(QueryException::class);
-        $order['public_id'] = (string) Str::ulid();
-        DB::table('orders')->insert($order);
+        $duplicate = $this->seedDirectPaymentGraph();
+        DB::table('orders')->insert([
+            ...$order,
+            'public_id' => $duplicate['public_id'], 'assessment_case_id' => $duplicate['case'],
+            'participant_id' => $duplicate['participant'], 'payment_method_id' => $duplicate['method'],
+        ]);
     }
 
     public function test_each_participant_has_only_one_entitlement_per_test_type(): void
     {
-        [$participantId] = $this->seedParticipantAndPaymentMethod();
+        $graph = $this->seedDirectPaymentGraph();
+        $order = DB::table('orders')->insertGetId([
+            'public_id' => $graph['public_id'], 'assessment_case_id' => $graph['case'],
+            'participant_id' => $graph['participant'], 'payment_method_id' => $graph['method'],
+            'status' => 'pending', 'amount' => 500000, 'currency' => 'IDR',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
         $entitlement = [
-            'participant_id' => $participantId,
-            'test_type' => 'ist',
+            'participant_id' => $graph['participant'], 'order_id' => $order,
+            'assessment_case_id' => $graph['case'], 'test_type' => 'ist',
             'status' => 'locked',
             'created_at' => now(),
             'updated_at' => now(),
@@ -196,8 +204,8 @@ final class PaymentOperationsSchemaTest extends TestCase
         DB::table('outbox_messages')->insert($message);
     }
 
-    /** @return array{int, int} */
-    private function seedParticipantAndPaymentMethod(): array
+    /** @return array{participant:int,method:int,case:int,public_id:string} */
+    private function seedDirectPaymentGraph(): array
     {
         $branchId = DB::table('branches')->insertGetId([
             'code' => 'PUSAT',
@@ -208,10 +216,23 @@ final class PaymentOperationsSchemaTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+        $packageId = DB::table('packages')->insertGetId([
+            'code' => 'PAY-'.Str::ulid(), 'name' => 'Synthetic payment package',
+            'amount' => 500000, 'currency' => 'IDR', 'is_active' => true,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        foreach (['dass21', 'ist'] as $sort => $testType) {
+            DB::table('package_items')->insert([
+                'package_id' => $packageId, 'test_type' => $testType, 'sort_order' => $sort,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
         $participantId = DB::table('participants')->insertGetId([
             'branch_id' => $branchId,
             'referral_branch_id' => $branchId,
             'referral_source' => 'default',
+            'package_id' => $packageId,
+            'source_system' => 'DIRECT_PUBLIC',
             'full_name' => 'Peserta Sintetis',
             'gender' => 'female',
             'birth_date' => '2000-01-01',
@@ -227,6 +248,13 @@ final class PaymentOperationsSchemaTest extends TestCase
 
         $this->assertIsInt($methodId);
 
-        return [$participantId, $methodId];
+        $publicId = (string) Str::ulid();
+        $case = DB::table('assessment_cases')->insertGetId([
+            'public_id' => $publicId, 'participant_id' => $participantId,
+            'organization_id' => $branchId, 'package_id' => $packageId,
+            'origin' => 'DIRECT_PUBLIC', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        return ['participant' => $participantId, 'method' => $methodId, 'case' => $case, 'public_id' => $publicId];
     }
 }
