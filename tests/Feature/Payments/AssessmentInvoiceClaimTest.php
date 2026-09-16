@@ -54,11 +54,6 @@ final class AssessmentInvoiceClaimTest extends OrganizationPaymentTestCase
         config()->set('assessment_integration.checkout.enabled', true);
         $this->f = Fixture::create();
         $this->second = Fixture::create(['organization' => $this->f['organization']]);
-        foreach ([$this->f['package'], $this->second['package']] as $packageId) {
-            DB::table('package_items')->insert([
-                'package_id' => $packageId, 'test_type' => 'dass21', 'sort_order' => 2,
-            ]);
-        }
         DB::table('assessment_participants')->update(['funding_mode' => 'INVOICED_TO_ORGANIZATION',
             'metadata' => '{"checkout_contract_version":"checkout-v2","checkout_initial_funding_mode":null}']);
         $admin = Admin::create(['branch_id' => $this->f['organization'], 'name' => 'Synthetic claim',
@@ -332,9 +327,6 @@ final class AssessmentInvoiceClaimTest extends OrganizationPaymentTestCase
     public function test_valid_self_payer_claim_uses_only_its_own_attempt(): void
     {
         $f = Fixture::create(['organization' => $this->f['organization']]);
-        DB::table('package_items')->insert([
-            'package_id' => $f['package'], 'test_type' => 'dass21', 'sort_order' => 2,
-        ]);
         DB::table('assessment_participants')->where('id', $f['attempt'])->update([
             'metadata' => '{"checkout_contract_version":"checkout-v2","checkout_initial_funding_mode":"COMMERCIAL_SELF_PAY"}']);
         app(RlsContextRunner::class)->runAsService(function () use ($f): void {

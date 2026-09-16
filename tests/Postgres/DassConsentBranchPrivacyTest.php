@@ -27,11 +27,6 @@ final class DassConsentBranchPrivacyTest extends TestCase
             $first = Fixture::create();
             $second = Fixture::create(['organization' => $first['organization'], 'participant' => $first['participant']]);
             $foreign = Fixture::create();
-            foreach ([$first, $second] as $fixture) {
-                DB::table('package_items')->insert([
-                    'package_id' => $fixture['package'], 'test_type' => 'dass21', 'sort_order' => 2,
-                ]);
-            }
             DB::table('participants')->where('id', $first['participant'])->update([
                 'full_name' => 'PRIVATE DASS CONSENT PROFILE',
             ]);

@@ -4,18 +4,14 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Payments;
 
-use App\Models\Branch;
 use App\Models\Entitlement;
 use App\Models\Order;
-use App\Models\Participant;
 use App\Services\Payments\ReconcilePendingXenditPayments;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Date;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Str;
 use Illuminate\Testing\PendingCommand;
-use Tests\Support\DirectPublicPaymentFixture;
+use Tests\Support\DirectPublicOrderFixture;
 use Tests\TestCase;
 
 final class XenditStatusReconciliationTest extends TestCase
@@ -42,6 +38,9 @@ final class XenditStatusReconciliationTest extends TestCase
         $reconcile = app(ReconcilePendingXenditPayments::class);
 
         $pending = $reconcile->handle();
+        $this->assertSame('locked', $entitlement->fresh()->status);
+        $this->assertEntitlements($order, 'locked');
+
         $paid = $reconcile->handle();
 
         $this->assertSame(1, $pending->checked);
@@ -50,6 +49,7 @@ final class XenditStatusReconciliationTest extends TestCase
         $this->assertSame(1, $paid->applied);
         $this->assertSame('paid', $order->fresh()->status->value);
         $this->assertSame('ready', $entitlement->fresh()->status);
+        $this->assertEntitlements($order, 'ready');
         $this->assertDatabaseCount('payment_webhook_events', 2);
     }
 
@@ -72,54 +72,15 @@ final class XenditStatusReconciliationTest extends TestCase
     /** @return array{Order, Entitlement} */
     private function orderWithLockedEntitlement(): array
     {
-        $branch = Branch::query()->create([
-            'code' => 'CENTRAL',
-            'name' => 'LSI Pusat',
-            'ref_code' => 'CENTRAL-REF',
-            'is_default' => true,
-        ]);
-        $participant = Participant::query()->create([
-            'branch_id' => $branch->id,
-            'referral_branch_id' => $branch->id,
-            'referral_source' => 'default',
-            'full_name' => 'Ayu Pratiwi',
-            'gender' => 'female',
-            'birth_date' => '2001-04-15',
-            'education_level' => 'SMA/SMK',
-            'intended_field' => 'KAIGO',
-            'phone' => '+6281234567890',
-            'test_number' => 'LSI-202608-000001-ABCDEF',
-        ]);
-        $orderPublicId = (string) Str::ulid();
-        $case = DirectPublicPaymentFixture::caseFor($participant, $branch, $orderPublicId, 350_000);
-        $methodId = DB::table('payment_methods')->insertGetId([
-            'code' => 'xendit',
-            'display_name' => 'Xendit Invoice',
-            'is_active' => true,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-        $order = Order::query()->create([
-            'public_id' => $orderPublicId,
-            'participant_id' => $participant->id,
-            'assessment_case_id' => $case->id,
-            'payment_method_id' => $methodId,
-            'status' => 'pending',
-            'amount' => 350_000,
-            'currency' => 'IDR',
-            'gateway_ref' => 'invoice-123',
-            'invoice_url' => 'https://invoice.xendit.co/invoice-123',
-            'expires_at' => Date::now()->addHour(),
-        ]);
-        $entitlement = Entitlement::query()->create([
-            'participant_id' => $participant->id,
-            'assessment_case_id' => $case->id,
-            'order_id' => $order->id,
-            'test_type' => 'ist',
-            'status' => 'locked',
-        ]);
+        $fixture = DirectPublicOrderFixture::create(
+            paymentMethodCode: 'xendit',
+            amount: 350_000,
+            gatewayReference: 'invoice-123',
+            expiresAt: Date::now()->addHour(),
+        );
+        $fixture['order']->forceFill(['invoice_url' => 'https://invoice.xendit.co/invoice-123'])->save();
 
-        return [$order, $entitlement];
+        return [$fixture['order'], $fixture['entitlements']['ist']];
     }
 
     /** @return array<string, mixed> */
@@ -137,5 +98,13 @@ final class XenditStatusReconciliationTest extends TestCase
             'created' => '2026-08-25T13:00:00+07:00',
             'updated' => $paidAt ?? '2026-08-25T13:00:00+07:00',
         ];
+    }
+
+    private function assertEntitlements(Order $order, string $status): void
+    {
+        $this->assertSame(
+            ['dass21' => $status, 'ist' => $status],
+            Entitlement::query()->where('order_id', $order->id)->orderBy('test_type')->pluck('status', 'test_type')->all(),
+        );
     }
 }

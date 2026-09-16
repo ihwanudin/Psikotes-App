@@ -68,11 +68,9 @@ final class AssessmentInvoiceClaimTest extends TestCase
         Queue::fake();
         app(RlsContextRunner::class)->runAsService(function (): void {
             $fixture = Fixture::create();
-            $this->addMandatoryDass($fixture['package']);
             $this->fixtures[] = $fixture;
             $org = $this->fixtures[0]['organization'];
             $fixture = Fixture::create(['organization' => $org]);
-            $this->addMandatoryDass($fixture['package']);
             $this->fixtures[] = $fixture;
             DB::table('assessment_participants')->where('organization_id', $org)->update(['funding_mode' => 'INVOICED_TO_ORGANIZATION',
                 'metadata' => '{"checkout_contract_version":"checkout-v2","checkout_initial_funding_mode":null}']);
@@ -431,10 +429,4 @@ final class AssessmentInvoiceClaimTest extends TestCase
         }
     }
 
-    private function addMandatoryDass(int $packageId): void
-    {
-        DB::table('package_items')->insert([
-            'package_id' => $packageId, 'test_type' => 'dass21', 'sort_order' => 2,
-        ]);
-    }
 }

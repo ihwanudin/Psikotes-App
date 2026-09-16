@@ -294,9 +294,6 @@ final class CollectiveBillPreviewTest extends TestCase
     private function fixture(string $label, ?int $organization = null): array
     {
         $fixture = Fixture::create($organization === null ? null : ['organization' => $organization]);
-        DB::table('package_items')->insert([
-            'package_id' => $fixture['package'], 'test_type' => 'dass21', 'sort_order' => 2,
-        ]);
         DB::table('participants')->where('id', $fixture['participant'])->update(['full_name' => 'Peserta '.$label]);
         DB::table('assessment_participants')->where('id', $fixture['attempt'])->update([
             'external_candidate_id' => 'CANDIDATE-'.$fixture['attempt'], 'assessment_round_id' => 'Synthetic period',

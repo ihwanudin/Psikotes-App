@@ -65,9 +65,6 @@ final class AssessmentBillInvoiceReconciliationTest extends OrganizationPaymentT
         Queue::fake();
         config()->set('assessment_integration.checkout.enabled', true);
         $this->fixture = $this->createFixture();
-        DB::table('package_items')->insert([
-            'package_id' => $this->fixture['package'], 'test_type' => 'dass21', 'sort_order' => 2,
-        ]);
         DB::table('assessment_participants')->where('id', $this->fixture['attempt'])->update([
             'funding_mode' => 'INVOICED_TO_ORGANIZATION',
             'metadata' => '{"checkout_contract_version":"checkout-v2","checkout_initial_funding_mode":null}',

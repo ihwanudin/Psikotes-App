@@ -70,13 +70,6 @@ final class AssessmentBillInvoiceIssuanceTest extends OrganizationPaymentTestCas
         for ($index = 1; $index < 10; $index++) {
             $this->fixtures[] = Fixture::create(['organization' => $organization]);
         }
-        foreach ($this->fixtures as $fixture) {
-            DB::table('package_items')->insert([
-                'package_id' => $fixture['package'],
-                'test_type' => 'dass21',
-                'sort_order' => 2,
-            ]);
-        }
         DB::table('assessment_participants')->where('organization_id', $organization)->update([
             'funding_mode' => 'INVOICED_TO_ORGANIZATION',
             'metadata' => '{"checkout_contract_version":"checkout-v2","checkout_initial_funding_mode":null}',

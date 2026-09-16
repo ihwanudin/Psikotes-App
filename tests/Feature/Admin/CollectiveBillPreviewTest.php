@@ -45,19 +45,18 @@ final class CollectiveBillPreviewTest extends OrganizationPaymentTestCase
     {
         $groups = ['A', 'A', 'B', 'B', 'C', 'C', 'A', 'B', 'C', 'A'];
         $consultation = [false, true, false, true, false, true, false, false, false, true];
-        $packageCodes = $selection = $fixtures = [];
+        $selection = $fixtures = [];
         foreach ($groups as $index => $group) {
             $fixture = $index === 0 ? $this->fixture : $this->fixture($this->fixture['organization']);
-            $code = 'SYN-'.$group.'-'.$index;
+            $packageCode = 'SYN-'.$group.'-'.$index;
             DB::table('packages')->where('id', $fixture['package'])->update([
-                'code' => $code, 'name' => 'Synthetic '.$group,
+                'code' => $packageCode, 'name' => 'Synthetic '.$group,
                 'amount' => ['A' => 100, 'B' => 200, 'C' => 0][$group],
                 'consultation_amount' => $group === 'B' ? 50 : 30]);
             DB::table('integration_sources')->where('id', $fixture['source'])
-                ->update(['allowed_assessment_packages' => json_encode([$code], JSON_THROW_ON_ERROR)]);
+                ->update(['allowed_assessment_packages' => json_encode([$packageCode], JSON_THROW_ON_ERROR)]);
             $selection[] = Fixture::selection($fixture, $consultation[$index]);
             $fixtures[] = $fixture;
-            $packageCodes[] = $code;
         }
 
         $result = $this->preview($selection);
@@ -77,7 +76,7 @@ final class CollectiveBillPreviewTest extends OrganizationPaymentTestCase
             $this->assertSame('CANDIDATE-'.$fixtures[$index]['attempt'], $item['externalCandidateId']);
             $this->assertSame('Synthetic participant', $item['participantName']);
             $this->assertSame('Synthetic period', $item['period']);
-            $this->assertSame($packageCodes[$index], $item['packageCode']);
+            $this->assertSame('SYN-'.$groups[$index].'-'.$index, $item['packageCode']);
             $this->assertSame($consultation[$index], $item['consultationRequested']);
             $this->assertSame(in_array($index, [4, 8], true) ? 'free' : 'payable', $item['status']);
         }
@@ -259,9 +258,6 @@ final class CollectiveBillPreviewTest extends OrganizationPaymentTestCase
     private function fixture(?int $organization = null, int $amount = 100, ?string $name = 'Synthetic participant'): array
     {
         $fixture = Fixture::create($organization === null ? null : ['organization' => $organization], $amount);
-        DB::table('package_items')->insert([
-            'package_id' => $fixture['package'], 'test_type' => 'dass21', 'sort_order' => 2,
-        ]);
         DB::table('participants')->where('id', $fixture['participant'])->update(['full_name' => $name]);
         DB::table('assessment_participants')->where('id', $fixture['attempt'])->update([
             'external_candidate_id' => 'CANDIDATE-'.$fixture['attempt'], 'assessment_round_id' => 'Synthetic period',

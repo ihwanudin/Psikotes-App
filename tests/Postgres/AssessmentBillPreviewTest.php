@@ -29,9 +29,7 @@ final class AssessmentBillPreviewTest extends TestCase
         DB::beginTransaction();
         app(RlsContextRunner::class)->runAsService(function (): void {
             $this->own = Fixture::create();
-            $this->addMandatoryDass($this->own['package']);
             $this->foreign = Fixture::create();
-            $this->addMandatoryDass($this->foreign['package']);
         });
     }
 
@@ -48,7 +46,6 @@ final class AssessmentBillPreviewTest extends TestCase
             $selection = [Fixture::selection($this->own, true)];
             for ($index = 1; $index < 10; $index++) {
                 $fixture = Fixture::create(['organization' => $this->own['organization']], $index === 9 ? 0 : 100);
-                $this->addMandatoryDass($fixture['package']);
                 $selection[] = Fixture::selection($fixture);
             }
             $tables = ['assessment_charges', 'assessment_bills', 'assessment_bill_items', 'assessment_entitlements',
@@ -116,10 +113,4 @@ final class AssessmentBillPreviewTest extends TestCase
         });
     }
 
-    private function addMandatoryDass(int $packageId): void
-    {
-        DB::table('package_items')->insert([
-            'package_id' => $packageId, 'test_type' => 'dass21', 'sort_order' => 2,
-        ]);
-    }
 }

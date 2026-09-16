@@ -57,11 +57,6 @@ final class AssessmentBillReservationTest extends OrganizationPaymentTestCase
     private function createFixture(?array $identity = null, int $amount = 100): array
     {
         $fixture = Fixture::create($identity, $amount);
-        DB::table('package_items')->insert([
-            'package_id' => $fixture['package'],
-            'test_type' => 'dass21',
-            'sort_order' => 2,
-        ]);
 
         return $fixture;
     }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Integrations;
 
+use App\Models\AssessmentCase;
 use App\Models\AssessmentParticipant;
 use App\Models\Branch;
 use App\Models\GenericAssessmentResultVersion;
@@ -38,6 +39,7 @@ final class GenericAssessmentResultCallbackDispatcherTest extends TestCase
         config()->set('selection_integration.result_callback_enabled', true);
         config()->set('selection_integration.result_callback_base_url', 'https://seleksi.beasiswajepang.id');
         config()->set('selection_integration.result_callback_secret', self::SECRET);
+        config()->set('selection_integration.result_callback_key_id', null);
         config()->set('selection_integration.result_callback_timeout_seconds', 10);
         config()->set('selection_integration.client_secret', 'selection-to-psychotest-secret-is-distinct');
     }
@@ -74,6 +76,7 @@ final class GenericAssessmentResultCallbackDispatcherTest extends TestCase
             $this->assertSame(['generic-assessment-result'], $request->header('X-Psychotest-Contract'));
             $this->assertSame(['1'], $request->header('X-Psychotest-Contract-Version'));
             $this->assertSame(['v2'], $request->header('X-Psychotest-Signature-Version'));
+            $this->assertSame([], $request->header('X-Psychotest-Key-Id'));
             $expected = app(PsychotestSelectionRequestSigner::class)->sign(
                 $timestamp, 'POST', '/api/v2/integrations/psychotest/results', '', $body, self::SECRET,
             );
@@ -94,6 +97,92 @@ final class GenericAssessmentResultCallbackDispatcherTest extends TestCase
             $this->assertStringNotContainsString('98.75', $encoded);
             $this->assertStringNotContainsString(self::SECRET, $encoded);
             $this->assertStringNotContainsString('seleksi.beasiswajepang.id', $encoded);
+        }
+    }
+
+    public function test_keyed_callback_binds_the_key_id_into_the_signature_and_header(): void
+    {
+        config()->set('selection_integration.result_callback_key_id', 'psychotest-2026-10');
+        [, $source, $outboxId] = $this->outbox();
+        Http::fake(['https://seleksi.beasiswajepang.id/*' => Http::response(['data' => ['status' => 'ACCEPTED']], 202)]);
+
+        app(GenericAssessmentResultCallbackDispatcher::class)->dispatchExact(
+            $outboxId,
+            $source->id,
+            1,
+            $source->result_checksum,
+            str_repeat('keyed-callback-token-', 2),
+        );
+
+        Http::assertSent(function (Request $request): bool {
+            $timestamp = (string) Date::now()->timestamp;
+            $canonical = implode("\n", [
+                'psychotest-selection-hmac:v2',
+                $timestamp,
+                'generic-assessment-result',
+                '1',
+                'POST',
+                '/api/v2/integrations/psychotest/results',
+                '',
+                hash('sha256', $request->body()),
+                'key-id:psychotest-2026-10',
+            ]);
+
+            $this->assertSame(['psychotest-2026-10'], $request->header('X-Psychotest-Key-Id'));
+            $this->assertSame(
+                [hash_hmac('sha256', $canonical, self::SECRET)],
+                $request->header('X-Psychotest-Signature'),
+            );
+
+            return true;
+        });
+    }
+
+    public function test_malformed_callback_key_id_fails_before_claim_or_http_io(): void
+    {
+        config()->set('selection_integration.result_callback_key_id', 'Invalid Key');
+        [, $source, $outboxId] = $this->outbox();
+        Http::fake();
+
+        try {
+            app(GenericAssessmentResultCallbackDispatcher::class)->dispatchExact(
+                $outboxId,
+                $source->id,
+                1,
+                $source->result_checksum,
+                str_repeat('invalid-key-id-token-', 2),
+            );
+            $this->fail('A malformed callback key ID was accepted.');
+        } catch (LogicException $exception) {
+            $this->assertSame('ASSESSMENT_RESULT_CALLBACK_CONFIG_INVALID', $exception->getMessage());
+        }
+
+        Http::assertNothingSent();
+        $this->assertDatabaseMissing('generic_assessment_result_dispatch_attempts', ['outbox_id' => $outboxId]);
+    }
+
+    public function test_callback_secret_rejected_by_the_receiver_policy_fails_before_claim_or_http_io(): void
+    {
+        foreach ([str_repeat('P', 32), 'synthetic callback secret with whitespace 123456789'] as $secret) {
+            config()->set('selection_integration.result_callback_secret', $secret);
+            [, $source, $outboxId] = $this->outbox();
+            Http::fake();
+
+            try {
+                app(GenericAssessmentResultCallbackDispatcher::class)->dispatchExact(
+                    $outboxId,
+                    $source->id,
+                    1,
+                    $source->result_checksum,
+                    str_repeat('invalid-secret-token-', 2),
+                );
+                $this->fail('A callback secret rejected by Selection was accepted.');
+            } catch (LogicException $exception) {
+                $this->assertSame('ASSESSMENT_RESULT_CALLBACK_CONFIG_INVALID', $exception->getMessage());
+            }
+
+            Http::assertNothingSent();
+            $this->assertDatabaseMissing('generic_assessment_result_dispatch_attempts', ['outbox_id' => $outboxId]);
         }
     }
 
@@ -359,19 +448,22 @@ final class GenericAssessmentResultCallbackDispatcherTest extends TestCase
             'code' => 'R'.$key, 'name' => 'Synthetic result package',
             'amount' => 100, 'currency' => 'IDR', 'is_active' => true,
         ]);
-        $attemptPublicId = (string) Str::ulid();
-        $case = DB::table('assessment_cases')->insertGetId([
-            'public_id' => $attemptPublicId, 'participant_id' => $participant->id,
-            'organization_id' => $organization->id, 'package_id' => $package->id,
-            'origin' => 'INTEGRATED', 'intended_field_snapshot' => null,
-            'created_at' => now(), 'updated_at' => now(),
+
+        $assessmentAttemptId = (string) Str::ulid();
+        $case = AssessmentCase::query()->create([
+            'public_id' => $assessmentAttemptId,
+            'participant_id' => $participant->id,
+            'organization_id' => $organization->id,
+            'package_id' => $package->id,
+            'origin' => 'INTEGRATED',
+            'intended_field_snapshot' => 'UMUM',
         ]);
 
         return AssessmentParticipant::query()->create([
+            'assessment_case_id' => $case->id,
             'organization_id' => $organization->id, 'integration_client_id' => $client->id,
             'participant_id' => $participant->id, 'package_id' => $package->id,
-            'assessment_case_id' => $case, 'assessment_attempt_id' => $attemptPublicId,
-            'source_system' => 'RESULT_CALLBACK_TEST',
+            'assessment_attempt_id' => $assessmentAttemptId, 'source_system' => 'RESULT_CALLBACK_TEST',
             'external_candidate_id' => $key, 'funding_mode' => 'SPONSORED',
             'assessment_status' => 'UNDER_REVIEW', 'idempotency_key' => $key,
             'request_hash' => hash('sha256', $key),

@@ -161,11 +161,6 @@ final class PerformanceCollectiveBillPreviewExplainTest extends TestCase
         $fixture = Fixture::create(
             $organization === null ? null : ['organization' => $organization],
         );
-        DB::table('package_items')->insert([
-            'package_id' => $fixture['package'],
-            'test_type' => 'dass21',
-            'sort_order' => 2,
-        ]);
         DB::table('participants')->where('id', $fixture['participant'])->update([
             'full_name' => 'Peserta '.$label,
         ]);
