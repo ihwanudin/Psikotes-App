@@ -4,16 +4,13 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Payments;
 
-use App\Models\Branch;
 use App\Models\Order;
 use App\Models\Participant;
-use App\Models\PaymentMethod;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
-use Tests\Support\DirectPublicPaymentFixture;
+use Tests\Support\DirectPublicOrderFixture;
 use Tests\TestCase;
 
 final class ManualPaymentProofUploadTest extends TestCase
@@ -202,41 +199,17 @@ final class ManualPaymentProofUploadTest extends TestCase
     /** @return array{Participant, Order} */
     private function order(string $methodCode, string $status = 'pending'): array
     {
-        $branch = Branch::query()->create([
-            'code' => 'BR-'.Str::upper(Str::random(8)),
-            'name' => 'Cabang Uji',
-            'ref_code' => 'REF-'.Str::upper(Str::random(8)),
-        ]);
-        $participant = Participant::query()->create([
-            'branch_id' => $branch->id,
-            'referral_branch_id' => $branch->id,
-            'referral_source' => 'default',
-            'full_name' => 'Ayu Pratiwi',
-            'gender' => 'female',
-            'birth_date' => '2001-04-15',
-            'education_level' => 'SMA/SMK',
-            'intended_field' => 'KAIGO',
-            'phone' => '+6281234567890',
-        ]);
-        $orderPublicId = (string) Str::ulid();
-        $case = DirectPublicPaymentFixture::caseFor($participant, $branch, $orderPublicId, 250_000);
-        $method = new PaymentMethod;
-        $method->forceFill([
-            'code' => $methodCode,
-            'display_name' => Str::headline($methodCode),
-            'is_active' => true,
-        ])->save();
-        $order = Order::query()->create([
-            'public_id' => $orderPublicId,
-            'participant_id' => $participant->id,
-            'assessment_case_id' => $case->id,
-            'payment_method_id' => $method->id,
-            'status' => $status,
-            'amount' => 250_000,
-            'currency' => 'IDR',
-        ]);
+        $fixture = DirectPublicOrderFixture::create(
+            paymentMethodCode: $methodCode,
+            amount: 250_000,
+        );
+        $order = $fixture['order'];
+        if ($status !== 'pending') {
+            $order->forceFill(['status' => $status])->save();
+        }
 
-        return [$participant, $order];
+        return [$fixture['participant'], $order];
+
     }
 
     /** @return array<string, int> */

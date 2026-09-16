@@ -51,6 +51,7 @@ final class ManualTransferVerificationTest extends TestCase
         $this->assertTrue($order->paid_at?->equalTo(Date::now()) ?? false);
         $this->assertSame('ready', $entitlement->status);
         $this->assertTrue($entitlement->ready_at?->equalTo(Date::now()) ?? false);
+        $this->assertEntitlements($order, 'ready');
         $audit = (array) DB::table('audit_logs')->sole();
         $this->assertSame('2024-02-29 03:15:00', $audit['occurred_at']);
         $this->assertSame('2029-02-28 03:15:00', $audit['expires_at']);
@@ -102,6 +103,7 @@ final class ManualTransferVerificationTest extends TestCase
         $this->assertSame($admin->id, $order->verified_by_admin_id);
         $this->assertSame('locked', $entitlement->fresh()->status);
         $this->assertNull($entitlement->fresh()->ready_at);
+        $this->assertEntitlements($order, 'locked');
         $this->assertDatabaseHas('audit_logs', [
             'action' => 'manual_transfer.rejected',
             'subject_id' => (string) $order->public_id,
@@ -142,6 +144,7 @@ final class ManualTransferVerificationTest extends TestCase
 
         $this->assertSame('pending', $order->fresh()->status->value);
         $this->assertSame('locked', $entitlement->fresh()->status);
+        $this->assertEntitlements($order, 'locked');
         $this->assertDatabaseCount('audit_logs', 0);
     }
 
@@ -161,6 +164,7 @@ final class ManualTransferVerificationTest extends TestCase
             } catch (AuthorizationException) {
                 $this->assertSame('pending', $order->fresh()->status->value);
                 $this->assertSame('locked', $entitlement->fresh()->status);
+                $this->assertEntitlements($order, 'locked');
             }
         }
 
@@ -290,6 +294,13 @@ final class ManualTransferVerificationTest extends TestCase
             'test_type' => 'ist',
             'status' => 'locked',
         ]);
+        Entitlement::query()->create([
+            'participant_id' => $participant->id,
+            'assessment_case_id' => null,
+            'order_id' => $order->id,
+            'test_type' => 'dass21',
+            'status' => 'locked',
+        ]);
 
         return [$branch, $order, $entitlement];
     }
@@ -304,5 +315,13 @@ final class ManualTransferVerificationTest extends TestCase
             'role' => AdminRole::BranchAdmin,
             'can_verify_payments' => $canVerify,
         ]);
+    }
+
+    private function assertEntitlements(Order $order, string $status): void
+    {
+        $this->assertSame(
+            ['dass21' => $status, 'ist' => $status],
+            Entitlement::query()->where('order_id', $order->id)->orderBy('test_type')->pluck('status', 'test_type')->all(),
+        );
     }
 }

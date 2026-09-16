@@ -2,15 +2,30 @@
 
 ## Ringkasan akhir audit
 
-- **29 branch diaudit** terhadap checkpoint `6350f35`.
-- **15 PATCH-EQUIVALENT**; **14 PERLU MERGE** (rekonsiliasi manual, bukan
-  merge langsung); **0 KONFLIK** yang telah diputuskan.
+- **30 branch/ref diaudit** terhadap checkpoint `6350f35` dan checkpoint
+  lanjutan `codex/reconcile-org-f2-2026-09-15`.
+- **16 PATCH-EQUIVALENT/RECONCILED**; **13 PERLU MERGE historis terserap oleh
+  rekonsiliasi `integration/psychotest-current`**; **0 KONFLIK** terbuka yang
+  masih membutuhkan keputusan produk/teknis.
 - Satu ref lama, `codex/f5-fixture-visual-repair`, dicatat sebagai
   **SUPERSEDED oleh v2** dan tidak dihitung sebagai audit mandiri.
-- Karena 14 branch longgar di bawah ini tidak patch-equivalent dan final blob
-  kandidatnya tidak identik, checkpoint belum dapat diklaim mewakili seluruh
-  pekerjaan Grup B + Grup C. Khusus `fix/js-yaml-advisory`, `package-lock.json`
-  adalah perubahan security yang belum boleh diabaikan.
+- `integration/psychotest-current` sekarang **RECONCILED**: patch security
+  `js-yaml`, callback keyring/config, lifecycle SQLite isolation, rollback
+  preservation, DASS fixture centralization, direct-public fixture coverage,
+  Xendit `ist+dass21`, dan residual manual-payment/direct-public entitlement
+  coverage sudah tercermin secara patch-equivalent atau adaptif di checkpoint
+  lanjutan.
+- Sanity check `git cherry HEAD integration/psychotest-current` masih
+  menampilkan sejumlah `+` karena beberapa patch diadaptasi dan tidak identik
+  byte-for-byte, serta beberapa catatan handoff historis tidak dibawa. Audit
+  file-level terakhir tidak menemukan sisa material signifikan di luar
+  dokumentasi historis low-priority.
+- Bukti akhir rekonsiliasi integration:
+  - Focused direct-public/manual-payment tests: 28 tests / 199 assertions,
+    hijau.
+  - Full SQLite suite 2GB: 3,383 tests, 3,374 passed, 21,886 assertions,
+    9 skipped, 0 error/failure.
+  - Disposable PostgreSQL: 554 tests / 5,863 assertions, hijau.
 
 This is a read-only audit ledger against checkpoint `6350f35`. A
 `PATCH-EQUIVALENT` row means every candidate commit is already represented by
@@ -20,6 +35,7 @@ source branch. `PERLU MERGE` means a material candidate patch is absent, and
 
 | Branch | Status | Catatan singkat |
 |---|---|---|
+| `integration/psychotest-current` | RECONCILED | Common ancestor `8889095`; 33 commit eksklusif diaudit ulang. Satu patch security `js-yaml` patch-equivalent; callback keyring, SQLite lifecycle/rollback, DASS fixture, direct-public fixture, Xendit, dan residual manual-payment entitlement coverage direkonsiliasi adaptif ke checkpoint lanjutan. Sisa `git cherry +` adalah patch yang sengaja disupersede/adaptasi atau dokumentasi historis low-priority, bukan pekerjaan material yang terlewat. Evidence: focused direct-public/manual-payment 28/199 hijau, full SQLite 3,383 tests / 21,886 assertions hijau, PostgreSQL 554 tests / 5,863 assertions hijau. |
 | `codex/f9-backup-restore-rehearsal` | PATCH-EQUIVALENT | Common ancestor `8bde313`; checkpoint/branch divergence `50/4`. Kedua script dan contract test byte-identical. Handoff checkpoint lebih baru: canonical integration verification dan status acceptance menggantikan status kandidat yang masih pending review. |
 | `codex/f9-load-performance-baseline` | PATCH-EQUIVALENT | Common ancestor `99b557f`; divergence `45/11`. Empat file kandidat sudah terserap; tiga script byte-identical. Handoff checkpoint menambahkan canonical integration smoke/acceptance sehingga lebih baru dari candidate handoff. |
 | `codex/test-harness-reliability` | PATCH-EQUIVALENT | Common ancestor `fff2feb`; divergence `69/4`. Seluruh empat patch kandidat terdeteksi setara. Dua puluh tiga path byte-identical; perbedaan tiga path adalah kelanjutan checkpoint untuk isolasi generic-result-ledger dan portability PCNTL/Unix-socket, bukan patch kandidat yang hilang. |
