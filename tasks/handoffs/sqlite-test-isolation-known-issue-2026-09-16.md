@@ -2,8 +2,8 @@
 
 ## Status
 
-Open, test-local technical debt. The root cause has not been isolated to one
-test or Laravel framework transition. It does not change PostgreSQL schema or
+RESOLVED — test-lifecycle repair is committed as the root-cause fix for the
+SQLite local test isolation issue. It does not change PostgreSQL schema or
 production behavior.
 
 ## Evidence
@@ -28,15 +28,20 @@ The combined audit suite reached 266/267 tests. The remaining failure was
 CheckoutAcceptanceMatrix with `no such table: branches`, so a single root
 contaminator could not be proved.
 
-## Mitigation
+The repair applies `RefreshDatabaseState::$migrated = false` before
+`OrganizationPaymentTestCase::setUp()` for every `DatabaseTruncation` subclass,
+while retaining the final `migrate:fresh` teardown of manually rolled-back
+schema tests. The five local guards were removed. A full SQLite run without
+those guards passed 3,380 tests / 21,840 assertions with 0 errors, 0 failures,
+and 9 known skips (2026-09-16). The PostgreSQL disposable suite passed 554
+tests / 5,863 assertions with 0 errors and 0 failures after the guard removal.
+The additional assessment-case rollback preservation test passed 1 test / 38
+assertions.
 
-The five affected `DatabaseTruncation` tests now check for `branches` and
-`payment_methods` immediately after their parent setup. If either is absent,
-they rebuild the disposable SQLite test schema with `migrate:fresh` before
-creating fixtures. This restores a test precondition only: no product
-constraint, assertion, PostgreSQL path, or production migration changes.
+## Replaced mitigation
 
-Future work should instrument PHPUnit/Laravel database lifecycle events to
-identify the transition that leaves `RefreshDatabaseState::$migrated` true
-while the current SQLite PDO lacks the baseline schema, then remove these
-guards once a root-cause fix is accepted.
+The five affected `DatabaseTruncation` tests no longer contain local
+`branches`/`payment_methods` guards. The shared pre-setup reset repairs the
+stale migration marker before Laravel selects the in-memory PDO. This restores
+the normal test lifecycle without changing product constraints, assertions,
+PostgreSQL paths, or production migrations.

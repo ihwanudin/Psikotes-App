@@ -59,21 +59,13 @@ final class CollectiveBillLifecycleCompositionTest extends OrganizationPaymentTe
     protected function setUp(): void
     {
         parent::setUp();
-        // SQLite cross-class ordering can retain a stale migration flag; see tasks/handoffs/sqlite-test-isolation-known-issue-2026-09-16.md.
-        $this->restoreSchemaBaselineIfMissing();
+
         $this->freezeTime();
         Http::preventStrayRequests();
         Http::fake([]);
         Bus::fake();
         Queue::fake();
         config()->set('assessment_integration.checkout.enabled', true);
-    }
-
-    private function restoreSchemaBaselineIfMissing(): void
-    {
-        if (! \Illuminate\Support\Facades\Schema::hasTable('branches') || ! \Illuminate\Support\Facades\Schema::hasTable('payment_methods')) {
-            $this->assertSame(0, \Illuminate\Support\Facades\Artisan::call('migrate:fresh', ['--force' => true, '--no-interaction' => true]));
-        }
     }
 
     protected function tearDown(): void

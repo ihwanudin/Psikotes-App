@@ -44,8 +44,7 @@ final class CheckoutPaymentHttpTest extends OrganizationPaymentTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        // SQLite cross-class ordering can retain a stale migration flag; see tasks/handoffs/sqlite-test-isolation-known-issue-2026-09-16.md.
-        $this->restoreSchemaBaselineIfMissing();
+
         config()->set('app.debug', false);
         config()->set('app.url', 'https://psikotes.oncam.id');
         URL::forceRootUrl('https://psikotes.oncam.id');
@@ -67,13 +66,6 @@ final class CheckoutPaymentHttpTest extends OrganizationPaymentTestCase
             'code' => 'xendit', 'display_name' => 'Synthetic Xendit', 'is_active' => true,
         ]);
         RateLimiter::clear('checkout-http:payment:127.0.0.51');
-    }
-
-    private function restoreSchemaBaselineIfMissing(): void
-    {
-        if (! \Illuminate\Support\Facades\Schema::hasTable('branches') || ! \Illuminate\Support\Facades\Schema::hasTable('payment_methods')) {
-            $this->assertSame(0, \Illuminate\Support\Facades\Artisan::call('migrate:fresh', ['--force' => true, '--no-interaction' => true]));
-        }
     }
 
     protected function tearDown(): void
@@ -107,6 +99,7 @@ final class CheckoutPaymentHttpTest extends OrganizationPaymentTestCase
     {
         $fixture = $this->established(amount: 0);
         $this->acceptCurrentConsents($fixture['participant']);
+        $before = \Carbon\CarbonImmutable::instance(now())->utc()->startOfSecond();
         $provider = $this->createMock(PaymentProvider::class);
         foreach (['createInvoice', 'lookupInvoice', 'checkStatus', 'normalizeWebhook', 'expireInvoice'] as $method) {
             $provider->expects($this->never())->method($method);
@@ -119,9 +112,12 @@ final class CheckoutPaymentHttpTest extends OrganizationPaymentTestCase
 
         $this->assertPrivate($response);
         $this->assertDatabaseCount('assessment_bills', 0);
-        $this->assertDatabaseHas('assessment_charges', [
-            'assessment_participant_id' => $fixture['attempt'], 'amount' => 0, 'free_settled_at' => now(),
-        ]);
+        $charge = DB::table('assessment_charges')->where('assessment_participant_id', $fixture['attempt'])->sole();
+        $this->assertSame(0, $charge->amount);
+        $this->assertNotNull($charge->free_settled_at);
+        $settledAt = \Carbon\CarbonImmutable::parse((string) $charge->free_settled_at)->utc();
+        $after = \Carbon\CarbonImmutable::instance(now())->utc()->addSecond()->startOfSecond();
+        $this->assertTrue($settledAt->betweenIncluded($before, $after));
     }
 
     public function test_positive_organization_payment_is_one_generic_conflict_without_payment_writes(): void

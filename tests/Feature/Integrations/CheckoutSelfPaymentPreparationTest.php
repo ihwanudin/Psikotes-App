@@ -45,8 +45,7 @@ final class CheckoutSelfPaymentPreparationTest extends OrganizationPaymentTestCa
     protected function setUp(): void
     {
         parent::setUp();
-        // SQLite cross-class ordering can retain a stale migration flag; see tasks/handoffs/sqlite-test-isolation-known-issue-2026-09-16.md.
-        $this->restoreSchemaBaselineIfMissing();
+
         config()->set('assessment_integration.checkout_handoff.enabled', true);
         config()->set('assessment_integration.checkout_handoff.ttl_seconds', 600);
         config()->set('assessment_integration.checkout_session', [
@@ -57,13 +56,6 @@ final class CheckoutSelfPaymentPreparationTest extends OrganizationPaymentTestCa
         $this->method = DB::table('payment_methods')->insertGetId([
             'code' => 'xendit', 'display_name' => 'Synthetic Xendit', 'is_active' => true,
         ]);
-    }
-
-    private function restoreSchemaBaselineIfMissing(): void
-    {
-        if (! \Illuminate\Support\Facades\Schema::hasTable('branches') || ! \Illuminate\Support\Facades\Schema::hasTable('payment_methods')) {
-            $this->assertSame(0, \Illuminate\Support\Facades\Artisan::call('migrate:fresh', ['--force' => true, '--no-interaction' => true]));
-        }
     }
 
     public function test_positive_self_payment_creates_once_and_exact_replay_returns_same_preparation(): void
