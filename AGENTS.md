@@ -46,21 +46,34 @@ These rules apply to every Codex session and delegated task in this repository.
   loosening a constraint, deleting a check, or picking one side without
   recording why.
 
-## Ownership ledger (as of 2026-09-16, baseline commit 463783c)
+## Ownership ledger (updated 2026-09-16, baseline commit d420979)
 
 This checkpoint reconciles `codex/organization-payment-spec` onto
-`codex/f2-wave1-integration`. Full PHP suite: 3,379 tests, 3,370 passing, 0
-errors, 0 failures, 9 known skips. Disposable PostgreSQL: 554 tests, 5,863
-assertions, green. No `app/` production code changed by the reconciliation
-itself. Known open item: `tasks/handoffs/sqlite-test-isolation-known-issue-2026-09-16.md`
-(SQLite-only test-order guard, not a production issue).
+`codex/f2-wave1-integration` (merge commit `463783c`), plus a verified
+js-yaml security patch (`d420979`, GHSA-2883-xcg3-v3hh, confirmed unrelated
+to the pre-existing ESLint non-completion issue before commit). Full PHP
+suite: 3,379 tests, 3,370 passing, 0 errors, 0 failures, 9 known skips.
+Disposable PostgreSQL: 554 tests, 5,863 assertions, green. No `app/`
+production code changed by the organization-payment reconciliation itself.
+Known open item: `tasks/handoffs/sqlite-test-isolation-known-issue-2026-09-16.md`
+(SQLite-only test-order guard, not a production issue) — Codex is currently
+evaluating whether `codex/integration-psychotest-current`'s test-lifecycle
+fix closes this at the root; do not assume it is resolved until the
+coordinator confirms.
+
+Claude Code stays coordinator-only in this project (human decision,
+2026-09-16) — it does not write application code here. All feature work
+below is delegated to Codex, GLM, and DeepSeek.
 
 | Owner | Scope | Exclusive paths | Forbidden |
 |---|---|---|---|
-| Codex | Remaining Grup C reconciliation: `f2-r0/r2/r2c/s3/s4`, `f5-fixture-*`, `f9-*`, `test-harness-reliability(-qa)`, `security-binary-content-gate`, `test-fixture-ledger-compat`, `release-gate-verification` | Existing `app/`, `database/migrations/`, `tests/` outside GLM's paths below | GLM's exclusive paths below; `composer.json`/`composer.lock`/`package.json`/lockfiles unless explicitly coordinated with the coordinator |
-| GLM | F6 — Result documents (participant HPP report + internal report rendering). Status per `tasks/parallel-work.md`: unstarted ("Open"), depends on a stable F5 review/signature contract that is **not yet final** — build against **fixture/mock data only**, do not wire to live F5 output yet. | New only: `app/Domain/Report/**`, `app/Services/ReportRendering/**`, `resources/views/reports/**`, `tests/Feature/Reports/**`, `tests/Unit/Report/**` | Any existing file outside those new paths, any migration, any existing test, `composer.json`/`package.json`/lockfiles, `AGENTS.md`, `tasks/parallel-work.md`, `tasks/f2-f9-acceptance.md` |
+| Codex | (a) In progress: reconcile `codex/integration-psychotest-current` onto this checkpoint (33 exclusive commits — selection callback/keyring, checkout/billing/payment/case fixtures, SQLite rollback safety, test lifecycle isolation; real conflicts identified, do not auto-resolve). (b) After that lands: F7 — admin/branch dashboards, commission ledger, proctoring view. (c) Remaining Grup C branches already confirmed patch-equivalent need no further action. | Existing `app/`, `database/migrations/`, `tests/` outside GLM's and DeepSeek's paths below | GLM's and DeepSeek's exclusive paths below; `composer.json`/`composer.lock`/`package.json`/lockfiles unless explicitly coordinated with the coordinator |
+| GLM | F6 — Result documents (participant HPP report + internal report rendering). Status: unstarted ("Open"), depends on a stable F5 review/signature contract that is **not yet final** — build against **fixture/mock data only**, do not wire to live F5 output yet. | New only: `app/Domain/Report/**`, `app/Services/ReportRendering/**`, `resources/views/reports/**`, `tests/Feature/Reports/**`, `tests/Unit/Report/**` | Any existing file outside those new paths, any migration, any existing test, `composer.json`/`package.json`/lockfiles, `AGENTS.md`, `tasks/parallel-work.md`, `tasks/f2-f9-acceptance.md` |
+| DeepSeek | F3 (Eligibility/Grey Area) + F4 (Narrative). **Not greenfield** — pure domain logic already exists and passes T-12..T-21 (see `app/Domain/Eligibility/*.php`: `EligibilityDecisionSnapshot`, `EligibilityZoneCalculator`, `RecommendationLabelPolicy`, `AspectSourceDiscrepancyPolicy`; `app/Domain/Narrative/*.php`: `ClusterNarrativeAssembler`, `BilingualClusterNarrativeComposer`, `JapaneseClusterNarrativeAssembler`, `ReportingNarrativeCatalog`, and others). Read all of it before writing anything. Remaining scope per `tasks/f2-f9-acceptance.md` phase-exit gates: **persistence** (versioned, case-bound, per G8), **HTTP/API projection**, and **integration with the F5 review workflow** for both F3 and F4 outputs. | Extend only: `app/Domain/Eligibility/**`, `app/Domain/Narrative/**`, plus NEW files under `app/Http/Controllers/` scoped to these two domains, NEW test files under `tests/**/Eligibility/**` and `tests/**/Narrative/**` | Any existing migration, `routes/*.php`, `app/Domain/Review/**` (F5, Codex/coordinator territory), any existing test outside the two domains, `composer.json`/`package.json`/lockfiles, `AGENTS.md`, `tasks/parallel-work.md`, `tasks/f2-f9-acceptance.md`. **New migrations and any route registration require the coordinator's explicit go-ahead before writing them** — propose the migration content and route additions in a report first; do not create migration files unilaterally (migrations are a single-owner resource per the Parallel-work authority rule above). |
 | Claude (coordinator) | Cross-tool verification, canonical docs, merge/promotion gatekeeping | `AGENTS.md`, `tasks/parallel-work.md`, `tasks/f2-f9-acceptance.md`, cross-branch reconciliation | — |
 
 GLM works on its own branch (`glm/f6-hpp-report-draft`, branched from this
-checkpoint) and does not merge into the reconciliation branch or `main`
-without the coordinator's verification, per the rules above.
+checkpoint). DeepSeek works on its own branch (`deepseek/f3-f4-eligibility-narrative`,
+branched from this checkpoint). Neither merges into the reconciliation
+branch or `main` without the coordinator's verification, per the rules
+above.
