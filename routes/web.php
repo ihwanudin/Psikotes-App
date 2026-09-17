@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\IdentityEvidenceAccessController;
 use App\Http\Controllers\Admin\ManualPaymentProofAccessController;
 use App\Http\Controllers\AssessmentInvitationController;
 use App\Http\Controllers\BilingualNarrativeController;
+use App\Http\Controllers\NarrativeClusterEditController;
 use App\Http\Controllers\CheckoutPaymentController;
 use App\Http\Controllers\CheckoutSessionController;
 use App\Http\Controllers\EligibilityDecisionController;
@@ -165,6 +166,26 @@ Route::get('/admin/assessment-cases/{case}/bilingual-narratives', [BilingualNarr
         'throttle:bilingual-narrative-access',
     ])
     ->name('admin.assessment-cases.bilingual-narratives.show');
+
+Route::get('/admin/assessment-cases/{case}/narrative-cluster-edits', [NarrativeClusterEditController::class, 'show'])
+    ->whereUlid('case')
+    ->middleware([
+        'panel:admin',
+        AuthenticateFilament::class,
+        ApplyRlsContext::class,
+        'throttle:narrative-cluster-edit-access',
+    ])
+    ->name('admin.assessment-cases.narrative-cluster-edits.show');
+
+Route::put('/admin/assessment-cases/{case}/narrative-cluster-edits/{cluster}', [NarrativeClusterEditController::class, 'update'])
+    ->whereUlid('case')
+    ->middleware([
+        'panel:admin',
+        AuthenticateFilament::class,
+        ApplyRlsContext::class,
+        'throttle:narrative-cluster-edit-access',
+    ])
+    ->name('admin.assessment-cases.narrative-cluster-edits.update');
 
 Route::get('/admin/assessment-cases/{case}/review-input', ReviewInputController::class)
     ->whereUlid('case')
