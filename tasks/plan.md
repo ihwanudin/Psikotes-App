@@ -4,12 +4,14 @@
 
 F1 membangun satu aplikasi Laravel dengan dua permukaan: Inertia.js + React untuk peserta dan Filament/Livewire untuk admin, staf, dan psikolog. Hasil F0 dimuat sebagai data read-only. Jalur lengkap yang harus hidup adalah referral first-touch, registrasi dan consent, verifikasi identitas awal, pembayaran Xendit atau transfer manual, aktivasi entitlement, notifikasi, lalu login peserta. PostgreSQL RLS menjadi batas keamanan utama dan wajib diuji dari awal.
 
+Koordinasi lintas fase F1-F9, batas ownership task paralel, urutan dependensi, dan prosedur melanjutkan pekerjaan setelah sesi terhenti ditetapkan secara kanonik di [`tasks/parallel-work.md`](parallel-work.md). Dokumen tersebut wajib dibaca sebelum membuat, melanjutkan, atau mengintegrasikan task paralel.
+
 ## Source-of-truth decisions
 
 - `SPEC.md` v4 menang atas bagian lama `PANDUAN-EKSEKUSI.md` dan `SECURITY.md` yang masih menyebut Supabase, Workers, atau memindahkan Xendit ke fase lain.
 - Xendit Invoice termasuk F1; transfer manual tetap tersedia berdampingan.
 - Auth peserta memakai nomor tes + tanggal lahir dengan JWT kustom TTL 12 jam. Filament memakai sesi Laravel.
-- DASS disimpan dalam schema/tabel dan policy terpisah; consent B boleh ditolak tanpa memblokir psikotes.
+- DASS-21 tetap tersedia sebagai paket mandiri; setiap paket psikotes utama menyertakannya otomatis tanpa pilihan tambah/hapus. Consent B, schema/tabel, dan policy tetap terpisah serta DASS tidak memengaruhi kelayakan.
 - Nomor tes, status pembayaran, entitlement, dan atribusi referral ditetapkan server-side.
 - Pencocokan wajah memakai interface `IdentityMatcher`. Penyimpanan foto dan alur tinjauan manual dapat dibangun sekarang; implementasi otomatis tidak dipilih sampai provider/algoritme disetujui.
 - JSON F0 adalah sumber seed yang sah. Angka instrumen tidak disalin ke kode aplikasi.
@@ -64,7 +66,7 @@ Toolchain + repository
 - Referral kedua menimpa referral first-touch.
 - Brute force nomor tes + tanggal lahir.
 - File berkedok gambar/PDF atau file terlalu besar lolos upload.
-- Consent B ditolak tetapi psikotes ikut terblokir.
+- Paket DASS mandiri atau komposisi paket psikotes utama dimanipulasi melalui request klien.
 - Job queue membawa konteks tenant yang salah atau menulis PII ke log.
 
 ## Task list
@@ -114,6 +116,15 @@ Toolchain + repository
 
 ## Verification strategy
 
+F2-F9 are continued through the phase-exit plan and six-layer acceptance matrix
+in [`tasks/f2-f9-acceptance.md`](f2-f9-acceptance.md). The existing F1 plan and
+checklist remain authoritative for F1; later-phase work does not mark an F1 item
+complete indirectly. The immediate critical path is: approve a four-instrument
+definition manifest, implement the ADR-0030 start boundary, deliver one vertical
+instrument slice through authoritative result persistence, then connect F3/F4,
+F5 review, and F6 documents. F9 runs continuously without activating production
+features before their operational authority exists.
+
 - PHPUnit/Pest feature tests untuk HTTP, auth, payment, referral, consent, dan upload.
 - PostgreSQL integration tests memakai role aplikasi nyata; SQLite tidak boleh menjadi bukti RLS.
 - Contract tests untuk fake payment/notification/storage adapters; sandbox Xendit hanya setelah credential tersedia.
@@ -138,6 +149,15 @@ Toolchain + repository
 - Provider/algoritme pencocokan wajah otomatis dan dasar pemrosesan biometrik. Rekomendasi sementara: capture + tinjauan manual, dengan interface provider tetapi tanpa keputusan otomatis.
 - Endpoint yang dipakai untuk notifikasi: WAHA langsung atau webhook n8n.
 - Credential sandbox Xendit, S3-compatible storage, dan layanan notifikasi tersedia kapan.
+
+## Rencana implementasi Task 17
+
+1. Tambahkan deduplication key unik pada outbox dan enqueue notifikasi aktivasi di transaksi pertama `pending→paid`; dispatch job hanya setelah commit.
+2. Tambahkan kontrak notifier, fake deterministik, adapter webhook n8n fail-closed, worker retry dengan audit/telemetry tanpa PII, serta scheduler pemulihan outbox tertinggal.
+3. Tambahkan status order berbasis JWT pada `/api/me/order` dan halaman Inertia berbasis sesi registrasi yang selalu menurunkan participant dari principal/sesi, bukan ID request.
+4. Jalankan focused tests per irisan, review keamanan/idempotensi, browser smoke bila runtime lokal tersedia, lalu gerbang PHP/frontend/audit penuh dan sinkronkan dokumentasi.
+
+Keputusan batas provider: n8n menjadi adapter produksi karena webhook dapat diwajibkan menduplikasi `idempotency_key` sebelum memanggil WAHA. Adapter langsung `POST /api/sendText` tidak dipakai pada F1 karena dokumentasi WAHA tidak menjamin idempotensi untuk outcome timeout yang tidak diketahui.
 - Docker Desktop/Engine akan dipasang lokal atau development awal dijalankan via Laragon.
 - Teks final consent A/B dan masa retensi consent perlu review hukum sebelum go-live.
 

@@ -46,6 +46,18 @@ def extract(root):
     white = {code: [zone["lo"], zone["hi"]]
              for code, dimension in dimensions.items()
              for zone in dimension["zones"] if zone["zone"] == "white"}
-    data = {"mapping": mapping, "bands": dimensions, "band_scores": band_scores, "white_zones": white}
+    data = {
+        "version": "F2-2026.09",
+        "mapping": mapping,
+        "bands": dimensions,
+        "band_scores": band_scores,
+        "white_zones": white,
+        "normalization": {
+            "version": "PAPI-OPTIMAL-2026.09",
+            "method": "distance_from_white_zone",
+            "distance_to_level": {"0": 5, "1": 4, "2": 3, "3": 2, "4": 1},
+            "excluded_from_hpp": ["G", "I", "X", "Z"],
+        },
+    }
     write("papi.json", data)
     return data

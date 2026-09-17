@@ -1,19 +1,24 @@
 # F1 Task Checklist
 
+Checklist F1 ini tetap utuh. Checklist kanonik F2-F9 dan status T-01..T-28 per
+lapisan domain, persistence, PostgreSQL/RLS, HTTP, UI, dan browser E2E berada di
+[`tasks/f2-f9-acceptance.md`](f2-f9-acceptance.md). Jangan menjumlahkan rasio
+checklist yang berbeda sebagai persentase proyek; gunakan exit gate fase.
+
 ## Task 1: Establish repository baseline
 
 **Description:** Inisialisasi Git, buat branch `f1/foundation`, lindungi secrets/build artifacts, dan dokumentasikan toolchain yang dipin.
 
 **Acceptance criteria:**
 
-- [ ] Repository Git dan branch F1 aktif tanpa memasukkan data peserta atau secrets.
-- [ ] `.gitignore` mencakup `.env*` rahasia, key, vendor, node_modules, dan build output.
-- [ ] PHP, Composer Laragon, Node/package manager, PostgreSQL client, dan Docker dicatat statusnya.
+- [x] Repository Git dan branch F1 aktif tanpa memasukkan data peserta atau secrets.
+- [x] `.gitignore` mencakup `.env*` rahasia, key, vendor, node_modules, dan build output.
+- [x] PHP, Composer Laragon, Node/package manager, PostgreSQL client, dan Docker dicatat statusnya.
 
 **Verification:**
 
-- [ ] `git status` hanya menampilkan file yang memang diharapkan.
-- [ ] Secret/PII scan baseline tidak menemukan material sensitif yang akan di-commit.
+- [x] `git status` hanya menampilkan file yang memang diharapkan.
+- [x] Secret/PII scan baseline tidak menemukan material sensitif yang akan di-commit.
 
 **Dependencies:** None
 
@@ -27,14 +32,14 @@
 
 **Acceptance criteria:**
 
-- [ ] Laravel boot dengan PHP strict conventions dan environment example tanpa secret.
-- [ ] Inertia React terpasang dan halaman smoke test dirender.
-- [ ] Lockfile PHP/frontend tunggal serta dependency-script policy tercatat.
+- [x] Laravel boot dengan PHP strict conventions dan environment example tanpa secret.
+- [x] Inertia React terpasang dan halaman smoke test dirender.
+- [x] Lockfile PHP/frontend tunggal serta dependency-script policy tercatat.
 
 **Verification:**
 
-- [ ] Focused PHP smoke test lulus.
-- [ ] Frontend build, lint, dan typecheck lulus.
+- [x] Focused PHP smoke test lulus (39/39; 136 assertions).
+- [x] Frontend build, lint, dan typecheck lulus; Composer/npm audit tidak menemukan advisory.
 
 **Dependencies:** Task 1
 
@@ -48,14 +53,14 @@
 
 **Acceptance criteria:**
 
-- [ ] Compose memakai healthcheck dan volume bernama; Postgres/Redis tidak dipublikasikan ke internet.
-- [ ] App, queue, dan scheduler memakai image/config aplikasi yang sama.
-- [ ] `.env.example` hanya berisi placeholder.
+- [x] Compose memakai healthcheck dan volume bernama; Postgres/Redis tidak dipublikasikan ke host.
+- [x] App, queue, dan scheduler memakai image/config aplikasi yang sama.
+- [x] `.env.example` hanya berisi placeholder.
 
 **Verification:**
 
-- [ ] `docker compose config` valid.
-- [ ] Health endpoint membuktikan DB dan Redis dapat dijangkau setelah stack hidup.
+- [x] `docker compose config` valid.
+- [x] Health endpoint membuktikan DB dan Redis dapat dijangkau setelah stack hidup.
 
 **Dependencies:** Task 2
 
@@ -69,14 +74,14 @@
 
 **Acceptance criteria:**
 
-- [ ] Seeder idempotent dan menyimpan versi sumber/engine.
-- [ ] Seluruh angka dibaca dari JSON; tidak ada norma/ambang yang ditanam di PHP.
-- [ ] Count dan checksum hasil seed cocok dengan artefak F0.
+- [x] Seeder idempotent dan menyimpan versi sumber/engine.
+- [x] Seluruh angka dibaca dari JSON; tidak ada norma/ambang yang ditanam di PHP.
+- [x] Count dan checksum hasil seed cocok dengan artefak F0.
 
 **Verification:**
 
-- [ ] Seeder integration test lulus dua kali berturut-turut.
-- [ ] Gate Python F0 tetap 11/11 lulus.
+- [x] Seeder integration test lulus dua kali berturut-turut.
+- [x] Gate Python F0 tetap 11/11 lulus.
 
 **Dependencies:** Task 2
 
@@ -91,14 +96,14 @@
 **Acceptance criteria:**
 
 - [ ] Foreign keys, enum/check constraints, indeks, dan unique/partial unique constraints sesuai SPEC.
-- [ ] `payment_methods` menyimpan kode stabil dan `is_active`; semua metode default nonaktif.
-- [ ] Consent A/B versioned; consent B nullable/declined tanpa memblokir psikotes.
-- [ ] Role migration dan runtime database terpisah.
+- [x] `payment_methods` menyimpan kode stabil dan `is_active`; semua metode default nonaktif.
+- [x] Consent A/B versioned dan dicatat terpisah; riwayat consent B yang ditarik/ditolak tetap fail-closed tanpa mengubah hasil psikotes utama.
+- [x] Role migration dan runtime database terpisah.
 
 **Verification:**
 
 - [ ] Migration up/down lulus pada PostgreSQL.
-- [ ] Schema assertion tests memeriksa constraint dan indeks kritis.
+- [x] Schema assertion tests memeriksa constraint dan indeks kritis.
 
 **Dependencies:** Task 3
 
@@ -134,13 +139,13 @@
 **Acceptance criteria:**
 
 - [ ] Semua route bertenant dan job bertenant memakai context middleware.
-- [ ] Konteks dibersihkan otomatis setelah transaksi, termasuk saat exception.
-- [ ] Route baru tanpa deklarasi context gagal melalui architecture test.
+- [x] Konteks dibersihkan otomatis setelah transaksi, termasuk saat exception.
+- [x] Route baru yang menyatakan akses tenant tanpa middleware context gagal melalui architecture test.
 
 **Verification:**
 
 - [ ] Dua request/job berurutan dari tenant berbeda tidak saling melihat data.
-- [ ] Route coverage test mendeteksi route bertenant tanpa middleware.
+- [x] Route coverage test mendeteksi controller bertenant tanpa middleware.
 
 **Dependencies:** Task 6
 
@@ -154,14 +159,14 @@
 
 **Acceptance criteria:**
 
-- [ ] Role dan kemampuan diverifikasi server-side, bukan hanya menyembunyikan menu.
-- [ ] Cookie httpOnly/Secure/SameSite dan session expiry dikonfigurasi.
-- [ ] Admin cabang otomatis mendapat konteks RLS cabangnya.
+- [x] Role dan kemampuan diverifikasi server-side, bukan hanya menyembunyikan menu.
+- [x] Cookie httpOnly/Secure/SameSite dan session expiry dikonfigurasi.
+- [x] Admin cabang otomatis mendapat konteks RLS cabangnya.
 
 **Verification:**
 
-- [ ] Auth/authorization feature tests lulus untuk setiap role.
-- [ ] IDOR lintas cabang ditolak walau ID resource diketahui.
+- [x] Auth/authorization feature tests lulus untuk setiap role.
+- [x] IDOR lintas cabang ditolak walau ID resource diketahui.
 
 **Dependencies:** Task 7
 
@@ -175,13 +180,13 @@
 
 **Acceptance criteria:**
 
-- [ ] Referral pertama tetap menang setelah link cabang lain dibuka.
-- [ ] Kode tidak dikenal jatuh ke cabang default tanpa membuka data cabang.
-- [ ] IP/UA diperlakukan sebagai PII dengan retensi dan logging minimum.
+- [x] Referral pertama tetap menang setelah link cabang lain dibuka.
+- [x] Kode tidak dikenal jatuh ke cabang default tanpa membuka data cabang.
+- [x] IP/UA diperlakukan sebagai PII dengan retensi dan logging minimum.
 
 **Verification:**
 
-- [ ] Feature tests mencakup first-touch, unknown code, expired cookie, dan concurrent registration.
+- [ ] Feature tests mencakup first-touch, unknown code, expired cookie, dan concurrent registration. Tiga skenario pertama hijau; concurrent registration menunggu Task 10.
 
 **Dependencies:** Task 7
 
@@ -195,14 +200,19 @@
 
 **Acceptance criteria:**
 
-- [ ] Consent A wajib; consent B dapat ditolak; versi teks dan timestamp disimpan.
-- [ ] Bidang kerja dan atribusi cabang ditentukan server-side.
-- [ ] Validasi panjang/format dan rate limit registrasi aktif.
+- [x] Consent A serta Consent B dicatat terpisah; versi teks dan timestamp disimpan.
+- [x] Bidang kerja dan atribusi cabang ditentukan server-side.
+- [x] Validasi panjang/format dan rate limit registrasi aktif.
+- [x] `package_id` terhubung ke katalog per jenis tes dengan harga IDR dan sakelar aktivasi default OFF; backend memvalidasi ulang paket saat transaksi.
+- [x] Panel `super_admin` dapat mengisi harga dan mengatur paket ON/OFF; role lain serta URL langsung ditolak, dan paket tidak dapat diaktifkan tanpa harga terkonfigurasi (Rp0 sah untuk layanan gratis).
+- [x] Harga IDR disimpan di katalog database: IST/PAPI/RMIB/Kraepelin masing-masing Rp99.000 dan menyertakan DASS-21 otomatis, paket semua tes Rp200.000, paket DASS-21 mandiri gratis, dan konsultasi psikolog opsional Rp50.000.
 
 **Verification:**
 
-- [ ] Feature tests mencakup input valid, invalid, duplikat, consent B ditolak, dan mass-assignment abuse.
-- [ ] Browser smoke test mobile registration lulus.
+- [x] Feature tests mencakup input valid, invalid, duplikat, consent B yang tidak diterima, dan mass-assignment abuse.
+- [x] Browser smoke test mobile registration lulus (390×844; kedua consent diterima; POST 302 → konfirmasi 200; console bersih).
+- [x] Feature tests panel paket mencakup batas role, akses URL langsung, update harga/aktivasi, harga gratis, dan validasi harga kosong.
+- [x] Browser smoke katalog lulus: enam paket dan add-on berasal dari database, DASS menampilkan Gratis, konsultasi mengubah total menjadi Rp50.000, dan console bersih.
 
 **Dependencies:** Tasks 8, 9
 
@@ -216,14 +226,14 @@
 
 **Acceptance criteria:**
 
-- [ ] MIME, magic bytes, ukuran, dan dimensi gambar divalidasi; object key tidak memakai nama peserta.
-- [ ] Bucket private dan akses memakai signed URL yang diaudit.
-- [ ] Hasil matcher hanya penanda; kegagalan tidak otomatis memutuskan kelayakan.
+- [x] MIME, magic bytes, ukuran, dan dimensi gambar divalidasi; object key tidak memakai nama peserta.
+- [x] Bucket private dan akses memakai signed URL yang diaudit.
+- [x] Hasil matcher hanya penanda; kegagalan tidak otomatis memutuskan kelayakan.
 
 **Verification:**
 
-- [ ] Upload tests menolak spoofed MIME, oversized, malformed, dan unauthorized access.
-- [ ] Fake matcher contract test lulus tanpa data biometrik nyata.
+- [x] Upload tests menolak spoofed MIME, oversized, malformed, dan unauthorized access.
+- [x] Fake matcher contract test lulus tanpa data biometrik nyata.
 
 **Dependencies:** Task 10
 
@@ -237,13 +247,13 @@
 
 **Acceptance criteria:**
 
-- [ ] Nomor tes unik, aman dari race, dan reset scheduler teruji.
-- [ ] Login dibatasi 5/menit/IP dengan lockout progresif per nomor tes.
-- [ ] Endpoint peserta hanya mengakses participant claim sendiri; entitlement locked tidak dapat memulai sesi.
+- [x] Nomor tes unik, aman dari race, dan reset scheduler teruji.
+- [x] Login dibatasi 5/menit/IP dengan lockout progresif per nomor tes.
+- [x] Endpoint peserta hanya mengakses participant claim sendiri; entitlement locked tidak dapat memulai sesi.
 
 **Verification:**
 
-- [ ] Unit/feature tests mencakup collision, expiry JWT, brute force, claim tampering, dan 403 locked.
+- [x] Unit/feature tests mencakup collision, expiry JWT, brute force, claim tampering, dan 403 locked.
 
 **Dependencies:** Tasks 7, 10
 
@@ -257,14 +267,14 @@
 
 **Acceptance criteria:**
 
-- [ ] Interface mendukung create invoice, status check, webhook normalization, dan expiry.
-- [ ] Transition invalid ditolak; entitlement tetap locked sampai event sah.
-- [ ] Tidak ada secret atau detail Xendit di domain service.
+- [x] Interface mendukung create invoice, status check, webhook normalization, dan expiry.
+- [x] Transition invalid ditolak; entitlement tetap locked sampai event sah.
+- [x] Tidak ada secret atau detail Xendit di domain service.
 
 **Verification:**
 
-- [ ] Contract tests lulus terhadap fake provider.
-- [ ] State-machine property tests membuktikan event berulang aman.
+- [x] Contract tests lulus terhadap fake provider.
+- [x] State-machine property tests membuktikan event berulang aman.
 
 **Dependencies:** Tasks 5, 12
 
@@ -278,14 +288,14 @@
 
 **Acceptance criteria:**
 
-- [ ] Hanya super admin dapat mengubah `is_active`; perubahan masuk audit log.
-- [ ] Endpoint/form registrasi hanya menampilkan metode aktif dan menolak kode nonaktif dengan error stabil.
-- [ ] Menonaktifkan kanal tidak membatalkan atau menyembunyikan order yang sudah dibuat.
+- [x] Hanya super admin dapat mengubah `is_active`; perubahan masuk audit log.
+- [x] Endpoint/form registrasi hanya menampilkan metode aktif dan menolak kode nonaktif dengan error stabil.
+- [x] Menonaktifkan kanal tidak membatalkan atau menyembunyikan order yang sudah dibuat.
 
 **Verification:**
 
-- [ ] Feature tests mencakup default-off, on/off, unauthorized toggle, forced disabled code, dan order historis.
-- [ ] Filament toggle smoke test lulus.
+- [x] Feature tests mencakup default-off, on/off, unauthorized toggle, forced disabled code, dan order historis.
+- [x] Filament toggle smoke test lulus.
 
 **Dependencies:** Tasks 8, 13
 
@@ -299,14 +309,14 @@
 
 **Acceptance criteria:**
 
-- [ ] PAID/SETTLED terverifikasi mengubah order dan entitlement tepat sekali dalam satu transaksi.
-- [ ] Token salah dan status tidak dikenal ditolak tanpa bocor detail; EXPIRED mempertahankan locked.
-- [ ] Event ID/gateway reference unik mencegah replay dan komisi ganda.
+- [x] PAID/SETTLED terverifikasi mengubah order dan entitlement tepat sekali dalam satu transaksi.
+- [x] Token salah dan status tidak dikenal ditolak tanpa bocor detail; EXPIRED mempertahankan locked.
+- [x] Event ID/gateway reference unik mencegah replay; hanya transisi paid pertama menghasilkan sinyal unlock yang dapat dipakai ledger komisi tanpa duplikasi.
 
 **Verification:**
 
-- [ ] HTTP tests mencakup forged, duplicate, reordered, timeout, dan retry callback.
-- [ ] Sandbox contract test lulus ketika credential tersedia.
+- [x] HTTP tests mencakup forged, duplicate, reordered, timeout, dan retry callback.
+- [ ] Sandbox contract test tersedia dan fail-closed ke key development, tetapi diskip karena credential belum tersedia pada environment ini.
 
 **Dependencies:** Task 14
 
@@ -320,14 +330,14 @@
 
 **Acceptance criteria:**
 
-- [ ] Bukti dibatasi jpg/png/pdf maksimal 5 MB dan disimpan private.
-- [ ] Hanya role berwenang dalam scope cabang yang dapat memverifikasi.
-- [ ] Approve berulang tidak menggandakan entitlement/komisi; reject menyimpan alasan.
+- [x] Bukti dibatasi jpg/png/pdf maksimal 5 MB dan disimpan private.
+- [x] Hanya role berwenang dalam scope cabang yang dapat memverifikasi.
+- [x] Approve berulang tidak menggandakan entitlement/sinyal finansial; reject menyimpan alasan. Ledger komisi belum ada pada schema F1, sehingga transisi pertama yang teraudit menjadi input idempoten untuk implementasi ledger berikutnya.
 
 **Verification:**
 
-- [ ] Authorization, upload, idempotency, dan cross-branch tests lulus.
-- [ ] Filament action smoke test lulus.
+- [x] Authorization, upload, idempotency, penggantian bukti saat ditinjau, dan cross-branch tests lulus.
+- [x] Filament action smoke test lulus.
 
 **Dependencies:** Tasks 8, 14
 
@@ -341,14 +351,14 @@
 
 **Acceptance criteria:**
 
-- [ ] Notifikasi diantrekan setelah commit dan aman diulang.
-- [ ] Kegagalan WAHA/n8n tidak membatalkan status paid; retry dan audit tersedia.
-- [ ] Halaman status tidak membocorkan order peserta lain.
+- [x] Notifikasi diantrekan setelah commit dan aman diulang.
+- [x] Kegagalan WAHA/n8n tidak membatalkan status paid; retry dan audit tersedia.
+- [x] Halaman status tidak membocorkan order peserta lain.
 
 **Verification:**
 
-- [ ] Queue retry/idempotency tests dan status-page authorization tests lulus.
-- [ ] Adapter fake lulus; integrasi WAHA/n8n dijalankan bila endpoint tersedia.
+- [x] Queue retry/idempotency tests dan status-page authorization tests lulus.
+- [x] Adapter fake lulus; integrasi WAHA/n8n dijalankan pada stack lokal dan deduplikasi terverifikasi.
 
 **Dependencies:** Tasks 15, 16
 
@@ -362,10 +372,10 @@
 
 **Acceptance criteria:**
 
-- [ ] Manual: aktifkan metode -> daftar -> upload bukti -> admin verifikasi -> notifikasi -> login berhasil.
+- [x] Manual: aktifkan metode -> daftar -> upload bukti -> admin verifikasi -> notifikasi -> login berhasil.
 - [ ] Xendit: aktifkan metode -> invoice -> webhook terverifikasi -> entitlement ready -> notifikasi -> login berhasil.
-- [ ] Metode yang dimatikan hilang dari pilihan dan order baru ditolak tanpa mengganggu order historis.
-- [ ] RLS, consent B decline, webhook replay, upload abuse, dan auth brute force tetap hijau.
+- [x] Metode yang dimatikan hilang dari pilihan dan order baru ditolak tanpa mengganggu order historis.
+- [x] RLS, riwayat consent B nonaktif, webhook replay, upload abuse, dan auth brute force tetap hijau.
 
 **Verification:**
 

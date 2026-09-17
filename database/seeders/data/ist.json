@@ -1,5 +1,5 @@
 {
-  "version": "F0-2026.08",
+  "version": "F2-2026.09",
   "keys": [
     {
       "subtest": "SE",
@@ -1975,6 +1975,43 @@
       "hi": 78,
       "range": "IQ ≤ 78",
       "category": "KS · Kurang Sekali (Defektif)"
+    }
+  ],
+  "iq_level_bands": [
+    {
+      "level": 5,
+      "lo": 127,
+      "hi": null,
+      "source_scores": [9, 10],
+      "category": "Baik hingga Baik Sekali"
+    },
+    {
+      "level": 4,
+      "lo": 115,
+      "hi": 126,
+      "source_scores": [7, 8],
+      "category": "Cukup Baik"
+    },
+    {
+      "level": 3,
+      "lo": 103,
+      "hi": 114,
+      "source_scores": [5, 6],
+      "category": "Sedang"
+    },
+    {
+      "level": 2,
+      "lo": 91,
+      "hi": 102,
+      "source_scores": [3, 4],
+      "category": "Agak Kurang"
+    },
+    {
+      "level": 1,
+      "lo": null,
+      "hi": 90,
+      "source_scores": [1, 2],
+      "category": "Kurang hingga Kurang Sekali"
     }
   ],
   "match_strategy": {

@@ -1,4 +1,5 @@
 {
+  "version": "F2-2026.09",
   "mapping": [
     {
       "item": 1,
@@ -1332,5 +1333,17 @@
       4,
       7
     ]
+  },
+  "normalization": {
+    "version": "PAPI-OPTIMAL-2026.09",
+    "method": "distance_from_white_zone",
+    "distance_to_level": {
+      "0": 5,
+      "1": 4,
+      "2": 3,
+      "3": 2,
+      "4": 1
+    },
+    "excluded_from_hpp": ["G", "I", "X", "Z"]
   }
 }

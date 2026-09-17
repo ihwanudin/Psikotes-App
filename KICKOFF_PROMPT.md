@@ -47,6 +47,7 @@ Setelah membaca, tuliskan ringkasan 5–8 baris: apa produk ini, apa model penil
 - **Hanker = b×50** (b = slope regresi 50 lajur). Jangan pakai b mentah atau (Panker+Janker)/2.
 - **Jangan mengacak** urutan soal MAUPUN opsi jawaban IST/PAPI/RMIB (baterai paten). Hanya Kraepelin memakai angka seeded.
 - **DASS-21 tidak pernah** memengaruhi zona/label kelayakan (guardrail G4). Skor subskala DASS tidak dicetak di laporan HPP.
+- Paket DASS-21 mandiri tetap tersedia; paket psikotes utama menyertakan DASS-21 otomatis tanpa kontrol tambah/hapus pada pemilihan paket.
 - Commit kecil & sering; branch per fitur; jangan push ke `main`.
 
 ### TUGAS SESI INI — Fase F0: Ekstraksi & Validasi Data Instrumen

@@ -1,5 +1,22 @@
 # CHANGELOG
 
+## [Unreleased] — F1 fondasi
+- Tambahkan pemetaan zona T-06 berbasis data `GA-2026.08` untuk 18 aspek dan enam bidang kerja, termasuk standar dasar, kenaikan khusus bidang, minat wajib, serta keluaran provenance versi.
+- Rekonsiliasi kontrak psikometri ke SCORING-4.3.0/F2-2026.09: IQ dan RMIB mengikuti tabel lookup v1.1, PAPI memakai jarak dari zona putih, RMIB memakai competition ranking, serta faktor Kraepelin dibulatkan half-up tiga desimal sebelum lookup.
+- Ganti halaman awal bawaan Laravel dengan landing page ONCAM Psikotes yang responsif, berfokus pada alur asesmen CPMI Jepang, tinjauan psikolog, privasi, dan pendaftaran peserta.
+- Pertahankan paket DASS-21 mandiri gratis; setiap paket psikotes utama menyertakan DASS-21 secara otomatis tanpa kontrol tambah/hapus pada pilihan paket. Narasi pilihan paket disederhanakan, sementara isolasi hasil DASS dari kelayakan tetap berlaku.
+- Bootstrap Laravel 13 + Inertia 3/React 19 dengan lockfile PHP/frontend dan quality gate otomatis.
+- Tambah topologi Compose untuk app, queue, scheduler, PostgreSQL, dan Redis; data service berada di jaringan internal.
+- Tambah seeder immutable untuk enam artefak JSON F0 dengan versi dan checksum SHA-256.
+- Tambah fondasi schema tenant, consent versioned, metode pembayaran default-off, order/entitlement, audit/outbox, schema DASS terpisah, dan pemisahan role runtime dari owner migrasi.
+- Tambah definisi PostgreSQL RLS yang dipaksa dan fail-closed untuk data tenant, finansial, audit, outbox, dan schema DASS, beserta rollback dan kontrak statisnya; uji negatif PostgreSQL nyata masih menjadi gerbang Task 6.
+- Tambah runner konteks RLS transaction-local, middleware fail-closed untuk HTTP dan queue, serta architecture test yang mewajibkan middleware pada controller tenant.
+- Pasang Filament 5 dan panel `/admin` dengan guard tersendiri, kemampuan empat role yang diverifikasi server-side, policy IDOR peserta lintas cabang, konteks RLS otomatis, serta default cookie session aman.
+- Tambah resolver `/r/{refCode}` dengan atribusi first-touch 30 hari, fallback cabang pusat, cookie terenkripsi, audit PII terbatas-retensi, dan penulisan melalui konteks RLS service.
+- Tambah registrasi peserta mobile-first dengan atribusi cabang server-side, validasi dan throttle, idempotensi pengiriman, serta consent A/B berversi; perilaku penolakan DASS pada fondasi awal disupersesi ADR-0013.
+- Tambah katalog paket berdasarkan jenis tes IST, PAPI Kostick, RMIB, Kraepelin, dan DASS-21. Harga disimpan sebagai integer Rupiah (IDR), seluruh template awal berstatus nonaktif tanpa harga, dan registrasi fail-closed sampai paket berharga diaktifkan.
+- Tambah panel konfigurasi paket khusus `super_admin` untuk mengisi harga Rupiah dan mengatur status ON/OFF. Jenis paket kanonis tidak dapat dibuat atau dihapus dari panel, dan aktivasi tanpa harga positif ditolak.
+
 ## [4.2.1] — 21 Agustus 2026 (koreksi stack — bukan fungsional)
 - **Perbaikan menyeluruh:** seluruh dokumen (SPEC, ARCHITECTURE, DATABASE_SCHEMA, API_CONTRACT, DEPLOYMENT, CLAUDE, PANDUAN-EKSEKUSI, README, SECURITY, PRIVACY_POLICY, KICKOFF_PROMPT) diperbaiki dari draf arsitektur Cloudflare Pages/Workers/Hono/Supabase/Next.js/R2 (sisa dari SPEC v1.0 paling awal) ke **stack final yang sebelumnya sudah diputuskan**: Laravel + Inertia.js/React (peserta) + Filament/Livewire (admin/staf/psikolog) + PostgreSQL dengan RLS (bukan Supabase — konteks WAJIB disuntik middleware kustom) + Docker Compose di VPS + object storage S3-compatible + Xendit (tak berubah) + WAHA/n8n (tak berubah).
 - Tidak ada perubahan fungsional/psikometrik — murni koreksi lapisan infrastruktur agar dokumen konsisten dengan keputusan stack yang berlaku.
@@ -37,7 +54,7 @@
 - **Dua dokumen keluaran**: HPP (LPK/kumiai, tanpa skor mentah/subskala DASS) + Lembar Kerja Internal Psikolog (semua angka).
 - **9 aturan penjaga G1–G9**; wajib tinjau+ttd psikolog (G5), state machine DRAFT→…→SIGNED→PUBLISHED, tak ada jalur pintas.
 - PAPI: metode **jarak dari zona Putih** (optimal), bukan warna tetap 8/7/3/5; 16 skala dipakai, 4 (G,I,X,Z) kualitatif; 5 (K,O,P,R,X) tampil ke psikolog.
-- **DASS-21 jalur terpisah mutlak (G4)**: ×2, cutoff DASS-42, item baku, hanya kategori umum di HPP, subskala di internal, consent B boleh ditolak, Parah→tawaran dukungan bukan penghentian. Uji T-07 mutlak.
+- **DASS-21 jalur terpisah mutlak (G4)**: ×2, cutoff DASS-42, item baku, hanya kategori umum di HPP, subskala di internal, Parah→tawaran dukungan bukan penghentian. Aturan consent opsional pada versi ini disupersesi ADR-0013. Uji T-07 mutlak.
 - Validitas sesi V1/V2/V3; 24 uji penerimaan; retensi DASS 2 th terpisah, video 90 hari.
 - Perakit narasi deterministik (Uraian + 7 slot integrasi internal), teks dari Bank Narasi.
 ### KONFLIK TERCATAT (perlu konfirmasi psikolog)

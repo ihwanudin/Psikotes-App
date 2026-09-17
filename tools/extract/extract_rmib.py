@@ -8,4 +8,7 @@ def extract(root):
     cats=[{"index":int(ws.cell(r,1).value),"code":ws.cell(r,2).value,"name":ws.cell(r,3).value} for r in range(6,18)]
     rotation=[{"group":g,"position":p,"category":((p+g-2)%12)+1} for g in range(1,10) for p in range(1,13)]
     rank={str(int(lookup["11 RMIB Rank ke Skor"].cell(r,1).value)):int(lookup["11 RMIB Rank ke Skor"].cell(r,2).value) for r in range(5,17)}
-    data={"categories":cats,"rotation":rotation,"rank_to_score":rank}; write("rmib.json",data); return data
+    rank_to_level={key:(value+1)//2 for key,value in rank.items()}
+    data={"version":"F2-2026.09","categories":cats,"rotation":rotation,"rank_to_score":rank,
+          "rank_to_level":rank_to_level,"tie_policy":"competition_ranking"}
+    write("rmib.json",data); return data

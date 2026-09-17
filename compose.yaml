@@ -1,0 +1,182 @@
+name: psikotes-lsi
+
+x-app-service: &app-service
+  build:
+    context: .
+    dockerfile: docker/app/Dockerfile
+  image: psikotes-app:${APP_IMAGE_TAG:-dev}
+  restart: unless-stopped
+  environment: &app-environment
+    APP_ENV: ${APP_ENV:-local}
+    APP_DEBUG: ${APP_DEBUG:-false}
+    APP_NAME: ${APP_NAME:-ONCAM Psikotes}
+    APP_LOCALE: ${APP_LOCALE:-id}
+    APP_KEY: "${APP_KEY:?Generate APP_KEY before starting the stack}"
+    APP_URL: ${APP_URL:-http://localhost:8000}
+    LOG_CHANNEL: stderr
+    CACHE_STORE: redis
+    DB_CONNECTION: pgsql
+    DB_HOST: postgres
+    DB_PORT: 5432
+    DB_DATABASE: ${DB_DATABASE:-psikotes}
+    DB_USERNAME: ${DB_RUNTIME_USERNAME:-psikotes_runtime}
+    DB_PASSWORD: "${DB_RUNTIME_PASSWORD:?Set DB_RUNTIME_PASSWORD before starting the stack}"
+    QUEUE_CONNECTION: redis
+    REDIS_QUEUE_RETRY_AFTER: ${REDIS_QUEUE_RETRY_AFTER:-150}
+    REDIS_CLIENT: phpredis
+    REDIS_HOST: redis
+    REDIS_PORT: 6379
+    REDIS_PASSWORD: "${REDIS_PASSWORD:?Set REDIS_PASSWORD before starting the stack}"
+    SESSION_DRIVER: redis
+    SESSION_SECURE_COOKIE: ${SESSION_SECURE_COOKIE:-true}
+    PARTICIPANT_JWT_SECRET: "${PARTICIPANT_JWT_SECRET:?Set PARTICIPANT_JWT_SECRET before starting the stack}"
+    SELECTION_INTEGRATION_ENABLED: ${SELECTION_INTEGRATION_ENABLED:-false}
+    SELECTION_INTEGRATION_CLIENT_ID: ${SELECTION_INTEGRATION_CLIENT_ID:-selection-app}
+    SELECTION_INTEGRATION_CLIENT_SECRET: ${SELECTION_INTEGRATION_CLIENT_SECRET:-}
+    SELECTION_INTEGRATION_BRANCH_REF: ${SELECTION_INTEGRATION_BRANCH_REF:-BEASISWA-JEPANG}
+    SELECTION_INTEGRATION_INTENDED_FIELD: ${SELECTION_INTEGRATION_INTENDED_FIELD:-UMUM}
+    SELECTION_INTEGRATION_TEST_TYPES: ${SELECTION_INTEGRATION_TEST_TYPES:-ist}
+    SELECTION_INTEGRATION_SIGNATURE_TOLERANCE_SECONDS: ${SELECTION_INTEGRATION_SIGNATURE_TOLERANCE_SECONDS:-300}
+    SELECTION_RESULT_POLL_ENABLED: ${SELECTION_RESULT_POLL_ENABLED:-false}
+    SELECTION_RESULT_CALLBACK_ENABLED: ${SELECTION_RESULT_CALLBACK_ENABLED:-false}
+    SELECTION_RESULT_CALLBACK_BASE_URL: ${SELECTION_RESULT_CALLBACK_BASE_URL:-https://seleksi.beasiswajepang.id}
+    SELECTION_RESULT_CALLBACK_SECRET: ${SELECTION_RESULT_CALLBACK_SECRET:-}
+    SELECTION_RESULT_CALLBACK_KEY_ID: ${SELECTION_RESULT_CALLBACK_KEY_ID:-}
+    SELECTION_RESULT_CALLBACK_TIMEOUT_SECONDS: ${SELECTION_RESULT_CALLBACK_TIMEOUT_SECONDS:-10}
+    SELECTION_APP_BASE_URL: ${SELECTION_APP_BASE_URL:-https://seleksi.beasiswajepang.id}
+    SELECTION_APP_TIMEOUT_SECONDS: ${SELECTION_APP_TIMEOUT_SECONDS:-10}
+    SELECTION_APP_ALLOW_INSECURE_LOCAL_HTTP: ${SELECTION_APP_ALLOW_INSECURE_LOCAL_HTTP:-false}
+    N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL:-}
+    N8N_WEBHOOK_TOKEN: ${N8N_WEBHOOK_TOKEN:-}
+    N8N_ALLOW_INSECURE_LOCAL_HTTP: ${N8N_ALLOW_INSECURE_LOCAL_HTTP:-false}
+    XENDIT_SECRET_KEY: "${XENDIT_SECRET_KEY:-}"
+    XENDIT_CALLBACK_TOKEN: "${XENDIT_CALLBACK_TOKEN:-}"
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  networks:
+    - backend
+  volumes:
+    - app-storage:/var/www/html/storage
+
+services:
+  app:
+    <<: *app-service
+    ports:
+      - "${APP_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-8000}:8080"
+    networks:
+      - edge
+      - backend
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  queue:
+    <<: *app-service
+    healthcheck:
+      disable: true
+    networks:
+      - edge
+      - backend
+    command:
+      - php
+      - artisan
+      - queue:work
+      - redis
+      - --queue=notifications,default
+      - --sleep=3
+      - --tries=5
+      - --timeout=120
+      - --max-time=3600
+    stop_grace_period: 30s
+
+  integrations-queue:
+    <<: *app-service
+    healthcheck:
+      disable: true
+    networks:
+      - edge
+      - backend
+    command:
+      - php
+      - artisan
+      - queue:work
+      - redis
+      - --queue=integrations
+      - --sleep=3
+      - --tries=5
+      - --timeout=120
+      - --memory=256
+      - --max-time=3600
+    stop_grace_period: 135s
+
+  scheduler:
+    <<: *app-service
+    healthcheck:
+      disable: true
+    command: ["php", "artisan", "schedule:work"]
+    stop_grace_period: 30s
+
+  migrate:
+    <<: *app-service
+    profiles: ["tools"]
+    healthcheck:
+      disable: true
+    command: ["php", "artisan", "migrate", "--database=pgsql_migration", "--force"]
+    environment:
+      <<: *app-environment
+      DB_MIGRATION_USERNAME: ${DB_OWNER_USERNAME:-psikotes_owner}
+      DB_MIGRATION_PASSWORD: "${DB_OWNER_PASSWORD:?Set DB_OWNER_PASSWORD before running migrations}"
+
+  postgres:
+    image: postgres:17.6-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-psikotes}
+      POSTGRES_USER: ${DB_OWNER_USERNAME:-psikotes_owner}
+      POSTGRES_PASSWORD: "${DB_OWNER_PASSWORD:?Set DB_OWNER_PASSWORD before starting the stack}"
+      DB_RUNTIME_PASSWORD: "${DB_RUNTIME_PASSWORD:?Set DB_RUNTIME_PASSWORD before starting the stack}"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - backend
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./database/schema/postgres_roles.sql:/docker-entrypoint-initdb.d/10-postgres-roles.sql:ro
+      - ./docker/postgres/init-runtime.sh:/docker-entrypoint-initdb.d/20-init-runtime.sh:ro
+
+  redis:
+    image: redis:8.2-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: "${REDIS_PASSWORD:?Set REDIS_PASSWORD before starting the stack}"
+    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$${REDIS_PASSWORD}\""]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$${REDIS_PASSWORD}\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - backend
+    volumes:
+      - redis-data:/data
+
+networks:
+  edge:
+    driver: bridge
+  backend:
+    driver: bridge
+    internal: true
+
+volumes:
+  app-storage:
+  postgres-data:
+  redis-data:

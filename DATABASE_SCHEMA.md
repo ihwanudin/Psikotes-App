@@ -1,10 +1,14 @@
-# DATABASE_SCHEMA.md (v2.0)
+# DATABASE_SCHEMA.md (v4.2)
 
 Skema penuh + RLS ada di SPEC.md §3 dan migrasi `db/`. Dokumen ini merangkum relasi, indeks, dan policy per tabel. ERD tekstual:
 
 ```
 branches 1─n participants 1─n test_sessions 1─n answers / kraepelin_events
 branches 1─n admins                    └─1 scores
+packages 1─n package_items
+packages 1─n participants
+participants 1─n identity_evidence
+participants 1─1 identity_verifications
 participants 1─1 orders(aktif) ─n payment_webhook_events
 participants 1─n entitlements
 participants 1─1 reports ─? psychologists
@@ -14,7 +18,21 @@ branches 1─n commission_entries / withdrawal_requests / branch_fee_rules
   kraepelin_configs/kraepelin_category_bounds/aspect_formulas/aspect_narratives
 ```
 
-Perubahan v4.0 (payment+referral): `branches`+`ref_code text unique`+`is_default bool`; `participants`+`referral_branch_id`+`referral_source enum(link|manual|default)`; `orders`+`gateway`+`gateway_ref`(=external_id Xendit)+`invoice_url`+`expires_at`; tabel baru `referral_visits(ref_code, branch_id, ip, ua, first_seen, participant_id null)` untuk audit atribusi first-touch. Indeks: `branches(ref_code)`, `orders(gateway_ref)` unique, `referral_visits(participant_id)`. Gating: `entitlements.status` locked→ready hanya via webhook terverifikasi / verifikasi manual / aktivasi super_admin. Perubahan v3.0: +`hpp_config`(sub_aspek, sumber[], bobot, tunduk_knockout bool), +`hpp_thresholds`(label, min_total, syarat), +`kraepelin_norms`(grup, faktor, lo, hi, skor, kategori), +`kraepelin_group_map`, +`papi_color_bands`(dimensi, lo, hi, zona, skor), +`aspect_narratives`(sub_aspek, band, teks), +`report_closings`(label, teks), +`norm_table_versions`(dipakai di tiap `reports`). `reports` +`status(draft|reviewed|final)`, +`integration_draft`, +`integration_final`, +`closing_final`, +`norm_version`. Perubahan v2.0: `ist_norms` tanpa kolom usia (norma tunggal; kolom usia dipertahankan nullable untuk fallback GE); +`aspect_formulas` (aspek, sumber, bobot, arah/zona), +`aspect_narratives` (aspek × band → teks), +`papi_dimensions` (7 grup), `kraepelin_category_bounds(+education_level null)`.
+## Multi-organization dan integration registry
+
+`branches` dipertahankan untuk backward compatibility tetapi domain meaning-nya adalah **participating organization**. Kolom additive: `organization_code`, `organization_type`, `display_name`, `status`, `capabilities`, dan `allowed_funding_modes`; kolom legacy `code`, `name`, `ref_code`, `is_default`, dan `is_active` tetap ada.
+
+- `integration_clients`: organization owner, public client ID, credential reference (bukan secret), callback base URL opsional, delivery mode, enabled, rate-limit policy, effective dates.
+- `integration_sources`: allow-listed and versioned source per client, auth mode, allowed package codes, provisioning/commercial mode, allowed funding modes, callback path/config, status, effective dates.
+- `assessment_participants`: mapping proses/attempt dari client+source ke participant lokal; menyimpan external candidate/process/registration/round IDs, package, funding mode, operational status, recommendation, result version, dan idempotency claim/hash. Identity lookup memakai `(integration_client_id, source_system, external_candidate_id)` sehingga ID yang sama pada dua LPK tidak collision dan tidak memicu auto-link lintas organization.
+- `assessment_invitations`: ledger undangan sekali pakai. Menyimpan public ULID, HMAC token (bukan plaintext), nomor penerbitan, expiry/consumption, dan nullable active marker. Unique `(assessment_participant_id, active_marker)` memastikan maksimal satu undangan aktif per attempt.
+- `integration_callback_deliveries`: satu ledger per outbox event dengan status `PENDING|SENDING|UNKNOWN|FAILED|DELIVERED`, attempt count, safe error code, HTTP status, serta reconciliation timestamps. Tidak ada raw response body atau credential.
+
+Seluruh tabel registry/assessment/callback/invitation memaksa PostgreSQL RLS. Registry dapat dimutasi service atau super-admin; callback dan invitation ledger hanya service. Assessment mapping dapat dibaca super admin/psikolog atau admin/staf dengan `organization_id = app.branch_id`. Participant dan seluruh child data tetap mengikuti policy tenant existing.
+
+`participants.source_system` merekam asal kandidat (`DIRECT_PUBLIC` untuk registrasi publik); `participants.attribution_source` merekam kanal first-touch secara terpisah dan tidak diubah oleh provisioning ulang.
+
+Perubahan v4.0 (payment+referral): `branches`+`ref_code text unique`+`is_default bool`; `participants`+`referral_branch_id`+`referral_source enum(link|manual|default)`; `orders.gateway_ref` menyimpan ID invoice Xendit sedangkan `external_id` Xendit adalah `orders.public_id`; order juga menyimpan `invoice_url`+`expires_at`. `payment_webhook_events` menyimpan provider, ID event logis, kedua reference, status ternormalisasi, snapshot uang, intent hash, outcome/error code, dan waktu proses—tanpa payload mentah/PII—dengan unique `(provider,event_id)`. Tabel baru `referral_visits(ref_code, branch_id, ip, ua, first_seen, participant_id null)` untuk audit atribusi first-touch. Indeks: `branches(ref_code)`, `orders(gateway_ref)` unique, `payment_webhook_events(provider,event_id)` unique, `referral_visits(participant_id)`. Gating: `entitlements.status` locked→ready hanya via webhook terverifikasi / verifikasi manual / aktivasi super_admin. Perubahan v3.0: +`hpp_config`(sub_aspek, sumber[], bobot, tunduk_knockout bool), +`hpp_thresholds`(label, min_total, syarat), +`kraepelin_norms`(grup, faktor, lo, hi, skor, kategori), +`kraepelin_group_map`, +`papi_color_bands`(dimensi, lo, hi, zona, skor), +`aspect_narratives`(sub_aspek, band, teks), +`report_closings`(label, teks), +`norm_table_versions`(dipakai di tiap `reports`). `reports` +`status(draft|reviewed|final)`, +`integration_draft`, +`integration_final`, +`closing_final`, +`norm_version`. Perubahan v2.0: `ist_norms` tanpa kolom usia (norma tunggal; kolom usia dipertahankan nullable untuk fallback GE); +`aspect_formulas` (aspek, sumber, bobot, arah/zona), +`aspect_narratives` (aspek × band → teks), +`papi_dimensions` (7 grup), `kraepelin_category_bounds(+education_level null)`.
 
 ## Indeks minimum
 - `answers(session_id, item_no)` unique; `kraepelin_events(session_id, seq)` unique.
@@ -28,3 +46,16 @@ Perubahan v4.0 (payment+referral): `branches`+`ref_code text unique`+`is_default
 - `payment_webhook_events`, `audit_logs`: service_role only; super_admin SELECT.
 
 Backup: PITR (Point-In-Time Recovery) Postgres via `pg_basebackup`/WAL archiving + dump harian terenkripsi ke object storage S3-compatible (DEPLOYMENT.md).
+
+## Fondasi schema F1
+
+- Identitas tenant: `branches`, `admins`, `participants`, `referral_visits`, dan `consent_records`.
+- Katalog tes global: `packages` menyimpan kode, nama, harga integer, mata uang `IDR`, dan sakelar `is_active`; `package_items` memetakan satu paket ke jenis tes kanonis (`ist`, `papi`, `rmib`, `kraepelin`, `dass21`). Setiap paket psikotes yang tersedia untuk registrasi wajib memiliki `dass21` dan sedikitnya satu instrumen psikotes utama; DASS-21 tidak tersedia sebagai paket mandiri. Template seed default nonaktif. `participants.package_id` menunjuk paket yang dipilih; hanya paket aktif, berharga valid, dan memenuhi komposisi tersebut yang boleh dipakai registrasi.
+- Pembayaran/operasional: `payment_methods`, `orders`, `entitlements`, `audit_logs`, dan `outbox_messages`. Kanal `xendit` dan `manual_transfer` dibuat nonaktif; menonaktifkan kanal tidak menghapus order historis.
+- Bukti transfer manual memakai `orders.proof_object_key`; metadata allowlist pada `orders.metadata.manual_payment_proof` menyimpan disk, MIME hasil inspeksi, ukuran byte, checksum SHA-256, dan waktu upload—tanpa nama file asli. Keputusan approve/reject menyimpan `verified_at`, `verified_by_admin_id`, serta `rejection_reason` bila ditolak. Object tetap berada di storage privat, bukan database.
+- DASS memakai schema PostgreSQL `dass` dengan tabel `assessments`, `responses`, dan `results`. Seluruh tabel memiliki `expires_at` untuk retensi dua tahun. SQLite testing memakai nama ekuivalen `dass_*` karena tidak mendukung schema PostgreSQL.
+- Bukti verifikasi privat: `identity_evidence` menyimpan dua baris per peserta (`identity_document`, `initial_selfie`) berisi ULID publik, disk/key acak, MIME hasil inspeksi isi, byte, dimensi, dan checksum SHA-256; tidak ada nama file asli. `identity_verifications` menyimpan nama matcher, outcome/ confidence/marker, serta status tinjauan manual. Outcome matcher tidak mengubah kelayakan peserta.
+- Migrasi dijalankan oleh owner terpisah. Aplikasi memakai role `psikotes_runtime` yang `NOSUPERUSER`, `NOCREATEDB`, `NOCREATEROLE`, dan `NOBYPASSRLS`.
+- Policy RLS fail-closed didefinisikan di `database/schema/rls_policies.sql`: konteks kosong tidak memperoleh baris, akses cabang/peserta dibatasi oleh ID sesi, mutasi keuangan dibatasi, dan schema `dass` tidak dapat dibaca admin non-psikolog. Verifikasi negatif lintas tenant tetap harus dijalankan pada PostgreSQL nyata sebelum Task 6 dinyatakan selesai.
+- Tabel bukti identitas dibuat setelah policy fondasi dan langsung mengaktifkan `FORCE ROW LEVEL SECURITY`: service boleh menulis; peserta hanya barisnya; admin cabang/staf hanya peserta cabangnya; super_admin/psikolog dapat membaca semua. Object storage tetap menjadi kontrol akses kedua dan tidak memiliki URL permanen.
+- PII: identitas/kontak peserta serta IP/user-agent referral. Data sensitif: response dan hasil DASS. Data finansial: order. `audit_logs.context` hanya boleh memuat identifier dan metadata allowlist, bukan PII mentah.

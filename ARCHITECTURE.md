@@ -1,4 +1,4 @@
-# ARCHITECTURE.md — psikotes.oncam.id (v4.0 — Laravel)
+# ARCHITECTURE.md — psikotes.oncam.id (v4.2 — Laravel)
 
 Ringkasan sistem untuk AI/developer baru. Detail fungsional di SPEC.md.
 
@@ -29,16 +29,22 @@ Deployment: Docker Compose di VPS/server tradisional — kontainer terpisah untu
 - **Event-based answers (Kraepelin per sel + timestamp)** — auditable, skor bisa dihitung ulang saat norma direvisi.
 - **Object storage S3-compatible primer, Drive arsip async** — signed URL berbatas waktu utk data sensitif (via Flysystem S3 driver); Drive bukan jalur kritis (retry via queue).
 - **Norma/kamus = data, bukan kode** — revisi psikometrik tanpa deploy; `engine_version` dicatat di setiap `scores`.
-- **Adapter PaymentProvider** — Xendit Invoice implementasi awal; transfer manual adalah kanal permanen berdampingan, bukan fallback sementara.
+- **Adapter PaymentProvider** — domain menerima event provider-neutral; hanya transisi pertama pending→paid yang membuka entitlement dalam transaksi ber-row-lock. Xendit Invoice dan transfer manual default OFF serta diaktifkan terpisah oleh super admin; status OFF hanya memblokir order baru, bukan order historis. Lihat `docs/decisions/0002-payment-provider-boundary.md`.
 - **Dua level admin + RLS** — pusat vs cabang; isolasi data antar cabang di database (RLS+middleware), bukan hanya di UI.
 - **Referral cabang first-touch** — atribusi `branch_id` peserta dari link `?ref=KODE`, cookie 30 hari; kosong/tak dikenal → cabang default (pusat).
+- **Participating organization additive di atas `branches`.** Nama tabel dan seluruh foreign key lama dipertahankan; arti domainnya diperluas menjadi organization yang berpartisipasi. `organization_type` membedakan pusat, cabang, operator beasiswa, LPK eksternal, partner, dan direct public. `branch_id` tetap nama kolom compatibility, bukan konsep universal pada kontrak baru.
+- **Empat identitas integrasi dipisahkan:** organization menguasai akses operasional; integration client mengautentikasi aplikasi pemanggil; source system mengidentifikasi asal proses; attribution source tetap first-touch referral dan tidak ditimpa provisioning.
+- **Registry allow-listed dan berversi** menyimpan client/source/package/funding/delivery policy serta credential reference. Material secret hanya ada pada secret store runtime. Generic API dan Selection v1 hidup berdampingan.
+- **Transactional assessment outbox** memisahkan finalisasi hasil dari delivery callback. Timeout adalah outcome `UNKNOWN`, sehingga rekonsiliasi remote wajib terjadi sebelum retry. Pull-result tetap tersedia untuk client yang dikontrak dan selalu tenant-scoped.
 - **PDF via Browsershot (Spatie, wrapper Puppeteer headless)** dipanggil dari queue worker, bukan dalam request — laporan HPP dwibahasa + Lembar Kerja Internal dirender dari template HTML/Blade.
 - **Laporan v4.0 = model Grey Area, skala 1–5, dua dokumen keluaran** (HPP publik + Lembar Internal psikolog); lihat SPEC.md §5–§9.
 
 ## Modul frontend
 **Peserta (Inertia+React):** registrasi + referral → status bayar (Xendit/manual) → lobby tes (entitlements) → runner per tes (Kraepelin grid / IST subtes / PAPI pair / RMIB drag-drop) → selesai → unduh laporan setelah tinjauan psikolog. Auto-save: IST/PAPI/RMIB upsert per item saat berpindah soal; Kraepelin flush per kolom; progress indicator per tes & per subtes; error handling manusiawi (offline banner + antre ulang, bukan stack trace).
 
-**Admin/Staf/Psikolog (Filament+Livewire):** dashboard pusat/cabang, verifikasi pembayaran, layar tinjauan & tanda tangan laporan (state machine DRAFT→…→SIGNED→PUBLISHED), modul komisi cabang, kelola kamus/norma/standar bidang sebagai data terkelola (bukan file mentah).
+**Admin/Staf/Psikolog (Filament+Livewire):** dashboard pusat/cabang, verifikasi pembayaran, daftar asesmen organisasi tenant-scoped (periode/paket/status/rekomendasi), pembuatan ulang undangan satu kali, serta ekspor CSV dengan allow-list kolom. Super-admin mengelola registry client/source tanpa melihat atau menyimpan material secret. Layar tinjauan & tanda tangan laporan (state machine DRAFT→…→SIGNED→PUBLISHED), modul komisi cabang, dan kamus/norma/standar bidang tetap capability lanjutan.
+
+**Undangan tanpa token di access log:** path hanya membawa public ULID. Secret undangan berada pada browser fragment, ditukar satu kali melalui POST ber-CSRF, lalu URL dibersihkan dan JWT peserta disimpan pada `sessionStorage`. Database hanya menyimpan HMAC token; reissue mencabut link aktif sebelumnya secara atomik.
 
 ## Skalabilitas
 Target >1000 peserta/bulan itu ringan (~50/hari); bottleneck riil = ingest Kraepelin serentak (≈50 request batch/15 dtk per 50 peserta) — aman untuk PHP-FPM dengan queue worker terpisah menangani beban berat (render PDF, sinkron Drive) di luar request path. Caching: bank soal statis di cache (Redis/HTTP cache header, immutable per versi soal); lazy-load runner tes per jenis; indeks DB di DATABASE_SCHEMA.md.
