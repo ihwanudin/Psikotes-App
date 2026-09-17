@@ -31,6 +31,12 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Prepare Laravel environment
+        run: |
+          cp .env.example .env
+          sed -i 's/^APP_KEY=.*/APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=/' .env
+          mkdir -p storage/framework/{views,cache/data,sessions,testing} bootstrap/cache
+
       - name: Setup Application
         run: composer setup
 
