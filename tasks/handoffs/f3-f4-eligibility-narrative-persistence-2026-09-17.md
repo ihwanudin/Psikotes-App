@@ -271,5 +271,148 @@ Remaining blockers:
 Next dependency or increment: F5 integration (review/signing state machine),
   F6 result documents.
 
+Review status: accepted
+
+PostgreSQL runtime verification — 2026-09-17 (same session, same branch)
+====================================================================
+
+Worker handoff record (increment 4)
+
+Task/thread ID: deepseek/f3-f4-eligibility-narrative
+Lane and phase: F3 Eligibility (Grey Area) + F4 Narrative, Third Wave
+  — PostgreSQL runtime verification increment
+Branch/worktree: deepseek/f3-f4-eligibility-narrative
+  D:\LSI\Web\Psikotes-worktrees\deepseek-f3-f4-eligibility-narrative
+Baseline commit: 09be48b (docs: update handoff record with increment 3 — RLS
+  closure exception removal)
+
+Changes in this increment:
+  tests/Postgres/EligibilityDecisionRlsTest.php (new, 20 tests, 545 lines):
+    PostgreSQL runtime evidence for eligibility_decision_versions RLS,
+    trigger guard, and SECURITY DEFINER function.
+    - test_runtime_role_is_psikotes_runtime_without_superuser_or_bypassrls
+    - test_rls_is_enabled_and_forced
+    - test_table_privileges_are_select_and_insert_only
+    - test_rls_policies_gate_on_service_role_only
+    - test_guard_function_is_security_definer_with_locked_search_path
+    - test_guard_function_revoked_from_public
+    - test_guard_function_owned_by_migration_owner
+    - test_service_can_select_empty_table
+    - test_service_can_insert_and_select_eligibility_decision
+    - test_non_service_roles_cannot_select (5 roles verified)
+    - test_non_service_roles_cannot_insert (5 roles verified)
+    - test_update_is_rejected_by_append_only_trigger
+    - test_delete_is_rejected_by_append_only_trigger
+    - test_chain_integrity_broken_chain_is_rejected
+    - test_valid_version_chain_is_accepted
+    - test_invalid_field_code_is_rejected_by_check_constraint
+    - test_invalid_iq_range_is_rejected_by_check_constraint (0, 301)
+    - test_invalid_validity_is_rejected_by_check_constraint
+    - test_initial_version_with_supersedes_id_is_rejected
+    - test_empty_context_cannot_access_table
+
+  tests/Postgres/BilingualNarrativeRlsTest.php (new, 18 tests, 589 lines):
+    PostgreSQL runtime evidence for bilingual_narrative_versions RLS,
+    trigger guard, and SECURITY DEFINER function.
+    - test_runtime_role_is_psikotes_runtime_without_superuser_or_bypassrls
+    - test_rls_is_enabled_and_forced
+    - test_table_privileges_are_select_and_insert_only
+    - test_rls_policies_gate_on_service_role_only
+    - test_guard_function_is_security_definer_with_locked_search_path
+    - test_guard_function_revoked_from_public
+    - test_guard_function_owned_by_migration_owner
+    - test_service_can_select_empty_table
+    - test_service_can_insert_and_select_bilingual_narrative
+    - test_non_service_roles_cannot_select (5 roles verified)
+    - test_non_service_roles_cannot_insert (5 roles verified)
+    - test_update_is_rejected_by_append_only_trigger
+    - test_delete_is_rejected_by_append_only_trigger
+    - test_chain_integrity_broken_chain_is_rejected
+    - test_valid_version_chain_is_accepted
+    - test_invalid_snapshot_json_type_is_rejected_by_check_constraint (array + string)
+    - test_initial_version_with_supersedes_id_is_rejected
+    - test_empty_context_cannot_access_table
+
+Disposable PostgreSQL container:
+  Container: psikotes-f3f4-pg-verify (PostgreSQL 17.6-alpine)
+  Label: oncam.f3f4-pg-verify=<guid>
+  Network: psikotes-f3f4-pg-net (bridge)
+  Migrations: 54 migrations ran successfully via --database=pgsql_migration
+  Cleanup: container stopped, removed; network removed; verified 0/0
+
+PostgreSQL evidence collected before test writing:
+  - RLS: 4 policies (2 per table), all gated on app_private.app_role() = 'service'
+  - RLS enabled + FORCE ROW LEVEL SECURITY confirmed on both tables
+  - Table privileges: psikotes_runtime has only SELECT + INSERT
+  - SECURITY DEFINER functions: proisdef=true, search_path=pg_catalog,public,
+    owned by psikotes_owner, REVOKE ALL ON FUNCTION FROM PUBLIC effective
+  - Runtime role: psikotes_runtime, rolsuper=false, rolbypassrls=false
+  - Trigger guards: UPDATE/DELETE rejected (append-only + 42501 permission denied)
+  - Chain integrity: v1 must have NULL supersedes_id; v2+ must reference
+    existing v(n-1) with same assessment_case_id
+  - CHECK constraints: field_code IN (...), validity IN ('V1','V2','V3'),
+    iq BETWEEN 1 AND 300, jsonb_typeof(snapshot_json) = 'object'
+
+Test evidence — 2026-09-17 (increment 4):
+  PostgreSQL tests: 38 tests, 38 passed, 130 assertions
+    → {"tool":"phpunit","result":"passed","tests":38,"passed":38,"assertions":130,"duration_ms":4321}
+
+  Execution environment:
+    PHP 8.3.26, PostgreSQL 17.6-alpine (disposable container)
+    Bootstrap: tools/testing/bootstrap-local-pg.php (temporary, deleted after run)
+    Connection: pgsql (psikotes_runtime) for app queries, pgsql_migration
+      (psikotes_owner) for DDL
+
+  Fixes applied during verification:
+    1. try/catch moved OUTSIDE RlsContextRunner::run() for UPDATE/DELETE tests
+       — PostgreSQL aborts entire transaction on error, so catch must be at
+       test method level, not inside the run() closure
+    2. Validity test: column is varchar(2), so 'INVALID' (7 chars) fails at
+       type level (22001) before CHECK constraint (23514) — accepts both
+    3. IQ test: separated individual invalid values into separate run() calls
+       to avoid 25P02 transaction abort on second insert
+    4. Snapshot JSON test: separated array and string cases into separate
+       run() calls; non-JSON input fails at type level (22P02)
+    5. search_path assertion: PostgreSQL 17.6 quotes identifiers in
+       pg_get_functiondef; split into 3 assertStringContainsString
+    6. UPDATE/DELETE: psikotes_runtime lacks UPDATE/DELETE privilege, so
+       PostgreSQL returns 42501 before trigger fires — accepts both 42501
+       and append-only
+
+Verification commands:
+  docker run -d --name psikotes-f3f4-pg-verify --network psikotes-f3f4-pg-net \
+    --label oncam.f3f4-pg-verify=<guid> \
+    -e POSTGRES_DB=psikotes -e POSTGRES_USER=psikotes_owner \
+    -e POSTGRES_PASSWORD=<password> -p 5433:5432 postgres:17.6-alpine
+  php artisan migrate --database=pgsql_migration
+  vendor/bin/phpunit tests/Postgres/EligibilityDecisionRlsTest.php \
+    tests/Postgres/BilingualNarrativeRlsTest.php \
+    --bootstrap tools/testing/bootstrap-local-pg.php --no-configuration
+  docker stop psikotes-f3f4-pg-verify && docker rm psikotes-f3f4-pg-verify
+  docker network rm psikotes-f3f4-pg-net
+  docker ps -a --filter "label=oncam.f3f4-pg-verify" --format "{{.ID}}"  # 0 results
+  docker network ls --filter "label=oncam.f3f4-pg-verify" --format "{{.ID}}"  # 0 results
+
+Result commit: c91c0f0 (test: add PostgreSQL RLS/trigger guard runtime
+  evidence for eligibility_decision_versions and bilingual_narrative_versions)
+
+Resolved blockers:
+  1. PostgreSQL runtime verification: COMPLETED. Both migration DDLs verified
+     against real PostgreSQL 17.6 — RLS, trigger guards, SECURITY DEFINER
+     functions, CHECK constraints, and privilege model all correct.
+  2. All 38 PostgreSQL runtime tests pass: COMPLETED. 20 eligibility + 18
+     bilingual narrative, 130 assertions, 0 failures.
+
+Remaining blockers:
+  1. Gap INTEGRATION text: bilingual_narrative_versions adalah system baseline
+     only. Tidak ada tabel untuk teks naratif hasil edit/integrasi psikolog.
+     Direkomendasikan tabel terpisah di domain F5/F6.
+  2. Gap level_sistem vs level_final: eligibility_decision_versions tidak
+     menerima UPDATE dari psikolog override. F5 (ReviewedEligibilityDecision)
+     menyimpan override secara terpisah — confirmed as non-goal.
+
+Next dependency or increment: F5 integration (review/signing state machine),
+  F6 result documents.
+
 Review status: pending
 ```
