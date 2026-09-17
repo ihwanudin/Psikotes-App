@@ -163,6 +163,47 @@ final class BranchFeeLedgerSecurityTest extends TestCase
         });
     }
 
+    public function test_withdrawal_request_item_uniqueness_only_applies_to_active_history(): void
+    {
+        app(RlsContextRunner::class)->runAsService(function (): void {
+            $entry = DB::table('commission_entries')
+                ->where('branch_id', $this->ownBranch)
+                ->value('id');
+            $firstItem = DB::table('withdrawal_request_items')
+                ->where('commission_entry_id', $entry)
+                ->value('id');
+
+            $this->assertSame(1, DB::table('withdrawal_request_items')->where('id', $firstItem)->update([
+                'is_active' => false,
+                'updated_at' => now(),
+            ]));
+
+            $secondRequest = $this->withdrawalRequest(status: 'rejected');
+            DB::table('withdrawal_request_items')->insert([
+                'branch_id' => $this->ownBranch,
+                'withdrawal_request_id' => $secondRequest,
+                'commission_entry_id' => $entry,
+                'amount_snapshot' => 0,
+                'currency' => 'IDR',
+                'is_active' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            $thirdRequest = $this->withdrawalRequest(status: 'rejected');
+            $this->assertSqlState('23505', fn () => DB::table('withdrawal_request_items')->insert([
+                'branch_id' => $this->ownBranch,
+                'withdrawal_request_id' => $thirdRequest,
+                'commission_entry_id' => $entry,
+                'amount_snapshot' => 0,
+                'currency' => 'IDR',
+                'is_active' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]));
+        });
+    }
+
     public function test_runtime_privileges_do_not_grant_direct_delete_or_truncate(): void
     {
         foreach (self::tables() as [$table]) {
@@ -345,6 +386,24 @@ final class BranchFeeLedgerSecurityTest extends TestCase
         ]);
 
         return $participant;
+    }
+
+    private function withdrawalRequest(string $status): int
+    {
+        return DB::table('withdrawal_requests')->insertGetId([
+            'branch_id' => $this->ownBranch,
+            'period_month' => '2026-09-01',
+            'public_reference' => 'WR_'.((string) Str::ulid()),
+            'status' => $status,
+            'requested_amount' => 0,
+            'currency' => 'IDR',
+            'requested_by_admin_id' => $this->ownAdmin,
+            'submitted_at' => now(),
+            'rejected_at' => $status === 'rejected' ? now() : null,
+            'rejection_reason' => $status === 'rejected' ? 'Historical rejection for active-item uniqueness proof.' : null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     private function assertSqlState(string $state, callable $operation): void

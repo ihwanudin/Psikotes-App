@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Database;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -73,6 +74,7 @@ final class BranchFeeLedgerSchemaTest extends TestCase
             'commission_entry_id',
             'amount_snapshot',
             'currency',
+            'is_active',
         ]));
         $this->assertTrue(Schema::hasColumns('commission_ledger_gaps', [
             'branch_id',
@@ -85,5 +87,15 @@ final class BranchFeeLedgerSchemaTest extends TestCase
             'status',
             'resolved_at',
         ]));
+
+        $itemUniqueIndex = DB::table('sqlite_master')
+            ->where('type', 'index')
+            ->where('name', 'withdrawal_request_items_active_commission_unique')
+            ->value('sql');
+
+        $this->assertSame(
+            'CREATE UNIQUE INDEX withdrawal_request_items_active_commission_unique ON withdrawal_request_items (commission_entry_id) WHERE is_active = true',
+            preg_replace('/\s+/', ' ', trim((string) $itemUniqueIndex)),
+        );
     }
 }
