@@ -21,6 +21,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\DataProviderExternal;
 use Tests\OrganizationPaymentTestCase;
 use Tests\Support\AssessmentAccessFixture as Fixture;
+use Tests\Support\AssessmentEntitlementBlockedStates;
 
 final class AssessmentEntitlementFrameTest extends OrganizationPaymentTestCase
 {
@@ -54,7 +55,7 @@ final class AssessmentEntitlementFrameTest extends OrganizationPaymentTestCase
             ->assertReadyAt($this->principal($fixture), $type, $frame ?? $this->frame)->id);
     }
 
-    #[DataProviderExternal(AttemptEntitlementGateTest::class, 'blockedStates')]
+    #[DataProviderExternal(AssessmentEntitlementBlockedStates::class, 'cases')]
     public function test_explicit_gate_retains_every_existing_denial(string $table, array $values): void
     {
         DB::table($table)->update($values);

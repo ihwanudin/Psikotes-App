@@ -10,6 +10,7 @@ use App\Enums\PaymentWebhookOutcome;
 use App\Models\PaymentWebhookEvent;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
+use App\Services\Commissions\RecordBranchCommissionLedger;
 use App\Services\Payments\Exceptions\AssessmentBillPaymentRejected;
 use App\Services\Payments\Exceptions\InvalidOrderTransition;
 use App\Services\Payments\Exceptions\PaymentAmountMismatch;
@@ -23,6 +24,7 @@ final readonly class PaymentWebhookProcessor
     public function __construct(
         private RlsContextRunner $runner,
         private PaymentEventDispatcher $dispatcher,
+        private RecordBranchCommissionLedger $commissionLedger,
     ) {}
 
     public function process(string $provider, PaymentEvent $event): PaymentWebhookResult
@@ -48,6 +50,10 @@ final readonly class PaymentWebhookProcessor
                 'reason' => $result->reason,
             ],
         );
+
+        if ($result->outcome === PaymentWebhookOutcome::Applied) {
+            $this->commissionLedger->recordForPaymentEvent($event);
+        }
 
         return $result;
     }
