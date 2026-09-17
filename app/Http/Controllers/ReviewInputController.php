@@ -12,13 +12,13 @@ final class ReviewInputController extends Controller
 {
     public function __invoke(string $case, RlsContextRunner $runner): JsonResponse
     {
-        [$eligibility, $narrative] = $runner->runAsService(function () use ($case): array {
+        [$eligibility, $narrative, $edits] = $runner->runAsService(function () use ($case): array {
             $caseRecord = DB::table('assessment_cases')
                 ->where('public_id', $case)
                 ->first();
 
             if ($caseRecord === null) {
-                return [null, null];
+                return [null, null, collect()];
             }
 
             $caseId = (int) $caseRecord->id;
@@ -33,11 +33,34 @@ final class ReviewInputController extends Controller
                 ->orderByDesc('version')
                 ->first();
 
-            return [$eligibility, $narrative];
+            $edits = DB::table('narrative_cluster_edits')
+                ->where('assessment_case_id', $caseId)
+                ->get()
+                ->keyBy('cluster');
+
+            return [$eligibility, $narrative, $edits];
         });
 
         if ($eligibility === null && $narrative === null) {
             return $this->error('NOT_FOUND', 'No eligibility decision or narrative found for this assessment case.', 404);
+        }
+
+        $currentChecksum = $narrative !== null ? hash('sha256', $narrative->snapshot_json) : null;
+        $clusters = [];
+        foreach (['A', 'B', 'C', 'D'] as $cluster) {
+            $edit = $edits->get($cluster);
+            $baselineId = $this->baselineClusterText($narrative, $cluster);
+            $baselineJp = $this->baselineClusterJp($narrative, $cluster);
+            $isStale = $edit !== null
+                && $currentChecksum !== null
+                && $edit->baseline_snapshot_checksum !== $currentChecksum;
+
+            $clusters[$cluster] = [
+                'id' => $edit !== null ? $edit->edited_text : $baselineId,
+                'jp' => $baselineJp,
+                'isEdited' => $edit !== null,
+                'isStale' => $isStale,
+            ];
         }
 
         return response()->json(['data' => [
@@ -58,15 +81,40 @@ final class ReviewInputController extends Controller
                 'version' => (int) $narrative->version,
                 'eligibilityVersionId' => $narrative->eligibility_version_id,
                 'reviewRequired' => (bool) $narrative->review_required,
-                'clusters' => [
-                    'A' => ['id' => $narrative->cluster_a_id, 'jp' => $narrative->cluster_a_jp],
-                    'B' => ['id' => $narrative->cluster_b_id, 'jp' => $narrative->cluster_b_jp],
-                    'C' => ['id' => $narrative->cluster_c_id, 'jp' => $narrative->cluster_c_jp],
-                    'D' => ['id' => $narrative->cluster_d_id, 'jp' => $narrative->cluster_d_jp],
-                ],
+                'clusters' => $clusters,
                 'createdAt' => $narrative->created_at,
             ] : null,
         ]]);
+    }
+
+    private function baselineClusterText(?\stdClass $narrative, string $cluster): ?string
+    {
+        if ($narrative === null) {
+            return null;
+        }
+
+        return match ($cluster) {
+            'A' => $narrative->cluster_a_id,
+            'B' => $narrative->cluster_b_id,
+            'C' => $narrative->cluster_c_id,
+            'D' => $narrative->cluster_d_id,
+            default => null,
+        };
+    }
+
+    private function baselineClusterJp(?\stdClass $narrative, string $cluster): ?string
+    {
+        if ($narrative === null) {
+            return null;
+        }
+
+        return match ($cluster) {
+            'A' => $narrative->cluster_a_jp,
+            'B' => $narrative->cluster_b_jp,
+            'C' => $narrative->cluster_c_jp,
+            'D' => $narrative->cluster_d_jp,
+            default => null,
+        };
     }
 
     private function error(string $code, string $message, int $status): JsonResponse

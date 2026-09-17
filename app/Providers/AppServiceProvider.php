@@ -103,6 +103,8 @@ class AppServiceProvider extends ServiceProvider
             ->by((string) ($request->user('admin')?->getAuthIdentifier() ?? $request->ip())));
         RateLimiter::for('review-input-access', fn (Request $request): Limit => Limit::perMinute(30)
             ->by((string) ($request->user('admin')?->getAuthIdentifier() ?? $request->ip())));
+        RateLimiter::for('narrative-cluster-edit-access', fn (Request $request): Limit => Limit::perMinute(30)
+            ->by((string) ($request->user('admin')?->getAuthIdentifier() ?? $request->ip())));
         RateLimiter::for('participant-login', fn (Request $request): Limit => Limit::perMinute(5)
             ->by((string) $request->ip())
             ->response(fn (Request $request, array $headers) => response()->json([
