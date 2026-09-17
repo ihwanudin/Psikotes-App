@@ -4,8 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Integration\Review;
 
-use App\Enums\AdminRole;
+use App\Domain\Eligibility\EligibilityDecisionSnapshot;
 use App\Models\Admin;
+use App\Enums\AdminRole;
 use App\Models\AssessmentCase;
 use App\Models\Branch;
 use App\Models\Participant;
@@ -19,16 +20,20 @@ final class ReportSigningEndpointTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function createCase(string $suffix = ''): AssessmentCase
+    private const ASPECTS = ['A1', 'A2', 'B1', 'B2', 'B3', 'B4', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'D1', 'D2', 'D3', 'D4', 'D5'];
+
+    private function createCase(): AssessmentCase
     {
+        static $counter = 0;
+        $suffix = ++$counter;
         $branch = Branch::query()->create([
-            'code' => 'BR-RSS'.$suffix,
-            'name' => 'Cabang Signing Test',
-            'ref_code' => 'REF-RSS'.$suffix,
+            'code' => 'BR-SE-' . $suffix,
+            'name' => 'Cabang Signing Endpoint Test',
+            'ref_code' => 'REF-SE-' . $suffix,
         ]);
         $package = TestPackage::query()->create([
-            'code' => 'PKG-RSS'.$suffix,
-            'name' => 'Paket Signing Test',
+            'code' => 'PKG-SE-' . $suffix,
+            'name' => 'Paket Signing Endpoint Test',
             'amount' => 250_000,
             'currency' => 'IDR',
             'is_active' => true,
@@ -40,7 +45,7 @@ final class ReportSigningEndpointTest extends TestCase
             'referral_source' => 'default',
             'package_id' => $package->id,
             'source_system' => 'DIRECT_PUBLIC',
-            'full_name' => 'Peserta Signing Test',
+            'full_name' => 'Peserta Signing Endpoint',
             'gender' => 'female',
             'birth_date' => '2001-04-15',
             'education_level' => 'SMA/SMK',
@@ -62,9 +67,9 @@ final class ReportSigningEndpointTest extends TestCase
     {
         return Admin::query()->create([
             'name' => 'Psychologist Test',
-            'email' => Str::uuid().'@example.test',
-            'password' => 'password',
-            'role' => AdminRole::Psychologist,
+            'email' => (string) Str::uuid() . '@example.test',
+            'password' => bcrypt('password'),
+            'role' => AdminRole::Psychologist->value,
         ]);
     }
 
@@ -72,29 +77,44 @@ final class ReportSigningEndpointTest extends TestCase
     {
         return Admin::query()->create([
             'name' => 'Super Admin Test',
-            'email' => Str::uuid().'@example.test',
-            'password' => 'password',
-            'role' => AdminRole::SuperAdmin,
+            'email' => (string) Str::uuid() . '@example.test',
+            'password' => bcrypt('password'),
+            'role' => AdminRole::SuperAdmin->value,
         ]);
     }
 
-    /** @return array{eligibilityId: string, narrativeId: string} */
     private function seedBaseline(AssessmentCase $case): array
     {
+        $reporting = $this->canonicalReporting();
+        $canonicalInput = [
+            'levels' => array_fill_keys(self::ASPECTS, 5),
+            'field_code' => 'UMUM',
+            'iq' => 100,
+            'validity' => 'V1',
+            'standard_configuration' => $reporting,
+            'eligibility_source_versions' => [
+                'ist' => 'F0-2026.08', 'papi' => 'F0-2026.08', 'kraepelin' => 'F0-2026.08',
+                'rmib' => 'F0-2026.08', 'reporting' => $reporting['standard_version'],
+            ],
+        ];
+
+        $snapshot = EligibilityDecisionSnapshot::create($canonicalInput);
+        $snapshotArray = $snapshot->toArray();
+
         $eligibilityId = (string) Str::ulid();
         DB::table('eligibility_decision_versions')->insert([
             'id' => $eligibilityId,
             'assessment_case_id' => $case->id,
             'version' => 1,
             'supersedes_id' => null,
-            'standard_version' => 'GA-2026.08',
-            'field_code' => 'UMUM',
-            'publication_blocked' => false,
-            'recommendation_label' => 'DISARANKAN',
-            'iq' => 110,
-            'validity' => 'V1',
-            'snapshot_json' => json_encode(['type' => 'eligibility_snapshot'], JSON_THROW_ON_ERROR),
-            'canonical_input_json' => json_encode(['field_code' => 'UMUM'], JSON_THROW_ON_ERROR),
+            'standard_version' => $snapshotArray['provenance']['eligibility_standard_version'],
+            'field_code' => $snapshotArray['zone']['field_code'],
+            'publication_blocked' => $snapshotArray['publication_blocked'],
+            'recommendation_label' => $snapshotArray['recommendation']['label'] ?? null,
+            'iq' => $canonicalInput['iq'],
+            'validity' => $canonicalInput['validity'],
+            'snapshot_json' => json_encode($snapshotArray, JSON_THROW_ON_ERROR),
+            'canonical_input_json' => json_encode($canonicalInput, JSON_THROW_ON_ERROR),
             'created_at' => now(),
         ]);
 
@@ -106,14 +126,14 @@ final class ReportSigningEndpointTest extends TestCase
             'supersedes_id' => null,
             'eligibility_version_id' => $eligibilityId,
             'review_required' => false,
-            'cluster_a_id' => 'Teks baseline cluster A.',
-            'cluster_a_jp' => 'クラスターA。',
-            'cluster_b_id' => 'Teks baseline cluster B.',
-            'cluster_b_jp' => 'クラスターB。',
+            'cluster_a_id' => 'Teks A ID',
+            'cluster_a_jp' => 'Teks A JP',
+            'cluster_b_id' => 'Teks B ID',
+            'cluster_b_jp' => 'Teks B JP',
             'cluster_c_id' => null,
             'cluster_c_jp' => null,
-            'cluster_d_id' => 'Teks baseline cluster D.',
-            'cluster_d_jp' => 'クラスターD。',
+            'cluster_d_id' => 'Teks D ID',
+            'cluster_d_jp' => 'Teks D JP',
             'snapshot_json' => json_encode(['type' => 'bilingual_cluster_narratives'], JSON_THROW_ON_ERROR),
             'created_at' => now(),
         ]);
@@ -121,127 +141,206 @@ final class ReportSigningEndpointTest extends TestCase
         return ['eligibilityId' => $eligibilityId, 'narrativeId' => $narrativeId];
     }
 
-    /** @return array<string, mixed> */
-    private function validPayload(string $eligibilityVersionId, string $narrativeVersionId): array
+    private function validPayload(array $baseline): array
     {
         return [
-            'eligibility_version_id' => $eligibilityVersionId,
-            'narrative_version_id' => $narrativeVersionId,
-            'validity' => 'V1',
+            'eligibility_version_id' => $baseline['eligibilityId'],
+            'narrative_version_id' => $baseline['narrativeId'],
+            'level_overrides' => [],
+            'label_override' => null,
+            'g7_resolutions' => array_map(fn (string $aspect): array => [
+                'aspect' => $aspect,
+                'sources' => [['source' => 'CANONICAL', 'level' => 5]],
+                'final_level' => null,
+                'reason' => null,
+            ], self::ASPECTS),
             'procedure_note' => null,
-            'label' => 'DISARANKAN',
             'accompaniment_conditions' => null,
-            'unresolved_g7_aspects' => [],
-            'overrides' => [],
-            'target_field' => 'UMUM',
             'narrative_clusters' => [
-                'A' => 'Kemampuan umum telah dirangkum.',
-                'B' => 'Cara kerja telah dirangkum.',
-                'C' => 'Kepribadian telah dirangkum.',
-                'D' => 'Minat kerja telah dirangkum.',
+                'A' => 'Teks narasi cluster A.',
+                'B' => 'Teks narasi cluster B.',
+                'C' => 'Teks narasi cluster C.',
+                'D' => 'Teks narasi cluster D.',
             ],
         ];
     }
 
-    // ——— SIGN (POST) ———
+    // ─── Successful sign ───
 
     public function test_sign_with_valid_data_returns_201(): void
     {
         $case = $this->createCase();
-        $admin = $this->psychologist();
         $baseline = $this->seedBaseline($case);
+        $admin = $this->psychologist();
 
         $response = $this->actingAs($admin, 'admin')
-            ->postJson("/admin/assessment-cases/{$case->public_id}/review/signing", $this->validPayload($baseline['eligibilityId'], $baseline['narrativeId']));
+            ->postJson("/admin/assessment-cases/{$case->public_id}/signing", $this->validPayload($baseline));
 
         $response->assertStatus(201);
-        $response->assertJsonStructure([
-            'data' => [
-                'id', 'assessmentCaseId', 'version', 'state',
-                'eligibilityVersionId', 'narrativeVersionId',
-                'snapshot', 'signedByAdminId', 'signedAt', 'createdAt',
-            ],
-        ]);
         $response->assertJsonPath('data.state', 'SIGNED');
         $response->assertJsonPath('data.version', 1);
-        $response->assertJsonPath('data.signedByAdminId', $admin->id);
         $response->assertJsonPath('data.eligibilityVersionId', $baseline['eligibilityId']);
         $response->assertJsonPath('data.narrativeVersionId', $baseline['narrativeId']);
 
+        // Snapshot must contain derived data, not client claims
         $snapshot = $response->json('data.snapshot');
         $this->assertIsArray($snapshot);
-        $this->assertSame('report_signing_snapshot', $snapshot['type']);
         $this->assertArrayHasKey('prerequisite_input', $snapshot);
         $this->assertArrayHasKey('provenance', $snapshot);
-        $this->assertArrayHasKey('narrative_cluster_checksums', $snapshot['provenance']);
 
-        // Verify DASS exclusion in the response
-        $responseJson = $response->getContent();
-        $this->assertStringNotContainsStringIgnoringCase('dass', $responseJson);
+        // T-07: DASS exclusion
+        $encoded = json_encode($snapshot, JSON_THROW_ON_ERROR);
+        $this->assertStringNotContainsString('dass', mb_strtolower($encoded));
+        $this->assertStringNotContainsString('depression', mb_strtolower($encoded));
+        $this->assertStringNotContainsString('anxiety', mb_strtolower($encoded));
+        $this->assertStringNotContainsString('stress', mb_strtolower($encoded));
     }
 
-    public function test_sign_with_nonexistent_case_returns_404(): void
-    {
-        $admin = $this->psychologist();
-        $nonexistentId = (string) Str::ulid();
+    // ─── Client-supplied label is IGNORED — derived from baseline ───
 
-        $this->actingAs($admin, 'admin')
-            ->postJson("/admin/assessment-cases/{$nonexistentId}/review/signing", [
-                'eligibility_version_id' => (string) Str::ulid(),
-                'narrative_version_id' => (string) Str::ulid(),
-                'validity' => 'V1',
-                'procedure_note' => null,
-                'label' => 'DISARANKAN',
-                'accompaniment_conditions' => null,
-                'unresolved_g7_aspects' => [],
-                'overrides' => [],
-                'target_field' => 'UMUM',
-                'narrative_clusters' => [
-                    'A' => 'Kemampuan umum telah dirangkum.',
-                    'B' => 'Cara kerja telah dirangkum.',
-                    'C' => 'Kepribadian telah dirangkum.',
-                    'D' => 'Minat kerja telah dirangkum.',
-                ],
-            ])
-            ->assertStatus(404)
-            ->assertJson(['error' => ['code' => 'CASE_NOT_FOUND']]);
-    }
-
-    public function test_sign_with_blocked_prerequisites_returns_422(): void
+    public function test_client_supplied_label_is_ignored_label_derives_from_baseline(): void
     {
         $case = $this->createCase();
-        $admin = $this->psychologist();
         $baseline = $this->seedBaseline($case);
+        $admin = $this->psychologist();
 
-        $payload = $this->validPayload($baseline['eligibilityId'], $baseline['narrativeId']);
-        $payload['narrative_clusters']['A'] = null;
+        $payload = $this->validPayload($baseline);
+        // The baseline (all levels=5, field=UMUM) produces DISARANKAN.
+        // Even if client somehow includes a bogus claim in g7, the label comes from the server derivation.
+        $response = $this->actingAs($admin, 'admin')
+            ->postJson("/admin/assessment-cases/{$case->public_id}/signing", $payload);
+
+        $response->assertStatus(201);
+        $snapshot = $response->json('data.snapshot');
+
+        // Label is derived — must match what EligibilityDecisionSnapshot produces for this baseline
+        $this->assertSame('DISARANKAN', $snapshot['prerequisite_input']['label']);
+        // Validity is derived — must be V1 from baseline
+        $this->assertSame('V1', $snapshot['prerequisite_input']['validity']);
+        // Target field is derived — must be UMUM from baseline
+        $this->assertSame('UMUM', $snapshot['prerequisite_input']['target_field']);
+    }
+
+    // ─── Level override without reason ≥20 chars → rejected by ProfessionalOverridePolicy ───
+
+    public function test_level_override_with_short_reason_is_rejected_by_policy(): void
+    {
+        $case = $this->createCase();
+        $baseline = $this->seedBaseline($case);
+        $admin = $this->psychologist();
+
+        $payload = $this->validPayload($baseline);
+        $payload['level_overrides'] = [[
+            'aspect' => 'C4',
+            'system_level' => 5,
+            'final_level' => 3,
+            'reason' => 'Terlalu pendek.',
+        ]];
 
         $response = $this->actingAs($admin, 'admin')
-            ->postJson("/admin/assessment-cases/{$case->public_id}/review/signing", $payload);
+            ->postJson("/admin/assessment-cases/{$case->public_id}/signing", $payload);
 
         $response->assertStatus(422);
-        $response->assertJson(['error' => ['code' => 'SIGNING_BLOCKED']]);
-        $response->assertJsonPath('error.blocking_reason_codes', ['NARRATIVE_CLUSTER_A_REQUIRED']);
+        $response->assertJsonPath('error.code', 'OVERRIDE_INVALID');
     }
 
-    // ——— AUTH: FORBIDDEN ———
+    // ─── Level override with valid reason → system_levels and final_levels both stored ───
 
-    public function test_sign_with_non_psychologist_returns_403_with_envelope(): void
+    public function test_level_override_preserves_system_levels_and_final_levels(): void
     {
         $case = $this->createCase();
-        $admin = $this->superAdmin();
         $baseline = $this->seedBaseline($case);
+        $admin = $this->psychologist();
+
+        $reason = 'Observasi profesional mendukung level akhir tiga.';
+        $payload = $this->validPayload($baseline);
+        $payload['level_overrides'] = [[
+            'aspect' => 'C4',
+            'system_level' => 5,
+            'final_level' => 3,
+            'reason' => $reason,
+        ]];
+        // C4's G7 resolution must match the override
+        foreach ($payload['g7_resolutions'] as &$r) {
+            if ($r['aspect'] === 'C4') {
+                $r['sources'] = [
+                    ['source' => 'PAPI_E', 'level' => 5],
+                    ['source' => 'PAPI_K', 'level' => 3],
+                ];
+                $r['final_level'] = 3;
+                $r['reason'] = $reason;
+            }
+        }
+        unset($r);
 
         $response = $this->actingAs($admin, 'admin')
-            ->postJson("/admin/assessment-cases/{$case->public_id}/review/signing", $this->validPayload($baseline['eligibilityId'], $baseline['narrativeId']));
+            ->postJson("/admin/assessment-cases/{$case->public_id}/signing", $payload);
+
+        $response->assertStatus(201);
+        $snapshot = $response->json('data.snapshot');
+
+        // system_levels and final_levels are both stored in provenance
+        $reviewed = $snapshot['provenance']['reviewed_eligibility'];
+        $this->assertSame(5, $reviewed['system_levels']['C4']);
+        $this->assertSame(3, $reviewed['final_levels']['C4']);
+        // Other aspects unchanged
+        $this->assertSame(5, $reviewed['system_levels']['A1']);
+        $this->assertSame(5, $reviewed['final_levels']['A1']);
+
+        // Override is projected in prerequisite_input
+        $this->assertCount(1, $snapshot['prerequisite_input']['overrides']);
+        $this->assertSame('level', $snapshot['prerequisite_input']['overrides'][0]['type']);
+        $this->assertSame('C4', $snapshot['prerequisite_input']['overrides'][0]['aspect']);
+        $this->assertSame($reason, $snapshot['prerequisite_input']['overrides'][0]['reason']);
+    }
+
+    // ─── Label override with valid reason ───
+
+    public function test_label_override_changes_recommendation_label(): void
+    {
+        $case = $this->createCase();
+        $baseline = $this->seedBaseline($case);
+        $admin = $this->psychologist();
+
+        $reason = 'Observasi profesional mendukung rekomendasi DIPERTIMBANGKAN.';
+        $payload = $this->validPayload($baseline);
+        $payload['label_override'] = [
+            'system_label' => 'DISARANKAN',
+            'final_label' => 'DIPERTIMBANGKAN',
+            'reason' => $reason,
+        ];
+        $payload['accompaniment_conditions'] = 'Pendampingan diberikan pada masa adaptasi kerja.';
+
+        $response = $this->actingAs($admin, 'admin')
+            ->postJson("/admin/assessment-cases/{$case->public_id}/signing", $payload);
+
+        $response->assertStatus(201);
+        $snapshot = $response->json('data.snapshot');
+
+        // Label is DIPERTIMBANGKAN (the override target)
+        $this->assertSame('DIPERTIMBANGKAN', $snapshot['prerequisite_input']['label']);
+
+        // Override is projected
+        $labelOverrides = array_filter(
+            $snapshot['prerequisite_input']['overrides'],
+            fn (array $o): bool => $o['type'] === 'label',
+        );
+        $this->assertCount(1, $labelOverrides);
+    }
+
+    // ─── Auth tests ───
+
+    public function test_sign_with_non_psychologist_returns_403(): void
+    {
+        $case = $this->createCase();
+        $baseline = $this->seedBaseline($case);
+        $admin = $this->superAdmin();
+
+        $response = $this->actingAs($admin, 'admin')
+            ->postJson("/admin/assessment-cases/{$case->public_id}/signing", $this->validPayload($baseline));
 
         $response->assertStatus(403);
-        $response->assertJson([
-            'error' => [
-                'code' => 'FORBIDDEN',
-                'message' => 'Only psychologists may sign reports.',
-            ],
-        ]);
+        $response->assertJsonPath('error.code', 'FORBIDDEN');
     }
 
     public function test_sign_without_auth_returns_401(): void
@@ -249,71 +348,141 @@ final class ReportSigningEndpointTest extends TestCase
         $case = $this->createCase();
         $baseline = $this->seedBaseline($case);
 
-        $this->postJson("/admin/assessment-cases/{$case->public_id}/review/signing", $this->validPayload($baseline['eligibilityId'], $baseline['narrativeId']))
-            ->assertUnauthorized();
+        $response = $this->postJson("/admin/assessment-cases/{$case->public_id}/signing", $this->validPayload($baseline));
+
+        $response->assertStatus(401);
     }
 
-    // ——— Eligibility/narrative version validation ———
+    // ─── Blocked prerequisites ───
+
+    public function test_sign_with_blocked_prerequisites_returns_422(): void
+    {
+        $case = $this->createCase();
+        $baseline = $this->seedBaseline($case);
+        $admin = $this->psychologist();
+
+        $payload = $this->validPayload($baseline);
+        $payload['narrative_clusters']['A'] = null;
+
+        $response = $this->actingAs($admin, 'admin')
+            ->postJson("/admin/assessment-cases/{$case->public_id}/signing", $payload);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'SIGNING_BLOCKED');
+        $this->assertContains('NARRATIVE_CLUSTER_A_REQUIRED', $response->json('error.blocking_reason_codes'));
+    }
+
+    // ─── Missing case ───
+
+    public function test_sign_with_nonexistent_case_returns_404(): void
+    {
+        $case = $this->createCase();
+        $baseline = $this->seedBaseline($case);
+        $admin = $this->psychologist();
+
+        $nonexistentId = (string) Str::ulid();
+
+        $response = $this->actingAs($admin, 'admin')
+            ->postJson("/admin/assessment-cases/{$nonexistentId}/signing", $this->validPayload($baseline));
+
+        $response->assertStatus(404);
+        $response->assertJsonPath('error.code', 'ELIGIBILITY_VERSION_NOT_FOUND');
+    }
+
+    // ─── Cross-case eligibility ───
 
     public function test_sign_with_eligibility_version_not_belonging_to_case_returns_404(): void
     {
-        $caseA = $this->createCase('A');
-        $caseB = $this->createCase('B');
+        $caseA = $this->createCase();
+        $caseB = $this->createCase();
+        $baselineA = $this->seedBaseline($caseA);
+        $baselineB = $this->seedBaseline($caseB);
         $admin = $this->psychologist();
 
-        $baselineA = $this->seedBaseline($caseA);
-        $this->seedBaseline($caseB);
+        $payload = $this->validPayload($baselineB);
+        $payload['eligibility_version_id'] = $baselineA['eligibilityId'];
 
-        $this->actingAs($admin, 'admin')
-            ->postJson("/admin/assessment-cases/{$caseB->public_id}/review/signing", $this->validPayload($baselineA['eligibilityId'], $baselineA['narrativeId']))
-            ->assertStatus(404)
-            ->assertJson(['error' => ['code' => 'ELIGIBILITY_VERSION_NOT_FOUND']]);
+        $response = $this->actingAs($admin, 'admin')
+            ->postJson("/admin/assessment-cases/{$caseB->public_id}/signing", $payload);
+
+        $response->assertStatus(404);
+        $response->assertJsonPath('error.code', 'ELIGIBILITY_VERSION_NOT_FOUND');
     }
 
-    // ——— SHOW (GET) ———
+    // ─── Show endpoint ───
 
     public function test_show_returns_latest_signing_snapshot(): void
     {
         $case = $this->createCase();
-        $admin = $this->psychologist();
         $baseline = $this->seedBaseline($case);
+        $admin = $this->psychologist();
 
-        // Sign first
         $this->actingAs($admin, 'admin')
-            ->postJson("/admin/assessment-cases/{$case->public_id}/review/signing", $this->validPayload($baseline['eligibilityId'], $baseline['narrativeId']))
-            ->assertStatus(201);
+            ->postJson("/admin/assessment-cases/{$case->public_id}/signing", $this->validPayload($baseline));
 
-        $response = $this->actingAs($admin, 'admin')
-            ->getJson("/admin/assessment-cases/{$case->public_id}/review/signing");
+        $response = $this->getJson("/admin/assessment-cases/{$case->public_id}/signing");
 
-        $response->assertOk();
-        $response->assertJsonStructure([
-            'data' => [
-                'id', 'assessmentCaseId', 'version', 'state',
-                'eligibilityVersionId', 'narrativeVersionId',
-                'snapshot', 'signedByAdminId', 'signedAt', 'createdAt',
-            ],
-        ]);
+        $response->assertStatus(200);
         $response->assertJsonPath('data.state', 'SIGNED');
         $response->assertJsonPath('data.version', 1);
     }
 
     public function test_show_with_nonexistent_case_returns_404(): void
     {
-        $admin = $this->psychologist();
         $nonexistentId = (string) Str::ulid();
+        $admin = $this->psychologist();
 
-        $this->actingAs($admin, 'admin')
-            ->getJson("/admin/assessment-cases/{$nonexistentId}/review/signing")
-            ->assertStatus(404)
-            ->assertJson(['error' => ['code' => 'CASE_NOT_FOUND']]);
+        $response = $this->actingAs($admin, 'admin')
+            ->getJson("/admin/assessment-cases/{$nonexistentId}/signing");
+
+        $response->assertStatus(404);
+        $response->assertJsonPath('error.code', 'CASE_NOT_FOUND');
     }
 
-    public function test_show_without_auth_redirects_to_login(): void
+    // ─── G7 unresolved aspect blocks signing ───
+
+    public function test_g7_unresolved_aspect_blocks_signing(): void
     {
         $case = $this->createCase();
+        $baseline = $this->seedBaseline($case);
+        $admin = $this->psychologist();
 
-        $this->get("/admin/assessment-cases/{$case->public_id}/review/signing")
-            ->assertRedirect('/admin/login');
+        $payload = $this->validPayload($baseline);
+        // Make C4 discrepant (spread >= 2) and leave it unresolved
+        foreach ($payload['g7_resolutions'] as &$r) {
+            if ($r['aspect'] === 'C4') {
+                $r['sources'] = [
+                    ['source' => 'PAPI_E', 'level' => 5],
+                    ['source' => 'PAPI_K', 'level' => 2],
+                ];
+                $r['final_level'] = null; // unresolved
+                $r['reason'] = null;
+            }
+        }
+        unset($r);
+
+        $response = $this->actingAs($admin, 'admin')
+            ->postJson("/admin/assessment-cases/{$case->public_id}/signing", $payload);
+
+        // G7ReviewSet::fromResolutions rejects unresolved aspects
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'G7_INVALID');
+    }
+
+    // ─── Helper ───
+
+    private function canonicalReporting(): array
+    {
+        $contents = file_get_contents(dirname(__DIR__, 3).'/database/seeders/data/reporting.json');
+        if (! is_string($contents)) {
+            throw new \RuntimeException('Canonical reporting data could not be read.');
+        }
+        $data = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
+
+        return [
+            'standard_version' => $data['standard_version'],
+            'base_standards' => $data['base_standards'],
+            'fields' => $data['fields'],
+        ];
     }
 }

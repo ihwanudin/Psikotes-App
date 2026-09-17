@@ -18,6 +18,7 @@ use App\Http\Controllers\NarrativeClusterEditController;
 use App\Http\Controllers\ParticipantRegistrationController;
 use App\Http\Controllers\ReferralController;
 use App\Http\Controllers\RegistrationOrderStatusController;
+use App\Http\Controllers\ReportSigningController;
 use App\Http\Controllers\ReviewInputController;
 use App\Http\Controllers\SelectionLaunchController;
 use App\Http\Controllers\XenditWebhookController;
@@ -196,6 +197,26 @@ Route::get('/admin/assessment-cases/{case}/review-input', ReviewInputController:
         'throttle:review-input-access',
     ])
     ->name('admin.assessment-cases.review-input');
+
+Route::post('/admin/assessment-cases/{case}/signing', [ReportSigningController::class, 'sign'])
+    ->whereUlid('case')
+    ->middleware([
+        'panel:admin',
+        AuthenticateFilament::class,
+        ApplyRlsContext::class,
+        'throttle:report-signing-access',
+    ])
+    ->name('admin.assessment-cases.signing.store');
+
+Route::get('/admin/assessment-cases/{case}/signing', [ReportSigningController::class, 'show'])
+    ->whereUlid('case')
+    ->middleware([
+        'panel:admin',
+        AuthenticateFilament::class,
+        ApplyRlsContext::class,
+        'throttle:report-signing-access',
+    ])
+    ->name('admin.assessment-cases.signing.show');
 
 Route::inertia('/', 'welcome')->name('home');
 
