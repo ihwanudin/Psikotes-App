@@ -32,12 +32,14 @@ async (page) => {
 
         if (!url.startsWith(`${origin}/`)) {
             externalRequests.push({ method: request.method(), url });
+
             if (url.startsWith('https://ui-avatars.com/api/')) {
                 await route.fulfill({
                     status: 200,
                     contentType: 'image/svg+xml',
                     body: '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"/>',
                 });
+
                 return;
             }
         } else {
@@ -129,6 +131,7 @@ async (page) => {
     );
     styles.warning = await page.locator('[data-synthetic-warning]').evaluate((element) => {
         const style = getComputedStyle(element);
+
         return {
             background: style.backgroundColor,
             borderWidth: Number.parseFloat(style.borderTopWidth),
@@ -155,10 +158,12 @@ async (page) => {
 
     styles.g7 = await page.locator('[data-review-state="g7-unresolved"]').evaluate((element) => {
         const style = getComputedStyle(element);
+
         return { borderWidth: Number.parseFloat(style.borderTopWidth), borderColor: style.borderTopColor };
     });
     styles.formControl = await page.locator('#g6-final-level').evaluate((element) => {
         const style = getComputedStyle(element);
+
         return {
             borderWidth: Number.parseFloat(style.borderTopWidth),
             height: element.getBoundingClientRect().height,
@@ -168,6 +173,7 @@ async (page) => {
         name: 'Validasi kesiapan sintetis',
     }).evaluate((element) => {
         const style = getComputedStyle(element);
+
         return {
             background: style.backgroundColor,
             color: style.color,
@@ -224,6 +230,7 @@ async (page) => {
             result.documentWidth === result.viewport && result.reasonWidth > 0 && result.tableContained,
             JSON.stringify(result),
         );
+
         if ([320, 768].includes(width)) {
             await page.screenshot({
                 path: `${evidenceDir}/psychologist-internal-${width}.png`,
@@ -266,6 +273,7 @@ async (page) => {
     await page.getByRole('heading', { name: 'STOP — laporan tidak dibuat' }).waitFor();
     styles.v3 = await page.locator('[data-validity-stop="V3"]').evaluate((element) => {
         const style = getComputedStyle(element);
+
         return {
             background: style.backgroundColor,
             borderColor: style.borderTopColor,
@@ -285,8 +293,14 @@ async (page) => {
     await page.screenshot({ path: `${evidenceDir}/psychologist-v3-1280.png`, fullPage: true });
 
     const unexpectedWrites = requests.filter(({ method, path }) => {
-        if (['GET', 'HEAD'].includes(method)) return false;
-        if (method === 'POST' && path === '/admin/login') return false;
+        if (['GET', 'HEAD'].includes(method)) {
+            return false;
+        }
+
+        if (method === 'POST' && path === '/admin/login') {
+            return false;
+        }
+
         return !(method === 'POST' && /^\/livewire(?:-[a-f0-9]+)?\/update$/.test(path));
     });
     check('No unexpected HTTP write routes were called', unexpectedWrites.length === 0, JSON.stringify(unexpectedWrites));
