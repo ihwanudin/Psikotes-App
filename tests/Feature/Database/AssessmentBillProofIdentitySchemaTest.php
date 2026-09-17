@@ -8,7 +8,6 @@ use App\Models\AssessmentBill;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -18,15 +17,7 @@ use Tests\Support\AssessmentBillingFixture as Fixture;
 
 final class AssessmentBillProofIdentitySchemaTest extends OrganizationPaymentTestCase
 {
-    protected function tearDown(): void
-    {
-        try {
-            $this->assertSame(0, Artisan::call('migrate:fresh', ['--force' => true, '--no-interaction' => true]));
-        } finally {
-            parent::tearDown();
-        }
-    }
-
+    protected function tearDown(): void { try { $this->assertSame(0, \Illuminate\Support\Facades\Artisan::call('migrate:fresh', ['--force' => true, '--no-interaction' => true])); } finally { parent::tearDown(); } }
     private const array COLUMNS = [
         'proof_checksum_sha256', 'proof_mime_type', 'proof_size_bytes', 'proof_uploaded_at',
     ];

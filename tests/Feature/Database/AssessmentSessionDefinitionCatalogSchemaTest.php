@@ -8,7 +8,6 @@ use App\Domain\AssessmentSessions\SessionDefinition;
 use App\Security\RlsContextRunner;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Foundation\Testing\RefreshDatabaseState;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
@@ -18,13 +17,8 @@ final class AssessmentSessionDefinitionCatalogSchemaTest extends OrganizationPay
 {
     protected function tearDown(): void
     {
-        try {
-            parent::tearDown();
-        } finally {
-            RefreshDatabaseState::$migrated = false;
-        }
+        try { parent::tearDown(); } finally { \Illuminate\Foundation\Testing\RefreshDatabaseState::$migrated = false; }
     }
-
     use RefreshDatabase;
 
     public function test_catalog_starts_empty_with_exact_columns_and_indexes(): void

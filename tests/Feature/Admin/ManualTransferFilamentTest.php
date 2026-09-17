@@ -17,8 +17,8 @@ use Filament\Facades\Filament;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
-use Tests\Support\DirectPublicPaymentFixture;
 use Tests\TestCase;
+use Tests\Support\DirectPublicPaymentFixture;
 
 final class ManualTransferFilamentTest extends TestCase
 {

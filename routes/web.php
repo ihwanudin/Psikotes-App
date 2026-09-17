@@ -6,8 +6,10 @@ use App\Http\Controllers\Admin\AssessmentParticipantExportController;
 use App\Http\Controllers\Admin\IdentityEvidenceAccessController;
 use App\Http\Controllers\Admin\ManualPaymentProofAccessController;
 use App\Http\Controllers\AssessmentInvitationController;
+use App\Http\Controllers\BilingualNarrativeController;
 use App\Http\Controllers\CheckoutPaymentController;
 use App\Http\Controllers\CheckoutSessionController;
+use App\Http\Controllers\EligibilityDecisionController;
 use App\Http\Controllers\HealthCheckController;
 use App\Http\Controllers\IdentityEvidenceUploadController;
 use App\Http\Controllers\IntegratedCheckoutConfirmationController;
@@ -15,6 +17,7 @@ use App\Http\Controllers\ManualPaymentProofUploadController;
 use App\Http\Controllers\ParticipantRegistrationController;
 use App\Http\Controllers\ReferralController;
 use App\Http\Controllers\RegistrationOrderStatusController;
+use App\Http\Controllers\ReviewInputController;
 use App\Http\Controllers\SelectionLaunchController;
 use App\Http\Controllers\XenditWebhookController;
 use App\Http\Middleware\ApplyRlsContext;
@@ -122,6 +125,56 @@ Route::get('/admin/assessment-participants/export.csv', AssessmentParticipantExp
         'throttle:30,1',
     ])
     ->name('admin.assessment-participants.export');
+
+Route::post('/admin/assessment-cases/{case}/eligibility-decisions', [EligibilityDecisionController::class, 'store'])
+    ->whereUlid('case')
+    ->middleware([
+        'panel:admin',
+        AuthenticateFilament::class,
+        ApplyRlsContext::class,
+        'throttle:eligibility-decision-access',
+    ])
+    ->name('admin.assessment-cases.eligibility-decisions.store');
+
+Route::get('/admin/assessment-cases/{case}/eligibility-decisions', [EligibilityDecisionController::class, 'show'])
+    ->whereUlid('case')
+    ->middleware([
+        'panel:admin',
+        AuthenticateFilament::class,
+        ApplyRlsContext::class,
+        'throttle:eligibility-decision-access',
+    ])
+    ->name('admin.assessment-cases.eligibility-decisions.show');
+
+Route::post('/admin/assessment-cases/{case}/bilingual-narratives', [BilingualNarrativeController::class, 'store'])
+    ->whereUlid('case')
+    ->middleware([
+        'panel:admin',
+        AuthenticateFilament::class,
+        ApplyRlsContext::class,
+        'throttle:bilingual-narrative-access',
+    ])
+    ->name('admin.assessment-cases.bilingual-narratives.store');
+
+Route::get('/admin/assessment-cases/{case}/bilingual-narratives', [BilingualNarrativeController::class, 'show'])
+    ->whereUlid('case')
+    ->middleware([
+        'panel:admin',
+        AuthenticateFilament::class,
+        ApplyRlsContext::class,
+        'throttle:bilingual-narrative-access',
+    ])
+    ->name('admin.assessment-cases.bilingual-narratives.show');
+
+Route::get('/admin/assessment-cases/{case}/review-input', ReviewInputController::class)
+    ->whereUlid('case')
+    ->middleware([
+        'panel:admin',
+        AuthenticateFilament::class,
+        ApplyRlsContext::class,
+        'throttle:review-input-access',
+    ])
+    ->name('admin.assessment-cases.review-input');
 
 Route::inertia('/', 'welcome')->name('home');
 

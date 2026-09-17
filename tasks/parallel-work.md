@@ -480,3 +480,76 @@ containers/0 networks. The lane adds only the four internal reader/DTO/test
 files; the worker is closed and no migration, HTTP, queue, report, F3,
 manifest, active-catalog lookup, raw-answer reconstruction, or activation is
 claimed.
+
+## DeepSeek F3/F4 persistence + HTTP projection acceptance — 2026-09-17
+
+DeepSeek's assigned lane (F3 Eligibility + F4 Narrative: persistence,
+HTTP/API projection, F5-consumable output; see the ownership ledger in
+`AGENTS.md`) is accepted across three increments on
+`deepseek/f3-f4-eligibility-narrative`, baseline `3e1538d`:
+
+- `d1ad798` — `eligibility_decision_versions` and `bilingual_narrative_versions`
+  migrations (ULID versioned, append-only trigger guard, RLS service-only
+  read/insert, driver-conditional jsonb/json), three new controllers
+  (`EligibilityDecisionController`, `BilingualNarrativeController`,
+  `ReviewInputController`) using `RlsContextRunner::runAsService()`, and
+  persistence integration tests.
+- `e84b8cd` — five admin routes registered in `routes/web.php` (`whereUlid`
+  case parameter, `panel:admin`+`AuthenticateFilament`+`ApplyRlsContext`+
+  named-throttle middleware stack matching the existing
+  `admin.assessment-participants.export` pattern), three new named rate
+  limiters in `AppServiceProvider`, controller signatures changed to resolve
+  the case ULID inside the `runAsService()` closure (not via `Route::bind`,
+  which would run before RLS context is established — verified against
+  Laravel's `SortedMiddleware`/`$middlewarePriority`), and 12 HTTP endpoint
+  tests.
+- `2fdcdf9` + `09be48b` — replaced raw `ModelNotFoundException` throws inside
+  RLS closures with `return null`/`return [null, null]` plus the existing
+  `$this->error(...)` envelope convention (`CASE_NOT_FOUND`), so the API's
+  error shape stays consistent; endpoint tests now assert the error body,
+  not just the status code.
+
+Coordinator independently re-verified at each increment (git diff scope,
+`runAsService()` usage, and re-running the test files directly — not
+accepting self-reports). Final independent run:
+`vendor/bin/phpunit tests/Integration/Eligibility/EligibilityDecisionEndpointTest.php
+tests/Integration/Narrative/BilingualNarrativeEndpointTest.php
+tests/Integration/Narrative/ReviewInputEndpointTest.php
+tests/Integration/Eligibility/EligibilityDecisionPersistenceTest.php
+tests/Integration/Narrative/BilingualNarrativePersistenceTest.php` — 33
+tests, 33 passed, 86 assertions. Broader regression check: full Unit suite
+1176 passed (+9 skipped) and full Integration suite 70 passed, both
+unaffected.
+
+Scope stayed exactly within `app/Domain/Eligibility/**`,
+`app/Domain/Narrative/**`, new files under `app/Http/Controllers/`, and new
+test files under `tests/**/Eligibility/**`/`tests/**/Narrative/**`, plus the
+two narrowly-authorized exceptions (`routes/web.php` route additions and
+`AppServiceProvider` limiter additions) — verified by diff inspection each
+time, not by trusting the worker's own scope claim.
+
+**Known limitation:** the PostgreSQL/RLS branch of both migrations
+(`SECURITY DEFINER` guard functions, `REVOKE`/`GRANT`, `CREATE POLICY`) was
+reviewed against the closest precedent
+(`2026_09_13_000100_create_generic_instrument_result_ledger.php`) but never
+executed against a live PostgreSQL instance — only the SQLite branch was
+run and verified end-to-end (migrate, rollback, and real insert/update/
+delete guard-trigger tests). This is recorded as `partial` rather than
+`pass` in the PostgreSQL/RLS column of `tasks/f2-f9-acceptance.md` for
+T-12..T-14 and T-17..T-21. A PostgreSQL runtime-role verification pass
+(disposable container, real `psikotes_runtime` connection, adversarial RLS
+probes) is the next dependency before this can be marked fully accepted for
+that column.
+
+**Known open gap (not DeepSeek's to close):** no table anywhere persists a
+psychologist-edited version of narrative/INTEGRATION text distinct from the
+system-generated baseline in `bilingual_narrative_versions`. Per
+`CLAUDE.md`'s "Teks INTEGRATION tersunting psikolog TIDAK boleh tertimpa
+saat regenerate tanpa perubahan data" rule, this must land before any F5/F6
+review UI lets a psychologist hand-edit narrative text, or an edit will be
+silently lost on the next F4 regenerate. Flagged for whichever lane owns
+F5 review persistence or F6 report rendering.
+
+`deepseek/f3-f4-eligibility-narrative` is **not merged** into any
+integration/checkpoint branch. Promotion is a separate coordinator decision
+pending confirmation of which branch is the current live integration line.
