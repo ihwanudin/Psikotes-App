@@ -160,7 +160,7 @@ final class F7OperationalOverviewTest extends TestCase
             'birth_date' => '2000-01-01',
             'education_level' => 'SMA',
             'intended_field' => 'UMUM',
-            'phone' => '62811111111'.$suffix,
+            'phone' => '6281234567890',
             'test_number' => 'F7-'.$suffix,
         ]);
         $client = IntegrationClient::query()->create([

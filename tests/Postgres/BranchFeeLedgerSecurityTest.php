@@ -284,7 +284,7 @@ final class BranchFeeLedgerSecurityTest extends TestCase
             'birth_date' => '2000-01-01',
             'education_level' => 'SMA',
             'intended_field' => 'UMUM',
-            'phone' => '6281111111'.$suffix,
+            'phone' => '6281234567890',
             'created_at' => now(),
             'updated_at' => now(),
         ]);
