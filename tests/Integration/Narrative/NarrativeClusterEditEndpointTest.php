@@ -22,12 +22,12 @@ final class NarrativeClusterEditEndpointTest extends TestCase
     private function createCase(string $suffix = ''): AssessmentCase
     {
         $branch = Branch::query()->create([
-            'code' => 'BR-NCE' . $suffix,
+            'code' => 'BR-NCE'.$suffix,
             'name' => 'Cabang Cluster Edit Test',
-            'ref_code' => 'REF-NCE' . $suffix,
+            'ref_code' => 'REF-NCE'.$suffix,
         ]);
         $package = TestPackage::query()->create([
-            'code' => 'PKG-NCE' . $suffix,
+            'code' => 'PKG-NCE'.$suffix,
             'name' => 'Paket Cluster Edit Test',
             'amount' => 250_000,
             'currency' => 'IDR',

@@ -13,7 +13,7 @@ return new class extends Migration
     {
         $driver = $this->driver();
 
-        Schema::create('narrative_cluster_edits', function (Blueprint $table) use ($driver): void {
+        Schema::create('narrative_cluster_edits', function (Blueprint $table): void {
             $table->ulid('id')->primary();
             $table->unsignedBigInteger('assessment_case_id');
             $table->char('cluster', 1);
