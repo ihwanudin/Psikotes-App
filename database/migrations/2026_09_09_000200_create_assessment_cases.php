@@ -295,18 +295,22 @@ return new class extends Migration
     /** @return list<object{name:string,sql:string}> */
     private function sqliteReferencingTriggers(): array
     {
-        return DB::select(<<<'SQL'
+        /** @var list<object{name:string,sql:string}> $rows */
+        $rows = DB::select(<<<'SQL'
             SELECT name, sql FROM sqlite_master
             WHERE type = 'trigger' AND sql IS NOT NULL
               AND (lower(sql) LIKE '%assessment_participants%'
                 OR lower(sql) LIKE '%test_sessions%')
             SQL);
+
+        return $rows;
     }
 
     /** @return list<object{name:string,sql:string}> */
     private function sqliteIndexes(): array
     {
-        return DB::select(<<<'SQL'
+        /** @var list<object{name:string,sql:string}> $rows */
+        $rows = DB::select(<<<'SQL'
             SELECT name, sql FROM sqlite_master
             WHERE type = 'index' AND sql IS NOT NULL
               AND (
@@ -314,27 +318,35 @@ return new class extends Migration
                 OR (tbl_name = 'assessment_participants' AND name <> 'assessment_participants_case_unique')
               )
             SQL);
+
+        return $rows;
     }
 
-    /** @param list<object{name:string,sql:string}> $triggers @param list<object{name:string,sql:string}> $indexes */
+    /**
+     * @param  list<object{name:string,sql:string}>  $triggers
+     * @param  list<object{name:string,sql:string}>  $indexes
+     */
     private function dropSqliteObjects(array $triggers, array $indexes): void
     {
         foreach ($triggers as $trigger) {
-            DB::unprepared('DROP TRIGGER "'.str_replace('"', '""', $trigger->name).'"');
+            DB::unprepared('DROP TRIGGER "'.str_replace('"', '""', $trigger->name).'"'); // @phpstan-ignore argument.type (trigger name is read back verbatim from sqlite_master, not user input)
         }
         foreach ($indexes as $index) {
-            DB::unprepared('DROP INDEX "'.str_replace('"', '""', $index->name).'"');
+            DB::unprepared('DROP INDEX "'.str_replace('"', '""', $index->name).'"'); // @phpstan-ignore argument.type (index name is read back verbatim from sqlite_master, not user input)
         }
     }
 
-    /** @param list<object{name:string,sql:string}> $triggers @param list<object{name:string,sql:string}> $indexes */
+    /**
+     * @param  list<object{name:string,sql:string}>  $triggers
+     * @param  list<object{name:string,sql:string}>  $indexes
+     */
     private function restoreSqliteObjects(array $triggers, array $indexes): void
     {
         foreach ($indexes as $index) {
-            DB::unprepared($index->sql);
+            DB::unprepared($index->sql); // @phpstan-ignore argument.type (DDL text is read back verbatim from sqlite_master, not user input)
         }
         foreach ($triggers as $trigger) {
-            DB::unprepared($trigger->sql);
+            DB::unprepared($trigger->sql); // @phpstan-ignore argument.type (DDL text is read back verbatim from sqlite_master, not user input)
         }
     }
 };

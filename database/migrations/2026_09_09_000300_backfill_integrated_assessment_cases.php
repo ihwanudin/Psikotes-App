@@ -445,7 +445,7 @@ return new class extends Migration
             $operation();
         } finally {
             foreach ($triggers as $trigger) {
-                DB::unprepared((string) $trigger['sql']);
+                DB::unprepared((string) $trigger['sql']); // @phpstan-ignore argument.type (DDL text is read back verbatim from sqlite_master, not user input)
             }
         }
     }
