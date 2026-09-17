@@ -6,6 +6,7 @@ namespace Tests\Postgres;
 
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\TestCase;
@@ -15,6 +16,7 @@ use Tests\Support\AssessmentBillingFixture;
 final class EligibilityDecisionRlsTest extends TestCase
 {
     private array $fixture;
+
     private int $caseId;
 
     protected function setUp(): void
@@ -236,7 +238,7 @@ final class EligibilityDecisionRlsTest extends TestCase
                         'created_at' => now(),
                     ]);
                 });
-            } catch (\Illuminate\Database\QueryException $e) {
+            } catch (QueryException $e) {
                 $caught = true;
                 $this->assertStringContainsString('42501', $e->getMessage(), "Expected permission denied for role: {$context->role}");
             }
@@ -269,7 +271,7 @@ final class EligibilityDecisionRlsTest extends TestCase
                     ->where('id', $id)
                     ->update(['iq' => 110]);
             });
-        } catch (\Illuminate\Database\QueryException $e) {
+        } catch (QueryException $e) {
             $caught = true;
             $msg = $e->getMessage();
             $this->assertTrue(
@@ -303,7 +305,7 @@ final class EligibilityDecisionRlsTest extends TestCase
 
                 DB::table('eligibility_decision_versions')->where('id', $id)->delete();
             });
-        } catch (\Illuminate\Database\QueryException $e) {
+        } catch (QueryException $e) {
             $caught = true;
             $msg = $e->getMessage();
             $this->assertTrue(
@@ -350,7 +352,7 @@ final class EligibilityDecisionRlsTest extends TestCase
                     'canonical_input_json' => json_encode(['iq' => 112], JSON_THROW_ON_ERROR),
                     'created_at' => now(),
                 ]);
-            } catch (\Illuminate\Database\QueryException $e) {
+            } catch (QueryException $e) {
                 $caught = true;
                 $this->assertStringContainsString('chain invalid', $e->getMessage());
             }
@@ -419,7 +421,7 @@ final class EligibilityDecisionRlsTest extends TestCase
                     'canonical_input_json' => json_encode(['iq' => 100], JSON_THROW_ON_ERROR),
                     'created_at' => now(),
                 ]);
-            } catch (\Illuminate\Database\QueryException $e) {
+            } catch (QueryException $e) {
                 $caught = true;
                 $this->assertStringContainsString('23514', $e->getMessage());
             }
@@ -451,7 +453,7 @@ final class EligibilityDecisionRlsTest extends TestCase
                         'created_at' => now(),
                     ]);
                 });
-            } catch (\Illuminate\Database\QueryException $e) {
+            } catch (QueryException $e) {
                 $caught = true;
                 $this->assertStringContainsString('23514', $e->getMessage());
             }
@@ -478,7 +480,7 @@ final class EligibilityDecisionRlsTest extends TestCase
                     'canonical_input_json' => json_encode(['iq' => 100], JSON_THROW_ON_ERROR),
                     'created_at' => now(),
                 ]);
-            } catch (\Illuminate\Database\QueryException $e) {
+            } catch (QueryException $e) {
                 $caught = true;
                 $msg = $e->getMessage();
                 $this->assertTrue(
@@ -509,7 +511,7 @@ final class EligibilityDecisionRlsTest extends TestCase
                     'canonical_input_json' => json_encode(['iq' => 100], JSON_THROW_ON_ERROR),
                     'created_at' => now(),
                 ]);
-            } catch (\Illuminate\Database\QueryException $e) {
+            } catch (QueryException $e) {
                 $caught = true;
                 $this->assertStringContainsString('initial version invalid', $e->getMessage());
             }

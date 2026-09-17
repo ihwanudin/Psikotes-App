@@ -6,6 +6,7 @@ namespace Tests\Postgres;
 
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\TestCase;
@@ -15,7 +16,9 @@ use Tests\Support\AssessmentBillingFixture;
 final class BilingualNarrativeRlsTest extends TestCase
 {
     private array $fixture;
+
     private int $caseId;
+
     private string $eligibilityVersionId;
 
     protected function setUp(): void
@@ -270,7 +273,7 @@ final class BilingualNarrativeRlsTest extends TestCase
                         'created_at' => now(),
                     ]);
                 });
-            } catch (\Illuminate\Database\QueryException $e) {
+            } catch (QueryException $e) {
                 $caught = true;
                 $this->assertStringContainsString('42501', $e->getMessage(), "Expected permission denied for role: {$context->role}");
             }
@@ -307,7 +310,7 @@ final class BilingualNarrativeRlsTest extends TestCase
                     ->where('id', $id)
                     ->update(['review_required' => true]);
             });
-        } catch (\Illuminate\Database\QueryException $e) {
+        } catch (QueryException $e) {
             $caught = true;
             $msg = $e->getMessage();
             $this->assertTrue(
@@ -345,7 +348,7 @@ final class BilingualNarrativeRlsTest extends TestCase
 
                 DB::table('bilingual_narrative_versions')->where('id', $id)->delete();
             });
-        } catch (\Illuminate\Database\QueryException $e) {
+        } catch (QueryException $e) {
             $caught = true;
             $msg = $e->getMessage();
             $this->assertTrue(
@@ -400,7 +403,7 @@ final class BilingualNarrativeRlsTest extends TestCase
                     'snapshot_json' => json_encode(['clusters' => ['a']], JSON_THROW_ON_ERROR),
                     'created_at' => now(),
                 ]);
-            } catch (\Illuminate\Database\QueryException $e) {
+            } catch (QueryException $e) {
                 $caught = true;
                 $this->assertStringContainsString('chain invalid', $e->getMessage());
             }
@@ -486,7 +489,7 @@ final class BilingualNarrativeRlsTest extends TestCase
                     'created_at' => now(),
                 ]);
             });
-        } catch (\Illuminate\Database\QueryException $e) {
+        } catch (QueryException $e) {
             $caught = true;
             $this->assertStringContainsString('23514', $e->getMessage());
         }
@@ -515,7 +518,7 @@ final class BilingualNarrativeRlsTest extends TestCase
                     'created_at' => now(),
                 ]);
             });
-        } catch (\Illuminate\Database\QueryException $e) {
+        } catch (QueryException $e) {
             $caught = true;
             $msg = $e->getMessage();
             $this->assertTrue(
@@ -549,7 +552,7 @@ final class BilingualNarrativeRlsTest extends TestCase
                     'snapshot_json' => json_encode(['result' => 'ok'], JSON_THROW_ON_ERROR),
                     'created_at' => now(),
                 ]);
-            } catch (\Illuminate\Database\QueryException $e) {
+            } catch (QueryException $e) {
                 $caught = true;
                 $this->assertStringContainsString('initial version invalid', $e->getMessage());
             }
