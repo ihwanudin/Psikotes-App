@@ -43,7 +43,7 @@ export function CheckoutProfile({
                             <dt className="text-sm text-slate-600">
                                 {field.label}
                             </dt>
-                            <dd className="mt-1 font-medium wrap-anywhere">
+                            <dd className="wrap-anywhere mt-1 font-medium">
                                 {field.displayValue}
                             </dd>
                         </div>

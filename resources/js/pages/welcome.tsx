@@ -71,7 +71,7 @@ function BrandLogo({ inverse = false }: { inverse?: boolean }) {
     return (
         <Link
             href="/"
-            className="inline-flex items-center gap-3 rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand-gold"
+            className="focus-visible:outline-brand-gold inline-flex items-center gap-3 rounded-md focus-visible:outline-2 focus-visible:outline-offset-4"
             aria-label="ONCAM Psikotes — beranda"
         >
             <span
@@ -92,7 +92,7 @@ function BrandLogo({ inverse = false }: { inverse?: boolean }) {
                     ONCAM
                 </span>
                 <span
-                    className={`mt-1 block text-[0.62rem] font-medium tracking-[0.14em] uppercase ${inverse ? 'text-white/65' : 'text-slate-500'}`}
+                    className={`mt-1 block text-[0.62rem] font-medium uppercase tracking-[0.14em] ${inverse ? 'text-white/65' : 'text-slate-500'}`}
                 >
                     Psikotes
                 </span>
@@ -111,7 +111,7 @@ function ReportPreview() {
     return (
         <div className="relative mx-auto w-full max-w-lg lg:mr-0">
             <div
-                className="absolute -top-8 -right-6 size-40 rounded-full bg-brand-gold/20 blur-3xl"
+                className="bg-brand-gold/20 absolute -right-6 -top-8 size-40 rounded-full blur-3xl"
                 aria-hidden="true"
             />
             <div
@@ -122,14 +122,14 @@ function ReportPreview() {
             <div className="relative overflow-hidden rounded-2xl border border-white/15 bg-white text-slate-900 shadow-2xl shadow-black/20">
                 <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 sm:px-7">
                     <div>
-                        <p className="text-xs font-semibold tracking-[0.16em] text-brand-green uppercase">
+                        <p className="text-brand-green text-xs font-semibold uppercase tracking-[0.16em]">
                             Ilustrasi laporan
                         </p>
                         <p className="mt-1 text-sm font-semibold">
                             Ringkasan HPP Peserta
                         </p>
                     </div>
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-brand-green">
+                    <span className="text-brand-green inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold">
                         <BadgeCheck
                             className="size-3.5"
                             aria-hidden="true"
@@ -142,7 +142,7 @@ function ReportPreview() {
                 <div className="space-y-6 p-5 sm:p-7">
                     <div className="grid grid-cols-3 gap-2 rounded-xl bg-slate-50 p-3 text-center">
                         <div>
-                            <p className="text-lg font-semibold text-brand-green-deep">
+                            <p className="text-brand-green-deep text-lg font-semibold">
                                 5
                             </p>
                             <p className="mt-0.5 text-[0.65rem] leading-tight text-slate-500">
@@ -150,7 +150,7 @@ function ReportPreview() {
                             </p>
                         </div>
                         <div className="border-x border-slate-200">
-                            <p className="text-lg font-semibold text-brand-green-deep">
+                            <p className="text-brand-green-deep text-lg font-semibold">
                                 18
                             </p>
                             <p className="mt-0.5 text-[0.65rem] leading-tight text-slate-500">
@@ -158,7 +158,7 @@ function ReportPreview() {
                             </p>
                         </div>
                         <div>
-                            <p className="text-lg font-semibold text-brand-green-deep">
+                            <p className="text-brand-green-deep text-lg font-semibold">
                                 ID–JP
                             </p>
                             <p className="mt-0.5 text-[0.65rem] leading-tight text-slate-500">
@@ -180,7 +180,7 @@ function ReportPreview() {
                                 </div>
                                 <div className="h-2 overflow-hidden rounded-full bg-slate-100">
                                     <div
-                                        className="h-full rounded-full bg-brand-green"
+                                        className="bg-brand-green h-full rounded-full"
                                         style={{ width: item.width }}
                                     />
                                 </div>
@@ -188,9 +188,9 @@ function ReportPreview() {
                         ))}
                     </div>
 
-                    <div className="flex items-start gap-3 rounded-xl border border-brand-gold/30 bg-brand-gold-soft/55 p-4">
+                    <div className="border-brand-gold/30 bg-brand-gold-soft/55 flex items-start gap-3 rounded-xl border p-4">
                         <ClipboardCheck
-                            className="mt-0.5 size-5 shrink-0 text-brand-green"
+                            className="text-brand-green mt-0.5 size-5 shrink-0"
                             aria-hidden="true"
                             focusable="false"
                         />
@@ -202,8 +202,8 @@ function ReportPreview() {
                 </div>
             </div>
 
-            <div className="absolute -right-3 -bottom-6 flex items-center gap-3 rounded-xl border border-white/20 bg-brand-green-deep px-4 py-3 text-white shadow-xl sm:-right-6">
-                <span className="grid size-9 place-items-center rounded-full bg-brand-gold text-brand-green-deep">
+            <div className="bg-brand-green-deep absolute -bottom-6 -right-3 flex items-center gap-3 rounded-xl border border-white/20 px-4 py-3 text-white shadow-xl sm:-right-6">
+                <span className="bg-brand-gold text-brand-green-deep grid size-9 place-items-center rounded-full">
                     <ShieldCheck
                         className="size-5"
                         aria-hidden="true"
@@ -234,10 +234,10 @@ function SectionHeading({
 }) {
     return (
         <div className="max-w-2xl">
-            <p className="text-xs font-semibold tracking-[0.18em] text-brand-green uppercase">
+            <p className="text-brand-green text-xs font-semibold uppercase tracking-[0.18em]">
                 {eyebrow}
             </p>
-            <h2 className="mt-4 text-3xl leading-tight font-semibold tracking-tight text-slate-950 sm:text-4xl">
+            <h2 className="mt-4 text-3xl font-semibold leading-tight tracking-tight text-slate-950 sm:text-4xl">
                 {title}
             </h2>
             <p className="mt-5 text-base leading-7 text-slate-600 sm:text-lg">
@@ -268,10 +268,10 @@ export default function Welcome() {
                 />
             </Head>
 
-            <div className="min-h-screen bg-white text-slate-950 selection:bg-brand-gold/40">
+            <div className="selection:bg-brand-gold/40 min-h-screen bg-white text-slate-950">
                 <a
                     href="#konten-utama"
-                    className="fixed top-3 left-3 z-50 -translate-y-20 rounded-md bg-white px-4 py-2 text-sm font-semibold text-brand-green-deep shadow-lg transition-transform focus:translate-y-0"
+                    className="text-brand-green-deep fixed left-3 top-3 z-50 -translate-y-20 rounded-md bg-white px-4 py-2 text-sm font-semibold shadow-lg transition-transform focus:translate-y-0"
                 >
                     Lewati ke konten utama
                 </a>
@@ -286,19 +286,19 @@ export default function Welcome() {
                         >
                             <a
                                 href="#manfaat"
-                                className="text-sm font-medium text-white/75 transition hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand-gold"
+                                className="focus-visible:outline-brand-gold text-sm font-medium text-white/75 transition hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4"
                             >
                                 Manfaat
                             </a>
                             <a
                                 href="#cara-kerja"
-                                className="text-sm font-medium text-white/75 transition hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand-gold"
+                                className="focus-visible:outline-brand-gold text-sm font-medium text-white/75 transition hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4"
                             >
                                 Cara kerja
                             </a>
                             <a
                                 href="#keamanan"
-                                className="text-sm font-medium text-white/75 transition hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand-gold"
+                                className="focus-visible:outline-brand-gold text-sm font-medium text-white/75 transition hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4"
                             >
                                 Keamanan
                             </a>
@@ -306,7 +306,7 @@ export default function Welcome() {
 
                         <Link
                             href={auth.user ? dashboard() : login()}
-                            className="inline-flex h-10 items-center justify-center rounded-lg border border-white/25 px-4 text-sm font-semibold text-white transition hover:border-white/45 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand-gold"
+                            className="focus-visible:outline-brand-gold inline-flex h-10 items-center justify-center rounded-lg border border-white/25 px-4 text-sm font-semibold text-white transition hover:border-white/45 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-4"
                         >
                             {auth.user ? 'Buka dashboard' : 'Portal pengelola'}
                         </Link>
@@ -314,7 +314,7 @@ export default function Welcome() {
                 </header>
 
                 <main id="konten-utama">
-                    <section className="relative overflow-hidden bg-brand-green-deep pt-32 pb-20 text-white sm:pt-40 sm:pb-28">
+                    <section className="bg-brand-green-deep relative overflow-hidden pb-20 pt-32 text-white sm:pb-28 sm:pt-40">
                         <div
                             className="absolute inset-0 opacity-[0.055]"
                             aria-hidden="true"
@@ -325,13 +325,13 @@ export default function Welcome() {
                             }}
                         />
                         <div
-                            className="absolute top-20 left-[12%] h-72 w-72 rounded-full bg-brand-green blur-3xl"
+                            className="bg-brand-green absolute left-[12%] top-20 h-72 w-72 rounded-full blur-3xl"
                             aria-hidden="true"
                         />
 
                         <div className="relative mx-auto grid max-w-7xl items-center gap-16 px-5 sm:px-8 lg:grid-cols-[1.05fr_0.95fr] lg:px-10">
                             <div className="max-w-2xl">
-                                <p className="inline-flex items-center gap-2 rounded-full border border-brand-gold/35 bg-brand-gold/10 px-3.5 py-2 text-xs font-semibold tracking-[0.12em] text-brand-gold uppercase">
+                                <p className="border-brand-gold/35 bg-brand-gold/10 text-brand-gold inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-xs font-semibold uppercase tracking-[0.12em]">
                                     <Fingerprint
                                         className="size-4"
                                         aria-hidden="true"
@@ -339,11 +339,11 @@ export default function Welcome() {
                                     />
                                     Asesmen kerja CPMI Jepang
                                 </p>
-                                <h1 className="mt-7 text-4xl leading-[1.08] font-semibold tracking-[-0.035em] text-balance sm:text-5xl lg:text-6xl">
+                                <h1 className="mt-7 text-balance text-4xl font-semibold leading-[1.08] tracking-[-0.035em] sm:text-5xl lg:text-6xl">
                                     Kenali kesiapan kerja dengan asesmen yang
                                     bertanggung jawab.
                                 </h1>
-                                <p className="mt-6 max-w-xl text-base leading-8 text-white/72 sm:text-lg">
+                                <p className="text-white/72 mt-6 max-w-xl text-base leading-8 sm:text-lg">
                                     ONCAM menyatukan pendaftaran, psikotes
                                     daring, tinjauan psikolog, dan laporan HPP
                                     untuk proses seleksi CPMI yang lebih
@@ -353,7 +353,7 @@ export default function Welcome() {
                                 <div className="mt-9 flex flex-col gap-3 sm:flex-row">
                                     <Link
                                         href={register()}
-                                        className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-brand-gold px-6 text-sm font-semibold text-brand-green-deep transition hover:bg-[#e2c34f] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
+                                        className="bg-brand-gold text-brand-green-deep inline-flex h-12 items-center justify-center gap-2 rounded-lg px-6 text-sm font-semibold transition hover:bg-[#e2c34f] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
                                     >
                                         Daftar psikotes
                                         <ArrowRight
@@ -364,16 +364,16 @@ export default function Welcome() {
                                     </Link>
                                     <a
                                         href="#cara-kerja"
-                                        className="inline-flex h-12 items-center justify-center rounded-lg border border-white/25 px-6 text-sm font-semibold text-white transition hover:border-white/45 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand-gold"
+                                        className="focus-visible:outline-brand-gold inline-flex h-12 items-center justify-center rounded-lg border border-white/25 px-6 text-sm font-semibold text-white transition hover:border-white/45 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-4"
                                     >
                                         Pelajari alurnya
                                     </a>
                                 </div>
 
-                                <ul className="mt-9 grid gap-3 text-sm text-white/72 sm:grid-cols-3">
+                                <ul className="text-white/72 mt-9 grid gap-3 text-sm sm:grid-cols-3">
                                     <li className="flex items-center gap-2">
                                         <CheckCircle2
-                                            className="size-4 text-brand-gold"
+                                            className="text-brand-gold size-4"
                                             aria-hidden="true"
                                             focusable="false"
                                         />
@@ -381,7 +381,7 @@ export default function Welcome() {
                                     </li>
                                     <li className="flex items-center gap-2">
                                         <CheckCircle2
-                                            className="size-4 text-brand-gold"
+                                            className="text-brand-gold size-4"
                                             aria-hidden="true"
                                             focusable="false"
                                         />
@@ -389,7 +389,7 @@ export default function Welcome() {
                                     </li>
                                     <li className="flex items-center gap-2">
                                         <CheckCircle2
-                                            className="size-4 text-brand-gold"
+                                            className="text-brand-gold size-4"
                                             aria-hidden="true"
                                             focusable="false"
                                         />
@@ -404,7 +404,7 @@ export default function Welcome() {
 
                     <section
                         aria-label="Instrumen asesmen"
-                        className="border-b border-slate-200 bg-brand-canvas"
+                        className="bg-brand-canvas border-b border-slate-200"
                     >
                         <div className="mx-auto flex max-w-7xl flex-col gap-5 px-5 py-7 sm:px-8 lg:flex-row lg:items-center lg:justify-between lg:px-10">
                             <p className="text-sm font-medium text-slate-500">
@@ -414,7 +414,7 @@ export default function Welcome() {
                                 {instruments.map((instrument) => (
                                     <li
                                         key={instrument}
-                                        className="text-sm font-semibold text-brand-green-deep"
+                                        className="text-brand-green-deep text-sm font-semibold"
                                     >
                                         {instrument}
                                     </li>
@@ -443,7 +443,7 @@ export default function Welcome() {
                                             key={benefit.title}
                                             className="bg-white p-7 sm:p-9"
                                         >
-                                            <span className="grid size-11 place-items-center rounded-lg bg-emerald-50 text-brand-green">
+                                            <span className="text-brand-green grid size-11 place-items-center rounded-lg bg-emerald-50">
                                                 <Icon
                                                     className="size-5"
                                                     aria-hidden="true"
@@ -470,10 +470,10 @@ export default function Welcome() {
                         <div className="mx-auto max-w-7xl">
                             <div className="grid gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:gap-20">
                                 <div>
-                                    <p className="text-xs font-semibold tracking-[0.18em] text-brand-gold uppercase">
+                                    <p className="text-brand-gold text-xs font-semibold uppercase tracking-[0.18em]">
                                         Cara kerja
                                     </p>
-                                    <h2 className="mt-4 text-3xl leading-tight font-semibold tracking-tight sm:text-4xl">
+                                    <h2 className="mt-4 text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">
                                         Alur yang jelas dari awal hingga
                                         laporan.
                                     </h2>
@@ -491,7 +491,7 @@ export default function Welcome() {
                                             key={step.number}
                                             className="border-t border-white/15 pt-5"
                                         >
-                                            <span className="font-mono text-xs font-semibold text-brand-gold">
+                                            <span className="text-brand-gold font-mono text-xs font-semibold">
                                                 {step.number}
                                             </span>
                                             <h3 className="mt-3 text-lg font-semibold">
@@ -509,16 +509,16 @@ export default function Welcome() {
 
                     <section
                         id="keamanan"
-                        className="scroll-mt-16 bg-brand-canvas px-5 py-20 sm:px-8 sm:py-28 lg:px-10"
+                        className="bg-brand-canvas scroll-mt-16 px-5 py-20 sm:px-8 sm:py-28 lg:px-10"
                     >
                         <div className="mx-auto grid max-w-7xl overflow-hidden rounded-2xl border border-emerald-950/10 bg-white lg:grid-cols-[0.9fr_1.1fr]">
                             <div className="bg-brand-green px-7 py-10 text-white sm:p-12">
                                 <LockKeyhole
-                                    className="size-8 text-brand-gold"
+                                    className="text-brand-gold size-8"
                                     aria-hidden="true"
                                     focusable="false"
                                 />
-                                <h2 className="mt-8 max-w-md text-3xl leading-tight font-semibold tracking-tight">
+                                <h2 className="mt-8 max-w-md text-3xl font-semibold leading-tight tracking-tight">
                                     Privasi dan keputusan profesional menjadi
                                     bagian dari alur.
                                 </h2>
@@ -533,7 +533,7 @@ export default function Welcome() {
                             <div className="grid gap-7 p-7 sm:grid-cols-2 sm:p-12">
                                 <div>
                                     <FileCheck2
-                                        className="size-6 text-brand-green"
+                                        className="text-brand-green size-6"
                                         aria-hidden="true"
                                         focusable="false"
                                     />
@@ -547,7 +547,7 @@ export default function Welcome() {
                                 </div>
                                 <div>
                                     <HeartPulse
-                                        className="size-6 text-brand-green"
+                                        className="text-brand-green size-6"
                                         aria-hidden="true"
                                         focusable="false"
                                     />
@@ -562,7 +562,7 @@ export default function Welcome() {
                                 </div>
                                 <div>
                                     <Laptop2
-                                        className="size-6 text-brand-green"
+                                        className="text-brand-green size-6"
                                         aria-hidden="true"
                                         focusable="false"
                                     />
@@ -576,7 +576,7 @@ export default function Welcome() {
                                 </div>
                                 <div>
                                     <ShieldCheck
-                                        className="size-6 text-brand-green"
+                                        className="text-brand-green size-6"
                                         aria-hidden="true"
                                         focusable="false"
                                     />
@@ -593,12 +593,12 @@ export default function Welcome() {
                     </section>
 
                     <section className="px-5 py-20 sm:px-8 sm:py-28 lg:px-10">
-                        <div className="mx-auto grid max-w-7xl items-center gap-10 rounded-2xl bg-brand-gold-soft px-7 py-10 sm:px-12 sm:py-14 lg:grid-cols-[1fr_auto]">
+                        <div className="bg-brand-gold-soft mx-auto grid max-w-7xl items-center gap-10 rounded-2xl px-7 py-10 sm:px-12 sm:py-14 lg:grid-cols-[1fr_auto]">
                             <div>
-                                <p className="text-sm font-semibold text-brand-green">
+                                <p className="text-brand-green text-sm font-semibold">
                                     Siap memulai?
                                 </p>
-                                <h2 className="mt-3 max-w-2xl text-3xl leading-tight font-semibold tracking-tight text-brand-green-deep sm:text-4xl">
+                                <h2 className="text-brand-green-deep mt-3 max-w-2xl text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">
                                     Mulai asesmen melalui alur pendaftaran yang
                                     aman.
                                 </h2>
@@ -610,7 +610,7 @@ export default function Welcome() {
                             </div>
                             <Link
                                 href={register()}
-                                className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-brand-green-deep px-6 text-sm font-semibold text-white transition hover:bg-brand-green focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand-green"
+                                className="bg-brand-green-deep hover:bg-brand-green focus-visible:outline-brand-green inline-flex h-12 items-center justify-center gap-2 rounded-lg px-6 text-sm font-semibold text-white transition focus-visible:outline-2 focus-visible:outline-offset-4"
                             >
                                 Daftar sekarang
                                 <ArrowRight

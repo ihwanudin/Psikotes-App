@@ -139,7 +139,7 @@ export function CheckoutForm({
                             }))
                         }
                     />
-                    <p className="rounded-md bg-brand-canvas p-3 text-sm leading-6 text-slate-700">
+                    <p className="bg-brand-canvas rounded-md p-3 text-sm leading-6 text-slate-700">
                         {summary.identityMessage}
                     </p>
                     <CheckoutConsents
@@ -155,7 +155,7 @@ export function CheckoutForm({
                                 type="submit"
                                 disabled={!canConfirm}
                                 aria-describedby="checkout-confirmation-help"
-                                className="min-h-12 w-full bg-brand-green whitespace-normal text-white hover:bg-brand-green-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-green"
+                                className="bg-brand-green hover:bg-brand-green-deep focus-visible:outline-brand-green min-h-12 w-full whitespace-normal text-white focus-visible:outline-2 focus-visible:outline-offset-2"
                             >
                                 {busy
                                     ? 'Menyimpan…'
@@ -183,7 +183,7 @@ export function CheckoutForm({
                 />
                 <section
                     aria-labelledby="checkout-access-title"
-                    className="space-y-3 rounded-lg bg-brand-green-deep p-5 text-white"
+                    className="bg-brand-green-deep space-y-3 rounded-lg p-5 text-white"
                 >
                     <h2 id="checkout-access-title" className="font-semibold">
                         {summary.access.state === 'ready'

@@ -1,1123 +1,1364 @@
 {
-  "name": "ONCAM Psikotes Design Tokens",
-  "version": "1.0.0-candidate.1",
-  "status": "candidate",
-  "description": "Specification-only token source. It is not imported by production UI.",
-  "primitive": {
-    "color": {
-      "$type": "color",
-      "brand": {
-        "green": { "$value": "#005F41" },
-        "greenDeep": { "$value": "#004530" },
-        "greenDarkest": { "$value": "#003522" },
-        "greenLight": { "$value": "#76C7A6" },
-        "greenSoft": { "$value": "#DCECE5" },
-        "gold": { "$value": "#D4AF37" },
-        "goldSoft": { "$value": "#F7EDCC" },
-        "white": { "$value": "#FFFFFF" },
-        "softNeutral": { "$value": "#F7F7F7" },
-        "black": { "$value": "#000000" }
-      },
-      "neutral": {
-        "100": { "$value": "#EEEEEC" },
-        "200": { "$value": "#D7DDD9" },
-        "300": { "$value": "#B7C0BB" },
-        "400": { "$value": "#87948D" },
-        "500": { "$value": "#637169" },
-        "600": { "$value": "#4B5851" },
-        "700": { "$value": "#35423C" },
-        "800": { "$value": "#24312B" },
-        "900": { "$value": "#17231E" },
-        "950": { "$value": "#0E1713" }
-      },
-      "success": {
-        "50": { "$value": "#E8F4ED" },
-        "200": { "$value": "#A9E2C4" },
-        "500": { "$value": "#5EB98B" },
-        "700": { "$value": "#176B45" },
-        "800": { "$value": "#145C3B" },
-        "900": { "$value": "#123A2A" }
-      },
-      "warning": {
-        "50": { "$value": "#FFF4D6" },
-        "200": { "$value": "#F4D37A" },
-        "500": { "$value": "#D4AF37" },
-        "700": { "$value": "#8A5A00" },
-        "800": { "$value": "#6B4600" },
-        "900": { "$value": "#3D2A00" }
-      },
-      "error": {
-        "50": { "$value": "#FFF1EF" },
-        "200": { "$value": "#F6B0A8" },
-        "500": { "$value": "#E46B60" },
-        "700": { "$value": "#B42318" },
-        "800": { "$value": "#8F1D14" },
-        "900": { "$value": "#4A1712" }
-      },
-      "info": {
-        "50": { "$value": "#E8F4FA" },
-        "200": { "$value": "#9BD5F0" },
-        "500": { "$value": "#3FA6D6" },
-        "700": { "$value": "#075985" },
-        "800": { "$value": "#07527A" },
-        "900": { "$value": "#0A3247" }
-      }
-    },
-    "font": {
-      "family": {
-        "$type": "fontFamily",
-        "sans": {
-          "$value": [
-            "Instrument Sans",
-            "ui-sans-serif",
-            "system-ui",
-            "sans-serif"
-          ]
+    "name": "ONCAM Psikotes Design Tokens",
+    "version": "1.0.0-candidate.1",
+    "status": "candidate",
+    "description": "Specification-only token source. It is not imported by production UI.",
+    "primitive": {
+        "color": {
+            "$type": "color",
+            "brand": {
+                "green": { "$value": "#005F41" },
+                "greenDeep": { "$value": "#004530" },
+                "greenDarkest": { "$value": "#003522" },
+                "greenLight": { "$value": "#76C7A6" },
+                "greenSoft": { "$value": "#DCECE5" },
+                "gold": { "$value": "#D4AF37" },
+                "goldSoft": { "$value": "#F7EDCC" },
+                "white": { "$value": "#FFFFFF" },
+                "softNeutral": { "$value": "#F7F7F7" },
+                "black": { "$value": "#000000" }
+            },
+            "neutral": {
+                "100": { "$value": "#EEEEEC" },
+                "200": { "$value": "#D7DDD9" },
+                "300": { "$value": "#B7C0BB" },
+                "400": { "$value": "#87948D" },
+                "500": { "$value": "#637169" },
+                "600": { "$value": "#4B5851" },
+                "700": { "$value": "#35423C" },
+                "800": { "$value": "#24312B" },
+                "900": { "$value": "#17231E" },
+                "950": { "$value": "#0E1713" }
+            },
+            "success": {
+                "50": { "$value": "#E8F4ED" },
+                "200": { "$value": "#A9E2C4" },
+                "500": { "$value": "#5EB98B" },
+                "700": { "$value": "#176B45" },
+                "800": { "$value": "#145C3B" },
+                "900": { "$value": "#123A2A" }
+            },
+            "warning": {
+                "50": { "$value": "#FFF4D6" },
+                "200": { "$value": "#F4D37A" },
+                "500": { "$value": "#D4AF37" },
+                "700": { "$value": "#8A5A00" },
+                "800": { "$value": "#6B4600" },
+                "900": { "$value": "#3D2A00" }
+            },
+            "error": {
+                "50": { "$value": "#FFF1EF" },
+                "200": { "$value": "#F6B0A8" },
+                "500": { "$value": "#E46B60" },
+                "700": { "$value": "#B42318" },
+                "800": { "$value": "#8F1D14" },
+                "900": { "$value": "#4A1712" }
+            },
+            "info": {
+                "50": { "$value": "#E8F4FA" },
+                "200": { "$value": "#9BD5F0" },
+                "500": { "$value": "#3FA6D6" },
+                "700": { "$value": "#075985" },
+                "800": { "$value": "#07527A" },
+                "900": { "$value": "#0A3247" }
+            }
         },
-        "mono": {
-          "$value": ["ui-monospace", "SFMono-Regular", "Consolas", "monospace"]
-        }
-      },
-      "size": {
-        "$type": "dimension",
-        "12": { "$value": "0.75rem" },
-        "14": { "$value": "0.875rem" },
-        "16": { "$value": "1rem" },
-        "18": { "$value": "1.125rem" },
-        "20": { "$value": "1.25rem" },
-        "24": { "$value": "1.5rem" },
-        "30": { "$value": "1.875rem" },
-        "36": { "$value": "2.25rem" }
-      },
-      "weight": {
-        "$type": "fontWeight",
-        "regular": { "$value": 400 },
-        "medium": { "$value": 500 },
-        "semibold": { "$value": 600 },
-        "bold": { "$value": 700 }
-      },
-      "lineHeight": {
-        "$type": "number",
-        "tight": { "$value": 1.2 },
-        "snug": { "$value": 1.35 },
-        "normal": { "$value": 1.5 },
-        "relaxed": { "$value": 1.625 }
-      },
-      "tracking": {
-        "$type": "dimension",
-        "tight": { "$value": "-0.015em" },
-        "normal": { "$value": "0em" },
-        "wide": { "$value": "0.04em" }
-      }
-    },
-    "space": {
-      "$type": "dimension",
-      "0": { "$value": "0rem" },
-      "1": { "$value": "0.25rem" },
-      "2": { "$value": "0.5rem" },
-      "3": { "$value": "0.75rem" },
-      "4": { "$value": "1rem" },
-      "5": { "$value": "1.25rem" },
-      "6": { "$value": "1.5rem" },
-      "8": { "$value": "2rem" },
-      "10": { "$value": "2.5rem" },
-      "12": { "$value": "3rem" },
-      "16": { "$value": "4rem" }
-    },
-    "size": {
-      "$type": "dimension",
-      "controlSm": { "$value": "2rem" },
-      "controlMd": { "$value": "2.5rem" },
-      "controlLg": { "$value": "3rem" },
-      "touchMinimum": { "$value": "2.75rem" },
-      "contentMeasure": { "$value": "72ch" },
-      "pageMaximum": { "$value": "80rem" }
-    },
-    "radius": {
-      "$type": "dimension",
-      "none": { "$value": "0rem" },
-      "sm": { "$value": "0.375rem" },
-      "md": { "$value": "0.5rem" },
-      "lg": { "$value": "0.625rem" },
-      "xl": { "$value": "0.75rem" },
-      "full": { "$value": "9999px" }
-    },
-    "border": {
-      "$type": "dimension",
-      "none": { "$value": "0px" },
-      "thin": { "$value": "1px" },
-      "strong": { "$value": "2px" },
-      "focus": { "$value": "3px" }
-    },
-    "shadow": {
-      "$type": "shadow",
-      "none": { "$value": "none" },
-      "sm": { "$value": "0 1px 2px rgb(14 23 19 / 0.08)" },
-      "md": { "$value": "0 4px 12px rgb(14 23 19 / 0.12)" },
-      "overlay": { "$value": "0 18px 48px rgb(14 23 19 / 0.22)" }
-    },
-    "motion": {
-      "duration": {
-        "$type": "duration",
-        "instant": { "$value": "0ms" },
-        "fast": { "$value": "120ms" },
-        "normal": { "$value": "180ms" }
-      },
-      "easing": {
-        "$type": "cubicBezier",
-        "standard": { "$value": [0.2, 0, 0, 1] }
-      }
-    },
-    "opacity": {
-      "$type": "number",
-      "opaque": { "$value": 1 },
-      "disabled": { "$value": 0.72 }
-    }
-  },
-  "semantic": {
-    "shared": {
-      "font": {
-        "family": {
-          "body": { "$value": "{primitive.font.family.sans}" },
-          "heading": { "$value": "{primitive.font.family.sans}" },
-          "code": { "$value": "{primitive.font.family.mono}" }
+        "font": {
+            "family": {
+                "$type": "fontFamily",
+                "sans": {
+                    "$value": [
+                        "Instrument Sans",
+                        "ui-sans-serif",
+                        "system-ui",
+                        "sans-serif"
+                    ]
+                },
+                "mono": {
+                    "$value": [
+                        "ui-monospace",
+                        "SFMono-Regular",
+                        "Consolas",
+                        "monospace"
+                    ]
+                }
+            },
+            "size": {
+                "$type": "dimension",
+                "12": { "$value": "0.75rem" },
+                "14": { "$value": "0.875rem" },
+                "16": { "$value": "1rem" },
+                "18": { "$value": "1.125rem" },
+                "20": { "$value": "1.25rem" },
+                "24": { "$value": "1.5rem" },
+                "30": { "$value": "1.875rem" },
+                "36": { "$value": "2.25rem" }
+            },
+            "weight": {
+                "$type": "fontWeight",
+                "regular": { "$value": 400 },
+                "medium": { "$value": 500 },
+                "semibold": { "$value": 600 },
+                "bold": { "$value": 700 }
+            },
+            "lineHeight": {
+                "$type": "number",
+                "tight": { "$value": 1.2 },
+                "snug": { "$value": 1.35 },
+                "normal": { "$value": 1.5 },
+                "relaxed": { "$value": 1.625 }
+            },
+            "tracking": {
+                "$type": "dimension",
+                "tight": { "$value": "-0.015em" },
+                "normal": { "$value": "0em" },
+                "wide": { "$value": "0.04em" }
+            }
         },
-        "body": {
-          "sm": { "$value": "{primitive.font.size.14}" },
-          "md": { "$value": "{primitive.font.size.16}" },
-          "lg": { "$value": "{primitive.font.size.18}" }
+        "space": {
+            "$type": "dimension",
+            "0": { "$value": "0rem" },
+            "1": { "$value": "0.25rem" },
+            "2": { "$value": "0.5rem" },
+            "3": { "$value": "0.75rem" },
+            "4": { "$value": "1rem" },
+            "5": { "$value": "1.25rem" },
+            "6": { "$value": "1.5rem" },
+            "8": { "$value": "2rem" },
+            "10": { "$value": "2.5rem" },
+            "12": { "$value": "3rem" },
+            "16": { "$value": "4rem" }
         },
-        "heading": {
-          "sm": { "$value": "{primitive.font.size.20}" },
-          "md": { "$value": "{primitive.font.size.24}" },
-          "lg": { "$value": "{primitive.font.size.30}" },
-          "xl": { "$value": "{primitive.font.size.36}" }
+        "size": {
+            "$type": "dimension",
+            "controlSm": { "$value": "2rem" },
+            "controlMd": { "$value": "2.5rem" },
+            "controlLg": { "$value": "3rem" },
+            "touchMinimum": { "$value": "2.75rem" },
+            "contentMeasure": { "$value": "72ch" },
+            "pageMaximum": { "$value": "80rem" }
         },
-        "weight": {
-          "body": { "$value": "{primitive.font.weight.regular}" },
-          "control": { "$value": "{primitive.font.weight.semibold}" },
-          "heading": { "$value": "{primitive.font.weight.semibold}" },
-          "strong": { "$value": "{primitive.font.weight.bold}" }
-        },
-        "lineHeight": {
-          "body": { "$value": "{primitive.font.lineHeight.normal}" },
-          "longform": { "$value": "{primitive.font.lineHeight.relaxed}" },
-          "heading": { "$value": "{primitive.font.lineHeight.tight}" }
-        }
-      },
-      "space": {
-        "inlineXs": { "$value": "{primitive.space.1}" },
-        "inlineSm": { "$value": "{primitive.space.2}" },
-        "inlineMd": { "$value": "{primitive.space.3}" },
-        "controlX": { "$value": "{primitive.space.4}" },
-        "controlY": { "$value": "{primitive.space.2}" },
-        "content": { "$value": "{primitive.space.4}" },
-        "panel": { "$value": "{primitive.space.6}" },
-        "section": { "$value": "{primitive.space.10}" },
-        "page": { "$value": "{primitive.space.4}" }
-      },
-      "size": {
-        "controlSm": { "$value": "{primitive.size.controlSm}" },
-        "controlMd": { "$value": "{primitive.size.controlMd}" },
-        "controlLg": { "$value": "{primitive.size.controlLg}" },
-        "touchTarget": { "$value": "{primitive.size.touchMinimum}" },
-        "contentMeasure": { "$value": "{primitive.size.contentMeasure}" },
-        "pageMaximum": { "$value": "{primitive.size.pageMaximum}" }
-      },
-      "radius": {
-        "control": { "$value": "{primitive.radius.md}" },
-        "surface": { "$value": "{primitive.radius.lg}" },
-        "prominent": { "$value": "{primitive.radius.xl}" },
-        "pill": { "$value": "{primitive.radius.full}" }
-      },
-      "border": {
-        "default": { "$value": "{primitive.border.thin}" },
-        "strong": { "$value": "{primitive.border.strong}" },
-        "focus": { "$value": "{primitive.border.focus}" }
-      },
-      "shadow": {
-        "rest": { "$value": "{primitive.shadow.sm}" },
-        "raised": { "$value": "{primitive.shadow.md}" },
-        "overlay": { "$value": "{primitive.shadow.overlay}" },
-        "none": { "$value": "{primitive.shadow.none}" }
-      },
-      "motion": {
-        "duration": { "$value": "{primitive.motion.duration.fast}" },
-        "reducedDuration": { "$value": "{primitive.motion.duration.instant}" },
-        "easing": { "$value": "{primitive.motion.easing.standard}" }
-      },
-      "opacity": {
-        "enabled": { "$value": "{primitive.opacity.opaque}" },
-        "disabled": { "$value": "{primitive.opacity.disabled}" }
-      }
-    },
-    "light": {
-      "color": {
-        "surface": {
-          "canvas": { "$value": "{primitive.color.brand.softNeutral}" },
-          "base": { "$value": "{primitive.color.brand.white}" },
-          "raised": { "$value": "{primitive.color.brand.white}" },
-          "sunken": { "$value": "{primitive.color.neutral.100}" },
-          "inverse": { "$value": "{primitive.color.brand.green}" }
-        },
-        "text": {
-          "primary": { "$value": "{primitive.color.neutral.950}" },
-          "secondary": { "$value": "{primitive.color.neutral.600}" },
-          "muted": { "$value": "{primitive.color.neutral.500}" },
-          "placeholder": { "$value": "{primitive.color.neutral.500}" },
-          "inverse": { "$value": "{primitive.color.brand.white}" },
-          "link": { "$value": "{primitive.color.brand.green}" },
-          "linkHover": { "$value": "{primitive.color.brand.greenDeep}" }
+        "radius": {
+            "$type": "dimension",
+            "none": { "$value": "0rem" },
+            "sm": { "$value": "0.375rem" },
+            "md": { "$value": "0.5rem" },
+            "lg": { "$value": "0.625rem" },
+            "xl": { "$value": "0.75rem" },
+            "full": { "$value": "9999px" }
         },
         "border": {
-          "subtle": { "$value": "{primitive.color.neutral.200}" },
-          "default": { "$value": "{primitive.color.neutral.400}" },
-          "strong": { "$value": "{primitive.color.neutral.600}" }
+            "$type": "dimension",
+            "none": { "$value": "0px" },
+            "thin": { "$value": "1px" },
+            "strong": { "$value": "2px" },
+            "focus": { "$value": "3px" }
         },
-        "action": {
-          "primary": {
-            "background": { "$value": "{primitive.color.brand.green}" },
-            "foreground": { "$value": "{primitive.color.brand.white}" },
-            "border": { "$value": "{primitive.color.brand.green}" },
-            "hover": { "$value": "{primitive.color.brand.greenDeep}" },
-            "active": { "$value": "{primitive.color.brand.greenDarkest}" }
-          },
-          "secondary": {
-            "background": { "$value": "{primitive.color.brand.white}" },
-            "foreground": { "$value": "{primitive.color.brand.green}" },
-            "border": { "$value": "{primitive.color.brand.green}" },
-            "hover": { "$value": "{primitive.color.brand.greenSoft}" },
-            "active": { "$value": "{primitive.color.neutral.100}" },
-            "disabledBackground": {
-              "$value": "{primitive.color.neutral.100}"
-            },
-            "disabledForeground": {
-              "$value": "{primitive.color.neutral.600}"
-            },
-            "disabledBorder": { "$value": "{primitive.color.neutral.300}" }
-          },
-          "destructive": {
-            "background": { "$value": "{primitive.color.error.700}" },
-            "foreground": { "$value": "{primitive.color.brand.white}" },
-            "border": { "$value": "{primitive.color.error.700}" },
-            "hover": { "$value": "{primitive.color.error.800}" },
-            "active": { "$value": "{primitive.color.error.900}" },
-            "disabledBackground": {
-              "$value": "{primitive.color.neutral.100}"
-            },
-            "disabledForeground": {
-              "$value": "{primitive.color.neutral.600}"
-            },
-            "disabledBorder": { "$value": "{primitive.color.neutral.300}" }
-          }
+        "shadow": {
+            "$type": "shadow",
+            "none": { "$value": "none" },
+            "sm": { "$value": "0 1px 2px rgb(14 23 19 / 0.08)" },
+            "md": { "$value": "0 4px 12px rgb(14 23 19 / 0.12)" },
+            "overlay": { "$value": "0 18px 48px rgb(14 23 19 / 0.22)" }
         },
-        "accent": {
-          "decorative": { "$value": "{primitive.color.brand.gold}" },
-          "surface": { "$value": "{primitive.color.brand.gold}" },
-          "foreground": { "$value": "{primitive.color.brand.greenDeep}" },
-          "soft": { "$value": "{primitive.color.brand.goldSoft}" }
+        "motion": {
+            "duration": {
+                "$type": "duration",
+                "instant": { "$value": "0ms" },
+                "fast": { "$value": "120ms" },
+                "normal": { "$value": "180ms" }
+            },
+            "easing": {
+                "$type": "cubicBezier",
+                "standard": { "$value": [0.2, 0, 0, 1] }
+            }
         },
-        "state": {
-          "focusRing": { "$value": "{primitive.color.brand.green}" },
-          "focusOffset": { "$value": "{primitive.color.brand.white}" },
-          "disabledBackground": { "$value": "{primitive.color.neutral.100}" },
-          "disabledForeground": { "$value": "{primitive.color.neutral.600}" },
-          "disabledBorder": { "$value": "{primitive.color.neutral.300}" },
-          "readOnlyBackground": {
-            "$value": "{primitive.color.brand.softNeutral}"
-          },
-          "readOnlyForeground": { "$value": "{primitive.color.neutral.700}" },
-          "readOnlyBorder": { "$value": "{primitive.color.neutral.500}" },
-          "selectedBackground": {
-            "$value": "{primitive.color.brand.greenSoft}"
-          },
-          "selectedForeground": {
-            "$value": "{primitive.color.brand.greenDeep}"
-          }
-        },
-        "status": {
-          "success": {
-            "background": { "$value": "{primitive.color.success.50}" },
-            "foreground": { "$value": "{primitive.color.success.800}" },
-            "border": { "$value": "{primitive.color.success.700}" },
-            "icon": { "$value": "{primitive.color.success.700}" }
-          },
-          "warning": {
-            "background": { "$value": "{primitive.color.warning.50}" },
-            "foreground": { "$value": "{primitive.color.warning.800}" },
-            "border": { "$value": "{primitive.color.warning.700}" },
-            "icon": { "$value": "{primitive.color.warning.700}" }
-          },
-          "error": {
-            "background": { "$value": "{primitive.color.error.50}" },
-            "foreground": { "$value": "{primitive.color.error.800}" },
-            "border": { "$value": "{primitive.color.error.700}" },
-            "icon": { "$value": "{primitive.color.error.700}" }
-          },
-          "info": {
-            "background": { "$value": "{primitive.color.info.50}" },
-            "foreground": { "$value": "{primitive.color.info.800}" },
-            "border": { "$value": "{primitive.color.info.700}" },
-            "icon": { "$value": "{primitive.color.info.700}" }
-          },
-          "neutral": {
-            "background": { "$value": "{primitive.color.neutral.100}" },
-            "foreground": { "$value": "{primitive.color.neutral.700}" },
-            "border": { "$value": "{primitive.color.neutral.500}" },
-            "icon": { "$value": "{primitive.color.neutral.600}" }
-          }
+        "opacity": {
+            "$type": "number",
+            "opaque": { "$value": 1 },
+            "disabled": { "$value": 0.72 }
         }
-      }
     },
-    "dark": {
-      "color": {
-        "surface": {
-          "canvas": { "$value": "{primitive.color.neutral.950}" },
-          "base": { "$value": "{primitive.color.neutral.900}" },
-          "raised": { "$value": "{primitive.color.neutral.800}" },
-          "sunken": { "$value": "{primitive.color.brand.black}" },
-          "inverse": { "$value": "{primitive.color.brand.softNeutral}" }
-        },
-        "text": {
-          "primary": { "$value": "{primitive.color.brand.softNeutral}" },
-          "secondary": { "$value": "{primitive.color.neutral.300}" },
-          "muted": { "$value": "{primitive.color.neutral.400}" },
-          "placeholder": { "$value": "{primitive.color.neutral.300}" },
-          "inverse": { "$value": "{primitive.color.neutral.950}" },
-          "link": { "$value": "{primitive.color.brand.greenLight}" },
-          "linkHover": { "$value": "{primitive.color.brand.greenSoft}" }
-        },
-        "border": {
-          "subtle": { "$value": "{primitive.color.neutral.700}" },
-          "default": { "$value": "{primitive.color.neutral.400}" },
-          "strong": { "$value": "{primitive.color.neutral.200}" }
-        },
-        "action": {
-          "primary": {
-            "background": { "$value": "{primitive.color.brand.green}" },
-            "foreground": { "$value": "{primitive.color.brand.white}" },
-            "border": { "$value": "{primitive.color.brand.greenLight}" },
-            "hover": { "$value": "{primitive.color.brand.greenDeep}" },
-            "active": { "$value": "{primitive.color.brand.greenDarkest}" }
-          },
-          "secondary": {
-            "background": { "$value": "{primitive.color.neutral.800}" },
-            "foreground": { "$value": "{primitive.color.brand.softNeutral}" },
-            "border": { "$value": "{primitive.color.neutral.400}" },
-            "hover": { "$value": "{primitive.color.neutral.700}" },
-            "active": { "$value": "{primitive.color.neutral.600}" },
-            "disabledBackground": {
-              "$value": "{primitive.color.neutral.800}"
+    "semantic": {
+        "shared": {
+            "font": {
+                "family": {
+                    "body": { "$value": "{primitive.font.family.sans}" },
+                    "heading": { "$value": "{primitive.font.family.sans}" },
+                    "code": { "$value": "{primitive.font.family.mono}" }
+                },
+                "body": {
+                    "sm": { "$value": "{primitive.font.size.14}" },
+                    "md": { "$value": "{primitive.font.size.16}" },
+                    "lg": { "$value": "{primitive.font.size.18}" }
+                },
+                "heading": {
+                    "sm": { "$value": "{primitive.font.size.20}" },
+                    "md": { "$value": "{primitive.font.size.24}" },
+                    "lg": { "$value": "{primitive.font.size.30}" },
+                    "xl": { "$value": "{primitive.font.size.36}" }
+                },
+                "weight": {
+                    "body": { "$value": "{primitive.font.weight.regular}" },
+                    "control": { "$value": "{primitive.font.weight.semibold}" },
+                    "heading": { "$value": "{primitive.font.weight.semibold}" },
+                    "strong": { "$value": "{primitive.font.weight.bold}" }
+                },
+                "lineHeight": {
+                    "body": { "$value": "{primitive.font.lineHeight.normal}" },
+                    "longform": {
+                        "$value": "{primitive.font.lineHeight.relaxed}"
+                    },
+                    "heading": { "$value": "{primitive.font.lineHeight.tight}" }
+                }
             },
-            "disabledForeground": {
-              "$value": "{primitive.color.neutral.300}"
+            "space": {
+                "inlineXs": { "$value": "{primitive.space.1}" },
+                "inlineSm": { "$value": "{primitive.space.2}" },
+                "inlineMd": { "$value": "{primitive.space.3}" },
+                "controlX": { "$value": "{primitive.space.4}" },
+                "controlY": { "$value": "{primitive.space.2}" },
+                "content": { "$value": "{primitive.space.4}" },
+                "panel": { "$value": "{primitive.space.6}" },
+                "section": { "$value": "{primitive.space.10}" },
+                "page": { "$value": "{primitive.space.4}" }
             },
-            "disabledBorder": { "$value": "{primitive.color.neutral.700}" }
-          },
-          "destructive": {
-            "background": { "$value": "{primitive.color.error.900}" },
-            "foreground": { "$value": "{primitive.color.brand.white}" },
-            "border": { "$value": "{primitive.color.error.500}" },
-            "hover": { "$value": "{primitive.color.error.800}" },
-            "active": { "$value": "{primitive.color.error.700}" },
-            "disabledBackground": {
-              "$value": "{primitive.color.neutral.800}"
+            "size": {
+                "controlSm": { "$value": "{primitive.size.controlSm}" },
+                "controlMd": { "$value": "{primitive.size.controlMd}" },
+                "controlLg": { "$value": "{primitive.size.controlLg}" },
+                "touchTarget": { "$value": "{primitive.size.touchMinimum}" },
+                "contentMeasure": {
+                    "$value": "{primitive.size.contentMeasure}"
+                },
+                "pageMaximum": { "$value": "{primitive.size.pageMaximum}" }
             },
-            "disabledForeground": {
-              "$value": "{primitive.color.neutral.300}"
+            "radius": {
+                "control": { "$value": "{primitive.radius.md}" },
+                "surface": { "$value": "{primitive.radius.lg}" },
+                "prominent": { "$value": "{primitive.radius.xl}" },
+                "pill": { "$value": "{primitive.radius.full}" }
             },
-            "disabledBorder": { "$value": "{primitive.color.neutral.700}" }
-          }
+            "border": {
+                "default": { "$value": "{primitive.border.thin}" },
+                "strong": { "$value": "{primitive.border.strong}" },
+                "focus": { "$value": "{primitive.border.focus}" }
+            },
+            "shadow": {
+                "rest": { "$value": "{primitive.shadow.sm}" },
+                "raised": { "$value": "{primitive.shadow.md}" },
+                "overlay": { "$value": "{primitive.shadow.overlay}" },
+                "none": { "$value": "{primitive.shadow.none}" }
+            },
+            "motion": {
+                "duration": { "$value": "{primitive.motion.duration.fast}" },
+                "reducedDuration": {
+                    "$value": "{primitive.motion.duration.instant}"
+                },
+                "easing": { "$value": "{primitive.motion.easing.standard}" }
+            },
+            "opacity": {
+                "enabled": { "$value": "{primitive.opacity.opaque}" },
+                "disabled": { "$value": "{primitive.opacity.disabled}" }
+            }
         },
-        "accent": {
-          "decorative": { "$value": "{primitive.color.brand.gold}" },
-          "surface": { "$value": "{primitive.color.brand.gold}" },
-          "foreground": { "$value": "{primitive.color.brand.greenDeep}" },
-          "soft": { "$value": "{primitive.color.brand.goldSoft}" }
+        "light": {
+            "color": {
+                "surface": {
+                    "canvas": {
+                        "$value": "{primitive.color.brand.softNeutral}"
+                    },
+                    "base": { "$value": "{primitive.color.brand.white}" },
+                    "raised": { "$value": "{primitive.color.brand.white}" },
+                    "sunken": { "$value": "{primitive.color.neutral.100}" },
+                    "inverse": { "$value": "{primitive.color.brand.green}" }
+                },
+                "text": {
+                    "primary": { "$value": "{primitive.color.neutral.950}" },
+                    "secondary": { "$value": "{primitive.color.neutral.600}" },
+                    "muted": { "$value": "{primitive.color.neutral.500}" },
+                    "placeholder": {
+                        "$value": "{primitive.color.neutral.500}"
+                    },
+                    "inverse": { "$value": "{primitive.color.brand.white}" },
+                    "link": { "$value": "{primitive.color.brand.green}" },
+                    "linkHover": {
+                        "$value": "{primitive.color.brand.greenDeep}"
+                    }
+                },
+                "border": {
+                    "subtle": { "$value": "{primitive.color.neutral.200}" },
+                    "default": { "$value": "{primitive.color.neutral.400}" },
+                    "strong": { "$value": "{primitive.color.neutral.600}" }
+                },
+                "action": {
+                    "primary": {
+                        "background": {
+                            "$value": "{primitive.color.brand.green}"
+                        },
+                        "foreground": {
+                            "$value": "{primitive.color.brand.white}"
+                        },
+                        "border": { "$value": "{primitive.color.brand.green}" },
+                        "hover": {
+                            "$value": "{primitive.color.brand.greenDeep}"
+                        },
+                        "active": {
+                            "$value": "{primitive.color.brand.greenDarkest}"
+                        }
+                    },
+                    "secondary": {
+                        "background": {
+                            "$value": "{primitive.color.brand.white}"
+                        },
+                        "foreground": {
+                            "$value": "{primitive.color.brand.green}"
+                        },
+                        "border": { "$value": "{primitive.color.brand.green}" },
+                        "hover": {
+                            "$value": "{primitive.color.brand.greenSoft}"
+                        },
+                        "active": { "$value": "{primitive.color.neutral.100}" },
+                        "disabledBackground": {
+                            "$value": "{primitive.color.neutral.100}"
+                        },
+                        "disabledForeground": {
+                            "$value": "{primitive.color.neutral.600}"
+                        },
+                        "disabledBorder": {
+                            "$value": "{primitive.color.neutral.300}"
+                        }
+                    },
+                    "destructive": {
+                        "background": {
+                            "$value": "{primitive.color.error.700}"
+                        },
+                        "foreground": {
+                            "$value": "{primitive.color.brand.white}"
+                        },
+                        "border": { "$value": "{primitive.color.error.700}" },
+                        "hover": { "$value": "{primitive.color.error.800}" },
+                        "active": { "$value": "{primitive.color.error.900}" },
+                        "disabledBackground": {
+                            "$value": "{primitive.color.neutral.100}"
+                        },
+                        "disabledForeground": {
+                            "$value": "{primitive.color.neutral.600}"
+                        },
+                        "disabledBorder": {
+                            "$value": "{primitive.color.neutral.300}"
+                        }
+                    }
+                },
+                "accent": {
+                    "decorative": { "$value": "{primitive.color.brand.gold}" },
+                    "surface": { "$value": "{primitive.color.brand.gold}" },
+                    "foreground": {
+                        "$value": "{primitive.color.brand.greenDeep}"
+                    },
+                    "soft": { "$value": "{primitive.color.brand.goldSoft}" }
+                },
+                "state": {
+                    "focusRing": { "$value": "{primitive.color.brand.green}" },
+                    "focusOffset": {
+                        "$value": "{primitive.color.brand.white}"
+                    },
+                    "disabledBackground": {
+                        "$value": "{primitive.color.neutral.100}"
+                    },
+                    "disabledForeground": {
+                        "$value": "{primitive.color.neutral.600}"
+                    },
+                    "disabledBorder": {
+                        "$value": "{primitive.color.neutral.300}"
+                    },
+                    "readOnlyBackground": {
+                        "$value": "{primitive.color.brand.softNeutral}"
+                    },
+                    "readOnlyForeground": {
+                        "$value": "{primitive.color.neutral.700}"
+                    },
+                    "readOnlyBorder": {
+                        "$value": "{primitive.color.neutral.500}"
+                    },
+                    "selectedBackground": {
+                        "$value": "{primitive.color.brand.greenSoft}"
+                    },
+                    "selectedForeground": {
+                        "$value": "{primitive.color.brand.greenDeep}"
+                    }
+                },
+                "status": {
+                    "success": {
+                        "background": {
+                            "$value": "{primitive.color.success.50}"
+                        },
+                        "foreground": {
+                            "$value": "{primitive.color.success.800}"
+                        },
+                        "border": { "$value": "{primitive.color.success.700}" },
+                        "icon": { "$value": "{primitive.color.success.700}" }
+                    },
+                    "warning": {
+                        "background": {
+                            "$value": "{primitive.color.warning.50}"
+                        },
+                        "foreground": {
+                            "$value": "{primitive.color.warning.800}"
+                        },
+                        "border": { "$value": "{primitive.color.warning.700}" },
+                        "icon": { "$value": "{primitive.color.warning.700}" }
+                    },
+                    "error": {
+                        "background": {
+                            "$value": "{primitive.color.error.50}"
+                        },
+                        "foreground": {
+                            "$value": "{primitive.color.error.800}"
+                        },
+                        "border": { "$value": "{primitive.color.error.700}" },
+                        "icon": { "$value": "{primitive.color.error.700}" }
+                    },
+                    "info": {
+                        "background": { "$value": "{primitive.color.info.50}" },
+                        "foreground": {
+                            "$value": "{primitive.color.info.800}"
+                        },
+                        "border": { "$value": "{primitive.color.info.700}" },
+                        "icon": { "$value": "{primitive.color.info.700}" }
+                    },
+                    "neutral": {
+                        "background": {
+                            "$value": "{primitive.color.neutral.100}"
+                        },
+                        "foreground": {
+                            "$value": "{primitive.color.neutral.700}"
+                        },
+                        "border": { "$value": "{primitive.color.neutral.500}" },
+                        "icon": { "$value": "{primitive.color.neutral.600}" }
+                    }
+                }
+            }
         },
-        "state": {
-          "focusRing": { "$value": "{primitive.color.brand.greenLight}" },
-          "focusOffset": { "$value": "{primitive.color.neutral.900}" },
-          "disabledBackground": { "$value": "{primitive.color.neutral.800}" },
-          "disabledForeground": { "$value": "{primitive.color.neutral.300}" },
-          "disabledBorder": { "$value": "{primitive.color.neutral.700}" },
-          "readOnlyBackground": { "$value": "{primitive.color.neutral.800}" },
-          "readOnlyForeground": { "$value": "{primitive.color.neutral.300}" },
-          "readOnlyBorder": { "$value": "{primitive.color.neutral.400}" },
-          "selectedBackground": { "$value": "{primitive.color.neutral.700}" },
-          "selectedForeground": {
-            "$value": "{primitive.color.brand.softNeutral}"
-          }
-        },
-        "status": {
-          "success": {
-            "background": { "$value": "{primitive.color.success.900}" },
-            "foreground": { "$value": "{primitive.color.success.200}" },
-            "border": { "$value": "{primitive.color.success.500}" },
-            "icon": { "$value": "{primitive.color.success.200}" }
-          },
-          "warning": {
-            "background": { "$value": "{primitive.color.warning.900}" },
-            "foreground": { "$value": "{primitive.color.warning.200}" },
-            "border": { "$value": "{primitive.color.warning.500}" },
-            "icon": { "$value": "{primitive.color.warning.200}" }
-          },
-          "error": {
-            "background": { "$value": "{primitive.color.error.900}" },
-            "foreground": { "$value": "{primitive.color.error.200}" },
-            "border": { "$value": "{primitive.color.error.500}" },
-            "icon": { "$value": "{primitive.color.error.200}" }
-          },
-          "info": {
-            "background": { "$value": "{primitive.color.info.900}" },
-            "foreground": { "$value": "{primitive.color.info.200}" },
-            "border": { "$value": "{primitive.color.info.500}" },
-            "icon": { "$value": "{primitive.color.info.200}" }
-          },
-          "neutral": {
-            "background": { "$value": "{primitive.color.neutral.800}" },
-            "foreground": { "$value": "{primitive.color.neutral.300}" },
-            "border": { "$value": "{primitive.color.neutral.400}" },
-            "icon": { "$value": "{primitive.color.neutral.300}" }
-          }
+        "dark": {
+            "color": {
+                "surface": {
+                    "canvas": { "$value": "{primitive.color.neutral.950}" },
+                    "base": { "$value": "{primitive.color.neutral.900}" },
+                    "raised": { "$value": "{primitive.color.neutral.800}" },
+                    "sunken": { "$value": "{primitive.color.brand.black}" },
+                    "inverse": {
+                        "$value": "{primitive.color.brand.softNeutral}"
+                    }
+                },
+                "text": {
+                    "primary": {
+                        "$value": "{primitive.color.brand.softNeutral}"
+                    },
+                    "secondary": { "$value": "{primitive.color.neutral.300}" },
+                    "muted": { "$value": "{primitive.color.neutral.400}" },
+                    "placeholder": {
+                        "$value": "{primitive.color.neutral.300}"
+                    },
+                    "inverse": { "$value": "{primitive.color.neutral.950}" },
+                    "link": { "$value": "{primitive.color.brand.greenLight}" },
+                    "linkHover": {
+                        "$value": "{primitive.color.brand.greenSoft}"
+                    }
+                },
+                "border": {
+                    "subtle": { "$value": "{primitive.color.neutral.700}" },
+                    "default": { "$value": "{primitive.color.neutral.400}" },
+                    "strong": { "$value": "{primitive.color.neutral.200}" }
+                },
+                "action": {
+                    "primary": {
+                        "background": {
+                            "$value": "{primitive.color.brand.green}"
+                        },
+                        "foreground": {
+                            "$value": "{primitive.color.brand.white}"
+                        },
+                        "border": {
+                            "$value": "{primitive.color.brand.greenLight}"
+                        },
+                        "hover": {
+                            "$value": "{primitive.color.brand.greenDeep}"
+                        },
+                        "active": {
+                            "$value": "{primitive.color.brand.greenDarkest}"
+                        }
+                    },
+                    "secondary": {
+                        "background": {
+                            "$value": "{primitive.color.neutral.800}"
+                        },
+                        "foreground": {
+                            "$value": "{primitive.color.brand.softNeutral}"
+                        },
+                        "border": { "$value": "{primitive.color.neutral.400}" },
+                        "hover": { "$value": "{primitive.color.neutral.700}" },
+                        "active": { "$value": "{primitive.color.neutral.600}" },
+                        "disabledBackground": {
+                            "$value": "{primitive.color.neutral.800}"
+                        },
+                        "disabledForeground": {
+                            "$value": "{primitive.color.neutral.300}"
+                        },
+                        "disabledBorder": {
+                            "$value": "{primitive.color.neutral.700}"
+                        }
+                    },
+                    "destructive": {
+                        "background": {
+                            "$value": "{primitive.color.error.900}"
+                        },
+                        "foreground": {
+                            "$value": "{primitive.color.brand.white}"
+                        },
+                        "border": { "$value": "{primitive.color.error.500}" },
+                        "hover": { "$value": "{primitive.color.error.800}" },
+                        "active": { "$value": "{primitive.color.error.700}" },
+                        "disabledBackground": {
+                            "$value": "{primitive.color.neutral.800}"
+                        },
+                        "disabledForeground": {
+                            "$value": "{primitive.color.neutral.300}"
+                        },
+                        "disabledBorder": {
+                            "$value": "{primitive.color.neutral.700}"
+                        }
+                    }
+                },
+                "accent": {
+                    "decorative": { "$value": "{primitive.color.brand.gold}" },
+                    "surface": { "$value": "{primitive.color.brand.gold}" },
+                    "foreground": {
+                        "$value": "{primitive.color.brand.greenDeep}"
+                    },
+                    "soft": { "$value": "{primitive.color.brand.goldSoft}" }
+                },
+                "state": {
+                    "focusRing": {
+                        "$value": "{primitive.color.brand.greenLight}"
+                    },
+                    "focusOffset": {
+                        "$value": "{primitive.color.neutral.900}"
+                    },
+                    "disabledBackground": {
+                        "$value": "{primitive.color.neutral.800}"
+                    },
+                    "disabledForeground": {
+                        "$value": "{primitive.color.neutral.300}"
+                    },
+                    "disabledBorder": {
+                        "$value": "{primitive.color.neutral.700}"
+                    },
+                    "readOnlyBackground": {
+                        "$value": "{primitive.color.neutral.800}"
+                    },
+                    "readOnlyForeground": {
+                        "$value": "{primitive.color.neutral.300}"
+                    },
+                    "readOnlyBorder": {
+                        "$value": "{primitive.color.neutral.400}"
+                    },
+                    "selectedBackground": {
+                        "$value": "{primitive.color.neutral.700}"
+                    },
+                    "selectedForeground": {
+                        "$value": "{primitive.color.brand.softNeutral}"
+                    }
+                },
+                "status": {
+                    "success": {
+                        "background": {
+                            "$value": "{primitive.color.success.900}"
+                        },
+                        "foreground": {
+                            "$value": "{primitive.color.success.200}"
+                        },
+                        "border": { "$value": "{primitive.color.success.500}" },
+                        "icon": { "$value": "{primitive.color.success.200}" }
+                    },
+                    "warning": {
+                        "background": {
+                            "$value": "{primitive.color.warning.900}"
+                        },
+                        "foreground": {
+                            "$value": "{primitive.color.warning.200}"
+                        },
+                        "border": { "$value": "{primitive.color.warning.500}" },
+                        "icon": { "$value": "{primitive.color.warning.200}" }
+                    },
+                    "error": {
+                        "background": {
+                            "$value": "{primitive.color.error.900}"
+                        },
+                        "foreground": {
+                            "$value": "{primitive.color.error.200}"
+                        },
+                        "border": { "$value": "{primitive.color.error.500}" },
+                        "icon": { "$value": "{primitive.color.error.200}" }
+                    },
+                    "info": {
+                        "background": {
+                            "$value": "{primitive.color.info.900}"
+                        },
+                        "foreground": {
+                            "$value": "{primitive.color.info.200}"
+                        },
+                        "border": { "$value": "{primitive.color.info.500}" },
+                        "icon": { "$value": "{primitive.color.info.200}" }
+                    },
+                    "neutral": {
+                        "background": {
+                            "$value": "{primitive.color.neutral.800}"
+                        },
+                        "foreground": {
+                            "$value": "{primitive.color.neutral.300}"
+                        },
+                        "border": { "$value": "{primitive.color.neutral.400}" },
+                        "icon": { "$value": "{primitive.color.neutral.300}" }
+                    }
+                }
+            }
         }
-      }
+    },
+    "component": {
+        "shared": {
+            "focus": {
+                "width": { "$value": "{semantic.shared.border.focus}" },
+                "offset": { "$value": "{semantic.shared.space.inlineXs}" }
+            },
+            "button": {
+                "height": { "$value": "{semantic.shared.size.touchTarget}" },
+                "paddingX": { "$value": "{semantic.shared.space.controlX}" },
+                "gap": { "$value": "{semantic.shared.space.inlineSm}" },
+                "radius": { "$value": "{semantic.shared.radius.control}" },
+                "fontSize": { "$value": "{semantic.shared.font.body.sm}" },
+                "fontWeight": {
+                    "$value": "{semantic.shared.font.weight.control}"
+                },
+                "duration": { "$value": "{semantic.shared.motion.duration}" }
+            },
+            "input": {
+                "height": { "$value": "{semantic.shared.size.touchTarget}" },
+                "paddingX": { "$value": "{semantic.shared.space.inlineMd}" },
+                "paddingY": { "$value": "{semantic.shared.space.inlineSm}" },
+                "radius": { "$value": "{semantic.shared.radius.control}" },
+                "fontSize": { "$value": "{semantic.shared.font.body.md}" },
+                "borderWidth": { "$value": "{semantic.shared.border.default}" }
+            },
+            "card": {
+                "padding": { "$value": "{semantic.shared.space.panel}" },
+                "gap": { "$value": "{semantic.shared.space.content}" },
+                "radius": { "$value": "{semantic.shared.radius.surface}" },
+                "borderWidth": { "$value": "{semantic.shared.border.default}" }
+            },
+            "navigation": {
+                "itemHeight": {
+                    "$value": "{semantic.shared.size.touchTarget}"
+                },
+                "itemPaddingX": {
+                    "$value": "{semantic.shared.space.inlineMd}"
+                },
+                "itemRadius": { "$value": "{semantic.shared.radius.control}" },
+                "gap": { "$value": "{semantic.shared.space.inlineXs}" }
+            },
+            "table": {
+                "cellPaddingX": { "$value": "{semantic.shared.space.content}" },
+                "cellPaddingY": {
+                    "$value": "{semantic.shared.space.inlineMd}"
+                },
+                "rowMinimumHeight": {
+                    "$value": "{semantic.shared.size.touchTarget}"
+                },
+                "radius": { "$value": "{semantic.shared.radius.surface}" }
+            },
+            "status": {
+                "paddingX": { "$value": "{semantic.shared.space.inlineMd}" },
+                "paddingY": { "$value": "{semantic.shared.space.inlineXs}" },
+                "radius": { "$value": "{semantic.shared.radius.pill}" },
+                "fontSize": { "$value": "{semantic.shared.font.body.sm}" },
+                "fontWeight": {
+                    "$value": "{semantic.shared.font.weight.control}"
+                }
+            },
+            "alert": {
+                "padding": { "$value": "{semantic.shared.space.content}" },
+                "gap": { "$value": "{semantic.shared.space.inlineMd}" },
+                "radius": { "$value": "{semantic.shared.radius.surface}" },
+                "borderWidth": { "$value": "{semantic.shared.border.default}" }
+            }
+        },
+        "light": {
+            "button": {
+                "primary": {
+                    "defaultBackground": {
+                        "$value": "{semantic.light.color.action.primary.background}"
+                    },
+                    "defaultForeground": {
+                        "$value": "{semantic.light.color.action.primary.foreground}"
+                    },
+                    "defaultBorder": {
+                        "$value": "{semantic.light.color.action.primary.border}"
+                    },
+                    "hoverBackground": {
+                        "$value": "{semantic.light.color.action.primary.hover}"
+                    },
+                    "activeBackground": {
+                        "$value": "{semantic.light.color.action.primary.active}"
+                    },
+                    "focusRing": {
+                        "$value": "{semantic.light.color.state.focusRing}"
+                    },
+                    "focusOffset": {
+                        "$value": "{semantic.light.color.state.focusOffset}"
+                    },
+                    "disabledBackground": {
+                        "$value": "{semantic.light.color.state.disabledBackground}"
+                    },
+                    "disabledForeground": {
+                        "$value": "{semantic.light.color.state.disabledForeground}"
+                    },
+                    "disabledBorder": {
+                        "$value": "{semantic.light.color.state.disabledBorder}"
+                    }
+                },
+                "secondary": {
+                    "defaultBackground": {
+                        "$value": "{semantic.light.color.action.secondary.background}"
+                    },
+                    "defaultForeground": {
+                        "$value": "{semantic.light.color.action.secondary.foreground}"
+                    },
+                    "defaultBorder": {
+                        "$value": "{semantic.light.color.action.secondary.border}"
+                    },
+                    "hoverBackground": {
+                        "$value": "{semantic.light.color.action.secondary.hover}"
+                    },
+                    "activeBackground": {
+                        "$value": "{semantic.light.color.action.secondary.active}"
+                    },
+                    "focusRing": {
+                        "$value": "{semantic.light.color.state.focusRing}"
+                    },
+                    "disabledBackground": {
+                        "$value": "{semantic.light.color.action.secondary.disabledBackground}"
+                    },
+                    "disabledForeground": {
+                        "$value": "{semantic.light.color.action.secondary.disabledForeground}"
+                    },
+                    "disabledBorder": {
+                        "$value": "{semantic.light.color.action.secondary.disabledBorder}"
+                    }
+                },
+                "destructive": {
+                    "defaultBackground": {
+                        "$value": "{semantic.light.color.action.destructive.background}"
+                    },
+                    "defaultForeground": {
+                        "$value": "{semantic.light.color.action.destructive.foreground}"
+                    },
+                    "defaultBorder": {
+                        "$value": "{semantic.light.color.action.destructive.border}"
+                    },
+                    "hoverBackground": {
+                        "$value": "{semantic.light.color.action.destructive.hover}"
+                    },
+                    "activeBackground": {
+                        "$value": "{semantic.light.color.action.destructive.active}"
+                    },
+                    "focusRing": {
+                        "$value": "{semantic.light.color.status.error.border}"
+                    },
+                    "disabledBackground": {
+                        "$value": "{semantic.light.color.action.destructive.disabledBackground}"
+                    },
+                    "disabledForeground": {
+                        "$value": "{semantic.light.color.action.destructive.disabledForeground}"
+                    },
+                    "disabledBorder": {
+                        "$value": "{semantic.light.color.action.destructive.disabledBorder}"
+                    }
+                }
+            },
+            "input": {
+                "defaultBackground": {
+                    "$value": "{semantic.light.color.surface.base}"
+                },
+                "defaultForeground": {
+                    "$value": "{semantic.light.color.text.primary}"
+                },
+                "defaultBorder": {
+                    "$value": "{semantic.light.color.border.default}"
+                },
+                "placeholder": {
+                    "$value": "{semantic.light.color.text.placeholder}"
+                },
+                "hoverBorder": {
+                    "$value": "{semantic.light.color.border.strong}"
+                },
+                "focusBorder": {
+                    "$value": "{semantic.light.color.state.focusRing}"
+                },
+                "focusRing": {
+                    "$value": "{semantic.light.color.state.focusRing}"
+                },
+                "disabledBackground": {
+                    "$value": "{semantic.light.color.state.disabledBackground}"
+                },
+                "disabledForeground": {
+                    "$value": "{semantic.light.color.state.disabledForeground}"
+                },
+                "disabledBorder": {
+                    "$value": "{semantic.light.color.state.disabledBorder}"
+                },
+                "readOnlyBackground": {
+                    "$value": "{semantic.light.color.state.readOnlyBackground}"
+                },
+                "readOnlyForeground": {
+                    "$value": "{semantic.light.color.state.readOnlyForeground}"
+                },
+                "readOnlyBorder": {
+                    "$value": "{semantic.light.color.state.readOnlyBorder}"
+                },
+                "errorBorder": {
+                    "$value": "{semantic.light.color.status.error.border}"
+                },
+                "errorForeground": {
+                    "$value": "{semantic.light.color.status.error.foreground}"
+                },
+                "successBorder": {
+                    "$value": "{semantic.light.color.status.success.border}"
+                },
+                "successForeground": {
+                    "$value": "{semantic.light.color.status.success.foreground}"
+                },
+                "warningBorder": {
+                    "$value": "{semantic.light.color.status.warning.border}"
+                },
+                "warningForeground": {
+                    "$value": "{semantic.light.color.status.warning.foreground}"
+                }
+            },
+            "card": {
+                "defaultBackground": {
+                    "$value": "{semantic.light.color.surface.raised}"
+                },
+                "defaultForeground": {
+                    "$value": "{semantic.light.color.text.primary}"
+                },
+                "defaultBorder": {
+                    "$value": "{semantic.light.color.border.subtle}"
+                },
+                "defaultShadow": { "$value": "{semantic.shared.shadow.rest}" },
+                "hoverBorder": {
+                    "$value": "{semantic.light.color.border.default}"
+                },
+                "hoverShadow": { "$value": "{semantic.shared.shadow.raised}" },
+                "activeBackground": {
+                    "$value": "{semantic.light.color.surface.sunken}"
+                },
+                "focusRing": {
+                    "$value": "{semantic.light.color.state.focusRing}"
+                },
+                "disabledBackground": {
+                    "$value": "{semantic.light.color.state.disabledBackground}"
+                },
+                "disabledForeground": {
+                    "$value": "{semantic.light.color.state.disabledForeground}"
+                },
+                "errorBorder": {
+                    "$value": "{semantic.light.color.status.error.border}"
+                },
+                "successBorder": {
+                    "$value": "{semantic.light.color.status.success.border}"
+                },
+                "warningBorder": {
+                    "$value": "{semantic.light.color.status.warning.border}"
+                }
+            },
+            "navigation": {
+                "defaultBackground": {
+                    "$value": "{semantic.light.color.surface.base}"
+                },
+                "defaultForeground": {
+                    "$value": "{semantic.light.color.text.secondary}"
+                },
+                "hoverBackground": {
+                    "$value": "{semantic.light.color.surface.sunken}"
+                },
+                "hoverForeground": {
+                    "$value": "{semantic.light.color.text.primary}"
+                },
+                "activeBackground": {
+                    "$value": "{semantic.light.color.state.selectedBackground}"
+                },
+                "activeForeground": {
+                    "$value": "{semantic.light.color.state.selectedForeground}"
+                },
+                "focusRing": {
+                    "$value": "{semantic.light.color.state.focusRing}"
+                },
+                "disabledForeground": {
+                    "$value": "{semantic.light.color.state.disabledForeground}"
+                }
+            },
+            "table": {
+                "background": {
+                    "$value": "{semantic.light.color.surface.base}"
+                },
+                "foreground": {
+                    "$value": "{semantic.light.color.text.primary}"
+                },
+                "headerBackground": {
+                    "$value": "{semantic.light.color.surface.sunken}"
+                },
+                "headerForeground": {
+                    "$value": "{semantic.light.color.text.primary}"
+                },
+                "border": { "$value": "{semantic.light.color.border.subtle}" },
+                "rowHover": {
+                    "$value": "{semantic.light.color.surface.canvas}"
+                },
+                "rowSelected": {
+                    "$value": "{semantic.light.color.state.selectedBackground}"
+                },
+                "rowSelectedForeground": {
+                    "$value": "{semantic.light.color.state.selectedForeground}"
+                },
+                "rowFocus": {
+                    "$value": "{semantic.light.color.state.focusRing}"
+                },
+                "rowDisabledForeground": {
+                    "$value": "{semantic.light.color.state.disabledForeground}"
+                }
+            },
+            "status": {
+                "infoBackground": {
+                    "$value": "{semantic.light.color.status.info.background}"
+                },
+                "infoForeground": {
+                    "$value": "{semantic.light.color.status.info.foreground}"
+                },
+                "infoBorder": {
+                    "$value": "{semantic.light.color.status.info.border}"
+                },
+                "successBackground": {
+                    "$value": "{semantic.light.color.status.success.background}"
+                },
+                "successForeground": {
+                    "$value": "{semantic.light.color.status.success.foreground}"
+                },
+                "successBorder": {
+                    "$value": "{semantic.light.color.status.success.border}"
+                },
+                "warningBackground": {
+                    "$value": "{semantic.light.color.status.warning.background}"
+                },
+                "warningForeground": {
+                    "$value": "{semantic.light.color.status.warning.foreground}"
+                },
+                "warningBorder": {
+                    "$value": "{semantic.light.color.status.warning.border}"
+                },
+                "errorBackground": {
+                    "$value": "{semantic.light.color.status.error.background}"
+                },
+                "errorForeground": {
+                    "$value": "{semantic.light.color.status.error.foreground}"
+                },
+                "errorBorder": {
+                    "$value": "{semantic.light.color.status.error.border}"
+                },
+                "neutralBackground": {
+                    "$value": "{semantic.light.color.status.neutral.background}"
+                },
+                "neutralForeground": {
+                    "$value": "{semantic.light.color.status.neutral.foreground}"
+                },
+                "neutralBorder": {
+                    "$value": "{semantic.light.color.status.neutral.border}"
+                }
+            },
+            "alert": {
+                "infoBackground": {
+                    "$value": "{semantic.light.color.status.info.background}"
+                },
+                "infoForeground": {
+                    "$value": "{semantic.light.color.status.info.foreground}"
+                },
+                "infoBorder": {
+                    "$value": "{semantic.light.color.status.info.border}"
+                },
+                "successBackground": {
+                    "$value": "{semantic.light.color.status.success.background}"
+                },
+                "successForeground": {
+                    "$value": "{semantic.light.color.status.success.foreground}"
+                },
+                "successBorder": {
+                    "$value": "{semantic.light.color.status.success.border}"
+                },
+                "warningBackground": {
+                    "$value": "{semantic.light.color.status.warning.background}"
+                },
+                "warningForeground": {
+                    "$value": "{semantic.light.color.status.warning.foreground}"
+                },
+                "warningBorder": {
+                    "$value": "{semantic.light.color.status.warning.border}"
+                },
+                "errorBackground": {
+                    "$value": "{semantic.light.color.status.error.background}"
+                },
+                "errorForeground": {
+                    "$value": "{semantic.light.color.status.error.foreground}"
+                },
+                "errorBorder": {
+                    "$value": "{semantic.light.color.status.error.border}"
+                },
+                "focusRing": {
+                    "$value": "{semantic.light.color.state.focusRing}"
+                }
+            }
+        },
+        "dark": {
+            "button": {
+                "primary": {
+                    "defaultBackground": {
+                        "$value": "{semantic.dark.color.action.primary.background}"
+                    },
+                    "defaultForeground": {
+                        "$value": "{semantic.dark.color.action.primary.foreground}"
+                    },
+                    "defaultBorder": {
+                        "$value": "{semantic.dark.color.action.primary.border}"
+                    },
+                    "hoverBackground": {
+                        "$value": "{semantic.dark.color.action.primary.hover}"
+                    },
+                    "activeBackground": {
+                        "$value": "{semantic.dark.color.action.primary.active}"
+                    },
+                    "focusRing": {
+                        "$value": "{semantic.dark.color.state.focusRing}"
+                    },
+                    "focusOffset": {
+                        "$value": "{semantic.dark.color.state.focusOffset}"
+                    },
+                    "disabledBackground": {
+                        "$value": "{semantic.dark.color.state.disabledBackground}"
+                    },
+                    "disabledForeground": {
+                        "$value": "{semantic.dark.color.state.disabledForeground}"
+                    },
+                    "disabledBorder": {
+                        "$value": "{semantic.dark.color.state.disabledBorder}"
+                    }
+                },
+                "secondary": {
+                    "defaultBackground": {
+                        "$value": "{semantic.dark.color.action.secondary.background}"
+                    },
+                    "defaultForeground": {
+                        "$value": "{semantic.dark.color.action.secondary.foreground}"
+                    },
+                    "defaultBorder": {
+                        "$value": "{semantic.dark.color.action.secondary.border}"
+                    },
+                    "hoverBackground": {
+                        "$value": "{semantic.dark.color.action.secondary.hover}"
+                    },
+                    "activeBackground": {
+                        "$value": "{semantic.dark.color.action.secondary.active}"
+                    },
+                    "focusRing": {
+                        "$value": "{semantic.dark.color.state.focusRing}"
+                    },
+                    "disabledBackground": {
+                        "$value": "{semantic.dark.color.action.secondary.disabledBackground}"
+                    },
+                    "disabledForeground": {
+                        "$value": "{semantic.dark.color.action.secondary.disabledForeground}"
+                    },
+                    "disabledBorder": {
+                        "$value": "{semantic.dark.color.action.secondary.disabledBorder}"
+                    }
+                },
+                "destructive": {
+                    "defaultBackground": {
+                        "$value": "{semantic.dark.color.action.destructive.background}"
+                    },
+                    "defaultForeground": {
+                        "$value": "{semantic.dark.color.action.destructive.foreground}"
+                    },
+                    "defaultBorder": {
+                        "$value": "{semantic.dark.color.action.destructive.border}"
+                    },
+                    "hoverBackground": {
+                        "$value": "{semantic.dark.color.action.destructive.hover}"
+                    },
+                    "activeBackground": {
+                        "$value": "{semantic.dark.color.action.destructive.active}"
+                    },
+                    "focusRing": {
+                        "$value": "{semantic.dark.color.status.error.border}"
+                    },
+                    "disabledBackground": {
+                        "$value": "{semantic.dark.color.action.destructive.disabledBackground}"
+                    },
+                    "disabledForeground": {
+                        "$value": "{semantic.dark.color.action.destructive.disabledForeground}"
+                    },
+                    "disabledBorder": {
+                        "$value": "{semantic.dark.color.action.destructive.disabledBorder}"
+                    }
+                }
+            },
+            "input": {
+                "defaultBackground": {
+                    "$value": "{semantic.dark.color.surface.raised}"
+                },
+                "defaultForeground": {
+                    "$value": "{semantic.dark.color.text.primary}"
+                },
+                "defaultBorder": {
+                    "$value": "{semantic.dark.color.border.default}"
+                },
+                "placeholder": {
+                    "$value": "{semantic.dark.color.text.placeholder}"
+                },
+                "hoverBorder": {
+                    "$value": "{semantic.dark.color.border.strong}"
+                },
+                "focusBorder": {
+                    "$value": "{semantic.dark.color.state.focusRing}"
+                },
+                "focusRing": {
+                    "$value": "{semantic.dark.color.state.focusRing}"
+                },
+                "disabledBackground": {
+                    "$value": "{semantic.dark.color.state.disabledBackground}"
+                },
+                "disabledForeground": {
+                    "$value": "{semantic.dark.color.state.disabledForeground}"
+                },
+                "disabledBorder": {
+                    "$value": "{semantic.dark.color.state.disabledBorder}"
+                },
+                "readOnlyBackground": {
+                    "$value": "{semantic.dark.color.state.readOnlyBackground}"
+                },
+                "readOnlyForeground": {
+                    "$value": "{semantic.dark.color.state.readOnlyForeground}"
+                },
+                "readOnlyBorder": {
+                    "$value": "{semantic.dark.color.state.readOnlyBorder}"
+                },
+                "errorBorder": {
+                    "$value": "{semantic.dark.color.status.error.border}"
+                },
+                "errorForeground": {
+                    "$value": "{semantic.dark.color.status.error.foreground}"
+                },
+                "successBorder": {
+                    "$value": "{semantic.dark.color.status.success.border}"
+                },
+                "successForeground": {
+                    "$value": "{semantic.dark.color.status.success.foreground}"
+                },
+                "warningBorder": {
+                    "$value": "{semantic.dark.color.status.warning.border}"
+                },
+                "warningForeground": {
+                    "$value": "{semantic.dark.color.status.warning.foreground}"
+                }
+            },
+            "card": {
+                "defaultBackground": {
+                    "$value": "{semantic.dark.color.surface.raised}"
+                },
+                "defaultForeground": {
+                    "$value": "{semantic.dark.color.text.primary}"
+                },
+                "defaultBorder": {
+                    "$value": "{semantic.dark.color.border.subtle}"
+                },
+                "defaultShadow": { "$value": "{semantic.shared.shadow.none}" },
+                "hoverBorder": {
+                    "$value": "{semantic.dark.color.border.default}"
+                },
+                "hoverShadow": { "$value": "{semantic.shared.shadow.raised}" },
+                "activeBackground": {
+                    "$value": "{semantic.dark.color.surface.sunken}"
+                },
+                "focusRing": {
+                    "$value": "{semantic.dark.color.state.focusRing}"
+                },
+                "disabledBackground": {
+                    "$value": "{semantic.dark.color.state.disabledBackground}"
+                },
+                "disabledForeground": {
+                    "$value": "{semantic.dark.color.state.disabledForeground}"
+                },
+                "errorBorder": {
+                    "$value": "{semantic.dark.color.status.error.border}"
+                },
+                "successBorder": {
+                    "$value": "{semantic.dark.color.status.success.border}"
+                },
+                "warningBorder": {
+                    "$value": "{semantic.dark.color.status.warning.border}"
+                }
+            },
+            "navigation": {
+                "defaultBackground": {
+                    "$value": "{semantic.dark.color.surface.base}"
+                },
+                "defaultForeground": {
+                    "$value": "{semantic.dark.color.text.secondary}"
+                },
+                "hoverBackground": {
+                    "$value": "{semantic.dark.color.surface.raised}"
+                },
+                "hoverForeground": {
+                    "$value": "{semantic.dark.color.text.primary}"
+                },
+                "activeBackground": {
+                    "$value": "{semantic.dark.color.state.selectedBackground}"
+                },
+                "activeForeground": {
+                    "$value": "{semantic.dark.color.state.selectedForeground}"
+                },
+                "focusRing": {
+                    "$value": "{semantic.dark.color.state.focusRing}"
+                },
+                "disabledForeground": {
+                    "$value": "{semantic.dark.color.state.disabledForeground}"
+                }
+            },
+            "table": {
+                "background": {
+                    "$value": "{semantic.dark.color.surface.base}"
+                },
+                "foreground": {
+                    "$value": "{semantic.dark.color.text.primary}"
+                },
+                "headerBackground": {
+                    "$value": "{semantic.dark.color.surface.raised}"
+                },
+                "headerForeground": {
+                    "$value": "{semantic.dark.color.text.primary}"
+                },
+                "border": { "$value": "{semantic.dark.color.border.subtle}" },
+                "rowHover": {
+                    "$value": "{semantic.dark.color.surface.raised}"
+                },
+                "rowSelected": {
+                    "$value": "{semantic.dark.color.state.selectedBackground}"
+                },
+                "rowSelectedForeground": {
+                    "$value": "{semantic.dark.color.state.selectedForeground}"
+                },
+                "rowFocus": {
+                    "$value": "{semantic.dark.color.state.focusRing}"
+                },
+                "rowDisabledForeground": {
+                    "$value": "{semantic.dark.color.state.disabledForeground}"
+                }
+            },
+            "status": {
+                "infoBackground": {
+                    "$value": "{semantic.dark.color.status.info.background}"
+                },
+                "infoForeground": {
+                    "$value": "{semantic.dark.color.status.info.foreground}"
+                },
+                "infoBorder": {
+                    "$value": "{semantic.dark.color.status.info.border}"
+                },
+                "successBackground": {
+                    "$value": "{semantic.dark.color.status.success.background}"
+                },
+                "successForeground": {
+                    "$value": "{semantic.dark.color.status.success.foreground}"
+                },
+                "successBorder": {
+                    "$value": "{semantic.dark.color.status.success.border}"
+                },
+                "warningBackground": {
+                    "$value": "{semantic.dark.color.status.warning.background}"
+                },
+                "warningForeground": {
+                    "$value": "{semantic.dark.color.status.warning.foreground}"
+                },
+                "warningBorder": {
+                    "$value": "{semantic.dark.color.status.warning.border}"
+                },
+                "errorBackground": {
+                    "$value": "{semantic.dark.color.status.error.background}"
+                },
+                "errorForeground": {
+                    "$value": "{semantic.dark.color.status.error.foreground}"
+                },
+                "errorBorder": {
+                    "$value": "{semantic.dark.color.status.error.border}"
+                },
+                "neutralBackground": {
+                    "$value": "{semantic.dark.color.status.neutral.background}"
+                },
+                "neutralForeground": {
+                    "$value": "{semantic.dark.color.status.neutral.foreground}"
+                },
+                "neutralBorder": {
+                    "$value": "{semantic.dark.color.status.neutral.border}"
+                }
+            },
+            "alert": {
+                "infoBackground": {
+                    "$value": "{semantic.dark.color.status.info.background}"
+                },
+                "infoForeground": {
+                    "$value": "{semantic.dark.color.status.info.foreground}"
+                },
+                "infoBorder": {
+                    "$value": "{semantic.dark.color.status.info.border}"
+                },
+                "successBackground": {
+                    "$value": "{semantic.dark.color.status.success.background}"
+                },
+                "successForeground": {
+                    "$value": "{semantic.dark.color.status.success.foreground}"
+                },
+                "successBorder": {
+                    "$value": "{semantic.dark.color.status.success.border}"
+                },
+                "warningBackground": {
+                    "$value": "{semantic.dark.color.status.warning.background}"
+                },
+                "warningForeground": {
+                    "$value": "{semantic.dark.color.status.warning.foreground}"
+                },
+                "warningBorder": {
+                    "$value": "{semantic.dark.color.status.warning.border}"
+                },
+                "errorBackground": {
+                    "$value": "{semantic.dark.color.status.error.background}"
+                },
+                "errorForeground": {
+                    "$value": "{semantic.dark.color.status.error.foreground}"
+                },
+                "errorBorder": {
+                    "$value": "{semantic.dark.color.status.error.border}"
+                },
+                "focusRing": {
+                    "$value": "{semantic.dark.color.state.focusRing}"
+                }
+            }
+        }
     }
-  },
-  "component": {
-    "shared": {
-      "focus": {
-        "width": { "$value": "{semantic.shared.border.focus}" },
-        "offset": { "$value": "{semantic.shared.space.inlineXs}" }
-      },
-      "button": {
-        "height": { "$value": "{semantic.shared.size.touchTarget}" },
-        "paddingX": { "$value": "{semantic.shared.space.controlX}" },
-        "gap": { "$value": "{semantic.shared.space.inlineSm}" },
-        "radius": { "$value": "{semantic.shared.radius.control}" },
-        "fontSize": { "$value": "{semantic.shared.font.body.sm}" },
-        "fontWeight": { "$value": "{semantic.shared.font.weight.control}" },
-        "duration": { "$value": "{semantic.shared.motion.duration}" }
-      },
-      "input": {
-        "height": { "$value": "{semantic.shared.size.touchTarget}" },
-        "paddingX": { "$value": "{semantic.shared.space.inlineMd}" },
-        "paddingY": { "$value": "{semantic.shared.space.inlineSm}" },
-        "radius": { "$value": "{semantic.shared.radius.control}" },
-        "fontSize": { "$value": "{semantic.shared.font.body.md}" },
-        "borderWidth": { "$value": "{semantic.shared.border.default}" }
-      },
-      "card": {
-        "padding": { "$value": "{semantic.shared.space.panel}" },
-        "gap": { "$value": "{semantic.shared.space.content}" },
-        "radius": { "$value": "{semantic.shared.radius.surface}" },
-        "borderWidth": { "$value": "{semantic.shared.border.default}" }
-      },
-      "navigation": {
-        "itemHeight": { "$value": "{semantic.shared.size.touchTarget}" },
-        "itemPaddingX": { "$value": "{semantic.shared.space.inlineMd}" },
-        "itemRadius": { "$value": "{semantic.shared.radius.control}" },
-        "gap": { "$value": "{semantic.shared.space.inlineXs}" }
-      },
-      "table": {
-        "cellPaddingX": { "$value": "{semantic.shared.space.content}" },
-        "cellPaddingY": { "$value": "{semantic.shared.space.inlineMd}" },
-        "rowMinimumHeight": { "$value": "{semantic.shared.size.touchTarget}" },
-        "radius": { "$value": "{semantic.shared.radius.surface}" }
-      },
-      "status": {
-        "paddingX": { "$value": "{semantic.shared.space.inlineMd}" },
-        "paddingY": { "$value": "{semantic.shared.space.inlineXs}" },
-        "radius": { "$value": "{semantic.shared.radius.pill}" },
-        "fontSize": { "$value": "{semantic.shared.font.body.sm}" },
-        "fontWeight": { "$value": "{semantic.shared.font.weight.control}" }
-      },
-      "alert": {
-        "padding": { "$value": "{semantic.shared.space.content}" },
-        "gap": { "$value": "{semantic.shared.space.inlineMd}" },
-        "radius": { "$value": "{semantic.shared.radius.surface}" },
-        "borderWidth": { "$value": "{semantic.shared.border.default}" }
-      }
-    },
-    "light": {
-      "button": {
-        "primary": {
-          "defaultBackground": {
-            "$value": "{semantic.light.color.action.primary.background}"
-          },
-          "defaultForeground": {
-            "$value": "{semantic.light.color.action.primary.foreground}"
-          },
-          "defaultBorder": {
-            "$value": "{semantic.light.color.action.primary.border}"
-          },
-          "hoverBackground": {
-            "$value": "{semantic.light.color.action.primary.hover}"
-          },
-          "activeBackground": {
-            "$value": "{semantic.light.color.action.primary.active}"
-          },
-          "focusRing": { "$value": "{semantic.light.color.state.focusRing}" },
-          "focusOffset": {
-            "$value": "{semantic.light.color.state.focusOffset}"
-          },
-          "disabledBackground": {
-            "$value": "{semantic.light.color.state.disabledBackground}"
-          },
-          "disabledForeground": {
-            "$value": "{semantic.light.color.state.disabledForeground}"
-          },
-          "disabledBorder": {
-            "$value": "{semantic.light.color.state.disabledBorder}"
-          }
-        },
-        "secondary": {
-          "defaultBackground": {
-            "$value": "{semantic.light.color.action.secondary.background}"
-          },
-          "defaultForeground": {
-            "$value": "{semantic.light.color.action.secondary.foreground}"
-          },
-          "defaultBorder": {
-            "$value": "{semantic.light.color.action.secondary.border}"
-          },
-          "hoverBackground": {
-            "$value": "{semantic.light.color.action.secondary.hover}"
-          },
-          "activeBackground": {
-            "$value": "{semantic.light.color.action.secondary.active}"
-          },
-          "focusRing": { "$value": "{semantic.light.color.state.focusRing}" },
-          "disabledBackground": {
-            "$value": "{semantic.light.color.action.secondary.disabledBackground}"
-          },
-          "disabledForeground": {
-            "$value": "{semantic.light.color.action.secondary.disabledForeground}"
-          },
-          "disabledBorder": {
-            "$value": "{semantic.light.color.action.secondary.disabledBorder}"
-          }
-        },
-        "destructive": {
-          "defaultBackground": {
-            "$value": "{semantic.light.color.action.destructive.background}"
-          },
-          "defaultForeground": {
-            "$value": "{semantic.light.color.action.destructive.foreground}"
-          },
-          "defaultBorder": {
-            "$value": "{semantic.light.color.action.destructive.border}"
-          },
-          "hoverBackground": {
-            "$value": "{semantic.light.color.action.destructive.hover}"
-          },
-          "activeBackground": {
-            "$value": "{semantic.light.color.action.destructive.active}"
-          },
-          "focusRing": {
-            "$value": "{semantic.light.color.status.error.border}"
-          },
-          "disabledBackground": {
-            "$value": "{semantic.light.color.action.destructive.disabledBackground}"
-          },
-          "disabledForeground": {
-            "$value": "{semantic.light.color.action.destructive.disabledForeground}"
-          },
-          "disabledBorder": {
-            "$value": "{semantic.light.color.action.destructive.disabledBorder}"
-          }
-        }
-      },
-      "input": {
-        "defaultBackground": {
-          "$value": "{semantic.light.color.surface.base}"
-        },
-        "defaultForeground": {
-          "$value": "{semantic.light.color.text.primary}"
-        },
-        "defaultBorder": { "$value": "{semantic.light.color.border.default}" },
-        "placeholder": { "$value": "{semantic.light.color.text.placeholder}" },
-        "hoverBorder": { "$value": "{semantic.light.color.border.strong}" },
-        "focusBorder": { "$value": "{semantic.light.color.state.focusRing}" },
-        "focusRing": { "$value": "{semantic.light.color.state.focusRing}" },
-        "disabledBackground": {
-          "$value": "{semantic.light.color.state.disabledBackground}"
-        },
-        "disabledForeground": {
-          "$value": "{semantic.light.color.state.disabledForeground}"
-        },
-        "disabledBorder": {
-          "$value": "{semantic.light.color.state.disabledBorder}"
-        },
-        "readOnlyBackground": {
-          "$value": "{semantic.light.color.state.readOnlyBackground}"
-        },
-        "readOnlyForeground": {
-          "$value": "{semantic.light.color.state.readOnlyForeground}"
-        },
-        "readOnlyBorder": {
-          "$value": "{semantic.light.color.state.readOnlyBorder}"
-        },
-        "errorBorder": {
-          "$value": "{semantic.light.color.status.error.border}"
-        },
-        "errorForeground": {
-          "$value": "{semantic.light.color.status.error.foreground}"
-        },
-        "successBorder": {
-          "$value": "{semantic.light.color.status.success.border}"
-        },
-        "successForeground": {
-          "$value": "{semantic.light.color.status.success.foreground}"
-        },
-        "warningBorder": {
-          "$value": "{semantic.light.color.status.warning.border}"
-        },
-        "warningForeground": {
-          "$value": "{semantic.light.color.status.warning.foreground}"
-        }
-      },
-      "card": {
-        "defaultBackground": {
-          "$value": "{semantic.light.color.surface.raised}"
-        },
-        "defaultForeground": {
-          "$value": "{semantic.light.color.text.primary}"
-        },
-        "defaultBorder": { "$value": "{semantic.light.color.border.subtle}" },
-        "defaultShadow": { "$value": "{semantic.shared.shadow.rest}" },
-        "hoverBorder": { "$value": "{semantic.light.color.border.default}" },
-        "hoverShadow": { "$value": "{semantic.shared.shadow.raised}" },
-        "activeBackground": {
-          "$value": "{semantic.light.color.surface.sunken}"
-        },
-        "focusRing": { "$value": "{semantic.light.color.state.focusRing}" },
-        "disabledBackground": {
-          "$value": "{semantic.light.color.state.disabledBackground}"
-        },
-        "disabledForeground": {
-          "$value": "{semantic.light.color.state.disabledForeground}"
-        },
-        "errorBorder": {
-          "$value": "{semantic.light.color.status.error.border}"
-        },
-        "successBorder": {
-          "$value": "{semantic.light.color.status.success.border}"
-        },
-        "warningBorder": {
-          "$value": "{semantic.light.color.status.warning.border}"
-        }
-      },
-      "navigation": {
-        "defaultBackground": {
-          "$value": "{semantic.light.color.surface.base}"
-        },
-        "defaultForeground": {
-          "$value": "{semantic.light.color.text.secondary}"
-        },
-        "hoverBackground": {
-          "$value": "{semantic.light.color.surface.sunken}"
-        },
-        "hoverForeground": { "$value": "{semantic.light.color.text.primary}" },
-        "activeBackground": {
-          "$value": "{semantic.light.color.state.selectedBackground}"
-        },
-        "activeForeground": {
-          "$value": "{semantic.light.color.state.selectedForeground}"
-        },
-        "focusRing": { "$value": "{semantic.light.color.state.focusRing}" },
-        "disabledForeground": {
-          "$value": "{semantic.light.color.state.disabledForeground}"
-        }
-      },
-      "table": {
-        "background": { "$value": "{semantic.light.color.surface.base}" },
-        "foreground": { "$value": "{semantic.light.color.text.primary}" },
-        "headerBackground": {
-          "$value": "{semantic.light.color.surface.sunken}"
-        },
-        "headerForeground": { "$value": "{semantic.light.color.text.primary}" },
-        "border": { "$value": "{semantic.light.color.border.subtle}" },
-        "rowHover": { "$value": "{semantic.light.color.surface.canvas}" },
-        "rowSelected": {
-          "$value": "{semantic.light.color.state.selectedBackground}"
-        },
-        "rowSelectedForeground": {
-          "$value": "{semantic.light.color.state.selectedForeground}"
-        },
-        "rowFocus": { "$value": "{semantic.light.color.state.focusRing}" },
-        "rowDisabledForeground": {
-          "$value": "{semantic.light.color.state.disabledForeground}"
-        }
-      },
-      "status": {
-        "infoBackground": {
-          "$value": "{semantic.light.color.status.info.background}"
-        },
-        "infoForeground": {
-          "$value": "{semantic.light.color.status.info.foreground}"
-        },
-        "infoBorder": { "$value": "{semantic.light.color.status.info.border}" },
-        "successBackground": {
-          "$value": "{semantic.light.color.status.success.background}"
-        },
-        "successForeground": {
-          "$value": "{semantic.light.color.status.success.foreground}"
-        },
-        "successBorder": {
-          "$value": "{semantic.light.color.status.success.border}"
-        },
-        "warningBackground": {
-          "$value": "{semantic.light.color.status.warning.background}"
-        },
-        "warningForeground": {
-          "$value": "{semantic.light.color.status.warning.foreground}"
-        },
-        "warningBorder": {
-          "$value": "{semantic.light.color.status.warning.border}"
-        },
-        "errorBackground": {
-          "$value": "{semantic.light.color.status.error.background}"
-        },
-        "errorForeground": {
-          "$value": "{semantic.light.color.status.error.foreground}"
-        },
-        "errorBorder": {
-          "$value": "{semantic.light.color.status.error.border}"
-        },
-        "neutralBackground": {
-          "$value": "{semantic.light.color.status.neutral.background}"
-        },
-        "neutralForeground": {
-          "$value": "{semantic.light.color.status.neutral.foreground}"
-        },
-        "neutralBorder": {
-          "$value": "{semantic.light.color.status.neutral.border}"
-        }
-      },
-      "alert": {
-        "infoBackground": {
-          "$value": "{semantic.light.color.status.info.background}"
-        },
-        "infoForeground": {
-          "$value": "{semantic.light.color.status.info.foreground}"
-        },
-        "infoBorder": { "$value": "{semantic.light.color.status.info.border}" },
-        "successBackground": {
-          "$value": "{semantic.light.color.status.success.background}"
-        },
-        "successForeground": {
-          "$value": "{semantic.light.color.status.success.foreground}"
-        },
-        "successBorder": {
-          "$value": "{semantic.light.color.status.success.border}"
-        },
-        "warningBackground": {
-          "$value": "{semantic.light.color.status.warning.background}"
-        },
-        "warningForeground": {
-          "$value": "{semantic.light.color.status.warning.foreground}"
-        },
-        "warningBorder": {
-          "$value": "{semantic.light.color.status.warning.border}"
-        },
-        "errorBackground": {
-          "$value": "{semantic.light.color.status.error.background}"
-        },
-        "errorForeground": {
-          "$value": "{semantic.light.color.status.error.foreground}"
-        },
-        "errorBorder": {
-          "$value": "{semantic.light.color.status.error.border}"
-        },
-        "focusRing": { "$value": "{semantic.light.color.state.focusRing}" }
-      }
-    },
-    "dark": {
-      "button": {
-        "primary": {
-          "defaultBackground": {
-            "$value": "{semantic.dark.color.action.primary.background}"
-          },
-          "defaultForeground": {
-            "$value": "{semantic.dark.color.action.primary.foreground}"
-          },
-          "defaultBorder": {
-            "$value": "{semantic.dark.color.action.primary.border}"
-          },
-          "hoverBackground": {
-            "$value": "{semantic.dark.color.action.primary.hover}"
-          },
-          "activeBackground": {
-            "$value": "{semantic.dark.color.action.primary.active}"
-          },
-          "focusRing": { "$value": "{semantic.dark.color.state.focusRing}" },
-          "focusOffset": {
-            "$value": "{semantic.dark.color.state.focusOffset}"
-          },
-          "disabledBackground": {
-            "$value": "{semantic.dark.color.state.disabledBackground}"
-          },
-          "disabledForeground": {
-            "$value": "{semantic.dark.color.state.disabledForeground}"
-          },
-          "disabledBorder": {
-            "$value": "{semantic.dark.color.state.disabledBorder}"
-          }
-        },
-        "secondary": {
-          "defaultBackground": {
-            "$value": "{semantic.dark.color.action.secondary.background}"
-          },
-          "defaultForeground": {
-            "$value": "{semantic.dark.color.action.secondary.foreground}"
-          },
-          "defaultBorder": {
-            "$value": "{semantic.dark.color.action.secondary.border}"
-          },
-          "hoverBackground": {
-            "$value": "{semantic.dark.color.action.secondary.hover}"
-          },
-          "activeBackground": {
-            "$value": "{semantic.dark.color.action.secondary.active}"
-          },
-          "focusRing": { "$value": "{semantic.dark.color.state.focusRing}" },
-          "disabledBackground": {
-            "$value": "{semantic.dark.color.action.secondary.disabledBackground}"
-          },
-          "disabledForeground": {
-            "$value": "{semantic.dark.color.action.secondary.disabledForeground}"
-          },
-          "disabledBorder": {
-            "$value": "{semantic.dark.color.action.secondary.disabledBorder}"
-          }
-        },
-        "destructive": {
-          "defaultBackground": {
-            "$value": "{semantic.dark.color.action.destructive.background}"
-          },
-          "defaultForeground": {
-            "$value": "{semantic.dark.color.action.destructive.foreground}"
-          },
-          "defaultBorder": {
-            "$value": "{semantic.dark.color.action.destructive.border}"
-          },
-          "hoverBackground": {
-            "$value": "{semantic.dark.color.action.destructive.hover}"
-          },
-          "activeBackground": {
-            "$value": "{semantic.dark.color.action.destructive.active}"
-          },
-          "focusRing": {
-            "$value": "{semantic.dark.color.status.error.border}"
-          },
-          "disabledBackground": {
-            "$value": "{semantic.dark.color.action.destructive.disabledBackground}"
-          },
-          "disabledForeground": {
-            "$value": "{semantic.dark.color.action.destructive.disabledForeground}"
-          },
-          "disabledBorder": {
-            "$value": "{semantic.dark.color.action.destructive.disabledBorder}"
-          }
-        }
-      },
-      "input": {
-        "defaultBackground": {
-          "$value": "{semantic.dark.color.surface.raised}"
-        },
-        "defaultForeground": { "$value": "{semantic.dark.color.text.primary}" },
-        "defaultBorder": { "$value": "{semantic.dark.color.border.default}" },
-        "placeholder": { "$value": "{semantic.dark.color.text.placeholder}" },
-        "hoverBorder": { "$value": "{semantic.dark.color.border.strong}" },
-        "focusBorder": { "$value": "{semantic.dark.color.state.focusRing}" },
-        "focusRing": { "$value": "{semantic.dark.color.state.focusRing}" },
-        "disabledBackground": {
-          "$value": "{semantic.dark.color.state.disabledBackground}"
-        },
-        "disabledForeground": {
-          "$value": "{semantic.dark.color.state.disabledForeground}"
-        },
-        "disabledBorder": {
-          "$value": "{semantic.dark.color.state.disabledBorder}"
-        },
-        "readOnlyBackground": {
-          "$value": "{semantic.dark.color.state.readOnlyBackground}"
-        },
-        "readOnlyForeground": {
-          "$value": "{semantic.dark.color.state.readOnlyForeground}"
-        },
-        "readOnlyBorder": {
-          "$value": "{semantic.dark.color.state.readOnlyBorder}"
-        },
-        "errorBorder": {
-          "$value": "{semantic.dark.color.status.error.border}"
-        },
-        "errorForeground": {
-          "$value": "{semantic.dark.color.status.error.foreground}"
-        },
-        "successBorder": {
-          "$value": "{semantic.dark.color.status.success.border}"
-        },
-        "successForeground": {
-          "$value": "{semantic.dark.color.status.success.foreground}"
-        },
-        "warningBorder": {
-          "$value": "{semantic.dark.color.status.warning.border}"
-        },
-        "warningForeground": {
-          "$value": "{semantic.dark.color.status.warning.foreground}"
-        }
-      },
-      "card": {
-        "defaultBackground": {
-          "$value": "{semantic.dark.color.surface.raised}"
-        },
-        "defaultForeground": { "$value": "{semantic.dark.color.text.primary}" },
-        "defaultBorder": { "$value": "{semantic.dark.color.border.subtle}" },
-        "defaultShadow": { "$value": "{semantic.shared.shadow.none}" },
-        "hoverBorder": { "$value": "{semantic.dark.color.border.default}" },
-        "hoverShadow": { "$value": "{semantic.shared.shadow.raised}" },
-        "activeBackground": {
-          "$value": "{semantic.dark.color.surface.sunken}"
-        },
-        "focusRing": { "$value": "{semantic.dark.color.state.focusRing}" },
-        "disabledBackground": {
-          "$value": "{semantic.dark.color.state.disabledBackground}"
-        },
-        "disabledForeground": {
-          "$value": "{semantic.dark.color.state.disabledForeground}"
-        },
-        "errorBorder": {
-          "$value": "{semantic.dark.color.status.error.border}"
-        },
-        "successBorder": {
-          "$value": "{semantic.dark.color.status.success.border}"
-        },
-        "warningBorder": {
-          "$value": "{semantic.dark.color.status.warning.border}"
-        }
-      },
-      "navigation": {
-        "defaultBackground": { "$value": "{semantic.dark.color.surface.base}" },
-        "defaultForeground": {
-          "$value": "{semantic.dark.color.text.secondary}"
-        },
-        "hoverBackground": { "$value": "{semantic.dark.color.surface.raised}" },
-        "hoverForeground": { "$value": "{semantic.dark.color.text.primary}" },
-        "activeBackground": {
-          "$value": "{semantic.dark.color.state.selectedBackground}"
-        },
-        "activeForeground": {
-          "$value": "{semantic.dark.color.state.selectedForeground}"
-        },
-        "focusRing": { "$value": "{semantic.dark.color.state.focusRing}" },
-        "disabledForeground": {
-          "$value": "{semantic.dark.color.state.disabledForeground}"
-        }
-      },
-      "table": {
-        "background": { "$value": "{semantic.dark.color.surface.base}" },
-        "foreground": { "$value": "{semantic.dark.color.text.primary}" },
-        "headerBackground": {
-          "$value": "{semantic.dark.color.surface.raised}"
-        },
-        "headerForeground": { "$value": "{semantic.dark.color.text.primary}" },
-        "border": { "$value": "{semantic.dark.color.border.subtle}" },
-        "rowHover": { "$value": "{semantic.dark.color.surface.raised}" },
-        "rowSelected": {
-          "$value": "{semantic.dark.color.state.selectedBackground}"
-        },
-        "rowSelectedForeground": {
-          "$value": "{semantic.dark.color.state.selectedForeground}"
-        },
-        "rowFocus": { "$value": "{semantic.dark.color.state.focusRing}" },
-        "rowDisabledForeground": {
-          "$value": "{semantic.dark.color.state.disabledForeground}"
-        }
-      },
-      "status": {
-        "infoBackground": {
-          "$value": "{semantic.dark.color.status.info.background}"
-        },
-        "infoForeground": {
-          "$value": "{semantic.dark.color.status.info.foreground}"
-        },
-        "infoBorder": { "$value": "{semantic.dark.color.status.info.border}" },
-        "successBackground": {
-          "$value": "{semantic.dark.color.status.success.background}"
-        },
-        "successForeground": {
-          "$value": "{semantic.dark.color.status.success.foreground}"
-        },
-        "successBorder": {
-          "$value": "{semantic.dark.color.status.success.border}"
-        },
-        "warningBackground": {
-          "$value": "{semantic.dark.color.status.warning.background}"
-        },
-        "warningForeground": {
-          "$value": "{semantic.dark.color.status.warning.foreground}"
-        },
-        "warningBorder": {
-          "$value": "{semantic.dark.color.status.warning.border}"
-        },
-        "errorBackground": {
-          "$value": "{semantic.dark.color.status.error.background}"
-        },
-        "errorForeground": {
-          "$value": "{semantic.dark.color.status.error.foreground}"
-        },
-        "errorBorder": {
-          "$value": "{semantic.dark.color.status.error.border}"
-        },
-        "neutralBackground": {
-          "$value": "{semantic.dark.color.status.neutral.background}"
-        },
-        "neutralForeground": {
-          "$value": "{semantic.dark.color.status.neutral.foreground}"
-        },
-        "neutralBorder": {
-          "$value": "{semantic.dark.color.status.neutral.border}"
-        }
-      },
-      "alert": {
-        "infoBackground": {
-          "$value": "{semantic.dark.color.status.info.background}"
-        },
-        "infoForeground": {
-          "$value": "{semantic.dark.color.status.info.foreground}"
-        },
-        "infoBorder": { "$value": "{semantic.dark.color.status.info.border}" },
-        "successBackground": {
-          "$value": "{semantic.dark.color.status.success.background}"
-        },
-        "successForeground": {
-          "$value": "{semantic.dark.color.status.success.foreground}"
-        },
-        "successBorder": {
-          "$value": "{semantic.dark.color.status.success.border}"
-        },
-        "warningBackground": {
-          "$value": "{semantic.dark.color.status.warning.background}"
-        },
-        "warningForeground": {
-          "$value": "{semantic.dark.color.status.warning.foreground}"
-        },
-        "warningBorder": {
-          "$value": "{semantic.dark.color.status.warning.border}"
-        },
-        "errorBackground": {
-          "$value": "{semantic.dark.color.status.error.background}"
-        },
-        "errorForeground": {
-          "$value": "{semantic.dark.color.status.error.foreground}"
-        },
-        "errorBorder": {
-          "$value": "{semantic.dark.color.status.error.border}"
-        },
-        "focusRing": { "$value": "{semantic.dark.color.state.focusRing}" }
-      }
-    }
-  }
 }

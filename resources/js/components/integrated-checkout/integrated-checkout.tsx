@@ -9,14 +9,14 @@ export function IntegratedCheckout({
     ...callbacks
 }: IntegratedCheckoutProps) {
     return (
-        <main className="min-h-screen bg-brand-canvas text-slate-950">
+        <main className="bg-brand-canvas min-h-screen text-slate-950">
             <a
                 href="#checkout-content"
-                className="sr-only focus:not-sr-only focus:block focus:bg-white focus:p-4 focus:text-brand-green"
+                className="focus:text-brand-green sr-only focus:not-sr-only focus:block focus:bg-white focus:p-4"
             >
                 Lewati ke ringkasan checkout
             </a>
-            <header className="border-b border-brand-green/15 bg-white">
+            <header className="border-brand-green/15 border-b bg-white">
                 <div className="mx-auto flex max-w-6xl items-center gap-5 px-4 py-5 sm:px-8">
                     <img
                         src={oncamLogo}
@@ -26,7 +26,7 @@ export function IntegratedCheckout({
                         className="h-auto w-20 shrink-0"
                     />
                     <div>
-                        <p className="text-sm font-semibold text-brand-green">
+                        <p className="text-brand-green text-sm font-semibold">
                             Checkout peserta
                         </p>
                         <p className="mt-1 text-sm text-slate-600">
@@ -45,15 +45,15 @@ export function IntegratedCheckout({
                 </h1>
                 {screen.state === 'ready' ? (
                     <>
-                        <div className="mt-5 mb-8 rounded-lg border-l-4 border-brand-gold bg-white p-5">
+                        <div className="border-brand-gold mb-8 mt-5 rounded-lg border-l-4 bg-white p-5">
                             <p className="text-sm text-slate-600">
                                 {screen.summary.sourceName} ·{' '}
                                 {screen.summary.attemptLabel}
                             </p>
-                            <p className="mt-2 font-semibold wrap-anywhere">
+                            <p className="wrap-anywhere mt-2 font-semibold">
                                 {screen.summary.packageName}
                             </p>
-                            <p className="mt-2 text-sm wrap-anywhere">
+                            <p className="wrap-anywhere mt-2 text-sm">
                                 Cabang terkunci:{' '}
                                 <strong>{screen.summary.branchName}</strong>
                             </p>

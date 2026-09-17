@@ -80,7 +80,7 @@ export default function RegistrationOrderStatus({ authorized, order }: Props) {
                             className="size-10 text-teal-200"
                             aria-hidden="true"
                         />
-                        <p className="mt-6 text-sm font-medium tracking-wide text-teal-200 uppercase">
+                        <p className="mt-6 text-sm font-medium uppercase tracking-wide text-teal-200">
                             Area peserta
                         </p>
                         <h1 className="mt-2 text-3xl font-semibold tracking-tight">
@@ -141,7 +141,7 @@ export default function RegistrationOrderStatus({ authorized, order }: Props) {
                                         <dt className="text-slate-600">
                                             Nomor pesanan
                                         </dt>
-                                        <dd className="text-right font-medium break-all">
+                                        <dd className="break-all text-right font-medium">
                                             {order.publicId}
                                         </dd>
                                     </div>

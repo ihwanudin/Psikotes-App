@@ -51,7 +51,7 @@ export default function RegistrationReceived({
                                 aria-hidden="true"
                             />
                         </div>
-                        <p className="mt-8 text-sm font-medium tracking-wide text-teal-200 uppercase">
+                        <p className="mt-8 text-sm font-medium uppercase tracking-wide text-teal-200">
                             Data pendaftaran tersimpan
                         </p>
                         <h1 className="mt-2 text-3xl font-semibold tracking-tight">

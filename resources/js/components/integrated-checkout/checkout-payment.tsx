@@ -49,7 +49,7 @@ export function CheckoutPayment({
     return (
         <section
             aria-labelledby="checkout-payment-title"
-            className="space-y-4 rounded-lg border border-brand-green/20 bg-white p-5"
+            className="border-brand-green/20 space-y-4 rounded-lg border bg-white p-5"
         >
             <h2 id="checkout-payment-title" className="text-xl font-semibold">
                 Pembayaran
@@ -82,7 +82,7 @@ export function CheckoutPayment({
             </dl>
             <p
                 role="status"
-                className="rounded-md bg-brand-gold-soft p-3 text-sm font-medium text-slate-900"
+                className="bg-brand-gold-soft rounded-md p-3 text-sm font-medium text-slate-900"
             >
                 {paymentLabel(payment)}
             </p>
@@ -112,7 +112,7 @@ export function CheckoutPayment({
                         type="button"
                         disabled={busy || !onPayment}
                         onClick={onPayment}
-                        className="min-h-12 w-full bg-brand-green whitespace-normal text-white hover:bg-brand-green-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-green"
+                        className="bg-brand-green hover:bg-brand-green-deep focus-visible:outline-brand-green min-h-12 w-full whitespace-normal text-white focus-visible:outline-2 focus-visible:outline-offset-2"
                     >
                         {payment.state === 'pending'
                             ? 'Lanjutkan pembayaran yang sama'

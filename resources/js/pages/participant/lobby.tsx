@@ -97,7 +97,7 @@ export default function ParticipantLobby() {
                             className="size-10 text-teal-200"
                             aria-hidden="true"
                         />
-                        <p className="mt-6 text-sm font-medium tracking-wide text-teal-200 uppercase">
+                        <p className="mt-6 text-sm font-medium uppercase tracking-wide text-teal-200">
                             Seleksi Beasiswa Jepang
                         </p>
                         <h1 className="mt-2 text-3xl font-semibold tracking-tight">

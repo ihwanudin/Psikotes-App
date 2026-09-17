@@ -6,10 +6,10 @@ import type {
 function ConsentText({ document }: { document: CheckoutConsentDocument }) {
     return (
         <details className="rounded-md border border-slate-300 bg-white p-3">
-            <summary className="min-h-11 cursor-pointer py-2 font-medium focus-visible:outline-2 focus-visible:outline-brand-green">
+            <summary className="focus-visible:outline-brand-green min-h-11 cursor-pointer py-2 font-medium focus-visible:outline-2">
                 {document.title} · {document.version}
             </summary>
-            <p className="mt-3 text-sm leading-7 whitespace-pre-line">
+            <p className="mt-3 whitespace-pre-line text-sm leading-7">
                 {document.text}
             </p>
         </details>
@@ -35,7 +35,7 @@ export function CheckoutConsents({
                 Persetujuan Anda
             </h2>
             {consents.legalReviewPending ? (
-                <p className="rounded-md bg-brand-gold-soft p-3 text-sm text-slate-900">
+                <p className="bg-brand-gold-soft rounded-md p-3 text-sm text-slate-900">
                     Naskah persetujuan masih dalam tinjauan legal. Tampilan ini
                     belum siap digunakan untuk persetujuan nyata.
                 </p>
@@ -53,7 +53,7 @@ export function CheckoutConsents({
                                     onPsychotest(event.target.checked)
                                 }
                                 required
-                                className="mt-1 size-5 shrink-0 accent-brand-green focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-green"
+                                className="accent-brand-green focus-visible:outline-brand-green mt-1 size-5 shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2"
                             />
                             <span className="text-sm leading-6">
                                 Saya telah membaca dan menyetujui persetujuan
@@ -82,7 +82,7 @@ export function CheckoutConsents({
                                     onDass(event.target.checked)
                                 }
                                 required
-                                className="mt-1 size-5 shrink-0 accent-brand-green focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-green"
+                                className="accent-brand-green focus-visible:outline-brand-green mt-1 size-5 shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2"
                             />
                             <span className="text-sm leading-6">
                                 Saya telah membaca dan menyetujui persetujuan

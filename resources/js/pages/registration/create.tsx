@@ -74,11 +74,11 @@ export default function CreateRegistration({
     return (
         <>
             <Head title="Pendaftaran psikotes" />
-            <main className="min-h-screen bg-brand-canvas text-slate-950">
+            <main className="bg-brand-canvas min-h-screen text-slate-950">
                 <div className="mx-auto grid w-full max-w-6xl lg:min-h-screen lg:grid-cols-[0.78fr_1.22fr]">
-                    <aside className="relative overflow-hidden bg-brand-green-deep px-6 py-10 text-white sm:px-10 lg:sticky lg:top-0 lg:h-screen lg:px-12 lg:py-14">
+                    <aside className="bg-brand-green-deep relative overflow-hidden px-6 py-10 text-white sm:px-10 lg:sticky lg:top-0 lg:h-screen lg:px-12 lg:py-14">
                         <div
-                            className="absolute -top-24 -right-20 h-72 w-72 rounded-full bg-brand-gold/20 blur-3xl"
+                            className="bg-brand-gold/20 absolute -right-20 -top-24 h-72 w-72 rounded-full blur-3xl"
                             aria-hidden="true"
                         />
                         <div className="relative flex h-full max-w-md flex-col">
@@ -93,10 +93,10 @@ export default function CreateRegistration({
                             </div>
 
                             <div className="my-auto">
-                                <p className="mb-3 text-sm font-semibold tracking-wide text-brand-gold uppercase">
+                                <p className="text-brand-gold mb-3 text-sm font-semibold uppercase tracking-wide">
                                     Pendaftaran peserta
                                 </p>
-                                <h1 className="text-3xl leading-tight font-semibold tracking-tight sm:text-4xl">
+                                <h1 className="text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">
                                     Satu langkah sebelum verifikasi identitas.
                                 </h1>
                                 <p className="mt-5 max-w-sm text-sm leading-7 text-white/80 sm:text-base">
@@ -108,14 +108,14 @@ export default function CreateRegistration({
 
                             <div className="mt-10 space-y-4 border-t border-white/15 pt-7 text-sm text-white/80">
                                 <div className="flex gap-3">
-                                    <ShieldCheck className="mt-0.5 size-5 shrink-0 text-brand-gold" />
+                                    <ShieldCheck className="text-brand-gold mt-0.5 size-5 shrink-0" />
                                     <p>
                                         Hasil asesmen dilindungi dan hanya dapat
                                         diakses oleh pihak yang berwenang.
                                     </p>
                                 </div>
                                 <div className="flex gap-3">
-                                    <LockKeyhole className="mt-0.5 size-5 shrink-0 text-brand-gold" />
+                                    <LockKeyhole className="text-brand-gold mt-0.5 size-5 shrink-0" />
                                     <p>
                                         Atribusi cabang dikunci oleh server dari
                                         tautan pertama yang Anda buka.
@@ -193,7 +193,7 @@ export default function CreateRegistration({
                                                             errors.gender,
                                                         )}
                                                         aria-describedby="gender-error"
-                                                        className="h-12 w-full rounded-md border border-input bg-white px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                                                        className="border-input shadow-xs focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 h-12 w-full rounded-md border bg-white px-3 text-sm outline-none"
                                                     >
                                                         <option
                                                             value=""
@@ -280,7 +280,7 @@ export default function CreateRegistration({
                                                             errors.intended_field,
                                                         )}
                                                         aria-describedby="intended_field-error"
-                                                        className="h-12 w-full rounded-md border border-input bg-white px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                                                        className="border-input shadow-xs focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 h-12 w-full rounded-md border bg-white px-3 text-sm outline-none"
                                                     >
                                                         <option
                                                             value=""
@@ -374,16 +374,16 @@ export default function CreateRegistration({
                                                 </div>
                                             </div>
 
-                                            <div className="flex items-start gap-3 rounded-xl border border-brand-gold/40 bg-brand-gold-soft p-4">
-                                                <Building2 className="mt-0.5 size-5 shrink-0 text-brand-green" />
+                                            <div className="border-brand-gold/40 bg-brand-gold-soft flex items-start gap-3 rounded-xl border p-4">
+                                                <Building2 className="text-brand-green mt-0.5 size-5 shrink-0" />
                                                 <div>
-                                                    <p className="text-xs font-semibold tracking-wide text-brand-green uppercase">
+                                                    <p className="text-brand-green text-xs font-semibold uppercase tracking-wide">
                                                         Cabang teratribusi
                                                     </p>
-                                                    <p className="mt-1 font-semibold text-brand-green-deep">
+                                                    <p className="text-brand-green-deep mt-1 font-semibold">
                                                         {assignedBranch.name}
                                                     </p>
-                                                    <p className="mt-1 text-xs leading-5 text-brand-green">
+                                                    <p className="text-brand-green mt-1 text-xs leading-5">
                                                         Ditentukan otomatis oleh
                                                         server dan tidak dapat
                                                         diubah dari formulir.
@@ -430,7 +430,7 @@ export default function CreateRegistration({
                                                                         .checked,
                                                                 )
                                                             }
-                                                            className="mt-1 size-5 shrink-0 accent-brand-green"
+                                                            className="accent-brand-green mt-1 size-5 shrink-0"
                                                         />
                                                         <span>
                                                             <span className="block text-sm font-semibold">
@@ -454,7 +454,7 @@ export default function CreateRegistration({
                                                         role="alert"
                                                         className="mt-3"
                                                     />
-                                                    <p className="mt-4 border-t border-slate-100 pt-4 text-sm font-semibold text-brand-green-deep">
+                                                    <p className="text-brand-green-deep mt-4 border-t border-slate-100 pt-4 text-sm font-semibold">
                                                         Total:{' '}
                                                         {totalAmount === 0
                                                             ? 'Gratis'
@@ -479,7 +479,7 @@ export default function CreateRegistration({
                                             ) : (
                                                 <div
                                                     role="status"
-                                                    className="rounded-xl border border-brand-gold/40 bg-brand-gold-soft p-4 text-sm text-brand-green-deep"
+                                                    className="border-brand-gold/40 bg-brand-gold-soft text-brand-green-deep rounded-xl border p-4 text-sm"
                                                 >
                                                     Paket ini gratis dan tidak
                                                     memerlukan metode
@@ -514,7 +514,7 @@ export default function CreateRegistration({
                                                             errors.consent_psychotest,
                                                         )}
                                                         aria-describedby="psychotest-copy consent_psychotest-error"
-                                                        className="mt-1 size-5 shrink-0 accent-brand-green"
+                                                        className="accent-brand-green mt-1 size-5 shrink-0"
                                                     />
                                                     <div>
                                                         <Label
@@ -563,7 +563,7 @@ export default function CreateRegistration({
                                                         value="1"
                                                         required
                                                         aria-describedby="dass-copy consent_dass-error"
-                                                        className="mt-1 size-4 shrink-0 accent-brand-green"
+                                                        className="accent-brand-green mt-1 size-4 shrink-0"
                                                     />
                                                     <div>
                                                         <Label
@@ -606,7 +606,7 @@ export default function CreateRegistration({
                                                 (paymentRequired &&
                                                     paymentConfigurationPending)
                                             }
-                                            className="h-12 w-full bg-brand-green text-base font-semibold text-white shadow-sm transition-colors hover:bg-brand-green-deep focus-visible:ring-brand-gold"
+                                            className="bg-brand-green hover:bg-brand-green-deep focus-visible:ring-brand-gold h-12 w-full text-base font-semibold text-white shadow-sm transition-colors"
                                         >
                                             {processing && <Spinner />}
                                             Simpan pendaftaran
