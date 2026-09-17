@@ -323,8 +323,8 @@ return new class extends Migration
     }
 
     /**
-     * @param list<object{name:string,sql:string}> $triggers
-     * @param list<object{name:string,sql:string}> $indexes
+     * @param  list<object{name:string,sql:string}>  $triggers
+     * @param  list<object{name:string,sql:string}>  $indexes
      */
     private function dropSqliteObjects(array $triggers, array $indexes): void
     {
@@ -337,8 +337,8 @@ return new class extends Migration
     }
 
     /**
-     * @param list<object{name:string,sql:string}> $triggers
-     * @param list<object{name:string,sql:string}> $indexes
+     * @param  list<object{name:string,sql:string}>  $triggers
+     * @param  list<object{name:string,sql:string}>  $indexes
      */
     private function restoreSqliteObjects(array $triggers, array $indexes): void
     {
