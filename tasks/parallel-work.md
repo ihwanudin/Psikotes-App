@@ -528,18 +528,31 @@ two narrowly-authorized exceptions (`routes/web.php` route additions and
 `AppServiceProvider` limiter additions) — verified by diff inspection each
 time, not by trusting the worker's own scope claim.
 
-**Known limitation:** the PostgreSQL/RLS branch of both migrations
-(`SECURITY DEFINER` guard functions, `REVOKE`/`GRANT`, `CREATE POLICY`) was
-reviewed against the closest precedent
-(`2026_09_13_000100_create_generic_instrument_result_ledger.php`) but never
-executed against a live PostgreSQL instance — only the SQLite branch was
-run and verified end-to-end (migrate, rollback, and real insert/update/
-delete guard-trigger tests). This is recorded as `partial` rather than
-`pass` in the PostgreSQL/RLS column of `tasks/f2-f9-acceptance.md` for
-T-12..T-14 and T-17..T-21. A PostgreSQL runtime-role verification pass
-(disposable container, real `psikotes_runtime` connection, adversarial RLS
-probes) is the next dependency before this can be marked fully accepted for
-that column.
+**PostgreSQL/RLS limitation — closed (2026-09-17).** A fourth increment
+(`c91c0f0`, `3f67d6e`) added `tests/Postgres/EligibilityDecisionRlsTest.php`
+(20 tests) and `tests/Postgres/BilingualNarrativeRlsTest.php` (18 tests)
+against a real disposable PostgreSQL 17.6 container, proving: RLS `FORCE`,
+service-only SELECT/INSERT policies (5 non-service roles confirmed denied),
+`SECURITY DEFINER` guard functions with locked `search_path` and `REVOKE ALL
+... FROM PUBLIC`, append-only trigger rejection of UPDATE/DELETE, broken-chain
+rejection, and CHECK-constraint enforcement (field_code, iq, validity,
+snapshot_json). 38 tests, 130 assertions, all passing. Disposable container
+cleanup verified 0 containers/0 networks under label
+`oncam.f3f4-pg-verify`.
+
+Coordinator independently re-verified this on a **separate** disposable
+PostgreSQL container from scratch (fresh `docker run`, full 54-migration
+`php artisan migrate --database=pgsql_migration`, then both test files) and
+reproduced the identical result: 38 tests, 38 passed, 130 assertions. Two
+setup bugs were found and fixed in the coordinator's own verification
+environment along the way (a stale-Docker-volume issue causing init scripts
+to be skipped, and a Git-Bash/MSYS path-mangling issue corrupting bind-mount
+container-side paths) — neither affected DeepSeek's own commits, both were
+artifacts of the coordinator's local re-verification setup only.
+
+PostgreSQL/RLS column upgraded from `partial` to `pass` for T-12..T-14 and
+T-17..T-21 in `tasks/f2-f9-acceptance.md`. This closes the last open gap in
+DeepSeek's F3/F4 persistence+HTTP assignment.
 
 **Known open gap (not DeepSeek's to close):** no table anywhere persists a
 psychologist-edited version of narrative/INTEGRATION text distinct from the
