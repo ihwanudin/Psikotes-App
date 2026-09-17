@@ -46,51 +46,42 @@ These rules apply to every Codex session and delegated task in this repository.
   loosening a constraint, deleting a check, or picking one side without
   recording why.
 
-## Ownership ledger (updated 2026-09-17, baseline commit 957fb78 on `main`)
+## Ownership ledger (updated 2026-09-18, baseline commit 621d859 on `main`)
 
-`main` now contains the full reconciliation: `codex/organization-payment-spec`
-onto `codex/f2-wave1-integration`, then `codex/integration-psychotest-current`
-(selection callback/keyring hardening, DASS fixture centralization,
-direct-public/manual-payment fixture harmonization, and a root-cause fix for
-the SQLite test-lifecycle isolation issue — see
-`tasks/handoffs/sqlite-test-isolation-known-issue-2026-09-16.md`, now
-RESOLVED), merged via PR #1 (merge commit `957fb78`) after CI was repaired
-(environment bootstrap, ESLint/Prettier/Pint formatting, PHPStan level 7,
-and one real config bug: an unset callback key ID read as `''` instead of
-`null`). All 13 Grup C branches and all Grup B `fix/*` branches are
-confirmed patch-equivalent or superseded; no further action needed on them.
+`main` history since the last full rewrite of this section: PR #1 (`957fb78`,
+full F1/F2/organization-payment/integration-psychotest reconciliation) →
+PR #2 (`b18d5b4`, DeepSeek F3+F4 persistence + HTTP projection, live
+PostgreSQL 17.6 RLS evidence) → PR #3 (ledger refresh) → PR #4
+(`1748535`, DeepSeek F4b — psychologist-edited INTEGRATION text
+persistence, `narrative_cluster_edits`) → PR #5 (`621d859`, Codex F7 —
+operational dashboard, branch fee/commission ledger with RLS, idempotent
+commission recording that never blocks payment/entitlement on failure,
+withdrawal request lifecycle with resubmission-after-reject support, plus
+a root-cause fix for a pre-existing PHPUnit cross-test external
+data-provider bug that predated this branch).
 
-**Cross-coordinator reconciliation note (2026-09-17):** this ledger was
-rewritten by a coordinator session handling Codex F7/F9-O1 without
-visibility into the unmerged `deepseek/f3-f4-eligibility-narrative` branch's
-progress (never pushed to `main`, so not reachable from that session's
-view). When merging PR #2 into the retargeted `main`, `git merge` silently
-picked this file's `main` side wholesale with no conflict reported —
-verified via `git merge-tree`, then manually re-inspected rather than
-trusted. The DeepSeek row below has been hand-reconciled to carry forward
-its accepted status and F4b scope; the rest of this file is unchanged from
-the F7/F9-O1 session's version. Flagging per the ambiguity-reporting rule
-above: two coordinator sessions editing this file independently risks
-exactly this kind of silent data loss on merge — canonical-doc edits should
-ideally be pushed to `main` (or otherwise made visible) as soon as they're
-made, not held on a feature branch until a PR merges.
+**Cross-coordinator note, still relevant:** two coordinator sessions have
+independently hand-reconciled this file after a `git merge` silently chose
+one side's version at least twice (2026-09-17). Whoever edits this file:
+push the edit (as its own small branch/PR) to `main` immediately — do not
+let it sit on a feature branch. Read this file fresh from `origin/main`
+before editing, never from memory of an earlier version in this
+conversation.
 
 Claude Code stays coordinator-only in this project (human decision,
 2026-09-16) — it does not write application code here. All feature work
-below is delegated to Codex, GLM, and DeepSeek. **Every lane now branches
-from `main`, not from the old reconciliation branch.**
+below is delegated to Codex, GLM, and DeepSeek. Every lane branches from
+current `main`.
 
 | Owner / lane | Scope | Exclusive paths | Forbidden |
 |---|---|---|---|
-| Codex — F7 (`codex/f7-admin-branch-dashboards`) | Admin/branch dashboards, commission/fee-cabang ledger with monthly payout cycle (SPEC.md §4.4/§9), proctoring timeline view (photos+logs). Audit existing Filament resources first (`OrganizationBillResource`, `AssessmentParticipantResource`, `IntegrationClientResource`, `PaymentMethodResource`, `TestPackageResource`) before adding new ones. | New Filament resources/pages, `app/Filament/**`, `app/Domain/Commission/**` (or established equivalent) | `app/Domain/Eligibility/**`, `app/Domain/Narrative/**`, `app/Domain/Report/**` (other lanes' territory); `composer.json`/lockfiles unless coordinated |
-| Codex — F9-O1 (`codex/f9-o1-observability-rehearsal`) | Disposable queue/outbox visibility + health-failure rehearsal only. Explicitly does NOT set SLOs, alert thresholds, telemetry backend, or destinations — those need a separate decision packet with human/architecture authority. | New only: `tools/testing/run-observability-rehearsal.ps1`, `tools/testing/tests/observability-rehearsal-contract.ps1`, a new collector under `tools/testing/observability/`, `tasks/handoffs/observability/f9-local-observability-rehearsal.md` | Everything outside those new paths; no live/production resources, `.env`, outbound calls, notification, or scheduler activation |
-| GLM (`glm/f6-hpp-report-draft`) | F6 — Result documents (participant HPP report + internal report rendering). Status: unstarted, depends on a stable F5 review/signature contract that is **not yet final** — build against **fixture/mock data only**. | New only: `app/Domain/Report/**`, `app/Services/ReportRendering/**`, `resources/views/reports/**`, `tests/Feature/Reports/**`, `tests/Unit/Report/**` | Any existing file outside those new paths, any migration, any existing test, `composer.json`/`package.json`/lockfiles, `AGENTS.md`, `tasks/parallel-work.md`, `tasks/f2-f9-acceptance.md` |
-| DeepSeek (`deepseek/f3-f4-eligibility-narrative`) | **F3+F4 original scope — MERGED to `main`** via PR [#2](https://github.com/ihwanudin/Psikotes-App/pull/2) (`b18d5b4`), independently re-verified including live PostgreSQL 17.6 RLS/trigger/SECURITY DEFINER runtime evidence. **F4b (INTEGRATION-text persistence, `narrative_cluster_edits`) — also MERGED to `main`** via PR [#4](https://github.com/ihwanudin/Psikotes-App/pull/4) (`1748535`): closes the gap where no table persisted a psychologist-edited narrative distinct from the F4 system baseline, per `CLAUDE.md`'s "Teks INTEGRATION tersunting psikolog TIDAK boleh tertimpa saat regenerate" rule. Cross-case integrity enforced at two layers (app-level check + DB `SECURITY DEFINER` trigger guard). PR #4 needed two post-open CI fixes (Pint on a file the coordinator missed checking; PHPStan `property.notFound` from typing a DB-row helper param as generic `object` instead of `\stdClass`) — both root-caused and fixed by the coordinator, verified with the actual tools (`pint --test`, `phpstan analyse`) before pushing, not guessed. Both DeepSeek lanes are now **idle** — no open scope assigned. See `tasks/parallel-work.md` for full evidence trail. | Extend only: `app/Domain/Eligibility/**`, `app/Domain/Narrative/**`, plus NEW files under `app/Http/Controllers/` scoped to these two domains, NEW test files under `tests/**/Eligibility/**` and `tests/**/Narrative/**` | Any existing migration, `routes/*.php`, `app/Domain/Review/**` (F5, Codex/coordinator territory, read-only for context), `app/Domain/Report/**` (F6, GLM's exclusive territory), any existing test outside the two domains, `composer.json`/`package.json`/lockfiles, `AGENTS.md`, `tasks/parallel-work.md`, `tasks/f2-f9-acceptance.md`. **New migrations and any route registration require the coordinator's explicit go-ahead before writing them.** |
+| Codex — F7 remainder (`codex/f7-admin-branch-dashboards` or a fresh branch from `main`) | Dashboard, fee ledger, commission service, and withdrawal resources are ACCEPTED and merged (PR #5). **Remaining F7 scope only: proctoring persistence (`proctor_photos`/`proctor_logs`) and its timeline UI** (photos+logs per participant/attempt, signed-URL access, tied to the existing pure `ProctoringValidityPolicy` domain). | New tables/migration for proctoring persistence (propose schema for coordinator review before creating the migration, per the standing migration rule below), `app/Filament/**` additions, `app/Domain/Proctoring/**` (extend) | `app/Domain/Eligibility/**`, `app/Domain/Narrative/**`, `app/Domain/Report/**`, `app/Domain/Review/**` (other lanes' territory); `composer.json`/lockfiles unless coordinated |
+| Codex — F9-O1 (`codex/f9-o1-observability-rehearsal`) | Disposable queue/outbox visibility + health-failure rehearsal only. Explicitly does NOT set SLOs, alert thresholds, telemetry backend, or destinations. **Status unknown to this coordinator as of 2026-09-18** — ACK was given (rebase onto `main` first) but no progress report or push received since. Check for a push before dispatching new work. | New only: `tools/testing/run-observability-rehearsal.ps1`, `tools/testing/tests/observability-rehearsal-contract.ps1`, a new collector under `tools/testing/observability/`, `tasks/handoffs/observability/f9-local-observability-rehearsal.md` | Everything outside those new paths; no live/production resources, `.env`, outbound calls, notification, or scheduler activation |
+| GLM (`glm/f6-hpp-report-draft`) | **F6 draft ACCEPTED 2026-09-17** (commit `d829295`, independently re-verified twice: 60 tests/196 assertions, DASS separation confirmed by reading the rendered Blade output directly — HPP shows only `general_category`/`narrative`/`follow_up`, full subscale detail only in the internal report — 1-5 scale confirmed, a real legend/zone CSS collision found and fixed). Pushed to `origin`, **not merged to `main`** (by design — still fixture-only). Proposed next slice, not yet dispatched: real PDF rendering pipeline (Blade → PDF, private storage, short-lived signed URL) using the same fixture dataset — does not need to wait for F5. | New only: `app/Domain/Report/**`, `app/Services/ReportRendering/**`, `resources/views/reports/**`, `tests/Feature/Reports/**`, `tests/Unit/Report/**` | Any existing file outside those new paths, any migration, any existing test, `composer.json`/`package.json`/lockfiles, `AGENTS.md`, `tasks/parallel-work.md`, `tasks/f2-f9-acceptance.md` |
+| DeepSeek (`deepseek/f3-f4-eligibility-narrative` or a fresh branch from `main`) | **F3, F4, and F4b all ACCEPTED and merged** (PR [#2](https://github.com/ihwanudin/Psikotes-App/pull/2) `b18d5b4`, PR [#4](https://github.com/ihwanudin/Psikotes-App/pull/4) `1748535`; live PostgreSQL 17.6 RLS/trigger/SECURITY DEFINER evidence for both; F4b's cross-case integrity is enforced at two layers, app-level check + DB `SECURITY DEFINER` trigger guard; PR #4 needed two post-open CI fixes — Pint on a file the coordinator missed, and a PHPStan `property.notFound` from typing a DB-row helper param as generic `object` instead of a proper shape — both root-caused and verified with the actual tools before pushing). **New scope, authorized 2026-09-18: F5 — review/signing persistence.** Pure domain already exists in `app/Domain/Review/**` (state machine, G6 override, signing prerequisites, G7 review set, `ReportSigningSnapshotComposer`) — read all of it first, this is not greenfield. Build: (1) versioned append-only signing-snapshot persistence binding exact version references of the eligibility decision, narrative version, and F4b psychologist-edited text — never re-derive from current state; (2) `level_sistem`/`level_final` stored side by side, never overwritten; (3) enforce no DRAFT→PUBLISHED shortcut with a negative test; (4) prove DASS never enters the signing snapshot/label (T-07); (5) RLS restricted to the authorized psychologist + super_admin only (not branch_admin/staff — "Lembar Kerja Internal & data DASS" rule), verified on live PostgreSQL; (6) HTTP projection only, no browser UI yet. Propose the migration schema for coordinator review before creating it. | Extend `app/Domain/Review/**` (newly granted — previously read-only for this lane), `app/Domain/Eligibility/**`, `app/Domain/Narrative/**`, new migration (after coordinator review), new HTTP controllers scoped to review/signing, new tests under `tests/**/Review/**` | `app/Domain/Report/**` (F6, GLM's exclusive territory), `app/Filament/**` (F7/Codex), any existing migration, `routes/*.php` registration without coordinator go-ahead, `composer.json`/`package.json`/lockfiles, `AGENTS.md`, `tasks/parallel-work.md`, `tasks/f2-f9-acceptance.md` |
 | Claude (coordinator) | Cross-tool verification, canonical docs, merge/promotion gatekeeping | `AGENTS.md`, `tasks/parallel-work.md`, `tasks/f2-f9-acceptance.md`, cross-branch reconciliation | — |
 
 Every lane branches from current `main`, works in its own branch, and does
 not merge into `main` without the coordinator's independent verification —
 push the branch to `origin` and wait for review, per the Coordination role
-rules above. Two Codex lanes run concurrently (F7 and F9-O1); they do not
-share files, so no ownership conflict is expected, but both must still push
-for review before merging.
+rules above.
