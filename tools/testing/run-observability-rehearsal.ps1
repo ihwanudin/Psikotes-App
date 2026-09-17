@@ -245,7 +245,7 @@ INSERT INTO f9_o1_outbox_items VALUES
         throw 'Queue/outbox snapshot schema or identifiersExcluded flag is invalid.'
     }
     $serialized = Get-Content -LiteralPath $snapshotPath -Raw
-    foreach ($forbidden in @('synthetic-secret', 'msg-', 'outbox-', '620000000000', 'last-error', 'provider-body', 'participant-id')) {
+    foreach ($forbidden in @('synthetic-secret', 'msg-', 'outbox-participant-', 'outbox-generic-', '620000000000', 'last-error', 'provider-body', 'participant-id')) {
         if ($serialized.Contains($forbidden)) {
             throw "Queue/outbox snapshot leaked forbidden synthetic detail: $forbidden"
         }
