@@ -24,6 +24,7 @@ use App\Registration\ConsentDocument;
 use App\Security\RlsContext;
 use App\Security\RlsContextRunner;
 use App\Services\Integrations\CheckoutSessionHttpContract;
+use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Illuminate\Routing\Route as RoutingRoute;
@@ -99,7 +100,7 @@ final class CheckoutPaymentHttpTest extends OrganizationPaymentTestCase
     {
         $fixture = $this->established(amount: 0);
         $this->acceptCurrentConsents($fixture['participant']);
-        $before = \Carbon\CarbonImmutable::instance(now())->utc()->startOfSecond();
+        $before = CarbonImmutable::instance(now())->utc()->startOfSecond();
         $provider = $this->createMock(PaymentProvider::class);
         foreach (['createInvoice', 'lookupInvoice', 'checkStatus', 'normalizeWebhook', 'expireInvoice'] as $method) {
             $provider->expects($this->never())->method($method);
@@ -115,8 +116,8 @@ final class CheckoutPaymentHttpTest extends OrganizationPaymentTestCase
         $charge = DB::table('assessment_charges')->where('assessment_participant_id', $fixture['attempt'])->sole();
         $this->assertSame(0, $charge->amount);
         $this->assertNotNull($charge->free_settled_at);
-        $settledAt = \Carbon\CarbonImmutable::parse((string) $charge->free_settled_at)->utc();
-        $after = \Carbon\CarbonImmutable::instance(now())->utc()->addSecond()->startOfSecond();
+        $settledAt = CarbonImmutable::parse((string) $charge->free_settled_at)->utc();
+        $after = CarbonImmutable::instance(now())->utc()->addSecond()->startOfSecond();
         $this->assertTrue($settledAt->betweenIncluded($before, $after));
     }
 

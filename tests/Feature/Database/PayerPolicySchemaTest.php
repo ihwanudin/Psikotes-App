@@ -13,7 +13,15 @@ use Tests\OrganizationPaymentTestCase;
 
 final class PayerPolicySchemaTest extends OrganizationPaymentTestCase
 {
-    protected function tearDown(): void { try { $this->assertSame(0, \Illuminate\Support\Facades\Artisan::call('migrate:fresh', ['--force' => true, '--no-interaction' => true])); } finally { parent::tearDown(); } }
+    protected function tearDown(): void
+    {
+        try {
+            $this->assertSame(0, Artisan::call('migrate:fresh', ['--force' => true, '--no-interaction' => true]));
+        } finally {
+            parent::tearDown();
+        }
+    }
+
     protected function setUp(): void
     {
         parent::setUp();

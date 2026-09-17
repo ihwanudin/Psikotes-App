@@ -428,5 +428,4 @@ final class AssessmentInvoiceClaimTest extends TestCase
             $this->assertSame(0, pcntl_wexitstatus($status));
         }
     }
-
 }

@@ -4,12 +4,21 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Database;
 
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Tests\OrganizationPaymentTestCase;
 
 final class DassConsentPolicyMigrationTest extends OrganizationPaymentTestCase
 {
-    protected function tearDown(): void { try { $this->assertSame(0, \Illuminate\Support\Facades\Artisan::call('migrate:fresh', ['--force' => true, '--no-interaction' => true])); } finally { parent::tearDown(); } }
+    protected function tearDown(): void
+    {
+        try {
+            $this->assertSame(0, Artisan::call('migrate:fresh', ['--force' => true, '--no-interaction' => true]));
+        } finally {
+            parent::tearDown();
+        }
+    }
+
     public function test_postgres_policy_migration_is_a_no_op_on_sqlite(): void
     {
         $this->assertSame('sqlite', DB::getDriverName());

@@ -6,6 +6,7 @@ namespace Tests\Feature\Database;
 
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\RefreshDatabaseState;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -19,8 +20,13 @@ final class TestSessionGrantSchemaTest extends OrganizationPaymentTestCase
 {
     protected function tearDown(): void
     {
-        try { parent::tearDown(); } finally { \Illuminate\Foundation\Testing\RefreshDatabaseState::$migrated = false; }
+        try {
+            parent::tearDown();
+        } finally {
+            RefreshDatabaseState::$migrated = false;
+        }
     }
+
     use RefreshDatabase;
 
     public function test_migration_is_additive_and_never_guesses_historical_grants(): void
