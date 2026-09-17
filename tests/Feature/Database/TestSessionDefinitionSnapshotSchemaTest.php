@@ -7,6 +7,7 @@ namespace Tests\Feature\Database;
 use App\Domain\AssessmentSessions\SessionDefinition;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\RefreshDatabaseState;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use ReflectionMethod;
@@ -17,8 +18,13 @@ final class TestSessionDefinitionSnapshotSchemaTest extends OrganizationPaymentT
 {
     protected function tearDown(): void
     {
-        try { parent::tearDown(); } finally { \Illuminate\Foundation\Testing\RefreshDatabaseState::$migrated = false; }
+        try {
+            parent::tearDown();
+        } finally {
+            RefreshDatabaseState::$migrated = false;
+        }
     }
+
     use RefreshDatabase;
 
     public function test_snapshot_columns_are_nullable_additive_and_unindexed(): void

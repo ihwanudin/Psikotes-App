@@ -13,8 +13,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Tests\TestCase;
 use Tests\Support\DirectPublicPaymentFixture;
+use Tests\TestCase;
 
 final class ParticipantApiAuthorizationTest extends TestCase
 {

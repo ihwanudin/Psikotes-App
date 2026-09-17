@@ -112,5 +112,4 @@ final class AssessmentBillPreviewTest extends TestCase
             $this->assertSame($snapshot, $charge->price_snapshot);
         });
     }
-
 }

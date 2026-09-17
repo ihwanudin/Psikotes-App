@@ -7,6 +7,7 @@ namespace Tests\Feature\Database;
 use App\Models\CheckoutHandoff;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -15,7 +16,15 @@ use Tests\OrganizationPaymentTestCase;
 
 final class CheckoutHandoffSchemaTest extends OrganizationPaymentTestCase
 {
-    protected function tearDown(): void { try { $this->assertSame(0, \Illuminate\Support\Facades\Artisan::call('migrate:fresh', ['--force' => true, '--no-interaction' => true])); } finally { parent::tearDown(); } }
+    protected function tearDown(): void
+    {
+        try {
+            $this->assertSame(0, Artisan::call('migrate:fresh', ['--force' => true, '--no-interaction' => true]));
+        } finally {
+            parent::tearDown();
+        }
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
