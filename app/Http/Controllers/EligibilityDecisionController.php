@@ -13,7 +13,7 @@ use Illuminate\Support\Str;
 
 final class EligibilityDecisionController extends Controller
 {
-    public function store(Request $request, int $caseId, RlsContextRunner $runner): JsonResponse
+    public function store(Request $request, string $case, RlsContextRunner $runner): JsonResponse
     {
         $input = $request->validate([
             'levels' => ['required', 'array', 'size:18'],
@@ -42,7 +42,19 @@ final class EligibilityDecisionController extends Controller
             'eligibility_source_versions' => $input['eligibility_source_versions'],
         ];
 
-        $row = $runner->runAsService(function () use ($caseId, $data, $canonical): object {
+        $row = $runner->runAsService(function () use ($case, $data, $canonical): object {
+            $caseRecord = DB::table('assessment_cases')
+                ->where('public_id', $case)
+                ->first();
+
+            if ($caseRecord === null) {
+                throw new \Illuminate\Database\Eloquent\ModelNotFoundException(
+                    "AssessmentCase [{$case}] not found.",
+                );
+            }
+
+            $caseId = (int) $caseRecord->id;
+
             $latest = DB::table('eligibility_decision_versions')
                 ->where('assessment_case_id', $caseId)
                 ->orderByDesc('version')
@@ -61,8 +73,8 @@ final class EligibilityDecisionController extends Controller
                 'field_code' => $data['zone']['field_code'],
                 'publication_blocked' => $data['publication_blocked'],
                 'recommendation_label' => $data['recommendation']['label'] ?? null,
-                'iq' => $input['iq'],
-                'validity' => $input['validity'],
+                'iq' => $canonical['iq'],
+                'validity' => $canonical['validity'],
                 'snapshot_json' => json_encode($data, JSON_THROW_ON_ERROR),
                 'canonical_input_json' => json_encode($canonical, JSON_THROW_ON_ERROR),
                 'created_at' => now(),
@@ -86,11 +98,21 @@ final class EligibilityDecisionController extends Controller
         ]], 201);
     }
 
-    public function show(int $caseId, RlsContextRunner $runner): JsonResponse
+    public function show(string $case, RlsContextRunner $runner): JsonResponse
     {
-        $row = $runner->runAsService(function () use ($caseId): ?object {
+        $row = $runner->runAsService(function () use ($case): ?object {
+            $caseRecord = DB::table('assessment_cases')
+                ->where('public_id', $case)
+                ->first();
+
+            if ($caseRecord === null) {
+                throw new \Illuminate\Database\Eloquent\ModelNotFoundException(
+                    "AssessmentCase [{$case}] not found.",
+                );
+            }
+
             return DB::table('eligibility_decision_versions')
-                ->where('assessment_case_id', $caseId)
+                ->where('assessment_case_id', (int) $caseRecord->id)
                 ->orderByDesc('version')
                 ->first();
         });

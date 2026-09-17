@@ -14,7 +14,7 @@ use Illuminate\Support\Str;
 
 final class BilingualNarrativeController extends Controller
 {
-    public function store(Request $request, int $caseId, RlsContextRunner $runner): JsonResponse
+    public function store(Request $request, string $case, RlsContextRunner $runner): JsonResponse
     {
         $input = $request->validate([
             'aspects' => ['required', 'array', 'size:18'],
@@ -29,7 +29,19 @@ final class BilingualNarrativeController extends Controller
             return $this->error('VALIDATION_FAILED', $e->getMessage(), 422);
         }
 
-        $row = $runner->runAsService(function () use ($caseId, $result): object {
+        $row = $runner->runAsService(function () use ($case, $result): object {
+            $caseRecord = DB::table('assessment_cases')
+                ->where('public_id', $case)
+                ->first();
+
+            if ($caseRecord === null) {
+                throw new \Illuminate\Database\Eloquent\ModelNotFoundException(
+                    "AssessmentCase [{$case}] not found.",
+                );
+            }
+
+            $caseId = (int) $caseRecord->id;
+
             $latest = DB::table('bilingual_narrative_versions')
                 ->where('assessment_case_id', $caseId)
                 ->orderByDesc('version')
@@ -77,11 +89,21 @@ final class BilingualNarrativeController extends Controller
         ]], 201);
     }
 
-    public function show(int $caseId, RlsContextRunner $runner): JsonResponse
+    public function show(string $case, RlsContextRunner $runner): JsonResponse
     {
-        $row = $runner->runAsService(function () use ($caseId): ?object {
+        $row = $runner->runAsService(function () use ($case): ?object {
+            $caseRecord = DB::table('assessment_cases')
+                ->where('public_id', $case)
+                ->first();
+
+            if ($caseRecord === null) {
+                throw new \Illuminate\Database\Eloquent\ModelNotFoundException(
+                    "AssessmentCase [{$case}] not found.",
+                );
+            }
+
             return DB::table('bilingual_narrative_versions')
-                ->where('assessment_case_id', $caseId)
+                ->where('assessment_case_id', (int) $caseRecord->id)
                 ->orderByDesc('version')
                 ->first();
         });

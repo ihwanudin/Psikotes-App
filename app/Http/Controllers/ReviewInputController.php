@@ -10,9 +10,21 @@ use Illuminate\Support\Facades\DB;
 
 final class ReviewInputController extends Controller
 {
-    public function __invoke(int $caseId, RlsContextRunner $runner): JsonResponse
+    public function __invoke(string $case, RlsContextRunner $runner): JsonResponse
     {
-        [$eligibility, $narrative] = $runner->runAsService(function () use ($caseId): array {
+        [$eligibility, $narrative] = $runner->runAsService(function () use ($case): array {
+            $caseRecord = DB::table('assessment_cases')
+                ->where('public_id', $case)
+                ->first();
+
+            if ($caseRecord === null) {
+                throw new \Illuminate\Database\Eloquent\ModelNotFoundException(
+                    "AssessmentCase [{$case}] not found.",
+                );
+            }
+
+            $caseId = (int) $caseRecord->id;
+
             $eligibility = DB::table('eligibility_decision_versions')
                 ->where('assessment_case_id', $caseId)
                 ->orderByDesc('version')
