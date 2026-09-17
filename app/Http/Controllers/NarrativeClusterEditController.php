@@ -164,7 +164,7 @@ final class NarrativeClusterEditController extends Controller
         ]]);
     }
 
-    private function baselineText(object $baseline, string $cluster): ?string
+    private function baselineText(\stdClass $baseline, string $cluster): ?string
     {
         return match ($cluster) {
             'A' => $baseline->cluster_a_id,

@@ -87,7 +87,7 @@ final class ReviewInputController extends Controller
         ]]);
     }
 
-    private function baselineClusterText(?object $narrative, string $cluster): ?string
+    private function baselineClusterText(?\stdClass $narrative, string $cluster): ?string
     {
         if ($narrative === null) {
             return null;
@@ -102,7 +102,7 @@ final class ReviewInputController extends Controller
         };
     }
 
-    private function baselineClusterJp(?object $narrative, string $cluster): ?string
+    private function baselineClusterJp(?\stdClass $narrative, string $cluster): ?string
     {
         if ($narrative === null) {
             return null;
