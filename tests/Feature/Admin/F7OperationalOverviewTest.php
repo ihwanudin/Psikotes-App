@@ -43,6 +43,7 @@ final class F7OperationalOverviewTest extends TestCase
         $this->assertSame(1, $metrics['paidBills']);
         $this->assertSame(1, $metrics['readyEntitlements']);
         $this->assertSame(0, $metrics['proctoringRisk']);
+        $this->assertSame(0, $metrics['commissionLedgerGaps']);
         $this->assertSame('Semua cabang', $metrics['scope']);
     }
 
@@ -69,7 +70,34 @@ final class F7OperationalOverviewTest extends TestCase
         $this->assertSame(0, $metrics['paidBills']);
         $this->assertSame(1, $metrics['readyEntitlements']);
         $this->assertSame(0, $metrics['proctoringRisk']);
+        $this->assertSame(0, $metrics['commissionLedgerGaps']);
         $this->assertSame('Cabang sendiri', $metrics['scope']);
+    }
+
+    public function test_commission_ledger_gap_metric_is_scoped_for_central_and_branch_admins(): void
+    {
+        $branchA = $this->branch('A');
+        $branchB = $this->branch('B');
+        DB::table('commission_ledger_gaps')->insert([
+            $this->commissionGap($branchA->id, 1),
+            $this->commissionGap($branchB->id, 2),
+        ]);
+        $central = Admin::query()->create([
+            'name' => 'Central Gap Admin',
+            'email' => 'central-gap-f7@example.test',
+            'password' => 'password',
+            'role' => AdminRole::SuperAdmin,
+        ]);
+        $branchAdmin = Admin::query()->create([
+            'branch_id' => $branchA->id,
+            'name' => 'Branch Gap Admin',
+            'email' => 'branch-gap-f7@example.test',
+            'password' => 'password',
+            'role' => AdminRole::BranchAdmin,
+        ]);
+
+        $this->assertSame(2, F7OperationalOverview::metricsFor($central)['commissionLedgerGaps']);
+        $this->assertSame(1, F7OperationalOverview::metricsFor($branchAdmin)['commissionLedgerGaps']);
     }
 
     private function branch(string $suffix): Branch
@@ -220,5 +248,23 @@ final class F7OperationalOverviewTest extends TestCase
     private function ulidReference(): string
     {
         return (string) Str::ulid();
+    }
+
+    /** @return array<string, mixed> */
+    private function commissionGap(int $branchId, int $sourceId): array
+    {
+        return [
+            'branch_id' => $branchId,
+            'source_type' => 'direct_order',
+            'source_id' => $sourceId,
+            'reason_code' => 'fee_rule_missing',
+            'paid_at' => now(),
+            'currency' => 'IDR',
+            'amount' => 0,
+            'context' => json_encode(['version' => 1], JSON_THROW_ON_ERROR),
+            'status' => 'open',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ];
     }
 }

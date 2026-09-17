@@ -65,20 +65,20 @@ final class BranchFeeLedgerSecurityTest extends TestCase
             'branch_admin' => 1,
             'staff' => 1,
             'psychologist' => 0,
-                'participant' => 0,
-            ] as $role => $expected) {
-                $context = new RlsContext(
-                    $role,
+            'participant' => 0,
+        ] as $role => $expected) {
+            $context = new RlsContext(
+                $role,
+                $this->ownBranch,
+                $role === 'participant' ? $this->ownParticipant : null,
+            );
+            $runner->run($context, function () use ($table, $role, $expected): void {
+                $this->assertSame($expected, DB::table($table)->whereIn('branch_id', [
                     $this->ownBranch,
-                    $role === 'participant' ? $this->ownParticipant : null,
-                );
-                $runner->run($context, function () use ($table, $role, $expected): void {
-                    $this->assertSame($expected, DB::table($table)->whereIn('branch_id', [
-                        $this->ownBranch,
-                        $this->foreignBranch,
-                    ])->count(), $table.':'.$role);
-                });
-            }
+                    $this->foreignBranch,
+                ])->count(), $table.':'.$role);
+            });
+        }
 
         DB::select("SELECT set_config('app.role', '', true), set_config('app.branch_id', '', true)");
         $this->assertSame(0, DB::table($table)->count());
@@ -176,7 +176,13 @@ final class BranchFeeLedgerSecurityTest extends TestCase
 
     public static function tables(): iterable
     {
-        foreach (['branch_fee_rules', 'commission_entries', 'withdrawal_requests', 'withdrawal_request_items'] as $table) {
+        foreach ([
+            'branch_fee_rules',
+            'commission_entries',
+            'withdrawal_requests',
+            'withdrawal_request_items',
+            'commission_ledger_gaps',
+        ] as $table) {
             yield [$table];
         }
     }
@@ -321,6 +327,19 @@ final class BranchFeeLedgerSecurityTest extends TestCase
             'commission_entry_id' => $entry,
             'amount_snapshot' => 0,
             'currency' => 'IDR',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('commission_ledger_gaps')->insert([
+            'branch_id' => $branch,
+            'source_type' => 'direct_order',
+            'source_id' => $order,
+            'reason_code' => 'fee_rule_missing',
+            'paid_at' => now(),
+            'currency' => 'IDR',
+            'amount' => 0,
+            'context' => json_encode(['version' => 1], JSON_THROW_ON_ERROR),
+            'status' => 'open',
             'created_at' => now(),
             'updated_at' => now(),
         ]);

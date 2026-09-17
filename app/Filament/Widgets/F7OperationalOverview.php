@@ -12,6 +12,7 @@ use Filament\Widgets\StatsOverviewWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 final class F7OperationalOverview extends StatsOverviewWidget
 {
@@ -35,6 +36,7 @@ final class F7OperationalOverview extends StatsOverviewWidget
      *     paidBills:int,
      *     readyEntitlements:int,
      *     proctoringRisk:int,
+     *     commissionLedgerGaps:int,
      *     scope:string
      * }
      */
@@ -56,6 +58,11 @@ final class F7OperationalOverview extends StatsOverviewWidget
             'readyEntitlements' => self::scopeByBranch(DB::table('assessment_entitlements'), 'organization_id', $branchId)
                 ->where('status', 'ready')
                 ->count(),
+            'commissionLedgerGaps' => Schema::hasTable('commission_ledger_gaps')
+                ? self::scopeByBranch(DB::table('commission_ledger_gaps'), 'branch_id', $branchId)
+                    ->where('status', 'open')
+                    ->count()
+                : 0,
             // Proctoring persistence is not implemented yet. Keep this visible as
             // a policy-backed zero rather than inventing a source from unrelated data.
             'proctoringRisk' => $emptyDecision->pendingAdjudication ? count($emptyDecision->pendingEvidenceIds) : 0,
@@ -86,6 +93,9 @@ final class F7OperationalOverview extends StatsOverviewWidget
             Stat::make('Entitlement siap tes', self::formatInteger($metrics['readyEntitlements']))
                 ->description('Status ready')
                 ->color('info'),
+            Stat::make('Gap ledger komisi', self::formatInteger($metrics['commissionLedgerGaps']))
+                ->description('Transaksi paid belum masuk ledger')
+                ->color($metrics['commissionLedgerGaps'] > 0 ? 'warning' : 'success'),
             Stat::make('Risiko proctoring terbuka', self::formatInteger($metrics['proctoringRisk']))
                 ->description('Belum ada evidence proctoring persisten')
                 ->color($metrics['proctoringRisk'] > 0 ? 'danger' : 'gray'),

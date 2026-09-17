@@ -7,10 +7,12 @@ namespace App\Actions\Payments;
 use App\Actions\Notifications\EnqueueParticipantActivation;
 use App\Domain\Retention\RetentionDataClass;
 use App\Domain\Retention\RetentionPolicy;
+use App\Enums\OrderStatus;
 use App\Models\Admin;
 use App\Models\Entitlement;
 use App\Models\Order;
 use App\Security\RlsContextRunner;
+use App\Services\Commissions\RecordBranchCommissionLedger;
 use App\Services\Payments\OrderStateMachine;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -23,6 +25,7 @@ final readonly class VerifyManualTransfer
         private OrderStateMachine $stateMachine,
         private EnqueueParticipantActivation $enqueueActivation,
         private RetentionPolicy $retention,
+        private RecordBranchCommissionLedger $commissionLedger,
     ) {}
 
     public function approve(Admin $admin, int $orderId, string $expectedProofKey): Order
@@ -50,7 +53,7 @@ final readonly class VerifyManualTransfer
         bool $approved,
         ?string $rejectionReason,
     ): Order {
-        return $this->runner->runAsService(function () use (
+        $order = $this->runner->runAsService(function () use (
             $admin,
             $orderId,
             $expectedProofKey,
@@ -122,5 +125,11 @@ final readonly class VerifyManualTransfer
 
             return $order;
         });
+
+        if ($approved && $order->status === OrderStatus::Paid) {
+            $this->commissionLedger->recordDirectOrder($order->id);
+        }
+
+        return $order;
     }
 }

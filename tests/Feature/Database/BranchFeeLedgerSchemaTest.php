@@ -19,6 +19,7 @@ final class BranchFeeLedgerSchemaTest extends TestCase
             'commission_entries',
             'withdrawal_requests',
             'withdrawal_request_items',
+            'commission_ledger_gaps',
         ] as $table) {
             $this->assertTrue(Schema::hasTable($table), $table);
         }
@@ -72,6 +73,17 @@ final class BranchFeeLedgerSchemaTest extends TestCase
             'commission_entry_id',
             'amount_snapshot',
             'currency',
+        ]));
+        $this->assertTrue(Schema::hasColumns('commission_ledger_gaps', [
+            'branch_id',
+            'source_type',
+            'source_id',
+            'reason_code',
+            'paid_at',
+            'amount',
+            'context',
+            'status',
+            'resolved_at',
         ]));
     }
 }
