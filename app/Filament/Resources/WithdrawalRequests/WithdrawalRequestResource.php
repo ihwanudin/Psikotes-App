@@ -165,6 +165,9 @@ final class WithdrawalRequestResource extends Resource
         return $admin?->role === AdminRole::BranchAdmin && $admin->branch_id !== null;
     }
 
+    /**
+     * @param  list<string>  $statuses
+     */
     private static function canCentralReview(WithdrawalRequest $record, array $statuses): bool
     {
         $admin = self::currentAdmin();

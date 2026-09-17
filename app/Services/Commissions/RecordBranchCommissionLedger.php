@@ -36,7 +36,9 @@ final readonly class RecordBranchCommissionLedger
     {
         $this->bestEffort(function () use ($orderId): void {
             $this->contexts->runAsService(function () use ($orderId): void {
-                DB::transaction(fn (): mixed => $this->recordDirectOrderInService($orderId));
+                DB::transaction(function () use ($orderId): void {
+                    $this->recordDirectOrderInService($orderId);
+                });
             });
         });
     }
@@ -45,7 +47,9 @@ final readonly class RecordBranchCommissionLedger
     {
         $this->bestEffort(function () use ($billReference): void {
             $this->contexts->runAsService(function () use ($billReference): void {
-                DB::transaction(fn (): mixed => $this->recordAssessmentBillInService($billReference));
+                DB::transaction(function () use ($billReference): void {
+                    $this->recordAssessmentBillInService($billReference);
+                });
             });
         });
     }
@@ -242,6 +246,7 @@ final readonly class RecordBranchCommissionLedger
 
     /**
      * @param  array{type:string,id:int}  $source
+     * @return null|object{id:int,rate_basis:string,rate_type:string,percentage_bps:int|null,fixed_amount:int|null}
      */
     private function feeRule(int $branchId, CarbonInterface $paidAt, array $source, int $amount): ?object
     {
@@ -267,9 +272,20 @@ final readonly class RecordBranchCommissionLedger
             return null;
         }
 
-        return $rules->first();
+        $rule = $rules->first();
+
+        return (object) [
+            'id' => (int) $rule->id,
+            'rate_basis' => (string) $rule->rate_basis,
+            'rate_type' => (string) $rule->rate_type,
+            'percentage_bps' => $rule->percentage_bps === null ? null : (int) $rule->percentage_bps,
+            'fixed_amount' => $rule->fixed_amount === null ? null : (int) $rule->fixed_amount,
+        ];
     }
 
+    /**
+     * @param  object{rate_type:string,percentage_bps:int|null,fixed_amount:int|null}  $rule
+     */
     private function calculateCommission(object $rule, int $basis): ?int
     {
         if ($rule->rate_type === 'percentage' && is_numeric($rule->percentage_bps)) {
