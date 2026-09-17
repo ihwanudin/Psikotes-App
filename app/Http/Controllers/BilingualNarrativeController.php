@@ -29,19 +29,19 @@ final class BilingualNarrativeController extends Controller
             return $this->error('VALIDATION_FAILED', $e->getMessage(), 422);
         }
 
-        $row = $runner->runAsService(function () use ($case, $result): object {
+        $caseId = $runner->runAsService(function () use ($case): ?int {
             $caseRecord = DB::table('assessment_cases')
                 ->where('public_id', $case)
                 ->first();
 
-            if ($caseRecord === null) {
-                throw new \Illuminate\Database\Eloquent\ModelNotFoundException(
-                    "AssessmentCase [{$case}] not found.",
-                );
-            }
+            return $caseRecord === null ? null : (int) $caseRecord->id;
+        });
 
-            $caseId = (int) $caseRecord->id;
+        if ($caseId === null) {
+            return $this->error('CASE_NOT_FOUND', 'Assessment case not found.', 404);
+        }
 
+        $row = $runner->runAsService(function () use ($caseId, $result): object {
             $latest = DB::table('bilingual_narrative_versions')
                 ->where('assessment_case_id', $caseId)
                 ->orderByDesc('version')
@@ -97,9 +97,7 @@ final class BilingualNarrativeController extends Controller
                 ->first();
 
             if ($caseRecord === null) {
-                throw new \Illuminate\Database\Eloquent\ModelNotFoundException(
-                    "AssessmentCase [{$case}] not found.",
-                );
+                return null;
             }
 
             return DB::table('bilingual_narrative_versions')
@@ -109,7 +107,7 @@ final class BilingualNarrativeController extends Controller
         });
 
         if ($row === null) {
-            return $this->error('NOT_FOUND', 'Bilingual narrative not found for this assessment case.', 404);
+            return $this->error('CASE_NOT_FOUND', 'Bilingual narrative not found for this assessment case.', 404);
         }
 
         return response()->json(['data' => [

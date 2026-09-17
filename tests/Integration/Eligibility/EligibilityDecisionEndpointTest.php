@@ -160,7 +160,8 @@ final class EligibilityDecisionEndpointTest extends TestCase
 
         $this->actingAs($admin, 'admin')
             ->getJson("/admin/assessment-cases/{$nonexistentId}/eligibility-decisions")
-            ->assertNotFound();
+            ->assertStatus(404)
+            ->assertJson(['error' => ['code' => 'CASE_NOT_FOUND']]);
     }
 
     public function test_eligibility_endpoint_without_auth_redirects_to_login(): void

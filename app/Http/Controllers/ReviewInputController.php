@@ -18,9 +18,7 @@ final class ReviewInputController extends Controller
                 ->first();
 
             if ($caseRecord === null) {
-                throw new \Illuminate\Database\Eloquent\ModelNotFoundException(
-                    "AssessmentCase [{$case}] not found.",
-                );
+                return [null, null];
             }
 
             $caseId = (int) $caseRecord->id;

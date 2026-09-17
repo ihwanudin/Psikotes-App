@@ -173,7 +173,8 @@ final class ReviewInputEndpointTest extends TestCase
 
         $this->actingAs($admin, 'admin')
             ->getJson("/admin/assessment-cases/{$nonexistentId}/review-input")
-            ->assertNotFound();
+            ->assertStatus(404)
+            ->assertJson(['error' => ['code' => 'NOT_FOUND']]);
     }
 
     public function test_review_input_without_auth_redirects_to_login(): void

@@ -126,7 +126,8 @@ final class BilingualNarrativeEndpointTest extends TestCase
 
         $this->actingAs($admin, 'admin')
             ->getJson("/admin/assessment-cases/{$nonexistentId}/bilingual-narratives")
-            ->assertNotFound();
+            ->assertStatus(404)
+            ->assertJson(['error' => ['code' => 'CASE_NOT_FOUND']]);
     }
 
     public function test_narrative_endpoint_without_auth_redirects_to_login(): void

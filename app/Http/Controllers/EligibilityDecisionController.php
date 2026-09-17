@@ -42,19 +42,19 @@ final class EligibilityDecisionController extends Controller
             'eligibility_source_versions' => $input['eligibility_source_versions'],
         ];
 
-        $row = $runner->runAsService(function () use ($case, $data, $canonical): object {
+        $caseId = $runner->runAsService(function () use ($case): ?int {
             $caseRecord = DB::table('assessment_cases')
                 ->where('public_id', $case)
                 ->first();
 
-            if ($caseRecord === null) {
-                throw new \Illuminate\Database\Eloquent\ModelNotFoundException(
-                    "AssessmentCase [{$case}] not found.",
-                );
-            }
+            return $caseRecord === null ? null : (int) $caseRecord->id;
+        });
 
-            $caseId = (int) $caseRecord->id;
+        if ($caseId === null) {
+            return $this->error('CASE_NOT_FOUND', 'Assessment case not found.', 404);
+        }
 
+        $row = $runner->runAsService(function () use ($caseId, $data, $canonical): object {
             $latest = DB::table('eligibility_decision_versions')
                 ->where('assessment_case_id', $caseId)
                 ->orderByDesc('version')
@@ -106,9 +106,7 @@ final class EligibilityDecisionController extends Controller
                 ->first();
 
             if ($caseRecord === null) {
-                throw new \Illuminate\Database\Eloquent\ModelNotFoundException(
-                    "AssessmentCase [{$case}] not found.",
-                );
+                return null;
             }
 
             return DB::table('eligibility_decision_versions')
@@ -118,7 +116,7 @@ final class EligibilityDecisionController extends Controller
         });
 
         if ($row === null) {
-            return $this->error('NOT_FOUND', 'Eligibility decision not found for this assessment case.', 404);
+            return $this->error('CASE_NOT_FOUND', 'Eligibility decision not found for this assessment case.', 404);
         }
 
         return response()->json(['data' => [
