@@ -92,10 +92,6 @@ final class ReportSigningController extends Controller
         }
 
         $baselineArray = $baseline->toArray();
-        $systemLevels = [];
-        foreach (self::ASPECTS as $aspect) {
-            $systemLevels[$aspect] = $baselineArray['zone']['aspects'][$aspect]['level'];
-        }
 
         // Step 2: Apply professional overrides via policy (server-side validation)
         $policy = new ProfessionalOverridePolicy;
@@ -134,6 +130,13 @@ final class ReportSigningController extends Controller
         }
 
         // Step 4: Build G7 resolutions — validate client-supplied per-source data through policy
+        //
+        // TODO(G7-data-gap): AspectSourceDiscrepancyPolicy::evaluate() hanya
+        // memvalidasi struktur sources dari klien, tidak cross-check ke
+        // generic_instrument_result_sources. Perlu aggregator database sebelum
+        // sources dianggap otoritatif. Dampak terbatas pada sinyal review_required
+        // saja — validity/label/final_level tetap terkunci oleh
+        // ReviewedEligibilityDecision.
         $discrepancyPolicy = new AspectSourceDiscrepancyPolicy;
         $g7ByAspect = [];
 
@@ -171,11 +174,11 @@ final class ReportSigningController extends Controller
                     if ($entry['discrepancy']['review_required']) {
                         if ($entry['final_level'] === null) {
                             $resolutions[] = G7AspectResolution::unresolved(
-                                $entry['discrepancy'], $systemLevels[$aspect],
+                                $entry['discrepancy'], $this->systemLevel($baselineArray, $aspect),
                             );
                         } else {
                             $resolutions[] = G7AspectResolution::resolved(
-                                $entry['discrepancy'], $systemLevels[$aspect],
+                                $entry['discrepancy'], $this->systemLevel($baselineArray, $aspect),
                                 $entry['final_level'], $entry['reason'],
                             );
                         }
@@ -184,7 +187,7 @@ final class ReportSigningController extends Controller
                             return $this->error('G7_INVALID', "G7 aspect {$aspect} is not review-required but has resolution data.", 422);
                         }
                         $resolutions[] = G7AspectResolution::notRequired(
-                            $entry['discrepancy'], $systemLevels[$aspect],
+                            $entry['discrepancy'], $this->systemLevel($baselineArray, $aspect),
                         );
                     }
                 } catch (\InvalidArgumentException $e) {
@@ -195,7 +198,7 @@ final class ReportSigningController extends Controller
                 try {
                     $discrepancy = $discrepancyPolicy->evaluate([
                         'aspect' => $aspect,
-                        'sources' => [['source' => 'CANONICAL', 'level' => $systemLevels[$aspect]]],
+                        'sources' => [['source' => 'CANONICAL', 'level' => $this->systemLevel($baselineArray, $aspect)]],
                     ]);
                 } catch (\InvalidArgumentException $e) {
                     return $this->error('G7_INVALID', "G7 default discrepancy for {$aspect} is invalid.", 500);
@@ -204,7 +207,7 @@ final class ReportSigningController extends Controller
                     return $this->error('G7_INVALID', "G7 aspect {$aspect} requires review but no resolution was supplied.", 422);
                 }
                 try {
-                    $resolutions[] = G7AspectResolution::notRequired($discrepancy, $systemLevels[$aspect]);
+                    $resolutions[] = G7AspectResolution::notRequired($discrepancy, $this->systemLevel($baselineArray, $aspect));
                 } catch (\InvalidArgumentException $e) {
                     return $this->error('G7_INVALID', "G7 default resolution for {$aspect} is invalid.", 500);
                 }
@@ -280,14 +283,14 @@ final class ReportSigningController extends Controller
             'provenance' => $snapshot->provenance(),
         ], JSON_THROW_ON_ERROR);
 
-        $row = $runner->runAsService(function () use (
+        $result = $runner->runAsService(function () use (
             $case, $input, $signedAt, $signedByAdminId, $snapshotJson,
-        ): ?object {
+        ): array {
             $caseRecord = DB::table('assessment_cases')
                 ->where('public_id', $case)
                 ->first();
             if ($caseRecord === null) {
-                return null;
+                return ['found' => false, 'error_code' => 'CASE_NOT_FOUND'];
             }
             $caseId = (int) $caseRecord->id;
 
@@ -296,10 +299,7 @@ final class ReportSigningController extends Controller
                 ->where('assessment_case_id', $caseId)
                 ->first();
             if ($narrative === null) {
-                $error = new \stdClass;
-                $error->code = 'NARRATIVE_VERSION_NOT_FOUND';
-
-                return $error;
+                return ['found' => false, 'error_code' => 'NARRATIVE_VERSION_NOT_FOUND'];
             }
 
             $latest = DB::table('report_signing_snapshots')
@@ -324,15 +324,19 @@ final class ReportSigningController extends Controller
                 'created_at' => $signedAt,
             ]);
 
-            return DB::table('report_signing_snapshots')->where('id', $id)->sole();
+            return ['found' => true, 'row' => DB::table('report_signing_snapshots')->where('id', $id)->sole()];
         });
 
-        if ($row === null) {
-            return $this->error('CASE_NOT_FOUND', 'Assessment case not found.', 404);
+        if (! $result['found']) {
+            $messages = [
+                'CASE_NOT_FOUND' => 'Assessment case not found.',
+                'NARRATIVE_VERSION_NOT_FOUND' => 'Referenced version does not belong to this assessment case.',
+            ];
+
+            return $this->error($result['error_code'], $messages[$result['error_code']], 404);
         }
-        if ($row instanceof \stdClass && isset($row->code)) {
-            return $this->error($row->code, 'Referenced version does not belong to this assessment case.', 404);
-        }
+
+        $row = $result['row'];
 
         return response()->json(['data' => [
             'id' => $row->id,
@@ -385,5 +389,13 @@ final class ReportSigningController extends Controller
     private function error(string $code, string $message, int $status): JsonResponse
     {
         return response()->json(['error' => ['code' => $code, 'message' => $message]], $status);
+    }
+
+    /**
+     * @param  array<string, mixed>  $baselineArray
+     */
+    private function systemLevel(array $baselineArray, string $aspect): int
+    {
+        return (int) $baselineArray['zone']['aspects'][$aspect]['level'];
     }
 }
