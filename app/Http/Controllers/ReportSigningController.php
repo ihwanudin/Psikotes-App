@@ -13,8 +13,8 @@ use App\Domain\Review\ReportSigningPrerequisitePolicy;
 use App\Domain\Review\ReportSigningSnapshotComposer;
 use App\Domain\Review\ReportSigningTransitionPolicy;
 use App\Domain\Review\ReviewedEligibilityDecision;
-use App\Models\Admin;
 use App\Enums\AdminAbility;
+use App\Models\Admin;
 use App\Security\RlsContextRunner;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -68,6 +68,7 @@ final class ReportSigningController extends Controller
             if ($caseRecord === null) {
                 return null;
             }
+
             return DB::table('eligibility_decision_versions')
                 ->where('id', $input['eligibility_version_id'])
                 ->where('assessment_case_id', (int) $caseRecord->id)
@@ -297,6 +298,7 @@ final class ReportSigningController extends Controller
             if ($narrative === null) {
                 $error = new \stdClass;
                 $error->code = 'NARRATIVE_VERSION_NOT_FOUND';
+
                 return $error;
             }
 
@@ -355,6 +357,7 @@ final class ReportSigningController extends Controller
             if ($caseRecord === null) {
                 return null;
             }
+
             return DB::table('report_signing_snapshots')
                 ->where('assessment_case_id', (int) $caseRecord->id)
                 ->orderByDesc('version')

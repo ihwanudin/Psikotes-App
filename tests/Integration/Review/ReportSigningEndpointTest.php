@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Tests\Integration\Review;
 
 use App\Domain\Eligibility\EligibilityDecisionSnapshot;
-use App\Models\Admin;
 use App\Enums\AdminRole;
+use App\Models\Admin;
 use App\Models\AssessmentCase;
 use App\Models\Branch;
 use App\Models\Participant;
@@ -27,12 +27,12 @@ final class ReportSigningEndpointTest extends TestCase
         static $counter = 0;
         $suffix = ++$counter;
         $branch = Branch::query()->create([
-            'code' => 'BR-SE-' . $suffix,
+            'code' => 'BR-SE-'.$suffix,
             'name' => 'Cabang Signing Endpoint Test',
-            'ref_code' => 'REF-SE-' . $suffix,
+            'ref_code' => 'REF-SE-'.$suffix,
         ]);
         $package = TestPackage::query()->create([
-            'code' => 'PKG-SE-' . $suffix,
+            'code' => 'PKG-SE-'.$suffix,
             'name' => 'Paket Signing Endpoint Test',
             'amount' => 250_000,
             'currency' => 'IDR',
@@ -67,7 +67,7 @@ final class ReportSigningEndpointTest extends TestCase
     {
         return Admin::query()->create([
             'name' => 'Psychologist Test',
-            'email' => (string) Str::uuid() . '@example.test',
+            'email' => (string) Str::uuid().'@example.test',
             'password' => bcrypt('password'),
             'role' => AdminRole::Psychologist->value,
         ]);
@@ -77,7 +77,7 @@ final class ReportSigningEndpointTest extends TestCase
     {
         return Admin::query()->create([
             'name' => 'Super Admin Test',
-            'email' => (string) Str::uuid() . '@example.test',
+            'email' => (string) Str::uuid().'@example.test',
             'password' => bcrypt('password'),
             'role' => AdminRole::SuperAdmin->value,
         ]);

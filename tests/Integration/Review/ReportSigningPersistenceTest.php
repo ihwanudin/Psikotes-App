@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Tests\Integration\Review;
 
 use App\Domain\Eligibility\EligibilityDecisionSnapshot;
-use App\Models\Admin;
 use App\Enums\AdminRole;
+use App\Models\Admin;
 use App\Models\AssessmentCase;
 use App\Models\Branch;
 use App\Models\Participant;
@@ -30,12 +30,12 @@ final class ReportSigningPersistenceTest extends TestCase
         static $counter = 0;
         $suffix = ++$counter;
         $branch = Branch::query()->create([
-            'code' => 'BR-SP-' . $suffix,
+            'code' => 'BR-SP-'.$suffix,
             'name' => 'Cabang Signing Persistence Test',
-            'ref_code' => 'REF-SP-' . $suffix,
+            'ref_code' => 'REF-SP-'.$suffix,
         ]);
         $package = TestPackage::query()->create([
-            'code' => 'PKG-SP-' . $suffix,
+            'code' => 'PKG-SP-'.$suffix,
             'name' => 'Paket Signing Persistence Test',
             'amount' => 250_000,
             'currency' => 'IDR',
@@ -131,7 +131,7 @@ final class ReportSigningPersistenceTest extends TestCase
     {
         return Admin::query()->create([
             'name' => 'Psychologist Test',
-            'email' => (string) Str::uuid() . '@example.test',
+            'email' => (string) Str::uuid().'@example.test',
             'password' => bcrypt('password'),
             'role' => AdminRole::Psychologist->value,
         ]);
