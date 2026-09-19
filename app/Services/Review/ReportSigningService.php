@@ -241,13 +241,30 @@ final class ReportSigningService
             return ['success' => false, 'code' => 'SIGNING_BLOCKED', 'message' => 'Report cannot be signed.', 'status' => 422, 'blocking_reason_codes' => $transitionResult['blocking_reason_codes']];
         }
 
-        // Step 9: Persist snapshot_json = prerequisiteInput + provenance (derived, not client claims)
+        // Step 9: Validate revision reason if this is a re-sign (there is already a SIGNED snapshot)
+        $existingSigning = $this->latest($casePublicId);
+        if ($existingSigning !== null && $existingSigning->state === 'SIGNED') {
+            $reason = isset($input['revision_reason']) && is_string($input['revision_reason']) ? trim($input['revision_reason']) : '';
+            if (mb_strlen($reason) < 20) {
+                return ['success' => false, 'code' => 'REVISION_REASON_REQUIRED', 'message' => 'Revisi memerlukan alasan minimal 20 karakter.', 'status' => 422];
+            }
+            $revisionReason = $reason;
+            $supersededVersion = (int) $existingSigning->version;
+        } else {
+            $revisionReason = null;
+            $supersededVersion = null;
+        }
+
+        // Step 10: Persist snapshot_json = prerequisiteInput + provenance (derived, not client claims)
         $signedAt = now();
         $signedByAdminId = (int) $psychologist->id;
         $snapshotJson = json_encode([
             'prerequisite_input' => $snapshot->prerequisiteInput(),
             'provenance' => $snapshot->provenance(),
-        ], JSON_THROW_ON_ERROR);
+        ] + ($revisionReason !== null ? ['revision' => [
+            'reason' => $revisionReason,
+            'supersedes_version' => $supersededVersion,
+        ]] : []), JSON_THROW_ON_ERROR);
 
         $result = $this->runner->runAsService(function () use (
             $casePublicId, $input, $signedAt, $signedByAdminId, $snapshotJson,

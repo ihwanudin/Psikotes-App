@@ -93,9 +93,15 @@ final class ReportSigning extends Page
     #[Locked]
     public bool $isReadOnly = false;
 
+    #[Locked]
+    public bool $isRevision = false;
+
     /** @var array<string, mixed>|null */
     #[Locked]
     public ?array $existingSnapshot = null;
+
+    #[Locked]
+    public string $revisionReasonForSigning = '';
 
     // ─── Mutable form state ───
 
@@ -105,6 +111,8 @@ final class ReportSigning extends Page
     public ?string $labelOverrideFinal = null;
 
     public string $labelOverrideReason = '';
+
+    public string $revisionReason = '';
 
     /** @var array<string, array{sources: list<array{source: string, level: int}>, final_level: int|null, reason: string}> */
     public array $g7Resolutions = [];
@@ -199,19 +207,7 @@ final class ReportSigning extends Page
             $this->iq = (int) $data['eligibility']->iq;
 
             // Initialize form state from baseline
-            foreach (self::ASPECTS as $aspect) {
-                $systemLevel = (int) $this->baseline['zone']['aspects'][$aspect]['level'];
-                $this->levelOverrides[$aspect] = [
-                    'system_level' => $systemLevel,
-                    'final_level' => $systemLevel,
-                    'reason' => '',
-                ];
-                $this->g7Resolutions[$aspect] = [
-                    'sources' => [['source' => 'CANONICAL', 'level' => $systemLevel]],
-                    'final_level' => null,
-                    'reason' => '',
-                ];
-            }
+            $this->loadFormState();
         }
 
         if ($data['narrative'] !== null) {
@@ -314,6 +310,58 @@ final class ReportSigning extends Page
         // Redirect to read-only view
         $this->isReadOnly = true;
         $this->existingSnapshot = $result['data']['snapshot'];
+    }
+
+    public function requestRevision(): void
+    {
+        if (! $this->isReadOnly) {
+            return;
+        }
+
+        $reason = trim($this->revisionReason);
+        if (mb_strlen($reason) < 20) {
+            $this->addError('revisionReason', 'Alasan revisi minimal 20 karakter.');
+
+            return;
+        }
+
+        $this->isReadOnly = false;
+        $this->isRevision = true;
+        $this->existingSnapshot = null;
+        $this->revisionReasonForSigning = $reason;
+        $this->revisionReason = '';
+        $this->loadFormState();
+    }
+
+    private function loadFormState(): void
+    {
+        $this->levelOverrides = [];
+        $this->g7Resolutions = [];
+        $this->narrativeClusters = ['A' => '', 'B' => '', 'C' => '', 'D' => ''];
+        $this->procedureNote = '';
+        $this->accompanimentConditions = '';
+        $this->labelOverrideFinal = null;
+        $this->labelOverrideReason = '';
+        $this->revisionReason = '';
+        $this->blockingCodes = [];
+
+        if (empty($this->baseline)) {
+            return;
+        }
+
+        foreach (self::ASPECTS as $aspect) {
+            $systemLevel = (int) $this->baseline['zone']['aspects'][$aspect]['level'];
+            $this->levelOverrides[$aspect] = [
+                'system_level' => $systemLevel,
+                'final_level' => $systemLevel,
+                'reason' => '',
+            ];
+            $this->g7Resolutions[$aspect] = [
+                'sources' => [['source' => 'CANONICAL', 'level' => $systemLevel]],
+                'final_level' => null,
+                'reason' => '',
+            ];
+        }
     }
 
     public function focusBlocker(string $code): void
@@ -438,6 +486,10 @@ final class ReportSigning extends Page
                 'final_label' => $this->labelOverrideFinal,
                 'reason' => $this->labelOverrideReason,
             ];
+        }
+
+        if ($this->isRevision) {
+            $input['revision_reason'] = $this->revisionReasonForSigning;
         }
 
         return $input;

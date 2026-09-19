@@ -267,19 +267,12 @@ final class ReportSigningPageTest extends TestCase
 
     // ─── Authorization ───
 
-    public function test_non_psychologist_roles_cannot_access_page(): void
+    public function test_branch_admin_and_staff_cannot_access_page(): void
     {
         $case = $this->createCase();
         $this->seedBaseline($case);
 
-        // SuperAdmin → 404
-        $this->actingAs($this->superAdmin(), 'admin');
-        self::assertFalse(ReportSigning::canAccess());
-        Livewire::test(ReportSigning::class, ['case' => $case->public_id])
-            ->assertNotFound();
-
         // BranchAdmin → 404
-        $this->flushSession();
         $this->actingAs($this->branchAdmin(), 'admin');
         self::assertFalse(ReportSigning::canAccess());
         Livewire::test(ReportSigning::class, ['case' => $case->public_id])
@@ -293,6 +286,19 @@ final class ReportSigningPageTest extends TestCase
             ->assertNotFound();
     }
 
+    public function test_super_admin_can_access_page(): void
+    {
+        $case = $this->createCase();
+        $this->seedBaseline($case);
+
+        $this->actingAs($this->superAdmin(), 'admin');
+        self::assertTrue(ReportSigning::canAccess());
+
+        $component = Livewire::test(ReportSigning::class, ['case' => $case->public_id]);
+        $component->assertSuccessful();
+        $component->assertSee('Peserta ReportSigning Page');
+    }
+
     public function test_guest_cannot_open_page_directly(): void
     {
         $case = $this->createCase();
@@ -302,12 +308,8 @@ final class ReportSigningPageTest extends TestCase
             ->assertRedirect('/admin/login');
     }
 
-    public function test_page_does_not_register_navigation_for_non_psychologist(): void
+    public function test_page_does_not_register_navigation_for_branch_admin_and_staff(): void
     {
-        $this->actingAs($this->superAdmin(), 'admin');
-        self::assertFalse(ReportSigning::shouldRegisterNavigation());
-
-        $this->flushSession();
         $this->actingAs($this->branchAdmin(), 'admin');
         self::assertFalse(ReportSigning::shouldRegisterNavigation());
 
@@ -319,6 +321,12 @@ final class ReportSigningPageTest extends TestCase
     public function test_page_registers_navigation_for_psychologist(): void
     {
         $this->actingAs($this->psychologist(), 'admin');
+        self::assertTrue(ReportSigning::shouldRegisterNavigation());
+    }
+
+    public function test_page_registers_navigation_for_super_admin(): void
+    {
+        $this->actingAs($this->superAdmin(), 'admin');
         self::assertTrue(ReportSigning::shouldRegisterNavigation());
     }
 
@@ -605,5 +613,173 @@ final class ReportSigningPageTest extends TestCase
 
         Livewire::test(ReportSigning::class, ['case' => $nonexistentId])
             ->assertNotFound();
+    }
+
+    // ─── Revision flow ───
+
+    public function test_request_revision_without_reason_shows_error_and_stays_read_only(): void
+    {
+        $case = $this->createCase();
+        $baseline = $this->seedBaseline($case);
+        $psychologist = $this->psychologist();
+        $this->actingAs($psychologist, 'admin');
+
+        // Insert a SIGNED snapshot
+        DB::table('report_signing_snapshots')->insert([
+            'id' => (string) Str::ulid(),
+            'assessment_case_id' => $case->id,
+            'version' => 1,
+            'supersedes_id' => null,
+            'state' => 'SIGNED',
+            'eligibility_version_id' => $baseline['eligibilityId'],
+            'narrative_version_id' => $baseline['narrativeId'],
+            'snapshot_json' => json_encode([
+                'prerequisite_input' => [
+                    'label' => 'DISARANKAN',
+                    'validity' => 'V1',
+                    'target_field' => 'UMUM',
+                    'procedure_note' => null,
+                    'accompaniment_conditions' => null,
+                    'narrative_clusters' => ['A' => 'Narasi A.', 'B' => 'Narasi B.', 'C' => 'Narasi C.', 'D' => 'Narasi D.'],
+                    'overrides' => [],
+                ],
+                'provenance' => ['signed' => true],
+            ], JSON_THROW_ON_ERROR),
+            'signed_by_admin_id' => $psychologist->id,
+            'signed_at' => now(),
+            'created_at' => now(),
+        ]);
+
+        $component = Livewire::test(ReportSigning::class, ['case' => $case->public_id]);
+        $component->assertSuccessful();
+        $component->assertSet('isReadOnly', true);
+
+        // Request revision with empty reason
+        $component->set('revisionReason', '');
+        $component->call('requestRevision');
+        $component->assertHasErrors('revisionReason');
+        $component->assertSet('isReadOnly', true);
+
+        // Request revision with short reason
+        $component->set('revisionReason', 'Singkat.');
+        $component->call('requestRevision');
+        $component->assertHasErrors('revisionReason');
+        $component->assertSet('isReadOnly', true);
+    }
+
+    public function test_request_revision_with_valid_reason_enables_editing(): void
+    {
+        $case = $this->createCase();
+        $baseline = $this->seedBaseline($case);
+        $psychologist = $this->psychologist();
+        $this->actingAs($psychologist, 'admin');
+
+        // Insert a SIGNED snapshot
+        DB::table('report_signing_snapshots')->insert([
+            'id' => (string) Str::ulid(),
+            'assessment_case_id' => $case->id,
+            'version' => 1,
+            'supersedes_id' => null,
+            'state' => 'SIGNED',
+            'eligibility_version_id' => $baseline['eligibilityId'],
+            'narrative_version_id' => $baseline['narrativeId'],
+            'snapshot_json' => json_encode([
+                'prerequisite_input' => [
+                    'label' => 'DISARANKAN',
+                    'validity' => 'V1',
+                    'target_field' => 'UMUM',
+                    'procedure_note' => null,
+                    'accompaniment_conditions' => null,
+                    'narrative_clusters' => ['A' => 'Narasi A.', 'B' => 'Narasi B.', 'C' => 'Narasi C.', 'D' => 'Narasi D.'],
+                    'overrides' => [],
+                ],
+                'provenance' => ['signed' => true],
+            ], JSON_THROW_ON_ERROR),
+            'signed_by_admin_id' => $psychologist->id,
+            'signed_at' => now(),
+            'created_at' => now(),
+        ]);
+
+        $component = Livewire::test(ReportSigning::class, ['case' => $case->public_id]);
+        $component->assertSuccessful();
+        $component->assertSet('isReadOnly', true);
+
+        // Request revision with valid reason
+        $component->set('revisionReason', 'Psikolog perlu merevisi laporan karena ada perubahan narasi klaster yang signifikan.');
+        $component->call('requestRevision');
+
+        $component->assertSet('isReadOnly', false);
+        $component->assertSet('isRevision', true);
+        $component->assertSet('existingSnapshot', null);
+        $component->assertSet('revisionReason', '');
+        $component->assertSet('revisionReasonForSigning', 'Psikolog perlu merevisi laporan karena ada perubahan narasi klaster yang signifikan.');
+
+        // Form is in editable mode
+        $component->assertSee('Mode revisi');
+        $component->assertSee('Validasi kesiapan');
+        $component->assertSee('Tandatangani Laporan');
+    }
+
+    public function test_end_to_end_resign_flow(): void
+    {
+        $case = $this->createCase();
+        $baseline = $this->seedBaseline($case);
+        $psychologist = $this->psychologist();
+        $this->actingAs($psychologist, 'admin');
+
+        // First signing
+        $component = Livewire::test(ReportSigning::class, ['case' => $case->public_id]);
+        $component->assertSuccessful();
+
+        $component->set('narrativeClusters.A', 'Narasi klaster A pertama.');
+        $component->set('narrativeClusters.B', 'Narasi klaster B pertama.');
+        $component->set('narrativeClusters.C', 'Narasi klaster C pertama.');
+        $component->set('narrativeClusters.D', 'Narasi klaster D pertama.');
+        $component->call('validateDraft');
+        $component->assertSet('blockingCodes', []);
+        $component->call('submit');
+        $component->assertSet('isReadOnly', true);
+
+        // Verify first snapshot persisted
+        $this->assertDatabaseCount('report_signing_snapshots', 1);
+
+        // Request revision
+        $component->set('revisionReason', 'Psikolog perlu merevisi laporan karena ada perubahan narasi klaster yang signifikan.');
+        $component->call('requestRevision');
+        $component->assertSet('isReadOnly', false);
+        $component->assertSet('isRevision', true);
+
+        // Edit and submit revision
+        $component->set('narrativeClusters.A', 'Narasi klaster A revisi.');
+        $component->set('narrativeClusters.B', 'Narasi klaster B revisi.');
+        $component->set('narrativeClusters.C', 'Narasi klaster C revisi.');
+        $component->set('narrativeClusters.D', 'Narasi klaster D revisi.');
+        $component->call('validateDraft');
+        $component->assertSet('blockingCodes', []);
+        $component->call('submit');
+        $component->assertSet('isReadOnly', true);
+
+        // Two independent rows in DB
+        $snapshots = DB::table('report_signing_snapshots')
+            ->where('assessment_case_id', $case->id)
+            ->orderBy('version')
+            ->get();
+        $this->assertCount(2, $snapshots);
+
+        // Version 1 is intact
+        $this->assertSame('SIGNED', $snapshots[0]->state);
+        $this->assertSame(1, (int) $snapshots[0]->version);
+        $this->assertNull($snapshots[0]->supersedes_id);
+        $v1Json = json_decode($snapshots[0]->snapshot_json, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertCount(2, $v1Json);
+        $this->assertArrayNotHasKey('revision', $v1Json);
+
+        // Version 2 has revision metadata
+        $this->assertSame('SIGNED', $snapshots[1]->state);
+        $this->assertSame(2, (int) $snapshots[1]->version);
+        $this->assertSame($snapshots[0]->id, $snapshots[1]->supersedes_id);
+        $v2Json = json_decode($snapshots[1]->snapshot_json, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertArrayHasKey('revision', $v2Json);
+        $this->assertSame(1, $v2Json['revision']['supersedes_version']);
     }
 }

@@ -11,6 +11,7 @@ use App\Models\AssessmentCase;
 use App\Models\Branch;
 use App\Models\Participant;
 use App\Models\TestPackage;
+use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -21,6 +22,12 @@ final class ReportSigningEndpointTest extends TestCase
     use RefreshDatabase;
 
     private const ASPECTS = ['A1', 'A2', 'B1', 'B2', 'B3', 'B4', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'D1', 'D2', 'D3', 'D4', 'D5'];
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->withoutMiddleware(PreventRequestForgery::class);
+    }
 
     private function createCase(): AssessmentCase
     {
@@ -81,6 +88,23 @@ final class ReportSigningEndpointTest extends TestCase
             'email' => (string) Str::uuid().'@example.test',
             'password' => bcrypt('password'),
             'role' => AdminRole::Staff->value,
+        ]);
+    }
+
+    private function branchAdmin(): Admin
+    {
+        $branch = Branch::query()->create([
+            'code' => 'BR-SE-BA-'.uniqid(),
+            'name' => 'Branch Admin Endpoint Branch',
+            'ref_code' => 'REF-SE-BA-'.uniqid(),
+        ]);
+
+        return Admin::query()->create([
+            'branch_id' => $branch->id,
+            'name' => 'Branch Admin Endpoint Test',
+            'email' => (string) Str::uuid().'@example.test',
+            'password' => bcrypt('password'),
+            'role' => AdminRole::BranchAdmin->value,
         ]);
     }
 
@@ -331,7 +355,20 @@ final class ReportSigningEndpointTest extends TestCase
 
     // ─── Auth tests ───
 
-    public function test_sign_with_non_psychologist_returns_403(): void
+    public function test_sign_with_branch_admin_returns_403(): void
+    {
+        $case = $this->createCase();
+        $baseline = $this->seedBaseline($case);
+        $admin = $this->branchAdmin();
+
+        $response = $this->actingAs($admin, 'admin')
+            ->postJson("/admin/assessment-cases/{$case->public_id}/signing", $this->validPayload($baseline));
+
+        $response->assertStatus(403);
+        $response->assertJsonPath('error.code', 'FORBIDDEN');
+    }
+
+    public function test_super_admin_can_sign_successfully(): void
     {
         $branch = Branch::query()->create([
             'code' => 'BR-SE-STAFF',
@@ -345,8 +382,9 @@ final class ReportSigningEndpointTest extends TestCase
         $response = $this->actingAs($admin, 'admin')
             ->postJson("/admin/assessment-cases/{$case->public_id}/signing", $this->validPayload($baseline));
 
-        $response->assertStatus(403);
-        $response->assertJsonPath('error.code', 'FORBIDDEN');
+        $response->assertStatus(201);
+        $response->assertJsonPath('data.state', 'SIGNED');
+        $response->assertJsonPath('data.version', 1);
     }
 
     public function test_sign_without_auth_returns_401(): void
@@ -473,6 +511,91 @@ final class ReportSigningEndpointTest extends TestCase
         // G7ReviewSet::fromResolutions rejects unresolved aspects
         $response->assertStatus(422);
         $response->assertJsonPath('error.code', 'G7_INVALID');
+    }
+
+    // ─── Re-sign / revision tests ───
+
+    public function test_resign_without_reason_returns_422(): void
+    {
+        $case = $this->createCase();
+        $baseline = $this->seedBaseline($case);
+        $admin = $this->psychologist();
+
+        // First signing
+        $this->actingAs($admin, 'admin')
+            ->postJson("/admin/assessment-cases/{$case->public_id}/signing", $this->validPayload($baseline))
+            ->assertStatus(201);
+
+        // Second signing without revision_reason
+        $response = $this->actingAs($admin, 'admin')
+            ->postJson("/admin/assessment-cases/{$case->public_id}/signing", $this->validPayload($baseline));
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'REVISION_REASON_REQUIRED');
+    }
+
+    public function test_resign_with_short_reason_returns_422(): void
+    {
+        $case = $this->createCase();
+        $baseline = $this->seedBaseline($case);
+        $admin = $this->psychologist();
+
+        // First signing
+        $this->actingAs($admin, 'admin')
+            ->postJson("/admin/assessment-cases/{$case->public_id}/signing", $this->validPayload($baseline))
+            ->assertStatus(201);
+
+        // Second signing with reason < 20 chars
+        $payload = $this->validPayload($baseline);
+        $payload['revision_reason'] = 'Terlalu pendek.';
+        $response = $this->actingAs($admin, 'admin')
+            ->postJson("/admin/assessment-cases/{$case->public_id}/signing", $payload);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'REVISION_REASON_REQUIRED');
+    }
+
+    public function test_resign_with_valid_reason_returns_201_with_revision_metadata(): void
+    {
+        $case = $this->createCase();
+        $baseline = $this->seedBaseline($case);
+        $admin = $this->psychologist();
+
+        // First signing
+        $r1 = $this->actingAs($admin, 'admin')
+            ->postJson("/admin/assessment-cases/{$case->public_id}/signing", $this->validPayload($baseline));
+        $r1->assertStatus(201);
+        $v1Id = $r1->json('data.id');
+
+        // Second signing with valid revision_reason
+        $payload = $this->validPayload($baseline);
+        $payload['revision_reason'] = 'Psikolog perlu merevisi laporan untuk memperbarui narasi klaster.';
+        $r2 = $this->actingAs($admin, 'admin')
+            ->postJson("/admin/assessment-cases/{$case->public_id}/signing", $payload);
+
+        $r2->assertStatus(201);
+        $r2->assertJsonPath('data.state', 'SIGNED');
+        $r2->assertJsonPath('data.version', 2);
+
+        // Version 2 snapshot has revision key
+        $snapshot2 = $r2->json('data.snapshot');
+        $this->assertArrayHasKey('revision', $snapshot2);
+        $this->assertSame('Psikolog perlu merevisi laporan untuk memperbarui narasi klaster.', $snapshot2['revision']['reason']);
+        $this->assertSame(1, $snapshot2['revision']['supersedes_version']);
+
+        // Version 2 supersedes version 1
+        $row2 = DB::table('report_signing_snapshots')->where('id', $r2->json('data.id'))->sole();
+        $this->assertSame($v1Id, $row2->supersedes_id);
+
+        // Version 1 is unchanged — no revision key
+        $row1 = DB::table('report_signing_snapshots')->where('id', $v1Id)->sole();
+        $snapshot1 = json_decode($row1->snapshot_json, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertArrayNotHasKey('revision', $snapshot1);
+        $this->assertCount(2, $snapshot1);
+
+        // Both rows exist independently
+        $this->assertSame('SIGNED', $row1->state);
+        $this->assertSame('SIGNED', $row2->state);
     }
 
     // ─── Helper ───
