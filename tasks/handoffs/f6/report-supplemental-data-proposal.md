@@ -163,3 +163,49 @@ Sisa keputusan psikolog: apakah kalimat "tidak tersedia" tersebut disetujui reda
 - **Lampiran C memetakan pita narasi ke skor 1–10.** Pemetaan ini **tidak boleh dipakai** sebelum psikolog memutuskan padanannya untuk skala 1–5.
 - Template v2.3 memuat bagian **V. Batasan, Kerahasiaan & Ketentuan Penggunaan** (3 butir, ID+JP) dan dasar hukum (UU 23/2022, UU 18/2017, UU 27/2022) yang belum ada di template F6.
 - Template v2.3 juga meminta field identitas yang belum kita simpan: **Nomor ID CPMI/SISKOP2MI**, **tempat lahir**, **level bahasa Jepang**, dan **Program yang Dituju (TITP / SSW / lainnya)**.
+
+---
+
+# Keputusan user 2026-09-20 (sesi GLM-channel)
+
+Enam butir yang tersisa dijawab langsung oleh user. Dicatat di sini supaya tidak perlu ditanyakan ulang.
+
+| # | Pertanyaan | Keputusan user | Status penerapan |
+|---|---|---|---|
+| 1 | Format nomor laporan + perilaku re-sign | "Best practice saja" — diserahkan ke tim | Usulan di bawah, menunggu persetujuan Lead; belum ada migration |
+| 2 | Cek masa berlaku SILP/STR saat tanda tangan | **Tidak perlu dicek** | Tidak ada validasi kedaluwarsa. Kolom masa berlaku tidak diperlukan |
+| 3 | Redaksi bagian DASS bila hasil tidak ada | **Tampilkan tanda "–"** | Diterapkan: kategori dicetak `–` + satu kalimat "Hasil skrining tidak tersedia." (ID+JP) |
+| 4 | Kalimat penutup / teks rekomendasi | **Pakai teks template v2.3** | Teks baku per label diambil apa adanya dari Template v2.3 Bagian IV |
+| 5 | Nomor ID CPMI/SISKOP2MI & level bahasa Jepang | **Sediakan tempatnya; terisi → tampil, kosong → kosong** | Opsional, tidak memblokir penerbitan. Kolomnya milik lane registrasi/F2 |
+| 6 | Peninjau cutoff Kraepelin digital | Dipertanyakan balik: "kan semua by sistem?" | Lihat penjelasan di bawah; bukan pekerjaan otomatis |
+
+## Usulan best practice untuk #1 (nomor laporan)
+
+- **Format:** `HPP/{YYYY}/{MM}/{NNNN}`, contoh `HPP/2026/09/0001`. Urutan direset tiap bulan, pola sama dengan `MonthlyTestNumberIssuer` yang sudah ada.
+- **Diterbitkan sekali per kasus**, pada PDF pertama yang dibuat dari snapshot bertanda tangan.
+- **Re-sign / REVISED:** nomor **tetap sama**, `version` naik (`HPP/2026/09/0001` versi 2). Alasannya: nomor laporan adalah identitas dokumen untuk penerima di Jepang; mengganti nomor saat revisi membuat penerima mengira ada dua laporan berbeda untuk orang yang sama.
+- **Lembar Kerja Internal** memakai nomor yang sama dengan HPP-nya, dibedakan oleh `document_type`, agar mudah ditelusuri berpasangan.
+- Nomor disimpan di `report_documents` (lihat proposal utama), bukan dihitung ulang saat render.
+
+## Catatan #5 — tempatnya ada, datanya belum
+
+Template v2.3 Bagian I.A meminta Nomor ID CPMI/SISKOP2MI dan level bahasa Jepang (juga tempat lahir dan Program TITP/SSW). Keputusan user: sediakan tempatnya, tampil bila terisi.
+Konsekuensi: kolomnya harus ada dulu di pendaftaran (**lane registrasi/F2**, bukan F6), baru template HPP bisa menampilkannya. Sampai itu ada, baris tersebut tidak dicetak. Tidak ada yang memblokir penerbitan karena field ini kosong.
+
+## Catatan #6 — kenapa peninjauan cutoff Kraepelin tidak bisa otomatis
+
+Pertanyaan user: "ini meninjau bagaimana, kan semua by sistem?"
+
+Yang otomatis adalah **penerapan** cutoff: sistem memakai tabel norma Kraepelin sebagai data (`database/seeders/data/kraepelin.json`) dan psikolog dapat merevisinya tanpa rilis kode.
+Yang **tidak** otomatis adalah **penetapan** angka cutoff-nya, karena itu keputusan psikometri, bukan perhitungan:
+
+- Norma Kraepelin yang dipakai sekarang disusun dari peserta yang mengerjakan **dengan tangan di kertas**, sedangkan sistem meminta peserta **mengetik**. Kecepatan mengetik berbeda dari menulis, dan faktor Panker (kecepatan) yang paling terpengaruh.
+- Artinya cutoff lama bisa menggeser level peserta secara sistematis, dan ini tidak bisa dideteksi sistem sendiri: sistem tidak tahu mana "benar", ia hanya menerapkan tabel yang diberikan.
+- Konfirmasi Akhir butir 9: psikolog menargetkan **±200 sesi digital sah (V1)**, yang akan didominasi grup SMA/SMK, sebelum cutoff ditinjau.
+
+Pembagian kerja yang masuk akal:
+1. **Sistem** mengumpulkan dan menyajikan datanya: sebaran keempat faktor Kraepelin untuk sesi V1, per grup norma, plus jumlah sesi terkumpul. Ini bisa otomatis dan bisa dibuat kapan saja.
+2. **Psikolog** membaca sebaran itu dan memutuskan apakah cutoff digeser, lalu menerbitkan versi tabel norma baru.
+3. **Sistem** memakai versi baru untuk laporan berikutnya; laporan lama tetap memakai versi standarnya sendiri (aturan G8, tidak berlaku surut).
+
+Jadi yang perlu ditunjuk bukan "siapa yang menghitung", melainkan **siapa yang memantau jumlah sesi V1 mencapai 200 lalu mengingatkan psikolog**. Itu bisa dibuat otomatis sebagai laporan berkala. Butir ini bukan pekerjaan lane F6.

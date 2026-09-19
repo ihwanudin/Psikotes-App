@@ -134,7 +134,7 @@ final class SignedReportDatasetTest extends TestCase
         $this->assertNull($unrecognized->draft()->toViewData()['dass']);
     }
 
-    public function test_report_without_dass_states_it_is_unavailable_rather_than_implying_no_findings(): void
+    public function test_report_without_dass_shows_a_dash_rather_than_implying_no_findings(): void
     {
         $case = $this->createReportCase();
         $this->signCase($case, $this->reportPsychologist());
@@ -142,8 +142,8 @@ final class SignedReportDatasetTest extends TestCase
 
         $html = BladeReportRenderer::make()->renderHpp($this->completeDataset()->hpp($case->public_id)->draft());
 
-        $this->assertStringContainsString('Tidak tersedia', $html);
-        $this->assertStringContainsString('bukan berarti tidak', $html);
+        $this->assertStringContainsString('Kategori umum: <strong>&ndash;</strong>', $html);
+        $this->assertStringContainsString('Hasil skrining tidak tersedia.', $html);
         foreach (['Normal', 'Ringan', 'Sedang', 'Parah'] as $category) {
             $this->assertStringNotContainsString('Kategori umum: <strong>'.$category.'</strong>', $html);
         }
