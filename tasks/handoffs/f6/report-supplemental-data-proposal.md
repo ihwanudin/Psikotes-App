@@ -15,7 +15,7 @@ Ringkasan: hanya **dua dari lima yang butuh skema DB**. Satu cukup perubahan kon
 
 | # | Input | Jenis solusi | Lane pemilik (usulan) | Butuh migration? |
 |---|---|---|---|---|
-| 1 | Nomor laporan | Tabel baru `report_documents` (SPEC §256 entitas `Laporan`) | F6 (GLM-channel) | Ya |
+| 1 | Nomor laporan | Tabel baru `report_documents` (SPEC §11 entitas `Laporan`) | F6 (GLM-channel) | Ya |
 | 2 | SIPP psikolog | Kolom `admins.sipp_number` + disalin ke dokumen saat terbit | F6 + F7 (admin CRUD) | Ya |
 | 3 | Alasan rekomendasi | Field baru di input tanda tangan F5 → `snapshot_json.prerequisite_input` | F5 (DeepSeek) | Tidak |
 | 4 | Label aspek ID/JP | Data: tambah peta aspek ke `reporting.json` via `tools/extract` | F0 extract + psikolog/penerjemah | Tidak |
@@ -25,7 +25,7 @@ Ringkasan: hanya **dua dari lima yang butuh skema DB**. Satu cukup perubahan kon
 
 ## 1. Nomor laporan → tabel `report_documents`
 
-SPEC §256 sudah mendefinisikan entitas `Laporan(no_laporan, status, hash, psikolog_id, versi)`, tetapi belum ada tabelnya.
+SPEC §11 (Model Data) sudah mendefinisikan entitas `Laporan(no_laporan, status, hash, psikolog_id, versi)`, tetapi belum ada tabelnya.
 Saat ini PDF yang terbit disimpan di disk privat `reports` dan tidak dicatat di mana pun, sehingga object key-nya hilang.
 
 Usulan tabel (append-only, pola sama dengan `report_signing_snapshots`):
