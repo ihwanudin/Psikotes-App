@@ -83,6 +83,17 @@ final class ReportSigningEndpointTest extends TestCase
         ]);
     }
 
+    private function staff(?Branch $branch = null): Admin
+    {
+        return Admin::query()->create([
+            'branch_id' => $branch?->id,
+            'name' => 'Staff Test',
+            'email' => (string) Str::uuid().'@example.test',
+            'password' => bcrypt('password'),
+            'role' => AdminRole::Staff->value,
+        ]);
+    }
+
     private function seedBaseline(AssessmentCase $case): array
     {
         $reporting = $this->canonicalReporting();
@@ -332,9 +343,14 @@ final class ReportSigningEndpointTest extends TestCase
 
     public function test_sign_with_non_psychologist_returns_403(): void
     {
+        $branch = Branch::query()->create([
+            'code' => 'BR-SE-STAFF',
+            'name' => 'Cabang Staff Test',
+            'ref_code' => 'REF-SE-STAFF',
+        ]);
         $case = $this->createCase();
         $baseline = $this->seedBaseline($case);
-        $admin = $this->superAdmin();
+        $admin = $this->staff($branch);
 
         $response = $this->actingAs($admin, 'admin')
             ->postJson("/admin/assessment-cases/{$case->public_id}/signing", $this->validPayload($baseline));

@@ -4,25 +4,45 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Enums\AdminAbility;
+use App\Models\Admin;
 use App\Security\RlsContextRunner;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 final class ReviewInputController extends Controller
 {
-    public function __invoke(string $case, RlsContextRunner $runner): JsonResponse
+    public function __invoke(Request $request, string $case, RlsContextRunner $runner): JsonResponse
     {
-        [$eligibility, $narrative, $edits] = $runner->runAsService(function () use ($case): array {
-            $caseRecord = DB::table('assessment_cases')
+        $admin = $request->user('admin');
+        if (! $admin instanceof Admin || ! $admin->canPerform(AdminAbility::ReviewReports)) {
+            abort(404);
+        }
+
+        // Minimal runAsService: assessment_cases RLS only allows service role to SELECT.
+        $caseRecord = $runner->runAsService(function () use ($case): ?object {
+            return DB::table('assessment_cases')
                 ->where('public_id', $case)
+                ->select('id', 'organization_id')
                 ->first();
+        });
 
-            if ($caseRecord === null) {
-                return [null, null, collect()];
-            }
+        if ($caseRecord === null) {
+            return $this->error('NOT_FOUND', 'No eligibility decision or narrative found for this assessment case.', 404);
+        }
 
-            $caseId = (int) $caseRecord->id;
+        // Branch scope: branch_admin/staff only access cases in their own branch.
+        $branchId = $admin->rlsContext()->branchId;
+        if ($branchId !== null && (int) $caseRecord->organization_id !== $branchId) {
+            abort(404);
+        }
 
+        $caseId = (int) $caseRecord->id;
+
+        // runAsService required: eligibility_decision_versions, bilingual_narrative_versions,
+        // and narrative_cluster_edits RLS only allow service role to SELECT.
+        [$eligibility, $narrative, $edits] = $runner->runAsService(function () use ($caseId): array {
             $eligibility = DB::table('eligibility_decision_versions')
                 ->where('assessment_case_id', $caseId)
                 ->orderByDesc('version')
