@@ -44,6 +44,60 @@ final class ReportGenerationPageTest extends TestCase
         $this->assertFalse(ReportGeneration::shouldRegisterNavigation());
     }
 
+    public function test_route_carries_the_case_identity(): void
+    {
+        $case = $this->createReportCase();
+
+        $url = ReportGeneration::getUrl(['case' => $case->public_id], panel: 'admin');
+
+        $this->assertStringEndsWith('/admin/report-generation/'.$case->public_id, $url);
+    }
+
+    public function test_real_http_request_renders_for_psychologist(): void
+    {
+        $psychologist = $this->reportPsychologist();
+        $case = $this->createReportCase();
+
+        $this->actingAs($psychologist, 'admin')
+            ->get('/admin/report-generation/'.$case->public_id)
+            ->assertOk()
+            ->assertSee('PDF belum dapat dibuat')
+            ->assertSee(SignedReportDataset::SNAPSHOT_NOT_FOUND);
+    }
+
+    public function test_real_http_request_is_concealed_for_other_roles(): void
+    {
+        $case = $this->createReportCase();
+        $branchId = (int) $case->organization_id;
+
+        foreach ([AdminRole::SuperAdmin, AdminRole::BranchAdmin, AdminRole::Staff] as $role) {
+            $admin = $this->admin($role, $role === AdminRole::SuperAdmin ? null : $branchId);
+            // Each role is a fresh browser session; AuthenticateSession would
+            // otherwise log out on the previous role's password hash.
+            $this->flushSession();
+            $this->app['auth']->forgetGuards();
+
+            $this->actingAs($admin, 'admin')
+                ->get('/admin/report-generation/'.$case->public_id)
+                ->assertNotFound();
+        }
+    }
+
+    public function test_real_http_request_redirects_guests_to_login(): void
+    {
+        $case = $this->createReportCase();
+
+        $this->get('/admin/report-generation/'.$case->public_id)
+            ->assertRedirect('/admin/login');
+    }
+
+    public function test_real_http_request_rejects_malformed_case_ids(): void
+    {
+        $this->actingAs($this->reportPsychologist(), 'admin')
+            ->get('/admin/report-generation/not-a-ulid')
+            ->assertNotFound();
+    }
+
     public function test_incomplete_data_lists_gaps_and_never_publishes(): void
     {
         $psychologist = $this->reportPsychologist();
@@ -104,9 +158,10 @@ final class ReportGenerationPageTest extends TestCase
         $this->assertStringNotContainsString('T26-09-9001', $files[0]);
     }
 
-    private function admin(AdminRole $role): Admin
+    private function admin(AdminRole $role, ?int $branchId = null): Admin
     {
         return Admin::query()->create([
+            'branch_id' => $branchId,
             'name' => 'Admin '.$role->value,
             'email' => (string) Str::uuid().'@example.test',
             'password' => bcrypt('password'),

@@ -15,6 +15,7 @@ use BackedEnum;
 use Filament\Facades\Filament;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
+use Filament\Panel;
 use Livewire\Attributes\Locked;
 use RuntimeException;
 use UnitEnum;
@@ -80,6 +81,15 @@ final class ReportGeneration extends Page
     #[Locked]
     public ?array $published = null;
 
+    /**
+     * The route itself carries the case identity: mount() requires it, so a
+     * slug without {case} would 500 on every real request.
+     */
+    public static function getRoutePath(Panel $panel): string
+    {
+        return '/'.self::getSlug($panel).'/{case}';
+    }
+
     public static function shouldRegisterNavigation(): bool
     {
         // Case-scoped page: reached with a case id, never from the menu.
@@ -97,6 +107,7 @@ final class ReportGeneration extends Page
     public function mount(string $case, SignedReportDataset $dataset): void
     {
         abort_unless(self::canAccess(), 404);
+        abort_unless(preg_match('/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/', $case) === 1, 404);
 
         $this->casePublicId = $case;
         $this->evaluate($dataset);
