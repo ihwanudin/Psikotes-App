@@ -22,7 +22,8 @@ Satu baris = satu PDF yang benar-benar diterbitkan.
 | `signing_snapshot_id` | ulid | tidak | FK → `report_signing_snapshots`. Dokumen selalu terikat pada snapshot SIGNED |
 | `document_type` | varchar(16) | tidak | CHECK `IN ('hpp','internal')` |
 | `report_number` | varchar(32) | tidak | Format `HPP/YYYY/MM/NNNN` |
-| `version` | int unsigned | tidak | 1 untuk terbitan pertama; naik saat re-sign |
+| `report_version` | int unsigned | tidak | Versi laporan bagi penerima. Disalin dari `report_signing_snapshots.version`. Naik **hanya** saat re-sign |
+| `render_seq` | int unsigned | tidak | Nomor urut pembuatan file untuk (snapshot, document_type) yang sama, mulai 1. Naik **hanya** bila file benar-benar dirender ulang |
 | `object_key` | varchar(160) | tidak | Kunci acak dari `ReportDocumentPublisher`, tidak mengandung PII |
 | `sha256` | char(64) | tidak | Hash isi PDF (SPEC "hash"), untuk verifikasi keaslian |
 | `size_bytes` | int unsigned | tidak | |
@@ -40,32 +41,32 @@ Satu baris = satu PDF yang benar-benar diterbitkan.
 
 | Nama | Kolom | Tujuan |
 |---|---|---|
-| `report_documents_number_unique` | `(document_type, report_number, version)` | Satu nomor+versi hanya boleh sekali per jenis dokumen |
-| `report_documents_snapshot_type_unique` | `(signing_snapshot_id, document_type)` | **Kunci idempotensi**: satu snapshot hanya menghasilkan satu baris per jenis dokumen |
-| `report_documents_case_idx` | `(assessment_case_id, document_type, version)` | Pencarian dokumen terbaru per kasus |
+| `report_documents_number_unique` | `(document_type, report_number, report_version)` | Satu nomor + versi laporan hanya boleh sekali per jenis dokumen |
+| `report_documents_render_unique` | `(signing_snapshot_id, document_type, render_seq)` | Tiap render punya barisnya sendiri; file yang berlaku = `render_seq` tertinggi |
+| `report_documents_case_idx` | `(assessment_case_id, document_type, report_version)` | Pencarian dokumen terbaru per kasus |
 | `report_documents_object_key_unique` | `(object_key)` | Kunci objek tidak pernah dipakai ulang |
 
-**Catatan idempotensi.** `report_documents_snapshot_type_unique` berarti: klik "Buat PDF" dua kali pada snapshot yang sama **tidak** membuat baris baru dan **tidak** membuat nomor baru. Dua pilihan perilaku, saya usulkan (b):
-- (a) tolak pembuatan kedua, atau
-- (b) **buat ulang PDF-nya** (file baru di storage), lalu `UPDATE` baris tersebut dengan `object_key`/`sha256`/`size_bytes` baru.
-Pilihan (b) lebih ramah dipakai: psikolog bisa mengunduh ulang setelah tautan 15 menit kedaluwarsa, tanpa menambah nomor laporan. Konsekuensinya tabel **tidak bisa append-only murni** (lihat §4).
+**Idempotensi ditegakkan di aplikasi, bukan oleh unique constraint.** Saat psikolog menekan "Buat PDF": bila sudah ada baris untuk (snapshot, document_type) **dan** objeknya masih ada di storage, kembalikan baris itu dan terbitkan tautan baru dari `object_key` yang sama — jangan render ulang, jangan menambah baris. Render ulang (baris baru, `render_seq` naik) hanya terjadi bila file hilang dari storage atau template laporan berubah.
 
 ## 3. Penerbitan nomor
 
 - Tabel urutan terpisah, pola sama dengan `test_number_sequences` + `MonthlyTestNumberIssuer`: kunci `(document_type, year, month)` → `last_number`, diambil dengan penguncian baris agar aman saat bersamaan.
 - Nomor diterbitkan **sekali per kasus**, pada PDF pertama.
-- **Re-sign / REVISED:** `report_number` **tetap**, `version` naik. Disetujui Lead secara prinsip; alasannya nomor laporan adalah identitas dokumen bagi penerima di Jepang, sehingga nomor baru pada revisi akan terbaca sebagai dua laporan berbeda untuk orang yang sama.
+- **Re-sign / REVISED:** `report_number` **tetap**, `report_version` naik (disalin dari versi snapshot tanda tangan yang baru). Disetujui Lead secara prinsip; alasannya nomor laporan adalah identitas dokumen bagi penerima di Jepang, sehingga nomor baru pada revisi akan terbaca sebagai dua laporan berbeda untuk orang yang sama.
 - Lembar Kerja Internal memakai `report_number` yang sama dengan HPP-nya, dibedakan `document_type`.
 
-## 4. Append-only atau tidak — perlu keputusan Lead
+## 4. Append-only murni (revisi setelah review Lead)
 
-`report_signing_snapshots` append-only murni (trigger menolak UPDATE dan DELETE). Untuk `report_documents` ada tarik-ulur:
+**Keputusan Lead 2026-09-20: append-only murni, tanpa pengecualian kolom.** UPDATE dan DELETE ditolak trigger, persis pola `report_signing_snapshots`.
 
-- **Opsi A — append-only murni.** Setiap pembuatan ulang PDF menambah baris baru dengan `version` naik. Sederhana dan paling aman untuk audit, tapi `version` jadi ikut naik karena alasan teknis (tautan kedaluwarsa), bukan karena laporan benar-benar direvisi. Nomor versi kehilangan makna.
-- **Opsi B — append-only dengan satu pengecualian sempit (usulan saya).** DELETE selalu ditolak. INSERT bebas. UPDATE **hanya** boleh mengubah `object_key`, `sha256`, `size_bytes`, `generated_at`, dan hanya bila `signing_snapshot_id`, `report_number`, `version`, serta seluruh kolom snapshot psikolog tidak berubah. Ditegakkan trigger `BEFORE UPDATE`, sama gayanya dengan `guard_report_signing_snapshot()`.
-  Artinya: isi laporan dan identitasnya tidak bisa diam-diam diubah, tetapi file-nya boleh dibuat ulang.
+Usulan awal saya (A: append-only tapi version naik tiap render; B: melonggarkan UPDATE untuk kolom file) **dua-duanya keliru**, dan alasannya penting untuk dicatat:
 
-Saya usulkan **B**, tetapi ini keputusan Anda karena menyangkut kekuatan jaminan audit.
+- **A tidak konsisten dengan unique-nya sendiri.** Dengan unique `(signing_snapshot_id, document_type)`, pembuatan ulang tidak mungkin menambah baris, sehingga A justru memaksa UPDATE. Jadi A bukan append-only.
+- **B melonggarkan integritas demi kasus yang tidak ada.** Tautan sementara yang kedaluwarsa **tidak** memerlukan render ulang: `object_key` tetap, dan tautan bertanda tangan baru bisa diterbitkan on-demand dari objek yang sama. Render ulang hanya perlu bila file hilang dari storage atau template berubah.
+
+Akar masalahnya: satu kolom `version` dipakai untuk dua makna. Setelah dipisah menjadi `report_version` (versi laporan bagi penerima, naik hanya saat re-sign) dan `render_seq` (urutan pembuatan file, naik hanya saat render ulang), append-only murni tidak lagi kehilangan makna.
+
+**Konsekuensi untuk kode F6:** `ReportDocumentPublisher` sekarang menggabungkan "simpan objek" dan "terbitkan tautan". Perlu dipisah, supaya tautan baru bisa diterbitkan untuk `object_key` yang sudah ada tanpa menyentuh storage. Ini pekerjaan lane F6 dan dikerjakan bersama migration-nya.
 
 ## 5. RLS & hak akses
 
@@ -73,7 +74,7 @@ Mengikuti pola `report_signing_snapshots`:
 
 ```
 REVOKE ALL PRIVILEGES ON report_documents FROM psikotes_runtime;
-GRANT SELECT, INSERT ON report_documents TO psikotes_runtime;   -- + UPDATE bila Opsi B
+GRANT SELECT, INSERT ON report_documents TO psikotes_runtime;   -- tanpa UPDATE/DELETE: append-only murni
 ALTER TABLE report_documents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE report_documents FORCE ROW LEVEL SECURITY;
 CREATE POLICY report_documents_service_select ON report_documents
@@ -91,11 +92,12 @@ CREATE POLICY report_documents_service_insert ON report_documents
 ```
 ALTER TABLE report_documents
     ADD CONSTRAINT report_documents_contract_check CHECK (
-        document_type IN ('hpp','internal')
+        document_type IN ('hpp','internal')   -- kedua nilai diizinkan sejak awal, walau kini hanya 'hpp' yang ditulis
         AND report_number ~ '^(HPP)/[0-9]{4}/[0-9]{2}/[0-9]{4}$'
         AND sha256 ~ '^[a-f0-9]{64}$'
         AND size_bytes > 0
-        AND version >= 1
+        AND report_version >= 1
+        AND render_seq >= 1
     );
 ```
 Plus trigger yang memastikan `signing_snapshot_id` menunjuk snapshot ber-`state = 'SIGNED'` milik `assessment_case_id` yang sama (pola `guard_*`), sehingga PDF tidak mungkin tercatat untuk laporan yang belum ditandatangani (G5).
@@ -120,6 +122,8 @@ Nama fasilitas dan alamatnya adalah identitas penerbit, sama untuk semua laporan
 
 ## 8. Yang masih perlu keputusan
 
-1. **Opsi A atau B** pada §4 (append-only murni vs pengecualian sempit untuk pembuatan ulang file).
-2. Apakah Lembar Kerja Internal memang ikut dicatat di tabel yang sama sejak awal, atau `document_type` dibatasi `hpp` dulu.
-3. Giliran migration: Lead yang menentukan urutannya terhadap proposal proctoring lane Codex.
+Tidak ada lagi. Ketiga butir sebelumnya sudah diputuskan Lead 2026-09-20:
+
+1. **Append-only murni**, dengan `report_version` dan `render_seq` dipisah (§4).
+2. **`document_type` mengizinkan `hpp` dan `internal` sejak awal** pada check constraint, meski untuk sekarang hanya `hpp` yang ditulis — menambah nilai belakangan berarti migration lagi tanpa alasan.
+3. **Giliran migration:** `report_documents` lebih dulu, proposal proctoring lane Codex menyusul. Migration tetap tidak dibuat sampai pembekuan branch dicabut.
