@@ -45,6 +45,29 @@ These rules apply to every Codex session and delegated task in this repository.
   ambiguity for a joint decision rather than silently resolving it by
   loosening a constraint, deleting a check, or picking one side without
   recording why.
+- **Two coordinator sessions currently split by worker, 2026-09-19 (human
+  decision):** the "Lead" session is the global hub (Codex, DeepSeek, and
+  everything else); a second, GLM-dedicated coordinator session owns all
+  communication with GLM specifically — GLM-bound instructions/verification
+  route through that session only, not through Lead. Either session's audit
+  of `origin` is authoritative regardless of which Claude account is
+  currently signed in on that device (see "Continuity across accounts"
+  below) — a session is a role tied to this file and to `origin`, not to a
+  login.
+
+## Continuity across accounts
+
+Claude Code chat history does **not** transfer between different Anthropic
+accounts (only same-account re-login does). If the human switches to a
+different account/device for a coordinator role: nothing here breaks, since
+git (this file + every branch on `origin`) is the actual persistent state,
+not any chat transcript. To resume a coordinator role from a new account:
+open Claude Code in this same repository/worktree path, and as the very
+first instruction tell it to read this entire file before doing anything
+else — that already matches the standing "Required reading before work"
+rule above. Re-state which lane it's taking over (global hub vs the
+GLM-dedicated channel, per the split noted above) since that split lives
+only in chat convention today, not in a machine-checkable place.
 
 ## Ownership ledger (updated 2026-09-18, baseline commit 621d859 on `main`)
 
