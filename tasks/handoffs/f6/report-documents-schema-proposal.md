@@ -127,3 +127,16 @@ Tidak ada lagi. Ketiga butir sebelumnya sudah diputuskan Lead 2026-09-20:
 1. **Append-only murni**, dengan `report_version` dan `render_seq` dipisah (§4).
 2. **`document_type` mengizinkan `hpp` dan `internal` sejak awal** pada check constraint, meski untuk sekarang hanya `hpp` yang ditulis — menambah nilai belakangan berarti migration lagi tanpa alasan.
 3. **Giliran migration:** `report_documents` lebih dulu, proposal proctoring lane Codex menyusul. Migration tetap tidak dibuat sampai pembekuan branch dicabut.
+
+## 9. Definition of Done untuk increment migration (disetujui Lead 2026-09-20)
+
+Skema di atas sah untuk dijadikan migration, **setelah pembekuan branch dicabut dan verdict verifikasi keluar**. Increment tersebut wajib memuat:
+
+1. **Pemisahan `ReportDocumentPublisher`** menjadi dua tanggung jawab — "simpan objek" dan "terbitkan tautan" — dikerjakan **di dalam increment yang sama**, bukan sesudahnya. Tanpa itu, perilaku idempoten pada §2 (objek masih ada → kembalikan baris yang ada, terbitkan tautan baru, tanpa render dan tanpa baris baru) tidak bisa dibuktikan.
+   - Test wajib: **render ulang TIDAK terjadi** saat objek masih ada di storage. Bukti konkretnya, misalnya, renderer PDF tidak dipanggil sama sekali dan `object_key` yang dikembalikan sama persis.
+2. **Test penegakan trigger lewat insert nyata di PostgreSQL** (harness disposable, bukan hanya SQLite), mengikuti pola tabel ledger lane lain:
+   - `UPDATE` ditolak;
+   - `DELETE` ditolak;
+   - `INSERT` yang menunjuk snapshot **non-SIGNED** ditolak (penegak G5 di level basis data).
+
+Catatan pelaksanaan: bukti PostgreSQL memakai `tools/testing/run-org-postgres.ps1`, sama seperti `tests/Postgres/SignedReportDatasetRlsTest.php` yang sudah ada.
