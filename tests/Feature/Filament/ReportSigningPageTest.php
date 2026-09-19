@@ -7,6 +7,7 @@ namespace Tests\Feature\Filament;
 use App\Domain\Eligibility\EligibilityDecisionSnapshot;
 use App\Enums\AdminRole;
 use App\Filament\Pages\ReportSigning;
+use App\Filament\Pages\ReportSigningQueue;
 use App\Models\Admin;
 use App\Models\AssessmentCase;
 use App\Models\Branch;
@@ -250,6 +251,9 @@ final class ReportSigningPageTest extends TestCase
         return ['eligibilityId' => $eligibilityId, 'narrativeId' => $narrativeId];
     }
 
+    /**
+     * @return array{standard_version: string, base_standards: array<string, mixed>, fields: array<int, array<string, mixed>>}
+     */
     private function canonicalReporting(): array
     {
         $contents = file_get_contents(dirname(__DIR__, 3).'/database/seeders/data/reporting.json');
@@ -308,26 +312,37 @@ final class ReportSigningPageTest extends TestCase
             ->assertRedirect('/admin/login');
     }
 
-    public function test_page_does_not_register_navigation_for_branch_admin_and_staff(): void
+    public function test_queue_page_does_not_register_navigation_for_branch_admin_and_staff(): void
     {
         $this->actingAs($this->branchAdmin(), 'admin');
-        self::assertFalse(ReportSigning::shouldRegisterNavigation());
+        self::assertFalse(ReportSigningQueue::shouldRegisterNavigation());
 
         $this->flushSession();
         $this->actingAs($this->staff(), 'admin');
-        self::assertFalse(ReportSigning::shouldRegisterNavigation());
+        self::assertFalse(ReportSigningQueue::shouldRegisterNavigation());
     }
 
-    public function test_page_registers_navigation_for_psychologist(): void
+    public function test_queue_page_registers_navigation_for_psychologist(): void
     {
         $this->actingAs($this->psychologist(), 'admin');
-        self::assertTrue(ReportSigning::shouldRegisterNavigation());
+        self::assertTrue(ReportSigningQueue::shouldRegisterNavigation());
     }
 
-    public function test_page_registers_navigation_for_super_admin(): void
+    public function test_queue_page_registers_navigation_for_super_admin(): void
     {
         $this->actingAs($this->superAdmin(), 'admin');
-        self::assertTrue(ReportSigning::shouldRegisterNavigation());
+        self::assertTrue(ReportSigningQueue::shouldRegisterNavigation());
+    }
+
+    public function test_per_case_page_never_registers_navigation(): void
+    {
+        // Per-case page should never appear in navigation regardless of role
+        $this->actingAs($this->psychologist(), 'admin');
+        self::assertFalse(ReportSigning::shouldRegisterNavigation());
+
+        $this->flushSession();
+        $this->actingAs($this->superAdmin(), 'admin');
+        self::assertFalse(ReportSigning::shouldRegisterNavigation());
     }
 
     public function test_can_access_returns_true_for_psychologist(): void
@@ -781,5 +796,227 @@ final class ReportSigningPageTest extends TestCase
         $v2Json = json_decode($snapshots[1]->snapshot_json, true, 512, JSON_THROW_ON_ERROR);
         $this->assertArrayHasKey('revision', $v2Json);
         $this->assertSame(1, $v2Json['revision']['supersedes_version']);
+    }
+
+    // ─── Helpers for queue tests ───
+
+    private function createIntegratedCase(): AssessmentCase
+    {
+        static $counter = 0;
+        $suffix = ++$counter;
+        $branch = Branch::query()->create([
+            'code' => 'BR-IC-'.$suffix,
+            'name' => 'Cabang Integrated Test',
+            'ref_code' => 'REF-IC-'.$suffix,
+        ]);
+        $package = TestPackage::query()->create([
+            'code' => 'PKG-IC-'.$suffix,
+            'name' => 'Paket Integrated Test',
+            'amount' => 250_000,
+            'currency' => 'IDR',
+            'is_active' => true,
+        ]);
+        $package->items()->create(['test_type' => 'ist']);
+        $participant = Participant::query()->create([
+            'branch_id' => $branch->id,
+            'referral_branch_id' => $branch->id,
+            'referral_source' => 'default',
+            'package_id' => $package->id,
+            'source_system' => 'DIRECT_PUBLIC',
+            'full_name' => 'Peserta Integrated Test',
+            'gender' => 'female',
+            'birth_date' => '2001-04-15',
+            'education_level' => 'SMA/SMK',
+            'intended_field' => 'UMUM',
+            'phone' => '+6281234567890',
+        ]);
+
+        return AssessmentCase::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'participant_id' => $participant->id,
+            'organization_id' => $branch->id,
+            'package_id' => $package->id,
+            'origin' => 'INTEGRATED',
+            'intended_field_snapshot' => 'UMUM',
+        ]);
+    }
+
+    /**
+     * @param  'COMPLETED'|'UNDER_REVIEW'|'FINALIZED'  $status
+     */
+    private function createCaseReadyForReview(string $status = 'COMPLETED'): AssessmentCase
+    {
+        $case = $this->createIntegratedCase();
+        $key = (string) Str::ulid();
+        $clientId = DB::table('integration_clients')->insertGetId([
+            'organization_id' => $case->organization_id,
+            'client_id' => $key,
+            'credential_reference' => 'synthetic-test',
+        ]);
+
+        DB::table('assessment_participants')->insert([
+            'organization_id' => $case->organization_id,
+            'integration_client_id' => $clientId,
+            'participant_id' => $case->participant_id,
+            'package_id' => $case->package_id,
+            'assessment_case_id' => $case->id,
+            'assessment_attempt_id' => $case->public_id,
+            'source_system' => 'P6B_TEST',
+            'external_candidate_id' => $key,
+            'funding_mode' => 'COMMERCIAL_SELF_PAY',
+            'assessment_status' => $status,
+            'idempotency_key' => $key,
+            'request_hash' => hash('sha256', $key),
+            'logical_assessment_key' => hash('sha256', 'logical'.$key),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return $case;
+    }
+
+    // ─── Queue page HTTP tests ───
+
+    public function test_queue_page_psychologist_returns_200(): void
+    {
+        $this->createCaseReadyForReview();
+        $this->actingAs($this->psychologist(), 'admin');
+
+        $this->get(ReportSigningQueue::getUrl())
+            ->assertSuccessful();
+    }
+
+    public function test_queue_page_super_admin_returns_200(): void
+    {
+        $this->createCaseReadyForReview();
+        $this->actingAs($this->superAdmin(), 'admin');
+
+        $this->get(ReportSigningQueue::getUrl())
+            ->assertSuccessful();
+    }
+
+    public function test_queue_page_branch_admin_returns_404(): void
+    {
+        $this->createCaseReadyForReview();
+        $this->actingAs($this->branchAdmin(), 'admin');
+
+        $this->get(ReportSigningQueue::getUrl())
+            ->assertNotFound();
+    }
+
+    public function test_queue_page_staff_returns_404(): void
+    {
+        $this->createCaseReadyForReview();
+        $this->actingAs($this->staff(), 'admin');
+
+        $this->get(ReportSigningQueue::getUrl())
+            ->assertNotFound();
+    }
+
+    public function test_queue_page_guest_redirects_to_login(): void
+    {
+        $this->createCaseReadyForReview();
+
+        $this->get(ReportSigningQueue::getUrl())
+            ->assertRedirect('/admin/login');
+    }
+
+    // ─── Per-case page HTTP tests ───
+
+    public function test_per_case_page_psychologist_returns_200(): void
+    {
+        $case = $this->createCase();
+        $this->seedBaseline($case);
+        $this->actingAs($this->psychologist(), 'admin');
+
+        $this->get(ReportSigning::getUrl(['case' => $case->public_id]))
+            ->assertSuccessful();
+    }
+
+    public function test_per_case_page_super_admin_returns_200(): void
+    {
+        $case = $this->createCase();
+        $this->seedBaseline($case);
+        $this->actingAs($this->superAdmin(), 'admin');
+
+        $this->get(ReportSigning::getUrl(['case' => $case->public_id]))
+            ->assertSuccessful();
+    }
+
+    public function test_per_case_page_branch_admin_returns_404(): void
+    {
+        $case = $this->createCase();
+        $this->seedBaseline($case);
+        $this->actingAs($this->branchAdmin(), 'admin');
+
+        $this->get(ReportSigning::getUrl(['case' => $case->public_id]))
+            ->assertNotFound();
+    }
+
+    public function test_per_case_page_staff_returns_404(): void
+    {
+        $case = $this->createCase();
+        $this->seedBaseline($case);
+        $this->actingAs($this->staff(), 'admin');
+
+        $this->get(ReportSigning::getUrl(['case' => $case->public_id]))
+            ->assertNotFound();
+    }
+
+    public function test_per_case_page_unknown_case_returns_404(): void
+    {
+        $this->actingAs($this->psychologist(), 'admin');
+
+        $this->get(ReportSigning::getUrl(['case' => (string) Str::ulid()]))
+            ->assertNotFound();
+    }
+
+    // ─── Queue page content tests ───
+
+    public function test_queue_page_shows_case_in_table(): void
+    {
+        $case = $this->createCaseReadyForReview();
+        $this->seedBaseline($case);
+        $this->actingAs($this->psychologist(), 'admin');
+
+        $response = $this->get(ReportSigningQueue::getUrl());
+        $response->assertSuccessful();
+        $response->assertSee('Peserta Integrated Test');
+        $response->assertSee($case->public_id);
+        $response->assertSee('Tinjau', false);
+        $response->assertSee('Tanda Tangan', false);
+    }
+
+    public function test_queue_page_shows_empty_state_when_no_cases(): void
+    {
+        $this->actingAs($this->psychologist(), 'admin');
+
+        $response = $this->get(ReportSigningQueue::getUrl());
+        $response->assertSuccessful();
+        $response->assertSee('Tidak ada kasus yang siap ditinjau saat ini.');
+    }
+
+    public function test_queue_page_links_to_per_case_signing_page(): void
+    {
+        $case = $this->createCaseReadyForReview();
+        $this->seedBaseline($case);
+        $this->actingAs($this->psychologist(), 'admin');
+
+        $response = $this->get(ReportSigningQueue::getUrl());
+        $response->assertSuccessful();
+        $expectedUrl = ReportSigning::getUrl(['case' => $case->public_id]);
+        $response->assertSee($expectedUrl, false);
+    }
+
+    public function test_queue_page_can_access_returns_true_for_psychologist(): void
+    {
+        $this->actingAs($this->psychologist(), 'admin');
+        self::assertTrue(ReportSigningQueue::canAccess());
+    }
+
+    public function test_queue_page_can_access_returns_false_for_staff(): void
+    {
+        $this->actingAs($this->staff(), 'admin');
+        self::assertFalse(ReportSigningQueue::canAccess());
     }
 }

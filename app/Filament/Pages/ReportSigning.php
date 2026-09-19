@@ -44,7 +44,7 @@ final class ReportSigning extends Page
         'D5' => 'Minat pelayanan sosial',
     ];
 
-    protected static ?string $slug = 'report-signing';
+    protected static ?string $slug = 'report-signing/{case}';
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-clipboard-document-check';
 
@@ -136,7 +136,7 @@ final class ReportSigning extends Page
 
     public static function shouldRegisterNavigation(): bool
     {
-        return self::canAccess();
+        return false;
     }
 
     public static function canAccess(): bool
@@ -213,6 +213,11 @@ final class ReportSigning extends Page
         if ($data['narrative'] !== null) {
             $this->narrativeVersionId = $data['narrative']->id;
         }
+    }
+
+    public function mountCanAuthorizeAccess(): void
+    {
+        abort_unless(self::canAccess(), 404);
     }
 
     public function hydrateCanAuthorizeAccess(): void
