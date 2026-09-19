@@ -19,13 +19,20 @@ final readonly class DassScreeningSummary
     private function __construct(
         public string $generalCategory,
         public string $narrative,
-        public string $followUp,
+        public ?string $followUp,
     ) {}
 
-    /** @param array<mixed> $input */
+    /**
+     * Follow-up text exists only for Sedang (pemantauan) and Parah/Sangat
+     * Parah (rujukan); for Normal/Ringan it is null and the report omits
+     * the line rather than inventing reassurance.
+     *
+     * @param  array<mixed>  $input
+     */
     public static function fromArray(array $input): self
     {
-        if (count($input) !== 3 || ! isset($input['general_category'], $input['narrative'], $input['follow_up'])) {
+        if (count($input) !== 3 || ! array_key_exists('general_category', $input)
+            || ! array_key_exists('narrative', $input) || ! array_key_exists('follow_up', $input)) {
             throw new InvalidArgumentException('DASS screening summary must contain exactly category, narrative, and follow-up.');
         }
 
@@ -33,16 +40,19 @@ final readonly class DassScreeningSummary
             throw new InvalidArgumentException('DASS screening summary category is unknown.');
         }
 
-        foreach (['narrative', 'follow_up'] as $key) {
-            if (! is_string($input[$key]) || trim($input[$key]) === '') {
-                throw new InvalidArgumentException("DASS screening summary [{$key}] is invalid.");
-            }
+        if (! is_string($input['narrative']) || trim($input['narrative']) === '') {
+            throw new InvalidArgumentException('DASS screening summary [narrative] is invalid.');
         }
 
-        return new self($input['general_category'], $input['narrative'], $input['follow_up']);
+        $followUp = $input['follow_up'];
+        if ($followUp !== null && (! is_string($followUp) || trim($followUp) === '')) {
+            throw new InvalidArgumentException('DASS screening summary [follow_up] is invalid.');
+        }
+
+        return new self($input['general_category'], $input['narrative'], $followUp);
     }
 
-    /** @return array{general_category: string, narrative: string, follow_up: string} */
+    /** @return array{general_category: string, narrative: string, follow_up: string|null} */
     public function toArray(): array
     {
         return [

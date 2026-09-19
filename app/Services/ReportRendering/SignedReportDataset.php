@@ -24,7 +24,9 @@ use stdClass;
  * completed DASS assessment at or before signing.
  *
  * Fails closed: any missing or inconsistent input yields a blocked
- * dataset listing gap codes; nothing is guessed or defaulted.
+ * dataset listing gap codes; nothing is guessed or defaulted. The single
+ * exception is the DASS screening, which is reported as a non-blocking
+ * warning so a missing screening never holds up publication.
  */
 final readonly class SignedReportDataset
 {
@@ -147,11 +149,18 @@ final readonly class SignedReportDataset
             $missing[] = self::IQ_CATEGORY_UNAVAILABLE;
         }
 
+        // DASS never blocks publication (owner decision 2026-09-20): a missing
+        // or unusable screening is reported as a warning and the HPP prints
+        // "tidak tersedia". G4/T-07 is unaffected: DASS still never reaches
+        // any zone/label expression.
+        $warnings = [];
         $dassCategory = $rows['dass_category'];
         if ($dassCategory === null) {
-            $missing[] = self::DASS_RESULT_NOT_FOUND;
+            $warnings[] = self::DASS_RESULT_NOT_FOUND;
+            $dassCategory = null;
         } elseif (! in_array($dassCategory, DassScreeningSummary::CATEGORIES, true)) {
-            $missing[] = self::DASS_CATEGORY_UNRECOGNIZED;
+            $warnings[] = self::DASS_CATEGORY_UNRECOGNIZED;
+            $dassCategory = null;
         }
 
         $psychologistRow = $rows['psychologist'];
@@ -181,17 +190,17 @@ final readonly class SignedReportDataset
 
         $dassText = is_string($dassCategory) ? $this->supplemental->dassScreeningText($dassCategory) : null;
         if (is_string($dassCategory) && $dassText === null) {
-            $missing[] = self::DASS_TEXT_UNAVAILABLE;
+            $warnings[] = self::DASS_TEXT_UNAVAILABLE;
+            $dassCategory = null;
         }
 
         if ($missing !== []) {
-            return SignedHppDataset::blocked($snapshotId, $missing);
+            return SignedHppDataset::blocked($snapshotId, $missing, $warnings);
         }
 
         /** @var stdClass $participant */
         /** @var stdClass $psychologistRow */
         /** @var array<string, array{label_id: string, label_jp: string}> $aspectLabels */
-        /** @var array{narrative: string, follow_up: string} $dassText */
         try {
             $identity = ReportIdentity::fromArray([
                 'report_number' => (string) $reportNumber,
@@ -211,7 +220,7 @@ final readonly class SignedReportDataset
                 (int) $iq,
                 (string) $iqCategory,
                 $clusters,
-                DassScreeningSummary::fromArray([
+                $dassCategory === null ? null : DassScreeningSummary::fromArray([
                     'general_category' => $dassCategory,
                     'narrative' => $dassText['narrative'],
                     'follow_up' => $dassText['follow_up'],
@@ -230,7 +239,7 @@ final readonly class SignedReportDataset
             return SignedHppDataset::blocked($snapshotId, [self::DRAFT_INVALID]);
         }
 
-        return SignedHppDataset::ready($snapshotId, $draft, $identity);
+        return SignedHppDataset::ready($snapshotId, $draft, $identity, $warnings);
     }
 
     /**
