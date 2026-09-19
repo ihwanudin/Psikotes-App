@@ -61,8 +61,12 @@ final class Admin extends Authenticatable implements FilamentUser, ProvidesRlsCo
             AdminAbility::VerifyPayments => $this->role === AdminRole::SuperAdmin
                 || ($this->can_verify_payments
                     && in_array($this->role, [AdminRole::BranchAdmin, AdminRole::Staff], true)),
-            AdminAbility::ViewDass,
-            AdminAbility::ReviewReports => $this->role === AdminRole::Psychologist,
+            AdminAbility::ViewDass => $this->role === AdminRole::Psychologist,
+            AdminAbility::ReviewReports => in_array(
+                $this->role,
+                [AdminRole::Psychologist, AdminRole::SuperAdmin],
+                true,
+            ),
         };
     }
 
