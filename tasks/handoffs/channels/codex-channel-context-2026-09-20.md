@@ -91,11 +91,22 @@ Yang sudah selesai atau berpindah tangan:
    dan `.gitignore` terpangkas sehingga `.env` berisi secret jadi untracked).
    Selalu worktree sendiri dari `origin/main`.
 6. **Dokumen sumber psikolog** ada di
-   `D:\LSI\Psikotes\PSIKOTEST LSI\PSIKOTEST`. Temuan lane GLM 2026-09-20:
-   berkas di subfolder `Skoring` adalah **v1.1** (skala 1-10, ambang
-   >=7,00, knockout) — **hanya boleh dipakai untuk bagian non-skoring**,
-   dan pemetaan pita narasi 1-10 di Lampiran C tidak boleh dipakai sebelum
-   psikolog memutuskan padanannya ke 1-5. Template yang **berlaku** adalah
+   `D:\LSI\Psikotes\PSIKOTEST LSI\PSIKOTEST`. Urutan otoritasnya sudah
+   diinventarisasi lane GLM (`tasks/handoffs/f6/source-authority-inventory.md`
+   di `glm/f6-hpp-report-draft`, 8 konflik K1-K8 dengan pemenang + alasan).
+   **Paling otoritatif: `Konfirm Akhir\Konfirmasi_Akhir_Terisi.docx`
+   (2026-08-22, v2.3)** — jawaban final psikolog: Hanker = b×50, larangan
+   pengacakan seluruh baterai, provenans norma IST (tabel internal unit
+   layanan dari Master Kamus Tes IST — **relevan untuk pertanyaan metode
+   hash KRA-A7/RMIB-A7**), narasi DASS dari Bank Narasi sheet 8, identitas
+   fasilitas resmi, dan **ambang proctoring mengikuti Spesifikasi v2.3 §9;
+   usulan yang lebih longgar (60 dtk / 3× / 8×) DITOLAK** — ini mengikat
+   untuk proposal proctoring F7 di atas. Berkas di subfolder `Skoring`
+   adalah **v1.1** (skala 1-10, ambang >=7,00, knockout): hanya untuk
+   bagian non-skoring. Catatan koreksi: pemetaan 1-10 → 1-5 **sudah
+   ditetapkan** Spesifikasi v2.3 (§4 memadatkan berpasangan 1-2→1 … 9-10→5;
+   §5.1 memetakan band POOR..EXCELLENT ke jangkar 1/3/5/7/9), jadi tidak
+   menunggu keputusan psikolog. Template yang **berlaku** adalah
    `Update DASS\Template Laporan HPP Psikotes.docx` (v2.3: skala 1-5, zona
    Grey Area, selaras SPEC v4). Di dalamnya ada 18 label aspek resmi
    ID+EN+JP beserta definisinya, identitas psikolog (Nama, **SILP**, STR,
