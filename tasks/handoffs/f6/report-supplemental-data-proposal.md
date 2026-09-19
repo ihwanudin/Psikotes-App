@@ -63,7 +63,9 @@ Usulan tabel (append-only, pola sama dengan `report_signing_snapshots`):
 - Nilainya **disalin** ke `report_documents.psychologist_sipp_snapshot` saat terbit (#1), sehingga pergantian SIPP tidak mengubah laporan yang sudah terbit.
 - Form admin (F7/Codex) perlu field ini.
 
-**Keputusan:** apakah masa berlaku SIPP ikut dicek (tolak tanda tangan bila kedaluwarsa)?
+**DIPUTUSKAN user 2026-09-20: masa berlaku TIDAK dicek.** Tidak ada kolom masa berlaku dan tidak ada validasi kedaluwarsa saat tanda tangan. Ini keputusan sadar, bukan kelalaian — jangan "diperbaiki" belakangan tanpa menanyakan ulang ke user.
+
+Skema rincinya ada di `report-documents-schema-proposal.md`.
 
 ## 3. Alasan rekomendasi → input tanda tangan F5 (tanpa migration)
 
