@@ -3,36 +3,24 @@
 For whoever picks up coordinator duties next (new account/session). Read
 this first, then `AGENTS.md` for the full ownership ledger.
 
-## Immediate next action — send this to DeepSeek
+## Immediate next action
 
-The re-sign/RLS branch (`deepseek/f5-resign-and-rls`) has one outstanding
-fix, already diagnosed, not yet dispatched:
+**Already resolved as of this update** — DeepSeek pushed
+`dfb81fd6b2661e3c4f941b56b419f9b0212e96d7` fixing exactly this
+(`AdminAuthorizationTest.php` line 75, `assertFalse` -> `assertTrue` for
+`superAdmin->canPerform(ReviewReports)`), independently re-verified by the
+coordinator: fix content matches what was needed, test passes in
+isolation. **Not yet re-verified: a full regression suite run confirming
+the count is back to ~28 baseline (not 29).** Run that next before
+treating `deepseek/f5-resign-and-rls` as ready for a PR:
 
+```bash
+APP_ENV=testing php -d memory_limit=2048M vendor/bin/phpunit --testsuite=Unit,Feature,Integration --exclude-group=none
 ```
-DISPATCH — F5 lanjutan: perbaiki 1 test yang terlewat setelah RLS widening
 
-Full regression suite (3544 test) sudah dijalankan independen — 29 gagal,
-28 di antaranya cocok persis baseline pra-eksisting yang sudah dikenal
-(Vite manifest + beberapa test flaky). SATU kegagalan BARU:
-
-tests/Feature/Admin/AdminAuthorizationTest.php,
-test_only_psychologist_role_can_view_dass_and_review_reports, baris 75:
-
-    $this->assertFalse($superAdmin->canPerform(AdminAbility::ReviewReports));
-
-Ini menguji PERILAKU LAMA (super_admin TIDAK BOLEH ReviewReports) — yang
-memang sengaja diubah oleh pelebaran RLS di Admin.php. Bukan bug di
-perubahan kalian, murni test yang terlewat karena di luar file test F5
-yang biasa dicek.
-
-PERBAIKAN: baris 75 ganti assertFalse -> assertTrue. Baris 74 (ViewDass)
-JANGAN diubah — tetap assertFalse untuk super_admin (DASS tetap
-psikolog-saja).
-
-Setelah diperbaiki, jalankan full regression suite SEKALI LAGI (bukan
-cuma file yang disentuh) — pastikan hasilnya kembali ke 28 kegagalan
-baseline (bukan 29). Push ke branch yang sama.
-```
+Compare the failure list against the known baseline (Vite manifest +
+`PersistSealedIstResultTest`/`LoadPersistedIstResultTest` flakiness) —
+if it's exactly that set, the branch is ready to open as a PR.
 
 ## State as of this handoff
 
