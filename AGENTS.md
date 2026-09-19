@@ -43,8 +43,14 @@ These rules apply to every Codex session and delegated task in this repository.
      ledger row for GLM, and is GLM's single point of contact — Lead does
      not message GLM's own AI tool directly, and does not dispatch tasks to
      the GLM lane without going through this session first.
-  3. **A session literally named "Deepseek"** — same role, for DeepSeek's
-     lane only.
+  3. **A session literally named "Deepseek"** (may appear as "DS") — same
+     role, for DeepSeek's lane only.
+  4. **A session literally named "Codex"** (added 2026-09-20) — same role
+     for the Codex lane, so Codex traffic stays out of Lead's general
+     work. Codex is NOT a Claude session: that channel session relays
+     prompts/results through the human and never via `SendMessage`. Its
+     starting context pack is
+     `tasks/handoffs/channels/codex-channel-context-2026-09-20.md`.
   Lead and these two reviewer sessions reach each other with the
   `SendMessage`/`ListAgents` tools (same machine, local Claude Code peer
   messaging) — that channel works whether or not a session is currently
