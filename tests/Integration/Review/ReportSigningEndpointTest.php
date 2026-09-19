@@ -11,7 +11,6 @@ use App\Models\AssessmentCase;
 use App\Models\Branch;
 use App\Models\Participant;
 use App\Models\TestPackage;
-use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -22,12 +21,6 @@ final class ReportSigningEndpointTest extends TestCase
     use RefreshDatabase;
 
     private const ASPECTS = ['A1', 'A2', 'B1', 'B2', 'B3', 'B4', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'D1', 'D2', 'D3', 'D4', 'D5'];
-
-    protected function setUp(): void
-    {
-        parent::setUp();
-        $this->withoutMiddleware(PreventRequestForgery::class);
-    }
 
     private function createCase(): AssessmentCase
     {

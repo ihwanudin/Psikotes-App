@@ -241,33 +241,16 @@ final class ReportSigningService
             return ['success' => false, 'code' => 'SIGNING_BLOCKED', 'message' => 'Report cannot be signed.', 'status' => 422, 'blocking_reason_codes' => $transitionResult['blocking_reason_codes']];
         }
 
-        // Step 9: Validate revision reason if this is a re-sign (there is already a SIGNED snapshot)
-        $existingSigning = $this->latest($casePublicId);
-        if ($existingSigning !== null && $existingSigning->state === 'SIGNED') {
-            $reason = isset($input['revision_reason']) && is_string($input['revision_reason']) ? trim($input['revision_reason']) : '';
-            if (mb_strlen($reason) < 20) {
-                return ['success' => false, 'code' => 'REVISION_REASON_REQUIRED', 'message' => 'Revisi memerlukan alasan minimal 20 karakter.', 'status' => 422];
-            }
-            $revisionReason = $reason;
-            $supersededVersion = (int) $existingSigning->version;
-        } else {
-            $revisionReason = null;
-            $supersededVersion = null;
-        }
-
-        // Step 10: Persist snapshot_json = prerequisiteInput + provenance (derived, not client claims)
+        // Step 9: Persist snapshot. Revision-reason validation and version-chain
+        // query are inside the SAME runAsService closure to prevent TOCTOU:
+        // if we queried the latest snapshot in a separate transaction first,
+        // another concurrent signing could slip in between, bypassing the
+        // revision_reason requirement.
         $signedAt = now();
         $signedByAdminId = (int) $psychologist->id;
-        $snapshotJson = json_encode([
-            'prerequisite_input' => $snapshot->prerequisiteInput(),
-            'provenance' => $snapshot->provenance(),
-        ] + ($revisionReason !== null ? ['revision' => [
-            'reason' => $revisionReason,
-            'supersedes_version' => $supersededVersion,
-        ]] : []), JSON_THROW_ON_ERROR);
 
         $result = $this->runner->runAsService(function () use (
-            $casePublicId, $input, $signedAt, $signedByAdminId, $snapshotJson,
+            $casePublicId, $input, $signedAt, $signedByAdminId, $snapshot,
         ): array {
             $caseRecord = DB::table('assessment_cases')
                 ->where('public_id', $casePublicId)
@@ -285,10 +268,36 @@ final class ReportSigningService
                 return ['found' => false, 'error_code' => 'NARRATIVE_VERSION_NOT_FOUND'];
             }
 
+            // Single atomic read of the latest snapshot — used for BOTH
+            // revision_reason validation AND version/supersedesId calculation.
             $latest = DB::table('report_signing_snapshots')
                 ->where('assessment_case_id', $caseId)
                 ->orderByDesc('version')
                 ->first();
+
+            // Validate revision_reason if re-signing over a SIGNED snapshot.
+            // This check MUST stay inside this closure (not in a separate
+            // transaction) to close the TOCTOU window.
+            if ($latest !== null && $latest->state === 'SIGNED') {
+                $reason = isset($input['revision_reason']) && is_string($input['revision_reason']) ? trim($input['revision_reason']) : '';
+                if (mb_strlen($reason) < 20) {
+                    return ['found' => false, 'error_code' => 'REVISION_REASON_REQUIRED'];
+                }
+                $revisionReason = $reason;
+                $supersededVersion = (int) $latest->version;
+            } else {
+                $revisionReason = null;
+                $supersededVersion = null;
+            }
+
+            $snapshotJson = json_encode([
+                'prerequisite_input' => $snapshot->prerequisiteInput(),
+                'provenance' => $snapshot->provenance(),
+            ] + ($revisionReason !== null ? ['revision' => [
+                'reason' => $revisionReason,
+                'supersedes_version' => $supersededVersion,
+            ]] : []), JSON_THROW_ON_ERROR);
+
             $version = $latest === null ? 1 : $latest->version + 1;
             $supersedesId = $latest?->id;
             $id = (string) Str::ulid();
@@ -314,9 +323,15 @@ final class ReportSigningService
             $messages = [
                 'CASE_NOT_FOUND' => 'Assessment case not found.',
                 'NARRATIVE_VERSION_NOT_FOUND' => 'Referenced version does not belong to this assessment case.',
+                'REVISION_REASON_REQUIRED' => 'Revisi memerlukan alasan minimal 20 karakter.',
+            ];
+            $statuses = [
+                'CASE_NOT_FOUND' => 404,
+                'NARRATIVE_VERSION_NOT_FOUND' => 404,
+                'REVISION_REASON_REQUIRED' => 422,
             ];
 
-            return ['success' => false, 'code' => $result['error_code'], 'message' => $messages[$result['error_code']], 'status' => 404];
+            return ['success' => false, 'code' => $result['error_code'], 'message' => $messages[$result['error_code']], 'status' => $statuses[$result['error_code']]];
         }
 
         $row = $result['row'];
