@@ -22,7 +22,7 @@ final readonly class ReportIdentity
     ];
 
     /** @var list<string> */
-    private const TARGET_FIELDS = ['KAIGO', 'KENSETSU', 'NOUGOU', 'SEIZOU', 'GAISHOKU', 'UMUM'];
+    private const TARGET_FIELDS = ['KAIGO', 'KENSETSU', 'NOUGYOU', 'SEIZOU', 'GAISHOKU', 'UMUM'];
 
     /** @param array<string, string> $values */
     private function __construct(
