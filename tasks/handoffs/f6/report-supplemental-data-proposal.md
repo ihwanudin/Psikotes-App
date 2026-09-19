@@ -80,14 +80,14 @@ Karena teks ini masuk ke dokumen bertanda tangan, sebaiknya **ditulis/disetujui 
 
 ## 4. Label aspek ID/JP → data instrumen (tanpa migration)
 
-Saat ini ada **dua set label yang saling bertentangan di kode**, dan keduanya bukan sumber otoritatif:
-- `app/Filament/Pages/ReportSigning.php` `ASPECT_LABELS`, contoh C5 = "Ketahanan kerja";
-- fixture/template F6, contoh C5 = "Ketaatan Aturan & Keselamatan" + JP.
+Saat ini label aspek tertanam di kode di **tiga tempat**, dengan **dua versi isi yang saling bertentangan**. Tidak satu pun sumber otoritatif:
+- `app/Filament/Pages/ReportSigning.php:26` dan `app/Filament/Pages/PsychologistReviewFixture.php:33`: konstanta `ASPECT_LABELS` yang sama, diduplikasi di dua file (contoh C5 = "Ketahanan kerja");
+- fixture/template F6 (`FixtureReportDataset`), contoh C5 = "Ketaatan Aturan & Keselamatan" + JP.
 
 Sesuai CLAUDE.md ("jangan menanam … di kode; data instrumen hanya lewat `tools/extract`"):
 - Tambah `aspects: {A1: {label_id, label_jp}, …}` ke `reporting.json`, diekstrak dari Bank Narasi. File sumber `Bank Narasi Formula HPP Psikotes.xlsx` **tidak ada di mesin ini**, dan belum dicek apakah ada sheet berisi nama aspek.
 - Label JP wajib melewati review penerjemah tersertifikasi (SPEC §15 Butir Terbuka no. 7).
-- Adapter F6 membaca label dari instrumen `reporting` versi `standard_version` yang dipakai snapshot. `ReportSigning.php` sebaiknya ikut membaca sumber yang sama (lane DeepSeek).
+- Adapter F6 membaca label dari instrumen `reporting` versi `standard_version` yang dipakai snapshot. `ReportSigning.php` dan `PsychologistReviewFixture.php` sebaiknya ikut membaca sumber yang sama (lane DeepSeek/Codex).
 
 **Keputusan:** psikolog menyediakan daftar nama resmi 18 aspek (ID + JP).
 
