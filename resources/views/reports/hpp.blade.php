@@ -72,11 +72,10 @@
     <section class="block">
         <h2>III. Skrining Kesehatan Mental <span class="jp">メンタルヘルス・スクリーニング</span></h2>
         @if ($dass === null)
-            <p>Kategori umum: <strong>Tidak tersedia</strong> <span class="jp">一般区分：データなし</span></p>
-            <p>
-                Hasil skrining kesehatan mental tidak tersedia untuk peserta ini. Ketiadaan hasil bukan berarti tidak
-                ditemukan keluhan, dan tidak memengaruhi penilaian kelayakan kerja.
-            </p>
+            {{-- Owner decision 2026-09-20: show a dash, not a verdict. The short
+                 note keeps it from reading as "no findings". --}}
+            <p>Kategori umum: <strong>&ndash;</strong> <span class="jp">一般区分：&ndash;</span></p>
+            <p>Hasil skrining tidak tersedia. <span class="jp">スクリーニング結果なし。</span></p>
         @else
             <p>Kategori umum: <strong>{{ $dass['general_category'] }}</strong> <span class="jp">一般区分</span></p>
             <p>{{ $dass['narrative'] }}</p>
