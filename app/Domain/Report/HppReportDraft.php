@@ -26,7 +26,7 @@ final readonly class HppReportDraft
         private int $iq,
         private string $iqCategory,
         private array $clusterNarratives,
-        private DassScreeningSummary $dassScreening,
+        private ?DassScreeningSummary $dassScreening,
         private string $recommendationLabel,
         private string $rationale,
         private ?string $accompanimentConditions,
@@ -43,7 +43,7 @@ final readonly class HppReportDraft
         int $iq,
         string $iqCategory,
         array $clusterNarratives,
-        DassScreeningSummary $dassScreening,
+        ?DassScreeningSummary $dassScreening,
         string $recommendationLabel,
         string $rationale,
         ?string $accompanimentConditions,
@@ -116,7 +116,10 @@ final readonly class HppReportDraft
             'iq' => ['iq' => $this->iq, 'category' => $this->iqCategory],
             'aspect_rows' => $this->aspectGrid->hppRows(),
             'cluster_narratives' => $this->clusterNarratives,
-            'dass' => $this->dassScreening->toArray(),
+            // Null when no screening result exists: the report says so
+            // explicitly instead of implying "no findings" (G4/T-07 keeps
+            // DASS out of zone/label either way).
+            'dass' => $this->dassScreening?->toArray(),
             'recommendation' => [
                 'label' => $this->recommendationLabel,
                 'rationale' => $this->rationale,

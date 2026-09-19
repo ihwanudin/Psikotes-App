@@ -22,6 +22,11 @@ interface ReportSupplementalData
     /** @return array<string, array{label_id: string, label_jp: string}>|null */
     public function aspectLabels(string $standardVersion): ?array;
 
-    /** @return array{narrative: string, follow_up: string}|null */
+    /**
+     * Follow-up text exists only for Sedang and Parah/Sangat Parah; for
+     * Normal/Ringan it is null and the report omits that line.
+     *
+     * @return array{narrative: string, follow_up: string|null}|null
+     */
     public function dassScreeningText(string $generalCategory): ?array;
 }

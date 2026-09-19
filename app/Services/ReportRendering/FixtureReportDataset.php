@@ -29,7 +29,9 @@ final class FixtureReportDataset
             DassScreeningSummary::fromArray([
                 'general_category' => 'Ringan',
                 'narrative' => 'Skrining kesehatan mental menunjukkan kategori umum Ringan. Hasil skrining ini tidak memengaruhi penilaian kelayakan kerja.',
-                'follow_up' => 'Tidak diperlukan tindak lanjut khusus; peserta tetap dapat mengakses informasi dukungan bila merasa perlu.',
+                // Bank Narasi has follow-up text only for Sedang and
+                // Parah/Sangat Parah; Ringan carries none.
+                'follow_up' => null,
             ]),
             'DIPERTIMBANGKAN',
             'Seluruh aspek kemampuan berada pada zona Terpenuhi, namun aspek Komunikasi & Tanggung Jawab berada pada Grey Area terhadap standar bidang perawatan (KAIGO).',
@@ -87,24 +89,24 @@ final class FixtureReportDataset
     private static function aspectGrid(): ReportAspectGrid
     {
         return ReportAspectGrid::fromArray([
-            ['code' => 'A1', 'label_id' => 'Inteligensi Umum', 'label_jp' => '知的能力', 'level' => 5, 'standard' => 3],
-            ['code' => 'A2', 'label_id' => 'Analisis & Sintesis', 'label_jp' => '分析力', 'level' => 4, 'standard' => 3],
-            ['code' => 'B1', 'label_id' => 'Konsentrasi & Ingat', 'label_jp' => '集中力・記憶', 'level' => 3, 'standard' => 3],
-            ['code' => 'B2', 'label_id' => 'Kecepatan & Ketelitian', 'label_jp' => '速度・正確性', 'level' => 4, 'standard' => 3],
+            ['code' => 'A1', 'label_id' => 'Inteligensi Umum', 'label_jp' => '一般知性', 'level' => 5, 'standard' => 3],
+            ['code' => 'A2', 'label_id' => 'Daya Analisis–Sintesis', 'label_jp' => '問題解決のための分析力', 'level' => 4, 'standard' => 3],
+            ['code' => 'B1', 'label_id' => 'Konsentrasi & Daya Ingat', 'label_jp' => '集中力と記憶力', 'level' => 3, 'standard' => 3],
+            ['code' => 'B2', 'label_id' => 'Kecepatan & Ketelitian', 'label_jp' => '仕事のスピードと正確さ', 'level' => 4, 'standard' => 3],
             ['code' => 'B3', 'label_id' => 'Daya Tangkap', 'label_jp' => '理解力', 'level' => 3, 'standard' => 3],
-            ['code' => 'B4', 'label_id' => 'Sistematika Kerja', 'label_jp' => '業務の体系性', 'level' => 4, 'standard' => 3],
-            ['code' => 'C1', 'label_id' => 'Kematangan & Pengembangan Diri', 'label_jp' => '成熟性', 'level' => 4, 'standard' => 3],
-            ['code' => 'C2', 'label_id' => 'Komunikasi & Tanggung Jawab', 'label_jp' => '意思疎通・責任感', 'level' => 3, 'standard' => 4],
-            ['code' => 'C3', 'label_id' => 'Inisiatif & Sosial', 'label_jp' => '積極性・社会性', 'level' => 4, 'standard' => 4],
-            ['code' => 'C4', 'label_id' => 'Tahan Stres & Stabilitas Emosi', 'label_jp' => 'ストレス耐性', 'level' => 4, 'standard' => 4],
-            ['code' => 'C5', 'label_id' => 'Ketaatan Aturan & Keselamatan', 'label_jp' => '規則遵守', 'level' => 5, 'standard' => 3],
-            ['code' => 'C6', 'label_id' => 'Ketekunan & Kestabilan Kerja', 'label_jp' => '粘り強さ', 'level' => 4, 'standard' => 3],
-            ['code' => 'C7', 'label_id' => 'Pelayanan & Peduli', 'label_jp' => '奉仕性', 'level' => 4, 'standard' => 3],
-            ['code' => 'D1', 'label_id' => 'Minat Luar Ruang', 'label_jp' => '屋外作業への関心', 'level' => 4, 'standard' => null],
-            ['code' => 'D2', 'label_id' => 'Minat Mekanik', 'label_jp' => '機械作業への関心', 'level' => 3, 'standard' => null],
-            ['code' => 'D3', 'label_id' => 'Minat Praktik Terapan', 'label_jp' => '実務作業への関心', 'level' => 4, 'standard' => null],
-            ['code' => 'D4', 'label_id' => 'Minat Bidang Medis/Perawatan', 'label_jp' => '医療・介護への関心', 'level' => 4, 'standard' => 3],
-            ['code' => 'D5', 'label_id' => 'Minat Layanan Sosial', 'label_jp' => '対人奉仕への関心', 'level' => 3, 'standard' => null],
+            ['code' => 'B4', 'label_id' => 'Sistematika Kerja', 'label_jp' => '仕事の計画性', 'level' => 4, 'standard' => 3],
+            ['code' => 'C1', 'label_id' => 'Kematangan & Kepercayaan Diri', 'label_jp' => '成熟度と自信', 'level' => 4, 'standard' => 3],
+            ['code' => 'C2', 'label_id' => 'Komunikasi & Tanggung Jawab', 'label_jp' => 'コミュニケーションと責任感', 'level' => 3, 'standard' => 4],
+            ['code' => 'C3', 'label_id' => 'Inisiatif & Penyesuaian Sosial', 'label_jp' => '自発性と社会適応力', 'level' => 4, 'standard' => 4],
+            ['code' => 'C4', 'label_id' => 'Daya Tahan Stres & Stabilitas', 'label_jp' => 'ストレス耐性と情緒的安定性', 'level' => 4, 'standard' => 4],
+            ['code' => 'C5', 'label_id' => 'Ketahanan Kerja', 'label_jp' => '持久力', 'level' => 5, 'standard' => 3],
+            ['code' => 'C6', 'label_id' => 'Keuletan', 'label_jp' => '持続力', 'level' => 4, 'standard' => 3],
+            ['code' => 'C7', 'label_id' => 'Arah & Gaya Kerja', 'label_jp' => '志向性と業務遂行', 'level' => 4, 'standard' => 3],
+            ['code' => 'D1', 'label_id' => 'Outdoor — Pertanian & Perkebunan', 'label_jp' => '屋外・農業', 'level' => 4, 'standard' => null],
+            ['code' => 'D2', 'label_id' => 'Mechanical — Mekanik & Kelistrikan', 'label_jp' => '機械・電気', 'level' => 3, 'standard' => null],
+            ['code' => 'D3', 'label_id' => 'Practical — Konstruksi & Produksi', 'label_jp' => '建設・製造', 'level' => 4, 'standard' => null],
+            ['code' => 'D4', 'label_id' => 'Medical — Perawatan & Kesehatan', 'label_jp' => '介護・医療', 'level' => 4, 'standard' => 3],
+            ['code' => 'D5', 'label_id' => 'Social Service — Restoran & Perhotelan', 'label_jp' => '接客・サービス', 'level' => 3, 'standard' => null],
         ]);
     }
 

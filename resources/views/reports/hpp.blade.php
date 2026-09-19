@@ -71,9 +71,19 @@
 
     <section class="block">
         <h2>III. Skrining Kesehatan Mental <span class="jp">メンタルヘルス・スクリーニング</span></h2>
-        <p>Kategori umum: <strong>{{ $dass['general_category'] }}</strong> <span class="jp">一般区分</span></p>
-        <p>{{ $dass['narrative'] }}</p>
-        <p>{{ $dass['follow_up'] }}</p>
+        @if ($dass === null)
+            <p>Kategori umum: <strong>Tidak tersedia</strong> <span class="jp">一般区分：データなし</span></p>
+            <p>
+                Hasil skrining kesehatan mental tidak tersedia untuk peserta ini. Ketiadaan hasil bukan berarti tidak
+                ditemukan keluhan, dan tidak memengaruhi penilaian kelayakan kerja.
+            </p>
+        @else
+            <p>Kategori umum: <strong>{{ $dass['general_category'] }}</strong> <span class="jp">一般区分</span></p>
+            <p>{{ $dass['narrative'] }}</p>
+            @if ($dass['follow_up'] !== null)
+                <p>{{ $dass['follow_up'] }}</p>
+            @endif
+        @endif
     </section>
 
     <section class="block">

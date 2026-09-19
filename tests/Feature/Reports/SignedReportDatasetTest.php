@@ -32,7 +32,7 @@ final class SignedReportDatasetTest extends TestCase
         $this->assertNull($unsigned->snapshotId);
     }
 
-    public function test_default_adapter_blocks_only_on_the_five_unpersisted_inputs(): void
+    public function test_default_adapter_blocks_only_on_the_four_unpersisted_blocking_inputs(): void
     {
         $case = $this->createReportCase();
         $snapshotId = $this->signCase($case, $this->reportPsychologist());
@@ -48,8 +48,9 @@ final class SignedReportDatasetTest extends TestCase
             SignedReportDataset::PSYCHOLOGIST_SIPP_UNAVAILABLE,
             SignedReportDataset::RECOMMENDATION_RATIONALE_UNAVAILABLE,
             SignedReportDataset::ASPECT_LABELS_UNAVAILABLE,
-            SignedReportDataset::DASS_TEXT_UNAVAILABLE,
         ], $result->missing);
+        // DASS text is a warning, not a blocker.
+        $this->assertSame([SignedReportDataset::DASS_TEXT_UNAVAILABLE], $result->warnings);
     }
 
     public function test_complete_data_builds_the_hpp_from_the_signed_snapshot(): void
@@ -114,23 +115,52 @@ final class SignedReportDatasetTest extends TestCase
         $this->assertSame('Sedang', $view['dass']['general_category']);
     }
 
-    public function test_missing_or_unrecognized_dass_fails_closed(): void
+    public function test_missing_or_unrecognized_dass_warns_but_never_blocks_publication(): void
     {
         $case = $this->createReportCase();
         $this->signCase($case, $this->reportPsychologist());
         $this->seedSubmittedSession($case);
 
-        $this->assertSame(
-            [SignedReportDataset::DASS_RESULT_NOT_FOUND],
-            $this->completeDataset()->hpp($case->public_id)->missing,
-        );
+        $noResult = $this->completeDataset()->hpp($case->public_id);
+        $this->assertTrue($noResult->isReady(), implode(',', $noResult->missing));
+        $this->assertSame([SignedReportDataset::DASS_RESULT_NOT_FOUND], $noResult->warnings);
+        $this->assertNull($noResult->draft()->toViewData()['dass']);
 
         $this->seedDassResult($case, 'PRIVATE-OVERALL', now()->subDay()->toDateTimeString());
 
-        $this->assertSame(
-            [SignedReportDataset::DASS_CATEGORY_UNRECOGNIZED],
-            $this->completeDataset()->hpp($case->public_id)->missing,
-        );
+        $unrecognized = $this->completeDataset()->hpp($case->public_id);
+        $this->assertTrue($unrecognized->isReady());
+        $this->assertSame([SignedReportDataset::DASS_CATEGORY_UNRECOGNIZED], $unrecognized->warnings);
+        $this->assertNull($unrecognized->draft()->toViewData()['dass']);
+    }
+
+    public function test_report_without_dass_states_it_is_unavailable_rather_than_implying_no_findings(): void
+    {
+        $case = $this->createReportCase();
+        $this->signCase($case, $this->reportPsychologist());
+        $this->seedSubmittedSession($case);
+
+        $html = BladeReportRenderer::make()->renderHpp($this->completeDataset()->hpp($case->public_id)->draft());
+
+        $this->assertStringContainsString('Tidak tersedia', $html);
+        $this->assertStringContainsString('bukan berarti tidak', $html);
+        foreach (['Normal', 'Ringan', 'Sedang', 'Parah'] as $category) {
+            $this->assertStringNotContainsString('Kategori umum: <strong>'.$category.'</strong>', $html);
+        }
+    }
+
+    public function test_dass_text_without_follow_up_omits_the_follow_up_line(): void
+    {
+        $case = $this->createReportCase();
+        $this->signCase($case, $this->reportPsychologist());
+        $this->seedSubmittedSession($case);
+        $this->seedDassResult($case, 'Normal', now()->subDay()->toDateTimeString());
+
+        $dataset = new SignedReportDataset(app(RlsContextRunner::class), $this->supplementalWithoutDassFollowUp());
+        $view = $dataset->hpp($case->public_id)->draft()->toViewData();
+
+        $this->assertSame('Normal', $view['dass']['general_category']);
+        $this->assertNull($view['dass']['follow_up']);
     }
 
     public function test_dass_subscales_are_never_read_or_rendered(): void

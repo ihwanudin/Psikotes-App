@@ -19,6 +19,17 @@
             @endif
         </header>
 
+        @if ($warnings !== [])
+            <section aria-labelledby="warnings-heading">
+                <h2 id="warnings-heading" class="text-lg font-semibold">Catatan (tidak memblokir)</h2>
+                <ul class="mt-2 list-disc pl-5">
+                    @foreach ($warnings as $warning)
+                        <li>{{ $warning['label'] }} <span data-gap>{{ $warning['code'] }}</span></li>
+                    @endforeach
+                </ul>
+            </section>
+        @endif
+
         @if ($ready)
             <section aria-labelledby="generate-heading">
                 <h2 id="generate-heading" class="text-lg font-semibold">Data laporan lengkap</h2>

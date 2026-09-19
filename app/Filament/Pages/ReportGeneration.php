@@ -40,14 +40,14 @@ final class ReportGeneration extends Page
         SignedReportDataset::TEST_DATE_UNAVAILABLE => 'Tanggal tes tidak dapat ditentukan dari sesi tes.',
         SignedReportDataset::NARRATIVE_CLUSTER_MISSING => 'Narasi klaster A–D pada snapshot belum lengkap.',
         SignedReportDataset::IQ_CATEGORY_UNAVAILABLE => 'Kategori IQ tidak dapat diturunkan dari versi instrumen IST.',
-        SignedReportDataset::DASS_RESULT_NOT_FOUND => 'Hasil skrining DASS selesai sebelum tanda tangan tidak ditemukan.',
-        SignedReportDataset::DASS_CATEGORY_UNRECOGNIZED => 'Kategori umum DASS tersimpan tidak dikenal.',
+        SignedReportDataset::DASS_RESULT_NOT_FOUND => 'Hasil skrining DASS sebelum tanda tangan tidak ditemukan; laporan mencetak "tidak tersedia".',
+        SignedReportDataset::DASS_CATEGORY_UNRECOGNIZED => 'Kategori umum DASS tersimpan tidak dikenal; laporan mencetak "tidak tersedia".',
         SignedReportDataset::PSYCHOLOGIST_NOT_FOUND => 'Akun psikolog penanda tangan tidak ditemukan.',
         SignedReportDataset::REPORT_NUMBER_UNAVAILABLE => 'Nomor laporan belum memiliki sumber data.',
         SignedReportDataset::PSYCHOLOGIST_SIPP_UNAVAILABLE => 'Nomor SIPP psikolog belum memiliki sumber data.',
         SignedReportDataset::RECOMMENDATION_RATIONALE_UNAVAILABLE => 'Alasan rekomendasi belum memiliki sumber data.',
         SignedReportDataset::ASPECT_LABELS_UNAVAILABLE => 'Label aspek dwibahasa (ID/JP) belum memiliki sumber data.',
-        SignedReportDataset::DASS_TEXT_UNAVAILABLE => 'Teks narasi/tindak lanjut DASS belum memiliki sumber data.',
+        SignedReportDataset::DASS_TEXT_UNAVAILABLE => 'Teks narasi DASS belum memiliki sumber data; laporan mencetak "tidak tersedia".',
         SignedReportDataset::DRAFT_INVALID => 'Data gabungan gagal validasi draf HPP.',
     ];
 
@@ -76,6 +76,11 @@ final class ReportGeneration extends Page
     /** @var list<array{code: string, label: string}> */
     #[Locked]
     public array $gaps = [];
+
+    /** Non-blocking gaps (DASS): shown, but the PDF can still be made. */
+    /** @var list<array{code: string, label: string}> */
+    #[Locked]
+    public array $warnings = [];
 
     /** @var array{url: string, expires_at: string}|null */
     #[Locked]
@@ -152,16 +157,26 @@ final class ReportGeneration extends Page
         ];
     }
 
+    /**
+     * @param  list<string>  $codes
+     * @return list<array{code: string, label: string}>
+     */
+    private static function describe(array $codes): array
+    {
+        return array_map(
+            static fn (string $code): array => ['code' => $code, 'label' => self::GAP_LABELS[$code] ?? $code],
+            $codes,
+        );
+    }
+
     private function evaluate(SignedReportDataset $dataset): ?SignedHppDataset
     {
         $result = $dataset->hpp($this->casePublicId);
 
         $this->snapshotId = $result->snapshotId;
         $this->ready = $result->isReady();
-        $this->gaps = array_map(
-            static fn (string $code): array => ['code' => $code, 'label' => self::GAP_LABELS[$code] ?? $code],
-            $result->missing,
-        );
+        $this->gaps = self::describe($result->missing);
+        $this->warnings = self::describe($result->warnings);
 
         if (! $this->ready) {
             $this->published = null;

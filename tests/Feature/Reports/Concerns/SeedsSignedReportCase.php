@@ -260,6 +260,42 @@ trait SeedsSignedReportCase
         ];
     }
 
+    /** Like completeSupplementalData(), but DASS text carries no follow-up (Normal/Ringan). */
+    private function supplementalWithoutDassFollowUp(): ReportSupplementalData
+    {
+        $complete = $this->completeSupplementalData();
+
+        return new class($complete) implements ReportSupplementalData
+        {
+            public function __construct(private ReportSupplementalData $inner) {}
+
+            public function reportNumber(int $assessmentCaseId, string $snapshotId): string
+            {
+                return (string) $this->inner->reportNumber($assessmentCaseId, $snapshotId);
+            }
+
+            public function psychologistSippNumber(int $adminId): string
+            {
+                return (string) $this->inner->psychologistSippNumber($adminId);
+            }
+
+            public function recommendationRationale(string $snapshotId): string
+            {
+                return (string) $this->inner->recommendationRationale($snapshotId);
+            }
+
+            public function aspectLabels(string $standardVersion): array
+            {
+                return (array) $this->inner->aspectLabels($standardVersion);
+            }
+
+            public function dassScreeningText(string $generalCategory): array
+            {
+                return ['narrative' => "Skrining kategori umum {$generalCategory}.", 'follow_up' => null];
+            }
+        };
+    }
+
     /** Test-only stand-in for the five inputs that have no persisted source yet. */
     private function completeSupplementalData(): ReportSupplementalData
     {

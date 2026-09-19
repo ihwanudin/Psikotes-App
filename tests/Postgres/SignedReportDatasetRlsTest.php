@@ -91,8 +91,9 @@ final class SignedReportDatasetRlsTest extends TestCase
             SignedReportDataset::PSYCHOLOGIST_SIPP_UNAVAILABLE,
             SignedReportDataset::RECOMMENDATION_RATIONALE_UNAVAILABLE,
             SignedReportDataset::ASPECT_LABELS_UNAVAILABLE,
-            SignedReportDataset::DASS_TEXT_UNAVAILABLE,
         ], $result->missing);
+        // DASS is a warning, never a blocker.
+        $this->assertSame([SignedReportDataset::DASS_TEXT_UNAVAILABLE], $result->warnings);
     }
 
     public function test_dass_read_selects_only_the_general_category_before_signing(): void
