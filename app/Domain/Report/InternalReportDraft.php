@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Domain\Report;
 
+use InvalidArgumentException;
+
 /**
  * Internal psychologist worksheet draft (Lembar Kerja Internal): raw
  * instrument blocks, aspect grid with codes and standards, session
