@@ -2,12 +2,20 @@
 
 Date: 2026-09-14
 
-Candidate baseline: `274c43de45f9f16e4a3f8cb33e377f697d6e9f73`
+Candidate baseline: `650eea5e393ea9258b6d72b9e53489a519cf0b36`
 
-Requested branch: `codex/f2-wave1-integration`
+Requested branch: `codex/authority-pack-v2`
 
-Observed checkout: detached HEAD at the exact candidate baseline; no content
-drift was present before this file was created.
+Observed checkout: `origin/main` at the exact candidate baseline before this
+pack reconciliation.
+
+Baseline history: this pack was first drafted against
+`274c43de45f9f16e4a3f8cb33e377f697d6e9f73` on `codex/f2-wave1-integration`.
+The candidate baseline above records the current `origin/main` reconciliation
+point. Recheck against current `origin/main` found no repository change to
+`database/seeders/data/ist.json`; the ME learn/recall split and the
+`Verbal (3)` versus four-code inconsistency remain BLOCKED and require a
+psychologist/source-owner decision.
 
 ## Decision
 

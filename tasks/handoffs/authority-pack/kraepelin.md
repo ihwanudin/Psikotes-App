@@ -2,13 +2,17 @@
 
 Date: 2026-09-14
 
-Candidate baseline: `274c43de45f9f16e4a3f8cb33e377f697d6e9f73`
+Candidate baseline: `650eea5e393ea9258b6d72b9e53489a519cf0b36`
 
-Requested branch: `codex/f2-wave1-integration`
+Requested branch: `codex/authority-pack-v2`
 
-Observed worktree state: the requested SHA is checked out with a detached
-`HEAD`. The named branch is attached to another worktree at the same SHA. This
-is branch-attachment drift, not content drift.
+Observed worktree state: `origin/main` at the exact candidate baseline before
+this pack reconciliation.
+
+Baseline history: this pack originated in commit `2110519` against
+`274c43de45f9f16e4a3f8cb33e377f697d6e9f73` on `codex/f2-wave1-integration`.
+It was cherry-picked into this branch for reconciliation with current
+`origin/main`.
 
 Review order: Tech Lead, then independent QA. This document grants no import,
 catalog activation, start wiring, content delivery, or production authority.
@@ -51,6 +55,32 @@ decision plus contract review. This pack deliberately makes no choice.
 | Required attachments  | Available fingerprints: PRD 1.3 `9e0d994c98b531a019a2927d1a44a7313a112f11e628a6ed8abe10538029be65`; Kraepelin workbook `6cb7455a35c72488abf0627e91a256ece21667e753d6975b3779392e1271407d`; psychologist confirmation `15f7b0584e154425dcbee8d031f4d7159e5b195f839f9d5973de19d8cdb6b491`; final confirmation `5288f130621a889f807500077d4147b50bdcb6443055ec6b4fb224f40d1ff253`; Tabel Lookup v1.1 `39dcbfdb2b15275f53bccceebaeb7e8b09e901793ca02bd4b8d7cabaa48ec7e2`; current master norm workbook `10753d458c5b9dd64fd913ff9a9f22554f9425fb5c7e267479524493cf7c10cd`; scoring example `b0468273f066e2db5eb108ec988282c883eb94725ffad81a7d843ae0b2a9d7a0`. | Attach either the deterministic generator specification and golden vectors or the exact fixed 50 x 28 matrix; also attach the conflict-resolution decision, definition version/provenance record, administration instructions, rights evidence, and signed approval.                        | **BLOCKED**                                     |
 | Import-ready gate     | Scoring formulas, bands, two accepted scoring goldens, and the timing/shape evidence are available.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Every row above must be complete without placeholders. The chosen payload must pass the typed definition contract; a fixed choice additionally requires an accepted contract amendment. Canonical checksum verification is mandatory.                                                       | **No**                                          |
 | Start-ready gate      | ADR-0030 requires server-side definition authority inside the sealed start transaction; ADR-0031 forbids caller-selected or guessed authority. F9 also reserves a Kraepelin-specific concurrency/load gate.                                                                                                                                                                                                                                                                                                                                                                                                                                                | Import-ready must first be Yes. Then exactly one immutable active catalog row, generator/fixed-content reproduction tests, provider validation, event-ingest/offline behavior, and disposable PostgreSQL acceptance must pass before start wiring.                                          | **No**                                          |
+
+## Checksum-method investigation — KRA-A7 (2026-09-20)
+
+Repository evidence at current `origin/main`:
+
+- `database/seeders/data/kraepelin.json` Git blob:
+  `80a31b2be7eb69b5a87783cd80b8d58213082dce`.
+- Raw file bytes SHA-256, matching the `InstrumentSeeder` method
+  `hash('sha256', File::get(...))`: `68cd9bfbc50dddaf4be216cf672089e0ac245799fb648732632792e5d75a2781`.
+- LF-normalized text SHA-256: `68cd9bfbc50dddaf4be216cf672089e0ac245799fb648732632792e5d75a2781`
+  because the file is already LF-only.
+- CRLF-normalized text SHA-256: `85141fd65c18adbaa6add34094c2725d1cfe33b16aefa8d36664fbdf8e25a764`.
+- Minified JSON using JavaScript `JSON.stringify(JSON.parse(...))`:
+  `367eadf1886b0bc04445a72d327f473c2bfd1ebd45276a2ca61bc9579dd21ad3`.
+- Key-sorted minified JSON: `0698cbba87d13da527580bcf2bc46b7675991f31002ab37bd3df08d106b20702`.
+- Earlier audit value still cited by this pack:
+  `ddc4cdfb1f95fbf6aa655a24da74cb8a116bb4a573879ffa55bbcc5abead7858`.
+
+None of the reproducible procedures above yields the earlier audit value.
+The most defensible provenance fingerprint for the repository scoring source is
+therefore the raw-file byte SHA-256, because it matches `InstrumentSeeder` and
+identifies the exact committed source file bytes before any database `jsonb`
+normalization. It is not a participant-visible content checksum and must not be
+promoted to `template_checksum`; canonical session-definition checksum still
+belongs to `SessionDefinition::checksumFor(...)` after an approved generator or
+fixed matrix exists.
 
 ## Unanswered questions requiring authority
 
