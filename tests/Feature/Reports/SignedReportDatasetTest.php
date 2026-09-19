@@ -163,6 +163,26 @@ final class SignedReportDatasetTest extends TestCase
         $this->assertNull($view['dass']['follow_up']);
     }
 
+    public function test_report_carries_the_official_limitations_and_legal_basis_clauses(): void
+    {
+        $case = $this->createReportCase();
+        $this->signCase($case, $this->reportPsychologist());
+        $this->seedSubmittedSession($case);
+        $this->seedDassResult($case, 'Ringan', now()->subDay()->toDateTimeString());
+
+        $html = BladeReportRenderer::make()->renderHpp($this->completeDataset()->hpp($case->public_id)->draft());
+
+        // Bagian V of the v2.3 template: three clauses plus the legal basis.
+        $this->assertStringContainsString('Sifat hasil pemeriksaan', $html);
+        $this->assertStringContainsString('prediktif-probabilistik', $html);
+        $this->assertStringContainsString('Kerahasiaan &amp; pelindungan data', $html);
+        $this->assertStringContainsString('Larangan penggunaan', $html);
+        foreach (['No. 23 Tahun 2022', 'No. 18 Tahun 2017', 'No. 27 Tahun 2022'] as $law) {
+            $this->assertStringContainsString($law, $html);
+        }
+        $this->assertStringContainsString('tidak digunakan sebagai dasar penetapan rekomendasi', $html);
+    }
+
     public function test_dass_subscales_are_never_read_or_rendered(): void
     {
         $case = $this->createReportCase();

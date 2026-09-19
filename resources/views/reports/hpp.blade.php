@@ -97,14 +97,46 @@
         </div>
     </section>
 
+    {{-- Wording taken verbatim from "Template Laporan HPP Psikotes.docx" (v2.3), Bagian V. --}}
     <section class="block">
-        <h2>V. Batasan &amp; Kerahasiaan <span class="jp">限定事項・機密保持</span></h2>
+        <h2>V. Batasan, Kerahasiaan &amp; Ketentuan Penggunaan <span class="jp">限界・守秘義務・使用条件</span></h2>
+        <ol class="disclaimer">
+            <li>
+                <strong>Sifat hasil pemeriksaan</strong>
+                <p>
+                    Laporan ini merupakan gambaran fungsi psikologis peserta pada saat pemeriksaan dilakukan
+                    ({{ $identity['test_date'] }}). Hasilnya bersifat prediktif-probabilistik, bukan kepastian
+                    mengenai perilaku peserta di masa depan.
+                </p>
+                <p class="jp">本報告書は検査時点における心理的機能の記述です。結果は確率的な予測であり、将来の行動を確定するものではありません。</p>
+            </li>
+            <li>
+                <strong>Kerahasiaan &amp; pelindungan data</strong>
+                <p>
+                    Data diproses berdasarkan persetujuan tertulis peserta. Peserta berhak memperoleh penjelasan
+                    hasil, mengajukan koreksi data, dan menarik persetujuan sesuai UU No. 27 Tahun 2022. Retensi
+                    data psikotes 5 tahun; retensi data skrining kesehatan mental 2 tahun, setelahnya dimusnahkan.
+                </p>
+                <p class="jp">データは受検者の書面同意に基づき処理されます。受検者は結果説明、データ訂正、同意撤回の権利を有します（2022年法律第27号）。心理検査データの保存期間は5年、精神健康スクリーニングデータは2年で、期間経過後は廃棄されます。</p>
+            </li>
+            <li>
+                <strong>Larangan penggunaan</strong>
+                <p>
+                    Laporan tidak boleh digunakan di luar tujuan yang tercantum pada Bagian I, tidak boleh diubah
+                    sebagian, dan tidak boleh disalin tanpa izin psikolog penanggung jawab serta fasilitas layanan
+                    psikologi penerbit.
+                </p>
+                <p class="jp">第I部に記載された目的以外での使用、部分的な改変、担当心理士および発行機関の許可なき複製を禁じます。</p>
+            </li>
+        </ol>
         <p class="disclaimer">
-            Laporan ini merupakan ringkasan hasil pemeriksaan psikologis pada tanggal {{ $identity['test_date'] }} dan
-            menggambarkan kondisi peserta pada saat pemeriksaan. Hasil tidak dimaksudkan sebagai satu-satunya dasar
-            keputusan penempatan. Dokumen bersifat rahasia dan hanya boleh disebarluaskan kepada pihak yang berhak
-            sesuai kebijakan privasi yang berlaku. Skrining kesehatan mental pada bagian III tidak memengaruhi
-            penilaian kelayakan kerja.
+            Dasar hukum dan etik penyelenggaraan: Undang-Undang No. 23 Tahun 2022 tentang Pendidikan dan Layanan
+            Psikologi; Undang-Undang No. 18 Tahun 2017 tentang Pelindungan Pekerja Migran Indonesia; Undang-Undang
+            No. 27 Tahun 2022 tentang Pelindungan Data Pribadi; serta Kode Etik Psikologi Indonesia.
+        </p>
+        <p class="disclaimer">
+            Hasil skrining kesehatan mental pada Bagian III tidak digunakan sebagai dasar penetapan rekomendasi.
+            <span class="jp">第III部の精神健康スクリーニング結果は、推薦判定の根拠として用いられません。</span>
         </p>
     </section>
 
