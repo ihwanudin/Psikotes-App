@@ -114,3 +114,52 @@ Tidak perlu skema untuk teksnya. Dua celah kecil:
 3. Migration `report_documents` + `admins.sipp_number` (satu pemilik migration, setelah disetujui).
 4. F5: field rationale + prasyarat SIPP. F7: form SIPP. F0 extract: label aspek.
 5. F6: ganti `UnavailableReportSupplementalData` dengan implementasi nyata, lalu catat dokumen terbit di `report_documents`.
+
+---
+
+# Addendum 2026-09-20 — sumber otoritatif ditemukan
+
+User menunjuk `D:\LSI\Psikotes\PSIKOTEST LSI`. Dokumen di sana menjawab sebagian besar pertanyaan di atas. Bagian ini **menggantikan** poin yang bertentangan di bagian sebelumnya.
+
+## Peta dokumen
+
+| Berkas | Isi yang relevan |
+|---|---|
+| `Update DASS\Template Laporan HPP Psikotes.docx` | **Template HPP v2.3 yang berlaku** — skala 1–5, zona Grey Area, 18 nama aspek ID+EN+JP + definisi operasional ID/JP, bagian DASS, blok rekomendasi, identitas psikolog |
+| `Update DASS\Bank Narasi Formula HPP Psikotes.xlsx` | Sumber `reporting.json`/`dass21.json` (sudah diekstrak) |
+| `Update DASS\Spesifikasi Tim Teknis - Engineer Sistem_Psikotes.docx` | Spesifikasi psikolog (rujukan otoritatif per CLAUDE.md) |
+| `Update DASS\Contoh Laporan HPP Psikotes.pdf` | Contoh laporan terisi |
+| `PSIKOTEST\Skoring\*` (v1.1) | Format HPP lama, Formula Drafting, jawaban psikolog, lampiran aturan perakitan |
+| `PSIKOTEST\Manual Skoring HPP.docx` | Manual skoring (belum ditelusuri) |
+
+## KONFLIK VERSI — wajib diperhatikan
+
+Berkas di `PSIKOTEST\Skoring` adalah **v1.1 Serbaindo** dan memakai model LAMA: skala **1–10**, ambang rekomendasi (Disarankan ≥7,00), dan knockout. SPEC v4 + CLAUDE.md memakai skala **1–5** dan **Grey Area**, serta melarang knockout+ambang.
+Aturan: **SPEC menang.** Dari berkas v1.1 hanya dipakai bagian non-skoring (teks, struktur). `Template Laporan HPP Psikotes.docx` (v2.3) sudah selaras dengan SPEC dan menjadi rujukan format.
+
+## Pembaruan per input
+
+**#1 Nomor laporan — TETAP DIBUTUHKAN.** Template v2.3 punya field "Nomor Laporan / 報告書番号" di sampul dan di Bagian I.A. (Catatan: template v1.1 lama hanya punya "Nomor Test", itu sebabnya sempat diduga tidak perlu.) Usulan tabel `report_documents` tetap berlaku. Format nomornya masih keputusan user.
+
+**#2 Identitas psikolog — LEBIH LUAS dari sekadar SIPP.** Template v2.3 Bagian I.C meminta: Nama Psikolog · **Nomor SILP** · **Nomor STR** · Fasilitas Layanan Psikologi · Alamat Fasilitas. Nilai aktual di template: Rizqi Ulin Nuha, S.Psi., Psikolog · SILP-D8A35113BB4D · STR20241347-2026-0695 · Unit Layanan Psikologi — PT Online Career Mentor · Salatiga.
+Revisi usulan kolom: `admins.silp_number`, `admins.str_number` (+ opsional masa berlaku), dan fasilitas layanan sebagai konfigurasi penerbit (bukan per-admin), semuanya disalin ke `report_documents` saat terbit. Ganti nama "SIPP" menjadi **SILP** di kode dan dokumen.
+
+**#3 Alasan rekomendasi — sumber teksnya ADA.** Dua lapis:
+- Template v2.3 menyediakan **teks baku per label** (DISARANKAN / DIPERTIMBANGKAN / TIDAK DISARANKAN), ID+JP, plus baris "Catatan yang menyertai rekomendasi".
+- Jawaban psikolog di `Konfirmasi_dan_Permintaan_Manual_HPP` butir 5: sistem menyusun **kalimat penutup baku sesuai label sebagai draf**, wajib disunting psikolog sebelum PDF terbit, dan **disimpan sebagai teks yang dapat diubah, bukan ditanam di kode**.
+Jadi mekanismenya draf-lalu-sunting (sama seperti INTEGRATION), bukan kolom kosong. Tetap perlu field di kontrak tanda tangan F5 agar teks final ikut tersimpan di snapshot.
+
+**#4 Label aspek — SELESAI sebagai sumber, tinggal jalur datanya.** 18 nama resmi ID+EN+JP + definisi operasional ID/JP ada di template v2.3 Bagian II.A–D. Label di `ReportSigning`/`PsychologistReviewFixture` sudah mendekati benar; label di fixture F6 salah dan **sudah diperbaiki** (commit `ead155f`) agar cocok dengan template resmi + SPEC baris 132. Tiga salinan di kode tetap utang teknis; jalur akhirnya tetap data via `tools/extract` (lane F0).
+
+**#5 Teks DASS — SELESAI + kebijakan baru.** Template v2.3 Bagian III memuat 5 teks kategori umum ID+JP, identik dengan `dass21.json`. Keputusan user 2026-09-20: **DASS tidak boleh menghalangi penerbitan.** Sudah diterapkan di `ead155f`:
+- `follow_up` boleh null (Normal/Ringan tidak punya teks tindak lanjut) dan barisnya disembunyikan;
+- ketiadaan/ketidakcocokan data DASS menjadi **peringatan**, bukan pemblokir, dan HPP mencetak "Tidak tersedia" disertai penegasan bahwa itu **bukan** berarti tanpa keluhan;
+- G4/T-07 tidak berubah.
+Sisa keputusan psikolog: apakah kalimat "tidak tersedia" tersebut disetujui redaksinya.
+
+## Temuan tambahan untuk lane lain (bukan F6)
+
+- **Teks PURPOSE** (Lampiran A) dan **aturan perakitan INTEGRATION** (Lampiran B: kerangka 5 paragraf, aturan pemadatan, daftar konektor tertutup, target 350–450 kata, subjek "Klien") tersedia dan belum tercermin di kode narasi F4.
+- **Lampiran C memetakan pita narasi ke skor 1–10.** Pemetaan ini **tidak boleh dipakai** sebelum psikolog memutuskan padanannya untuk skala 1–5.
+- Template v2.3 memuat bagian **V. Batasan, Kerahasiaan & Ketentuan Penggunaan** (3 butir, ID+JP) dan dasar hukum (UU 23/2022, UU 18/2017, UU 27/2022) yang belum ada di template F6.
+- Template v2.3 juga meminta field identitas yang belum kita simpan: **Nomor ID CPMI/SISKOP2MI**, **tempat lahir**, **level bahasa Jepang**, dan **Program yang Dituju (TITP / SSW / lainnya)**.
