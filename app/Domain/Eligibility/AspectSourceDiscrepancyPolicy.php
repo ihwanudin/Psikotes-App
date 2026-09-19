@@ -8,6 +8,17 @@ use InvalidArgumentException;
 
 final class AspectSourceDiscrepancyPolicy
 {
+    /**
+     * TODO(G7-data-gap): evaluate() menerima $sources murni dari klien tanpa
+     * cross-check ke generic_instrument_result_sources di database. Klien secara
+     * teknis bisa memalsukan level per-instrumen sehingga review_required menjadi
+     * false padahal sebenarnya true, menyembunyikan sinyal peringatan G7 dari
+     * psikolog. Ini TIDAK bisa mengubah validity/label/final_level yang
+     * ditandatangani (sudah terkunci oleh ReviewedEligibilityDecision di layer
+     * atasnya). Perlu aggregator dari generic_instrument_result_sources sebelum
+     * sources dianggap otoritatif.
+     */
+
     /** @var list<string> */
     private const ASPECTS = ['A1', 'A2', 'B1', 'B2', 'B3', 'B4', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'D1', 'D2', 'D3', 'D4', 'D5'];
 
