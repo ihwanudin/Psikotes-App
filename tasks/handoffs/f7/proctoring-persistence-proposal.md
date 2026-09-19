@@ -33,7 +33,8 @@ psychologist.
 - SPEC already names `proctor_photos` and `proctor_logs` as infra tables
   (`SPEC.md:257`).
 - Camera policy is periodic capture every 12-20 seconds plus start/submit;
-  stream interruptions and permission denial are evidence markers, not automatic
+  the final cadence must be configurable per branch, and stream
+  interruptions/permission denial are evidence markers, not automatic
   invalidation (`SPEC.md:202-206`).
 - Visibility/focus signals must be recorded with timestamps and duration
   (`SPEC.md:210-212`).
@@ -56,10 +57,12 @@ psychologist.
   (`SECURITY.md:45-48`).
 - Face mismatch is only a marker for review; provider choice is not final
   (`SECURITY.md:54-55`).
-- SECURITY currently says proctoring retention is 90 days (`SECURITY.md:112-116`)
-  while the draft privacy policy says proctoring photos 6 months and logs 2
-  years (`PRIVACY_POLICY.md:5-9`). This conflict must be resolved before any
-  production purge/scheduler behavior is implemented.
+- Retention is partly settled and partly open. Psychometric data/reports are 5
+  years and DASS/screening data are 2 years consistently across `SPEC.md:269`,
+  the v2.3 template Bagian V, and `PRIVACY_POLICY.md:9`. The real unresolved
+  proctoring questions are media retention and log category mapping; do not
+  schedule purge until those are resolved by product/legal/psychologist
+  authority.
 
 ## Proposed schema
 
@@ -119,6 +122,42 @@ Append-only decision:
   rejected, record a `proctor_logs` event rather than mutating or deleting the
   photo row.
 
+### Session capture cadence state
+
+Mobile dead-stream detection requires server-visible expected-capture state,
+not only client-reported events. `SPEC.md:204-205` requires detecting a camera
+track ending, retrying activation, and marking the session when reactivation
+fails; `CLAUDE.md:27` also requires the design to stay honest about browser
+proctoring limits.
+
+Persist a per-session cadence record, either as a dedicated
+`proctor_session_monitors` table or as equivalent columns on the existing test
+session/case bridge chosen in the migration design:
+
+| Column | Type | Null | Notes |
+|---|---:|---:|---|
+| `branch_id` | bigint FK `branches.id` | no | Tenant scope for RLS. |
+| `participant_id` | bigint FK `participants.id` | no | Owner participant. |
+| `assessment_case_id` | bigint FK `assessment_cases.id` | nullable until exact case contract is chosen | Same parent contract as photo/log rows. |
+| `test_session_id` | bigint FK `test_sessions.id` | nullable | Non-null for generic instrument sessions. |
+| `assessment_attempt_id` | ulid/string | nullable | Integrated attempt bridge if needed. |
+| `instrument` | string(32) | no | Maps to `ProctoringInstrument`. |
+| `expected_capture_min_seconds` | unsigned smallint | no | Lower bound of configured randomized cadence, sourced from branch/session configuration. |
+| `expected_capture_max_seconds` | unsigned smallint | no | Upper bound of configured randomized cadence; default authority is SPEC 12-20 seconds. |
+| `last_photo_received_at` | timestamptz | nullable | Updated by trusted photo ingest after storage succeeds. |
+| `next_capture_due_at` | timestamptz | nullable | Server-side expectation used for gap inference. |
+| `started_at` | timestamptz | no | Session monitor start. |
+| `closed_at` | timestamptz | nullable | Orderly close timestamp, if any. |
+| `close_reason` | string(32) | nullable | `submitted`, `abandoned`, `expired`, `server_closed`; separates orderly close from dead stream. |
+| `retention_expires_at` | timestamptz | nullable until retention is resolved | Session/log retention may differ from photo retention. |
+
+Server inference rule: if `now()` passes `next_capture_due_at` plus the
+server-accepted grace policy and no `proctor_photos` row arrives, insert a
+system-observation `proctor_logs` row that represents a capture gap. This is
+evidence that the expected photo did not arrive even when the client emits no
+event. The cadence window defines what should arrive; it must not become a
+V2/V3 count or duration threshold.
+
 ### `proctor_logs`
 
 Purpose: append-only structured timeline events for client observations and
@@ -141,9 +180,12 @@ Proposed columns:
 | `evidence_id` | string(100) | no | Same ID contract as `ProctoringEvent::$evidenceId`. |
 | `occurred_at` | timestamptz | no | Client or system event time. |
 | `received_at` | timestamptz | no | Server receive time. |
-| `duration_ms` | unsigned integer | nullable | Required for visibility/focus interruptions. |
+| `duration_ms` | unsigned integer | nullable | Evidence display only for visibility/focus/capture-gap intervals; never a gate threshold. |
 | `photo_id` | bigint FK `proctor_photos.id` | nullable | Links face/photo events to the capture row. |
 | `client_event_id` | string(100) | nullable | Idempotency token from client. |
+| `expected_capture_due_at` | timestamptz | nullable | Server expectation used when `event_kind` is a capture-gap/dead-stream marker. |
+| `reactivation_outcome` | string(32) | nullable | `attempted`, `succeeded`, `failed` for camera reactivation-attempt events. |
+| `terminal_session_state` | string(32) | nullable | `orderly_close` or `stream_died_without_event`, so silent dead stream is distinct from normal submit/close. |
 | `metadata` | jsonb | no default `{}` | Must exclude PII/raw answers/object keys. |
 | `review_status` | string(32) | no default `pending` | `pending`, `dismissed`, `confirmed`, `system_only`. |
 | `reviewed_by_admin_id` | bigint FK `admins.id` | nullable | Psychologist/super admin review identity. |
@@ -162,12 +204,16 @@ Indexes/constraints:
 - Index `(assessment_case_id, occurred_at)`.
 - Index `(test_session_id, occurred_at)`.
 - Index `(event_kind, occurred_at)`.
-- Check `event_kind` against current `ProctoringEventKind` values:
-  camera permission denied, camera unavailable, camera interrupted, screen
-  departure, face mismatch, second face detected, audio assistance detected,
-  network interrupted, unreasonable timing, identity failure, subtest
+- Check `event_kind` against current `ProctoringEventKind` values plus the
+  persistence/browser-only markers needed before domain wiring is extended:
+  camera permission denied, camera unavailable, camera interrupted, camera
+  reactivation attempted, capture gap inferred, stream died without event,
+  screen departure, face mismatch, second face detected, audio assistance
+  detected, network interrupted, unreasonable timing, identity failure, subtest
   incomplete, invalid response pattern confirmed
   (`app/Domain/Proctoring/ProctoringEventKind.php:7-20`).
+- Check `reactivation_outcome` against `attempted`, `succeeded`, `failed` when
+  present.
 
 Append-only decision:
 
@@ -211,11 +257,20 @@ service action also enforces role and branch/case scope explicitly.
 - Size/type: JPEG/WebP around 480-640px as SPEC suggests for periodic capture
   (`SPEC.md:202-203`). Enforce MIME sniffing and byte-size ceiling server-side.
 - Checksum: SHA-256 over stored bytes, recorded in `checksum_sha256`.
-- Retention: unresolved conflict. SPEC says proctoring video/photo 90 days with
-  only event summaries retained (`SPEC.md:237-238`, `SPEC.md:269`), SECURITY
-  says proctoring 90 days (`SECURITY.md:112-116`), while PRIVACY_POLICY draft
-  says photos 6 months and logs 2 years (`PRIVACY_POLICY.md:5-9`). Do not
-  schedule purge until this is resolved by product/legal/psychologist authority.
+- Retention: use per-category retention columns and deletion paths, not one
+  global proctoring figure. Settled categories outside this feature are
+  consistent: psychometric data/reports 5 years and DASS/screening 2 years
+  (`SPEC.md:269`, v2.3 template Bagian V, `PRIVACY_POLICY.md:9`). For
+  proctoring media, the unresolved decision is 90 days for "rekaman video" /
+  proctoring (`SPEC.md:238`, `SPEC.md:269`, `SECURITY.md:112-116`) versus 6
+  months for "foto proctoring" (`PRIVACY_POLICY.md:9`); the user must settle
+  whether photo and video evidence share a category. For logs, audit trail is 5
+  years without PII (`SPEC.md:269`, `SECURITY.md:112-116`) while
+  `PRIVACY_POLICY.md:9` says "log 2 tahun"; likely this means application logs,
+  but that must be confirmed rather than assumed. Identity-document photos and
+  initial selfie currently have no retention figure; `PRIVACY_POLICY.md:9`
+  explicitly leaves them awaiting legal/psychologist decision. Do not schedule
+  purge until these open decisions are resolved.
 
 ## Event ingest proposal
 
@@ -235,6 +290,14 @@ The final route names can differ, but each route should:
 6. Rate-limit per participant/session/IP.
 7. Never log raw photo bytes, object keys, URLs, participant phone, test number,
    or raw answers.
+8. On session start, persist the configured capture cadence for that specific
+   session/case. On each accepted photo, update the trusted server-side cadence
+   state. A background job or request-time monitor should infer missing capture
+   gaps from persisted cadence even when the client emits no event.
+9. Record camera reactivation attempts separately from interruptions:
+   attempted/succeeded/failed outcomes must be visible in the timeline.
+10. Record "stream died with no event" as a distinct system-observation marker,
+    not as an orderly close.
 
 Form Request fields for event ingest:
 
@@ -245,6 +308,7 @@ Form Request fields for event ingest:
   (`app/Domain/Proctoring/ProctoringEvent.php:34-47`).
 - `occurred_at`: required timestamp, bounded near server time.
 - `duration_ms`: required for visibility/focus/screen-departure intervals.
+- `reactivation_outcome`: required only for camera reactivation-attempt events.
 - `metadata`: optional allowlisted JSON; no PII, raw answers, object keys, or
   signed URLs.
 
@@ -253,8 +317,8 @@ Event mapping to acceptance rows:
 | Acceptance | Events | Persistence/UI implication |
 |---|---|---|
 | T-25 camera denied | `CAMERA_PERMISSION_DENIED`, `CAMERA_UNAVAILABLE` | Create `proctor_logs` marker; in mandatory-camera mode, session start can be blocked by start flow, but existing running session records V2 marker. |
-| T-26 stream interrupted/mobile app switch | `CAMERA_INTERRUPTED`, optionally paired with recovery metadata | Record each interruption and recovery attempt; aggregate in timeline; V2 marker per policy. |
-| T-27 visibility duration | `SCREEN_DEPARTURE` with `duration_ms` and timestamps | Persist duration; timeline shows cumulative and per-event duration. |
+| T-26 stream interrupted/mobile app switch | `CAMERA_INTERRUPTED`, `CAMERA_REACTIVATION_ATTEMPT`, `CAPTURE_GAP_INFERRED`, `STREAM_DIED_WITHOUT_EVENT` | Record each interruption, reactivation attempt/outcome, and server-inferred missing capture. Silent dead stream is evidence even without a client event; V2 marker per policy. |
+| T-27 visibility/fullscreen departure | `SCREEN_DEPARTURE` with `duration_ms` and timestamps | Persist every departure occurrence; timeline shows cumulative and per-event duration as evidence only. One occurrence maps to V2 under v2.3, regardless of count/duration. |
 | T-28 face mismatch | `FACE_MISMATCH` linked to `proctor_photos` | Marker only; human review required, no automatic stop/publication decision. |
 
 This proposal deliberately does not claim prevention. It records detection
@@ -282,7 +346,9 @@ UI content:
 - Timeline grouped by time and instrument.
 - Event severity chips: camera, visibility, network, face marker, human review.
 - Photo thumbnails only via signed URL after authorization.
-- Cumulative visibility duration and camera-off count.
+- Cumulative visibility duration and camera/capture-gap counts are displayed as
+  evidence only. No count/duration threshold may appear in schema, aggregation,
+  or timeline UI.
 - Review/adjudication controls only for roles explicitly authorized
   (`psychologist` and/or `super_admin`, pending F5 RLS alignment).
 - Branch admin/staff read-only view scoped to their branch.
@@ -309,6 +375,15 @@ Policy implications from current domain:
 - Camera denied/unavailable/interrupted, screen departure, network interruption,
   and unreasonable timing produce V2 markers
   (`app/Domain/Proctoring/ProctoringValidityPolicy.php:111-120`).
+- `SPEC.md:204-205` binds camera inactive/dead stream at any duration to V2.
+  The rejected looser-duration threshold proposal must not appear in
+  persistence, aggregation, or UI.
+- `SPEC.md:211` and `SPEC.md:225-226` bind tab switch, visibility loss, and
+  fullscreen exit at one occurrence to V2. Accumulated duration may be shown to
+  reviewers as evidence, but it must never determine the gate.
+- `ProctoringValidityPolicy::requiresV2()` already lists these event kinds with
+  no count/duration threshold; the pure domain is correct, and persistence must
+  not reintroduce thresholds.
 - Identity failure, subtest incomplete, and confirmed invalid response patterns
   produce V3 markers (`app/Domain/Proctoring/ProctoringValidityPolicy.php:123-130`).
 - Face mismatch, second face, and audio assistance require human review
@@ -316,18 +391,23 @@ Policy implications from current domain:
 
 ## Decisions needed before migration/code
 
-1. Retention authority: choose between SPEC/SECURITY 90 days and
-   PRIVACY_POLICY 6-month photos / 2-year logs, or document a split policy.
+1. Retention authority for proctoring media/logs: settle photo vs video
+   category (90 days in SPEC/SECURITY for video/proctoring versus 6 months for
+   photos in PRIVACY_POLICY) and confirm whether PRIVACY_POLICY "log 2 tahun"
+   means application logs rather than audit trail. Keep photo and log retention
+   separately configurable; no purge scheduler before this decision.
 2. Exact parent identity: should proctoring rows be primarily case-level,
    session-level, integrated-attempt-level, or a required combination?
-3. Psychologist RLS predicate: all cases, assigned cases, or same scope as F5
-   signing snapshots after the pending RLS widening work?
+3. Psychologist RLS predicate: do not lock a predicate yet. F5 RLS widening is
+   still in progress in the DeepSeek lane, and proctoring must follow the final
+   review/signing scope once it lands.
 4. Participant access: no direct access, redacted audit summary, or full
    subject-access export only.
 5. Review storage: mutable review columns on `proctor_logs` versus strict
    append-only `proctor_adjudications`.
-6. Photo cadence configurability: global 12-20 seconds versus per-branch
-   configuration; if per-branch, where is that config stored?
+6. Photo cadence configurability is mostly settled: `SPEC.md:203` says 12-20
+   seconds randomized and final figure configurable per branch. Remaining open
+   point: where the per-branch/session cadence configuration is stored.
 7. Face-match provider and score semantics. Current security note says provider
    is not chosen and mismatch is only a marker (`SECURITY.md:54-55`).
 8. Mandatory-camera branch setting: where it is configured, and whether camera
@@ -365,23 +445,30 @@ Owned files/directories: `tasks/handoffs/f7/proctoring-persistence-proposal.md`
 only.
 
 Acceptance criteria: one proposal document covering schema, RLS, private photo
-storage, ingest, Filament timeline, `ProctoringValidityPolicy` integration, and
-open decisions; no migration/code/test/lockfile changes.
+storage, ingest, Filament timeline, `ProctoringValidityPolicy` integration,
+dead-stream/capture-gap persistence, v2.3 threshold binding, corrected
+retention questions, and open decisions; no migration/code/test/lockfile
+changes.
 
 Verification commands:
 
 - `git status --short --branch`
 - `git diff --stat`
-- `rg "lockdown guarantee" tasks/handoffs/f7/proctoring-persistence-proposal.md`
 
 Result commit: pending until committed.
 
 Tests and evidence: documentation-only; citations are embedded as file:line
-references.
+references. Amendment records session-level capture cadence persistence,
+server-inferred missing capture gaps, camera reactivation-attempt outcomes,
+silent dead-stream markers, v2.3 one-occurrence/any-duration V2 binding, and
+per-category retention handling. Prose check: no lockdown/anti-cheating
+guarantee is introduced, and rejected numeric threshold tokens are not used as
+schema, aggregation, or UI gates.
 
-Known blockers: retention conflict between SPEC/SECURITY and PRIVACY_POLICY;
-psychologist/super-admin RLS predicate pending F5 RLS alignment; face-match
-provider not chosen; mandatory-camera config storage undecided.
+Known blockers: proctoring media/log retention category decision remains open;
+exact parent identity remains open; psychologist/super-admin RLS predicate
+pending F5 RLS alignment; face-match provider not chosen; mandatory-camera
+config storage and cadence config storage remain undecided.
 
 Next dependency or increment: Lead/user review of schema and decisions before
 any migration is created.
