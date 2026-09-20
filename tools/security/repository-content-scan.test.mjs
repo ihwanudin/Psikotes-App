@@ -904,6 +904,7 @@ test('synthetic phone is accepted in local and international notation only', asy
                         ['indonesian_phone', 2],
                     ],
                 );
+
                 return true;
             });
         },

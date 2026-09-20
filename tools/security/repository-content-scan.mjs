@@ -745,6 +745,7 @@ function isSyntheticEmail(value) {
 
 function isSyntheticPhone(digits) {
     const canonical = digits.startsWith('08') ? `62${digits.slice(1)}` : digits;
+
     return SYNTHETIC_PHONES.has(canonical);
 }
 
