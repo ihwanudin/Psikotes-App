@@ -57,14 +57,53 @@ kekalahan yang rapi; yang datang adalah pembatalan paksa.
 
 ## 3. Mekanisme — inversi urutan penguncian
 
+### 3.0 Satu review = DUA transaksi berurutan
+
+Penting untuk bentuk perbaikan, dan mudah salah dibaca. `ReviewAssessmentBillTransfer`
+menyuntik **kedua** jalur dan menjalankannya berurutan:
+
+```php
+$result = $this->finalizer->executeManual($review);
+
+if ($result['decision'] === 'settled') {
+    $this->commissionLedger->recordAssessmentBillReference($review->billReference);
+}
+```
+
+- `FinalizeAssessmentBill::executeManual()` berjalan di transaksinya sendiri;
+- `RecordBranchCommissionLedger::recordAssessmentBillReference()` membuka
+  `DB::transaction` **terpisah** (`RecordBranchCommissionLedger.php:50`);
+- jalur commission ledger **hanya** dimasuki bila keputusannya `settled`, sehingga
+  hanya pihak yang **menang** yang menyentuh `commission_ledger_gaps`.
+
+Jadi deadlock terjadi **lintas dua transaksi berbeda**: satu pekerja masih di dalam
+transaksi finalize, pekerja lain sudah berada di transaksi commission ledger.
+
+### 3.1 Dua sumber daya yang saling menunggu
+
 Dua sumber daya, dikunci dalam urutan berlawanan oleh dua transaksi:
 
 1. **Baris `assessment_bills`** — dikunci `FOR UPDATE` di
-   `app/Actions/Payments/FinalizeAssessmentBill.php:202`.
-2. **Kunci unik `commission_ledger_gaps`** — `INSERT` di
-   `app/Services/Commissions/RecordBranchCommissionLedger.php`. Tabelnya punya
+   `app/Actions/Payments/FinalizeAssessmentBill.php:201-202`.
+2. **`commission_ledger_gaps`** — `updateOrInsert` di
+   `app/Services/Commissions/RecordBranchCommissionLedger.php:308`, dengan kunci
+   pencarian `['source_type', 'source_id']`. Tabelnya punya
    `unique(['source_type','source_id'])`
    (`database/migrations/2026_09_17_000200_create_commission_ledger_gaps.php:28`).
+
+**Catatan atribusi — diperiksa, bukan diasumsikan.** `RecordBranchCommissionLedger`
+**juga** mengunci `assessment_bills` `FOR UPDATE` (baris 118-122), jadi statement di
+log tidak boleh diatribusikan hanya berdasarkan nama kelas. Pembedaannya lewat bentuk
+query:
+
+| Sumber | Bentuk |
+|---|---|
+| Log deadlock | `select *` · predikat `organization_id` + `public_reference` · `limit 1 for update` |
+| `FinalizeAssessmentBill:201-202` | `select *` · predikat `organization_id` + `public_reference` · `limit 1` — **cocok** |
+| `RecordBranchCommissionLedger:118-122` | memilih 4 kolom (`id, organization_id, paid_at, currency`) · predikat `public_reference` + `status = 'paid'` + `paid_at IS NOT NULL` — **tidak cocok** |
+
+Jadi baris tagihan dalam siklus dikunci oleh **finalize**, bukan oleh jalur commission
+ledger.
 
 Kedua review bersamaan menyasar tagihan yang sama, sehingga keduanya menghasilkan
 `(source_type, source_id)` yang sama. `INSERT` kedua tidak gagal langsung — ia
@@ -152,6 +191,27 @@ Errors: 2, Failures: 0` — kedua error terjadi, manual review tetap lulus.
 
 ## 8. Yang masih terbuka
 
+### 8.1 Apa yang dipegang pihak yang kalah sehingga konflik dengan penyisipan gap?
+
+Ditambahkan setelah §3.0 diketahui, dan **belum diuji**.
+
+Jalur commission ledger hanya dimasuki oleh pihak yang **menang** (`settled`). Pihak
+yang kalah tidak pernah sampai ke `commission_ledger_gaps`. Namun log menunjukkan
+`INSERT` gap milik proses 95 **menunggu transaksi proses 96**, sementara proses 96
+sedang berada di lock baris tagihan — bukan di jalur gap.
+
+Supaya proses 95 menunggu, proses 96 harus memegang sesuatu yang berkonflik dengan
+penyisipan itu. **Apa persisnya, belum diketahui.** Jangan ditebak: beberapa
+penjelasan yang tampak rapi sudah gugur saat diuji dalam investigasi ini.
+
+**Saran alat untuk yang melanjutkan** (bukan hipotesis, dan tidak dijalankan di sini):
+nyalakan `log_lock_waits = on` dengan `deadlock_timeout` yang pendek pada container
+PostgreSQL diagnostik. PostgreSQL akan mencatat siapa memegang kunci apa **sebelum**
+siklus terbentuk, bukan hanya dua statement terakhir saat siklus terdeteksi. Itu yang
+akan menjawab pertanyaan ini secara langsung.
+
+### 8.2 Kenapa hanya terlihat setelah kelas lain berjalan lebih dulu?
+
 **Kenapa deadlock ini hanya muncul setelah `AssessmentBillInvoiceIssuanceTest`
 berjalan lebih dulu, dan tidak muncul saat `AssessmentBillManualReviewTest` berjalan
 sendiri?**
@@ -176,12 +236,17 @@ Pemilihan milik lane DeepSeek. Didaftar tanpa urutan preferensi, dengan konsekue
 masing-masing:
 
 1. **Samakan urutan akuisisi.** Pastikan baris `assessment_bills` selalu dikunci
-   sebelum apa pun yang menyentuh kunci unik `commission_ledger_gaps`, di semua jalur.
-   Menghilangkan siklusnya di akar; menuntut audit semua pemanggil, bukan satu berkas.
-2. **Jadikan penyisipan gap idempoten tanpa menunggu.** Misalnya `INSERT ... ON
-   CONFLICT DO NOTHING`, sehingga penyisip kedua tidak pernah menunggu transaksi
-   pertama. Perlu dipastikan lebih dulu bahwa "tidak melakukan apa-apa" memang benar
-   secara akuntansi untuk gap yang sama.
+   sebelum apa pun yang menyentuh `commission_ledger_gaps`, di semua jalur.
+   Menghilangkan siklusnya di akar. **Perhatikan §3.0:** karena finalize dan commission
+   ledger berjalan di **dua transaksi terpisah**, "urutan akuisisi" tidak bisa ditegakkan
+   hanya dengan menyusun ulang statement di dalam satu blok transaksi — ini lebih rumit
+   daripada penyusunan ulang biasa, dan menuntut audit semua pemanggil kedua jalur.
+2. **Jadikan penyisipan gap idempoten tanpa menunggu.** Jalur sekarang memakai
+   `updateOrInsert` (`RecordBranchCommissionLedger.php:308`), yang melakukan pencarian
+   lalu menyisipkan atau memperbarui. Alternatif seperti `INSERT ... ON CONFLICT DO
+   NOTHING` membuat penyisip kedua tidak menunggu transaksi pertama. Perlu dipastikan
+   lebih dulu bahwa "tidak melakukan apa-apa" memang benar secara akuntansi untuk gap
+   yang sama — `updateOrInsert` saat ini **memperbarui**, bukan mengabaikan.
 3. **Retry pada kegagalan deadlock.** Tangkap SQLSTATE `40P01` dan ulangi transaksi.
    Menyembuhkan gejala tanpa menghilangkan inversinya, dan menambah jalur yang sendiri
    perlu diuji.
