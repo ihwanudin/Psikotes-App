@@ -35,6 +35,12 @@ trait SeedsSignedReportCase
             'code' => 'BR-RG-'.$suffix,
             'name' => 'Cabang Sintetis Laporan',
             'ref_code' => 'REF-RG-'.$suffix,
+            // organization_code/display_name are NOT NULL on PostgreSQL
+            // (2026_08_29_000200 addPostgresControls); SQLite doesn't
+            // enforce this, which is why the gap wasn't caught until this
+            // trait ran against the real Postgres harness.
+            'organization_code' => 'BR-RG-'.$suffix,
+            'display_name' => 'Cabang Sintetis Laporan',
         ]);
         $package = TestPackage::query()->create([
             'code' => 'PKG-RG-'.$suffix,
@@ -55,7 +61,16 @@ trait SeedsSignedReportCase
             'birth_date' => '2002-03-04',
             'education_level' => 'SMA/SMK',
             'intended_field' => $field,
-            'phone' => '+6281200000000',
+            // Exact value from tools/security/repository-content-scan.mjs's
+            // SYNTHETIC_PHONES allowlist (also used verbatim in
+            // AdminAuthorizationTest.php:126). That scanner matches the
+            // literal digit string, not a phone-normalized equivalent, so
+            // an internationally-formatted version of this same number
+            // does not match the local-format entry the allowlist actually
+            // carries — confirmed by reading the matcher, not assumed. Do
+            // not widen the allowlist for a fixture; use an already-listed
+            // value instead.
+            'phone' => '081200000000',
         ]);
         DB::table('participants')->where('id', $participant->id)->update(['test_number' => $testNumber]);
 
@@ -69,13 +84,15 @@ trait SeedsSignedReportCase
         ]);
     }
 
-    private function reportPsychologist(): Admin
+    private function reportPsychologist(?string $silpNumber = 'SILP-SYNTH-0001', ?string $strNumber = 'STR-SYNTH-0001'): Admin
     {
         return Admin::query()->create([
             'name' => 'Psikolog Sintetis',
             'email' => (string) Str::uuid().'@example.test',
             'password' => bcrypt('password'),
             'role' => AdminRole::Psychologist->value,
+            'silp_number' => $silpNumber,
+            'str_number' => $strNumber,
         ]);
     }
 

@@ -42,10 +42,18 @@ final class InstrumentSeederTest extends TestCase
                 'is_active' => true,
             ]);
 
-            $storedPayload = DB::table('instrument_versions')->where('code', $code)->value('payload');
+            $row = DB::table('instrument_versions')->where('code', $code)->first(['payload', 'source_text', 'checksum']);
 
-            $this->assertIsString($storedPayload);
-            $this->assertJsonStringEqualsJsonFile($sourcePath, $storedPayload);
+            $this->assertIsString($row->payload);
+            $this->assertJsonStringEqualsJsonFile($sourcePath, $row->payload);
+
+            // `source_text` must be the exact raw file bytes the checksum was
+            // computed from — not merely JSON-equivalent to `payload`, but
+            // byte-identical, so it can be hashed back to `checksum` even after
+            // PostgreSQL's jsonb normalization changes `payload`'s bytes.
+            $this->assertIsString($row->source_text);
+            $this->assertSame(file_get_contents($sourcePath), $row->source_text);
+            $this->assertTrue(hash_equals($row->checksum, hash('sha256', $row->source_text)));
         }
     }
 

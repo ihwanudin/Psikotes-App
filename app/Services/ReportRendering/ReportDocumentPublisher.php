@@ -12,13 +12,19 @@ use RuntimeException;
 use Throwable;
 
 /**
- * Persists a rendered F6 report PDF on the private `reports` disk and
- * issues a short-lived temporary URL for it. Object keys are random
- * (following the repo's upload convention, e.g. StoreAssessmentBillProof)
- * and never derived from participant data. The URL lifetime is a local
- * constant because report-specific configuration lives outside this
- * package's ownership. Fixture-driven until the F5 review/signature
- * contract is final.
+ * Storage-layer operations for F6 report PDFs on the private `reports`
+ * disk. Object keys are random (following the repo's upload convention,
+ * e.g. StoreAssessmentBillProof) and never derived from participant data.
+ *
+ * Split into two independent responsibilities (Lead's 2026-09-20 review,
+ * tasks/handoffs/f6/report-documents-schema-proposal.md §4/§9):
+ * storeObject() always writes a NEW object under a fresh key — it never
+ * decides to reuse one, since "is there already a usable object for this
+ * snapshot" is an orchestration decision (ReportDocumentIssuer), not a
+ * storage concern. issueLink() is a pure read: given a key that already
+ * exists, it signs a fresh temporary URL without touching storage state.
+ * publish() is kept as a thin composition of the two for the current
+ * single-shot ReportGeneration flow.
  */
 final readonly class ReportDocumentPublisher
 {
@@ -37,9 +43,12 @@ final readonly class ReportDocumentPublisher
     private const KEY_PATTERN = '/^reports\/(hpp|internal)\/[a-z0-9]{2}\/[a-z0-9]{62}\.pdf$/D';
 
     /**
-     * @return array{object_key: string, url: string, expires_at: string, size: int, checksum: string}
+     * Stores a PDF binary under a brand-new random key. Always a write;
+     * never checks for or reuses an existing object.
+     *
+     * @return array{object_key: string, size: int, checksum: string}
      */
-    public function publish(string $documentType, ReportIdentity $identity, string $pdf): array
+    public function storeObject(string $documentType, string $pdf): array
     {
         if (! in_array($documentType, self::DOCUMENT_TYPES, true)) {
             throw new RuntimeException("Report document type [{$documentType}] is unknown.");
@@ -61,22 +70,61 @@ final readonly class ReportDocumentPublisher
             throw new RuntimeException('Report document storage failed.');
         }
 
+        return [
+            'object_key' => $key,
+            'size' => strlen($pdf),
+            'checksum' => hash('sha256', $pdf),
+        ];
+    }
+
+    /**
+     * Issues a fresh short-lived signed URL for an object that already
+     * exists in storage. Pure read: never writes, never deletes.
+     *
+     * @return array{url: string, expires_at: string}
+     */
+    public function issueLink(string $objectKey): array
+    {
         $expiresAt = CarbonImmutable::now()->addMinutes(self::TEMPORARY_URL_MINUTES);
 
         try {
-            $url = Storage::disk(self::DISK)->temporaryUrl($key, $expiresAt);
+            $url = Storage::disk(self::DISK)->temporaryUrl($objectKey, $expiresAt);
         } catch (Throwable) {
-            $this->deleteBestEffort($key);
-
             throw new RuntimeException('Report document temporary URL issuance failed.');
         }
 
         return [
-            'object_key' => $key,
             'url' => $url,
             'expires_at' => $expiresAt->toIso8601String(),
-            'size' => strlen($pdf),
-            'checksum' => hash('sha256', $pdf),
+        ];
+    }
+
+    /**
+     * Convenience composition of storeObject() + issueLink() for a
+     * single-shot "render once, hand back a link" flow. $identity is
+     * accepted for the caller's documentation/future use; the object key
+     * itself is never derived from it (see objectKey()).
+     *
+     * @return array{object_key: string, url: string, expires_at: string, size: int, checksum: string}
+     */
+    public function publish(string $documentType, ReportIdentity $identity, string $pdf): array
+    {
+        $stored = $this->storeObject($documentType, $pdf);
+
+        try {
+            $link = $this->issueLink($stored['object_key']);
+        } catch (Throwable $e) {
+            $this->deleteBestEffort($stored['object_key']);
+
+            throw $e;
+        }
+
+        return [
+            'object_key' => $stored['object_key'],
+            'url' => $link['url'],
+            'expires_at' => $link['expires_at'],
+            'size' => $stored['size'],
+            'checksum' => $stored['checksum'],
         ];
     }
 

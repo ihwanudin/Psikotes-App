@@ -127,7 +127,8 @@ final class ScoreSealedIstAnswerSetTest extends OrganizationPaymentTestCase
             'version mismatch' => ['version' => $private],
             'payload checksum mismatch' => ['checksum' => str_repeat('a', 64)],
             'invalid source file' => ['source_file' => "bad\nfile.json"],
-            'invalid payload' => ['payload' => '{'],
+            'invalid source text' => ['source_text' => '{'],
+            'null source text' => ['source_text' => null],
         ];
 
         foreach ($cases as $changes) {
@@ -192,6 +193,7 @@ final class ScoreSealedIstAnswerSetTest extends OrganizationPaymentTestCase
             'source_file' => 'ist.json',
             'checksum' => hash('sha256', $payload),
             'payload' => $payload,
+            'source_text' => $payload,
             'is_active' => $isActive,
             'created_at' => '2026-09-13 03:00:00.000000+00:00',
             'updated_at' => '2026-09-13 03:00:00.000000+00:00',

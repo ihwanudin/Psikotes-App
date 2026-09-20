@@ -106,4 +106,66 @@ final class ReportDocumentPublisherTest extends TestCase
             $this->assertStringNotContainsString(strtolower($secret), $result['object_key']);
         }
     }
+
+    // ─── storeObject() / issueLink() split ───
+
+    public function test_store_object_writes_a_new_object_and_never_signs_a_link(): void
+    {
+        $pdf = '%PDF-1.4 store-only';
+
+        $stored = $this->publisher->storeObject('hpp', $pdf);
+
+        $this->assertArrayNotHasKey('url', $stored);
+        $this->assertArrayNotHasKey('expires_at', $stored);
+        $this->assertSame(strlen($pdf), $stored['size']);
+        $this->assertSame(hash('sha256', $pdf), $stored['checksum']);
+        Storage::disk('reports')->assertExists($stored['object_key'], $pdf);
+    }
+
+    public function test_store_object_rejects_the_same_inputs_publish_rejects(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('unknown');
+
+        $this->publisher->storeObject('summary', '%PDF-1.4 x');
+    }
+
+    public function test_issue_link_signs_a_url_for_an_object_without_writing_anything(): void
+    {
+        $stored = $this->publisher->storeObject('hpp', '%PDF-1.4 issue-link-only');
+        $before = Storage::disk('reports')->allFiles();
+
+        $link = $this->publisher->issueLink($stored['object_key']);
+
+        $this->assertNotSame('', $link['url']);
+        $this->assertSame(
+            CarbonImmutable::now()->addMinutes(ReportDocumentPublisher::TEMPORARY_URL_MINUTES)->toIso8601String(),
+            $link['expires_at'],
+        );
+        // No new object appeared and the original one is untouched.
+        $this->assertSame($before, Storage::disk('reports')->allFiles());
+        Storage::disk('reports')->assertExists($stored['object_key']);
+    }
+
+    public function test_issue_link_can_be_called_repeatedly_for_the_same_key_without_storing_again(): void
+    {
+        $stored = $this->publisher->storeObject('hpp', '%PDF-1.4 repeat-link');
+
+        $this->publisher->issueLink($stored['object_key']);
+        $this->publisher->issueLink($stored['object_key']);
+
+        $this->assertCount(1, Storage::disk('reports')->allFiles());
+    }
+
+    public function test_publish_composes_store_object_and_issue_link(): void
+    {
+        $pdf = '%PDF-1.4 composed';
+
+        $result = $this->publisher->publish('hpp', $this->identity, $pdf);
+
+        // Same object, same link contract as calling the two steps directly.
+        $link = $this->publisher->issueLink($result['object_key']);
+        $this->assertSame($result['url'], $link['url']);
+        Storage::disk('reports')->assertExists($result['object_key'], $pdf);
+    }
 }

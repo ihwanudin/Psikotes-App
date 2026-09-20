@@ -41,10 +41,12 @@ Satu baris = satu PDF yang benar-benar diterbitkan.
 
 | Nama | Kolom | Tujuan |
 |---|---|---|
-| `report_documents_number_unique` | `(document_type, report_number, report_version)` | Satu nomor + versi laporan hanya boleh sekali per jenis dokumen |
+| `report_documents_number_unique` | `(document_type, report_number, report_version, render_seq)` | Cegah nomor+versi dipakai snapshot lain pada render_seq yang sama |
 | `report_documents_render_unique` | `(signing_snapshot_id, document_type, render_seq)` | Tiap render punya barisnya sendiri; file yang berlaku = `render_seq` tertinggi |
 | `report_documents_case_idx` | `(assessment_case_id, document_type, report_version)` | Pencarian dokumen terbaru per kasus |
 | `report_documents_object_key_unique` | `(object_key)` | Kunci objek tidak pernah dipakai ulang |
+
+**Koreksi ditemukan lewat test (2026-09-20), bukan hanya ditinjau ulang di atas kertas:** rancangan awal `report_documents_number_unique` tanpa `render_seq` ternyata salah — ia menolak render ulang yang SAH (mis. objek hilang dari storage lalu dirender ulang), karena render ulang pada snapshot yang sama secara sengaja memakai `report_number`+`report_version` yang SAMA dengan `render_seq` yang berbeda. Test `ReportDocumentIssuerTest::test_re_renders_with_a_new_render_seq_when_the_object_is_missing_from_storage` menangkap ini via `UNIQUE constraint failed`. Sudah diperbaiki dengan menambahkan `render_seq` ke unique tersebut.
 
 **Idempotensi ditegakkan di aplikasi, bukan oleh unique constraint.** Saat psikolog menekan "Buat PDF": bila sudah ada baris untuk (snapshot, document_type) **dan** objeknya masih ada di storage, kembalikan baris itu dan terbitkan tautan baru dari `object_key` yang sama — jangan render ulang, jangan menambah baris. Render ulang (baris baru, `render_seq` naik) hanya terjadi bila file hilang dari storage atau template laporan berubah.
 
@@ -54,6 +56,10 @@ Satu baris = satu PDF yang benar-benar diterbitkan.
 - Nomor diterbitkan **sekali per kasus**, pada PDF pertama.
 - **Re-sign / REVISED:** `report_number` **tetap**, `report_version` naik (disalin dari versi snapshot tanda tangan yang baru). Disetujui Lead secara prinsip; alasannya nomor laporan adalah identitas dokumen bagi penerima di Jepang, sehingga nomor baru pada revisi akan terbaca sebagai dua laporan berbeda untuk orang yang sama.
 - Lembar Kerja Internal memakai `report_number` yang sama dengan HPP-nya, dibedakan `document_type`.
+
+**Catatan kinerja yang diketahui, bukan kelalaian (Lead, 2026-09-20).** `ReportDocumentIssuer::issue()` menjalankan render PDF **di dalam** transaksi yang sama dengan penguncian baris `assessment_cases` (untuk penerbitan nomor) dan (via `ReportNumberIssuer`) penguncian baris `report_number_sequences`. Konsekuensinya: kunci-kunci itu tertahan selama render berlangsung, jadi dua psikolog yang menekan "Buat PDF" untuk kasus yang berbeda pada periode yang sama akan antre satu per satu pada langkah penerbitan nomor, bukan berjalan paralel. Ini pilihan sengaja demi atomicity — dibuktikan lewat test `test_a_failed_render_does_not_advance_the_report_number_sequence`: gagal render tidak boleh membakar nomor, dan cara paling sederhana menjaminnya adalah satu transaksi. Untuk skala sekarang (generate PDF adalah tindakan manual sesekali per psikolog, bukan jalur bervolume tinggi) ini dianggap dapat diterima dan TIDAK diminta diubah.
+
+Opsi bila nanti terbukti jadi masalah kinerja: terbitkan nomor SETELAH render sukses, dalam transaksi pendek terpisah (kunci hanya dipegang sesaat, render berjalan di luar kunci). Konsekuensinya: perlu penanganan baru untuk kasus render sukses tapi transaksi penerbitan nomor gagal (PDF sudah dirender tapi belum tercatat) — sesuatu yang saat ini otomatis aman karena satu transaksi. Belum diputuskan, dan tidak dikerjakan di increment ini.
 
 ## 4. Append-only murni (revisi setelah review Lead)
 

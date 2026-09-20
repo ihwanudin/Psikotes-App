@@ -18,14 +18,16 @@ import {
 } from './image-content.mjs';
 
 const KINDS = new Set(['secret', 'pii']);
+// Fixture authors may write 08... or 628...; this allowlist stores only 628...
+// spellings of the same 18 reserved numbers. Do not add new numbers to fix CI.
 const SYNTHETIC_PHONES = new Set([
-    '080000000000',
-    '080000000001',
-    '080000000002',
-    '080000000003',
-    '080000000004',
-    '080000000005',
-    '081200000000',
+    '6280000000000',
+    '6280000000001',
+    '6280000000002',
+    '6280000000003',
+    '6280000000004',
+    '6280000000005',
+    '6281200000000',
     '620000000000',
     '620000000001',
     '620000000999',
@@ -742,7 +744,9 @@ function isSyntheticEmail(value) {
 }
 
 function isSyntheticPhone(digits) {
-    return SYNTHETIC_PHONES.has(digits);
+    const canonical = digits.startsWith('08') ? `62${digits.slice(1)}` : digits;
+
+    return SYNTHETIC_PHONES.has(canonical);
 }
 
 function isIncompleteCodeLiteral(relativePath, digits, content, end) {

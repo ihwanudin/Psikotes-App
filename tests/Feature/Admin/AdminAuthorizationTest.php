@@ -64,15 +64,24 @@ final class AdminAuthorizationTest extends TestCase
         $this->assertFalse($admin->canPerform(AdminAbility::VerifyPayments));
     }
 
-    public function test_only_psychologist_role_can_view_dass_and_review_reports(): void
+    public function test_only_psychologist_can_review_reports_others_cannot(): void
     {
         $psychologist = $this->admin(AdminRole::Psychologist);
         $superAdmin = $this->admin(AdminRole::SuperAdmin);
+        $branchAdmin = $this->admin(AdminRole::BranchAdmin, $this->branch('X'));
+        $staff = $this->admin(AdminRole::Staff, $this->branch('Y'));
 
+        // ViewDass: only Psychologist
         $this->assertTrue($psychologist->canPerform(AdminAbility::ViewDass));
-        $this->assertTrue($psychologist->canPerform(AdminAbility::ReviewReports));
         $this->assertFalse($superAdmin->canPerform(AdminAbility::ViewDass));
+        $this->assertFalse($branchAdmin->canPerform(AdminAbility::ViewDass));
+        $this->assertFalse($staff->canPerform(AdminAbility::ViewDass));
+
+        // ReviewReports: only Psychologist (SuperAdmin widened via lane deepseek/f5-resign-and-rls)
+        $this->assertTrue($psychologist->canPerform(AdminAbility::ReviewReports));
         $this->assertFalse($superAdmin->canPerform(AdminAbility::ReviewReports));
+        $this->assertFalse($branchAdmin->canPerform(AdminAbility::ReviewReports));
+        $this->assertFalse($staff->canPerform(AdminAbility::ReviewReports));
     }
 
     public function test_cross_branch_participant_idor_is_denied_even_when_identifier_is_known(): void
