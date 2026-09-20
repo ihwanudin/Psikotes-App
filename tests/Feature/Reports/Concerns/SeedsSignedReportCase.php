@@ -55,7 +55,16 @@ trait SeedsSignedReportCase
             'birth_date' => '2002-03-04',
             'education_level' => 'SMA/SMK',
             'intended_field' => $field,
-            'phone' => '+6281200000000',
+            // Exact value from tools/security/repository-content-scan.mjs's
+            // SYNTHETIC_PHONES allowlist (also used verbatim in
+            // AdminAuthorizationTest.php:126). That scanner matches the
+            // literal digit string, not a phone-normalized equivalent, so
+            // an internationally-formatted version of this same number
+            // does not match the local-format entry the allowlist actually
+            // carries — confirmed by reading the matcher, not assumed. Do
+            // not widen the allowlist for a fixture; use an already-listed
+            // value instead.
+            'phone' => '081200000000',
         ]);
         DB::table('participants')->where('id', $participant->id)->update(['test_number' => $testNumber]);
 
