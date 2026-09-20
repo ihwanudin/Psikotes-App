@@ -131,7 +131,7 @@ export default [
         },
     },
     {
-        files: ['tests/E2E/setup/**/*.{js,mjs,ts}', 'tests/E2E/support/**/*.{js,mjs,ts}'],
+        files: ['tests/E2E/setup/**/*.{js,mjs,ts}', 'tests/E2E/support/env*.ts'],
         languageOptions: {
             // These Playwright harness setup/support files execute in Node, not
             // in the browser context used by the application React code.

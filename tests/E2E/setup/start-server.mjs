@@ -2,8 +2,6 @@ import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { chromium } from 'playwright';
-
 const rootDir = process.cwd();
 const host = process.env.E2E_HOST || '127.0.0.1';
 const port = process.env.E2E_PORT || '8014';
@@ -86,7 +84,15 @@ function assertComposerAutoload() {
   }
 }
 
-function assertChromiumInstalled() {
+async function assertChromiumInstalled() {
+  let chromium;
+
+  try {
+    ({ chromium } = await import('playwright'));
+  } catch (error) {
+    fail(`Unable to load Playwright Chromium. Run \`npm ci\` first. ${error.message}`);
+  }
+
   const executablePath = chromium.executablePath();
 
   if (!fs.existsSync(executablePath)) {
@@ -151,7 +157,7 @@ function startLaravelServer() {
 assertEnvOverrides();
 assertComposerAutoload();
 assertBuildManifest();
-assertChromiumInstalled();
+await assertChromiumInstalled();
 ensureRuntimeDirectories();
 prepareDatabase();
 startLaravelServer();
