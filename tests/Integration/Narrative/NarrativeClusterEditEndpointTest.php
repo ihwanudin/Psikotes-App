@@ -64,7 +64,7 @@ final class NarrativeClusterEditEndpointTest extends TestCase
             'name' => 'Admin Cluster Edit Test',
             'email' => Str::uuid().'@example.test',
             'password' => 'password',
-            'role' => AdminRole::SuperAdmin,
+            'role' => AdminRole::Psychologist,
         ]);
     }
 

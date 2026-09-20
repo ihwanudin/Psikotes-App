@@ -63,7 +63,7 @@ final class BilingualNarrativeEndpointTest extends TestCase
             'name' => 'Admin Narrative Test',
             'email' => Str::uuid().'@example.test',
             'password' => 'password',
-            'role' => AdminRole::SuperAdmin,
+            'role' => AdminRole::Psychologist,
         ]);
     }
 

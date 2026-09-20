@@ -64,7 +64,7 @@ final class ReviewInputEndpointTest extends TestCase
             'name' => 'Admin Review Input Test',
             'email' => Str::uuid().'@example.test',
             'password' => 'password',
-            'role' => AdminRole::SuperAdmin,
+            'role' => AdminRole::Psychologist,
         ]);
     }
 
