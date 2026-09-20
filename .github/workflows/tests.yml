@@ -147,8 +147,11 @@ jobs:
           import xml.etree.ElementTree as ET
 
           root = ET.parse(sys.argv[1]).getroot()
+          suites = root.findall('./testsuite') if root.tag == 'testsuites' else [root]
+          if not suites:
+              raise SystemExit('JUnit did not contain a testsuite')
           print('PHPUnit JUnit totals: ' + ', '.join(
-              f'{key}={root.get(key, "unavailable")}'
+              f'{key}={sum(int(suite.get(key, 0)) for suite in suites)}'
               for key in ('tests', 'assertions', 'errors', 'failures', 'skipped')
           ))
           PY
