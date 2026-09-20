@@ -54,9 +54,24 @@ final readonly class SignedReportDataset
 
     public const PSYCHOLOGIST_NOT_FOUND = 'PSYCHOLOGIST_NOT_FOUND';
 
-    public const REPORT_NUMBER_UNAVAILABLE = 'REPORT_NUMBER_UNAVAILABLE';
+    /**
+     * Non-blocking: no document has ever been issued for this case yet.
+     * Reported as a warning (not `missing`) so the very first generation
+     * for a case is never blocked on having a number it is about to get.
+     */
+    public const REPORT_NUMBER_NOT_YET_ISSUED = 'REPORT_NUMBER_NOT_YET_ISSUED';
 
     public const PSYCHOLOGIST_SIPP_UNAVAILABLE = 'PSYCHOLOGIST_SIPP_UNAVAILABLE';
+
+    /**
+     * Blocking, never a blank print: Template HPP v2.3 Bagian I.C requires
+     * both SILP and STR on the printed report (source-authority-inventory.md
+     * :72-73). Unlike PSYCHOLOGIST_SIPP_UNAVAILABLE (an input with no real
+     * source yet), these read real admins.silp_number/str_number columns.
+     */
+    public const PSYCHOLOGIST_SILP_MISSING = 'PSYCHOLOGIST_SILP_MISSING';
+
+    public const PSYCHOLOGIST_STR_MISSING = 'PSYCHOLOGIST_STR_MISSING';
 
     public const RECOMMENDATION_RATIONALE_UNAVAILABLE = 'RECOMMENDATION_RATIONALE_UNAVAILABLE';
 
@@ -82,7 +97,15 @@ final readonly class SignedReportDataset
         $this->supplemental = $supplemental ?? new UnavailableReportSupplementalData;
     }
 
-    public function hpp(string $casePublicId): SignedHppDataset
+    /**
+     * @param  ?string  $reportNumberOverride  Used only by ReportDocumentIssuer's render
+     *                                         callback, after it has resolved a real number: forces that number in
+     *                                         and skips the read-only lookup, guaranteeing a materialized draft.
+     *                                         Without it, a case with no number yet is still `ready` (ineligible
+     *                                         for a blocked state) but reports REPORT_NUMBER_NOT_YET_ISSUED as a
+     *                                         warning and leaves draft()/identity() unmaterialized.
+     */
+    public function hpp(string $casePublicId, ?string $reportNumberOverride = null): SignedHppDataset
     {
         $rows = $this->runner->runAsService(fn (): ?array => $this->loadRows($casePublicId));
 
@@ -164,13 +187,27 @@ final readonly class SignedReportDataset
         }
 
         $psychologistRow = $rows['psychologist'];
+        $silp = null;
+        $str = null;
         if ($psychologistRow === null) {
             $missing[] = self::PSYCHOLOGIST_NOT_FOUND;
+        } else {
+            $silp = is_string($psychologistRow->silp_number) && trim($psychologistRow->silp_number) !== ''
+                ? $psychologistRow->silp_number : null;
+            if ($silp === null) {
+                $missing[] = self::PSYCHOLOGIST_SILP_MISSING;
+            }
+            $str = is_string($psychologistRow->str_number) && trim($psychologistRow->str_number) !== ''
+                ? $psychologistRow->str_number : null;
+            if ($str === null) {
+                $missing[] = self::PSYCHOLOGIST_STR_MISSING;
+            }
         }
 
-        $reportNumber = $this->supplemental->reportNumber((int) $snapshotRow->assessment_case_id, $snapshotId);
+        $reportNumber = $reportNumberOverride
+            ?? $this->supplemental->reportNumber((int) $snapshotRow->assessment_case_id, $snapshotId);
         if ($reportNumber === null) {
-            $missing[] = self::REPORT_NUMBER_UNAVAILABLE;
+            $warnings[] = self::REPORT_NUMBER_NOT_YET_ISSUED;
         }
 
         $sipp = $psychologistRow === null ? null : $this->supplemental->psychologistSippNumber((int) $psychologistRow->id);
@@ -201,6 +238,23 @@ final readonly class SignedReportDataset
         /** @var stdClass $participant */
         /** @var stdClass $psychologistRow */
         /** @var array<string, array{label_id: string, label_jp: string}> $aspectLabels */
+        $issuance = [
+            'case_id' => (int) $snapshotRow->assessment_case_id,
+            'snapshot_version' => (int) $snapshotRow->version,
+            'psychologist_admin_id' => (int) $psychologistRow->id,
+            'psychologist_name' => (string) $psychologistRow->name,
+            'psychologist_silp' => (string) $silp,
+            'psychologist_str' => (string) $str,
+            'facility_name' => (string) $rows['branch_name'],
+        ];
+
+        if ($reportNumber === null) {
+            // Everything else checks out; only the number is missing, and
+            // that is a warning, not a gap. Nothing to render yet — the
+            // issuer resolves a number and calls hpp() again with it.
+            return SignedHppDataset::ready($snapshotId, $issuance, null, null, $warnings);
+        }
+
         try {
             $identity = ReportIdentity::fromArray([
                 'report_number' => (string) $reportNumber,
@@ -236,10 +290,10 @@ final readonly class SignedReportDataset
                 ],
             );
         } catch (InvalidArgumentException) {
-            return SignedHppDataset::blocked($snapshotId, [self::DRAFT_INVALID]);
+            return SignedHppDataset::blocked($snapshotId, [self::DRAFT_INVALID], $warnings);
         }
 
-        return SignedHppDataset::ready($snapshotId, $draft, $identity, $warnings);
+        return SignedHppDataset::ready($snapshotId, $issuance, $draft, $identity, $warnings);
     }
 
     /**
@@ -284,7 +338,7 @@ final readonly class SignedReportDataset
         if ($snapshot !== null) {
             $dassCategory = $this->dassGeneralCategory((int) $case->participant_id, $snapshot->signed_at);
             $psychologist = $snapshot->signed_by_admin_id === null ? null : DB::table('admins')
-                ->select(['id', 'name'])
+                ->select(['id', 'name', 'silp_number', 'str_number'])
                 ->where('id', (int) $snapshot->signed_by_admin_id)
                 ->first();
         }

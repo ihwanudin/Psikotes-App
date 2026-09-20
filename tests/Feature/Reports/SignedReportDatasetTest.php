@@ -32,7 +32,7 @@ final class SignedReportDatasetTest extends TestCase
         $this->assertNull($unsigned->snapshotId);
     }
 
-    public function test_default_adapter_blocks_only_on_the_four_unpersisted_blocking_inputs(): void
+    public function test_default_adapter_blocks_only_on_the_three_unpersisted_blocking_inputs(): void
     {
         $case = $this->createReportCase();
         $snapshotId = $this->signCase($case, $this->reportPsychologist());
@@ -44,13 +44,15 @@ final class SignedReportDatasetTest extends TestCase
         $this->assertFalse($result->isReady());
         $this->assertSame($snapshotId, $result->snapshotId);
         $this->assertSame([
-            SignedReportDataset::REPORT_NUMBER_UNAVAILABLE,
             SignedReportDataset::PSYCHOLOGIST_SIPP_UNAVAILABLE,
             SignedReportDataset::RECOMMENDATION_RATIONALE_UNAVAILABLE,
             SignedReportDataset::ASPECT_LABELS_UNAVAILABLE,
         ], $result->missing);
-        // DASS text is a warning, not a blocker.
-        $this->assertSame([SignedReportDataset::DASS_TEXT_UNAVAILABLE], $result->warnings);
+        // Report number and DASS text are warnings, not blockers.
+        $this->assertSame([
+            SignedReportDataset::REPORT_NUMBER_NOT_YET_ISSUED,
+            SignedReportDataset::DASS_TEXT_UNAVAILABLE,
+        ], $result->warnings);
     }
 
     public function test_complete_data_builds_the_hpp_from_the_signed_snapshot(): void

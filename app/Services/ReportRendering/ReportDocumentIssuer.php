@@ -85,7 +85,7 @@ final readonly class ReportDocumentIssuer
                 ];
             }
 
-            $reportNumber = $existing->report_number ?? $this->priorReportNumber($assessmentCaseId) ?? $this->numberIssuer->issue();
+            $reportNumber = $existing->report_number ?? $this->existingReportNumberFor($assessmentCaseId) ?? $this->numberIssuer->issue();
 
             $pdf = $renderPdf($reportNumber);
             $stored = $this->publisher->storeObject($documentType, $pdf);
@@ -129,9 +129,12 @@ final readonly class ReportDocumentIssuer
      * A case's report number is shared across both document types and
      * every re-sign (report-documents-schema-proposal.md §3): once any
      * document has ever been issued for this case, later snapshots reuse
-     * that same number rather than drawing a new one.
+     * that same number rather than drawing a new one. Public: also the
+     * read-only lookup behind ReportDocumentSupplementalData::reportNumber(),
+     * so SignedReportDataset's preview can show a case's real existing
+     * number without duplicating this query.
      */
-    private function priorReportNumber(int $assessmentCaseId): ?string
+    public function existingReportNumberFor(int $assessmentCaseId): ?string
     {
         /** @var stdClass|null $row */
         $row = DB::table('report_documents')

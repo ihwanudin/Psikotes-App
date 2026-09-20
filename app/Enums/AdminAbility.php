@@ -16,4 +16,15 @@ enum AdminAbility: string
     case VerifyPayments = 'verify_payments';
     case ViewDass = 'view_dass';
     case ReviewReports = 'review_reports';
+
+    /**
+     * Download an already-SIGNED HPP report. Deliberately separate from
+     * ReviewReports, which also gates signing, narrative editing, and
+     * eligibility decisions (Lead's 2026-09-21 review): widening
+     * ReviewReports for a PDF-download need would have opened all of
+     * those too. NEVER reuse this ability to gate the 'internal' document
+     * type once it exists — Lembar Kerja Internal stays psychologist +
+     * participant only per CLAUDE.md.
+     */
+    case GenerateReports = 'generate_reports';
 }
