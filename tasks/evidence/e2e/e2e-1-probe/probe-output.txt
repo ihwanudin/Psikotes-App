@@ -1,0 +1,13 @@
+# Command: php -d memory_limit=1G vendor/bin/phpunit --no-coverage <probe file outside repo>
+# Baseline: 650eea5e393ea9258b6d72b9e53489a519cf0b36; APP_ENV=testing (phpunit.xml), DB=sqlite :memory:, synthetic data only
+PROBE url(with case) = http://localhost:8000/admin/report-signing?case=01M2X5HSDRWTW16XKE4QHB710V
+PROBE url(no case)   = http://localhost:8000/admin/report-signing
+PROBE psychologist GET ?case= status = 500
+PROBE exception = TypeError: App\Filament\Pages\ReportSigning::mount(): Argument #1 ($case) must be of type string, App\Services\Review\ReportSigningService given, called in <worktree>\vendor\laravel\framework\src\Illuminate\Container\BoundMethod.php on line 36
+PROBE psychologist GET (nav link, no case) status = 500
+PROBE exception = TypeError: App\Filament\Pages\ReportSigning::mount(): Argument #1 ($case) must be of type string, App\Services\Review\ReportSigningService given, called in <worktree>\vendor\laravel\framework\src\Illuminate\Container\BoundMethod.php on line 36
+PROBE super_admin GET status = 500
+PROBE guest GET status = 302 location=http://localhost:8000/admin/login
+PROBE branch_admin GET status = 500
+PROBE staff GET status = 500
+{"tool":"phpunit","result":"passed","tests":5,"passed":5,"assertions":5,"duration_ms":4642}

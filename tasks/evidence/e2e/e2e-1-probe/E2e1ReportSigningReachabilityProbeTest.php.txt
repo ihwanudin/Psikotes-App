@@ -1,0 +1,115 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Probe;
+
+use App\Enums\AdminRole;
+use App\Filament\Pages\ReportSigning;
+use App\Models\Admin;
+use App\Models\AssessmentCase;
+use App\Models\Branch;
+use App\Models\Participant;
+use App\Models\TestPackage;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
+use Tests\TestCase;
+
+/**
+ * E2E-1 read-only probe (NOT committed to the test suite). Synthetic data only,
+ * in-memory SQLite. Answers: can a real HTTP request (what a browser does) reach
+ * the production signing page for a given case?
+ */
+final class E2e1ReportSigningReachabilityProbeTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private function createCase(): AssessmentCase
+    {
+        $branch = Branch::query()->create(['code' => 'BR-PROBE', 'name' => 'Cabang Probe', 'ref_code' => 'REF-PROBE']);
+        $package = TestPackage::query()->create(['code' => 'PKG-PROBE', 'name' => 'Paket Probe', 'amount' => 1, 'currency' => 'IDR', 'is_active' => true]);
+        $participant = Participant::query()->create([
+            'branch_id' => $branch->id, 'referral_branch_id' => $branch->id, 'referral_source' => 'default',
+            'package_id' => $package->id, 'source_system' => 'DIRECT_PUBLIC', 'full_name' => 'Peserta Sintetis Probe',
+            'gender' => 'female', 'birth_date' => '2001-04-15', 'education_level' => 'SMA/SMK',
+            'intended_field' => 'UMUM', 'phone' => '+6281234567890',
+        ]);
+
+        return AssessmentCase::query()->create([
+            'public_id' => (string) Str::ulid(), 'participant_id' => $participant->id,
+            'organization_id' => $branch->id, 'package_id' => $package->id,
+            'origin' => 'DIRECT_PUBLIC', 'intended_field_snapshot' => 'UMUM',
+        ]);
+    }
+
+    private function admin(AdminRole $role): Admin
+    {
+        return Admin::query()->create([
+            'name' => 'Probe '.$role->value, 'email' => (string) Str::uuid().'@example.test',
+            'password' => bcrypt('synthetic-password'), 'role' => $role->value,
+        ]);
+    }
+
+    public function test_probe_generated_url_shape(): void
+    {
+        $case = $this->createCase();
+        fwrite(STDERR, "\nPROBE url(with case) = ".ReportSigning::getUrl(['case' => $case->public_id])."\n");
+        fwrite(STDERR, 'PROBE url(no case)   = '.ReportSigning::getUrl()."\n");
+        self::assertTrue(true);
+    }
+
+    public function test_probe_psychologist_http_get_with_query_case(): void
+    {
+        $case = $this->createCase();
+        $this->actingAs($this->admin(AdminRole::Psychologist), 'admin');
+        $response = $this->get(ReportSigning::getUrl(['case' => $case->public_id]));
+        fwrite(STDERR, "\nPROBE psychologist GET ?case= status = ".$response->status()."\n");
+        if ($response->exception !== null) {
+            fwrite(STDERR, 'PROBE exception = '.get_class($response->exception).': '.$response->exception->getMessage()."\n");
+        }
+        self::assertTrue(true);
+    }
+
+    public function test_probe_psychologist_http_get_navigation_link(): void
+    {
+        $this->actingAs($this->admin(AdminRole::Psychologist), 'admin');
+        $response = $this->get(ReportSigning::getUrl());
+        fwrite(STDERR, "\nPROBE psychologist GET (nav link, no case) status = ".$response->status()."\n");
+        if ($response->exception !== null) {
+            fwrite(STDERR, 'PROBE exception = '.get_class($response->exception).': '.$response->exception->getMessage()."\n");
+        }
+        self::assertTrue(true);
+    }
+
+    public function test_probe_super_admin_http_get(): void
+    {
+        $case = $this->createCase();
+        $this->actingAs($this->admin(AdminRole::SuperAdmin), 'admin');
+        $response = $this->get(ReportSigning::getUrl(['case' => $case->public_id]));
+        fwrite(STDERR, "\nPROBE super_admin GET status = ".$response->status()."\n");
+        self::assertTrue(true);
+    }
+
+    public function test_probe_branch_roles_and_guest(): void
+    {
+        $case = $this->createCase();
+        $url = ReportSigning::getUrl(['case' => $case->public_id]);
+        $guest = $this->get($url);
+        fwrite(STDERR, "
+PROBE guest GET status = ".$guest->status().' location='.($guest->headers->get('Location') ?? '-')."
+");
+        foreach ([AdminRole::BranchAdmin, AdminRole::Staff] as $role) {
+            $branch = Branch::query()->create(['code' => 'BR-'.$role->value, 'name' => 'Cabang '.$role->value, 'ref_code' => 'REF-'.$role->value]);
+            $admin = Admin::query()->create([
+                'branch_id' => $branch->id, 'name' => 'Probe '.$role->value, 'email' => (string) Str::uuid().'@example.test',
+                'password' => bcrypt('synthetic-password'), 'role' => $role->value,
+            ]);
+            $this->flushSession();
+            $this->actingAs($admin, 'admin');
+            $r = $this->get($url);
+            fwrite(STDERR, 'PROBE '.$role->value.' GET status = '.$r->status()."
+");
+        }
+        self::assertTrue(true);
+    }
+}
