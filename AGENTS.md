@@ -66,6 +66,26 @@ These rules apply to every Codex session and delegated task in this repository.
   force-pushed until the coordinator has independently re-verified the
   evidence (re-running or re-inspecting tests/diffs directly in the
   repository), not merely accepted a worker's self-report.
+- **Verification is bound to an exact SHA, and re-checked at merge time
+  (rule added 2026-09-20 after it was broken).** A verdict names the commit
+  it covers; a branch can gain commits between review and merge, and one
+  did: PR #17 was merged carrying `b2b4f7c`, pushed ~4.5 hours after the
+  verified tip `8562c3c`, which neither the Codex channel session nor Lead
+  had ever seen. Its content happened to be correct and harmless (one
+  docs-only line, status still BLOCKED, no readiness inflation) — but
+  "correct by luck" is not verification. So, every time:
+  1. state the verified SHA in the verdict;
+  2. immediately before merging, compare the branch tip to that SHA and
+     re-verify any difference, however small;
+  3. after merging, check the real merge range
+     (`git log <old-main>..<merge-commit>`) against the list of commits
+     actually reviewed, **and** confirm `git diff <verified-SHA>
+     <merge-commit>` is empty for the reviewed paths — a commit list alone
+     misses an amend or rebase that changes content without adding a
+     commit you were tracking;
+  4. a lane must not push to a branch that is under, or has finished,
+     verification — report the correction first and wait, the same freeze
+     rule already applied to other lanes.
 - Any tool finishing an increment must push its branch to `origin` so the
   coordinator can audit it directly via `git`, even without direct access to
   that tool's own session or chat history.
