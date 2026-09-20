@@ -51,6 +51,34 @@ Assert-Contains $source 'corrupt' 'Runner must exercise a damaged archive.'
 Assert-Contains $source "containers=0" 'Runner must attest exact-label container cleanup.'
 Assert-Contains $source "networks=0" 'Runner must attest exact-label network cleanup.'
 Assert-Contains $source 'Remove-Item -LiteralPath $tempDirectory -Recurse -Force' 'Runner must remove its task temp directory.'
+Assert-Contains $source "GetEnvironmentVariable('F9_BACKUP_AGE_IDENTITY')" 'Operator identity must come from the environment.'
+Assert-Contains $source '/rehearsal/age-keygen -o /rehearsal/identity.txt' 'Default rehearsal must generate a fresh identity inside the disposable container.'
+Assert-Contains $source 'Join-Path $tempDirectory ''identity.txt''' 'Identity must live in the GUID task directory.'
+Assert-Contains $source 'apk add --no-cache age' 'Established age tooling must be installed ephemerally.'
+Assert-Contains $source '/rehearsal/age -r $recipient -o /rehearsal/source.dump.age /rehearsal/source.dump' 'Archive encryption must be mandatory.'
+Assert-Contains $source '/rehearsal/age -d -i /rehearsal/identity.txt' 'Restore must decrypt with the identity.'
+Assert-Contains $source 'encryptedBytes -le $archiveBytes' 'Encrypted archive size must be checked.'
+Assert-Contains $source 'Length -ne $archiveBytes' 'Decrypted archive size must match the original.'
+Assert-Contains $source 'Remove-Item -LiteralPath $dumpArchive -Force' 'Plaintext export must be removed after encryption.'
+Assert-Contains $source 'ReadAllBytes($encryptedArchive)' 'Corruption probe must damage ciphertext.'
+Assert-Contains $source 'if ($corruptExitCode -eq 0)' 'Corrupted ciphertext must fail authentication.'
+Assert-Contains $source 'Assert-OutputExcludesKey $output $identitySecret' 'Each key-touching native step must scan its captured output.'
+Assert-Contains $source 'Assert-OutputExcludesKey (($keygenOutput' 'Key generation output must also be scanned.'
+Assert-Contains $source 'key_output_check=PASS steps=$keyOutputChecks' 'Successful runs must attest the key output checks.'
+
+$keyGuardAst = $ast.Find({
+    param($node)
+    $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -ceq 'Assert-OutputExcludesKey'
+}, $true)
+Assert-True ($null -ne $keyGuardAst) 'Runner must define the key output guard.'
+. ([scriptblock]::Create($keyGuardAst.Extent.Text))
+$syntheticIdentity = 'AGE-SECRET-KEY-1TESTSYNTHETICIDENTITY'
+Assert-OutputExcludesKey 'age: public recipient only' $syntheticIdentity
+$rejectedLeakedIdentity = $false
+try { Assert-OutputExcludesKey "stderr: $syntheticIdentity" $syntheticIdentity }
+catch { $rejectedLeakedIdentity = $true }
+Assert-True $rejectedLeakedIdentity 'Key output guard must reject an identity appearing in stderr.'
 
 $normalizerAst = $ast.Find({
     param($node)
@@ -74,4 +102,4 @@ Assert-True ((ConvertTo-StableSchemaExpression '"CaseSensitive" = 1') -cne `
     (ConvertTo-StableSchemaExpression '"casesensitive" = 1')) `
     'Canonicalization must preserve quoted-identifier case.'
 
-Write-Output 'postgres-backup-restore-contract: PASS (37 assertions)'
+Write-Output 'postgres-backup-restore-contract: PASS (53 assertions)'
