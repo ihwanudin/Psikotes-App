@@ -65,6 +65,7 @@ Assert-Contains $source 'if ($corruptExitCode -eq 0)' 'Corrupted ciphertext must
 Assert-Contains $source 'Assert-OutputExcludesKey $output $identitySecret' 'Each key-touching native step must scan its captured output.'
 Assert-Contains $source 'Assert-OutputExcludesKey (($keygenOutput' 'Key generation output must also be scanned.'
 Assert-Contains $source 'key_output_check=PASS steps=$keyOutputChecks' 'Successful runs must attest the key output checks.'
+Assert-Contains $source '[023456789ACDEFGHJKLMNPQRSTUVWXYZ]+$' 'Native age identities containing L must pass validation.'
 
 $keyGuardAst = $ast.Find({
     param($node)
@@ -102,4 +103,4 @@ Assert-True ((ConvertTo-StableSchemaExpression '"CaseSensitive" = 1') -cne `
     (ConvertTo-StableSchemaExpression '"casesensitive" = 1')) `
     'Canonicalization must preserve quoted-identifier case.'
 
-Write-Output 'postgres-backup-restore-contract: PASS (53 assertions)'
+Write-Output 'postgres-backup-restore-contract: PASS (54 assertions)'

@@ -308,7 +308,7 @@ try {
         $keyMode = 'synthetic'
     }
     else {
-        if ($providedIdentity -cnotmatch '^AGE-SECRET-KEY-1[023456789ACDEFGHJKMNPQRSTUVWXYZ]+$') {
+        if ($providedIdentity -cnotmatch '^AGE-SECRET-KEY-1[023456789ACDEFGHJKLMNPQRSTUVWXYZ]+$') {
             throw 'F9_BACKUP_AGE_IDENTITY must contain one native age identity.'
         }
         [System.IO.File]::WriteAllText($identityFile, "$providedIdentity`n", [System.Text.UTF8Encoding]::new($false))
@@ -317,7 +317,7 @@ try {
     }
     if (-not (Test-Path -LiteralPath $identityFile -PathType Leaf)) { throw 'Age identity file is missing.' }
     $identitySecret = ((Get-Content -LiteralPath $identityFile) | Where-Object { $_ -match '^AGE-SECRET-KEY-' } | Select-Object -First 1)
-    if ([string]::IsNullOrEmpty($identitySecret) -or $identitySecret -cnotmatch '^AGE-SECRET-KEY-1[023456789ACDEFGHJKMNPQRSTUVWXYZ]+$') {
+    if ([string]::IsNullOrEmpty($identitySecret) -or $identitySecret -cnotmatch '^AGE-SECRET-KEY-1[023456789ACDEFGHJKLMNPQRSTUVWXYZ]+$') {
         throw 'Age identity file does not contain one valid native identity.'
     }
     Assert-OutputExcludesKey (($keygenOutput | ForEach-Object { [string] $_ }) -join "`n") $identitySecret
