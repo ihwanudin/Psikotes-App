@@ -38,7 +38,7 @@ npx playwright install chromium
 npm run e2e
 ```
 
-The Playwright web server command runs `tests/E2E/setup/start-server.cjs`. That
+The Playwright web server command runs `tests/E2E/setup/start-server.mjs`. That
 wrapper fails fast when the full testing environment override is missing,
 `vendor/autoload.php` is absent, `public/build/manifest.json` is absent, or
 Chromium is not installed. It then creates `storage/e2e/e2e.sqlite`, runs

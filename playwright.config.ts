@@ -38,7 +38,7 @@ export default defineConfig({
     },
   })),
   webServer: {
-    command: 'node tests/E2E/setup/start-server.cjs',
+    command: 'node tests/E2E/setup/start-server.mjs',
     // Readiness uses a static public file so the probe proves only that the PHP
     // process is answering; it does not depend on DB state, Redis `/health`, or
     // Vite's built manifest. Lead measured cold `/` at 7.8s and `/admin/login`

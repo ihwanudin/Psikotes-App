@@ -1,4 +1,6 @@
-import { expect, type Page } from '@playwright/test';
+import { expect } from '@playwright/test';
+import type { Page } from '@playwright/test';
+
 import { e2eUsers } from './env';
 
 export type AdminUser = keyof typeof e2eUsers;

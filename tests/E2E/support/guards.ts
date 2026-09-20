@@ -1,11 +1,15 @@
-import { expect, type Page } from '@playwright/test';
+import { expect } from '@playwright/test';
+import type { Page } from '@playwright/test';
+
 import { e2eEnv } from './env';
 
 export async function installNetworkGuards(page: Page): Promise<void> {
   await page.route('**/*', async (route) => {
     const url = new URL(route.request().url());
+
     if (url.origin === e2eEnv.baseURL) {
       await route.continue();
+
       return;
     }
 
@@ -14,6 +18,7 @@ export async function installNetworkGuards(page: Page): Promise<void> {
         status: 204,
         body: '',
       });
+
       return;
     }
 

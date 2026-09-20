@@ -1,6 +1,8 @@
-const fs = require('node:fs');
-const path = require('node:path');
-const { spawn, spawnSync } = require('node:child_process');
+import { spawn, spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+
+import { chromium } from 'playwright';
 
 const rootDir = process.cwd();
 const host = process.env.E2E_HOST || '127.0.0.1';
@@ -85,14 +87,6 @@ function assertComposerAutoload() {
 }
 
 function assertChromiumInstalled() {
-  let chromium;
-
-  try {
-    ({ chromium } = require('playwright'));
-  } catch (error) {
-    fail(`Unable to load Playwright Chromium. Run \`npm ci\` first. ${error.message}`);
-  }
-
   const executablePath = chromium.executablePath();
 
   if (!fs.existsSync(executablePath)) {

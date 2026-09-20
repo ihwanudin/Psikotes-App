@@ -130,4 +130,14 @@ export default [
             '@stylistic/brace-style': ['error', '1tbs', { allowSingleLine: false }],
         },
     },
+    {
+        files: ['tests/E2E/setup/**/*.{js,mjs,ts}', 'tests/E2E/support/**/*.{js,mjs,ts}'],
+        languageOptions: {
+            // These Playwright harness setup/support files execute in Node, not
+            // in the browser context used by the application React code.
+            globals: {
+                ...globals.node,
+            },
+        },
+    },
 ];
