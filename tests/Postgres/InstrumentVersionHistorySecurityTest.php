@@ -129,11 +129,12 @@ final class InstrumentVersionHistorySecurityTest extends TestCase
             DB::table('instrument_versions')->insert($this->row('synthetic', 'v1'));
         });
 
-        foreach (['code', 'version', 'source_file', 'checksum', 'payload', 'created_at'] as $column) {
+        foreach (['code', 'version', 'source_file', 'checksum', 'payload', 'source_text', 'created_at'] as $column) {
             $this->assertSqlState('P0001', function () use ($column): void {
                 app(RlsContextRunner::class)->runAsService(function () use ($column): void {
                     $value = match ($column) {
                         'payload' => '{"changed":true}',
+                        'source_text' => 'changed-source-text',
                         'created_at' => now()->subDay(),
                         'checksum' => str_repeat('f', 64),
                         default => 'changed',
@@ -320,6 +321,7 @@ final class InstrumentVersionHistorySecurityTest extends TestCase
             'source_file' => $code.'.json',
             'checksum' => hash('sha256', $code.':'.$version),
             'payload' => json_encode(['code' => $code, 'version' => $version], JSON_THROW_ON_ERROR),
+            'source_text' => 'synthetic-source-text:'.$code.':'.$version,
             'is_active' => true,
             'created_at' => now(),
             'updated_at' => $updatedAt,

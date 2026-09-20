@@ -70,6 +70,12 @@ final class InstrumentSeeder extends Seeder
             'source_file' => $sourceFile,
             'checksum' => $checksum,
             'payload' => $payload,
+            // Stored verbatim alongside the jsonb `payload` derivative so the
+            // checksum can be re-verified against the exact bytes it was
+            // computed from. PostgreSQL normalizes jsonb on write (whitespace,
+            // key order), so `payload` alone can never be hashed back to
+            // `checksum`; `source_text` is the byte-identical source of truth.
+            'source_text' => $payload,
             'is_active' => true,
             'created_at' => now(),
             'updated_at' => now(),
