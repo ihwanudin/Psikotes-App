@@ -45,3 +45,104 @@ jobs:
 
       - name: Run CI Checks
         run: composer ci:check
+
+  organization-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup PHP for dependencies
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: '8.3'
+          extensions: bcmath, intl, pcntl, pdo_pgsql, zip
+          tools: composer:v2
+          coverage: none
+          ini-values: memory_limit=2048M
+
+      - name: Setup Node for frontend assets
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+
+      - name: Install test dependencies and build assets
+        env:
+          APP_ENV: testing
+          APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+        run: |
+          composer install --no-interaction --no-progress --prefer-dist
+          npm ci
+          npm run build
+
+      - name: Build PHP runner from repository Dockerfile
+        run: docker build --target php-base --tag oncam-org-postgres-ci:php83 --file docker/app/Dockerfile .
+
+      - name: Run ordered PostgreSQL suites on disposable database
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_id="$(openssl rand -hex 16)"
+          network="oncam-org-test-${run_id}"
+          database_container="${network}-db"
+          cleanup() {
+            docker rm --force "$database_container" >/dev/null 2>&1 || true
+            docker network rm "$network" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker network create --internal "$network" >/dev/null
+          docker run --detach --name "$database_container" \
+            --network "$network" --network-alias org-test-db \
+            --tmpfs /var/lib/postgresql/data:rw \
+            --env POSTGRES_USER=org_test_owner \
+            --env POSTGRES_DB=psikotes_organization_test \
+            --env POSTGRES_HOST_AUTH_METHOD=trust \
+            postgres:17.6-alpine >/dev/null
+
+          ready=0
+          for attempt in {1..60}; do
+            if docker exec "$database_container" pg_isready -h 127.0.0.1 \
+              -U org_test_owner -d psikotes_organization_test >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [[ "$ready" -ne 1 ]]; then
+            docker logs "$database_container"
+            exit 1
+          fi
+          echo 'Disposable PostgreSQL is ready over TCP.'
+
+          docker exec "$database_container" psql -h 127.0.0.1 \
+            -U org_test_owner -d psikotes_organization_test -v ON_ERROR_STOP=1 \
+            -c "COMMENT ON DATABASE psikotes_organization_test IS 'ONCAM_ORG_TEST:${run_id}'"
+          docker exec "$database_container" psql -h 127.0.0.1 \
+            -U org_test_owner -d psikotes_organization_test -v ON_ERROR_STOP=1 \
+            -c "SELECT shobj_description(oid, 'pg_database') AS marker FROM pg_database WHERE datname = current_database()"
+
+          set +e
+          docker run --rm --network "$network" \
+            --mount "type=bind,source=${GITHUB_WORKSPACE},target=/workspace,readonly" \
+            --tmpfs /workspace/storage:rw \
+            --tmpfs /workspace/bootstrap/cache:rw \
+            --workdir /workspace \
+            --env "ORG_TEST_RUN_ID=${run_id}" \
+            --entrypoint php oncam-org-postgres-ci:php83 \
+            -d memory_limit=2048M vendor/bin/phpunit \
+            --configuration phpunit.organization-postgres.xml --debug
+          test_exit_code=$?
+          set -e
+
+          docker exec "$database_container" psql -h 127.0.0.1 \
+            -U org_test_owner -d psikotes_organization_test -v ON_ERROR_STOP=1 \
+            -c "SELECT count(*) AS applied_migrations FROM public.migrations"
+          docker exec "$database_container" psql -h 127.0.0.1 \
+            -U org_test_owner -d psikotes_organization_test -v ON_ERROR_STOP=1 \
+            -c "SELECT rolname, rolcanlogin FROM pg_roles WHERE rolname = 'psikotes_runtime'"
+          exit "$test_exit_code"
