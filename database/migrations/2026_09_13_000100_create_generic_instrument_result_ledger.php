@@ -357,6 +357,21 @@ return new class extends Migration
                 SQL) as $column) {
                 $actual[$column->attname] = [$column->type, (bool) $column->attnotnull];
             }
+            if ($table === self::CHILD) {
+                // raw_score/band_low/band_high are `integer` right here, at this
+                // table's initial creation, and `numeric(8,3)` after
+                // 2026_09_20_000200_widen_generic_instrument_result_source_fractional_columns.php
+                // widens them (Kraepelin's Panker/Hanker are fractional). This
+                // method runs unconditionally at the end of up() — including at
+                // fresh creation, before that later migration has ever run — so
+                // a single absolute type cannot be correct at both points in this
+                // table's history. Both are legitimate; nothing else is.
+                foreach (['raw_score', 'band_low', 'band_high'] as $widenable) {
+                    if (($actual[$widenable][0] ?? null) === 'numeric(8,3)') {
+                        $actual[$widenable][0] = 'integer';
+                    }
+                }
+            }
             if ($actual !== $expected) {
                 throw new RuntimeException("Generic instrument result ledger {$table} columns are not exact.");
             }
@@ -450,11 +465,33 @@ return new class extends Migration
                 CHECK (((public_id ~ '^[0-7][0-9A-HJKMNP-TV-Z]{25}$'::text) AND (session_public_id ~ '^[0-7][0-9A-HJKMNP-TV-Z]{25}$'::text) AND ((instrument_code)::text = ANY ((ARRAY['ist'::character varying, 'papi'::character varying, 'rmib'::character varying, 'kraepelin'::character varying])::text[])) AND (attempt_no > 0) AND (answers_revision > 0) AND (sealed_source_checksum ~ '^[0-9a-f]{64}$'::text) AND (session_definition_checksum ~ '^[0-9a-f]{64}$'::text) AND (instrument_checksum ~ '^[0-9a-f]{64}$'::text) AND (result_checksum ~ '^[0-9a-f]{64}$'::text) AND ((length((session_definition_version)::text) >= 1) AND (length((session_definition_version)::text) <= 100)) AND ((session_definition_version)::text = btrim((session_definition_version)::text)) AND ((session_definition_version)::text !~ '[[:space:][:cntrl:]]'::text) AND ((length((session_definition_provenance)::text) >= 1) AND (length((session_definition_provenance)::text) <= 255)) AND ((session_definition_provenance)::text = btrim((session_definition_provenance)::text)) AND ((session_definition_provenance)::text !~ '[[:space:][:cntrl:]]'::text) AND ((length((result_contract_version)::text) >= 1) AND (length((result_contract_version)::text) <= 100)) AND ((result_contract_version)::text = btrim((result_contract_version)::text)) AND ((result_contract_version)::text !~ '[[:space:][:cntrl:]]'::text) AND (jsonb_typeof(session_definition_payload) = 'object'::text) AND (jsonb_typeof(result_payload) = 'object'::text)))
                 SQL,
         ];
+        // generic_instrument_result_sources_contract_check's `raw_score >= 0`
+        // clause is dropped by
+        // 2026_09_20_000200_widen_generic_instrument_result_source_fractional_columns.php
+        // (Kraepelin's Hanker is routinely negative; the non-negative guard
+        // for IST/PAPI/RMIB moved into their own Sealed*Result classes — see
+        // that migration's docblock). This method runs unconditionally at the
+        // end of up(), including at this table's initial creation before that
+        // later migration has ever run, so both the original and the
+        // clause-dropped definition are legitimate at different points in
+        // this table's history; nothing else is accepted.
+        $acceptedChildCheckAlternate = $this->normalize(str_replace(
+            '(raw_score >= 0) AND ',
+            '',
+            $expectedChecks['generic_instrument_result_sources_contract_check'],
+        ));
         foreach ($expectedChecks as $name => $expected) {
-            if (! isset($checkDefinitions[$name])
-                || $this->normalize($checkDefinitions[$name]) !== $this->normalize($expected)) {
+            if (! isset($checkDefinitions[$name])) {
                 throw new RuntimeException("Generic instrument result ledger {$name} check constraint is not exact.");
             }
+            $actual = $this->normalize($checkDefinitions[$name]);
+            if ($actual === $this->normalize($expected)) {
+                continue;
+            }
+            if ($name === 'generic_instrument_result_sources_contract_check' && $actual === $acceptedChildCheckAlternate) {
+                continue;
+            }
+            throw new RuntimeException("Generic instrument result ledger {$name} check constraint is not exact.");
         }
 
         $foreignDefinitions = collect(DB::select(<<<'SQL'
