@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Domain\Eligibility\EligibilityDecisionSnapshot;
+use App\Enums\AdminAbility;
+use App\Http\Requests\StoreEligibilityDecisionRequest;
+use App\Models\Admin;
 use App\Security\RlsContextRunner;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,17 +16,14 @@ use Illuminate\Support\Str;
 
 final class EligibilityDecisionController extends Controller
 {
-    public function store(Request $request, string $case, RlsContextRunner $runner): JsonResponse
+    public function store(StoreEligibilityDecisionRequest $request, string $case, RlsContextRunner $runner): JsonResponse
     {
-        $input = $request->validate([
-            'levels' => ['required', 'array', 'size:18'],
-            'field_code' => ['required', 'string'],
-            'iq' => ['required', 'integer', 'min:1', 'max:300'],
-            'validity' => ['required', 'string', 'in:V1,V2,V3'],
-            'standard_configuration' => ['required', 'array'],
-            'eligibility_source_versions' => ['required', 'array', 'size:5'],
-        ]);
+        $admin = $request->user('admin');
+        if (! $admin instanceof Admin || ! $admin->canPerform(AdminAbility::ReviewReports)) {
+            abort(404);
+        }
 
+        $input = $request->validated();
         $input['iq'] = (int) $input['iq'];
 
         try {
@@ -42,18 +42,27 @@ final class EligibilityDecisionController extends Controller
             'eligibility_source_versions' => $input['eligibility_source_versions'],
         ];
 
-        $caseId = $runner->runAsService(function () use ($case): ?int {
-            $caseRecord = DB::table('assessment_cases')
+        // Minimal runAsService: assessment_cases RLS only allows service role to SELECT.
+        $caseRecord = $runner->runAsService(function () use ($case): ?object {
+            return DB::table('assessment_cases')
                 ->where('public_id', $case)
+                ->select('id', 'organization_id')
                 ->first();
-
-            return $caseRecord === null ? null : (int) $caseRecord->id;
         });
 
-        if ($caseId === null) {
+        if ($caseRecord === null) {
             return $this->error('CASE_NOT_FOUND', 'Assessment case not found.', 404);
         }
 
+        // Branch scope: branch_admin/staff only access cases in their own branch.
+        $branchId = $admin->rlsContext()->branchId;
+        if ($branchId !== null && (int) $caseRecord->organization_id !== $branchId) {
+            abort(404);
+        }
+
+        $caseId = (int) $caseRecord->id;
+
+        // runAsService required: eligibility_decision_versions RLS only allows service role to INSERT/SELECT.
         $row = $runner->runAsService(function () use ($caseId, $data, $canonical): object {
             $latest = DB::table('eligibility_decision_versions')
                 ->where('assessment_case_id', $caseId)
@@ -98,19 +107,37 @@ final class EligibilityDecisionController extends Controller
         ]], 201);
     }
 
-    public function show(string $case, RlsContextRunner $runner): JsonResponse
+    public function show(Request $request, string $case, RlsContextRunner $runner): JsonResponse
     {
-        $row = $runner->runAsService(function () use ($case): ?object {
-            $caseRecord = DB::table('assessment_cases')
+        $admin = $request->user('admin');
+        if (! $admin instanceof Admin || ! $admin->canPerform(AdminAbility::ReviewReports)) {
+            abort(404);
+        }
+
+        // Minimal runAsService: assessment_cases RLS only allows service role to SELECT.
+        $caseRecord = $runner->runAsService(function () use ($case): ?object {
+            return DB::table('assessment_cases')
                 ->where('public_id', $case)
+                ->select('id', 'organization_id')
                 ->first();
+        });
 
-            if ($caseRecord === null) {
-                return null;
-            }
+        if ($caseRecord === null) {
+            return $this->error('CASE_NOT_FOUND', 'Assessment case not found.', 404);
+        }
 
+        // Branch scope: branch_admin/staff only access cases in their own branch.
+        $branchId = $admin->rlsContext()->branchId;
+        if ($branchId !== null && (int) $caseRecord->organization_id !== $branchId) {
+            abort(404);
+        }
+
+        $caseId = (int) $caseRecord->id;
+
+        // runAsService required: eligibility_decision_versions RLS only allows service role to SELECT.
+        $row = $runner->runAsService(function () use ($caseId): ?object {
             return DB::table('eligibility_decision_versions')
-                ->where('assessment_case_id', (int) $caseRecord->id)
+                ->where('assessment_case_id', $caseId)
                 ->orderByDesc('version')
                 ->first();
         });
