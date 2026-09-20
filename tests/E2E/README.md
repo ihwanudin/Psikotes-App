@@ -74,10 +74,24 @@ Upload `storage/e2e/playwright-report`, `storage/e2e/test-results`, and
 
 ## Expected duration
 
-On a warmed Windows workstation with Composer/npm dependencies already present,
-the full 4-viewport run is expected to take about 3-6 minutes. A cold CI run
+This suite is intended for a CI runner, not a Windows workstation. A cold CI run
 that installs Composer dependencies, Node dependencies, Vite assets, and
 Chromium is expected to take about 8-15 minutes.
+
+Lead's dynamic run on commit `695b833` proved that the old webServer startup
+timeout is fixed: Playwright discovered all 56 tests and got as far as executing
+them. That run produced 8 passes; the remaining tests failed on the per-test
+45s timeout, not on the webServer startup timeout. Most slow failures happened
+while filling the login form on a Windows workstation where Lead measured `/` at
+7.8s and `/admin/login` at 54s with the full E2E environment. The 54s login
+latency exceeds the current 45s per-test budget.
+
+The 45s per-test timeout is deliberate. Do not silently raise it just to chase a
+green run on slow workstation hardware: doing so would hide the real hardware
+requirement and mislead the next worker into thinking this suite runs normally
+on a workstation. If this timeout ever changes, the change must include a
+written, numeric rationale in code comments, just like the webServer timeout
+rationale below.
 
 ## Startup and timeout rationale
 
