@@ -38,9 +38,17 @@ npx playwright install chromium
 npm run e2e
 ```
 
-The Playwright global setup creates `storage/e2e/e2e.sqlite`, runs
-`php artisan migrate:fresh --seed` against that file, and seeds only synthetic
-branches, admins, participants, ledger rows, and one assessment case.
+The Playwright web server command runs `tests/E2E/setup/start-server.cjs`. That
+wrapper fails fast when the full testing environment override is missing,
+`vendor/autoload.php` is absent, `public/build/manifest.json` is absent, or
+Chromium is not installed. It then creates `storage/e2e/e2e.sqlite`, runs
+`php artisan migrate:fresh --seed`, applies `tests/E2E/setup/seed-e2e.php`, and
+only then starts `php artisan serve`.
+
+Readiness waits on `/favicon.ico`, a static public file that does not touch the
+database, Redis-backed `/health`, or Vite's built asset manifest. This keeps the
+probe focused on whether the PHP process is answering while the database has
+already been prepared by the wrapper.
 
 ## CI run
 
@@ -70,6 +78,20 @@ On a warmed Windows workstation with Composer/npm dependencies already present,
 the full 4-viewport run is expected to take about 3-6 minutes. A cold CI run
 that installs Composer dependencies, Node dependencies, Vite assets, and
 Chromium is expected to take about 8-15 minutes.
+
+## Startup and timeout rationale
+
+The harness no longer relies on Playwright `globalSetup` for database setup:
+Playwright starts `webServer` and waits for readiness before `globalSetup` runs,
+so a clean database could time out before the migration/seed step ever started.
+The wrapper fixes that ordering by doing migration and seed synchronously before
+launching the server process.
+
+The web server timeout is 300 seconds. Lead measured dynamic cold responses at
+7.8s for `/` and 54s for `/admin/login`; 300s is about 5.5x the slower 54s
+dynamic-page latency and leaves room for the pre-start migrate/seed step on a
+slower Windows or CI runner. A timeout without the ordering fix would not be
+acceptable; both are required.
 
 ## Known red finding on this baseline
 
