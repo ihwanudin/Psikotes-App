@@ -14,7 +14,8 @@ Bila bertentangan: SPEC menang; laporkan konfliknya, jangan diam-diam memilih.
 - JANGAN menyentuh isi tabel norma/kamus/kunci hasil F0 dari kode aplikasi. Perubahan data instrumen hanya lewat script `tools/extract/` + review.
 - JANGAN menaruh logika timer atau skoring di frontend. Client hanya menampilkan state server.
 - JANGAN commit data peserta nyata, secrets, atau file `.env`. Data uji = sintetis.
-- JANGAN mengacak urutan soal MAUPUN opsi jawaban IST/PAPI/RMIB (psikolog: seluruh baterai paten, mengacak memengaruhi skoring). Pengecualian: Kraepelin (angka seeded).
+- JANGAN mengacak urutan soal MAUPUN opsi jawaban IST/PAPI/RMIB/Kraepelin (psikolog: seluruh baterai paten, mengacak memengaruhi skoring). **Kraepelin: angka TETAP, sama untuk semua peserta, dari lembar soal resmi — BUKAN dibangkitkan/seeded** (keputusan pemilik proyek 2026-09-21, menggantikan aturan "angka seeded" sebelumnya). Administrasi Kraepelin: 50 kolom, 27 baris jawaban per kolom, 15 detik per kolom, jumlahkan dari bawah ke atas, tulis digit terakhir, pindah kolom otomatis saat waktu habis. Angka lembar soal adalah data instrumen — hanya boleh masuk lewat `tools/extract/` + review, jangan ditulis tangan ke kode.
+- Durasi resmi instrumen (keputusan psikolog/pemilik proyek 2026-09-21): PAPI 30 menit; RMIB 15 menit; IST subtes ME total 540 detik dengan pembagian **180 detik menghafal + 360 detik menjawab** (dua fase timer, bukan satu).
 - Hanker = b×50 (FINAL, 2 golden test). Jangan pakai b mentah atau (P+J)/2.
 - JANGAN menanam bobot/ambang/daftar-knockout/pita di kode — SEMUA dibaca dari Tabel Lookup (data). Psikolog merevisi tanpa rilis.
 - JANGAN memakai sheet 09 (keadaptifan PAPI) sebagai input HPP — itu arsip; HPP pakai per-dimensi tabel warna.
