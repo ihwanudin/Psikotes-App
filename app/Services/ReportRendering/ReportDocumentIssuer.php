@@ -37,8 +37,8 @@ final readonly class ReportDocumentIssuer
 
     /**
      * @param  callable(string $reportNumber): string  $renderPdf  Lazy: receives the
-     *                                                              resolved report number and returns PDF bytes. Called at most
-     *                                                              once, and only when no reusable render exists.
+     *                                                             resolved report number and returns PDF bytes. Called at most
+     *                                                             once, and only when no reusable render exists.
      * @return array{report_number: string, object_key: string, url: string, expires_at: string, reused: bool}
      */
     public function issue(
@@ -85,7 +85,7 @@ final readonly class ReportDocumentIssuer
                 ];
             }
 
-            $reportNumber = $existing?->report_number ?? $this->priorReportNumber($assessmentCaseId) ?? $this->numberIssuer->issue();
+            $reportNumber = $existing->report_number ?? $this->priorReportNumber($assessmentCaseId) ?? $this->numberIssuer->issue();
 
             $pdf = $renderPdf($reportNumber);
             $stored = $this->publisher->storeObject($documentType, $pdf);
