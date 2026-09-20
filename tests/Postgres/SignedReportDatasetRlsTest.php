@@ -87,13 +87,19 @@ final class SignedReportDatasetRlsTest extends TestCase
         $this->assertSame([
             SignedReportDataset::TEST_DATE_UNAVAILABLE,
             SignedReportDataset::IQ_CATEGORY_UNAVAILABLE,
-            SignedReportDataset::REPORT_NUMBER_UNAVAILABLE,
             SignedReportDataset::PSYCHOLOGIST_SIPP_UNAVAILABLE,
             SignedReportDataset::RECOMMENDATION_RATIONALE_UNAVAILABLE,
             SignedReportDataset::ASPECT_LABELS_UNAVAILABLE,
         ], $result->missing);
-        // DASS is a warning, never a blocker.
-        $this->assertSame([SignedReportDataset::DASS_TEXT_UNAVAILABLE], $result->warnings);
+        // Report number and DASS are warnings, never blockers. The
+        // container-resolved SignedReportDataset uses the real
+        // ReportDocumentSupplementalData binding here (not a test double),
+        // so this also proves the real existing-number lookup honors RLS
+        // for a case with no report_documents row yet.
+        $this->assertSame([
+            SignedReportDataset::REPORT_NUMBER_NOT_YET_ISSUED,
+            SignedReportDataset::DASS_TEXT_UNAVAILABLE,
+        ], $result->warnings);
     }
 
     public function test_dass_read_selects_only_the_general_category_before_signing(): void
@@ -188,6 +194,7 @@ final class SignedReportDatasetRlsTest extends TestCase
             $adminId = DB::table('admins')->insertGetId([
                 'name' => 'Psikolog Sintetis PG', 'email' => Str::uuid().'@example.test',
                 'password' => bcrypt('password'), 'role' => 'psychologist',
+                'silp_number' => 'SILP-PG-TEST', 'str_number' => 'STR-PG-TEST',
                 'created_at' => now(), 'updated_at' => now(),
             ]);
 
