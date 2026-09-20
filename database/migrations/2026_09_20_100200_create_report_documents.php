@@ -42,8 +42,15 @@ return new class extends Migration
             $table->timestampTz('generated_at', 6);
             $table->timestampTz('created_at', 6);
 
+            // Includes render_seq: a re-render (e.g. the object went missing
+            // from storage) legitimately repeats the same document_type +
+            // report_number + report_version under a new render_seq. What
+            // this still guards against is a DIFFERENT signing_snapshot_id
+            // ending up with the same (report_number, report_version) at
+            // the same render_seq, which would mean report_number reuse
+            // across unrelated snapshots.
             $table->unique(
-                ['document_type', 'report_number', 'report_version'],
+                ['document_type', 'report_number', 'report_version', 'render_seq'],
                 'report_documents_number_unique',
             );
             $table->unique(

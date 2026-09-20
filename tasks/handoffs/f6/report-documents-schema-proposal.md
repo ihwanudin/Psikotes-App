@@ -41,10 +41,12 @@ Satu baris = satu PDF yang benar-benar diterbitkan.
 
 | Nama | Kolom | Tujuan |
 |---|---|---|
-| `report_documents_number_unique` | `(document_type, report_number, report_version)` | Satu nomor + versi laporan hanya boleh sekali per jenis dokumen |
+| `report_documents_number_unique` | `(document_type, report_number, report_version, render_seq)` | Cegah nomor+versi dipakai snapshot lain pada render_seq yang sama |
 | `report_documents_render_unique` | `(signing_snapshot_id, document_type, render_seq)` | Tiap render punya barisnya sendiri; file yang berlaku = `render_seq` tertinggi |
 | `report_documents_case_idx` | `(assessment_case_id, document_type, report_version)` | Pencarian dokumen terbaru per kasus |
 | `report_documents_object_key_unique` | `(object_key)` | Kunci objek tidak pernah dipakai ulang |
+
+**Koreksi ditemukan lewat test (2026-09-20), bukan hanya ditinjau ulang di atas kertas:** rancangan awal `report_documents_number_unique` tanpa `render_seq` ternyata salah — ia menolak render ulang yang SAH (mis. objek hilang dari storage lalu dirender ulang), karena render ulang pada snapshot yang sama secara sengaja memakai `report_number`+`report_version` yang SAMA dengan `render_seq` yang berbeda. Test `ReportDocumentIssuerTest::test_re_renders_with_a_new_render_seq_when_the_object_is_missing_from_storage` menangkap ini via `UNIQUE constraint failed`. Sudah diperbaiki dengan menambahkan `render_seq` ke unique tersebut.
 
 **Idempotensi ditegakkan di aplikasi, bukan oleh unique constraint.** Saat psikolog menekan "Buat PDF": bila sudah ada baris untuk (snapshot, document_type) **dan** objeknya masih ada di storage, kembalikan baris itu dan terbitkan tautan baru dari `object_key` yang sama — jangan render ulang, jangan menambah baris. Render ulang (baris baru, `render_seq` naik) hanya terjadi bila file hilang dari storage atau template laporan berubah.
 
