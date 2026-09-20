@@ -6,6 +6,9 @@ namespace App\Http\Controllers;
 
 use App\Domain\Narrative\BilingualClusterNarrativeComposer;
 use App\Domain\Narrative\ReportingNarrativeCatalog;
+use App\Enums\AdminAbility;
+use App\Http\Requests\StoreBilingualNarrativeRequest;
+use App\Models\Admin;
 use App\Security\RlsContextRunner;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -14,11 +17,14 @@ use Illuminate\Support\Str;
 
 final class BilingualNarrativeController extends Controller
 {
-    public function store(Request $request, string $case, RlsContextRunner $runner): JsonResponse
+    public function store(StoreBilingualNarrativeRequest $request, string $case, RlsContextRunner $runner): JsonResponse
     {
-        $input = $request->validate([
-            'aspects' => ['required', 'array', 'size:18'],
-        ]);
+        $admin = $request->user('admin');
+        if (! $admin instanceof Admin || ! $admin->canPerform(AdminAbility::ReviewReports)) {
+            abort(404);
+        }
+
+        $input = $request->validated();
 
         $catalog = $this->catalog();
         $composer = new BilingualClusterNarrativeComposer($catalog);
@@ -29,18 +35,27 @@ final class BilingualNarrativeController extends Controller
             return $this->error('VALIDATION_FAILED', $e->getMessage(), 422);
         }
 
-        $caseId = $runner->runAsService(function () use ($case): ?int {
-            $caseRecord = DB::table('assessment_cases')
+        // Minimal runAsService: assessment_cases RLS only allows service role to SELECT.
+        $caseRecord = $runner->runAsService(function () use ($case): ?object {
+            return DB::table('assessment_cases')
                 ->where('public_id', $case)
+                ->select('id', 'organization_id')
                 ->first();
-
-            return $caseRecord === null ? null : (int) $caseRecord->id;
         });
 
-        if ($caseId === null) {
+        if ($caseRecord === null) {
             return $this->error('CASE_NOT_FOUND', 'Assessment case not found.', 404);
         }
 
+        // Branch scope: branch_admin/staff only access cases in their own branch.
+        $branchId = $admin->rlsContext()->branchId;
+        if ($branchId !== null && (int) $caseRecord->organization_id !== $branchId) {
+            abort(404);
+        }
+
+        $caseId = (int) $caseRecord->id;
+
+        // runAsService required: bilingual_narrative_versions RLS only allows service role to INSERT/SELECT.
         $row = $runner->runAsService(function () use ($caseId, $result): object {
             $latest = DB::table('bilingual_narrative_versions')
                 ->where('assessment_case_id', $caseId)
@@ -89,19 +104,37 @@ final class BilingualNarrativeController extends Controller
         ]], 201);
     }
 
-    public function show(string $case, RlsContextRunner $runner): JsonResponse
+    public function show(Request $request, string $case, RlsContextRunner $runner): JsonResponse
     {
-        $row = $runner->runAsService(function () use ($case): ?object {
-            $caseRecord = DB::table('assessment_cases')
+        $admin = $request->user('admin');
+        if (! $admin instanceof Admin || ! $admin->canPerform(AdminAbility::ReviewReports)) {
+            abort(404);
+        }
+
+        // Minimal runAsService: assessment_cases RLS only allows service role to SELECT.
+        $caseRecord = $runner->runAsService(function () use ($case): ?object {
+            return DB::table('assessment_cases')
                 ->where('public_id', $case)
+                ->select('id', 'organization_id')
                 ->first();
+        });
 
-            if ($caseRecord === null) {
-                return null;
-            }
+        if ($caseRecord === null) {
+            return $this->error('CASE_NOT_FOUND', 'Assessment case not found.', 404);
+        }
 
+        // Branch scope: branch_admin/staff only access cases in their own branch.
+        $branchId = $admin->rlsContext()->branchId;
+        if ($branchId !== null && (int) $caseRecord->organization_id !== $branchId) {
+            abort(404);
+        }
+
+        $caseId = (int) $caseRecord->id;
+
+        // runAsService required: bilingual_narrative_versions RLS only allows service role to SELECT.
+        $row = $runner->runAsService(function () use ($caseId): ?object {
             return DB::table('bilingual_narrative_versions')
-                ->where('assessment_case_id', (int) $caseRecord->id)
+                ->where('assessment_case_id', $caseId)
                 ->orderByDesc('version')
                 ->first();
         });

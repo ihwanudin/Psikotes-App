@@ -25,11 +25,15 @@ jobs:
           php-version: '8.3'
           tools: composer:v2
           coverage: none
+          # The full suite peaks around 1.4 GB (Lead, 2026-09-20); the PHP CLI
+          # default of 512M kills phpunit during migrations.
+          ini-values: memory_limit=2048M
 
       - name: Setup Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '22'
+          # Single source of truth, kept in step with docker/app/Dockerfile.
+          node-version-file: '.nvmrc'
 
       - name: Prepare Laravel environment
         run: |
@@ -68,7 +72,7 @@ jobs:
       - name: Setup Node for frontend assets
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '22'
+          node-version-file: '.nvmrc'
 
       - name: Install test dependencies and build assets
         env:

@@ -138,7 +138,7 @@ final class SignedReportDatasetRlsTest extends TestCase
         (new SignedReportDataset(app(RlsContextRunner::class), $supplemental))->hpp($this->casePublicId);
 
         $this->assertSame('Sedang', $supplemental->captured);
-        $dassQueries = array_values(array_filter($queries, static fn (string $sql): bool => preg_match('/"dass"\."|dass\./', $sql) === 1));
+        $dassQueries = array_values(array_filter($queries, static fn (string $sql): bool => preg_match('/"dass"\."|\bdass\./', $sql) === 1));
         $this->assertNotSame([], $dassQueries);
         foreach ($dassQueries as $sql) {
             $this->assertDoesNotMatchRegularExpression('/depression|anxiety|stress|responses|validity_flags/i', $sql);

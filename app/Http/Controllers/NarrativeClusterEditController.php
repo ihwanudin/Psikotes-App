@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Enums\AdminAbility;
+use App\Http\Requests\UpdateNarrativeClusterEditRequest;
+use App\Models\Admin;
 use App\Security\RlsContextRunner;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,19 +18,36 @@ final class NarrativeClusterEditController extends Controller
     /** @var list<string> */
     private const CLUSTERS = ['A', 'B', 'C', 'D'];
 
-    public function show(string $case, RlsContextRunner $runner): JsonResponse
+    public function show(Request $request, string $case, RlsContextRunner $runner): JsonResponse
     {
-        $result = $runner->runAsService(function () use ($case): ?array {
-            $caseRecord = DB::table('assessment_cases')
+        $admin = $request->user('admin');
+        if (! $admin instanceof Admin || ! $admin->canPerform(AdminAbility::ReviewReports)) {
+            abort(404);
+        }
+
+        // Minimal runAsService: assessment_cases RLS only allows service role to SELECT.
+        $caseRecord = $runner->runAsService(function () use ($case): ?object {
+            return DB::table('assessment_cases')
                 ->where('public_id', $case)
+                ->select('id', 'organization_id')
                 ->first();
+        });
 
-            if ($caseRecord === null) {
-                return null;
-            }
+        if ($caseRecord === null) {
+            return $this->error('CASE_NOT_FOUND', 'Assessment case not found.', 404);
+        }
 
-            $caseId = (int) $caseRecord->id;
+        // Branch scope: branch_admin/staff only access cases in their own branch.
+        $branchId = $admin->rlsContext()->branchId;
+        if ($branchId !== null && (int) $caseRecord->organization_id !== $branchId) {
+            abort(404);
+        }
 
+        $caseId = (int) $caseRecord->id;
+
+        // runAsService required: bilingual_narrative_versions and narrative_cluster_edits
+        // RLS only allows service role to SELECT.
+        $result = $runner->runAsService(function () use ($caseId): array {
             $baseline = DB::table('bilingual_narrative_versions')
                 ->where('assessment_case_id', $caseId)
                 ->orderByDesc('version')
@@ -61,43 +81,51 @@ final class NarrativeClusterEditController extends Controller
             ];
         });
 
-        if ($result === null) {
-            return $this->error('CASE_NOT_FOUND', 'Assessment case not found.', 404);
-        }
-
         return response()->json(['data' => $result]);
     }
 
-    public function update(Request $request, string $case, string $cluster, RlsContextRunner $runner): JsonResponse
+    public function update(UpdateNarrativeClusterEditRequest $request, string $case, string $cluster, RlsContextRunner $runner): JsonResponse
     {
+        $admin = $request->user('admin');
+        if (! $admin instanceof Admin || ! $admin->canPerform(AdminAbility::ReviewReports)) {
+            abort(404);
+        }
+
         $cluster = strtoupper($cluster);
         if (! in_array($cluster, self::CLUSTERS, true)) {
             return $this->error('VALIDATION_FAILED', 'Cluster must be one of A, B, C, D.', 422);
         }
 
-        $input = $request->validate([
-            'edited_text' => ['required', 'string'],
-            'baseline_version_id' => ['required', 'string', 'size:26'],
-        ]);
+        $input = $request->validated();
 
         $editedText = trim($input['edited_text']);
         if ($editedText === '') {
             return $this->error('VALIDATION_FAILED', 'Edited text must not be empty after trimming.', 422);
         }
 
-        $caseId = $runner->runAsService(function () use ($case): ?int {
-            $caseRecord = DB::table('assessment_cases')
+        // Minimal runAsService: assessment_cases RLS only allows service role to SELECT.
+        $caseRecord = $runner->runAsService(function () use ($case): ?object {
+            return DB::table('assessment_cases')
                 ->where('public_id', $case)
+                ->select('id', 'organization_id')
                 ->first();
-
-            return $caseRecord === null ? null : (int) $caseRecord->id;
         });
 
-        if ($caseId === null) {
+        if ($caseRecord === null) {
             return $this->error('CASE_NOT_FOUND', 'Assessment case not found.', 404);
         }
 
+        // Branch scope: branch_admin/staff only access cases in their own branch.
+        $branchId = $admin->rlsContext()->branchId;
+        if ($branchId !== null && (int) $caseRecord->organization_id !== $branchId) {
+            abort(404);
+        }
+
+        $caseId = (int) $caseRecord->id;
+
         try {
+            // runAsService required: bilingual_narrative_versions and narrative_cluster_edits
+            // RLS only allows service role to SELECT/INSERT/UPDATE.
             $row = $runner->runAsService(function () use ($caseId, $cluster, $editedText, $input): ?object {
                 $baseline = DB::table('bilingual_narrative_versions')
                     ->where('id', $input['baseline_version_id'])
