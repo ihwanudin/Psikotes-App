@@ -154,7 +154,18 @@ jobs:
               f'{key}={sum(int(suite.get(key, 0)) for suite in suites)}'
               for key in ('tests', 'assertions', 'errors', 'failures', 'skipped')
           ))
+          for case in root.iter('testcase'):
+              for kind in ('failure', 'error'):
+                  for issue in case.findall(kind):
+                      name = f'{case.get("classname", "unknown")}::{case.get("name", "unknown")}'
+                      message = issue.get('message', '')
+                      detail = (issue.text or '').strip()
+                      if message and message not in detail:
+                          detail = f'{message}\n{detail}'.strip()
+                      print(f'PHPUnit {kind}: {name}\n{detail[:4000]}')
           PY
+          else
+            echo 'JUnit XML was not produced; retaining the PHPUnit exit code.'
           fi
 
           docker exec "$database_container" psql -h 127.0.0.1 \
