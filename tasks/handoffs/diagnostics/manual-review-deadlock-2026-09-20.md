@@ -105,23 +105,36 @@ query:
 Jadi baris tagihan dalam siklus dikunci oleh **finalize**, bukan oleh jalur commission
 ledger.
 
-Kedua review bersamaan menyasar tagihan yang sama, sehingga keduanya menghasilkan
-`(source_type, source_id)` yang sama. `INSERT` kedua tidak gagal langsung — ia
-**menunggu transaksi pertama selesai** (`ShareLock` pada transaction id), karena
-PostgreSQL belum tahu apakah baris pertama akan di-commit atau di-rollback.
+### 3.2 Siklusnya, dinyatakan hanya sejauh yang dibuktikan log
 
-Siklusnya, sesuai log:
+Yang log **tunjukkan langsung**:
 
-- Proses 96 sudah menyisipkan baris gap (belum commit), lalu meminta lock baris
-  `assessment_bills` — yang dipegang proses 95.
-- Proses 95 memegang lock baris tagihan, lalu menyisipkan baris gap duplikat —
-  sehingga menunggu proses 96.
+- proses 95 sedang menjalankan `updateOrInsert` ke `commission_ledger_gaps`, dan
+  menunggu `ShareLock` pada transaksi proses 96;
+- proses 96 sedang menjalankan `FOR UPDATE` atas baris `assessment_bills` (tuple
+  `(0,16)`), dan menunggu `ShareLock` pada transaksi proses 95.
 
-Kedua transaksi menjalankan **kode yang sama**, tetapi mencapai kedua sumber daya
-dalam urutan berbeda, sehingga disiplin `orderBy('id')` yang sudah dipakai konsisten
-di `FinalizeAssessmentBill` tidak menolong: disiplin itu menyeragamkan urutan **antar
-baris dalam satu tabel**, bukan urutan **antar tabel** terhadap kunci unik di tabel
-lain.
+Jadi proses 95 memegang lock baris tagihan itu, dan proses 96 memegang sesuatu yang
+berkonflik dengan penyisipan gap. Siklus tertutup, dan PostgreSQL membatalkan salah
+satunya.
+
+**Apa yang dipegang proses 96 sehingga penyisipan gap menunggu, belum diketahui** —
+lihat §8.1. Penjelasan yang tampak wajar, yaitu bahwa proses 96 sudah menyisipkan
+baris gap duplikat lebih dulu, **tidak sejalan** dengan §3.0: jalur gap hanya
+dimasuki pihak yang menang, sementara proses 96 justru sedang menunggu lock tagihan.
+Karena itu penjelasan tersebut tidak dipakai di dokumen ini.
+
+### 3.3 Kenapa disiplin `orderBy` yang sudah ada tidak menolong
+
+`FinalizeAssessmentBill` memakai `orderBy('id')` secara konsisten sebelum
+`lockForUpdate()` di hampir setiap langkah — disiplin anti-deadlock yang jelas
+disengaja. Disiplin itu menyeragamkan urutan **antar baris di dalam satu tabel**,
+sehingga dua transaksi tidak saling menyalip saat mengunci banyak baris.
+
+Yang tidak dicakupnya adalah urutan **antar sumber daya berbeda jenis** — baris
+`assessment_bills` versus kunci pada `commission_ledger_gaps` — apalagi ketika
+keduanya berada di **dua transaksi terpisah** (§3.0). Jadi ini celah yang tidak
+tertutup oleh disiplin yang ada, bukan kelalaian menerapkannya.
 
 ## 4. Jawaban atas pertanyaan penentu: PRODUKSI, bukan fixture
 
