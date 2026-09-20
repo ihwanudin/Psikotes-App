@@ -18,6 +18,7 @@ use App\Domain\Report\ReportIdentity;
  */
 final class FixtureReportDataset
 {
+    /** @param array{name: string, sipp_number: string, signature_note: string|null, signed_at: string|null}|null $psychologist */
     public static function hppDraft(?array $psychologist = null): HppReportDraft
     {
         return HppReportDraft::create(
@@ -40,6 +41,7 @@ final class FixtureReportDataset
         );
     }
 
+    /** @param array{name: string, sipp_number: string, signature_note: string|null, signed_at: string|null}|null $psychologist */
     public static function internalDraft(?array $psychologist = null): InternalReportDraft
     {
         return InternalReportDraft::create(

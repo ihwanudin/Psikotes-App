@@ -20,6 +20,7 @@ final readonly class HppReportDraft
     /** @var list<string> */
     private const CLUSTERS = ['A', 'B', 'C', 'D'];
 
+    /** @param array<string, string> $clusterNarratives */
     private function __construct(
         private ReportIdentity $identity,
         private ReportAspectGrid $aspectGrid,

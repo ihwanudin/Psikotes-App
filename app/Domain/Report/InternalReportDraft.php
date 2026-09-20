@@ -39,7 +39,7 @@ final readonly class InternalReportDraft
      * @param  array<mixed>  $validity
      * @param  array<mixed>  $integrationSlots
      * @param  array<mixed>  $dassDetail
-     * @param  list<string>  $reviewNotes
+     * @param  list<mixed>  $reviewNotes  validated below, not merely declared
      * @param  array{name: string, sipp_number: string, signature_note: string|null, signed_at: string|null}|null  $psychologist
      */
     public static function create(

@@ -6,6 +6,7 @@ namespace App\Services\ReportRendering;
 
 use App\Domain\Report\HppReportDraft;
 use App\Domain\Report\InternalReportDraft;
+use Illuminate\Support\Facades\View;
 
 /**
  * Renders the two F6 draft documents from their domain aggregates into
@@ -31,8 +32,11 @@ final class BladeReportRenderer
 
     public static function make(): self
     {
+        // View::make(), not the view() helper: the helper's first parameter
+        // is constrained to Larastan's view-string pseudo-type, which a
+        // plain `string $view` closure parameter can never satisfy.
         return new self(
-            static fn (string $view, array $data): string => view($view, $data)->render(),
+            static fn (string $view, array $data): string => View::make($view, $data)->render(),
         );
     }
 
