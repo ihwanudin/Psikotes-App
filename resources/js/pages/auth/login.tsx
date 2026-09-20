@@ -8,12 +8,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 /* @chisel-registration */
+import PasskeyVerify from '@/components/passkey-verify';
 import { register } from '@/routes';
 /* @end-chisel-registration */
 import { store } from '@/routes/login';
 import { request } from '@/routes/password';
 /* @chisel-passkeys */
-import PasskeyVerify from '@/components/passkey-verify';
 /* @end-chisel-passkeys */
 
 type Props = {
