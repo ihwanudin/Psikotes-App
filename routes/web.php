@@ -63,7 +63,7 @@ Route::post('/checkout/payment', CheckoutPaymentController::class)
         AuthenticateCheckoutSession::class,
     ])->name('checkout.payment');
 
-Route::get('/health', HealthCheckController::class)->name('health');
+Route::get('/health', HealthCheckController::class)->withoutMiddleware('web')->name('health');
 
 Route::get('/selection/launch', SelectionLaunchController::class)
     ->middleware('throttle:30,1')

@@ -31,4 +31,27 @@ class HealthCheckTest extends TestCase
             ->assertExactJson(['status' => 'degraded'])
             ->assertDontSee('database-password-leak');
     }
+
+    public function test_health_endpoint_fails_closed_without_stateful_session_middleware_or_json_accept_header(): void
+    {
+        config()->set('database.default', 'health_dependency_down');
+        config()->set('database.connections.health_dependency_down', [
+            'driver' => 'sqlite',
+            'database' => database_path('missing-f9-o1-health-check/health.sqlite'),
+            'prefix' => '',
+            'foreign_key_constraints' => false,
+        ]);
+        config()->set('session.driver', 'database');
+        config()->set('session.connection', 'health_dependency_down');
+
+        $response = $this->get('/health');
+
+        $response
+            ->assertStatus(503)
+            ->assertExactJson(['status' => 'degraded']);
+        $this->assertStringStartsWith(
+            'application/json',
+            (string) $response->headers->get('content-type')
+        );
+    }
 }
