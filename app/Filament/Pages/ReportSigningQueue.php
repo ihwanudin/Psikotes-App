@@ -48,16 +48,22 @@ final class ReportSigningQueue extends Page
     {
         abort_unless(self::canAccess(), 404);
 
+        // runAsService: RLS policies on assessment_cases, eligibility_decision_versions,
+        // bilingual_narrative_versions, and report_signing_snapshots only allow the
+        // service role. Access is still gated by canAccess() / ReviewReports ability.
         $this->cases = $runner->runAsService(function (): array {
             return DB::table('assessment_cases', 'ac')
                 ->join('participants as p', 'p.id', '=', 'ac.participant_id')
                 ->leftJoin('branches as b', 'b.id', '=', 'ac.organization_id')
                 ->whereExists(function ($q): void {
                     $q->select(DB::raw(1))
-                        ->from('assessment_participants', 'ap')
-                        ->whereColumn('ap.participant_id', 'ac.participant_id')
-                        ->whereColumn('ap.organization_id', 'ac.organization_id')
-                        ->whereIn('ap.assessment_status', ['COMPLETED', 'UNDER_REVIEW', 'FINALIZED']);
+                        ->from('eligibility_decision_versions', 'edv')
+                        ->whereColumn('edv.assessment_case_id', 'ac.id');
+                })
+                ->whereExists(function ($q): void {
+                    $q->select(DB::raw(1))
+                        ->from('bilingual_narrative_versions', 'bnv')
+                        ->whereColumn('bnv.assessment_case_id', 'ac.id');
                 })
                 ->leftJoin(
                     DB::raw('('.
@@ -78,6 +84,7 @@ final class ReportSigningQueue extends Page
                     'p.test_number',
                     'b.name as branch_name',
                     'latest_signing.state as signing_state',
+                    'latest_signing.version as signing_version',
                 ])
                 ->orderBy('ac.created_at', 'desc')
                 ->get()

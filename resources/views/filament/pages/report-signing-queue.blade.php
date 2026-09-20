@@ -47,10 +47,12 @@
                                 <td>{{ $case['branch_name'] ?? '—' }}</td>
                                 <td>{{ $case['intended_field_snapshot'] ?? '—' }}</td>
                                 <td>
-                                    @if ($case['signing_state'] === 'SIGNED')
+                                    @if (empty($case['signing_version']))
+                                        <span class="badge badge-pending">Belum ditandatangani</span>
+                                    @elseif ((int) $case['signing_version'] === 1)
                                         <span class="badge badge-signed">Ditandatangani</span>
                                     @else
-                                        <span class="badge badge-pending">Belum</span>
+                                        <span class="badge badge-signed">Direvisi (v{{ $case['signing_version'] }})</span>
                                     @endif
                                 </td>
                                 <td>

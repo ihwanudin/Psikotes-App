@@ -36,7 +36,10 @@ final class ReportSigningPageTest extends TestCase
 
     // ─── Helpers ───
 
-    private function createCase(): AssessmentCase
+    /**
+     * @param  'DIRECT_PUBLIC'|'INTEGRATED'  $origin
+     */
+    private function createCase(string $origin = 'DIRECT_PUBLIC'): AssessmentCase
     {
         static $counter = 0;
         $suffix = ++$counter;
@@ -72,7 +75,7 @@ final class ReportSigningPageTest extends TestCase
             'participant_id' => $participant->id,
             'organization_id' => $branch->id,
             'package_id' => $package->id,
-            'origin' => 'DIRECT_PUBLIC',
+            'origin' => $origin,
             'intended_field_snapshot' => 'UMUM',
         ]);
     }
@@ -132,9 +135,9 @@ final class ReportSigningPageTest extends TestCase
     }
 
     /**
-     * @return array{eligibilityId: string, narrativeId: string}
+     * @return array{eligibilityId: ?string, narrativeId: ?string}
      */
-    private function seedBaseline(AssessmentCase $case): array
+    private function seedBaseline(AssessmentCase $case, bool $seedEligibility = true, bool $seedNarrative = true): array
     {
         $reporting = $this->canonicalReporting();
         $canonicalInput = [
@@ -151,42 +154,48 @@ final class ReportSigningPageTest extends TestCase
         $snapshot = EligibilityDecisionSnapshot::create($canonicalInput);
         $snapshotArray = $snapshot->toArray();
 
-        $eligibilityId = (string) Str::ulid();
-        DB::table('eligibility_decision_versions')->insert([
-            'id' => $eligibilityId,
-            'assessment_case_id' => $case->id,
-            'version' => 1,
-            'supersedes_id' => null,
-            'standard_version' => $snapshotArray['provenance']['eligibility_standard_version'],
-            'field_code' => $snapshotArray['zone']['field_code'],
-            'publication_blocked' => $snapshotArray['publication_blocked'],
-            'recommendation_label' => $snapshotArray['recommendation']['label'] ?? null,
-            'iq' => $canonicalInput['iq'],
-            'validity' => $canonicalInput['validity'],
-            'snapshot_json' => json_encode($snapshotArray, JSON_THROW_ON_ERROR),
-            'canonical_input_json' => json_encode($canonicalInput, JSON_THROW_ON_ERROR),
-            'created_at' => now(),
-        ]);
+        $eligibilityId = null;
+        if ($seedEligibility) {
+            $eligibilityId = (string) Str::ulid();
+            DB::table('eligibility_decision_versions')->insert([
+                'id' => $eligibilityId,
+                'assessment_case_id' => $case->id,
+                'version' => 1,
+                'supersedes_id' => null,
+                'standard_version' => $snapshotArray['provenance']['eligibility_standard_version'],
+                'field_code' => $snapshotArray['zone']['field_code'],
+                'publication_blocked' => $snapshotArray['publication_blocked'],
+                'recommendation_label' => $snapshotArray['recommendation']['label'] ?? null,
+                'iq' => $canonicalInput['iq'],
+                'validity' => $canonicalInput['validity'],
+                'snapshot_json' => json_encode($snapshotArray, JSON_THROW_ON_ERROR),
+                'canonical_input_json' => json_encode($canonicalInput, JSON_THROW_ON_ERROR),
+                'created_at' => now(),
+            ]);
+        }
 
-        $narrativeId = (string) Str::ulid();
-        DB::table('bilingual_narrative_versions')->insert([
-            'id' => $narrativeId,
-            'assessment_case_id' => $case->id,
-            'version' => 1,
-            'supersedes_id' => null,
-            'eligibility_version_id' => $eligibilityId,
-            'review_required' => false,
-            'cluster_a_id' => 'Teks A ID',
-            'cluster_a_jp' => 'Teks A JP',
-            'cluster_b_id' => 'Teks B ID',
-            'cluster_b_jp' => 'Teks B JP',
-            'cluster_c_id' => null,
-            'cluster_c_jp' => null,
-            'cluster_d_id' => 'Teks D ID',
-            'cluster_d_jp' => 'Teks D JP',
-            'snapshot_json' => json_encode(['type' => 'bilingual_cluster_narratives'], JSON_THROW_ON_ERROR),
-            'created_at' => now(),
-        ]);
+        $narrativeId = null;
+        if ($seedNarrative) {
+            $narrativeId = (string) Str::ulid();
+            DB::table('bilingual_narrative_versions')->insert([
+                'id' => $narrativeId,
+                'assessment_case_id' => $case->id,
+                'version' => 1,
+                'supersedes_id' => null,
+                'eligibility_version_id' => $eligibilityId,
+                'review_required' => false,
+                'cluster_a_id' => 'Teks A ID',
+                'cluster_a_jp' => 'Teks A JP',
+                'cluster_b_id' => 'Teks B ID',
+                'cluster_b_jp' => 'Teks B JP',
+                'cluster_c_id' => null,
+                'cluster_c_jp' => null,
+                'cluster_d_id' => 'Teks D ID',
+                'cluster_d_jp' => 'Teks D JP',
+                'snapshot_json' => json_encode(['type' => 'bilingual_cluster_narratives'], JSON_THROW_ON_ERROR),
+                'created_at' => now(),
+            ]);
+        }
 
         return ['eligibilityId' => $eligibilityId, 'narrativeId' => $narrativeId];
     }
@@ -798,88 +807,12 @@ final class ReportSigningPageTest extends TestCase
         $this->assertSame(1, $v2Json['revision']['supersedes_version']);
     }
 
-    // ─── Helpers for queue tests ───
-
-    private function createIntegratedCase(): AssessmentCase
-    {
-        static $counter = 0;
-        $suffix = ++$counter;
-        $branch = Branch::query()->create([
-            'code' => 'BR-IC-'.$suffix,
-            'name' => 'Cabang Integrated Test',
-            'ref_code' => 'REF-IC-'.$suffix,
-        ]);
-        $package = TestPackage::query()->create([
-            'code' => 'PKG-IC-'.$suffix,
-            'name' => 'Paket Integrated Test',
-            'amount' => 250_000,
-            'currency' => 'IDR',
-            'is_active' => true,
-        ]);
-        $package->items()->create(['test_type' => 'ist']);
-        $participant = Participant::query()->create([
-            'branch_id' => $branch->id,
-            'referral_branch_id' => $branch->id,
-            'referral_source' => 'default',
-            'package_id' => $package->id,
-            'source_system' => 'DIRECT_PUBLIC',
-            'full_name' => 'Peserta Integrated Test',
-            'gender' => 'female',
-            'birth_date' => '2001-04-15',
-            'education_level' => 'SMA/SMK',
-            'intended_field' => 'UMUM',
-            'phone' => '+6281234567890',
-        ]);
-
-        return AssessmentCase::query()->create([
-            'public_id' => (string) Str::ulid(),
-            'participant_id' => $participant->id,
-            'organization_id' => $branch->id,
-            'package_id' => $package->id,
-            'origin' => 'INTEGRATED',
-            'intended_field_snapshot' => 'UMUM',
-        ]);
-    }
-
-    /**
-     * @param  'COMPLETED'|'UNDER_REVIEW'|'FINALIZED'  $status
-     */
-    private function createCaseReadyForReview(string $status = 'COMPLETED'): AssessmentCase
-    {
-        $case = $this->createIntegratedCase();
-        $key = (string) Str::ulid();
-        $clientId = DB::table('integration_clients')->insertGetId([
-            'organization_id' => $case->organization_id,
-            'client_id' => $key,
-            'credential_reference' => 'synthetic-test',
-        ]);
-
-        DB::table('assessment_participants')->insert([
-            'organization_id' => $case->organization_id,
-            'integration_client_id' => $clientId,
-            'participant_id' => $case->participant_id,
-            'package_id' => $case->package_id,
-            'assessment_case_id' => $case->id,
-            'assessment_attempt_id' => $case->public_id,
-            'source_system' => 'P6B_TEST',
-            'external_candidate_id' => $key,
-            'funding_mode' => 'COMMERCIAL_SELF_PAY',
-            'assessment_status' => $status,
-            'idempotency_key' => $key,
-            'request_hash' => hash('sha256', $key),
-            'logical_assessment_key' => hash('sha256', 'logical'.$key),
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
-        return $case;
-    }
-
     // ─── Queue page HTTP tests ───
 
     public function test_queue_page_psychologist_returns_200(): void
     {
-        $this->createCaseReadyForReview();
+        $case = $this->createCase();
+        $this->seedBaseline($case);
         $this->actingAs($this->psychologist(), 'admin');
 
         $this->get(ReportSigningQueue::getUrl())
@@ -888,7 +821,8 @@ final class ReportSigningPageTest extends TestCase
 
     public function test_queue_page_super_admin_returns_200(): void
     {
-        $this->createCaseReadyForReview();
+        $case = $this->createCase();
+        $this->seedBaseline($case);
         $this->actingAs($this->superAdmin(), 'admin');
 
         $this->get(ReportSigningQueue::getUrl())
@@ -897,7 +831,8 @@ final class ReportSigningPageTest extends TestCase
 
     public function test_queue_page_branch_admin_returns_404(): void
     {
-        $this->createCaseReadyForReview();
+        $case = $this->createCase();
+        $this->seedBaseline($case);
         $this->actingAs($this->branchAdmin(), 'admin');
 
         $this->get(ReportSigningQueue::getUrl())
@@ -906,7 +841,8 @@ final class ReportSigningPageTest extends TestCase
 
     public function test_queue_page_staff_returns_404(): void
     {
-        $this->createCaseReadyForReview();
+        $case = $this->createCase();
+        $this->seedBaseline($case);
         $this->actingAs($this->staff(), 'admin');
 
         $this->get(ReportSigningQueue::getUrl())
@@ -915,7 +851,8 @@ final class ReportSigningPageTest extends TestCase
 
     public function test_queue_page_guest_redirects_to_login(): void
     {
-        $this->createCaseReadyForReview();
+        $case = $this->createCase();
+        $this->seedBaseline($case);
 
         $this->get(ReportSigningQueue::getUrl())
             ->assertRedirect('/admin/login');
@@ -975,13 +912,13 @@ final class ReportSigningPageTest extends TestCase
 
     public function test_queue_page_shows_case_in_table(): void
     {
-        $case = $this->createCaseReadyForReview();
+        $case = $this->createCase();
         $this->seedBaseline($case);
         $this->actingAs($this->psychologist(), 'admin');
 
         $response = $this->get(ReportSigningQueue::getUrl());
         $response->assertSuccessful();
-        $response->assertSee('Peserta Integrated Test');
+        $response->assertSee('Peserta ReportSigning Page');
         $response->assertSee($case->public_id);
         $response->assertSee('Tinjau', false);
         $response->assertSee('Tanda Tangan', false);
@@ -998,7 +935,7 @@ final class ReportSigningPageTest extends TestCase
 
     public function test_queue_page_links_to_per_case_signing_page(): void
     {
-        $case = $this->createCaseReadyForReview();
+        $case = $this->createCase();
         $this->seedBaseline($case);
         $this->actingAs($this->psychologist(), 'admin');
 
@@ -1018,5 +955,166 @@ final class ReportSigningPageTest extends TestCase
     {
         $this->actingAs($this->staff(), 'admin');
         self::assertFalse(ReportSigningQueue::canAccess());
+    }
+
+    // ─── Queue page: DIRECT_PUBLIC case ───
+
+    public function test_queue_page_shows_direct_public_case(): void
+    {
+        $case = $this->createCase();
+        $this->seedBaseline($case);
+        $this->actingAs($this->psychologist(), 'admin');
+
+        $response = $this->get(ReportSigningQueue::getUrl());
+        $response->assertSuccessful();
+        $response->assertSee($case->public_id);
+    }
+
+    // ─── Queue page: INTEGRATED case ───
+
+    public function test_queue_page_shows_integrated_case(): void
+    {
+        $case = $this->createCase('INTEGRATED');
+        $this->seedBaseline($case);
+        $this->actingAs($this->psychologist(), 'admin');
+
+        $response = $this->get(ReportSigningQueue::getUrl());
+        $response->assertSuccessful();
+        $response->assertSee($case->public_id);
+    }
+
+    // ─── Queue page: cases missing eligibility or narrative ───
+
+    public function test_queue_page_hides_case_without_eligibility(): void
+    {
+        $case = $this->createCase();
+        $this->seedBaseline($case, seedEligibility: false, seedNarrative: true);
+        $this->actingAs($this->psychologist(), 'admin');
+
+        $response = $this->get(ReportSigningQueue::getUrl());
+        $response->assertSuccessful();
+        $response->assertDontSee($case->public_id);
+    }
+
+    public function test_queue_page_hides_case_without_narrative(): void
+    {
+        $case = $this->createCase();
+        $this->seedBaseline($case, seedEligibility: true, seedNarrative: false);
+        $this->actingAs($this->psychologist(), 'admin');
+
+        $response = $this->get(ReportSigningQueue::getUrl());
+        $response->assertSuccessful();
+        $response->assertDontSee($case->public_id);
+    }
+
+    // ─── Queue page: one participant, two cases ───
+
+    public function test_queue_page_shows_only_eligible_case_for_participant_with_two_cases(): void
+    {
+        // Case 1: has both eligibility and narrative → should appear
+        $case1 = $this->createCase();
+        $this->seedBaseline($case1);
+
+        // Case 2: same participant, no eligibility → should NOT appear
+        $case2 = AssessmentCase::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'participant_id' => $case1->participant_id,
+            'organization_id' => $case1->organization_id,
+            'package_id' => $case1->package_id,
+            'origin' => 'DIRECT_PUBLIC',
+            'intended_field_snapshot' => 'UMUM',
+        ]);
+
+        $this->actingAs($this->psychologist(), 'admin');
+
+        $response = $this->get(ReportSigningQueue::getUrl());
+        $response->assertSuccessful();
+        $response->assertSee($case1->public_id);
+        $response->assertDontSee($case2->public_id);
+    }
+
+    // ─── Queue page: badge states ───
+
+    public function test_queue_page_badge_belum_ditandatangani_for_no_snapshot(): void
+    {
+        $case = $this->createCase();
+        $this->seedBaseline($case);
+        $this->actingAs($this->psychologist(), 'admin');
+
+        $response = $this->get(ReportSigningQueue::getUrl());
+        $response->assertSuccessful();
+        $response->assertSee('Belum ditandatangani');
+    }
+
+    public function test_queue_page_badge_ditandatangani_for_v1_snapshot(): void
+    {
+        $case = $this->createCase();
+        $baseline = $this->seedBaseline($case);
+        $psychologist = $this->psychologist();
+        $this->actingAs($psychologist, 'admin');
+
+        DB::table('report_signing_snapshots')->insert([
+            'id' => (string) Str::ulid(),
+            'assessment_case_id' => $case->id,
+            'version' => 1,
+            'supersedes_id' => null,
+            'state' => 'SIGNED',
+            'eligibility_version_id' => $baseline['eligibilityId'],
+            'narrative_version_id' => $baseline['narrativeId'],
+            'snapshot_json' => json_encode(['provenance' => ['signed' => true]], JSON_THROW_ON_ERROR),
+            'signed_by_admin_id' => $psychologist->id,
+            'signed_at' => now(),
+            'created_at' => now(),
+        ]);
+
+        $response = $this->get(ReportSigningQueue::getUrl());
+        $response->assertSuccessful();
+        $response->assertSee('Ditandatangani');
+        $response->assertDontSee('Direvisi');
+        $response->assertDontSee('Belum ditandatangani');
+    }
+
+    public function test_queue_page_badge_direvisi_for_v2_snapshot(): void
+    {
+        $case = $this->createCase();
+        $baseline = $this->seedBaseline($case);
+        $psychologist = $this->psychologist();
+        $this->actingAs($psychologist, 'admin');
+
+        // v1 snapshot
+        $v1Id = (string) Str::ulid();
+        DB::table('report_signing_snapshots')->insert([
+            'id' => $v1Id,
+            'assessment_case_id' => $case->id,
+            'version' => 1,
+            'supersedes_id' => null,
+            'state' => 'SIGNED',
+            'eligibility_version_id' => $baseline['eligibilityId'],
+            'narrative_version_id' => $baseline['narrativeId'],
+            'snapshot_json' => json_encode(['provenance' => ['signed' => true]], JSON_THROW_ON_ERROR),
+            'signed_by_admin_id' => $psychologist->id,
+            'signed_at' => now(),
+            'created_at' => now(),
+        ]);
+
+        // v2 snapshot (re-sign)
+        DB::table('report_signing_snapshots')->insert([
+            'id' => (string) Str::ulid(),
+            'assessment_case_id' => $case->id,
+            'version' => 2,
+            'supersedes_id' => $v1Id,
+            'state' => 'SIGNED',
+            'eligibility_version_id' => $baseline['eligibilityId'],
+            'narrative_version_id' => $baseline['narrativeId'],
+            'snapshot_json' => json_encode(['provenance' => ['signed' => true], 'revision' => ['supersedes_version' => 1]], JSON_THROW_ON_ERROR),
+            'signed_by_admin_id' => $psychologist->id,
+            'signed_at' => now(),
+            'created_at' => now(),
+        ]);
+
+        $response = $this->get(ReportSigningQueue::getUrl());
+        $response->assertSuccessful();
+        $response->assertSee('Direvisi (v2)');
+        $response->assertDontSee('Ditandatangani');
     }
 }
