@@ -64,7 +64,7 @@ final class AdminAuthorizationTest extends TestCase
         $this->assertFalse($admin->canPerform(AdminAbility::VerifyPayments));
     }
 
-    public function test_psychologist_and_super_admin_can_review_reports_others_cannot(): void
+    public function test_only_psychologist_can_review_reports_others_cannot(): void
     {
         $psychologist = $this->admin(AdminRole::Psychologist);
         $superAdmin = $this->admin(AdminRole::SuperAdmin);
@@ -77,9 +77,9 @@ final class AdminAuthorizationTest extends TestCase
         $this->assertFalse($branchAdmin->canPerform(AdminAbility::ViewDass));
         $this->assertFalse($staff->canPerform(AdminAbility::ViewDass));
 
-        // ReviewReports: Psychologist + SuperAdmin
+        // ReviewReports: only Psychologist (SuperAdmin widened via lane deepseek/f5-resign-and-rls)
         $this->assertTrue($psychologist->canPerform(AdminAbility::ReviewReports));
-        $this->assertTrue($superAdmin->canPerform(AdminAbility::ReviewReports));
+        $this->assertFalse($superAdmin->canPerform(AdminAbility::ReviewReports));
         $this->assertFalse($branchAdmin->canPerform(AdminAbility::ReviewReports));
         $this->assertFalse($staff->canPerform(AdminAbility::ReviewReports));
     }

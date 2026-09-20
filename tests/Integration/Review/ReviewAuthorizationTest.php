@@ -144,18 +144,18 @@ final class ReviewAuthorizationTest extends TestCase
     }
 
     /**
-     * Seed eligibility + bilingual narrative for a case (as super_admin),
+     * Seed eligibility + bilingual narrative for a case (as psychologist),
      * returning the narrative version ID for use as baseline_version_id.
      */
     private function seedBaseline(AssessmentCase $case): string
     {
-        $superAdmin = $this->admin(AdminRole::SuperAdmin);
+        $psychologist = $this->admin(AdminRole::Psychologist);
 
-        $this->actingAs($superAdmin, 'admin')
+        $this->actingAs($psychologist, 'admin')
             ->postJson("/admin/assessment-cases/{$case->public_id}/eligibility-decisions", $this->eligibilityPayload())
             ->assertCreated();
 
-        $response = $this->actingAs($superAdmin, 'admin')
+        $response = $this->actingAs($psychologist, 'admin')
             ->postJson("/admin/assessment-cases/{$case->public_id}/bilingual-narratives", $this->narrativePayload())
             ->assertCreated();
 
@@ -175,15 +175,19 @@ final class ReviewAuthorizationTest extends TestCase
     /** @return iterable<string, array{0: AdminRole}> */
     public static function authorizedRoles(): iterable
     {
+        // SuperAdmin belum diberi ReviewReports di sini;
+        // pelebarannya datang lewat lane deepseek/f5-resign-and-rls, bukan lane ini.
         yield 'psychologist' => [AdminRole::Psychologist];
-        yield 'super_admin' => [AdminRole::SuperAdmin];
     }
 
     /** @return iterable<string, array{0: AdminRole}> */
     public static function unauthorizedRoles(): iterable
     {
+        // SuperAdmin belum diberi ReviewReports di sini;
+        // pelebarannya datang lewat lane deepseek/f5-resign-and-rls, bukan lane ini.
         yield 'branch_admin' => [AdminRole::BranchAdmin];
         yield 'staff' => [AdminRole::Staff];
+        yield 'super_admin' => [AdminRole::SuperAdmin];
     }
 
     /** @return iterable<string, array{0: AdminRole}> */
@@ -226,7 +230,7 @@ final class ReviewAuthorizationTest extends TestCase
         $case = $this->createCase();
         $admin = $this->admin($role);
 
-        // Seed via super_admin first
+        // Seed via psychologist first
         $this->seedBaseline($case);
 
         $response = $this->actingAs($admin, 'admin')
@@ -243,7 +247,7 @@ final class ReviewAuthorizationTest extends TestCase
         $case = $this->createCase($branch);
         $admin = $this->admin($role, $branch);
 
-        // Seed via super_admin first
+        // Seed via psychologist first
         $this->seedBaseline($case);
 
         $this->actingAs($admin, 'admin')
@@ -286,7 +290,7 @@ final class ReviewAuthorizationTest extends TestCase
         $case = $this->createCase();
         $admin = $this->admin($role);
 
-        // Seed via super_admin first
+        // Seed via psychologist first
         $this->seedBaseline($case);
 
         $response = $this->actingAs($admin, 'admin')
@@ -303,7 +307,7 @@ final class ReviewAuthorizationTest extends TestCase
         $case = $this->createCase($branch);
         $admin = $this->admin($role, $branch);
 
-        // Seed via super_admin first
+        // Seed via psychologist first
         $this->seedBaseline($case);
 
         $this->actingAs($admin, 'admin')
@@ -319,7 +323,7 @@ final class ReviewAuthorizationTest extends TestCase
         $case = $this->createCase();
         $admin = $this->admin($role);
 
-        // Seed baseline via super_admin
+        // Seed baseline via psychologist
         $this->seedBaseline($case);
 
         $response = $this->actingAs($admin, 'admin')
@@ -336,7 +340,7 @@ final class ReviewAuthorizationTest extends TestCase
         $case = $this->createCase($branch);
         $admin = $this->admin($role, $branch);
 
-        // Seed baseline via super_admin
+        // Seed baseline via psychologist
         $this->seedBaseline($case);
 
         $this->actingAs($admin, 'admin')
@@ -389,7 +393,7 @@ final class ReviewAuthorizationTest extends TestCase
         $case = $this->createCase();
         $admin = $this->admin($role);
 
-        // Seed baseline via super_admin
+        // Seed baseline via psychologist
         $this->seedBaseline($case);
 
         $response = $this->actingAs($admin, 'admin')
@@ -406,7 +410,7 @@ final class ReviewAuthorizationTest extends TestCase
         $case = $this->createCase($branch);
         $admin = $this->admin($role, $branch);
 
-        // Seed baseline via super_admin
+        // Seed baseline via psychologist
         $this->seedBaseline($case);
 
         $this->actingAs($admin, 'admin')
@@ -414,7 +418,9 @@ final class ReviewAuthorizationTest extends TestCase
             ->assertStatus(404);
     }
 
-    // ─── Cross-branch: psychologist & super_admin are lintas cabang ─────────────
+    // ─── Cross-branch: psychologist is lintas cabang ─────────────────────────
+    // SuperAdmin belum diberi ReviewReports di sini;
+    // pelebarannya datang lewat lane deepseek/f5-resign-and-rls, bukan lane ini.
 
     #[DataProvider('authorizedRoles')]
     public function test_authorized_roles_can_access_case_in_any_branch(AdminRole $role): void
@@ -424,11 +430,9 @@ final class ReviewAuthorizationTest extends TestCase
         $caseInB = $this->createCase($branchB, 'B');
 
         // Admin is in branch A (or central), case is in branch B
-        $admin = $role === AdminRole::SuperAdmin
-            ? $this->admin($role)
-            : $this->admin($role);
+        $admin = $this->admin($role);
 
-        // Seed baseline via super_admin
+        // Seed baseline via psychologist
         $this->seedBaseline($caseInB);
 
         // All read endpoints should succeed

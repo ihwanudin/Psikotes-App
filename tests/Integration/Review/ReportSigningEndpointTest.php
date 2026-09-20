@@ -73,16 +73,6 @@ final class ReportSigningEndpointTest extends TestCase
         ]);
     }
 
-    private function superAdmin(): Admin
-    {
-        return Admin::query()->create([
-            'name' => 'Super Admin Test',
-            'email' => (string) Str::uuid().'@example.test',
-            'password' => bcrypt('password'),
-            'role' => AdminRole::SuperAdmin->value,
-        ]);
-    }
-
     private function staff(?Branch $branch = null): Admin
     {
         return Admin::query()->create([
