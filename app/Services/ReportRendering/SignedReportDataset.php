@@ -61,13 +61,10 @@ final readonly class SignedReportDataset
      */
     public const REPORT_NUMBER_NOT_YET_ISSUED = 'REPORT_NUMBER_NOT_YET_ISSUED';
 
-    public const PSYCHOLOGIST_SIPP_UNAVAILABLE = 'PSYCHOLOGIST_SIPP_UNAVAILABLE';
-
     /**
      * Blocking, never a blank print: Template HPP v2.3 Bagian I.C requires
      * both SILP and STR on the printed report (source-authority-inventory.md
-     * :72-73). Unlike PSYCHOLOGIST_SIPP_UNAVAILABLE (an input with no real
-     * source yet), these read real admins.silp_number/str_number columns.
+     * :72-73). Read from real admins.silp_number/str_number columns.
      */
     public const PSYCHOLOGIST_SILP_MISSING = 'PSYCHOLOGIST_SILP_MISSING';
 
@@ -78,6 +75,17 @@ final readonly class SignedReportDataset
     public const ASPECT_LABELS_UNAVAILABLE = 'ASPECT_LABELS_UNAVAILABLE';
 
     public const DASS_TEXT_UNAVAILABLE = 'DASS_TEXT_UNAVAILABLE';
+
+    /**
+     * Blocking: Template HPP v2.3 Bagian I.C also requires the publisher's
+     * facility name/address on every report (config/report.php). In
+     * practice this should never be empty — it's a fixed literal, not
+     * per-environment — but a report is never allowed to print a blank
+     * facility identity, so it still fails closed rather than assume.
+     */
+    public const FACILITY_NAME_MISSING = 'FACILITY_NAME_MISSING';
+
+    public const FACILITY_ADDRESS_MISSING = 'FACILITY_ADDRESS_MISSING';
 
     public const DRAFT_INVALID = 'DRAFT_INVALID';
 
@@ -210,9 +218,16 @@ final readonly class SignedReportDataset
             $warnings[] = self::REPORT_NUMBER_NOT_YET_ISSUED;
         }
 
-        $sipp = $psychologistRow === null ? null : $this->supplemental->psychologistSippNumber((int) $psychologistRow->id);
-        if ($psychologistRow !== null && $sipp === null) {
-            $missing[] = self::PSYCHOLOGIST_SIPP_UNAVAILABLE;
+        // Fixed publisher identity (config/report.php), not per-branch: a
+        // report never prints a blank facility name/address, even though
+        // in practice this config should never actually be empty.
+        $facilityName = trim((string) config('report.facility_name'));
+        if ($facilityName === '') {
+            $missing[] = self::FACILITY_NAME_MISSING;
+        }
+        $facilityAddress = trim((string) config('report.facility_address'));
+        if ($facilityAddress === '') {
+            $missing[] = self::FACILITY_ADDRESS_MISSING;
         }
 
         $rationale = $this->supplemental->recommendationRationale($snapshotId);
@@ -245,7 +260,11 @@ final readonly class SignedReportDataset
             'psychologist_name' => (string) $psychologistRow->name,
             'psychologist_silp' => (string) $silp,
             'psychologist_str' => (string) $str,
-            'facility_name' => (string) $rows['branch_name'],
+            // The publisher's own facility identity (config/report.php),
+            // never the participant's assessment branch (report-documents
+            // -schema-proposal.md §6) — PR #39 read this from branch_name,
+            // a defect caught before any real report was ever issued.
+            'facility_name' => $facilityName,
         ];
 
         if ($reportNumber === null) {
@@ -284,7 +303,10 @@ final readonly class SignedReportDataset
                 $prerequisite['accompaniment_conditions'] ?? null,
                 [
                     'name' => (string) $psychologistRow->name,
-                    'sipp_number' => (string) $sipp,
+                    'silp_number' => (string) $silp,
+                    'str_number' => (string) $str,
+                    'facility_name' => $facilityName,
+                    'facility_address' => $facilityAddress,
                     'signature_note' => null,
                     'signed_at' => (string) $snapshotRow->signed_at,
                 ],

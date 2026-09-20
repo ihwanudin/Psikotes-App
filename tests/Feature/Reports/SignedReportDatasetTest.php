@@ -32,7 +32,7 @@ final class SignedReportDatasetTest extends TestCase
         $this->assertNull($unsigned->snapshotId);
     }
 
-    public function test_default_adapter_blocks_only_on_the_three_unpersisted_blocking_inputs(): void
+    public function test_default_adapter_blocks_only_on_the_two_unpersisted_blocking_inputs(): void
     {
         $case = $this->createReportCase();
         $snapshotId = $this->signCase($case, $this->reportPsychologist());
@@ -44,7 +44,6 @@ final class SignedReportDatasetTest extends TestCase
         $this->assertFalse($result->isReady());
         $this->assertSame($snapshotId, $result->snapshotId);
         $this->assertSame([
-            SignedReportDataset::PSYCHOLOGIST_SIPP_UNAVAILABLE,
             SignedReportDataset::RECOMMENDATION_RATIONALE_UNAVAILABLE,
             SignedReportDataset::ASPECT_LABELS_UNAVAILABLE,
         ], $result->missing);
@@ -79,9 +78,88 @@ final class SignedReportDatasetTest extends TestCase
         $this->assertSame('Narasi sintetis klaster A.', $view['cluster_narratives']['A']);
         $this->assertSame('Ringan', $view['dass']['general_category']);
         $this->assertSame('Psikolog Sintetis', $view['psychologist']['name']);
+        $this->assertSame('SILP-SYNTH-0001', $view['psychologist']['silp_number']);
+        $this->assertSame('STR-SYNTH-0001', $view['psychologist']['str_number']);
+        $this->assertSame(config('report.facility_name'), $view['psychologist']['facility_name']);
+        $this->assertSame(config('report.facility_address'), $view['psychologist']['facility_address']);
         $this->assertNotNull($view['psychologist']['signed_at']);
         $this->assertCount(18, $view['aspect_rows']);
         $this->assertSame(4, $view['aspect_rows'][0]['level']);
+    }
+
+    /**
+     * Lead's 2026-09-21 requirement: prove the five Template HPP v2.3
+     * Bagian I.C fields actually appear in the rendered document, not
+     * just that the draft object carries them.
+     */
+    public function test_render_prints_all_five_psychologist_identity_fields(): void
+    {
+        $case = $this->createReportCase();
+        $psychologist = $this->reportPsychologist(silpNumber: 'SILP-RENDER-CHECK', strNumber: 'STR-RENDER-CHECK');
+        $this->signCase($case, $psychologist);
+        $this->seedSubmittedSession($case);
+        $this->seedDassResult($case, 'Ringan', now()->subDay()->toDateTimeString());
+
+        $html = BladeReportRenderer::make()->renderHpp($this->completeDataset()->hpp($case->public_id)->draft());
+
+        $this->assertStringContainsString('Psikolog Sintetis', $html);
+        $this->assertStringContainsString('SILP-RENDER-CHECK', $html);
+        $this->assertStringContainsString('STR-RENDER-CHECK', $html);
+        $this->assertStringContainsString(e((string) config('report.facility_name')), $html);
+        $this->assertStringContainsString(e((string) config('report.facility_address')), $html);
+        $this->assertStringContainsString('No. SILP', $html);
+        $this->assertStringContainsString('No. STR', $html);
+        $this->assertStringContainsString('Fasilitas Layanan Psikologi', $html);
+        $this->assertStringContainsString('Alamat Fasilitas', $html);
+        $this->assertStringNotContainsString('No. SIPP', $html);
+    }
+
+    /**
+     * Lead verified this as a real PR #39 defect: facility_name previously
+     * read the case's branch, not the publisher's own fixed identity.
+     * Deliberately makes the two different so a regression back to
+     * branch_name would fail this test, not just look plausible.
+     */
+    public function test_facility_identity_comes_from_config_not_the_case_branch(): void
+    {
+        $case = $this->createReportCase();
+        $this->signCase($case, $this->reportPsychologist());
+        $this->seedSubmittedSession($case);
+        $this->seedDassResult($case, 'Ringan', now()->subDay()->toDateTimeString());
+        $this->assertNotSame('Cabang Sintetis Laporan', config('report.facility_name'));
+
+        $view = $this->completeDataset()->hpp($case->public_id)->draft()->toViewData();
+
+        $this->assertSame(config('report.facility_name'), $view['psychologist']['facility_name']);
+        $this->assertNotSame('Cabang Sintetis Laporan', $view['psychologist']['facility_name']);
+    }
+
+    public function test_missing_facility_name_config_fails_closed(): void
+    {
+        config(['report.facility_name' => '']);
+        $case = $this->createReportCase();
+        $this->signCase($case, $this->reportPsychologist());
+        $this->seedSubmittedSession($case);
+        $this->seedDassResult($case, 'Ringan', now()->subDay()->toDateTimeString());
+
+        $this->assertContains(
+            SignedReportDataset::FACILITY_NAME_MISSING,
+            $this->completeDataset()->hpp($case->public_id)->missing,
+        );
+    }
+
+    public function test_missing_facility_address_config_fails_closed(): void
+    {
+        config(['report.facility_address' => '   ']);
+        $case = $this->createReportCase();
+        $this->signCase($case, $this->reportPsychologist());
+        $this->seedSubmittedSession($case);
+        $this->seedDassResult($case, 'Ringan', now()->subDay()->toDateTimeString());
+
+        $this->assertContains(
+            SignedReportDataset::FACILITY_ADDRESS_MISSING,
+            $this->completeDataset()->hpp($case->public_id)->missing,
+        );
     }
 
     public function test_hpp_uses_psychologist_final_levels_not_system_levels(): void

@@ -60,7 +60,8 @@ final class HppReportDraftTest extends TestCase
     {
         $draft = FixtureReportDataset::hppDraft(FixtureReportDataset::psychologist());
 
-        $this->assertSame('SIPP-00000000', $draft->psychologist()?->toArray()['sipp_number']);
+        $this->assertSame('SILP-00000000', $draft->psychologist()?->toArray()['silp_number']);
+        $this->assertSame('STR-00000000', $draft->psychologist()?->toArray()['str_number']);
     }
 
     private static function draft(string $label, ?string $accompaniment): HppReportDraft
