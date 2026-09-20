@@ -25,8 +25,10 @@ use Illuminate\Notifications\Notifiable;
  * @property string $password
  * @property AdminRole $role
  * @property bool $can_verify_payments
+ * @property string|null $silp_number
+ * @property string|null $str_number
  */
-#[Fillable(['branch_id', 'name', 'email', 'password', 'role', 'can_verify_payments'])]
+#[Fillable(['branch_id', 'name', 'email', 'password', 'role', 'can_verify_payments', 'silp_number', 'str_number'])]
 #[Hidden(['password', 'remember_token'])]
 final class Admin extends Authenticatable implements FilamentUser, ProvidesRlsContext
 {
