@@ -36,8 +36,6 @@ return new class extends Migration
 {
     private const TRIGGER = 'instrument_versions_guard_history_trigger';
 
-    private const FUNCTION = 'instrument_versions_guard_history';
-
     public function up(): void
     {
         Schema::table('instrument_versions', function (Blueprint $table): void {
