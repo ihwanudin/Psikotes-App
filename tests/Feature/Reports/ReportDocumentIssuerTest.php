@@ -104,14 +104,14 @@ final class ReportDocumentIssuerTest extends TestCase
         $issuer = app(ReportDocumentIssuer::class);
 
         $first = $issuer->issue(
-            $case->id, $snapshotId, 'hpp', 1, (int) $psychologist->id, $psychologist->name, 'SILP-1', null, 'Facility',
+            $case->id, $snapshotId, 'hpp', 1, (int) $psychologist->id, $psychologist->name, 'SILP-1', 'STR-1', 'Facility',
             static fn (string $n): string => '%PDF-1.4 x-'.$n,
         );
         Storage::disk('reports')->delete($first['object_key']);
 
         $calls = 0;
         $second = $issuer->issue(
-            $case->id, $snapshotId, 'hpp', 1, (int) $psychologist->id, $psychologist->name, 'SILP-1', null, 'Facility',
+            $case->id, $snapshotId, 'hpp', 1, (int) $psychologist->id, $psychologist->name, 'SILP-1', 'STR-1', 'Facility',
             function (string $reportNumber) use (&$calls): string {
                 $calls++;
 
@@ -140,8 +140,8 @@ final class ReportDocumentIssuerTest extends TestCase
         $issuer = app(ReportDocumentIssuer::class);
         $render = static fn (string $n): string => '%PDF-1.4 x-'.$n;
 
-        $hpp = $issuer->issue($case->id, $snapshotId, 'hpp', 1, (int) $psychologist->id, $psychologist->name, 'SILP-1', null, 'Facility', $render);
-        $internal = $issuer->issue($case->id, $snapshotId, 'internal', 1, (int) $psychologist->id, $psychologist->name, 'SILP-1', null, 'Facility', $render);
+        $hpp = $issuer->issue($case->id, $snapshotId, 'hpp', 1, (int) $psychologist->id, $psychologist->name, 'SILP-1', 'STR-1', 'Facility', $render);
+        $internal = $issuer->issue($case->id, $snapshotId, 'internal', 1, (int) $psychologist->id, $psychologist->name, 'SILP-1', 'STR-1', 'Facility', $render);
 
         $this->assertSame($hpp['report_number'], $internal['report_number']);
         $this->assertNotSame($hpp['object_key'], $internal['object_key']);
@@ -163,7 +163,7 @@ final class ReportDocumentIssuerTest extends TestCase
 
         try {
             app(ReportDocumentIssuer::class)->issue(
-                $case->id, $snapshotId, 'hpp', 1, (int) $psychologist->id, $psychologist->name, 'SILP-1', null, 'Facility',
+                $case->id, $snapshotId, 'hpp', 1, (int) $psychologist->id, $psychologist->name, 'SILP-1', 'STR-1', 'Facility',
                 function (): string {
                     throw new RuntimeException('rendering failed');
                 },
@@ -180,7 +180,7 @@ final class ReportDocumentIssuerTest extends TestCase
         // The next successful issue still starts at 0001, proving nothing
         // was silently burned by the failed attempt above.
         $result = app(ReportDocumentIssuer::class)->issue(
-            $case->id, $snapshotId, 'hpp', 1, (int) $psychologist->id, $psychologist->name, 'SILP-1', null, 'Facility',
+            $case->id, $snapshotId, 'hpp', 1, (int) $psychologist->id, $psychologist->name, 'SILP-1', 'STR-1', 'Facility',
             static fn (string $n): string => '%PDF-1.4 ok-'.$n,
         );
         $this->assertSame('HPP/'.substr($period, 0, 4).'/'.substr($period, 4, 2).'/0001', $result['report_number']);
@@ -195,7 +195,7 @@ final class ReportDocumentIssuerTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
 
         app(ReportDocumentIssuer::class)->issue(
-            $case->id, $snapshotId, 'summary', 1, (int) $psychologist->id, $psychologist->name, 'SILP-1', null, 'Facility',
+            $case->id, $snapshotId, 'summary', 1, (int) $psychologist->id, $psychologist->name, 'SILP-1', 'STR-1', 'Facility',
             function (): string {
                 throw new RuntimeException('must not be called');
             },

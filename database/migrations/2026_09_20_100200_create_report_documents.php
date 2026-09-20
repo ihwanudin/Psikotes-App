@@ -37,7 +37,7 @@ return new class extends Migration
             $table->unsignedBigInteger('psychologist_admin_id');
             $table->string('psychologist_name_snapshot', 160);
             $table->string('psychologist_silp_snapshot', 64);
-            $table->string('psychologist_str_snapshot', 64)->nullable();
+            $table->string('psychologist_str_snapshot', 64);
             $table->string('facility_name_snapshot', 160);
             $table->timestampTz('generated_at', 6);
             $table->timestampTz('created_at', 6);
@@ -105,7 +105,7 @@ return new class extends Migration
                     AND size_bytes > 0
                     AND trim(psychologist_name_snapshot) <> ''
                     AND trim(psychologist_silp_snapshot) <> ''
-                    AND (psychologist_str_snapshot IS NULL OR trim(psychologist_str_snapshot) <> '')
+                    AND trim(psychologist_str_snapshot) <> ''
                     AND trim(facility_name_snapshot) <> ''
                 );
 
@@ -171,7 +171,7 @@ return new class extends Migration
                     OR NEW.render_seq < 1
                     OR trim(NEW.psychologist_name_snapshot) = ''
                     OR trim(NEW.psychologist_silp_snapshot) = ''
-                    OR (NEW.psychologist_str_snapshot IS NOT NULL AND trim(NEW.psychologist_str_snapshot) = '')
+                    OR trim(NEW.psychologist_str_snapshot) = ''
                     OR trim(NEW.facility_name_snapshot) = ''
                 THEN RAISE(ABORT, 'report document invariant violation') END;
 

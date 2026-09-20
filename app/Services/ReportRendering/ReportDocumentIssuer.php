@@ -49,7 +49,7 @@ final readonly class ReportDocumentIssuer
         int $psychologistAdminId,
         string $psychologistName,
         string $psychologistSilp,
-        ?string $psychologistStr,
+        string $psychologistStr,
         string $facilityName,
         callable $renderPdf,
     ): array {

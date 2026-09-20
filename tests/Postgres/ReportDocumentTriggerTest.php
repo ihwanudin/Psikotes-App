@@ -204,7 +204,7 @@ final class ReportDocumentTriggerTest extends TestCase
             'psychologist_admin_id' => $psychologistId,
             'psychologist_name_snapshot' => 'Psikolog Uji PostgreSQL',
             'psychologist_silp_snapshot' => 'SILP-PG-TEST',
-            'psychologist_str_snapshot' => null,
+            'psychologist_str_snapshot' => 'STR-PG-TEST',
             'facility_name_snapshot' => 'Fasilitas Uji PostgreSQL',
             'generated_at' => now(),
             'created_at' => now(),
