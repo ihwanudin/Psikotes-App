@@ -18,7 +18,10 @@ final readonly class DassInternalDetail
     /** @var list<string> */
     private const CATEGORIES = ['Normal', 'Ringan', 'Sedang', 'Parah', 'Sangat Parah'];
 
-    /** @param array<string, array{raw: int, doubled: int, category: string}> $subscales */
+    /**
+     * @param  array<string, array{raw: int, doubled: int, category: string}>  $subscales
+     * @param  list<string>  $flags
+     */
     private function __construct(
         private array $subscales,
         public string $generalCategory,

@@ -21,12 +21,25 @@ final readonly class ReportAspectGrid
         private array $entries,
     ) {}
 
-    /** @param list<array{code: string, label_id: string, label_jp: string, level: int, standard: int|null}> $rows */
+    /**
+     * Untyped at the boundary on purpose: this is a public factory and the
+     * row shape is validated here, not merely declared, so a caller passing
+     * malformed data gets InvalidArgumentException rather than a TypeError
+     * from AspectLevelEntry::create()'s native-typed parameters.
+     *
+     * @param  array<mixed>  $rows
+     */
     public static function fromArray(array $rows): self
     {
         $entries = [];
         foreach ($rows as $row) {
-            if (! is_array($row) || ! isset($row['code'], $row['label_id'], $row['label_jp'], $row['level'])) {
+            if (! is_array($row)
+                || ! isset($row['code'], $row['label_id'], $row['label_jp'], $row['level'])
+                || ! is_string($row['code'])
+                || ! is_string($row['label_id'])
+                || ! is_string($row['label_jp'])
+                || ! is_int($row['level'])
+                || (array_key_exists('standard', $row) && $row['standard'] !== null && ! is_int($row['standard']))) {
                 throw new InvalidArgumentException('Aspect grid row is invalid.');
             }
 

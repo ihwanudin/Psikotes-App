@@ -16,10 +16,14 @@ use RuntimeException;
  */
 final class PdfReportRenderer
 {
-    /** @var callable(string): string */
+    // Return type kept as `mixed`, not `string`, on purpose: withPdfFactory()
+    // lets a caller (tests) inject a factory that does not honor its own
+    // declared type, so the is_string() guard below must stay meaningful
+    // instead of being narrowed away by an over-trusting PHPDoc.
+    /** @var callable(string): mixed */
     private $pdfFactory;
 
-    /** @param callable(string): string $pdfFactory */
+    /** @param callable(string): mixed $pdfFactory */
     private function __construct(
         callable $pdfFactory,
     ) {
@@ -33,7 +37,7 @@ final class PdfReportRenderer
         );
     }
 
-    /** @param callable(string): string $pdfFactory */
+    /** @param callable(string): mixed $pdfFactory */
     public static function withPdfFactory(callable $pdfFactory): self
     {
         return new self($pdfFactory);

@@ -60,6 +60,8 @@ final readonly class AspectLevelEntry
      * Grey Area zone against the field standard: OK when the level meets the
      * standard, GREY when exactly one level below, BELUM from two levels below.
      * Aspects without a standard (non-target interest areas) carry no zone.
+     *
+     * @return self::ZONE_OK|self::ZONE_GREY|self::ZONE_BELUM|null
      */
     public function zone(): ?string
     {

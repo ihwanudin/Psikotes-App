@@ -27,7 +27,7 @@ final class ReportDocumentPublisherTest extends TestCase
         $this->identity = ReportIdentity::fromArray(
             FixtureReportDataset::hppDraft()->toViewData()['identity'],
         );
-        $this->publisher = new ReportDocumentPublisher();
+        $this->publisher = new ReportDocumentPublisher;
     }
 
     public function test_unknown_document_type_is_rejected(): void
