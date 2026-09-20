@@ -129,15 +129,30 @@ jobs:
           set +e
           docker run --rm --network "$network" \
             --mount "type=bind,source=${GITHUB_WORKSPACE},target=/workspace,readonly" \
+            --mount "type=bind,source=${RUNNER_TEMP},target=/results" \
             --tmpfs /workspace/storage:rw \
             --tmpfs /workspace/bootstrap/cache:rw \
             --workdir /workspace \
             --env "ORG_TEST_RUN_ID=${run_id}" \
             --entrypoint php oncam-org-postgres-ci:php83 \
             -d memory_limit=2048M vendor/bin/phpunit \
-            --configuration phpunit.organization-postgres.xml --debug
+            --configuration phpunit.organization-postgres.xml --debug \
+            --log-junit /results/organization-postgres.xml
           test_exit_code=$?
           set -e
+
+          if [[ -f "${RUNNER_TEMP}/organization-postgres.xml" ]]; then
+            python3 - "${RUNNER_TEMP}/organization-postgres.xml" <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          root = ET.parse(sys.argv[1]).getroot()
+          print('PHPUnit JUnit totals: ' + ', '.join(
+              f'{key}={root.get(key, "unavailable")}'
+              for key in ('tests', 'assertions', 'errors', 'failures', 'skipped')
+          ))
+          PY
+          fi
 
           docker exec "$database_container" psql -h 127.0.0.1 \
             -U org_test_owner -d psikotes_organization_test -v ON_ERROR_STOP=1 \
