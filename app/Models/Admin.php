@@ -65,6 +65,16 @@ final class Admin extends Authenticatable implements FilamentUser, ProvidesRlsCo
                     && in_array($this->role, [AdminRole::BranchAdmin, AdminRole::Staff], true)),
             AdminAbility::ViewDass => $this->role === AdminRole::Psychologist,
             AdminAbility::ReviewReports => $this->role === AdminRole::Psychologist,
+            // Psychologist + SuperAdmin only (Lead's 2026-09-21 decision).
+            // BranchAdmin/Staff are deliberately excluded: granting them
+            // access later needs a branch-ownership restriction alongside
+            // it (they must only reach their own branch's cases), which
+            // is its own increment, not an addition to this match arm.
+            AdminAbility::GenerateReports => in_array(
+                $this->role,
+                [AdminRole::Psychologist, AdminRole::SuperAdmin],
+                true,
+            ),
         };
     }
 

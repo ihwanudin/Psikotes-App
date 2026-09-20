@@ -15,6 +15,8 @@ use App\Services\Identity\ManualReviewIdentityMatcher;
 use App\Services\Integrations\GenericAssessmentResultCallbackConfiguration;
 use App\Services\Notifications\N8nNotifier;
 use App\Services\Payments\XenditProvider;
+use App\Services\ReportRendering\ReportDocumentSupplementalData;
+use App\Services\ReportRendering\ReportSupplementalData;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
@@ -42,6 +44,7 @@ class AppServiceProvider extends ServiceProvider
             AssessmentSessionDefinitionAuthority::class,
             DatabaseAssessmentSessionDefinitionAuthority::class,
         );
+        $this->app->bind(ReportSupplementalData::class, ReportDocumentSupplementalData::class);
     }
 
     /**

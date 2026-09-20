@@ -8,6 +8,7 @@ use App\Enums\AdminAbility;
 use App\Models\Admin;
 use App\Services\ReportRendering\BladeReportRenderer;
 use App\Services\ReportRendering\PdfReportRenderer;
+use App\Services\ReportRendering\ReportDocumentIssuer;
 use App\Services\ReportRendering\ReportDocumentPublisher;
 use App\Services\ReportRendering\SignedHppDataset;
 use App\Services\ReportRendering\SignedReportDataset;
@@ -21,14 +22,26 @@ use RuntimeException;
 use UnitEnum;
 
 /**
- * Psychologist-only page that turns the latest SIGNED report snapshot into
- * an HPP PDF on the private `reports` disk and hands back a short-lived
- * link. Everything runs in-process (no self-issued HTTP). When the signed
- * data is incomplete the page lists the gap codes and offers no button:
- * there is no path from an unsigned or partial dataset to a PDF.
+ * Turns the latest SIGNED report snapshot into an HPP PDF on the private
+ * `reports` disk and hands back a short-lived link. Reachable by the
+ * signing psychologist or a SuperAdmin (AdminAbility::GenerateReports,
+ * Lead's 2026-09-21 decision) — but only to download what a psychologist
+ * already signed: this page has no path to create a signature, it only
+ * ever reads an existing SIGNED snapshot. Everything runs in-process (no
+ * self-issued HTTP). When the signed data is incomplete the page lists
+ * the gap codes and offers no button: there is no path from an unsigned
+ * or partial dataset to a PDF.
+ *
+ * document_type is hardcoded to DOCUMENT_TYPE = 'hpp' throughout this
+ * page. GenerateReports must never gate a future 'internal' document type
+ * page: Lembar Kerja Internal stays psychologist + participant only per
+ * CLAUDE.md, so that page (when it exists) needs its own, stricter
+ * ability check — never this one.
  */
 final class ReportGeneration extends Page
 {
+    private const DOCUMENT_TYPE = 'hpp';
+
     /** Human-readable text for each fail-closed gap code. */
     private const GAP_LABELS = [
         SignedReportDataset::SNAPSHOT_NOT_FOUND => 'Belum ada snapshot tanda tangan untuk kasus ini.',
@@ -43,8 +56,10 @@ final class ReportGeneration extends Page
         SignedReportDataset::DASS_RESULT_NOT_FOUND => 'Hasil skrining DASS sebelum tanda tangan tidak ditemukan; laporan mencetak "tidak tersedia".',
         SignedReportDataset::DASS_CATEGORY_UNRECOGNIZED => 'Kategori umum DASS tersimpan tidak dikenal; laporan mencetak "tidak tersedia".',
         SignedReportDataset::PSYCHOLOGIST_NOT_FOUND => 'Akun psikolog penanda tangan tidak ditemukan.',
-        SignedReportDataset::REPORT_NUMBER_UNAVAILABLE => 'Nomor laporan belum memiliki sumber data.',
+        SignedReportDataset::REPORT_NUMBER_NOT_YET_ISSUED => 'Nomor laporan belum diterbitkan; akan diterbitkan saat PDF dibuat.',
         SignedReportDataset::PSYCHOLOGIST_SIPP_UNAVAILABLE => 'Nomor SIPP psikolog belum memiliki sumber data.',
+        SignedReportDataset::PSYCHOLOGIST_SILP_MISSING => 'Nomor SILP psikolog penandatangan belum diisi; lengkapi profil sebelum menerbitkan laporan.',
+        SignedReportDataset::PSYCHOLOGIST_STR_MISSING => 'Nomor STR psikolog penandatangan belum diisi; lengkapi profil sebelum menerbitkan laporan.',
         SignedReportDataset::RECOMMENDATION_RATIONALE_UNAVAILABLE => 'Alasan rekomendasi belum memiliki sumber data.',
         SignedReportDataset::ASPECT_LABELS_UNAVAILABLE => 'Label aspek dwibahasa (ID/JP) belum memiliki sumber data.',
         SignedReportDataset::DASS_TEXT_UNAVAILABLE => 'Teks narasi DASS belum memiliki sumber data; laporan mencetak "tidak tersedia".',
@@ -106,7 +121,7 @@ final class ReportGeneration extends Page
         $admin = Filament::auth()->user();
 
         return $admin instanceof Admin
-            && $admin->canPerform(AdminAbility::ReviewReports);
+            && $admin->canPerform(AdminAbility::GenerateReports);
     }
 
     public function mount(string $case, SignedReportDataset $dataset): void
@@ -123,7 +138,7 @@ final class ReportGeneration extends Page
         abort_unless(self::canAccess(), 404);
     }
 
-    public function generate(SignedReportDataset $dataset, ReportDocumentPublisher $publisher): void
+    public function generate(SignedReportDataset $dataset, ReportDocumentIssuer $issuer): void
     {
         abort_unless(self::canAccess(), 404);
 
@@ -135,17 +150,48 @@ final class ReportGeneration extends Page
             return;
         }
 
+        // isReady() guarantees issuance is populated (only blocked() leaves
+        // it null); asserted defensively rather than trusted blindly.
+        $issuance = $result->issuance ?? throw new RuntimeException('Report issuance data is unexpectedly missing.');
+        $snapshotId = $this->snapshotId ?? throw new RuntimeException('Snapshot id is unexpectedly missing.');
+        $expectedVersion = $issuance['snapshot_version'];
+
         try {
-            $html = BladeReportRenderer::make()->renderHpp($result->draft());
-            $pdf = PdfReportRenderer::make()->render($html);
-            $document = $publisher->publish('hpp', $result->identity(), $pdf);
+            $issued = $issuer->issue(
+                $issuance['case_id'],
+                $snapshotId,
+                self::DOCUMENT_TYPE,
+                $expectedVersion,
+                $issuance['psychologist_admin_id'],
+                $issuance['psychologist_name'],
+                $issuance['psychologist_silp'],
+                $issuance['psychologist_str'],
+                $issuance['facility_name'],
+                function (string $reportNumber) use ($dataset, $expectedVersion): string {
+                    // Re-read inside the render step, now with a resolved
+                    // number. Guard against the psychologist re-signing in
+                    // another tab between the click and this render: if the
+                    // snapshot version moved, this would render content
+                    // that never went through the check above.
+                    $rendered = $dataset->hpp($this->casePublicId, reportNumberOverride: $reportNumber);
+                    if (! $rendered->isReady()
+                        || $rendered->issuance === null
+                        || $rendered->issuance['snapshot_version'] !== $expectedVersion) {
+                        throw new RuntimeException('Data laporan berubah sejak pratinjau; ulangi pembuatan PDF.');
+                    }
+
+                    $html = BladeReportRenderer::make()->renderHpp($rendered->draft());
+
+                    return PdfReportRenderer::make()->render($html);
+                },
+            );
         } catch (RuntimeException) {
             Notification::make()->title('PDF gagal dibuat')->body('Silakan coba lagi.')->danger()->send();
 
             return;
         }
 
-        $this->published = ['url' => $document['url'], 'expires_at' => $document['expires_at']];
+        $this->published = ['url' => $issued['url'], 'expires_at' => $issued['expires_at']];
         Notification::make()->title('PDF HPP siap diunduh')->success()->send();
     }
 

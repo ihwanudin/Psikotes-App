@@ -84,13 +84,15 @@ trait SeedsSignedReportCase
         ]);
     }
 
-    private function reportPsychologist(): Admin
+    private function reportPsychologist(?string $silpNumber = 'SILP-SYNTH-0001', ?string $strNumber = 'STR-SYNTH-0001'): Admin
     {
         return Admin::query()->create([
             'name' => 'Psikolog Sintetis',
             'email' => (string) Str::uuid().'@example.test',
             'password' => bcrypt('password'),
             'role' => AdminRole::Psychologist->value,
+            'silp_number' => $silpNumber,
+            'str_number' => $strNumber,
         ]);
     }
 
