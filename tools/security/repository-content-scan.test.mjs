@@ -848,6 +848,68 @@ test('repository-owned synthetic phone fixtures are exact', async () => {
     );
 });
 
+test('synthetic phone allowlist keeps the original 18 canonical numbers', async () => {
+    const source = await readFile(
+        new URL('./repository-content-scan.mjs', import.meta.url),
+        'utf8',
+    );
+    const allowlist = source.match(/const SYNTHETIC_PHONES = new Set\(\[([\s\S]*?)\]\);/);
+    assert.ok(allowlist);
+    const numbers = [...allowlist[1].matchAll(/'(\d+)'/g)].map((match) => match[1]);
+
+    assert.deepEqual(numbers.sort(), [
+        '620000000000',
+        '620000000001',
+        '620000000999',
+        '628000000000',
+        '6280000000000',
+        '6280000000001',
+        '6280000000002',
+        '6280000000003',
+        '6280000000004',
+        '6280000000005',
+        '62800123456',
+        '628111111110',
+        '628111111111',
+        '6281200000000',
+        '6281234567800',
+        '628123456789',
+        '6281234567890',
+        '629999999999',
+    ]);
+});
+
+test('synthetic phone is accepted in local and international notation only', async () => {
+    const synthetic = ['0812', '00000000'].join('');
+    const real = ['0812', '34567891'].join('');
+
+    await withRepository(
+        {
+            'fixtures.txt': [synthetic, `62${synthetic.slice(1)}`].join('\n'),
+        },
+        async (root) =>
+            assert.deepEqual((await scan(root, 'pii')).findings, []),
+    );
+
+    await withRepository(
+        {
+            'records.txt': [real, `62${real.slice(1)}`].join('\n'),
+        },
+        async (root) => {
+            await assert.rejects(scan(root, 'pii'), (error) => {
+                assert.deepEqual(
+                    error.findings.map(({ rule, line }) => [rule, line]),
+                    [
+                        ['indonesian_phone', 1],
+                        ['indonesian_phone', 2],
+                    ],
+                );
+                return true;
+            });
+        },
+    );
+});
+
 test('only exact repository-owned incomplete phone literals pass PII profile', async () => {
     const repeatedPrefix = ['628', '11111111'].join('');
     const paddedPrefix = ['+628', '1234567'].join('');
