@@ -58,6 +58,72 @@ final class ReportAspectGridTest extends TestCase
         ReportAspectGrid::fromArray($rows);
     }
 
+    /**
+     * fromArray() takes array<mixed> and validates each field's type itself
+     * rather than trusting a PHPDoc shape, precisely so a wrongly-typed
+     * value produces this exception instead of a TypeError leaking out of
+     * AspectLevelEntry::create()'s native-typed parameters.
+     */
+    public function test_non_string_code_is_rejected(): void
+    {
+        $rows = self::rows();
+        $rows[0]['code'] = 1;
+
+        $this->expectException(InvalidArgumentException::class);
+
+        ReportAspectGrid::fromArray($rows);
+    }
+
+    public function test_non_string_label_id_is_rejected(): void
+    {
+        $rows = self::rows();
+        $rows[0]['label_id'] = 1;
+
+        $this->expectException(InvalidArgumentException::class);
+
+        ReportAspectGrid::fromArray($rows);
+    }
+
+    public function test_non_string_label_jp_is_rejected(): void
+    {
+        $rows = self::rows();
+        $rows[0]['label_jp'] = 1;
+
+        $this->expectException(InvalidArgumentException::class);
+
+        ReportAspectGrid::fromArray($rows);
+    }
+
+    public function test_non_int_level_is_rejected(): void
+    {
+        $rows = self::rows();
+        $rows[0]['level'] = '4';
+
+        $this->expectException(InvalidArgumentException::class);
+
+        ReportAspectGrid::fromArray($rows);
+    }
+
+    public function test_non_int_non_null_standard_is_rejected(): void
+    {
+        $rows = self::rows();
+        $rows[0]['standard'] = '3';
+
+        $this->expectException(InvalidArgumentException::class);
+
+        ReportAspectGrid::fromArray($rows);
+    }
+
+    public function test_row_that_is_not_an_array_is_rejected(): void
+    {
+        $rows = self::rows();
+        $rows[0] = 'not-a-row';
+
+        $this->expectException(InvalidArgumentException::class);
+
+        ReportAspectGrid::fromArray($rows);
+    }
+
     public function test_zone_counts_ignore_standardless_aspects(): void
     {
         $rows = self::rows();
