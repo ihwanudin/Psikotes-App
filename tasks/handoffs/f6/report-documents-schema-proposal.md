@@ -57,6 +57,10 @@ Satu baris = satu PDF yang benar-benar diterbitkan.
 - **Re-sign / REVISED:** `report_number` **tetap**, `report_version` naik (disalin dari versi snapshot tanda tangan yang baru). Disetujui Lead secara prinsip; alasannya nomor laporan adalah identitas dokumen bagi penerima di Jepang, sehingga nomor baru pada revisi akan terbaca sebagai dua laporan berbeda untuk orang yang sama.
 - Lembar Kerja Internal memakai `report_number` yang sama dengan HPP-nya, dibedakan `document_type`.
 
+**Catatan kinerja yang diketahui, bukan kelalaian (Lead, 2026-09-20).** `ReportDocumentIssuer::issue()` menjalankan render PDF **di dalam** transaksi yang sama dengan penguncian baris `assessment_cases` (untuk penerbitan nomor) dan (via `ReportNumberIssuer`) penguncian baris `report_number_sequences`. Konsekuensinya: kunci-kunci itu tertahan selama render berlangsung, jadi dua psikolog yang menekan "Buat PDF" untuk kasus yang berbeda pada periode yang sama akan antre satu per satu pada langkah penerbitan nomor, bukan berjalan paralel. Ini pilihan sengaja demi atomicity — dibuktikan lewat test `test_a_failed_render_does_not_advance_the_report_number_sequence`: gagal render tidak boleh membakar nomor, dan cara paling sederhana menjaminnya adalah satu transaksi. Untuk skala sekarang (generate PDF adalah tindakan manual sesekali per psikolog, bukan jalur bervolume tinggi) ini dianggap dapat diterima dan TIDAK diminta diubah.
+
+Opsi bila nanti terbukti jadi masalah kinerja: terbitkan nomor SETELAH render sukses, dalam transaksi pendek terpisah (kunci hanya dipegang sesaat, render berjalan di luar kunci). Konsekuensinya: perlu penanganan baru untuk kasus render sukses tapi transaksi penerbitan nomor gagal (PDF sudah dirender tapi belum tercatat) — sesuatu yang saat ini otomatis aman karena satu transaksi. Belum diputuskan, dan tidak dikerjakan di increment ini.
+
 ## 4. Append-only murni (revisi setelah review Lead)
 
 **Keputusan Lead 2026-09-20: append-only murni, tanpa pengecualian kolom.** UPDATE dan DELETE ditolak trigger, persis pola `report_signing_snapshots`.

@@ -35,6 +35,12 @@ trait SeedsSignedReportCase
             'code' => 'BR-RG-'.$suffix,
             'name' => 'Cabang Sintetis Laporan',
             'ref_code' => 'REF-RG-'.$suffix,
+            // organization_code/display_name are NOT NULL on PostgreSQL
+            // (2026_08_29_000200 addPostgresControls); SQLite doesn't
+            // enforce this, which is why the gap wasn't caught until this
+            // trait ran against the real Postgres harness.
+            'organization_code' => 'BR-RG-'.$suffix,
+            'display_name' => 'Cabang Sintetis Laporan',
         ]);
         $package = TestPackage::query()->create([
             'code' => 'PKG-RG-'.$suffix,
