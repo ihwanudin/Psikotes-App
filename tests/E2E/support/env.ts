@@ -1,16 +1,14 @@
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const rootDir = path.resolve(new URL('../../..', import.meta.url).pathname);
-const normalizedRoot = process.platform === 'win32' && rootDir.startsWith('/')
-  ? rootDir.slice(1)
-  : rootDir;
+const rootDir = path.resolve(fileURLToPath(new URL('../../..', import.meta.url)));
 
 const port = Number(process.env.E2E_PORT ?? '8014');
 const host = process.env.E2E_HOST ?? '127.0.0.1';
-const databasePath = path.join(normalizedRoot, 'storage', 'e2e', 'e2e.sqlite');
+const databasePath = path.join(rootDir, 'storage', 'e2e', 'e2e.sqlite');
 
 export const e2eEnv = {
-  rootDir: normalizedRoot,
+  rootDir,
   host,
   port,
   baseURL: `http://${host}:${port}`,
