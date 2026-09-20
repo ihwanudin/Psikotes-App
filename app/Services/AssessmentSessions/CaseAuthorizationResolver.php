@@ -326,9 +326,14 @@ final readonly class CaseAuthorizationResolver
             $this->reject();
         }
 
+        // See AllocateAndStartAssessmentSession::replay() for why this must
+        // not use lockForUpdate(): psikotes_runtime has no UPDATE grant on
+        // this append-only table, real PostgreSQL rejects FOR UPDATE
+        // outright, and nothing ever mutates these rows anyway (S4,
+        // 2026-09-21).
         $grants = DB::table('test_session_grants')
             ->where('test_session_id', (int) ($session['id'] ?? 0))
-            ->lockForUpdate()->limit(2)->get();
+            ->limit(2)->get();
         if ($grants->count() !== 1) {
             $this->reject();
         }

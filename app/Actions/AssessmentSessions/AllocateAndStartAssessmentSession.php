@@ -257,7 +257,15 @@ final class AllocateAndStartAssessmentSession
             $query->where('assessment_case_id', $authorization->caseId)
                 ->where('entitlement_id', $authorization->grantId);
         }
-        $grants = $query->orderBy('test_session_id')->lockForUpdate()->limit(2)->get();
+        // test_session_grants is an append-only ledger: psikotes_runtime
+        // holds only SELECT+INSERT on it (see TestSessionGrantSecurityTest),
+        // and PostgreSQL requires UPDATE privilege to use FOR UPDATE at all
+        // -- a real-PostgreSQL-only failure SQLite never caught (S4,
+        // 2026-09-21). No code anywhere ever mutates this table's rows, so a
+        // row-level lock here guarded nothing; the serialization that
+        // matters comes from the participant/case/history locks already
+        // held upstream by the time this runs.
+        $grants = $query->orderBy('test_session_id')->limit(2)->get();
         if ($grants->count() > 1) {
             throw new InvalidAssessmentSessionState('Assessment session grant history is ambiguous.');
         }
