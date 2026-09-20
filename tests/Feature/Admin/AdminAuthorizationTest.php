@@ -77,7 +77,7 @@ final class AdminAuthorizationTest extends TestCase
         $this->assertFalse($branchAdmin->canPerform(AdminAbility::ViewDass));
         $this->assertFalse($staff->canPerform(AdminAbility::ViewDass));
 
-        // ReviewReports: only Psychologist (SuperAdmin widened via lane deepseek/f5-resign-and-rls)
+        // ReviewReports: only Psychologist
         $this->assertTrue($psychologist->canPerform(AdminAbility::ReviewReports));
         $this->assertFalse($superAdmin->canPerform(AdminAbility::ReviewReports));
         $this->assertFalse($branchAdmin->canPerform(AdminAbility::ReviewReports));

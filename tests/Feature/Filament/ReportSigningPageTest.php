@@ -299,17 +299,15 @@ final class ReportSigningPageTest extends TestCase
             ->assertNotFound();
     }
 
-    public function test_super_admin_can_access_page(): void
+    public function test_super_admin_cannot_access_page(): void
     {
         $case = $this->createCase();
         $this->seedBaseline($case);
 
         $this->actingAs($this->superAdmin(), 'admin');
-        self::assertTrue(ReportSigning::canAccess());
-
-        $component = Livewire::test(ReportSigning::class, ['case' => $case->public_id]);
-        $component->assertSuccessful();
-        $component->assertSee('Peserta ReportSigning Page');
+        self::assertFalse(ReportSigning::canAccess());
+        Livewire::test(ReportSigning::class, ['case' => $case->public_id])
+            ->assertNotFound();
     }
 
     public function test_guest_cannot_open_page_directly(): void
@@ -337,10 +335,10 @@ final class ReportSigningPageTest extends TestCase
         self::assertTrue(ReportSigningQueue::shouldRegisterNavigation());
     }
 
-    public function test_queue_page_registers_navigation_for_super_admin(): void
+    public function test_queue_page_does_not_register_navigation_for_super_admin(): void
     {
         $this->actingAs($this->superAdmin(), 'admin');
-        self::assertTrue(ReportSigningQueue::shouldRegisterNavigation());
+        self::assertFalse(ReportSigningQueue::shouldRegisterNavigation());
     }
 
     public function test_per_case_page_never_registers_navigation(): void
@@ -819,14 +817,14 @@ final class ReportSigningPageTest extends TestCase
             ->assertSuccessful();
     }
 
-    public function test_queue_page_super_admin_returns_200(): void
+    public function test_queue_page_super_admin_returns_404(): void
     {
         $case = $this->createCase();
         $this->seedBaseline($case);
         $this->actingAs($this->superAdmin(), 'admin');
 
         $this->get(ReportSigningQueue::getUrl())
-            ->assertSuccessful();
+            ->assertNotFound();
     }
 
     public function test_queue_page_branch_admin_returns_404(): void
@@ -870,14 +868,14 @@ final class ReportSigningPageTest extends TestCase
             ->assertSuccessful();
     }
 
-    public function test_per_case_page_super_admin_returns_200(): void
+    public function test_per_case_page_super_admin_returns_404(): void
     {
         $case = $this->createCase();
         $this->seedBaseline($case);
         $this->actingAs($this->superAdmin(), 'admin');
 
         $this->get(ReportSigning::getUrl(['case' => $case->public_id]))
-            ->assertSuccessful();
+            ->assertNotFound();
     }
 
     public function test_per_case_page_branch_admin_returns_404(): void

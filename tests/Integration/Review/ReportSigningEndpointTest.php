@@ -361,7 +361,7 @@ final class ReportSigningEndpointTest extends TestCase
         $response->assertJsonPath('error.code', 'FORBIDDEN');
     }
 
-    public function test_super_admin_can_sign_successfully(): void
+    public function test_super_admin_cannot_sign_returns_403(): void
     {
         $branch = Branch::query()->create([
             'code' => 'BR-SE-STAFF',
@@ -375,9 +375,8 @@ final class ReportSigningEndpointTest extends TestCase
         $response = $this->actingAs($admin, 'admin')
             ->postJson("/admin/assessment-cases/{$case->public_id}/signing", $this->validPayload($baseline));
 
-        $response->assertStatus(201);
-        $response->assertJsonPath('data.state', 'SIGNED');
-        $response->assertJsonPath('data.version', 1);
+        $response->assertStatus(403);
+        $response->assertJsonPath('error.code', 'FORBIDDEN');
     }
 
     public function test_sign_without_auth_returns_401(): void
