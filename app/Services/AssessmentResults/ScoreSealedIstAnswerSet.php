@@ -49,7 +49,7 @@ final readonly class ScoreSealedIstAnswerSet
 
         $row = DB::table('instrument_versions')
             ->where('id', $instrumentVersionId)
-            ->select(['id', 'code', 'version', 'source_file', 'checksum', 'payload'])
+            ->select(['id', 'code', 'version', 'source_file', 'checksum', 'source_text'])
             ->first();
         if ($row === null) {
             throw self::invalid();
@@ -115,7 +115,13 @@ final readonly class ScoreSealedIstAnswerSet
     private function scoringData(object $row): array
     {
         $version = $row->version ?? null;
-        $payload = $row->payload ?? null;
+        // `source_text` is the byte-identical raw file content the checksum was
+        // computed from. `payload` (jsonb) is intentionally never read here: it is
+        // re-serialized by PostgreSQL on write and can never be hashed back to
+        // `checksum`, and historical rows seeded before this column existed leave
+        // it NULL rather than fabricating a value nobody can vouch for — both fail
+        // closed the same way, deliberately, with no fallback to `payload`.
+        $sourceText = $row->source_text ?? null;
 
         if ((int) ($row->id ?? 0) < 1
             || ($row->code ?? null) !== 'ist'
@@ -123,15 +129,16 @@ final readonly class ScoreSealedIstAnswerSet
             || ! self::canonicalIdentity($row->source_file ?? null)
             || ! is_string($row->checksum ?? null)
             || preg_match('/\A[a-f0-9]{64}\z/', $row->checksum) !== 1
-            || ! is_string($payload)) {
+            || ! is_string($sourceText)
+            || $sourceText === '') {
             throw self::invalid();
         }
-        if (! hash_equals($row->checksum, hash('sha256', $payload))) {
+        if (! hash_equals($row->checksum, hash('sha256', $sourceText))) {
             throw self::invalid();
         }
 
         try {
-            $data = json_decode($payload, true, 512, JSON_THROW_ON_ERROR | JSON_BIGINT_AS_STRING);
+            $data = json_decode($sourceText, true, 512, JSON_THROW_ON_ERROR | JSON_BIGINT_AS_STRING);
         } catch (JsonException) {
             throw self::invalid();
         }
