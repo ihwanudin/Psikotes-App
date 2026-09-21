@@ -124,6 +124,38 @@ norma baru — bukan dihitung ulang sendiri oleh sistem.
 Pemilik proyek menyatakan psikolognya sudah tersertifikasi dan butir ini
 tidak perlu dibahas lagi. Dicatat sekali di sini; jangan diangkat ulang.
 
+## 9. Admin cabang dan pembuatan laporan — SELESAI
+
+Keputusan: **`branch_admin` TIDAK boleh membuat/menghasilkan laporan**
+(`GenerateReports`), termasuk untuk peserta di cabangnya sendiri.
+
+Pembagian yang berlaku sekarang:
+
+| Aksi | Siapa |
+|---|---|
+| Menandatangani laporan (`ReviewReports`) | Hanya psikolog (butir 4, keputusan 2026-09-20) |
+| Membuat/menerbitkan laporan yang sudah ditandatangani (`GenerateReports`) | Psikolog atau super_admin |
+| `branch_admin` | Tidak keduanya |
+
+Jangan menambahkan `GenerateReports` ke `branch_admin`, baik dengan
+pembatasan cabang maupun tanpa, kecuali pemilik proyek memutuskan ulang.
+
+## 10. DASS-21 di lobi peserta — SELESAI
+
+Keputusan: **DASS-21 tetap ditampilkan di daftar "Tes yang tersedia" pada
+lobi peserta (`/participant/lobby`), berderet bersama IST, PAPI, RMIB, dan
+Kraepelin**, seperti perilaku saat ini.
+
+Yang TIDAK berubah oleh keputusan ini:
+- "Alur terisolasi" DASS-21 di ADR-0030 tetap berlaku untuk lapisan
+  sesi/command: DASS-21 tidak masuk command start generik dan tetap memakai
+  penyimpanan terpisah.
+- Pembatasan akses data DASS (`CLAUDE.md`): hasil dan skor DASS hanya boleh
+  dilihat psikolog dan peserta, tidak pernah admin/LPK/kumiai. Menampilkan
+  nama tes dan status aksesnya kepada peserta itu sendiri tidak melanggar
+  pembatasan ini.
+- DASS-21 tetap tidak pernah masuk ekspresi zona/label kelayakan (G4).
+
 ## Butir yang masih terbuka setelah dokumen ini
 
 - Konfirmasi hukum untuk retensi foto identitas (butir 5d). Butir 3
