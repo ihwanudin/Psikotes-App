@@ -1,6 +1,13 @@
 // Playwright CLI run-code --filename entrypoint; uses an isolated browser profile.
 // eslint-disable-next-line @typescript-eslint/no-unused-expressions -- CLI evaluates this function expression as its entrypoint.
 async (page) => {
+    // Playwright CLI's run-code sandbox does not expose `process`, so this
+    // can't read PARTICIPANT_LOBBY_FIXTURE_PORT (see vite.config.ts) the
+    // way run-checkpoint.mjs's suites do for IntegratedCheckout — that
+    // orchestrator is a real Node process that resolves the port itself
+    // and writes it into the generated runner file as a literal before
+    // handing it to run-code. Running the dev server on a non-default
+    // port via that env var means editing this literal to match.
     const origin = 'http://127.0.0.1:8011'
     const token = 'synthetic-lobby-fixture-not-a-credential'
     const results = []
@@ -101,6 +108,27 @@ async (page) => {
                         : [
                               { test_type: 'ist', status: 'locked' },
                               { test_type: 'papi', status: 'ready' },
+                              { test_type: 'rmib', status: 'in_progress' },
+                              { test_type: 'kraepelin', status: 'done' },
+                              // DASS-21 stays in this same list, styled the same
+                              // as every other test (owner decision, decision
+                              // doc item 10) — a known status here proves it
+                              // gets a real Indonesian label, not special-cased.
+                              { test_type: 'dass21', status: 'ready' },
+                              // Not one of the four documented statuses: proves the
+                              // fallback path renders safely instead of the raw word
+                              // or crashing (Entitlement.status describes the
+                              // expected shape, not a runtime guarantee).
+                              { test_type: 'future_test', status: 'archived' },
+                              // Matches an inherited Object.prototype property name.
+                              // A plain-object lookup without an own-property guard
+                              // would return that inherited value (e.g. the
+                              // constructor function) instead of falling back,
+                              // crashing the render.
+                              {
+                                  test_type: 'prototype_pollution_check',
+                                  status: 'constructor',
+                              },
                           ],
             },
         })
@@ -137,22 +165,92 @@ async (page) => {
             number === `Nomor tes ${expectedNumber}`,
             `${name}: number was ${JSON.stringify(number)}`,
         )
+        const listText = await page
+            .getByRole('list', { name: 'Daftar tes' })
+            .textContent()
+        // Every status is translated to Indonesian; the four documented
+        // statuses each get a distinct label, and the not-yet-workable ones
+        // (locked, in_progress) carry a one-sentence factual explanation —
+        // never a reason, since /api/me/entitlements only returns status.
         assert(
-            (
-                await page
-                    .getByRole('list', { name: 'Daftar tes' })
-                    .textContent()
-            ).includes('locked'),
-            `${name}: locked entitlement changed`,
+            listText.includes('Siap'),
+            `${name}: ready label changed`,
         )
         assert(
-            (
-                await page
-                    .getByRole('list', { name: 'Daftar tes' })
-                    .textContent()
-            ).includes('Siap'),
-            `${name}: ready entitlement changed`,
+            listText.includes('Belum dibuka'),
+            `${name}: locked label changed`,
         )
+        assert(
+            listText.includes('Akses untuk tes ini belum dibuka.'),
+            `${name}: locked description changed`,
+        )
+        assert(
+            listText.includes('Sedang berlangsung'),
+            `${name}: in_progress label changed`,
+        )
+        assert(
+            listText.includes('Tes ini sedang berlangsung.'),
+            `${name}: in_progress description changed`,
+        )
+        assert(
+            listText.includes('Selesai'),
+            `${name}: done label changed`,
+        )
+        // DASS-21 stays in this same list (decision doc item 10) and must
+        // get a real Indonesian label like every other test, not the
+        // unknown-status fallback.
+        const dassRowText = await page
+            .getByRole('listitem')
+            .filter({ hasText: 'DASS-21' })
+            .textContent()
+        assert(
+            dassRowText.includes('Siap'),
+            `${name}: DASS-21 did not get the ready label`,
+        )
+        assert(
+            !dassRowText.includes('Status tidak dikenali'),
+            `${name}: DASS-21 fell back to the unknown-status label`,
+        )
+        // Unrecognized status: safe neutral fallback, not a crash.
+        assert(
+            listText.includes('Status tidak dikenali'),
+            `${name}: unknown status fallback label changed`,
+        )
+        assert(
+            listText.includes('Status tes ini tidak dikenali oleh sistem.'),
+            `${name}: unknown status fallback description changed`,
+        )
+        // A status matching an inherited Object.prototype property name
+        // (e.g. "constructor") must still fall back safely, not return the
+        // inherited value and crash the render.
+        const prototypePollutionRowText = await page
+            .getByRole('listitem')
+            .filter({ hasText: 'PROTOTYPE_POLLUTION_CHECK' })
+            .textContent()
+        assert(
+            prototypePollutionRowText.includes('Status tidak dikenali'),
+            `${name}: status "constructor" did not fall back to the unknown-status label`,
+        )
+        assert(
+            !prototypePollutionRowText.includes('function'),
+            `${name}: status "constructor" leaked an inherited Object.prototype value`,
+        )
+
+        // The whole point of this fix: no raw English/DB word ever reaches
+        // the participant.
+        for (const rawWord of [
+            'locked',
+            'in_progress',
+            'done',
+            'archived',
+            'constructor',
+        ]) {
+            assert(
+                !listText.includes(rawWord),
+                `${name}: raw status word "${rawWord}" leaked to the participant`,
+            )
+        }
+
         assert(
             (await page.getByRole('button').count()) === 0,
             `${name}: unexpected access action`,

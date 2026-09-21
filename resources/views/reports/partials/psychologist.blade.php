@@ -7,8 +7,20 @@
                 <td>{{ $psychologist['name'] }}</td>
             </tr>
             <tr>
-                <th>No. SIPP</th>
-                <td>{{ $psychologist['sipp_number'] }}</td>
+                <th>No. SILP</th>
+                <td>{{ $psychologist['silp_number'] }}</td>
+            </tr>
+            <tr>
+                <th>No. STR</th>
+                <td>{{ $psychologist['str_number'] }}</td>
+            </tr>
+            <tr>
+                <th>Fasilitas Layanan Psikologi</th>
+                <td>{{ $psychologist['facility_name'] }}</td>
+            </tr>
+            <tr>
+                <th>Alamat Fasilitas</th>
+                <td>{{ $psychologist['facility_address'] }}</td>
             </tr>
             @if ($psychologist['signature_note'] !== null)
                 <tr>

@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace App\Actions\AssessmentSessions;
 
+use App\Contracts\AssessmentItemContentAuthority;
 use App\Contracts\AssessmentSessionDefinitionAuthority;
 use App\Domain\AssessmentSessions\AssessmentAttempt;
 use App\Domain\AssessmentSessions\AssessmentAttemptAllocation;
 use App\Domain\AssessmentSessions\AssessmentAttemptAllocationPolicy;
 use App\Domain\AssessmentSessions\AssessmentSessionDeadlinePolicy;
+use App\Domain\AssessmentSessions\AssessmentSessionErrorCode;
+use App\Domain\AssessmentSessions\AssessmentSessionStartFailureCode;
 use App\Domain\AssessmentSessions\AssessmentSessionStateMachine;
 use App\Domain\AssessmentSessions\AssessmentSessionStatus;
 use App\Domain\AssessmentSessions\CaseAuthorization;
@@ -50,6 +53,7 @@ final class AllocateAndStartAssessmentSession
         private readonly RlsContextRunner $contexts,
         private readonly CaseAuthorizationResolver $authorizations,
         private readonly AssessmentSessionDefinitionAuthority $definitions,
+        private readonly AssessmentItemContentAuthority $itemContent,
         private readonly AssessmentAttemptAllocationPolicy $allocationPolicy,
         private readonly AssessmentSessionStateMachine $stateMachine,
         private readonly AssessmentSessionDeadlinePolicy $deadlinePolicy,
@@ -150,8 +154,29 @@ final class AllocateAndStartAssessmentSession
         if (! $decision->accepted || ! $decision->shouldPersist || $decision->allocation === null
             || $decision->allocation->attempt->attemptNumber !== 1) {
             $errorCode = $decision->errorCode;
+            // No retest grant is ever passed from this call site (retest authority
+            // is out of scope, ADR-0031), so decide() can only reject here with
+            // AttemptAlreadyExists or RetestNotAuthorized -- its other cases belong
+            // to the deadline/autosave policies for different endpoints and can
+            // never reach this call. RetestNotAuthorized maps to 403 verbatim per
+            // ADR-0030 ("... tidak memiliki authority retest"), not 409. A null
+            // errorCode here would mean the decision was accepted with the wrong
+            // attempt number, which fresh (empty) history can never produce --
+            // an invariant, not a participant outcome.
             throw new InvalidAssessmentSessionState(
                 $errorCode === null ? 'FIRST_ATTEMPT_ALLOCATION_REJECTED' : $errorCode->value,
+                match ($errorCode) {
+                    AssessmentSessionErrorCode::AttemptAlreadyExists => AssessmentSessionStartFailureCode::Conflict,
+                    AssessmentSessionErrorCode::RetestNotAuthorized => AssessmentSessionStartFailureCode::NotAvailable,
+                    AssessmentSessionErrorCode::SessionNotStarted,
+                    AssessmentSessionErrorCode::SessionClosed,
+                    AssessmentSessionErrorCode::DeadlineExceeded,
+                    AssessmentSessionErrorCode::AutosaveStaleRevision,
+                    AssessmentSessionErrorCode::AutosaveRevisionGap,
+                    AssessmentSessionErrorCode::MutationPayloadMismatch,
+                    AssessmentSessionErrorCode::InvalidAnswerBatch,
+                    null => null,
+                },
             );
         }
 
@@ -159,6 +184,16 @@ final class AllocateAndStartAssessmentSession
         if ($definition->instrument !== $instrument) {
             throw new InvalidAssessmentSessionState('Definition authority returned the wrong instrument.');
         }
+        // A session must never start for an instrument whose item content
+        // cannot actually be delivered -- otherwise the participant's timer
+        // runs against a question screen with nothing to show (Lead
+        // sign-off, 2026-09-21). Called before any row is written, same as
+        // the definition-authority call above it: a thrown
+        // AssessmentItemContentUnavailable rolls back this whole
+        // transaction via the same mechanism, no separate cleanup needed.
+        // The returned content itself is not needed here -- only that it
+        // could be produced; GET /sessions/{id}/items reads it for real.
+        $this->itemContent->contentFor($instrument, $definition);
         $serverTime = $this->serverTime();
         $start = $this->stateMachine->start(
             AssessmentSessionStatus::Created,
@@ -257,7 +292,15 @@ final class AllocateAndStartAssessmentSession
             $query->where('assessment_case_id', $authorization->caseId)
                 ->where('entitlement_id', $authorization->grantId);
         }
-        $grants = $query->orderBy('test_session_id')->lockForUpdate()->limit(2)->get();
+        // test_session_grants is an append-only ledger: psikotes_runtime
+        // holds only SELECT+INSERT on it (see TestSessionGrantSecurityTest),
+        // and PostgreSQL requires UPDATE privilege to use FOR UPDATE at all
+        // -- a real-PostgreSQL-only failure SQLite never caught (S4,
+        // 2026-09-21). No code anywhere ever mutates this table's rows, so a
+        // row-level lock here guarded nothing; the serialization that
+        // matters comes from the participant/case/history locks already
+        // held upstream by the time this runs.
+        $grants = $query->orderBy('test_session_id')->limit(2)->get();
         if ($grants->count() > 1) {
             throw new InvalidAssessmentSessionState('Assessment session grant history is ambiguous.');
         }
@@ -322,7 +365,15 @@ final class AllocateAndStartAssessmentSession
         );
         $deadline = $this->deadlinePolicy->evaluateAnswerWrite($status, $endsAt, $serverTime);
         if (! $deadline->accepted) {
-            throw new InvalidAssessmentSessionState('Expired assessment sessions cannot be replayed.');
+            // Genuinely reachable, not an invariant: the stored session status is
+            // still 'in_progress' (a sweep job has not yet lazily transitioned it),
+            // so isLiveReplay() legitimately selected it, but its ends_at has
+            // already passed. ADR-0030 403 bucket: "... stale". Maps to
+            // NotAvailable, not Conflict -- retrying will never succeed.
+            throw new InvalidAssessmentSessionState(
+                'Expired assessment sessions cannot be replayed.',
+                AssessmentSessionStartFailureCode::NotAvailable,
+            );
         }
         $definition = $this->storedDefinition($session);
 

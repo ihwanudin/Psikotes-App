@@ -15,11 +15,6 @@ final class UnavailableReportSupplementalData implements ReportSupplementalData
         return null;
     }
 
-    public function psychologistSippNumber(int $adminId): ?string
-    {
-        return null;
-    }
-
     public function recommendationRationale(string $snapshotId): ?string
     {
         return null;

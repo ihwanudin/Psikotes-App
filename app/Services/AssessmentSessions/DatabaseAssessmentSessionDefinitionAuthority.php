@@ -11,7 +11,6 @@ use App\Domain\AssessmentSessions\GenericAssessmentInstrument;
 use App\Domain\AssessmentSessions\InvalidAssessmentSessionDefinitionCatalog;
 use App\Domain\AssessmentSessions\SessionDefinition;
 use App\Security\RlsContextRunner;
-use Closure;
 use Illuminate\Support\Facades\DB;
 use JsonException;
 use LogicException;
@@ -19,16 +18,9 @@ use Throwable;
 
 final class DatabaseAssessmentSessionDefinitionAuthority implements AssessmentSessionDefinitionAuthority
 {
-    /** @var Closure(GenericAssessmentInstrument, CaseAuthorization, string): string */
-    private readonly Closure $seedIssuer;
-
-    /** @param (Closure(GenericAssessmentInstrument, CaseAuthorization, string): string)|null $seedIssuer */
     public function __construct(
         private readonly RlsContextRunner $contexts,
-        ?Closure $seedIssuer = null,
-    ) {
-        $this->seedIssuer = $seedIssuer ?? static fn (): string => bin2hex(random_bytes(32));
-    }
+    ) {}
 
     public function issueForNewSession(
         GenericAssessmentInstrument $instrument,
@@ -65,9 +57,6 @@ final class DatabaseAssessmentSessionDefinitionAuthority implements AssessmentSe
 
         try {
             $template = $this->decodeTemplate($row, $instrument);
-            if ($instrument === GenericAssessmentInstrument::Kraepelin) {
-                $template['seed'] = ($this->seedIssuer)($instrument, $authorization, $sessionPublicId);
-            }
             $template['checksum'] = SessionDefinition::checksumFor($template);
 
             return SessionDefinition::fromArray($template);
@@ -115,11 +104,9 @@ final class DatabaseAssessmentSessionDefinitionAuthority implements AssessmentSe
             throw new InvalidAssessmentSessionDefinitionCatalog('Catalog template checksum is invalid.');
         }
 
-        if ($instrument !== GenericAssessmentInstrument::Kraepelin) {
-            $candidate = $template;
-            $candidate['checksum'] = $checksum;
-            SessionDefinition::fromArray($candidate);
-        }
+        $candidate = $template;
+        $candidate['checksum'] = $checksum;
+        SessionDefinition::fromArray($candidate);
 
         return $template;
     }

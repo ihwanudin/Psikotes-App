@@ -6,10 +6,13 @@ namespace Tests\Feature\AssessmentSessions;
 
 use App\Actions\AssessmentSessions\AllocateAndStartAssessmentSession;
 use App\Actions\AssessmentSessions\StartParticipantAssessmentSession;
+use App\Contracts\AssessmentItemContentAuthority;
 use App\Contracts\AssessmentSessionDefinitionAuthority;
 use App\Domain\AssessmentSessions\AssessmentAttemptAllocationPolicy;
+use App\Domain\AssessmentSessions\AssessmentItemContent;
 use App\Domain\AssessmentSessions\AssessmentSessionDeadlinePolicy;
 use App\Domain\AssessmentSessions\AssessmentSessionSelectionPolicy;
+use App\Domain\AssessmentSessions\AssessmentSessionStartRetriesExhausted;
 use App\Domain\AssessmentSessions\AssessmentSessionStateMachine;
 use App\Domain\AssessmentSessions\CaseAuthorization;
 use App\Domain\AssessmentSessions\CaseAuthorizationRejected;
@@ -34,6 +37,7 @@ use PDOException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\OrganizationPaymentTestCase;
+use Tests\Support\AlwaysAvailableAssessmentItemContentAuthority;
 use Tests\Support\AssessmentAccessFixture;
 use Throwable;
 
@@ -331,6 +335,34 @@ final class AllocateAndStartAssessmentSessionTest extends OrganizationPaymentTes
         }
     }
 
+    /**
+     * F2 item-delivery Stage 1 (2026-09-21): a session must never start for
+     * an instrument whose item content cannot be delivered -- otherwise the
+     * participant's timer runs against a question screen with nothing to
+     * show. Called after the definition authority succeeds but before any
+     * row is written, so it rolls back exactly like a definition failure
+     * does.
+     */
+    public function test_item_content_failure_leaves_no_writes_or_context_state(): void
+    {
+        $fixture = $this->participantGraph(direct: true);
+        $failure = new RuntimeException('synthetic item content failure');
+
+        try {
+            $this->action(
+                new FakeAssessmentSessionDefinitionAuthority,
+                itemContent: new ThrowingAssessmentItemContentAuthority($failure),
+            )->execute(
+                new ParticipantPrincipal($fixture['participant'], $fixture['branch']),
+                GenericAssessmentInstrument::Ist,
+            );
+            $this->fail('Item content failure must escape the command.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame($failure, $exception);
+            $this->assertAllocatorRolledBack($fixture);
+        }
+    }
+
     public function test_final_session_transition_failure_rolls_back_every_prior_write(): void
     {
         $fixture = $this->participantGraph(direct: true);
@@ -378,7 +410,7 @@ final class AllocateAndStartAssessmentSessionTest extends OrganizationPaymentTes
         $this->assertSame(0, DB::transactionLevel());
     }
 
-    public function test_retryable_transaction_failure_is_attempted_at_most_three_times_then_the_final_exception_escapes(): void
+    public function test_retryable_transaction_failure_is_attempted_at_most_three_times_then_a_typed_exhaustion_escapes(): void
     {
         $fixture = $this->participantGraph(direct: true);
         $authority = new FakeAssessmentSessionDefinitionAuthority;
@@ -390,9 +422,16 @@ final class AllocateAndStartAssessmentSessionTest extends OrganizationPaymentTes
                 GenericAssessmentInstrument::Ist,
             );
             $this->fail('A fourth transaction attempt must never be made.');
-        } catch (QueryException $exception) {
-            $this->assertSame('40001', $exception->errorInfo[0] ?? null);
-            $this->assertSame($injector->lastException, $exception);
+        } catch (AssessmentSessionStartRetriesExhausted $exception) {
+            // F2 S5 (2026-09-21): the command wraps the exhausted-retry
+            // QueryException in a typed exception so the HTTP boundary never has
+            // to inspect a SQLSTATE itself (Correction A's leak, one layer up).
+            // The raw QueryException is still reachable via getPrevious() for
+            // logging, but nothing outside this command should catch it directly.
+            $previous = $exception->getPrevious();
+            $this->assertInstanceOf(QueryException::class, $previous);
+            $this->assertSame('40001', $previous->errorInfo[0] ?? null);
+            $this->assertSame($injector->lastException, $previous);
             $this->assertSame(3, $injector->transactionAttempts);
             $this->assertSame($injector->transactionAttempts, $authority->calls);
             $this->assertAllocatorRolledBack($fixture);
@@ -582,24 +621,27 @@ final class AllocateAndStartAssessmentSessionTest extends OrganizationPaymentTes
     private function action(
         AssessmentSessionDefinitionAuthority $authority,
         string $now = self::NOW,
+        ?AssessmentItemContentAuthority $itemContent = null,
     ): StartParticipantAssessmentSession {
         return new StartParticipantAssessmentSession(
             app(RlsContextRunner::class),
             app(ParticipantAssessmentSessionCandidates::class),
             new AssessmentSessionSelectionPolicy,
             app(CaseAuthorizationResolver::class),
-            $this->allocator($authority, $now),
+            $this->allocator($authority, $now, $itemContent),
         );
     }
 
     private function allocator(
         AssessmentSessionDefinitionAuthority $authority,
         string $now = self::NOW,
+        ?AssessmentItemContentAuthority $itemContent = null,
     ): AllocateAndStartAssessmentSession {
         return new AllocateAndStartAssessmentSession(
             app(RlsContextRunner::class),
             app(CaseAuthorizationResolver::class),
             $authority,
+            $itemContent ?? new AlwaysAvailableAssessmentItemContentAuthority,
             new AssessmentAttemptAllocationPolicy,
             new AssessmentSessionStateMachine,
             new AssessmentSessionDeadlinePolicy,
@@ -617,6 +659,18 @@ final readonly class ThrowingAssessmentSessionDefinitionAuthority implements Ass
         CaseAuthorization $authorization,
         string $sessionPublicId,
     ): SessionDefinition {
+        throw $this->failure;
+    }
+}
+
+final readonly class ThrowingAssessmentItemContentAuthority implements AssessmentItemContentAuthority
+{
+    public function __construct(private RuntimeException $failure) {}
+
+    public function contentFor(
+        GenericAssessmentInstrument $instrument,
+        SessionDefinition $definition,
+    ): AssessmentItemContent {
         throw $this->failure;
     }
 }

@@ -18,7 +18,7 @@ use App\Domain\Report\ReportIdentity;
  */
 final class FixtureReportDataset
 {
-    /** @param array{name: string, sipp_number: string, signature_note: string|null, signed_at: string|null}|null $psychologist */
+    /** @param array{name: string, silp_number: string, str_number: string, facility_name: string, facility_address: string, signature_note: string|null, signed_at: string|null}|null $psychologist */
     public static function hppDraft(?array $psychologist = null): HppReportDraft
     {
         return HppReportDraft::create(
@@ -41,7 +41,7 @@ final class FixtureReportDataset
         );
     }
 
-    /** @param array{name: string, sipp_number: string, signature_note: string|null, signed_at: string|null}|null $psychologist */
+    /** @param array{name: string, silp_number: string, str_number: string, facility_name: string, facility_address: string, signature_note: string|null, signed_at: string|null}|null $psychologist */
     public static function internalDraft(?array $psychologist = null): InternalReportDraft
     {
         return InternalReportDraft::create(
@@ -62,12 +62,22 @@ final class FixtureReportDataset
         );
     }
 
-    /** @return array{name: string, sipp_number: string, signature_note: string|null, signed_at: string|null} */
+    /**
+     * Facility name/address are deliberately literal, not config()-read:
+     * this class has no dependency on a booted Laravel app (used by pure
+     * PHPUnit\Framework\TestCase tests), and the values happen to match
+     * config/report.php's own literals anyway (Konfirmasi Akhir butir 7).
+     *
+     * @return array{name: string, silp_number: string, str_number: string, facility_name: string, facility_address: string, signature_note: string|null, signed_at: string|null}
+     */
     public static function psychologist(): array
     {
         return [
             'name' => 'Dewi Kartika, S.Psi.',
-            'sipp_number' => 'SIPP-00000000',
+            'silp_number' => 'SILP-00000000',
+            'str_number' => 'STR-00000000',
+            'facility_name' => 'Unit Layanan Psikologi — PT Online Career Mentor',
+            'facility_address' => 'Salatiga, Jawa Tengah, Indonesia',
             'signature_note' => 'Blok psikolog fixture; tanda tangan elektronik menyusul bersama kontrak F5.',
             'signed_at' => null,
         ];

@@ -38,25 +38,39 @@ Keputusan: **pakai berkas terbaru.**
 Berkas otoritatif ini juga yang selama ini dikutip authority pack sebagai
 bukti timing. Berkas kedua tidak boleh dipakai sebagai sumber ekstraksi.
 
-## 3. Backup: kustodi kunci dan lokasi penyimpanan
+## 3. Backup: kustodi kunci dan lokasi penyimpanan — SELESAI
 
-Diserahkan ke best practice. Bentuk yang Lead tetapkan:
+**Dikoreksi pemilik proyek pada hari yang sama.** Versi pertama bagian ini
+berisi usulan "best practice" Lead (layanan pengelola kunci dengan dua
+kustodi bernama, dan wilayah Indonesia yang ditandai perlu konfirmasi
+hukum). Pemilik proyek kemudian memutuskan lain, dan keputusan itulah yang
+berlaku:
 
-**Kustodi kunci enkripsi:**
-- Kunci disimpan di layanan pengelola kunci milik penyedia cloud (KMS),
-  bukan di berkas, bukan di repo, bukan di `.env` yang dibagikan.
-- **Dua kustodi bernama** dengan akses: pemilik proyek + satu wakil. Satu
-  kustodi tunggal berarti satu orang tidak tersedia = backup tidak bisa
-  dipulihkan.
-- Prosedur pemulihan ditulis di runbook, termasuk langkah bila kustodi
-  utama tidak tersedia.
-- Rotasi kunci tahunan, dan setelah setiap kepergian kustodi.
+**Kustodi kunci enkripsi: dipegang pemilik proyek sendiri** — satu kustodi.
+Model dua kustodi TIDAK dipakai.
 
-**Lokasi penyimpanan luar-host:** wilayah **Indonesia** (mis. Jakarta).
-**PERLU KONFIRMASI HUKUM.** Dasarnya UU 27/2022; menyimpan data pribadi
-peserta di luar wilayah menuntut dasar hukum transfer tersendiri. Angka
-lain (RPO 24 jam, RTO 8 jam, retensi 30 hari, enkripsi wajib) sudah
-diputuskan sebelumnya dan tercatat di `tasks/handoffs/f9/`.
+**Penyimpanan backup luar-host: dikelola pemilik proyek sendiri**, dan
+**mengikuti aturan yang berlaku** (termasuk UU 27/2022). Butir ini **tidak
+diperlakukan sebagai penghambat produksi** — tanda "perlu konfirmasi hukum"
+yang sebelumnya ada di sini dicabut.
+
+Rekomendasi Lead yang tetap dicatat, bukan syarat: simpan **salinan
+pemulihan kunci yang tersegel** di tempat terpisah (mis. amplop tertutup di
+brankas, atau kode pemulihan tercetak). Tujuannya bukan memberi akses ke
+orang lain, melainkan memastikan kunci tidak hilang bersama satu perangkat
+— kunci yang hilang membuat seluruh backup terenkripsi tidak bisa
+dipulihkan.
+
+**Batas untuk semua sesi dan lane, tanpa pengecualian:** tidak ada sesi
+mana pun yang memegang kunci enkripsi atau kredensial penyimpanan sungguhan.
+Yang dibangun adalah tooling-nya; nilai rahasianya dimasukkan pemilik
+proyek sendiri ke `.env` di mesinnya dan ke secret CI. Semua test dan
+gladi resik memakai kunci serta kredensial sintetis sekali pakai. Tooling
+membaca rahasia dari environment atau secret store, tidak pernah dari
+berkas di repo, dan tidak pernah mencetaknya ke log atau keluaran test.
+
+Angka lain yang sudah diputuskan sebelumnya tetap berlaku: RPO 24 jam,
+RTO 8 jam, retensi 30 hari, enkripsi wajib (`tasks/handoffs/f9/`).
 
 ## 4. Siapa yang boleh menerbitkan laporan (G5) — SELESAI
 
@@ -110,9 +124,42 @@ norma baru — bukan dihitung ulang sendiri oleh sistem.
 Pemilik proyek menyatakan psikolognya sudah tersertifikasi dan butir ini
 tidak perlu dibahas lagi. Dicatat sekali di sini; jangan diangkat ulang.
 
+## 9. Admin cabang dan pembuatan laporan — SELESAI
+
+Keputusan: **`branch_admin` TIDAK boleh membuat/menghasilkan laporan**
+(`GenerateReports`), termasuk untuk peserta di cabangnya sendiri.
+
+Pembagian yang berlaku sekarang:
+
+| Aksi | Siapa |
+|---|---|
+| Menandatangani laporan (`ReviewReports`) | Hanya psikolog (butir 4, keputusan 2026-09-20) |
+| Membuat/menerbitkan laporan yang sudah ditandatangani (`GenerateReports`) | Psikolog atau super_admin |
+| `branch_admin` | Tidak keduanya |
+
+Jangan menambahkan `GenerateReports` ke `branch_admin`, baik dengan
+pembatasan cabang maupun tanpa, kecuali pemilik proyek memutuskan ulang.
+
+## 10. DASS-21 di lobi peserta — SELESAI
+
+Keputusan: **DASS-21 tetap ditampilkan di daftar "Tes yang tersedia" pada
+lobi peserta (`/participant/lobby`), berderet bersama IST, PAPI, RMIB, dan
+Kraepelin**, seperti perilaku saat ini.
+
+Yang TIDAK berubah oleh keputusan ini:
+- "Alur terisolasi" DASS-21 di ADR-0030 tetap berlaku untuk lapisan
+  sesi/command: DASS-21 tidak masuk command start generik dan tetap memakai
+  penyimpanan terpisah.
+- Pembatasan akses data DASS (`CLAUDE.md`): hasil dan skor DASS hanya boleh
+  dilihat psikolog dan peserta, tidak pernah admin/LPK/kumiai. Menampilkan
+  nama tes dan status aksesnya kepada peserta itu sendiri tidak melanggar
+  pembatasan ini.
+- DASS-21 tetap tidak pernah masuk ekspresi zona/label kelayakan (G4).
+
 ## Butir yang masih terbuka setelah dokumen ini
 
-- Konfirmasi hukum untuk wilayah penyimpanan backup (butir 3) dan retensi
-  foto identitas (butir 5d).
+- Konfirmasi hukum untuk retensi foto identitas (butir 5d). Butir 3
+  (penyimpanan backup) sudah diputuskan pemilik proyek dan tidak lagi
+  menunggu konfirmasi.
 - Pembagian waktu subtes ME sudah diputuskan (180 detik menghafal + 360
   detik menjawab) dan tercatat di `CLAUDE.md`.

@@ -66,9 +66,10 @@ final class HppReportRenderingTest extends TestCase
             FixtureReportDataset::hppDraft(FixtureReportDataset::psychologist()),
         );
 
-        $this->assertStringNotContainsString('SIPP', $unsigned);
+        $this->assertStringNotContainsString('SILP', $unsigned);
         $this->assertStringContainsString('Dewi Kartika, S.Psi.', $signed);
-        $this->assertStringContainsString('SIPP-00000000', $signed);
+        $this->assertStringContainsString('SILP-00000000', $signed);
+        $this->assertStringContainsString('STR-00000000', $signed);
     }
 
     public function test_hpp_rendering_is_deterministic(): void

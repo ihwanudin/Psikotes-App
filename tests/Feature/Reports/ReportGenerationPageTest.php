@@ -322,11 +322,6 @@ final class ReportGenerationPageTest extends TestCase
                 return $this->issuer->existingReportNumberFor($assessmentCaseId);
             }
 
-            public function psychologistSippNumber(int $adminId): string
-            {
-                return (string) $this->inner->psychologistSippNumber($adminId);
-            }
-
             public function recommendationRationale(string $snapshotId): string
             {
                 return (string) $this->inner->recommendationRationale($snapshotId);
@@ -357,11 +352,6 @@ final class ReportGenerationPageTest extends TestCase
             public function reportNumber(int $assessmentCaseId, string $snapshotId): ?string
             {
                 return null;
-            }
-
-            public function psychologistSippNumber(int $adminId): string
-            {
-                return (string) $this->inner->psychologistSippNumber($adminId);
             }
 
             public function recommendationRationale(string $snapshotId): string

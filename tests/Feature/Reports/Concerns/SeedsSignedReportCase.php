@@ -254,7 +254,14 @@ trait SeedsSignedReportCase
 
         DB::table('instrument_versions')->insert([
             'code' => 'ist', 'version' => self::IST_VERSION, 'source_file' => 'synthetic-report-ist.json',
-            'checksum' => hash('sha256', $payload), 'payload' => $payload, 'is_active' => false,
+            'checksum' => hash('sha256', $payload), 'payload' => $payload,
+            // Byte-identical to what checksum was computed from, exactly like
+            // InstrumentSeeder.php:78. SignedReportDataset::iqCategory() reads
+            // this column, never payload (jsonb — a Postgres-only concern, but
+            // populated here too so this SQLite fixture keeps matching the
+            // production query shape).
+            'source_text' => $payload,
+            'is_active' => false,
             'created_at' => now(), 'updated_at' => now(),
         ]);
     }
@@ -291,11 +298,6 @@ trait SeedsSignedReportCase
                 return (string) $this->inner->reportNumber($assessmentCaseId, $snapshotId);
             }
 
-            public function psychologistSippNumber(int $adminId): string
-            {
-                return (string) $this->inner->psychologistSippNumber($adminId);
-            }
-
             public function recommendationRationale(string $snapshotId): string
             {
                 return (string) $this->inner->recommendationRationale($snapshotId);
@@ -313,7 +315,7 @@ trait SeedsSignedReportCase
         };
     }
 
-    /** Test-only stand-in for the five inputs that have no persisted source yet. */
+    /** Test-only stand-in for the four inputs that have no persisted source yet. */
     private function completeSupplementalData(): ReportSupplementalData
     {
         return new class implements ReportSupplementalData
@@ -321,11 +323,6 @@ trait SeedsSignedReportCase
             public function reportNumber(int $assessmentCaseId, string $snapshotId): string
             {
                 return 'HPP-SYNTH-0001';
-            }
-
-            public function psychologistSippNumber(int $adminId): string
-            {
-                return 'SIPP-SYNTH-0001';
             }
 
             public function recommendationRationale(string $snapshotId): string

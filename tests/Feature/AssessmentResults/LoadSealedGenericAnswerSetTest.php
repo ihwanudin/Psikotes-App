@@ -410,8 +410,8 @@ final class LoadSealedGenericAnswerSetTest extends OrganizationPaymentTestCase
             'subtests' => [
                 ['code' => 'K', 'duration_seconds' => 750, 'item_count' => 1350],
             ],
-            'randomization' => 'seeded',
-            'seed' => 'synthetic-seed',
+            'randomization' => 'fixed',
+            'seed' => null,
             'generator' => [
                 'algorithm' => 'synthetic-generator',
                 'version' => 'synthetic-v1',

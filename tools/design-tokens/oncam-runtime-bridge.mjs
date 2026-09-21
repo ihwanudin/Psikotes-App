@@ -1,13 +1,15 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { platform } from 'node:os';
 import { resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const VIRTUAL_ONCAM_CSS_ID = 'virtual:oncam-design-tokens.css';
+export const GENERATED_CSS_FILENAME = 'oncam-design-tokens.generated.css';
 
-const RESOLVED_VIRTUAL_ONCAM_CSS_ID = `\0${VIRTUAL_ONCAM_CSS_ID}`;
 const DEFAULT_TOKEN_FILE = fileURLToPath(
     new URL('../../resources/design-tokens/oncam.tokens.json', import.meta.url),
+);
+const DEFAULT_OUTPUT_FILE = fileURLToPath(
+    new URL(`../../resources/css/${GENERATED_CSS_FILENAME}`, import.meta.url),
 );
 const MODES = new Set(['shared', 'light', 'dark']);
 const LAYERS = new Set(['primitive', 'semantic', 'component']);
@@ -15,8 +17,6 @@ const ALIAS_PATTERN = /^\{([^{}]+)\}$/;
 const SAFE_STRING_PATTERN = /^[^;{}\r\n]+$/;
 const CSS_NUMBER_PATTERN = /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/;
 const CASE_INSENSITIVE_PATHS = platform() === 'win32';
-const VIRTUAL_IMPORT_PATTERN =
-    /@import\s+['"]virtual:oncam-design-tokens\.css['"]\s*;/g;
 
 function fail(path, message) {
     throw new Error(`ONCAM token ${path || '<root>'}: ${message}`);
@@ -753,6 +753,11 @@ export function oncamTokenRuntimeBridge(options = {}) {
         tokenFileOption instanceof URL
             ? fileURLToPath(tokenFileOption)
             : resolvePath(tokenFileOption);
+    const outputFileOption = options.outputFile ?? DEFAULT_OUTPUT_FILE;
+    const outputFile =
+        outputFileOption instanceof URL
+            ? fileURLToPath(outputFileOption)
+            : resolvePath(outputFileOption);
 
     function normalizedFile(file) {
         const normalized = resolvePath(file).replaceAll('\\', '/');
@@ -760,8 +765,16 @@ export function oncamTokenRuntimeBridge(options = {}) {
         return CASE_INSENSITIVE_PATHS ? normalized.toLowerCase() : normalized;
     }
 
-    async function readTokenCss(context) {
-        context.addWatchFile(tokenFile);
+    // Writes the runtime CSS to a real file on disk so it resolves the same
+    // way whether Vite's own transform pipeline reads it (a literal top-level
+    // entry) or Tailwind's internal `@import` resolver reads it directly off
+    // disk (any nested `@import`, which never goes through Vite plugin
+    // hooks). Always regenerates unconditionally — a file left over from a
+    // previous run is never trusted — and throws on any failure so the
+    // caller (`buildStart`/`handleHotUpdate`) fails the build or server
+    // closed instead of serving stale CSS.
+    async function generate(addWatchFile) {
+        addWatchFile?.(tokenFile);
 
         let document;
 
@@ -774,64 +787,35 @@ export function oncamTokenRuntimeBridge(options = {}) {
             );
         }
 
-        return transformOncamTokens(document).css;
+        const { css } = transformOncamTokens(document);
+
+        try {
+            await writeFile(outputFile, css);
+        } catch (error) {
+            throw new Error(
+                `Unable to write generated ONCAM token CSS to ${outputFile}: ${error.message}`,
+                { cause: error },
+            );
+        }
+
+        return css;
     }
 
     return {
         name: 'oncam-token-runtime-bridge',
         enforce: 'pre',
-        resolveId(id) {
-            if (id === VIRTUAL_ONCAM_CSS_ID) {
-                return RESOLVED_VIRTUAL_ONCAM_CSS_ID;
-            }
+        async buildStart() {
+            await generate((file) => this.addWatchFile(file));
         },
-        async load(id) {
-            if (id !== RESOLVED_VIRTUAL_ONCAM_CSS_ID) {
-                return;
-            }
-
-            return readTokenCss(this);
-        },
-        async transform(code, id) {
-            if (!id.split('?', 1)[0].endsWith('.css')) {
-                return;
-            }
-
-            const imports = code.match(VIRTUAL_IMPORT_PATTERN) ?? [];
-
-            if (imports.length === 0) {
-                return;
-            }
-
-            if (imports.length > 1) {
-                throw new Error(
-                    `${VIRTUAL_ONCAM_CSS_ID} must be imported exactly once in ${id}`,
-                );
-            }
-
-            const css = await readTokenCss(this);
-
-            return {
-                code: code.replace(VIRTUAL_IMPORT_PATTERN, css.trimEnd()),
-                map: null,
-            };
-        },
-        handleHotUpdate(context) {
+        async handleHotUpdate(context) {
             if (normalizedFile(context.file) !== normalizedFile(tokenFile)) {
                 return;
             }
 
-            const module = context.server.moduleGraph.getModuleById(
-                RESOLVED_VIRTUAL_ONCAM_CSS_ID,
-            );
-
-            if (module) {
-                context.server.moduleGraph.invalidateModule(module);
-            }
-
+            await generate();
             context.server.ws.send({ type: 'full-reload' });
 
-            return module ? [module] : [];
+            return [];
         },
     };
 }

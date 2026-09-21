@@ -1,10 +1,15 @@
 import { Head } from '@inertiajs/react';
 import {
+    CheckCheck,
     CheckCircle2,
     CircleAlert,
+    CircleHelp,
     ClipboardList,
+    Clock,
+    Lock,
     ShieldCheck,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 type Profile = {
@@ -29,6 +34,65 @@ const testNames: Record<string, string> = {
     kraepelin: 'Tes Kraepelin',
     dass21: 'DASS-21',
 };
+
+type StatusMeta = {
+    label: string;
+    /** One factual sentence about the state itself; never a reason (the
+     * server doesn't tell us why, so we don't invent one). Null for
+     * statuses that need no explanation. */
+    description: string | null;
+    badgeClass: string;
+    Icon: LucideIcon;
+};
+
+// Entitlement.status documents the shape the server is expected to send,
+// but this lookup is keyed by plain string and falls back safely below:
+// this page shows server state as-is and must not crash or print a raw
+// word if a status outside that shape ever arrives.
+const STATUS_META: Record<string, StatusMeta> = {
+    ready: {
+        label: 'Siap',
+        description: null,
+        badgeClass: 'bg-teal-50 text-teal-800',
+        Icon: CheckCircle2,
+    },
+    locked: {
+        label: 'Belum dibuka',
+        description: 'Akses untuk tes ini belum dibuka.',
+        badgeClass: 'bg-slate-100 text-slate-600',
+        Icon: Lock,
+    },
+    in_progress: {
+        label: 'Sedang berlangsung',
+        description: 'Tes ini sedang berlangsung.',
+        badgeClass: 'bg-amber-50 text-amber-800',
+        Icon: Clock,
+    },
+    done: {
+        label: 'Selesai',
+        description: null,
+        badgeClass: 'bg-emerald-50 text-emerald-700',
+        Icon: CheckCheck,
+    },
+};
+
+const UNKNOWN_STATUS_META: StatusMeta = {
+    label: 'Status tidak dikenali',
+    description: 'Status tes ini tidak dikenali oleh sistem.',
+    badgeClass: 'bg-slate-100 text-slate-500',
+    Icon: CircleHelp,
+};
+
+function statusMeta(status: string): StatusMeta {
+    // A plain object inherits Object.prototype, so a status string that
+    // happens to match an inherited property name (e.g. "constructor",
+    // "toString", "__proto__", "hasOwnProperty") would otherwise skip the
+    // fallback below and hand back that inherited value instead of a
+    // StatusMeta, crashing the render. Object.hasOwn guards against that.
+    return Object.hasOwn(STATUS_META, status)
+        ? STATUS_META[status]
+        : UNKNOWN_STATUS_META;
+}
 
 export default function ParticipantLobby() {
     const [token] = useState(() =>
@@ -177,28 +241,47 @@ export default function ParticipantLobby() {
                                             aria-label="Daftar tes"
                                         >
                                             {state.entitlements.map(
-                                                (entitlement) => (
-                                                    <li
-                                                        key={
-                                                            entitlement.test_type
-                                                        }
-                                                        className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4"
-                                                    >
-                                                        <span className="font-medium">
-                                                            {testNames[
-                                                                entitlement
-                                                                    .test_type
-                                                            ] ??
-                                                                entitlement.test_type.toUpperCase()}
-                                                        </span>
-                                                        <span className="rounded-full bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-800">
-                                                            {entitlement.status ===
-                                                            'ready'
-                                                                ? 'Siap'
-                                                                : entitlement.status}
-                                                        </span>
-                                                    </li>
-                                                ),
+                                                (entitlement) => {
+                                                    const meta = statusMeta(
+                                                        entitlement.status,
+                                                    );
+
+                                                    return (
+                                                        <li
+                                                            key={
+                                                                entitlement.test_type
+                                                            }
+                                                            className="rounded-xl border border-slate-200 p-4"
+                                                        >
+                                                            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                                                                <span className="min-w-0 flex-1 break-words font-medium">
+                                                                    {testNames[
+                                                                        entitlement
+                                                                            .test_type
+                                                                    ] ??
+                                                                        entitlement.test_type.toUpperCase()}
+                                                                </span>
+                                                                <span
+                                                                    className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${meta.badgeClass}`}
+                                                                >
+                                                                    <meta.Icon
+                                                                        className="size-3.5"
+                                                                        aria-hidden="true"
+                                                                    />
+                                                                    {meta.label}
+                                                                </span>
+                                                            </div>
+                                                            {meta.description !==
+                                                                null && (
+                                                                <p className="mt-2 text-sm leading-6 text-slate-600">
+                                                                    {
+                                                                        meta.description
+                                                                    }
+                                                                </p>
+                                                            )}
+                                                        </li>
+                                                    );
+                                                },
                                             )}
                                         </ul>
                                     ) : (

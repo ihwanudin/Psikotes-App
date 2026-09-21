@@ -19,7 +19,7 @@ const assert = {
 
 /** Mounted Playwright CLI check on the existing synthetic preview; no backend. */
 export async function verifyOptionalEmail(page) {
-    const origin = 'http://127.0.0.1:8011';
+    const origin = 'http://127.0.0.1:8012';
     const results = [];
     const errors = [];
     const check = (condition, message) => {
@@ -291,14 +291,14 @@ export async function verifyOptionalEmail(page) {
     return results;
 }
 
-/** Run the original ten groups through Playwright Page on the test-only 8011 preview.
+/** Run the original ten groups through Playwright Page on the test-only preview.
  * Click/check/fill and programmatic requestSubmit probes are NOT native keyboard proof.
  * Native Tab/Space/arrows/Enter are audited separately with the visible trusted flag.
  */
 export async function verifyCheckoutInteractions(page) {
     assert.equal(
         page.url().split('/').slice(0, 3).join('/'),
-        'http://127.0.0.1:8011',
+        'http://127.0.0.1:8012',
     );
     await page.reload();
     assert.match(await page.locator('body').ariaSnapshot(), /PREVIEW INTERNAL/);
@@ -419,6 +419,7 @@ export async function verifyCheckoutInteractions(page) {
         assert.equal(await confirm().isEnabled(), false);
         await mainConsent().check();
         assert.equal(await confirm().isEnabled(), false);
+        await dassConsent().check();
         const previous = await counter();
         await confirm().click();
         assert.equal(
@@ -433,7 +434,11 @@ export async function verifyCheckoutInteractions(page) {
             true,
         );
         await role('textbox', 'Nomor WhatsApp *').fill('080000000002');
-        assert.equal(await confirm().isEnabled(), false);
+        // Both consents were already accepted above (needed to make the
+        // native-validation click at :424 reach the browser instead of
+        // hanging on a disabled button); the phone number is now the only
+        // previously-missing requirement, so confirm is enabled here.
+        assert.equal(await confirm().isEnabled(), true);
         await dassConsent().check();
         await confirm().click();
         assert.equal(Number(await counter()), Number(previous) + 1);

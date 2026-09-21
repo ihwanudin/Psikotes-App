@@ -68,7 +68,8 @@ final class InternalReportRenderingTest extends TestCase
         );
 
         $this->assertSame($first, $second);
-        $this->assertStringNotContainsString('SIPP-00000000', $first);
-        $this->assertStringContainsString('SIPP-00000000', $signed);
+        $this->assertStringNotContainsString('SILP-00000000', $first);
+        $this->assertStringContainsString('SILP-00000000', $signed);
+        $this->assertStringContainsString('STR-00000000', $signed);
     }
 }

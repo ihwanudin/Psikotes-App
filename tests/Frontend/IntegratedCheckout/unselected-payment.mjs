@@ -1,7 +1,7 @@
 /** Playwright CLI run-code entrypoint; synthetic existing preview only. */
 // eslint-disable-next-line @typescript-eslint/no-unused-expressions -- CLI evaluates this function expression.
 async (page) => {
-    const origin = 'http://127.0.0.1:8011';
+    const origin = 'http://127.0.0.1:8012';
     const errors = [];
     const results = [];
     const check = (condition, message) => {
