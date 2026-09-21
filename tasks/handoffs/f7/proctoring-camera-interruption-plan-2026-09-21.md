@@ -330,23 +330,96 @@ tabel di atas, dan ketiganya hanya kalau opsi terkait di §2/§4 disetujui
 Lead — tidak ada yang dikerjakan tanpa persetujuan eksplisit itu, sesuai
 batas berkas yang berlaku sepanjang lane ini.
 
-## 6. Ringkasan keputusan yang dibutuhkan sebelum kode ditulis
+## 6. Keputusan Lead atas rencana ini (2026-09-21, tinjauan PR #84)
 
-1. §2: perbaiki `reactivate()` supaya juga mencoba dari
-   `reactivation_failed` (rekomendasi utama), dan/atau tambah tombol
-   manual di `session-runner-shell.tsx`?
-2. §3 celah 2: bagaimana F2 ingin menerima tiga fakta reaktivasi
-   (`attempted`/`succeeded`/`failed`) — case `ProctoringEventKind` baru,
-   atau dipetakan ke `CameraInterrupted` + metadata di sisi HTTP client?
-3. §3: konfirmasi T-26 ("gap>ambang") adalah redaksi usang dibanding
-   `ProctoringValidityPolicy.php` yang sudah teruji (tanpa ambang) —
-   perlu diperbarui teksnya atau memang ada rencana menambah ambang
-   nanti?
-4. §4: nilai piksel/kualitas/retensi foto berkala — dikonfirmasi
-   pemilik atau diganti?
-5. §4: mana dari dua opsi integrasi stream (`getStream()` vs
-   `captureFrame()` di dalam hook) yang dipilih GLM/Lead?
+Lima pertanyaan di bawah sudah dijawab Lead. Kutipan keputusan, bukan
+parafrase, supaya tidak ada penafsiran ganda saat implementasi.
 
-Rencana ini berhenti di sini menunggu jawaban Lead untuk kelima butir
-di atas sebelum kode ditulis, sesuai instruksi "RENCANA saja, belum
-kode".
+1. **Reaktivasi: dua-duanya.** Opsi (1) di §2 (`reactivate()` juga
+   mencoba dari `reactivation_failed` saat `visibilitychange`/`focus`)
+   **dan** opsi (2) (tombol manual "Coba aktifkan kamera lagi" di
+   `session-runner-shell.tsx`). Alasan tombol manual tetap perlu
+   walau (1) sudah ada: kalau kamera dicabut/diblokir izinnya saat
+   halaman tetap terlihat (tidak pernah `blur`/hidden), event
+   `visibilitychange`/`focus` tidak pernah terpicu — tanpa tombol,
+   peserta tidak punya jalan kembali sama sekali. Batasan eksplisit
+   dari Lead:
+    - Tidak ada percobaan otomatis beruntun tanpa pemicu (tidak ada
+      polling/loop latar belakang) — hanya bereaksi pada
+      `visibilitychange`/`focus`/klik tombol, persis pola yang sudah
+      ada.
+    - Setiap percobaan (otomatis maupun manual) tetap dicatat lewat
+      `ProctoringReporter`.
+    - Tombol TIDAK menjeda atau mengunci tes.
+    - **Pemilik berkas — klarifikasi Lead:** perubahan di
+      `camera-controller.ts`, `use-proctoring-camera.ts`, dan
+      `session-runner-shell.tsx` untuk butir ini "boleh dikerjakan
+      dalam PR terpisah yang kecil," dengan Lead yang memberi tahu GLM,
+      syarat test lama GLM tetap lulus tanpa berubah makna + test baru
+      untuk jalur `reactivation_failed → berhasil`. **Catatan proses:**
+      ini melebarkan lane FE-Infra ke berkas yang sejauh ini selalu
+      ditetapkan milik GLM (`session-runner/**`) — kanal ini sudah
+      pernah diminta menahan diri dari perluasan lane oleh peer
+      (termasuk Lead sendiri) dan mengembalikannya ke pemilik proyek
+      untuk diputuskan, bukan langsung dikerjakan. Keputusan jalan
+      (siapa yang menulis kode untuk butir 1) dikonfirmasi dulu ke
+      pemilik proyek sebelum PR kecil ini dibuat — lihat catatan di
+      akhir dokumen.
+2. **Bentuk event: `ProctoringEventKind` baru yang eksplisit**
+   (reaktivasi dicoba/berhasil/gagal), bukan metadata yang ditumpuk di
+   `CameraInterrupted` — alasan Lead: fakta yang punya nama lebih
+   mudah diaudit psikolog. Keputusan akhir bentuk kolom/enum tetap di
+   F2 saat endpoint ingest dibangun; Lead meneruskan ini ke F2 sebagai
+   masukan. **`http-proctoring-reporter.ts` baru ditulis setelah F2
+   mengonfirmasi** — tidak dibangun di peningkatan ini.
+3. **T-26 "gap>ambang" vs `ProctoringValidityPolicy` (tanpa ambang):**
+   dikonfirmasi Lead sebagai **konflik SPEC vs implementasi**, dan
+   keputusannya ada di psikolog, bukan tim teknis. Lead memasukkan ini
+   sebagai pertanyaan eksplisit ke psikolog: _"berapa lama kamera mati
+   sebelum dianggap V2? Atau setiap jeda langsung V2?"_ — penting
+   karena di HP, pindah aplikasi sebentar saja sudah memutus kamera.
+   **Tidak ada perubahan ke `SPEC.md` maupun
+   `ProctoringValidityPolicy.php` sampai psikolog menjawab.** Status
+   butir ini: **menunggu psikolog**, dicatat di sini supaya siapa pun
+   yang membaca dokumen ini tahu keputusannya belum final.
+4. **Angka foto (480×360/JPEG q0.6/90 hari): masih menunggu pemilik**,
+   tidak berubah dari §4. Yang berubah: `photo-capture-scheduler.ts`
+   **boleh dibangun sekarang**, dengan interval, ukuran, dan kualitas
+   sebagai **parameter yang disuntikkan saat konstruksi** (nanti
+   diisi dari konfigurasi server) — tidak ada nilai default angka apa
+   pun di klien, termasuk sebagai fallback sementara.
+5. **Integrasi stream: `captureFrame()` di dalam hook** (opsi 2 di
+   §4), bukan `getStream()` (opsi 1). Keputusan eksplisit Lead:
+   `MediaStream` tetap privat sepenuhnya di `use-proctoring-camera.ts`
+   — tidak ada apa pun yang membocorkan stream itu sendiri ke luar
+   hook. Hook hanya mengembalikan `Blob` (atau penanda "tidak ada
+   frame" bila kamera sedang tidak `active` — **tanpa melempar
+   error**, karena kamera tidak aktif adalah kondisi normal yang bisa
+   terjadi kapan saja, bukan kegagalan). Scheduler mencatat frame yang
+   terlewat sebagai fakta (bukan diam-diam dilewati tanpa jejak).
+
+## 7. Urutan kerja yang diminta Lead, dan satu catatan proses
+
+Lead meminta urutan berikut setelah dokumen ini diperbarui:
+
+- **(a)** PR kecil untuk butir 1 §6: perbaikan `reactivate()` +
+  tombol manual, di `camera-controller.ts`/`use-proctoring-camera.ts`/
+  `session-runner-shell.tsx`.
+- **(b)** `photo-capture-scheduler.ts` murni + test, plus
+  `captureFrame()` di `use-proctoring-camera.ts`, dalam satu PR
+  terpisah dari (a). Upload/HTTP belum — itu menunggu F2 (butir 2 §6).
+
+**Catatan proses (bukan bagian dari rencana teknis, dicatat untuk
+kejelasan alur kerja):** kedua PR di atas mengedit berkas yang sejauh
+lane ini berjalan selalu dianggap milik GLM
+(`session-runner/**`) — batas yang berulang kali dijaga eksplisit
+sepanjang increment ini (termasuk oleh Lead sendiri, dan pernah
+dikembalikan ke pemilik proyek saat peer meminta perluasan serupa
+sebelumnya). Sebelum PR (a)/(b) mulai ditulis, kanal ini meminta
+konfirmasi eksplisit pemilik proyek soal jalan yang dipakai untuk
+mengeksekusinya — apakah kanal ini yang menulis langsung ke berkas
+GLM (seperti diusulkan Lead), GLM sendiri yang mengimplementasikan
+dari rencana ini, atau jalur lain — bukan diasumsikan dari persetujuan
+Lead saja. Ini murni soal siapa memegang pena, bukan soal apakah
+rencananya benar; isi teknis §6 di atas tetap berlaku terlepas dari
+siapa yang mengeksekusinya.
