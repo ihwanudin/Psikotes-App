@@ -57,6 +57,18 @@ in place rather than removing it.
    `PsychologistReviewFixture.php`'s demo scenario) are unaffected: they
    never pass `null`, so their output is byte-identical to before.
 
+   **Interim-state note (coordinator-verified, 2026-09-21)**: between this
+   PR landing and Phase 2's swap, `ReportSigningService.php` still calls
+   `evaluate()` with client-supplied `sources`, and the policy now accepts
+   `level: null` from any caller, including that one. This does not widen
+   the attack surface: `null` can only ever *force*
+   `review_required=true` (via `SOURCE_INCOMPLETE`), never suppress it —
+   there is no path through the widened type that lets a client turn a
+   real discrepancy off. A malicious client could send `null` for every
+   source and get `SOURCE_INCOMPLETE` every time, which is strictly worse
+   for an attacker than the pre-existing fake-low-spread gap this PR is
+   about, not a new way to hide anything.
+
 2. New `App\Services\Eligibility\LoadLedgerAspectDiscrepancy` — takes
    `(int $assessmentCaseId, string $aspect)`, no `sources` parameter at all.
    Composes the existing `LoadGenericInstrumentResultSourcesForAspect`
