@@ -157,7 +157,7 @@ function RmibGroupRow({
                 {...attributes}
                 {...listeners}
                 aria-label={`Seret untuk mengurutkan ulang: ${job}`}
-                className="flex size-11 shrink-0 touch-none items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                className="flex size-11 shrink-0 touch-none items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-600"
             >
                 <GripVertical className="size-5" aria-hidden="true" />
             </button>
