@@ -303,12 +303,12 @@ export default function Welcome() {
                             </a>
                         </nav>
 
-                        <Link
-                            href={adminLogin()}
+                        <a
+                            href={adminLogin.url()}
                             className="focus-visible:outline-brand-gold inline-flex h-10 items-center justify-center rounded-lg border border-white/25 px-4 text-sm font-semibold text-white transition hover:border-white/45 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-4"
                         >
                             Portal pengelola
-                        </Link>
+                        </a>
                     </div>
                 </header>
 
