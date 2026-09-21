@@ -12,6 +12,7 @@ use App\Contracts\PaymentProvider;
 use App\Contracts\RunsRlsContext;
 use App\Security\RlsContextRunner;
 use App\Services\AssessmentSessions\DatabaseAssessmentSessionDefinitionAuthority;
+use App\Services\AssessmentSessions\IstItemContentReader;
 use App\Services\AssessmentSessions\KraepelinItemContentReader;
 use App\Services\AssessmentSessions\RegistryAssessmentItemContentAuthority;
 use App\Services\Identity\ManualReviewIdentityMatcher;
@@ -49,15 +50,21 @@ class AppServiceProvider extends ServiceProvider
         );
         // Fail-closed by design (Lead sign-off, 2026-09-21): an instrument
         // with no entry below rejects with ASSESSMENT_ITEM_CONTENT_UNAVAILABLE
-        // rather than falling through to a permissive default. Kraepelin is
-        // the first real reader (Stage 2, 2026-09-21) -- ist/papi/rmib still
-        // have none, so those three instruments still reject the same way
-        // Stage 1 shipped them. Stage 2 only ever ADDS entries to this map;
-        // it never changes RegistryAssessmentItemContentAuthority's default.
+        // rather than falling through to a permissive default. Kraepelin was
+        // the first real reader (Stage 2, 2026-09-21); IST is registered
+        // here too (Stage 1, IST plan sign-off, 2026-09-21) but its own
+        // ist_items.json stays `status:"draft"` until ME's word-list
+        // ambiguity is resolved and FA/WU land -- see
+        // app/Services/AssessmentSessions/IstItemContentReader.php's doc
+        // comment. papi/rmib still have no entry, so those two instruments
+        // still reject the same way Stage 1 shipped them. New entries only
+        // ever get ADDED to this map; it never changes
+        // RegistryAssessmentItemContentAuthority's default.
         $this->app->bind(
             AssessmentItemContentAuthority::class,
             fn (): RegistryAssessmentItemContentAuthority => new RegistryAssessmentItemContentAuthority([
                 'kraepelin' => new KraepelinItemContentReader,
+                'ist' => new IstItemContentReader,
             ]),
         );
         $this->app->bind(ReportSupplementalData::class, ReportDocumentSupplementalData::class);

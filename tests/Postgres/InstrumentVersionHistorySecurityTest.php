@@ -87,6 +87,7 @@ final class InstrumentVersionHistorySecurityTest extends TestCase
             'aspect_sources' => ['ASPECT-SOURCES-2026.09', 'aspect_sources.json'],
             'dass21' => ['F0-2026.08', 'dass21.json'],
             'ist' => ['F2-2026.09', 'ist.json'],
+            'ist_items' => ['F0-ITEMS-IST-2026.09', 'ist_items.json'],
             'kraepelin' => ['F2-2026.09', 'kraepelin.json'],
             'kraepelin_grid' => ['F0-2026.09', 'kraepelin_grid.json'],
             'papi' => ['F2-2026.09', 'papi.json'],
