@@ -15,7 +15,7 @@
         "security:scan:pii": "node tools/security/repository-content-scan.mjs --kind=pii",
         "security:scan:secret": "node tools/security/repository-content-scan.mjs --kind=secret",
         "security:scan:test": "node --test tools/security/repository-content-scan.test.mjs",
-        "test:frontend-unit": "node --test resources/js/components/participant/session-runner/*.test.ts",
+        "test:frontend-unit": "node --test resources/js/components/participant/session-runner/*.test.ts resources/js/components/participant/kraepelin/*.test.ts",
         "types:check": "tsc --noEmit"
     },
     "devDependencies": {
