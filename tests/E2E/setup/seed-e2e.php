@@ -5,7 +5,6 @@ declare(strict_types=1);
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
 
 require dirname(__DIR__, 3).'/vendor/autoload.php';
 
