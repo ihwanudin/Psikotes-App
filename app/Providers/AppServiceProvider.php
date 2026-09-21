@@ -12,6 +12,7 @@ use App\Contracts\PaymentProvider;
 use App\Contracts\RunsRlsContext;
 use App\Security\RlsContextRunner;
 use App\Services\AssessmentSessions\DatabaseAssessmentSessionDefinitionAuthority;
+use App\Services\AssessmentSessions\KraepelinItemContentReader;
 use App\Services\AssessmentSessions\RegistryAssessmentItemContentAuthority;
 use App\Services\Identity\ManualReviewIdentityMatcher;
 use App\Services\Integrations\GenericAssessmentResultCallbackConfiguration;
@@ -46,18 +47,18 @@ class AppServiceProvider extends ServiceProvider
             AssessmentSessionDefinitionAuthority::class,
             DatabaseAssessmentSessionDefinitionAuthority::class,
         );
-        // Fail-closed by design (Lead sign-off, 2026-09-21): no readers are
-        // registered yet for any instrument, so every instrument's session
-        // start rejects with ASSESSMENT_ITEM_CONTENT_UNAVAILABLE until a
-        // real per-instrument reader is added here. This is not a
-        // regression risk today -- no seeder populates
-        // assessment_session_definitions in any environment yet, so every
-        // instrument's start already rejects earlier, at the definition-
-        // authority gate. Stage 2 only ever ADDS entries to this map; it
-        // never changes RegistryAssessmentItemContentAuthority's default.
+        // Fail-closed by design (Lead sign-off, 2026-09-21): an instrument
+        // with no entry below rejects with ASSESSMENT_ITEM_CONTENT_UNAVAILABLE
+        // rather than falling through to a permissive default. Kraepelin is
+        // the first real reader (Stage 2, 2026-09-21) -- ist/papi/rmib still
+        // have none, so those three instruments still reject the same way
+        // Stage 1 shipped them. Stage 2 only ever ADDS entries to this map;
+        // it never changes RegistryAssessmentItemContentAuthority's default.
         $this->app->bind(
             AssessmentItemContentAuthority::class,
-            fn (): RegistryAssessmentItemContentAuthority => new RegistryAssessmentItemContentAuthority([]),
+            fn (): RegistryAssessmentItemContentAuthority => new RegistryAssessmentItemContentAuthority([
+                'kraepelin' => new KraepelinItemContentReader,
+            ]),
         );
         $this->app->bind(ReportSupplementalData::class, ReportDocumentSupplementalData::class);
     }

@@ -20,6 +20,11 @@ final class InstrumentSeeder extends Seeder
         'papi' => 'papi.json',
         'rmib' => 'rmib.json',
         'kraepelin' => 'kraepelin.json',
+        // F2 item-delivery Stage 2 (2026-09-21): the raw item numbers, kept
+        // as a separate instrument_versions row from 'kraepelin' above
+        // (that one holds scoring norms). See
+        // app/Services/AssessmentSessions/KraepelinItemContentReader.php.
+        'kraepelin_grid' => 'kraepelin_grid.json',
         'dass21' => 'dass21.json',
         'reporting' => 'reporting.json',
         'aspect_sources' => 'aspect_sources.json',
