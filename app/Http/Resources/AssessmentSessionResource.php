@@ -5,15 +5,30 @@ declare(strict_types=1);
 namespace App\Http\Resources;
 
 use App\Actions\AssessmentSessions\AssessmentSessionAllocationResult;
+use App\Actions\AssessmentSessions\AssessmentSessionSnapshot;
 use DateTimeImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * F2 S5 (2026-09-21). The `AssessmentSession` shape from API_CONTRACT.md §98, plus
- * the `replayed` boolean the start endpoint's contract adds on top of it. No prior
- * implementation of this shape exists anywhere in the codebase to reuse (GET
- * /sessions/{id} is not built yet); this is the first, meant to be reused there too.
+ * F2 S5 (2026-09-21), widened F2 session-http (2026-09-21). The
+ * `AssessmentSession` shape from API_CONTRACT.md §98, plus the `replayed`
+ * boolean the start endpoint's contract adds on top of it.
+ *
+ * Wraps either AssessmentSessionAllocationResult (S5's start/replay result,
+ * always InProgress by that class's own constructor invariant) or
+ * AssessmentSessionSnapshot (session-http's GET /sessions/{id} read, any of
+ * the six states) -- deliberately a union, not one shared type.
+ * AssessmentSessionAllocationResult's strict constructor (ULID shape,
+ * endsAt matching the definition's duration exactly, serverTime inside the
+ * active window) is specifically appropriate for a just-allocated/
+ * just-replayed result and stays untouched; AssessmentSessionSnapshot
+ * carries no such invariants because a GET must be able to represent a
+ * closed session just as well as an open one. The two differ only in
+ * `submitted_at` (the allocation result is always InProgress, so it has none)
+ * and in whether `replayed` is meaningful (GET has no such concept -- always
+ * reported false, since resuming an already-open session isn't "replaying"
+ * an allocation).
  *
  * `config`/`seed` split: API_CONTRACT.md names both fields but does not define
  * config's exact shape beyond "the client needs it to render the test". This
@@ -24,11 +39,11 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * config: they are integrity/audit metadata for the server and for replay
  * verification, not something a rendering client consumes.
  *
- * @property-read AssessmentSessionAllocationResult $resource
+ * @property-read AssessmentSessionAllocationResult|AssessmentSessionSnapshot $resource
  */
 final class AssessmentSessionResource extends JsonResource
 {
-    public function __construct(AssessmentSessionAllocationResult $resource)
+    public function __construct(AssessmentSessionAllocationResult|AssessmentSessionSnapshot $resource)
     {
         parent::__construct($resource);
     }
@@ -36,20 +51,23 @@ final class AssessmentSessionResource extends JsonResource
     /** @return array<string, mixed> */
     public function toArray(Request $request): array
     {
-        $definition = $this->resource->definition;
+        $resource = $this->resource;
+        $definition = $resource->definition;
 
         return [
-            'session_id' => $this->resource->sessionId,
-            'test_type' => $this->resource->instrument->value,
-            'status' => $this->resource->status->value,
-            'attempt_no' => $this->resource->attemptNo,
-            'started_at' => $this->rfc3339($this->resource->startedAt),
-            'ends_at' => $this->rfc3339($this->resource->endsAt),
-            'write_deadline' => $this->rfc3339($this->resource->writeDeadline),
-            'submitted_at' => null,
-            'server_time' => $this->rfc3339($this->resource->serverTime),
-            'remaining_seconds' => $this->resource->remainingSeconds,
-            'answers_revision' => $this->resource->answersRevision,
+            'session_id' => $resource->sessionId,
+            'test_type' => $resource->instrument->value,
+            'status' => $resource->status->value,
+            'attempt_no' => $resource->attemptNo,
+            'started_at' => $this->rfc3339($resource->startedAt),
+            'ends_at' => $this->rfc3339($resource->endsAt),
+            'write_deadline' => $this->rfc3339($resource->endsAt),
+            'submitted_at' => $resource instanceof AssessmentSessionSnapshot
+                ? $this->rfc3339($resource->submittedAt)
+                : null,
+            'server_time' => $this->rfc3339($resource->serverTime),
+            'remaining_seconds' => $resource->remainingSeconds,
+            'answers_revision' => $resource->answersRevision,
             'config' => [
                 'total_duration_seconds' => $definition->totalDurationSeconds,
                 'subtests' => $definition->subtests,
@@ -57,12 +75,12 @@ final class AssessmentSessionResource extends JsonResource
                 'generator' => $definition->generator,
             ],
             'seed' => $definition->seed,
-            'replayed' => $this->resource->replayed,
+            'replayed' => $resource instanceof AssessmentSessionAllocationResult && $resource->replayed,
         ];
     }
 
-    private function rfc3339(DateTimeImmutable $time): string
+    private function rfc3339(?DateTimeImmutable $time): ?string
     {
-        return $time->format('Y-m-d\TH:i:s.up');
+        return $time?->format('Y-m-d\TH:i:s.up');
     }
 }
