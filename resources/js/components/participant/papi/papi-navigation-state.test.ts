@@ -6,6 +6,7 @@ import {
     goToItem,
     isComplete,
     next,
+    papiAnswersFromResumedAnswers,
     previous,
     selectChoice,
     unansweredIndices,
@@ -129,6 +130,63 @@ test('isComplete is false until every item has an answer, then true', () => {
     state = goToItem(state, 1);
     state = selectChoice(state, 'b');
     assert.equal(isComplete(state), true);
+});
+
+test('createPapiNavigationState seeds answers from initialAnswers when given', () => {
+    const state = createPapiNavigationState(3, ['a', null, 'b']);
+
+    assert.deepEqual(state.answers, ['a', null, 'b']);
+    assert.equal(state.currentIndex, 0);
+});
+
+test('createPapiNavigationState rejects initialAnswers of the wrong length', () => {
+    assert.throws(() => createPapiNavigationState(3, ['a', null]), RangeError);
+});
+
+test('createPapiNavigationState copies initialAnswers rather than aliasing it', () => {
+    const seed: ('a' | 'b' | null)[] = ['a', null, null];
+    const state = createPapiNavigationState(3, seed);
+    const afterSelect = selectChoice(state, 'b');
+
+    assert.deepEqual(
+        seed,
+        ['a', null, null],
+        "the caller's array must be untouched",
+    );
+    assert.deepEqual(afterSelect.answers, ['b', null, null]);
+});
+
+test('papiAnswersFromResumedAnswers maps itemNo 1-based to a 0-based answers array', () => {
+    const answers = papiAnswersFromResumedAnswers(4, [
+        { itemNo: 1, value: 'a' },
+        { itemNo: 3, value: 'b' },
+    ]);
+
+    assert.deepEqual(answers, ['a', null, 'b', null]);
+});
+
+test('papiAnswersFromResumedAnswers is all-null when there is nothing to resume', () => {
+    assert.deepEqual(papiAnswersFromResumedAnswers(3, []), [null, null, null]);
+});
+
+test('papiAnswersFromResumedAnswers drops an out-of-range itemNo instead of throwing', () => {
+    const answers = papiAnswersFromResumedAnswers(2, [
+        { itemNo: 0, value: 'a' },
+        { itemNo: 3, value: 'a' },
+        { itemNo: 1, value: 'b' },
+    ]);
+
+    assert.deepEqual(answers, ['b', null]);
+});
+
+test('papiAnswersFromResumedAnswers drops a value that is not exactly "a" or "b"', () => {
+    const answers = papiAnswersFromResumedAnswers(3, [
+        { itemNo: 1, value: 'A' },
+        { itemNo: 2, value: 1 },
+        { itemNo: 3, value: null },
+    ]);
+
+    assert.deepEqual(answers, [null, null, null]);
 });
 
 test('a typical flow: navigate, answer out of order, jump via unanswered links, finish', () => {

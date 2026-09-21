@@ -29,6 +29,7 @@ export type PapiNavigationState = {
 
 export function createPapiNavigationState(
     itemCount: number,
+    initialAnswers?: (PapiChoice | null)[],
 ): PapiNavigationState {
     if (itemCount <= 0) {
         throw new RangeError(
@@ -36,10 +37,57 @@ export function createPapiNavigationState(
         );
     }
 
+    if (initialAnswers !== undefined && initialAnswers.length !== itemCount) {
+        throw new RangeError(
+            'createPapiNavigationState: initialAnswers length must equal itemCount',
+        );
+    }
+
     return {
-        answers: new Array<PapiChoice | null>(itemCount).fill(null),
+        answers: initialAnswers
+            ? initialAnswers.slice()
+            : new Array<PapiChoice | null>(itemCount).fill(null),
         currentIndex: 0,
     };
+}
+
+/**
+ * Builds the `answers` seed array for `createPapiNavigationState` from a
+ * resumed `GET /sessions/:id/answers` outcome (resume-answers.ts's
+ * `ResumedAnswer` list) — used on mount so a returning participant sees
+ * their already-autosaved choices instead of a blank runner.
+ *
+ * `itemNo - 1` maps straight to the answers array index: `papi_items.json`'s
+ * `item` field is structurally guaranteed to equal its own array offset + 1
+ * (`PapiItemContentReader.php`'s `$item['item'] !== $offset + 1` check), so
+ * item order and item number always agree.
+ *
+ * A malformed entry (out-of-range itemNo, or a value that isn't exactly
+ * `'a'`/`'b'`) is dropped rather than thrown — resumed answers already
+ * passed `AutosaveAssessmentAnswersRequest`'s validation when originally
+ * saved, so treating a genuinely unexpected shape as "not yet answered" is
+ * safer than crashing the whole runner on stale/foreign data.
+ */
+export function papiAnswersFromResumedAnswers(
+    itemCount: number,
+    resumedAnswers: { itemNo: number; value: unknown }[],
+): (PapiChoice | null)[] {
+    const answers = new Array<PapiChoice | null>(itemCount).fill(null);
+
+    for (const { itemNo, value } of resumedAnswers) {
+        if (
+            !Number.isInteger(itemNo) ||
+            itemNo < 1 ||
+            itemNo > itemCount ||
+            (value !== 'a' && value !== 'b')
+        ) {
+            continue;
+        }
+
+        answers[itemNo - 1] = value;
+    }
+
+    return answers;
 }
 
 /** Records `choice` for the currently-shown item. Does not move the
