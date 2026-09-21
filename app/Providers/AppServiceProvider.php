@@ -22,13 +22,17 @@ use App\Services\Payments\XenditProvider;
 use App\Services\ReportRendering\ReportDocumentSupplementalData;
 use App\Services\ReportRendering\ReportSupplementalData;
 use Carbon\CarbonImmutable;
+use DateTimeInterface;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
 use RuntimeException;
 
@@ -78,6 +82,7 @@ class AppServiceProvider extends ServiceProvider
         Model::preventLazyLoading($this->app->environment('testing'));
 
         $this->configureDefaults();
+        self::configureIstAssetTemporaryUrls();
 
         if (config('app.env') !== 'production') {
             return;
@@ -149,6 +154,50 @@ class AppServiceProvider extends ServiceProvider
                     'message' => 'Terlalu banyak permintaan layanan.',
                 ],
             ], 429, $headers)));
+    }
+
+    /**
+     * The ist-assets local disk has 'serve' => false in filesystems.php:
+     * ServeIstAssetController + routes/web.php's `storage.ist-assets`
+     * route replace the framework's own signed-URL serving (see that
+     * controller's doc comment for why). This restores
+     * Storage::disk('ist-assets')->temporaryUrl(), pointed at the
+     * replacement route, with one addition over the framework's own
+     * un-overridden behavior: a random `nonce` query parameter folded
+     * into the signature, so two temporaryUrl() calls issued within the
+     * same second (its `expires` timestamp is second-precision) never
+     * produce a byte-identical URL. Mirrors
+     * Illuminate\Filesystem\LocalFilesystemAdapter::temporaryUrl()
+     * exactly otherwise (absolute: false + ->to(), not absolute: true
+     * directly -- hasValidRelativeSignature() on the receiving end
+     * validates against the relative form).
+     *
+     * Public static and side-effect-only (no $this) so a Feature test can
+     * call it again after Storage::persistentFake('ist-assets') -- that
+     * helper replaces the disk instance outright and does not carry over
+     * whatever buildTemporaryUrlsUsing() this provider's boot() already
+     * registered on the instance it replaced (Storage::fake(), unlike
+     * persistentFake(), goes further and installs its own unrelated fake
+     * callback, which is why tests needing the real nonce/route behavior
+     * must use persistentFake() and then call this again).
+     */
+    public static function configureIstAssetTemporaryUrls(): void
+    {
+        if (config('filesystems.disks.ist-assets.driver') !== 'local') {
+            return;
+        }
+
+        Storage::disk('ist-assets')->buildTemporaryUrlsUsing(
+            fn (string $path, DateTimeInterface $expiration, array $options = []): string => URL::to(URL::temporarySignedRoute(
+                'storage.ist-assets',
+                $expiration,
+                [
+                    'path' => strtr(rawurlencode($path), ['%2F' => '/']),
+                    'nonce' => Str::random(16),
+                ],
+                absolute: false,
+            )),
+        );
     }
 
     /** @return list<string> */

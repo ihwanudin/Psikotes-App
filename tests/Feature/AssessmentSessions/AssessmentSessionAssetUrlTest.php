@@ -6,9 +6,12 @@ namespace Tests\Feature\AssessmentSessions;
 
 use App\Actions\AssessmentSessions\GetAssessmentSessionAssetUrl;
 use App\Domain\AssessmentSessions\SessionDefinition;
+use App\Providers\AppServiceProvider;
 use App\Security\RlsContextRunner;
 use App\Services\ParticipantAuth\ParticipantJwt;
 use DateTimeImmutable;
+use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -22,9 +25,16 @@ use Tests\OrganizationPaymentTestCase;
  * synthetic `assessment_asset_references` row and a faked `ist-assets`
  * disk (Lead's plan review: "Endpoint aset di tahap 1 cukup dibuktikan
  * dengan fixture sintetis") -- FA/WU has not landed (#73), so there is no
- * real asset content to point at yet. Storage::fake() still exercises the
- * real local `serve=>true` signed-route mechanism (config/filesystems.php),
- * it just sandboxes the file root.
+ * real asset content to point at yet.
+ *
+ * Storage::persistentFake(), not Storage::fake(): the latter installs its
+ * own simplistic buildTemporaryUrlsUsing() override
+ * (Illuminate\Support\Facades\Storage::fake()) that bypasses the real
+ * ServeIstAssetController/nonce mechanism entirely, which would make the
+ * URL-collision and Cache-Control tests below prove nothing.
+ * persistentFake() swaps the disk instance without installing a fake
+ * callback of its own, so AppServiceProvider::configureIstAssetTemporaryUrls()
+ * is called again below to re-register the real one on the fresh instance.
  */
 final class AssessmentSessionAssetUrlTest extends OrganizationPaymentTestCase
 {
@@ -44,8 +54,16 @@ final class AssessmentSessionAssetUrlTest extends OrganizationPaymentTestCase
             $this->fail('The migration command did not return a test command wrapper.');
         }
         $command->assertExitCode(0);
-        Storage::fake('ist-assets');
+        Storage::persistentFake('ist-assets');
+        AppServiceProvider::configureIstAssetTemporaryUrls();
         $this->bindAction(self::DEFAULT_NOW);
+    }
+
+    protected function tearDown(): void
+    {
+        Date::setTestNow();
+        (new Filesystem)->deleteDirectory(storage_path('framework/testing/disks/ist-assets'));
+        parent::tearDown();
     }
 
     public function test_it_issues_a_url_capped_at_ten_minutes_when_the_session_has_more_time_left(): void
@@ -169,6 +187,110 @@ final class AssessmentSessionAssetUrlTest extends OrganizationPaymentTestCase
         $foreign->assertJsonPath('error.code', 'SESSION_NOT_FOUND');
     }
 
+    /**
+     * The bug this proves fixed: expires_at truncates to whole seconds, so
+     * two temporaryUrl() calls for the same asset within the same second
+     * used to produce a byte-identical URL. A negative response for one of
+     * them (storage briefly unavailable, say) could then get heuristically
+     * cached by the participant's browser (RFC 9111) and keep being served
+     * even after the underlying problem was gone -- because the retry's
+     * URL was indistinguishable from the failed one.
+     */
+    public function test_two_urls_issued_in_the_same_second_are_never_byte_identical(): void
+    {
+        $participant = $this->participant();
+        $session = $this->sessionRow($participant, 'in_progress');
+        $assetId = $this->assetRow('ist', 'ist-assets', 'fa/legend-1-a.png');
+        $token = $this->token($participant);
+
+        $first = $this->withToken($token)->getJson("/api/sessions/{$session}/assets/{$assetId}/url")->assertOk();
+        $second = $this->withToken($token)->getJson("/api/sessions/{$session}/assets/{$assetId}/url")->assertOk();
+
+        $this->assertSame($first->json('expires_at'), $second->json('expires_at'));
+        $this->assertNotSame($first->json('url'), $second->json('url'));
+    }
+
+    public function test_the_issued_url_actually_serves_the_asset_with_no_store_headers(): void
+    {
+        $participant = $this->participant();
+        $session = $this->sessionRow($participant, 'in_progress');
+        Storage::disk('ist-assets')->put('fa/legend-1-a.png', 'synthetic-png-bytes');
+        $assetId = $this->assetRow('ist', 'ist-assets', 'fa/legend-1-a.png');
+
+        $issued = $this->withToken($this->token($participant))
+            ->getJson("/api/sessions/{$session}/assets/{$assetId}/url")
+            ->assertOk();
+
+        $response = $this->get((string) $issued->json('url'));
+
+        $response->assertOk();
+        // Storage::disk(...)->response() returns a StreamedResponse;
+        // ->getContent() returns false for those by design (Symfony can't
+        // buffer a stream), so the test client's own ->streamedContent()
+        // helper is what actually captures the output.
+        $this->assertSame('synthetic-png-bytes', $response->streamedContent());
+        $this->assertNoStoreCacheControl($response->headers->get('Cache-Control'));
+    }
+
+    /**
+     * Reproduces the exact gap in the framework's own ServeFile: a missing
+     * file used to abort(404) with no Cache-Control header at all (only the
+     * success path set one), which is precisely what let a 404 get
+     * heuristically cached. ServeIstAssetController sets the header before
+     * every return, this branch included.
+     */
+    public function test_the_issued_url_404s_with_no_store_headers_once_the_file_is_gone(): void
+    {
+        $participant = $this->participant();
+        $session = $this->sessionRow($participant, 'in_progress');
+        Storage::disk('ist-assets')->put('fa/legend-1-a.png', 'synthetic-png-bytes');
+        $assetId = $this->assetRow('ist', 'ist-assets', 'fa/legend-1-a.png');
+
+        $issued = $this->withToken($this->token($participant))
+            ->getJson("/api/sessions/{$session}/assets/{$assetId}/url")
+            ->assertOk();
+
+        Storage::disk('ist-assets')->delete('fa/legend-1-a.png');
+
+        $response = $this->get((string) $issued->json('url'));
+
+        $response->assertNotFound();
+        $this->assertNoStoreCacheControl($response->headers->get('Cache-Control'));
+    }
+
+    public function test_a_tampered_signature_is_rejected_with_no_store_headers(): void
+    {
+        $participant = $this->participant();
+        $session = $this->sessionRow($participant, 'in_progress');
+        Storage::disk('ist-assets')->put('fa/legend-1-a.png', 'synthetic-png-bytes');
+        $assetId = $this->assetRow('ist', 'ist-assets', 'fa/legend-1-a.png');
+
+        $issued = $this->withToken($this->token($participant))
+            ->getJson("/api/sessions/{$session}/assets/{$assetId}/url")
+            ->assertOk();
+
+        $response = $this->get(((string) $issued->json('url')).'x');
+
+        $response->assertStatus(403);
+        $this->assertNoStoreCacheControl($response->headers->get('Cache-Control'));
+    }
+
+    /**
+     * Not an exact-string match: Symfony's ResponseHeaderBag treats
+     * Cache-Control specially -- it parses whatever directives were set,
+     * then regenerates the header in its own canonical order and adds
+     * `private` by default (neither `public` nor `private` was set
+     * explicitly). Checking for the required directives, not a literal
+     * string, is what actually survives that normalization.
+     */
+    private function assertNoStoreCacheControl(?string $cacheControl): void
+    {
+        $this->assertNotNull($cacheControl);
+        foreach (['no-store', 'no-cache', 'must-revalidate'] as $directive) {
+            $this->assertStringContainsString($directive, $cacheControl);
+        }
+    }
+
     private function assetRow(string $instrument, string $disk, string $objectKey): string
     {
         $assetId = (string) Str::ulid();
@@ -187,6 +309,14 @@ final class AssessmentSessionAssetUrlTest extends OrganizationPaymentTestCase
 
     private function bindAction(string $iso): void
     {
+        // Also mocks the REAL clock, not just the action's own injected
+        // one: URL::temporarySignedRoute()'s `expires` param is checked
+        // against Carbon::now() by Illuminate\Routing\UrlGenerator::
+        // signatureHasNotExpired(), a completely separate code path from
+        // this action's business-logic clock. Without this, a URL issued
+        // "now" (2026-09-21, per the fixtures below) reads as already
+        // expired against the real wall clock the test actually runs on.
+        Date::setTestNow($iso);
         $this->app->instance(GetAssessmentSessionAssetUrl::class, new GetAssessmentSessionAssetUrl(
             $this->app->make(RlsContextRunner::class),
             fn (): DateTimeImmutable => new DateTimeImmutable($iso),

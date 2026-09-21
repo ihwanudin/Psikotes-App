@@ -157,7 +157,16 @@ return [
             : [
                 'driver' => 'local',
                 'root' => storage_path('app/private/ist-assets'),
-                'serve' => true,
+                // 'serve' stays false: the framework's own signed-URL route
+                // (Illuminate\Filesystem\ServeFile) has no Cache-Control on
+                // its 403/404 responses, only on success, so a same-second
+                // retry of a byte-identical signed URL can get a negative
+                // response heuristically cached by the participant's
+                // browser (RFC 9111). ServeIstAssetController + the
+                // buildTemporaryUrlsUsing() override in AppServiceProvider
+                // replace it: explicit no-store on every branch, plus a
+                // signed nonce so no two issued URLs are ever identical.
+                'serve' => false,
                 'url' => '/private-ist-assets',
                 'visibility' => 'private',
                 'throw' => true,

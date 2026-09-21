@@ -93,9 +93,25 @@ credential. Documented in `DEPLOYMENT.md`'s bootstrap sequence.
     never a disk path — once a reader actually emits image-bearing
     subtests (FA/WU, a follow-up PR).
   - `ist-assets` disk (`config/filesystems.php`) — same local/S3-toggle
-    template as `identity`/`payment-proofs`, `serve => true` locally (so
-    Laravel auto-registers the signed `ServeFile` route with its own
-    `Cache-Control: no-store, no-cache, must-revalidate, max-age=0`).
+    template as `identity`/`payment-proofs`, **but** `serve => false`
+    locally (GLM finding, fixed 2026-09-22): Laravel's own signed-URL
+    route (`Illuminate\Filesystem\ServeFile`) only sets
+    `Cache-Control: no-store, no-cache, must-revalidate, max-age=0` on a
+    success response, not on 403/404 -- a gap that let a browser
+    heuristically cache a transient 404 (RFC 9111) for a URL that could be
+    reissued byte-identical within the same second (`expires` is
+    second-precision). `ServeIstAssetController` +
+    `AppServiceProvider::configureIstAssetTemporaryUrls()` replace it:
+    explicit no-store on every branch, plus a signed `nonce` per
+    `temporaryUrl()` call so no two issued URLs are ever identical. See
+    `tests/Feature/AssessmentSessions/AssessmentSessionAssetUrlTest.php`'s
+    `test_two_urls_issued_in_the_same_second_are_never_byte_identical`,
+    `..._actually_serves_the_asset_with_no_store_headers`,
+    `..._404s_with_no_store_headers_once_the_file_is_gone`, and
+    `test_a_tampered_signature_is_rejected_with_no_store_headers`.
+    `identity`/`payment-proofs` still use the framework's own `ServeFile`
+    unchanged -- this fix was scoped to the disk GLM actually flagged, not
+    a blanket redesign of every private-disk route.
   - **`SyncIstAssets`** (`app/Actions/AssessmentAssets/SyncIstAssets.php`)
     + **`assets:sync-ist`** console command — copies
     `database/seeders/data/assets/ist/**/*.png` (checked-in source,
