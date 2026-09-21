@@ -284,6 +284,93 @@ test('session_closed and deadline_exceeded surface without setting needsReload',
     }
 });
 
+test('not_found and not_started are terminal: no requeue, no retry, and further edits are blocked', async () => {
+    for (const type of ['not_found', 'not_started'] as const) {
+        const calls: AutosaveBatch[] = [];
+        const engine = createAutosaveEngine({
+            initialRevision: 0,
+            createMutationId: idGenerator(),
+            send: async (batch) => {
+                calls.push(batch);
+
+                return { type };
+            },
+        });
+
+        engine.queueChange(1, 'v');
+        const result = await engine.flush();
+
+        assert.equal(result.status, type);
+        assert.equal(
+            engine.isTerminal(),
+            true,
+            `${type} must mark the engine terminal`,
+        );
+        assert.equal(
+            engine.hasPendingChanges(),
+            false,
+            `${type} must not requeue the rejected batch (there is nothing to resend it to)`,
+        );
+        assert.throws(
+            () => engine.queueChange(2, 'other'),
+            /terminal/,
+            `${type} must block further local edits`,
+        );
+
+        // A caller that calls flush() again anyway (e.g. a stray timer)
+        // must get the same terminal status without a second network call.
+        const again = await engine.flush();
+        assert.deepEqual(again, { status: type });
+        assert.equal(
+            calls.length,
+            1,
+            `${type} must never be retried automatically`,
+        );
+    }
+});
+
+test('invalid_batch holds the rejected batch without retrying it, but the engine stays usable for new edits', async () => {
+    const calls: AutosaveBatch[] = [];
+    const engine = createAutosaveEngine({
+        initialRevision: 0,
+        createMutationId: idGenerator(),
+        send: async (batch) => {
+            calls.push(batch);
+
+            return { type: 'invalid_batch' };
+        },
+    });
+
+    engine.queueChange(1, 'bad-value');
+    const result = await engine.flush();
+
+    assert.deepEqual(result, { status: 'invalid_batch' });
+    assert.equal(
+        engine.isTerminal(),
+        false,
+        'invalid_batch is per-batch, not terminal for the engine',
+    );
+    assert.equal(engine.needsReload(), false);
+    assert.equal(
+        engine.hasPendingChanges(),
+        false,
+        'the rejected batch must not be requeued — resending the identical payload would retry-loop forever',
+    );
+
+    // Nothing pending: a stray extra flush() must be a no-op, proving no
+    // automatic resend of the same rejected payload.
+    const again = await engine.flush();
+    assert.deepEqual(again, { status: 'skipped' });
+    assert.equal(
+        calls.length,
+        1,
+        'the rejected batch must be sent exactly once, never retried',
+    );
+
+    // A genuinely new edit (not a retry of the old one) is still accepted.
+    assert.doesNotThrow(() => engine.queueChange(2, 'good-value'));
+});
+
 test('reload() restores a fresh revision and clears needsReload without discarding unsent edits', async () => {
     const engine = createAutosaveEngine({
         initialRevision: 2,
