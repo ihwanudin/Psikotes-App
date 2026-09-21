@@ -40,6 +40,8 @@ $keyOutputChecks = 0
 $s3OutputChecks = 0
 $minioImage = 'quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z'
 $mcImage = 'quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z'
+$backupKeyTemplate = 'backups/{date}/{name}.dump.age'
+$backupPrefix = $backupKeyTemplate.Substring(0, $backupKeyTemplate.IndexOf('{'))
 
 function Assert-NativeSuccess([string] $operation) {
     if ($LASTEXITCODE -ne 0) {
@@ -151,6 +153,101 @@ function Send-EncryptedOffsiteCopy([string] $archivePath, [string] $objectName) 
     [void] (Invoke-S3Step 'Encrypted offsite upload' {
         docker @mcCommand cp $containerArchive "offsite/$s3Bucket/$objectName"
     } $s3Secrets)
+}
+
+function New-BackupObjectKey([DateTime] $backupDate, [string] $name) {
+    if ($name -cnotmatch '^[a-z0-9][a-z0-9._-]*$') {
+        throw 'Backup object name contains unsupported characters.'
+    }
+    return $backupKeyTemplate.Replace('{date}', $backupDate.ToUniversalTime().ToString('yyyy-MM-dd')).Replace('{name}', $name)
+}
+
+function Get-BackupObjectDate([string] $objectKey) {
+    $pattern = '^' + [regex]::Escape($backupKeyTemplate).
+        Replace('\{date}', '(?<date>\d{4}-\d{2}-\d{2})').
+        Replace('\{name}', '(?<name>[a-z0-9][a-z0-9._-]*)') + '$'
+    $match = [regex]::Match($objectKey, $pattern, [System.Text.RegularExpressions.RegexOptions]::CultureInvariant)
+    if (-not $match.Success) { return $null }
+    $parsedDate = [DateTime]::MinValue
+    $parsed = [DateTime]::TryParseExact(
+        $match.Groups['date'].Value,
+        'yyyy-MM-dd',
+        [System.Globalization.CultureInfo]::InvariantCulture,
+        [System.Globalization.DateTimeStyles]::AssumeUniversal,
+        [ref] $parsedDate
+    )
+    if (-not $parsed) { return $null }
+    return [DateTime]::SpecifyKind($parsedDate.Date, [DateTimeKind]::Utc)
+}
+
+function Get-RetentionPlan([DateTime] $referenceDate, [int] $days) {
+    $listStep = Invoke-S3Step 'Retention object listing' {
+        docker @mcCommand ls --recursive --json "offsite/$s3Bucket/$backupPrefix"
+    } $s3Secrets
+    $delete = @()
+    $keep = @()
+    $anomalies = @()
+    $cutoffDate = $referenceDate.Date.AddDays(-$days)
+    foreach ($line in ($listStep.Output -split "`n")) {
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        $item = $line | ConvertFrom-Json
+        $listedKey = [string] $item.key
+        if ([string]::IsNullOrWhiteSpace($listedKey) -or $listedKey.StartsWith('/', [StringComparison]::Ordinal)) {
+            throw 'Retention listing returned an invalid relative key.'
+        }
+        $objectKey = $backupPrefix + $listedKey
+        $backupDate = Get-BackupObjectDate $objectKey
+        if ($null -eq $backupDate) {
+            $keep += $objectKey
+            $anomalies += [pscustomobject] @{ Type = 'unparseable'; Key = $objectKey }
+        }
+        elseif ($backupDate -gt $referenceDate.Date) {
+            $keep += $objectKey
+            $anomalies += [pscustomobject] @{ Type = 'future'; Key = $objectKey }
+        }
+        elseif ($backupDate -lt $cutoffDate) {
+            $delete += $objectKey
+        }
+        else {
+            $keep += $objectKey
+        }
+    }
+    return [pscustomobject] @{ Delete = @($delete); Keep = @($keep); Anomalies = @($anomalies) }
+}
+
+function Invoke-RetentionPrune([DateTime] $referenceDate, [int] $days, [bool] $apply) {
+    $plan = Get-RetentionPlan $referenceDate $days
+    if ($apply) {
+        foreach ($objectKey in $plan.Delete) {
+            [void] (Invoke-S3Step 'Retention object deletion' {
+                docker @mcCommand rm "offsite/$s3Bucket/$objectKey"
+            } $s3Secrets)
+        }
+    }
+    return $plan
+}
+
+function Test-OffsiteObjectExists([string] $objectKey) {
+    $statStep = Invoke-S3Step 'Retention object state check' {
+        docker @mcCommand stat --json "offsite/$s3Bucket/$objectKey"
+    } $s3Secrets $false
+    return $statStep.ExitCode -eq 0
+}
+
+function Assert-RetentionObjectState([string] $phase, [string] $scenario, [string] $objectKey, [bool] $expectedPresent) {
+    $actualPresent = Test-OffsiteObjectExists $objectKey
+    $expected = if ($expectedPresent) { 'present' } else { 'absent' }
+    $actual = if ($actualPresent) { 'present' } else { 'absent' }
+    if ($actualPresent -ne $expectedPresent) {
+        throw "Retention object check failed in $phase for $scenario ($objectKey): expected $expected, found $actual."
+    }
+    Write-Output "retention_object_check=PASS phase=$phase scenario=$scenario expected=$expected actual=$actual object=$objectKey"
+}
+
+function Write-RetentionAnomalies([string] $phase, [object[]] $anomalies) {
+    foreach ($anomaly in $anomalies) {
+        Write-Output "retention_anomaly phase=$phase type=$($anomaly.Type) action=kept object=$($anomaly.Key)"
+    }
 }
 
 function Invoke-Psql([string] $database, [string] $sql) {
@@ -379,6 +476,27 @@ try {
     }
     $s3Secrets = @($s3AccessKey, $s3SecretKey)
     $offsiteObject = "rehearsal/$ExpectedCommit/$runId/source.dump.age"
+
+    $retentionDaysValue = [Environment]::GetEnvironmentVariable('F9_BACKUP_RETENTION_DAYS')
+    $retentionDays = 30
+    if (-not [string]::IsNullOrWhiteSpace($retentionDaysValue)) {
+        $parsedRetentionDays = 0
+        if (-not [int]::TryParse($retentionDaysValue, [ref] $parsedRetentionDays) -or
+            $parsedRetentionDays -lt 1 -or $parsedRetentionDays -gt 3650) {
+            throw 'F9_BACKUP_RETENTION_DAYS must be an integer from 1 through 3650.'
+        }
+        $retentionDays = $parsedRetentionDays
+    }
+    $retentionApplyValue = [Environment]::GetEnvironmentVariable('F9_BACKUP_RETENTION_APPLY')
+    $retentionApply = $false
+    if (-not [string]::IsNullOrWhiteSpace($retentionApplyValue)) {
+        if ($retentionApplyValue -ieq 'true') { $retentionApply = $true }
+        elseif ($retentionApplyValue -ine 'false') {
+            throw 'F9_BACKUP_RETENTION_APPLY must be exactly true or false.'
+        }
+    }
+    $retentionReferenceDate = [DateTime]::UtcNow.Date
+    $currentBackupObject = New-BackupObjectKey $retentionReferenceDate "backup-$runId"
 
     docker image inspect postgres:17.6-alpine --format '{{.Id}}' | Out-Null
     Assert-NativeSuccess 'PostgreSQL image check'
@@ -734,6 +852,80 @@ SELECT concat_ws('|',
         $badCredentialExit = $badCredentialStep.ExitCode
         if ($badCredentialExit -eq 0) { throw 'Wrong S3 credentials were incorrectly accepted.' }
     }
+
+    Send-EncryptedOffsiteCopy $encryptedArchive $currentBackupObject
+    if ($offsiteMode -ceq 'synthetic-minio') {
+        $oldRetentionObject = New-BackupObjectKey ($retentionReferenceDate.AddDays(-$retentionDays - 1)) "old-$runId"
+        $youngRetentionObject = $currentBackupObject
+        $outsideRetentionObject = "outside-backups/2000-01-01/outside-$runId.dump.age"
+        $invalidRetentionObject = "${backupPrefix}not-a-date/invalid-$runId.dump.age"
+        $futureRetentionObject = New-BackupObjectKey ($retentionReferenceDate.AddDays(1)) "future-$runId"
+        Send-EncryptedOffsiteCopy $encryptedArchive $oldRetentionObject
+        Send-EncryptedOffsiteCopy $encryptedArchive $outsideRetentionObject
+        Send-EncryptedOffsiteCopy $encryptedArchive $invalidRetentionObject
+        Send-EncryptedOffsiteCopy $encryptedArchive $futureRetentionObject
+
+        $dryRunPlan = Invoke-RetentionPrune $retentionReferenceDate $retentionDays $false
+        if ($dryRunPlan.Delete.Count -ne 1 -or $dryRunPlan.Delete[0] -cne $oldRetentionObject) {
+            throw 'Retention dry-run did not select exactly the old in-prefix object.'
+        }
+        if ($dryRunPlan.Keep.Count -ne 3 -or
+            $dryRunPlan.Keep -cnotcontains $youngRetentionObject -or
+            $dryRunPlan.Keep -cnotcontains $invalidRetentionObject -or
+            $dryRunPlan.Keep -cnotcontains $futureRetentionObject) {
+            throw 'Retention dry-run keep-set differs from the expected in-prefix objects.'
+        }
+        if ($dryRunPlan.Anomalies.Count -ne 2 -or
+            $dryRunPlan.Anomalies.Key -cnotcontains $invalidRetentionObject -or
+            $dryRunPlan.Anomalies.Key -cnotcontains $futureRetentionObject) {
+            throw 'Retention dry-run anomaly-set differs from the expected invalid and future objects.'
+        }
+        Write-RetentionAnomalies 'dry-run' $dryRunPlan.Anomalies
+        foreach ($objectKey in $dryRunPlan.Delete) {
+            Write-Output "retention_would_delete phase=dry-run object=$objectKey"
+        }
+        Assert-RetentionObjectState 'dry-run' 'old' $oldRetentionObject $true
+        Assert-RetentionObjectState 'dry-run' 'young' $youngRetentionObject $true
+        Assert-RetentionObjectState 'dry-run' 'outside-prefix' $outsideRetentionObject $true
+        Assert-RetentionObjectState 'dry-run' 'unparseable' $invalidRetentionObject $true
+        Assert-RetentionObjectState 'dry-run' 'future' $futureRetentionObject $true
+        Write-Output "retention_dry_run=PASS days=$retentionDays prefix=$backupPrefix would_delete=$($dryRunPlan.Delete.Count) kept=$($dryRunPlan.Keep.Count) anomalies=$($dryRunPlan.Anomalies.Count)"
+
+        $applyPlan = Invoke-RetentionPrune $retentionReferenceDate $retentionDays $true
+        if ($applyPlan.Delete.Count -ne 1 -or $applyPlan.Delete[0] -cne $oldRetentionObject) {
+            throw 'Retention apply did not select exactly the old in-prefix object.'
+        }
+        if ($applyPlan.Anomalies.Count -ne 2 -or
+            $applyPlan.Anomalies.Key -cnotcontains $invalidRetentionObject -or
+            $applyPlan.Anomalies.Key -cnotcontains $futureRetentionObject) {
+            throw 'Retention apply anomaly-set differs from the expected invalid and future objects.'
+        }
+        Write-RetentionAnomalies 'apply' $applyPlan.Anomalies
+        foreach ($objectKey in $applyPlan.Delete) {
+            Write-Output "retention_deleted phase=apply object=$objectKey"
+        }
+        Assert-RetentionObjectState 'apply' 'old' $oldRetentionObject $false
+        Assert-RetentionObjectState 'apply' 'young' $youngRetentionObject $true
+        Assert-RetentionObjectState 'apply' 'outside-prefix' $outsideRetentionObject $true
+        Assert-RetentionObjectState 'apply' 'unparseable' $invalidRetentionObject $true
+        Assert-RetentionObjectState 'apply' 'future' $futureRetentionObject $true
+        Write-Output "retention_prune=PASS days=$retentionDays prefix=$backupPrefix deleted=$($applyPlan.Delete.Count) kept=$($applyPlan.Keep.Count) anomalies=$($applyPlan.Anomalies.Count)"
+    }
+    else {
+        $operatorPlan = Invoke-RetentionPrune $retentionReferenceDate $retentionDays $retentionApply
+        $operatorPhase = if ($retentionApply) { 'apply' } else { 'dry-run' }
+        Write-RetentionAnomalies $operatorPhase $operatorPlan.Anomalies
+        if ($retentionApply) {
+            Write-Output "retention_prune=PASS days=$retentionDays prefix=$backupPrefix deleted=$($operatorPlan.Delete.Count) kept=$($operatorPlan.Keep.Count) anomalies=$($operatorPlan.Anomalies.Count)"
+        }
+        else {
+            foreach ($objectKey in $operatorPlan.Delete) {
+                Write-Output "retention_would_delete phase=dry-run object=$objectKey"
+            }
+            Write-Output "retention_dry_run=PASS days=$retentionDays prefix=$backupPrefix would_delete=$($operatorPlan.Delete.Count) kept=$($operatorPlan.Keep.Count) anomalies=$($operatorPlan.Anomalies.Count)"
+        }
+    }
+    Write-Output "retention_secret_output_check=PASS s3_steps=$s3OutputChecks"
 
     $archive = [System.IO.File]::ReadAllBytes($encryptedArchive)
     if ($archive.Length -lt 128) { throw 'Encrypted archive is too small for a corruption probe.' }
