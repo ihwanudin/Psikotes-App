@@ -22,14 +22,44 @@ $corruptDatabase = 'psikotes_backup_corrupt'
 $tempDirectory = Join-Path ([System.IO.Path]::GetTempPath()) "psikotes-f9-backup-$runId"
 $snapshotArchive = Join-Path $tempDirectory 'snapshot.tar'
 $dumpArchive = Join-Path $tempDirectory 'source.dump'
-$corruptArchive = Join-Path $tempDirectory 'source.corrupt.dump'
+$identityFile = Join-Path $tempDirectory 'identity.txt'
+$encryptedArchive = Join-Path $tempDirectory 'source.dump.age'
+$restoredArchive = Join-Path $tempDirectory 'source.restored.dump'
+$corruptArchive = Join-Path $tempDirectory 'source.corrupt.dump.age'
 $networkCreated = $false
 $failure = $null
+$identitySecret = $null
+$keyOutputChecks = 0
 
 function Assert-NativeSuccess([string] $operation) {
     if ($LASTEXITCODE -ne 0) {
         throw "$operation failed; no live or application resource was targeted."
     }
+}
+
+function Assert-OutputExcludesKey([string] $output, [string] $secret) {
+    if ($output.Contains($secret)) {
+        throw 'A key-touching step exposed the identity in its output.'
+    }
+}
+
+function Invoke-KeyStep([string] $operation, [scriptblock] $command, [bool] $requireSuccess = $true) {
+    $previousPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $captured = & $command 2>&1
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousPreference
+    }
+    $output = ($captured | ForEach-Object { [string] $_ }) -join "`n"
+    Assert-OutputExcludesKey $output $identitySecret
+    $script:keyOutputChecks++
+    if ($requireSuccess -and $exitCode -ne 0) {
+        throw "$operation failed with exit code $exitCode."
+    }
+    return @{ Output = $output; ExitCode = $exitCode }
 }
 
 function Invoke-Psql([string] $database, [string] $sql) {
@@ -233,12 +263,23 @@ try {
     git -C $workspace archive --format=tar --output=$snapshotArchive $ExpectedCommit
     Assert-NativeSuccess 'Immutable Git snapshot creation'
 
+    docker run --rm --pull=never --label $label --network bridge `
+        --mount "type=bind,source=$tempDirectory,target=/rehearsal" `
+        --entrypoint sh postgres:17.6-alpine -euc `
+        'apk add --no-cache age >/dev/null; test -x /usr/bin/age || { echo age executable missing at /usr/bin/age >&2; exit 1; }; test -x /usr/bin/age-keygen || { echo age-keygen executable missing at /usr/bin/age-keygen >&2; exit 1; }; cp /usr/bin/age /rehearsal/age; cp /usr/bin/age-keygen /rehearsal/age-keygen'
+    Assert-NativeSuccess 'Ephemeral age tooling installation'
+    if (-not (Test-Path -LiteralPath (Join-Path $tempDirectory 'age') -PathType Leaf) -or
+        -not (Test-Path -LiteralPath (Join-Path $tempDirectory 'age-keygen') -PathType Leaf)) {
+        throw 'Ephemeral age tooling is missing.'
+    }
+
     docker network create --internal --label $label $network | Out-Null
     Assert-NativeSuccess 'Internal rehearsal network creation'
     $networkCreated = $true
 
     docker run --detach --pull=never --name $databaseContainer --label $label `
         --network $network --network-alias f9-backup-db --tmpfs /var/lib/postgresql/data:rw `
+        --mount "type=bind,source=$tempDirectory,target=/rehearsal" `
         --env POSTGRES_USER=f9_backup_owner --env POSTGRES_DB=$sourceDatabase `
         --env POSTGRES_HOST_AUTH_METHOD=trust postgres:17.6-alpine | Out-Null
     Assert-NativeSuccess 'Disposable PostgreSQL creation'
@@ -251,6 +292,43 @@ try {
         Start-Sleep -Milliseconds 500
     }
     if (-not $ready) { throw 'Disposable PostgreSQL did not become ready.' }
+
+    $providedIdentity = [Environment]::GetEnvironmentVariable('F9_BACKUP_AGE_IDENTITY')
+    if ([string]::IsNullOrEmpty($providedIdentity)) {
+        $previousPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = 'Continue'
+            $keygenOutput = docker exec $databaseContainer /rehearsal/age-keygen -o /rehearsal/identity.txt 2>&1
+            $keygenExit = $LASTEXITCODE
+        }
+        finally {
+            $ErrorActionPreference = $previousPreference
+        }
+        if ($keygenExit -ne 0) { throw "Synthetic age identity generation failed with exit code $keygenExit." }
+        $keyMode = 'synthetic'
+    }
+    else {
+        if ($providedIdentity -cnotmatch '^AGE-SECRET-KEY-1[023456789ACDEFGHJKLMNPQRSTUVWXYZ]+$') {
+            throw 'F9_BACKUP_AGE_IDENTITY must contain one native age identity.'
+        }
+        [System.IO.File]::WriteAllText($identityFile, "$providedIdentity`n", [System.Text.UTF8Encoding]::new($false))
+        $keygenOutput = @()
+        $keyMode = 'operator'
+    }
+    if (-not (Test-Path -LiteralPath $identityFile -PathType Leaf)) { throw 'Age identity file is missing.' }
+    $identitySecret = ((Get-Content -LiteralPath $identityFile) | Where-Object { $_ -match '^AGE-SECRET-KEY-' } | Select-Object -First 1)
+    if ([string]::IsNullOrEmpty($identitySecret) -or $identitySecret -cnotmatch '^AGE-SECRET-KEY-1[023456789ACDEFGHJKLMNPQRSTUVWXYZ]+$') {
+        throw 'Age identity file does not contain one valid native identity.'
+    }
+    Assert-OutputExcludesKey (($keygenOutput | ForEach-Object { [string] $_ }) -join "`n") $identitySecret
+    $keyOutputChecks++
+    $recipientStep = Invoke-KeyStep 'Age recipient derivation' {
+        docker exec $databaseContainer /rehearsal/age-keygen -y /rehearsal/identity.txt
+    }
+    $recipient = $recipientStep.Output.Trim()
+    if ($recipient -cnotmatch '^age1[023456789acdefghjklmnpqrstuvwxyz]+$') {
+        throw 'Age recipient derivation returned an invalid public key.'
+    }
 
     Get-Content -LiteralPath (Join-Path $workspace 'database/schema/postgres_roles.sql') -Raw |
         docker exec --interactive $databaseContainer psql --host 127.0.0.1 `
@@ -375,11 +453,33 @@ SELECT concat_ws('|',
     $archiveBytes = (Get-Item -LiteralPath $dumpArchive).Length
     if ($archiveBytes -le 0) { throw 'Logical dump archive is empty.' }
 
+    [void] (Invoke-KeyStep 'Authenticated archive encryption' {
+        docker exec $databaseContainer /rehearsal/age -r $recipient -o /rehearsal/source.dump.age /rehearsal/source.dump
+    })
+    if (-not (Test-Path -LiteralPath $encryptedArchive -PathType Leaf)) { throw 'Encrypted archive is missing.' }
+    $encryptedBytes = (Get-Item -LiteralPath $encryptedArchive).Length
+    if ($encryptedBytes -le $archiveBytes) { throw 'Encrypted archive has an implausible size.' }
+    Remove-Item -LiteralPath $dumpArchive -Force
+    docker exec $databaseContainer rm /tmp/source.dump
+    Assert-NativeSuccess 'Container plaintext dump removal'
+    if (Test-Path -LiteralPath $dumpArchive) { throw 'Plaintext export remains after encryption.' }
+
     [void] (Invoke-Psql $sourceDatabase "CREATE DATABASE $destinationDatabase")
     $restoreTimer = [System.Diagnostics.Stopwatch]::StartNew()
+    [void] (Invoke-KeyStep 'Authenticated archive decryption' {
+        docker exec $databaseContainer /rehearsal/age -d -i /rehearsal/identity.txt `
+            -o /rehearsal/source.restored.dump /rehearsal/source.dump.age
+    })
+    if (-not (Test-Path -LiteralPath $restoredArchive -PathType Leaf) -or
+        (Get-Item -LiteralPath $restoredArchive).Length -ne $archiveBytes) {
+        throw 'Decrypted archive is missing or differs in size from the original.'
+    }
+    docker exec $databaseContainer pg_restore --list /rehearsal/source.restored.dump | Out-Null
+    Assert-NativeSuccess 'Decrypted archive inspection'
     docker exec $databaseContainer pg_restore --host 127.0.0.1 --username f9_backup_owner `
-        --dbname $destinationDatabase --no-owner --single-transaction --exit-on-error /tmp/source.dump
+        --dbname $destinationDatabase --no-owner --single-transaction --exit-on-error /rehearsal/source.restored.dump
     Assert-NativeSuccess 'Atomic destination restore'
+    Remove-Item -LiteralPath $restoredArchive -Force
     $restoreTimer.Stop()
 
     $destinationSchemaManifest = Get-SchemaManifest $destinationDatabase
@@ -407,26 +507,21 @@ SELECT concat_ws('|',
 '@
     if ($destinationCounts -cne '1|1|1|1|1|9') { throw "Restored graph is incomplete: $destinationCounts" }
 
-    $archive = [System.IO.File]::ReadAllBytes($dumpArchive)
-    if ($archive.Length -lt 2) { throw 'Archive is too small for a corruption probe.' }
+    $archive = [System.IO.File]::ReadAllBytes($encryptedArchive)
+    if ($archive.Length -lt 128) { throw 'Encrypted archive is too small for a corruption probe.' }
     $truncated = [byte[]]::new([Math]::Floor($archive.Length / 2))
     [Array]::Copy($archive, $truncated, $truncated.Length)
     [System.IO.File]::WriteAllBytes($corruptArchive, $truncated)
-    docker cp $corruptArchive "$databaseContainer`:/tmp/source.corrupt.dump" | Out-Null
-    Assert-NativeSuccess 'Corrupt archive staging'
     [void] (Invoke-Psql $sourceDatabase "CREATE DATABASE $corruptDatabase")
-    $strictErrorAction = $ErrorActionPreference
-    try {
-        $ErrorActionPreference = 'Continue'
-        $corruptOutput = docker exec $databaseContainer pg_restore --host 127.0.0.1 `
-            --username f9_backup_owner --dbname $corruptDatabase --no-owner `
-            --single-transaction --exit-on-error /tmp/source.corrupt.dump 2>&1
-        $corruptExitCode = $LASTEXITCODE
+    $corruptStep = Invoke-KeyStep 'Damaged ciphertext decryption' {
+        docker exec $databaseContainer /rehearsal/age -d -i /rehearsal/identity.txt `
+            -o /rehearsal/source.corrupt.restored.dump /rehearsal/source.corrupt.dump.age
+    } $false
+    $corruptExitCode = $corruptStep.ExitCode
+    if ($corruptExitCode -eq 0) { throw 'Damaged ciphertext was incorrectly authenticated.' }
+    if (Test-Path -LiteralPath (Join-Path $tempDirectory 'source.corrupt.restored.dump')) {
+        Remove-Item -LiteralPath (Join-Path $tempDirectory 'source.corrupt.restored.dump') -Force
     }
-    finally {
-        $ErrorActionPreference = $strictErrorAction
-    }
-    if ($corruptExitCode -eq 0) { throw 'Truncated archive was incorrectly accepted.' }
     $corruptState = Invoke-Psql $corruptDatabase @'
 SELECT concat_ws('|',
     to_regclass('public.migrations') IS NULL,
@@ -439,9 +534,10 @@ SELECT concat_ws('|',
     }
 
     Write-Output "F9_BACKUP_RESTORE_PASS label=$label commit=$ExpectedCommit"
-    Write-Output "dump_elapsed_ms=$($dumpTimer.ElapsedMilliseconds) restore_elapsed_ms=$($restoreTimer.ElapsedMilliseconds) archive_bytes=$archiveBytes"
+    Write-Output "dump_elapsed_ms=$($dumpTimer.ElapsedMilliseconds) restore_elapsed_ms=$($restoreTimer.ElapsedMilliseconds) archive_bytes=$archiveBytes encrypted_bytes=$encryptedBytes"
     Write-Output "schema_sha256=$sourceSchemaFingerprint data_sha256=$sourceDataFingerprint sequence_sha256=$sourceSequenceFingerprint graph=1|1|1|1|1|9"
-    Write-Output "corrupt_restore_exit=$corruptExitCode corrupt_partial_state=0"
+    Write-Output "encryption=age key_mode=$keyMode key_output_check=PASS steps=$keyOutputChecks"
+    Write-Output "corrupt_ciphertext_decrypt_exit=$corruptExitCode corrupt_partial_state=0"
 }
 catch {
     $failure = $_

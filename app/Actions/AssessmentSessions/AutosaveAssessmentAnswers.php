@@ -9,6 +9,7 @@ use App\Domain\AssessmentSessions\AssessmentAutosavePolicy;
 use App\Domain\AssessmentSessions\AssessmentAutosaveReceipt;
 use App\Domain\AssessmentSessions\AssessmentSessionStatus;
 use App\Domain\AssessmentSessions\GenericAssessmentInstrument;
+use App\Domain\AssessmentSessions\SessionDefinition;
 use App\Domain\AssessmentSessions\UnsupportedGenericAssessmentInstrument;
 use App\Security\RlsContextRunner;
 use Closure;
@@ -88,7 +89,7 @@ final class AutosaveAssessmentAnswers
             ?? throw new RuntimeException('The persisted assessment session status is invalid.');
 
         if (! Str::isUlid($mutationId) || ! array_is_list($items)) {
-            return $this->reject($status->value, 'INVALID_ANSWER_BATCH');
+            return $this->reject($status->value, 'INVALID_ANSWER_BATCH', (int) $session->answers_revision);
         }
 
         $receivedAt = ($this->clock)();
@@ -107,6 +108,7 @@ final class AutosaveAssessmentAnswers
             $revision,
             $items,
             $existing,
+            $this->maxItemNo($session->session_definition_payload),
         );
 
         if (! $decision->accepted) {
@@ -124,7 +126,7 @@ final class AutosaveAssessmentAnswers
                 }
             }
 
-            return $this->reject($decision->status->value, $decision->errorCode?->value);
+            return $this->reject($decision->status->value, $decision->errorCode?->value, (int) $session->answers_revision);
         }
 
         if (! $decision->shouldPersist) {
@@ -164,6 +166,30 @@ final class AutosaveAssessmentAnswers
             null,
             $receipt,
         );
+    }
+
+    /**
+     * The session's true total item count, read from the exact
+     * session_definition_payload snapshot the server itself stored at
+     * start time (S3) -- never from the client, and never re-derived from
+     * a live catalog lookup that could drift from what this specific
+     * session was actually issued.
+     */
+    private function maxItemNo(mixed $definitionPayload): int
+    {
+        if (! is_string($definitionPayload)) {
+            throw new RuntimeException('The persisted assessment session definition snapshot is missing.');
+        }
+        try {
+            $decoded = json_decode($definitionPayload, true, flags: JSON_THROW_ON_ERROR);
+        } catch (JsonException $exception) {
+            throw new RuntimeException('The persisted assessment session definition snapshot is invalid.', previous: $exception);
+        }
+        if (! is_array($decoded)) {
+            throw new RuntimeException('The persisted assessment session definition snapshot is invalid.');
+        }
+
+        return array_sum(array_column(SessionDefinition::fromArray($decoded)->subtests, 'item_count'));
     }
 
     private function loadMutation(int $sessionId, string $mutationId): ?AssessmentAutosaveMutation
@@ -241,13 +267,13 @@ final class AutosaveAssessmentAnswers
         );
     }
 
-    private function reject(?string $status, ?string $errorCode): AssessmentAutosaveResult
+    private function reject(?string $status, ?string $errorCode, ?int $currentRevision = null): AssessmentAutosaveResult
     {
         if ($errorCode === null) {
             throw new RuntimeException('A rejected assessment autosave requires an error code.');
         }
 
-        return new AssessmentAutosaveResult(false, false, $status, $errorCode);
+        return new AssessmentAutosaveResult(false, false, $status, $errorCode, currentRevision: $currentRevision);
     }
 
     private function timestamp(DateTimeImmutable $time): string

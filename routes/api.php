@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 use App\Http\Controllers\AssessmentParticipantProvisioningController;
 use App\Http\Controllers\AssessmentResultController;
+use App\Http\Controllers\AutosaveAssessmentAnswersController;
+use App\Http\Controllers\GetAssessmentSessionController;
 use App\Http\Controllers\ParticipantEntitlementController;
 use App\Http\Controllers\ParticipantLoginController;
 use App\Http\Controllers\ParticipantOrderStatusController;
 use App\Http\Controllers\ParticipantProfileController;
 use App\Http\Controllers\SelectionParticipantProvisioningController;
 use App\Http\Controllers\StartParticipantSessionController;
+use App\Http\Controllers\SubmitAssessmentSessionController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/integrations/v1/selection/participants', SelectionParticipantProvisioningController::class)
@@ -48,4 +51,15 @@ Route::middleware('participant.jwt')->group(function (): void {
     Route::post('/sessions/{testType}/start', StartParticipantSessionController::class)
         ->whereIn('testType', ['ist', 'papi', 'rmib', 'kraepelin', 'dass21'])
         ->name('participant.sessions.start');
+
+    // F2 session-http (2026-09-21): resume/autosave/submit own their own
+    // service transaction the same way start does (see each action's own
+    // doc comment), so they share the same rls-excluded group rather than
+    // the `rls` group above.
+    Route::get('/sessions/{id}', GetAssessmentSessionController::class)
+        ->name('participant.sessions.show');
+    Route::post('/sessions/{id}/answers', AutosaveAssessmentAnswersController::class)
+        ->name('participant.sessions.answers');
+    Route::post('/sessions/{id}/submit', SubmitAssessmentSessionController::class)
+        ->name('participant.sessions.submit');
 });
