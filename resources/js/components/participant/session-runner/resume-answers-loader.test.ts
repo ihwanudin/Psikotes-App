@@ -271,7 +271,11 @@ test('after the automatic-retry cap is reached, a manual retry() still works and
         status: 'ready',
         outcome: { type: 'not_started' },
     });
-    assert.equal(calls, 6, 'retry() must have triggered exactly one more attempt');
+    assert.equal(
+        calls,
+        6,
+        'retry() must have triggered exactly one more attempt',
+    );
 });
 
 test('retry() bypasses the queued wait and re-attempts immediately', async () => {
