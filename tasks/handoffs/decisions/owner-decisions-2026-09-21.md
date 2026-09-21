@@ -257,6 +257,25 @@ persetujuan yang sah menurut UU No. 27/2022 tentang Pelindungan Data Pribadi:
 Lane FE mencocokkan teks yang ada (PR #83) dengan daftar ini dan melengkapi
 bagian yang kurang.
 
+## 17. Siapa yang boleh menerbitkan laporan: "staff" = admin aplikasi pusat — SELESAI
+
+Klarifikasi pemilik proyek atas kata "admin" di butir 4: yang dimaksud adalah
+**staf pusat (admin aplikasi), satu tingkat di bawah super_admin**, bukan staf
+cabang.
+
+- **Menerbitkan (`GenerateReports`)**: psikolog, super_admin, dan admin
+  aplikasi pusat. Hanya untuk laporan yang **sudah ditandatangani**
+  psikolog.
+- **Menandatangani (`ReviewReports`)**: tetap **hanya psikolog** (butir 4).
+- **`branch_admin` dan `staff` cabang**: tetap **tidak boleh** menerbitkan
+  (butir 9).
+
+Kondisi sistem saat ini: peran `staff` selalu terikat cabang (`branch_id`
+wajib, konteks RLS `staff` per cabang), dan peran admin aplikasi pusat
+**belum ada**. Sampai peran itu dibuat, hanya psikolog dan super_admin yang
+bisa menerbitkan. Membuat peran baru (ability, konteks RLS, pengelolaan akun)
+adalah perubahan keamanan: rencana dulu, ditinjau Lead, baru kode.
+
 ## Butir yang masih terbuka setelah dokumen ini
 
 - Retensi foto identitas (butir 5d) sudah ditetapkan di butir 15. Butir 3
