@@ -1,59 +1,57 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
-import type {
-    FetchResumeAnswers,
-    ResumeAnswersOutcome,
-} from './resume-answers.ts';
+import { createResumeAnswersLoader } from './resume-answers-loader.ts';
+import type { ResumeAnswersLoaderState } from './resume-answers-loader.ts';
+import type { FetchResumeAnswers } from './resume-answers.ts';
 
 /**
- * Thin one-shot wrapper around `GET /sessions/:id/answers` (see
- * resume-answers.ts module doc). Fetches exactly once, on mount — unlike
- * `useAssessmentSession`, this isn't polled: the caller re-fetches by
- * remounting (e.g. after a `needsReload` recovery), not on a timer.
+ * Thin React wrapper around resume-answers-loader.ts — see that module's
+ * doc for the retry design (network_error is retryable, everything else
+ * is final).
  */
 
-export type UseResumeAnswersState =
-    | { status: 'loading' }
-    | { status: 'ready'; outcome: ResumeAnswersOutcome }
-    | { status: 'error'; error: unknown };
+export type UseResumeAnswersOptions = {
+    fetchResumeAnswers: FetchResumeAnswers;
+    /** From `useOfflineQueue()` (or `SessionRunnerContext.connectivity`)
+     * — the SAME connectivity signal the shell's offline banner uses.
+     * Not a second connectivity detector. */
+    queueRetry: (retry: () => void) => () => void;
+};
+
+export type UseResumeAnswersResult = {
+    state: ResumeAnswersLoaderState;
+    /** Retries immediately, bypassing any queued reconnect wait — wire
+     * this to a "Coba lagi" button while `state.status === 'reconnecting'`
+     * or `'error'`. */
+    retry: () => void;
+};
 
 export function useResumeAnswers(
-    fetchResumeAnswers: FetchResumeAnswers,
-): UseResumeAnswersState {
-    // Synced via an effect, not assigned during render — same reason as
-    // use-assessment-session.ts's fetchSessionRef: the project's
-    // react-hooks/refs rule (React Compiler) forbids ref writes in the
-    // render body.
-    const fetchRef = useRef(fetchResumeAnswers);
+    options: UseResumeAnswersOptions,
+): UseResumeAnswersResult {
+    // `options` is captured once, at mount — same "captured once"
+    // contract as use-autosave.ts's `send` (see that module's doc for
+    // why): the project's react-hooks/refs rule (React Compiler) forbids
+    // feeding anything ref-derived into a function call that runs during
+    // render, and in practice both `fetchResumeAnswers` and `queueRetry`
+    // close over values that don't change during one session (session
+    // id/token, and the offline queue's own stable `queueRetry`).
+    const [loader] = useState(() => createResumeAnswersLoader(options));
+    const [state, setState] = useState<ResumeAnswersLoaderState>(() =>
+        loader.getState(),
+    );
+
     useEffect(() => {
-        fetchRef.current = fetchResumeAnswers;
-    }, [fetchResumeAnswers]);
-
-    const [state, setState] = useState<UseResumeAnswersState>({
-        status: 'loading',
-    });
-
-    useEffect(() => {
-        let cancelled = false;
-
-        fetchRef
-            .current()
-            .then((outcome) => {
-                if (!cancelled) {
-                    setState({ status: 'ready', outcome });
-                }
-            })
-            .catch((error: unknown) => {
-                if (!cancelled) {
-                    setState({ status: 'error', error });
-                }
-            });
+        const unsubscribe = loader.subscribe(setState);
+        loader.start();
 
         return () => {
-            cancelled = true;
+            unsubscribe();
+            loader.dispose();
         };
-        // Runs once on mount by design — see module doc.
-    }, []);
+    }, [loader]);
 
-    return state;
+    const retry = useCallback((): void => loader.retry(), [loader]);
+
+    return { state, retry };
 }
