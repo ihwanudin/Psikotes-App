@@ -19,6 +19,17 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Install F0 instrument-extraction test dependencies
+        run: pip install -r tools/extract/requirements.txt
+
+      - name: Run F0 instrument-data gate tests (committed output only - no external sources)
+        run: python -m unittest discover -s tools/extract/tests -t . -v
+
       - name: Setup PHP
         uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:

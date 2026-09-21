@@ -253,8 +253,8 @@ export default function ParticipantLobby() {
                                                             }
                                                             className="rounded-xl border border-slate-200 p-4"
                                                         >
-                                                            <div className="flex items-center justify-between gap-4">
-                                                                <span className="font-medium">
+                                                            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                                                                <span className="min-w-0 flex-1 break-words font-medium">
                                                                     {testNames[
                                                                         entitlement
                                                                             .test_type
@@ -262,7 +262,7 @@ export default function ParticipantLobby() {
                                                                         entitlement.test_type.toUpperCase()}
                                                                 </span>
                                                                 <span
-                                                                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${meta.badgeClass}`}
+                                                                    className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${meta.badgeClass}`}
                                                                 >
                                                                     <meta.Icon
                                                                         className="size-3.5"
