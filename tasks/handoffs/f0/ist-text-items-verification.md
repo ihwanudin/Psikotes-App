@@ -201,20 +201,21 @@ individually `"status": "final"`.
 
 ## Hash gate
 
-Not yet pinned, same process as RMIB/PAPI: `test_f0_ist_items.py` covers
-structural invariants only (per-subtest item counts, global numbering
-contiguity, 5-option lettered items, fill-in items carry no options,
-answer-key membership, no leftover extraction artifacts, ME's draft
-invariants). The byte-hash pin follows in a commit after your review — it
-will need re-pinning again once FA/WU are merged in (the file's bytes change
-when those subtests are added), so this pin is understood to be temporary
-for the text-only shape.
+**Pinned**, after Lead's independent review (own PDF text extraction, all
+516 stem/option strings matched after normalization, the 4 RA fraction
+items re-verified by recomputing their answers against `ist.json`'s keys,
+reported against commit `f8ac705`): `test_bytes_are_deterministic` in
+`test_f0_ist_items.py` asserts `ist_items.json` is exactly 37509 bytes with
+sha256 `7ba88a3c29a1bd91b85357967d0710ea6f6d8347e03b2f64a96379067af58061`
+(`extract_aspect_sources.py`/`test_f0.py` pattern). This pin covers the
+text-only shape — it will need re-pinning once FA/WU (a separate PR) are
+merged in, since that changes the file's bytes.
 
 ## Tests
 
-- `python -m unittest tools.extract.tests.test_f0_ist_items -v` — 12/12 pass.
-- `python -m unittest discover -s tools/extract/tests -t . -v` — 51/51 pass
-  (all prior RMIB/PAPI/base tests + these 12, no regression).
+- `python -m unittest tools.extract.tests.test_f0_ist_items -v` — 13/13 pass.
+- `python -m unittest discover -s tools/extract/tests -t . -v` — 52/52 pass
+  (all prior RMIB/PAPI/base tests + these 13, no regression).
 
 ## Not touched
 

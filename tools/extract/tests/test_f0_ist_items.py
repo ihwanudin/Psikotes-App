@@ -1,3 +1,4 @@
+import hashlib
 import json
 import unittest
 from pathlib import Path
@@ -13,17 +14,31 @@ FILL_IN_SUBTESTS = {"GE": "fill_in_word", "RA": "fill_in_numeric", "ZR": "fill_i
 
 
 class IstItemsGateTest(unittest.TestCase):
-    """Structural invariants for `ist_items.json`. The byte-hash pin (following
-    the `extract_aspect_sources.py` / `test_f0.py` pattern, as used for RMIB
-    and PAPI) is added in a follow-up commit after the coordinator has
-    reviewed the extracted content - see PR description. FA/WU are covered by
-    a separate test module once that PR lands, not here."""
+    """Structural invariants and a fail-closed byte-hash gate for
+    `ist_items.json`, following the `extract_aspect_sources.py` / `test_f0.py`
+    pattern (as used for RMIB and PAPI). The hash was pinned after Lead's
+    independent review (own PDF text extraction, all 516 stem/option strings
+    matched after normalization, the 4 RA fraction items re-verified by
+    recomputing their answers against ist.json's keys, reported against
+    commit f8ac705). This pin covers the TEXT-ONLY shape - it will need
+    re-pinning once FA/WU (a separate PR) are merged in, since that changes
+    the file's bytes. FA/WU are covered by a separate test module once that
+    PR lands, not here."""
 
     def load(self):
         return json.loads((DATA / "ist_items.json").read_text(encoding="utf-8"))
 
     def load_ist(self):
         return json.loads((DATA / "ist.json").read_text(encoding="utf-8"))
+
+    def test_bytes_are_deterministic(self):
+        payload = (DATA / "ist_items.json").read_bytes()
+        self.assertEqual(len(payload), 37509)
+        self.assertEqual(
+            hashlib.sha256(payload).hexdigest(),
+            "7ba88a3c29a1bd91b85357967d0710ea6f6d8347e03b2f64a96379067af58061",
+        )
+        self.assertEqual(payload, json.dumps(self.load(), ensure_ascii=False, indent=2).encode("utf-8"))
 
     def test_top_level_status_is_draft_because_me_is_draft(self):
         data = self.load()
