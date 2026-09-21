@@ -72,7 +72,7 @@ function IstAssetImageForOneAsset({
                     <button
                         type="button"
                         onClick={reload}
-                        className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                        className="flex min-h-11 min-w-11 items-center justify-center rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
                     >
                         Coba lagi
                     </button>

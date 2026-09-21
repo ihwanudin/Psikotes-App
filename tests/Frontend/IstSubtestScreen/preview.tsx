@@ -129,13 +129,22 @@ async function send(batch: AutosaveBatch): Promise<AutosaveSendOutcome> {
     };
 }
 
-// --- Asset image demo: the FIRST fetch returns a URL that 404s on this
-// fixture's own dev server (a real, unhandled network failure), so the
-// <img>'s real onError fires and IstAssetImage really calls reload() --
-// the SECOND fetch then returns a tiny inline data: URI that always
-// renders, proving the whole onError -> reload -> success path end to
-// end, not just the pure loader logic (already covered by
-// ist-asset-url-loader.test.ts).
+// --- Asset image demo, three attempts in sequence:
+// 1. fetchAssetUrl itself fails (a real network_error) -- the ONLY path
+//    that reaches IstAssetImage's `status: 'error'` UI with its "Coba
+//    lagi" button (ist-asset-url-loader.ts never enters `error` from an
+//    <img> onError alone -- see that module's doc). This is what a
+//    genuinely-unreachable FA/WU option image looks like, and the one
+//    Lead's 2026-09-21 follow-up asked to verify at 44px, measured with a
+//    real failure rather than read from source.
+// 2. Clicking "Coba lagi" retries: this attempt returns an "available"
+//    URL that itself 404s on this fixture's own dev server, so the
+//    <img>'s real onError fires and IstAssetImage calls reload() again on
+//    its own, with no button click -- proving that separate recovery path
+//    end to end too (already covered by ist-asset-url-loader.test.ts at
+//    the pure-logic level, this is the real-browser proof).
+// 3. That reload's attempt returns a tiny inline data: URI that always
+//    renders.
 const WORKING_IMAGE_DATA_URI =
     'data:image/svg+xml;base64,' +
     btoa(
@@ -149,6 +158,10 @@ async function fetchAssetUrl(assetId: string): Promise<IstAssetUrlOutcome> {
     assetFetchCount++;
 
     if (assetFetchCount === 1) {
+        return { type: 'network_error' };
+    }
+
+    if (assetFetchCount === 2) {
         return {
             type: 'available',
             url: '/this-asset-does-not-exist.png',
