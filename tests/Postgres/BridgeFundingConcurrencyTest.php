@@ -1,0 +1,265 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Postgres;
+
+use App\Actions\Payments\GrantBridgeFunding;
+use App\Enums\AdminRole;
+use App\Models\Admin;
+use App\Models\AssessmentCase;
+use App\Models\Branch;
+use App\Models\Entitlement;
+use App\Models\Order;
+use App\Models\Participant;
+use App\Models\PaymentMethod;
+use App\Models\TestPackage;
+use App\Security\RlsContextRunner;
+use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use PHPUnit\Framework\TestCase;
+use RuntimeException;
+use Tests\Support\ForkedProcessResult;
+use Throwable;
+
+/**
+ * Lead's concurrency condition on the bridge-funding design (item 18): two
+ * admins approving the same order at once must serialize on the orders row
+ * lock and produce exactly one grant, not two -- and the failure mode this
+ * guards against is exactly the one documented in
+ * tasks/handoffs/f5/report-signing-conflict-500.md (a thrown unique-violation
+ * QueryException from inside runAsService()'s elevate branch poisoning the
+ * whole PostgreSQL transaction). GrantBridgeFunding uses insertOrIgnore()
+ * for the same reason ReportSigningService::sign() does.
+ */
+final class BridgeFundingConcurrencyTest extends TestCase
+{
+    private int $orderId;
+
+    private int $superAdminId;
+
+    private string $orderPublicId;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->assertSame(0, DB::transactionLevel());
+        $suffix = 'BF_'.Str::random(8);
+
+        app(RlsContextRunner::class)->runAsService(function () use ($suffix): void {
+            $branch = Branch::create([
+                'code' => "BR-{$suffix}",
+                'name' => "Cabang {$suffix}",
+                'ref_code' => "REF-{$suffix}",
+            ]);
+            $package = TestPackage::create([
+                'code' => "PKG-{$suffix}",
+                'name' => "Paket {$suffix}",
+                'amount' => 250_000,
+                'currency' => 'IDR',
+                'is_active' => true,
+            ]);
+            $package->items()->create(['test_type' => 'ist', 'sort_order' => 1]);
+            $package->items()->create(['test_type' => 'dass21', 'sort_order' => 2]);
+            $participant = Participant::create([
+                'branch_id' => $branch->id,
+                'referral_branch_id' => $branch->id,
+                'referral_source' => 'default',
+                'package_id' => $package->id,
+                'source_system' => 'DIRECT_PUBLIC',
+                'full_name' => "Peserta {$suffix}",
+                'gender' => 'female',
+                'birth_date' => '2001-04-15',
+                'education_level' => 'SMA/SMK',
+                'intended_field' => 'KAIGO',
+                'phone' => '+6281234567890',
+            ]);
+            $method = PaymentMethod::query()->where('code', 'manual_transfer')->first();
+            if ($method === null) {
+                $method = new PaymentMethod;
+                $method->forceFill(['code' => 'manual_transfer', 'display_name' => 'Transfer Manual', 'is_active' => true])->save();
+            }
+            $this->orderPublicId = (string) Str::ulid();
+            $case = AssessmentCase::create([
+                'public_id' => $this->orderPublicId,
+                'participant_id' => $participant->id,
+                'organization_id' => $branch->id,
+                'package_id' => $package->id,
+                'origin' => 'DIRECT_PUBLIC',
+                'intended_field_snapshot' => 'KAIGO',
+            ]);
+            $order = Order::create([
+                'public_id' => $this->orderPublicId,
+                'participant_id' => $participant->id,
+                'assessment_case_id' => $case->id,
+                'payment_method_id' => $method->id,
+                'status' => 'pending',
+                'amount' => 250_000,
+                'currency' => 'IDR',
+            ]);
+            Entitlement::create([
+                'participant_id' => $participant->id,
+                'assessment_case_id' => $case->id,
+                'order_id' => $order->id,
+                'test_type' => 'ist',
+                'status' => 'locked',
+            ]);
+            Entitlement::create([
+                'participant_id' => $participant->id,
+                'assessment_case_id' => null,
+                'order_id' => $order->id,
+                'test_type' => 'dass21',
+                'status' => 'locked',
+            ]);
+            $admin = Admin::create([
+                'branch_id' => null,
+                'name' => "Super Admin {$suffix}",
+                'email' => Str::lower($suffix).'@example.test',
+                'password' => 'not-a-real-password',
+                'role' => AdminRole::SuperAdmin,
+            ]);
+
+            $this->orderId = $order->id;
+            $this->superAdminId = $admin->id;
+        });
+    }
+
+    public function test_two_admins_approving_the_same_order_at_once_produce_exactly_one_grant(): void
+    {
+        $results = $this->race(
+            fn () => $this->grant('Surat instruksi holding No. 001/HC/2026'),
+            fn () => $this->grant('Surat instruksi holding No. 001/HC/2026'),
+        );
+
+        foreach ($results as $result) {
+            $this->assertArrayNotHasKey('class', $result, 'Neither worker may throw -- both must observe a settled bridge_funded order (real lock or idempotent replay), never a raw unique-violation escaping runAsService().');
+            $this->assertSame('bridge_funded', $result['status']);
+        }
+
+        app(RlsContextRunner::class)->runAsService(function (): void {
+            $this->assertSame(1, DB::table('bridge_funding_grants')->where('order_id', $this->orderId)->count());
+            $this->assertSame(1, DB::table('audit_logs')->where('action', 'order.bridge_funding_granted')->where('subject_id', $this->orderPublicId)->count());
+            $order = DB::table('orders')->where('id', $this->orderId)->sole();
+            $this->assertSame('bridge_funded', $order->status);
+            $this->assertNull($order->paid_at);
+            $entitlements = DB::table('entitlements')->where('order_id', $this->orderId)->get();
+            foreach ($entitlements as $entitlement) {
+                $this->assertSame('ready', $entitlement->status);
+            }
+        });
+    }
+
+    /** @return array{status:string} */
+    private function grant(string $managementReference): array
+    {
+        $admin = Admin::query()->findOrFail($this->superAdminId);
+        $order = app(GrantBridgeFunding::class)->handle($admin, $this->orderId, $managementReference);
+
+        return ['status' => $order->status->value];
+    }
+
+    /** Independent runtime-role processes pause right before locking the orders row. */
+    private function race(callable $first, callable $second): array
+    {
+        $this->assertTrue(function_exists('pcntl_fork'), 'Concurrency requires pcntl; never skip.');
+        DB::purge('pgsql');
+        $gate = random_int(1, 2_000_000_000);
+        $gateHeld = false;
+        $workers = [];
+        try {
+            foreach ([$first, $second] as $callback) {
+                $pair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
+                if ($pair === false || ($pid = pcntl_fork()) === -1) {
+                    throw new RuntimeException('Unable to create concurrency worker.');
+                }
+                if ($pid === 0) {
+                    fclose($pair[0]);
+                    foreach ($workers as $worker) {
+                        fclose($worker['socket']);
+                    }
+                    DB::purge('pgsql');
+                    stream_set_timeout($pair[1], 15);
+                    try {
+                        $identity = DB::selectOne('SELECT pg_backend_pid() AS pid, current_user AS name');
+                        if ($identity->name !== 'psikotes_runtime') {
+                            throw new RuntimeException('Worker must use runtime role.');
+                        }
+                        $gateArmed = true;
+                        DB::listen(function (QueryExecuted $query) use (&$gateArmed, $gate): void {
+                            if (! str_starts_with($query->sql, 'select')
+                                || ! str_contains($query->sql, '"orders"')
+                                || ! str_contains($query->sql, 'for update')) {
+                                return;
+                            }
+                            if ($gateArmed) {
+                                $gateArmed = false;
+                                DB::select('SELECT pg_advisory_lock_shared(?)', [$gate]);
+                                DB::select('SELECT pg_advisory_unlock_shared(?)', [$gate]);
+                            }
+                        });
+                        fwrite($pair[1], json_encode(['pid' => $identity->pid], JSON_THROW_ON_ERROR)."\n");
+                        if (fgets($pair[1]) !== "go\n") {
+                            throw new RuntimeException('Barrier timed out.');
+                        }
+                        $result = $callback();
+                    } catch (Throwable $exception) {
+                        $result = ['class' => $exception::class, 'error' => $exception->getMessage()];
+                    }
+                    ForkedProcessResult::sendAndExit($pair[1], $result,
+                        static function (): void {
+                            DB::disconnect('pgsql');
+                        });
+                }
+                fclose($pair[1]);
+                stream_set_timeout($pair[0], 15);
+                $workers[] = ['pid' => $pid, 'socket' => $pair[0]];
+            }
+            $backendIds = [];
+            foreach ($workers as $worker) {
+                $backendIds[] = json_decode((string) fgets($worker['socket']), true, flags: JSON_THROW_ON_ERROR)['pid'];
+            }
+            DB::select('SELECT pg_advisory_lock(?)', [$gate]);
+            $gateHeld = true;
+            foreach ($workers as $worker) {
+                fwrite($worker['socket'], "go\n");
+            }
+            $this->assertNotSame($backendIds[0], $backendIds[1]);
+            // Exactly one of the two backends must actually block on the row
+            // lock -- proof this is a real Postgres-level race, not two
+            // sequential calls that happened not to overlap.
+            $sawLockWait = false;
+            $deadline = microtime(true) + 5;
+            do {
+                foreach ($backendIds as $backendId) {
+                    $waiting = DB::selectOne('SELECT wait_event_type FROM pg_stat_activity WHERE pid = ?', [$backendId]);
+                    if ($waiting?->wait_event_type === 'Lock') {
+                        $sawLockWait = true;
+                        break 2;
+                    }
+                }
+                usleep(10000);
+            } while (microtime(true) < $deadline);
+            $this->assertTrue($sawLockWait, 'Expected at least one worker to genuinely block on the orders row lock.');
+            DB::select('SELECT pg_advisory_unlock(?)', [$gate]);
+            $gateHeld = false;
+
+            $results = [];
+            foreach ($workers as $worker) {
+                $results[] = json_decode((string) fgets($worker['socket']), true, flags: JSON_THROW_ON_ERROR);
+            }
+
+            return $results;
+        } finally {
+            if ($gateHeld) {
+                DB::select('SELECT pg_advisory_unlock(?)', [$gate]);
+            }
+            foreach ($workers as $worker) {
+                fclose($worker['socket']);
+                pcntl_waitpid($worker['pid'], $status);
+                $this->assertTrue(pcntl_wifexited($status));
+                $this->assertSame(0, pcntl_wexitstatus($status));
+            }
+        }
+    }
+}

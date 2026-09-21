@@ -75,6 +75,10 @@ final class Admin extends Authenticatable implements FilamentUser, ProvidesRlsCo
                 [AdminRole::Psychologist, AdminRole::SuperAdmin],
                 true,
             ),
+            // super_admin only for now (Lead's technical call,
+            // tasks/handoffs/f2/legacy-entitlement-provisioning-closure-plan.md);
+            // extends to central_admin automatically once that role exists.
+            AdminAbility::ApproveBridgeFunding => $this->role === AdminRole::SuperAdmin,
         };
     }
 

@@ -82,6 +82,12 @@ final class AdminAuthorizationTest extends TestCase
         $this->assertFalse($superAdmin->canPerform(AdminAbility::ReviewReports));
         $this->assertFalse($branchAdmin->canPerform(AdminAbility::ReviewReports));
         $this->assertFalse($staff->canPerform(AdminAbility::ReviewReports));
+
+        // ApproveBridgeFunding: only SuperAdmin for now (item 18, technical call)
+        $this->assertTrue($superAdmin->canPerform(AdminAbility::ApproveBridgeFunding));
+        $this->assertFalse($psychologist->canPerform(AdminAbility::ApproveBridgeFunding));
+        $this->assertFalse($branchAdmin->canPerform(AdminAbility::ApproveBridgeFunding));
+        $this->assertFalse($staff->canPerform(AdminAbility::ApproveBridgeFunding));
     }
 
     public function test_cross_branch_participant_idor_is_denied_even_when_identifier_is_known(): void

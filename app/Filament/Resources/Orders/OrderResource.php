@@ -91,11 +91,13 @@ final class OrderResource extends Resource
                         OrderStatus::Rejected => 'Ditolak',
                         OrderStatus::Expired => 'Kedaluwarsa',
                         OrderStatus::Cancelled => 'Dibatalkan',
+                        OrderStatus::BridgeFunded => 'Ditalangi',
                     })
                     ->color(fn (OrderStatus $state): string => match ($state) {
                         OrderStatus::Pending => 'warning',
                         OrderStatus::Paid => 'success',
                         OrderStatus::Rejected => 'danger',
+                        OrderStatus::BridgeFunded => 'info',
                         default => 'gray',
                     }),
                 TextColumn::make('proof_object_key')
@@ -115,6 +117,7 @@ final class OrderResource extends Resource
                         OrderStatus::Pending->value => 'Menunggu',
                         OrderStatus::Paid->value => 'Disetujui',
                         OrderStatus::Rejected->value => 'Ditolak',
+                        OrderStatus::BridgeFunded->value => 'Ditalangi',
                     ]),
             ])
             ->recordActions([
