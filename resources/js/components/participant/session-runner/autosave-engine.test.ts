@@ -279,7 +279,7 @@ test('session_closed and deadline_exceeded surface without setting needsReload',
     }
 });
 
-test('not_found and not_started are terminal: no requeue, no retry, and further edits are blocked', async () => {
+test('not_found and not_started are terminal: no requeue, no retry, and further edits are silently ignored', async () => {
     for (const type of ['not_found', 'not_started'] as const) {
         const calls: AutosaveBatch[] = [];
         const engine = createAutosaveEngine({
@@ -306,10 +306,20 @@ test('not_found and not_started are terminal: no requeue, no retry, and further 
             false,
             `${type} must not requeue the rejected batch (there is nothing to resend it to)`,
         );
-        assert.throws(
+
+        // A no-op, not a throw (Lead's 2026-09-21 review): queueChange is
+        // called directly from a UI event handler (the participant
+        // picking an answer), so an uncaught exception there would land
+        // in the participant's hands. It must neither throw nor queue
+        // anything to send.
+        assert.doesNotThrow(
             () => engine.queueChange(2, 'other'),
-            /terminal/,
-            `${type} must block further local edits`,
+            `${type} must not throw from queueChange — it is called from a UI event handler`,
+        );
+        assert.equal(
+            engine.hasPendingChanges(),
+            false,
+            `${type} must silently drop the edit, not queue it for a session that will never send again`,
         );
 
         // A caller that calls flush() again anyway (e.g. a stray timer)
@@ -322,6 +332,35 @@ test('not_found and not_started are terminal: no requeue, no retry, and further 
             `${type} must never be retried automatically`,
         );
     }
+});
+
+test('queueChange after a terminal outcome never calls send, even via a later flush()', async () => {
+    let sendCalls = 0;
+    const engine = createAutosaveEngine({
+        initialRevision: 0,
+        createMutationId: idGenerator(),
+        send: async () => {
+            sendCalls++;
+
+            return { type: 'not_found' };
+        },
+    });
+
+    engine.queueChange(1, 'v');
+    await engine.flush();
+    assert.equal(sendCalls, 1);
+    assert.equal(engine.isTerminal(), true);
+
+    // Simulates the participant clicking a different answer after the
+    // page already knows the session is dead.
+    assert.doesNotThrow(() => engine.queueChange(2, 'clicked after terminal'));
+    await engine.flush();
+
+    assert.equal(
+        sendCalls,
+        1,
+        'a click after terminal must never trigger a second send()/fetch',
+    );
 });
 
 test('invalid_batch holds the rejected batch without retrying it, but the engine stays usable for new edits', async () => {

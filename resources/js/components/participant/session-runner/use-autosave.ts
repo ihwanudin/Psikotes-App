@@ -28,7 +28,8 @@ export type UseAutosaveOptions = {
 
 export type UseAutosaveResult = {
     /** Queues a local edit and (re)starts the debounce timer. Throws if
-     * needsReload or isTerminal is true — check both before calling. */
+     * needsReload is true — check it before calling. A no-op once
+     * isTerminal is true (see autosave-engine.ts's queueChange doc). */
     queueChange: (itemNo: number, value: unknown) => void;
     /** Sends immediately, bypassing any pending debounce timer. Call this
      * on item navigation and before submit. */

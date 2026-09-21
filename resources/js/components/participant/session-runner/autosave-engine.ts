@@ -112,10 +112,14 @@ export type AutosaveEngineOptions = {
 
 export type AutosaveEngine = {
     /** Queues a local edit. Throws if the engine currently needs a reload
-     * (see module doc), or if it has hit a terminal outcome
-     * (`not_found`/`not_started` — see AutosaveSendOutcome's doc): in
-     * both cases the caller must not let the participant keep editing
-     * blind against a session the engine already knows is unusable. */
+     * (see module doc) — the caller must not let the participant keep
+     * editing blind against a known-desynced revision. A no-op (not a
+     * throw) once the engine has hit a terminal outcome
+     * (`not_found`/`not_started` — see AutosaveSendOutcome's doc): this
+     * is called directly from UI event handlers, so a session that is
+     * already known unusable is silently ignored here rather than
+     * surfaced as an uncaught exception; check `isTerminal()` to show
+     * the session's terminal state instead. */
     queueChange: (itemNo: number, value: unknown) => void;
     hasPendingChanges: () => boolean;
     isFlushing: () => boolean;
@@ -152,9 +156,19 @@ export function createAutosaveEngine(
 
     function queueChange(itemNo: number, value: unknown): void {
         if (terminalStatus !== null) {
-            throw new Error(
-                `autosave: engine is terminal (${terminalStatus}) and can no longer accept changes`,
-            );
+            // A no-op, not a throw (Lead's 2026-09-21 review): this is
+            // called directly from a UI event handler (the participant
+            // picking an answer), so throwing here would surface as an
+            // uncaught exception in the participant's hands. The
+            // session's terminal state is already visible to the caller
+            // via isTerminal()/lastResult, so silently dropping this
+            // queueChange (never adding it to pendingChanges, since a
+            // terminal session will never send anything again) is
+            // correct — whatever the participant picked still lives in
+            // the CALLER's own separate local UI state (e.g. the
+            // instrument runner's own nav/group state), which this
+            // engine has no involvement in and never touches either way.
+            return;
         }
 
         if (needsReloadFlag) {
