@@ -85,6 +85,7 @@ export function RmibGroupScreen({
                     <Button
                         type="button"
                         variant="outline"
+                        className="h-11"
                         disabled={groupNumber === 1}
                         onClick={onPrevious}
                     >
@@ -93,6 +94,7 @@ export function RmibGroupScreen({
                     <Button
                         type="button"
                         variant="outline"
+                        className="h-11"
                         disabled={groupNumber === groupCount}
                         onClick={onNext}
                     >
@@ -106,7 +108,7 @@ export function RmibGroupScreen({
                     <button
                         type="button"
                         onClick={onReviewAnswers}
-                        className="text-sm text-teal-700 underline-offset-4 hover:underline"
+                        className="flex min-h-11 items-center px-1 text-sm text-teal-700 underline-offset-4 hover:underline"
                     >
                         Lihat ringkasan
                     </button>

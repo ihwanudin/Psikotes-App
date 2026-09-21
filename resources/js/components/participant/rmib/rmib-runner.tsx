@@ -120,7 +120,7 @@ export function RmibRunner({
                 <button
                     type="button"
                     onClick={() => setView('group')}
-                    className="self-start text-sm text-teal-700 underline-offset-4 hover:underline"
+                    className="flex min-h-11 items-center self-start px-1 text-sm text-teal-700 underline-offset-4 hover:underline"
                 >
                     Kembali ke kelompok
                 </button>
