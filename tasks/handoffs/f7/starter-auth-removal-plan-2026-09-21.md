@@ -1,13 +1,24 @@
 # Rencana: hapus klaster login starter-kit tak terpakai (butir 13.2)
 
-Status: **RENCANA — belum ada kode/migrasi yang dijalankan.** Ditulis oleh sesi
-FE atas permintaan Lead (dipindah dari antrean F2 yang penuh), berdasarkan
-`origin/main` (`3003a47`) dan diverifikasi ulang terhadap investigasi F2 di
+Status: **RENCANA — DISETUJUI Lead (`809110a`), belum ada kode/migrasi yang
+dijalankan.** Ditulis oleh sesi FE atas permintaan Lead (dipindah dari antrean
+F2 yang penuh), berdasarkan `origin/main` (`3003a47`) dan diverifikasi ulang
+terhadap investigasi F2 di
 `tasks/handoffs/f2/fortify-users-cluster-investigation.md` (cabang
 `origin/f2/database-rls-coverage-ratchet`, PR #80) + KNOWN_GAPS RLS-GAP-09..12
 di `tests/Postgres/DatabaseRlsCoverageSecurityTest.php` pada cabang yang sama.
 Setiap klaim di bawah dicek langsung ke kode `origin/main`, bukan ditebak dari
 laporan F2 — perbedaan/temuan baru ditandai eksplisit.
+
+**Syarat tambahan dari Lead saat persetujuan (2026-09-21), sudah dimasukkan ke
+rencana ini:** (1) makna keamanan tiga test checkout harus dipertahankan lewat
+aktor pengganti nyata, bukan dihapus — §1.8; (2) cabang `default` di
+`app.tsx` diputuskan sekarang, bukan ditunda ke saat implementasi — §1.5;
+(3) `down()` migrasi (c) harus membuat ulang struktur tabel kosong, bukan
+sekadar tag snapshot — §3; (4) dependency composer/npm dicabut hanya setelah
+dibuktikan grep tidak ada pemakai lain (termasuk Filament/config), dengan
+diff lockfile bersih — §3 PR (b). **Kode PR (a) baru dimulai setelah PR #89
+merge.**
 
 ## 0. Ringkasan keputusan yang perlu dikonfirmasi pemilik dulu
 
@@ -103,10 +114,29 @@ dihapus:
   di sini)
 - `resources/js/app.tsx` sendiri perlu diedit: hapus cabang `name.startsWith('auth/')`
   dan `name.startsWith('settings/')`, hapus import `AppLayout`/`AuthLayout`/
-  `SettingsLayout`, dan **cabang `default` perlu keputusan eksplisit** (tidak
-  ada halaman lagi yang jatuh ke situ setelah dashboard dihapus — bisa
-  dihapus total atau diarahkan ke `null`/error, keputusan implementasi kecil
-  saat PR (a) berjalan).
+  `SettingsLayout`.
+- **Keputusan `default` case (diminta Lead, diputuskan sekarang, bukan
+  ditunda ke implementasi):** setelah `dashboard.tsx` dihapus, tiga grup
+  halaman yang tersisa (`welcome`, `registration/*`, `participant/*`) SEMUA
+  sudah eksplisit `return null` (tanpa layout — tiap halaman mengurus chrome
+  sendiri). Tidak ada halaman tersisa yang butuh fallback `default` secara
+  legitimate. Dua opsi yang diberikan Lead: (i) arahkan ke layout
+  publik/peserta yang sudah ada, atau (ii) buat gagal eksplisit saat
+  build/test kalau ada nama halaman tak dikenal.
+  **Dipilih: opsi (ii), `default` melempar `Error` eksplisit** (mis.
+  `throw new Error(`Unrecognized Inertia page "${name}" has no assigned
+  layout`)`), bukan diam-diam jatuh ke `null`. Alasan: opsi (i) — memetakan
+  `default` ke pola `null` yang sama seperti `welcome`/`participant`/
+  `registration` — kelihatan setara tapi sebenarnya berbeda maknanya: untuk
+  ketiga grup itu, `null` adalah keputusan sadar (masing-masing punya alasan
+  sendiri kenapa tanpa layout). Kalau `default` MENGARAH ke `null` juga,
+  maka nama halaman baru apa pun di masa depan yang lupa didaftarkan secara
+  eksplisit akan diam-diam ikut pola itu tanpa ada yang sadar itu keputusan
+  yang diambil — bisa jadi masalah kalau halaman baru itu sebenarnya butuh
+  chrome/nav/auth-gate (mis. halaman admin-facing Inertia baru). Melempar
+  error membuat kesalahan itu ketahuan saat build/test, bukan diam-diam lolos
+  ke production — konsisten dengan prinsip "jangan diam-diam memilih" di
+  CLAUDE.md. Diimplementasikan di PR (a).
 
 ### 1.6 Wayfinder-generated routes (`resources/js/routes/`, `resources/js/actions/`)
 Kedua folder ini **di-gitignore** (`.gitignore` baris untuk
@@ -154,9 +184,35 @@ menyentuh `welcome.tsx`**; koordinasi merge-order wajib, lihat §3.
   - `tests/Feature/Integrations/CheckoutSessionHttpTest.php:149`
   - `tests/Feature/Integrations/CheckoutSummaryHttpTest.php:306`
   Begitu `App\Models\User`/guard `web` hilang, ketiga assertion ini butuh
-  pengganti (mis. factory user admin dengan guard `admin`, atau aktor palsu
-  lain) sebelum PR (b)/(c) bisa hijau. **Ini harus jadi langkah eksplisit di
-  PR (b)**, bukan ditemukan belakangan saat CI merah.
+  pengganti sebelum PR (b)/(c) bisa hijau. **Ini harus jadi langkah eksplisit
+  di PR (b)**, bukan ditemukan belakangan saat CI merah.
+  - **Syarat Lead:** makna keamanan tiap test (aktor lain yang sedang login
+    TIDAK bisa melihat/mengubah checkout peserta) harus dipertahankan, bukan
+    dihapus assertion-nya. Pengganti aktor: principal nyata yang masih ada
+    setelah cluster ini hilang — admin (`Admin::factory()->create()`, guard
+    `admin`, `actingAs($admin, 'admin')`) dan/atau peserta lain lewat token
+    JWT (`AuthenticateParticipantJwt`), TIDAK pakai `User::factory()` sintetis
+    lagi karena modelnya sendiri sudah dihapus di PR (b).
+  - **Pemetaan lama → baru per test, ditulis di badan PR (b) (kewajiban
+    Lead):**
+    - `CheckoutProductionWiringTest.php:185` — `actingAs(User::factory()->
+      create())` menguji `test_wrong_origin_query_role_and_session_fail_
+      closed_with_private_headers`: aktor login lain tidak boleh membuka
+      `/checkout` foreign attempt. Ganti ke admin guard
+      (`actingAs(Admin::factory()->create(), 'admin')`) — cek dulu saat
+      eksekusi PR (b) apakah middleware checkout membedakan reaksinya
+      terhadap guard `admin` vs `web` (kalau checkout middleware secara
+      eksplisit hanya mengecek "ada sesi Filament aktif", pakai admin;
+      kalau assertion-nya justru soal "sesi peserta LAIN", pakai token JWT
+      peserta lain — keputusan final saat baca implementasi middleware
+      checkout, bukan ditebak di rencana ini).
+    - `CheckoutSessionHttpTest.php:149` dan `CheckoutSummaryHttpTest.php:306`
+      — pola serupa, sama-sama perlu dibaca konteks assertion persisnya saat
+      eksekusi PR (b) untuk menentukan admin vs JWT peserta lain, lalu
+      didokumentasikan mapping lama→baru + alasan pemilihannya di badan PR.
+    - Assertion penolakannya (redirect ke `/checkout/unavailable`, 403/419,
+      dsb.) harus tetap identik nilainya — hanya cara membuat "seseorang
+      yang sudah login" berubah, bukan hasil yang diharapkan.
 
 ## 2. Yang HARUS tetap hidup, dan buktinya
 
@@ -271,24 +327,45 @@ migrate` di production menunggu izin terpisah.
 ### PR (b) — cabut kode backend
 - Hapus `FortifyServiceProvider.php` filenya sendiri, `config/fortify.php`,
   `app/Actions/Fortify/*`, `app/Http/Controllers/Settings/*`.
-- Refaktor 3 test checkout di §1.8 supaya tidak lagi butuh `User::factory()`.
-- Hapus dependency `laravel/fortify` (composer) dan `@laravel/passkeys` (npm),
-  jalankan installer resmi (`composer remove`, `npm uninstall`), commit
-  lockfile hasilnya, bukan edit manual.
+- Refaktor 3 test checkout di §1.8 (mapping lama→baru wajib ditulis di badan
+  PR, lihat §1.8 di atas).
+- **Cabut dependency `laravel/fortify` (composer) dan `@laravel/passkeys`
+  (npm) — HANYA setelah dibuktikan lewat grep bahwa tidak ada pemakai lain**,
+  termasuk secara eksplisit dicek: Filament (`app/Providers/Filament/**`,
+  `app/Filament/**`), `config/*.php` lain di luar `fortify.php` sendiri
+  (mis. apakah ada `Filament\Facades\Filament::serving()` atau plugin yang
+  diam-diam memakai salah satu paket ini), dan `composer.json`/`package.json`
+  punya konsumen lain yang mendeklarasikan paket ini sebagai dependency-nya
+  sendiri (bukan cuma dipakai kode aplikasi). Jalankan lewat installer resmi
+  (`composer remove laravel/fortify`, `npm uninstall @laravel/passkeys`),
+  jangan edit `composer.lock`/`package-lock.json` manual. **Tunjukkan diff
+  lockfile yang bersih di badan PR** (hanya baris terkait paket yang dicabut
+  dan dependency transitifnya yang murni miliknya — bukan `npm install`
+  drift tak terkait, disiplin yang sama seperti insiden lockfile GLM yang
+  pernah terjadi).
 - Edit `config/auth.php` — cabut guard `web` + provider `users` (dan broker
   `password_reset_tokens` bila memang tak dipakai lagi setelah dicek ulang).
-- Bukti: `composer test`/`node --test`/`phpunit` full suite hijau, termasu
+- Bukti: `composer test`/`node --test`/`phpunit` full suite hijau, termasuk
   ketiga test checkout yang direfaktor tetap lolos dengan makna assertion
   yang sama (aktor lain yang login tidak bisa akses sesi checkout milik
-  orang lain).
+  orang lain), dan diff `composer.lock`/`package-lock.json` yang bersih
+  ditempel di badan PR.
 
 ### PR (c) — migrasi penghapusan tabel
 - Migrasi baru yang men-drop `users`, `password_reset_tokens`, `passkeys`
-  (bukan `sessions` — lihat §2.4). `down()` migrasi baru ini re-create
-  ketiganya persis skema lama (reversible) ATAU — kalau pemilik memutuskan
-  tak reversible cukup dengan tag — didokumentasikan eksplisit di PR body
-  bahwa rollback = restore dari tag `pre-remove-starter-auth`, bukan
-  `migrate:rollback`.
+  (bukan `sessions` — lihat §2.4), urutan drop `passkeys` sebelum/bersamaan
+  `users` supaya FK `passkeys.user_id` tidak menolak (lihat §2.5).
+- **Syarat Lead: `down()` WAJIB membuat ulang struktur tabel (kosong)**,
+  persis skema lama (`users`, `password_reset_tokens`, `passkeys` lengkap
+  dengan kolom, index, FK `passkeys.user_id`) — bukan cuma mengandalkan tag
+  snapshot sebagai satu-satunya jalur rollback. Badan PR menyatakan eksplisit
+  bahwa `down()` mengembalikan STRUKTUR saja, bukan DATA — karena §1.2/§1.8
+  sudah membuktikan tidak ada jalur non-test yang pernah mengisi baris
+  `users` (registrasi Fortify mati), jadi tidak ada data nyata yang hilang
+  untuk dipulihkan, hanya data uji. Tag `pre-remove-starter-auth` tetap wajib
+  sebagai lapis kedua (mis. untuk skenario di luar skema: GRANT/RLS policy
+  custom yang tidak tertangkap migrasi `down()`), bukan pengganti `down()`
+  yang benar.
 - **Tidak dijalankan (`php artisan migrate`) di production sebelum
   konfirmasi eksplisit pemilik** — PR ini boleh berisi migrasi file + dibuka
   draft, tapi eksekusinya adalah langkah terpisah yang butuh izin ulang.
