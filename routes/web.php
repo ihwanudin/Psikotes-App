@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Http\Controllers\Admin\AssessmentParticipantExportController;
 use App\Http\Controllers\Admin\IdentityEvidenceAccessController;
 use App\Http\Controllers\Admin\ManualPaymentProofAccessController;
+use App\Http\Controllers\AdminPasswordSetupController;
 use App\Http\Controllers\AssessmentInvitationController;
 use App\Http\Controllers\BilingualNarrativeController;
 use App\Http\Controllers\CheckoutPaymentController;
@@ -77,6 +78,19 @@ Route::post('/assessment/invitations/{publicId}/consume', [AssessmentInvitationC
     ->whereUlid('publicId')
     ->middleware('throttle:10,1')
     ->name('assessment.invitations.consume');
+
+// Admin account lifecycle (2026-09-22, Lead sign-off): the new admin has no
+// session yet, so this page (and its consume endpoint) must stay
+// unauthenticated -- the one-time token itself is the whole auth story,
+// same as the assessment-invitation flow above.
+Route::get('/admin-password-setup/{publicId}', [AdminPasswordSetupController::class, 'show'])
+    ->whereUlid('publicId')
+    ->middleware('throttle:30,1')
+    ->name('admin.password-setup.show');
+Route::post('/admin-password-setup/{publicId}/consume', [AdminPasswordSetupController::class, 'consume'])
+    ->whereUlid('publicId')
+    ->middleware('throttle:10,1')
+    ->name('admin.password-setup.consume');
 
 Route::inertia('/participant/lobby', 'participant/lobby')
     ->name('participant.lobby');
