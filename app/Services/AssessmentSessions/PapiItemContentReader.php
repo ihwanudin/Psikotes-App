@@ -1,0 +1,107 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Services\AssessmentSessions;
+
+use App\Contracts\AssessmentItemContentAuthority;
+use App\Domain\AssessmentSessions\AssessmentItemContent;
+use App\Domain\AssessmentSessions\AssessmentItemContentUnavailable;
+use App\Domain\AssessmentSessions\GenericAssessmentInstrument;
+use App\Domain\AssessmentSessions\SessionDefinition;
+use Illuminate\Support\Facades\DB;
+use JsonException;
+
+/**
+ * F2 item-delivery Stage 2 (2026-09-21). Reads the 90 PAPI statement pairs
+ * from the versioned `instrument_versions` authority, code=papi_items --
+ * deliberately a separate row from code=papi (that one holds the SCORING
+ * dimension mapping: `mapping` -- which scale each statement_a/statement_b
+ * belongs to). `papi_items.json` itself carries no such mapping; this
+ * reader would reject it anyway if it ever did (see PAYLOAD_FIELDS below),
+ * same fail-closed shape check as KraepelinItemContentReader.
+ *
+ * No gender/variant axis (unlike RMIB) -- each item is delivered exactly as
+ * printed, in exact source order, one subtest. Rejects a non-`final`
+ * `status` the same way it rejects a checksum mismatch: `papi_items.json`
+ * is instrument data extracted via tools/extract/, and a draft/unreviewed
+ * extraction must never reach a participant.
+ */
+final readonly class PapiItemContentReader implements AssessmentItemContentAuthority
+{
+    private const PAYLOAD_FIELDS = ['version', 'status', 'instructions', 'items'];
+
+    private const ITEM_FIELDS = ['item', 'statement_a', 'statement_b'];
+
+    private const ITEM_COUNT = 90;
+
+    public function contentFor(
+        GenericAssessmentInstrument $instrument,
+        SessionDefinition $definition,
+    ): AssessmentItemContent {
+        if ($instrument !== GenericAssessmentInstrument::Papi) {
+            throw new AssessmentItemContentUnavailable(
+                'PapiItemContentReader only serves the PAPI instrument.',
+            );
+        }
+
+        $authority = DB::table('instrument_versions')
+            ->where('code', 'papi_items')
+            ->where('is_active', true)
+            ->select(['version', 'checksum', 'source_text'])
+            ->first();
+
+        $items = $this->verifiedItems($authority);
+
+        return new AssessmentItemContent($instrument, $items['version'], [
+            ['code' => 'ITEMS', 'items' => $items['items']],
+        ]);
+    }
+
+    /** @return array{version: string, items: list<array{item: int, statement_a: string, statement_b: string}>} */
+    private function verifiedItems(?object $authority): array
+    {
+        $version = $authority->version ?? null;
+        $checksum = $authority->checksum ?? null;
+        $sourceText = $authority->source_text ?? null;
+
+        if ($authority === null
+            || ! is_string($version) || $version === ''
+            || ! is_string($checksum) || preg_match('/\A[a-f0-9]{64}\z/', $checksum) !== 1
+            || ! is_string($sourceText) || $sourceText === ''
+            || ! hash_equals($checksum, hash('sha256', $sourceText))) {
+            throw new AssessmentItemContentUnavailable('The PAPI items authority is missing or unverifiable.');
+        }
+
+        try {
+            $decoded = json_decode($sourceText, true, flags: JSON_THROW_ON_ERROR);
+        } catch (JsonException) {
+            throw new AssessmentItemContentUnavailable('The PAPI items payload is not valid JSON.');
+        }
+
+        if (! is_array($decoded) || array_keys($decoded) !== self::PAYLOAD_FIELDS
+            || ($decoded['status'] ?? null) !== 'final'
+            || ! is_array($decoded['items']) || ! array_is_list($decoded['items'])
+            || count($decoded['items']) !== self::ITEM_COUNT) {
+            throw new AssessmentItemContentUnavailable('The PAPI items payload has an unexpected shape.');
+        }
+
+        $items = [];
+        foreach ($decoded['items'] as $offset => $item) {
+            if (! is_array($item) || array_keys($item) !== self::ITEM_FIELDS
+                || ! is_int($item['item']) || $item['item'] !== $offset + 1
+                || ! is_string($item['statement_a']) || $item['statement_a'] === ''
+                || ! is_string($item['statement_b']) || $item['statement_b'] === '') {
+                throw new AssessmentItemContentUnavailable('The PAPI items payload contains a malformed item.');
+            }
+
+            $items[] = [
+                'item' => $item['item'],
+                'statement_a' => $item['statement_a'],
+                'statement_b' => $item['statement_b'],
+            ];
+        }
+
+        return ['version' => $version, 'items' => $items];
+    }
+}

@@ -25,6 +25,11 @@ final class InstrumentSeeder extends Seeder
         // (that one holds scoring norms). See
         // app/Services/AssessmentSessions/KraepelinItemContentReader.php.
         'kraepelin_grid' => 'kraepelin_grid.json',
+        // F2 item-delivery Stage 2 (2026-09-21): the raw statement pairs,
+        // kept as a separate instrument_versions row from 'papi' above
+        // (that one holds the scoring dimension mapping). See
+        // app/Services/AssessmentSessions/PapiItemContentReader.php.
+        'papi_items' => 'papi_items.json',
         'dass21' => 'dass21.json',
         'reporting' => 'reporting.json',
         'aspect_sources' => 'aspect_sources.json',
