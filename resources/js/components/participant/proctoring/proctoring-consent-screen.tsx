@@ -1,5 +1,5 @@
-import { ShieldCheck, TriangleAlert } from 'lucide-react';
-import { useEffect, useRef } from 'react';
+import { Loader2, ShieldCheck, TriangleAlert } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import type { UseProctoringCameraResult } from '../session-runner/use-proctoring-camera.ts';
@@ -80,6 +80,34 @@ export function ProctoringConsentScreen({
     });
     const isRequesting = camera.status === 'requesting';
 
+    // Lead's UI/UX review (ui-ux-pro-max, domain ux, "Feedback / Loading
+    // Indicators", High): an unexplained wait fails accessible-busy
+    // guidance. The browser's own permission prompt can appear behind
+    // the page or be missed, especially on mobile, so a plain spinner
+    // isn't enough — after a few seconds still waiting, add one concrete
+    // hint of where to look. 4s is long enough that a fast, normal
+    // permission grant never shows it.
+    const [showPermissionHint, setShowPermissionHint] = useState(false);
+    useEffect(() => {
+        if (!isRequesting) {
+            return;
+        }
+
+        const timer = setTimeout(() => setShowPermissionHint(true), 4000);
+
+        // The reset lives in cleanup, not a conditional branch in the
+        // effect body (react-hooks/set-state-in-effect: synchronous
+        // setState directly in an effect body risks cascading renders).
+        // Cleanup already runs whenever `isRequesting` flips to false —
+        // ending the previous 'requesting' cycle before the next effect
+        // invocation's early-return — so this is the one place the hint
+        // needs clearing, exactly once per cycle.
+        return () => {
+            clearTimeout(timer);
+            setShowPermissionHint(false);
+        };
+    }, [isRequesting]);
+
     return (
         <section
             aria-labelledby="proctoring-consent-title"
@@ -98,7 +126,14 @@ export function ProctoringConsentScreen({
                 </h1>
             </div>
 
-            <ul className="space-y-3 text-sm leading-6 text-slate-700">
+            {/* This is consent text the participant must actually read,
+            not a footnote — Lead's UI/UX review (ui-ux-pro-max, domain
+            ux, "Responsive / Readable Font Size", High): minimum 16px
+            body text on mobile, text-xs/sm only above the sm breakpoint.
+            list-disc/pl-5 restores the bullet markers Tailwind's
+            preflight otherwise strips, so five distinct data-collection
+            points don't read as one run-on paragraph. */}
+            <ul className="list-disc space-y-3 pl-5 text-base leading-6 text-slate-700 sm:text-sm">
                 {copy.policyParagraphs.map((paragraph, index) => (
                     // Static, ordered content generated once per render
                     // from a fixed-length array — index is a stable key.
@@ -106,15 +141,15 @@ export function ProctoringConsentScreen({
                 ))}
             </ul>
 
-            <p className="rounded-md bg-slate-50 p-3 text-sm leading-6 text-slate-600">
+            <p className="rounded-md bg-slate-50 p-3 text-base leading-6 text-slate-600 sm:text-sm">
                 {copy.honestyNote}
             </p>
 
-            <p className="text-sm leading-6 text-slate-600">
+            <p className="text-base leading-6 text-slate-600 sm:text-sm">
                 {copy.dataHandlingNote}
             </p>
 
-            <p className="text-sm leading-6 text-slate-600">
+            <p className="text-base leading-6 text-slate-600 sm:text-sm">
                 {copy.dataRightsNote}
             </p>
 
@@ -127,22 +162,39 @@ export function ProctoringConsentScreen({
                         className="mt-0.5 size-5 shrink-0"
                         aria-hidden="true"
                     />
-                    <div className="space-y-1 text-sm leading-6">
+                    <div className="space-y-1 text-base leading-6 sm:text-sm">
                         <p className="font-semibold">{copy.notice.heading}</p>
                         <p>{copy.notice.body}</p>
                     </div>
                 </div>
             ) : null}
 
-            <div className="flex flex-wrap gap-3 border-t pt-4">
+            <div className="flex flex-wrap items-center gap-3 border-t pt-4">
                 <Button
                     type="button"
                     disabled={isRequesting}
+                    aria-busy={isRequesting}
                     onClick={() => void camera.activate()}
                     className="min-h-11"
                 >
+                    {isRequesting ? (
+                        <Loader2
+                            className="size-4 animate-spin"
+                            aria-hidden="true"
+                        />
+                    ) : null}
                     {copy.primaryAction.label}
                 </Button>
+                {showPermissionHint ? (
+                    <p
+                        role="status"
+                        className="text-base leading-6 text-slate-600 sm:text-sm"
+                    >
+                        Masih menunggu? Periksa jendela izin kamera di peramban
+                        Anda — kadang muncul di bagian atas layar atau di balik
+                        jendela ini.
+                    </p>
+                ) : null}
             </div>
         </section>
     );

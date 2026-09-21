@@ -223,6 +223,21 @@ export function getProctoringConsentCopy(
             };
 
         case 'requesting':
+            // The one in-progress status this screen can genuinely be
+            // mounted during — the participant just clicked "Izinkan
+            // kamera & mulai" and the browser's own permission prompt
+            // may still be pending. Lead's UI/UX review (ui-ux-pro-max,
+            // domain ux, "Feedback / Loading Indicators", High): a wait
+            // needs an explained, accessible busy status, not a
+            // generically-worded disabled button — see
+            // proctoring-consent-screen.tsx's aria-busy handling and
+            // delayed hint for this status.
+            return {
+                ...shared,
+                notice: null,
+                primaryAction: { label: 'Menunggu izin kamera…' },
+            };
+
         case 'active':
         case 'interrupted':
         case 'reactivating':

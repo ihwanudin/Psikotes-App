@@ -252,6 +252,26 @@ test('the honesty note always states detection, not prevention', () => {
 // — each of these tests maps to one numbered item in
 // proctoring-consent-copy.ts's own module doc comment.
 
+test('requesting gets its own distinct "waiting for permission" label, separate from the generic in-progress fallback', () => {
+    const requesting = getProctoringConsentCopy({
+        cameraStatus: 'requesting',
+        fullscreenSupported: true,
+        persistenceEnabled: false,
+    });
+    const interrupted = getProctoringConsentCopy({
+        cameraStatus: 'interrupted',
+        fullscreenSupported: true,
+        persistenceEnabled: false,
+    });
+
+    assert.equal(requesting.primaryAction.label, 'Menunggu izin kamera…');
+    assert.notEqual(
+        requesting.primaryAction.label,
+        interrupted.primaryAction.label,
+        'requesting must not share the generic in-progress fallback label',
+    );
+});
+
 test('PDP item 1: the purpose of monitoring is stated plainly', () => {
     const copy = getProctoringConsentCopy({
         cameraStatus: 'inactive',
