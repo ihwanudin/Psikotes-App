@@ -4,7 +4,7 @@ Run with the bundled Python environment:
 
 ```text
 python -m tools.extract.run_all "D:\LSI\Psikotes\PSIKOTEST LSI"
-python -m unittest tools.extract.tests.test_f0 -v
+python -m unittest discover -s tools/extract/tests -t . -v
 python -m tools.extract.audit_historical_ist "D:\LSI\Psikotes\PSIKOTEST LSI"
 ```
 
@@ -15,3 +15,46 @@ The IST extractor preserves Excel's displayed `m, d` value for the RA key that
 Excel internally stores as a date serial. Tests cover this regression together
 with norm monotonicity, score-band coverage, PAPI 0–9 color-band coverage,
 DASS-21 narratives, and both Kraepelin golden fixtures.
+
+## CI and the two kinds of test in `tools/extract/tests/`
+
+`.github/workflows/tests.yml`'s `ci` job runs every test module under
+`tools/extract/tests/` automatically (`unittest discover`, extra deps from
+`tools/extract/requirements.txt`) - this is the fail-closed hash/structural
+gate over the committed instrument data in `database/seeders/data/*.json`, so
+a manual edit to that data (not run through an `extract_*.py` script) turns CI
+red. Keep this true when adding a new instrument's items:
+
+- **Tests that only read already-committed files** (hash-pin, byte length,
+  item counts, cross-file invariants against other `database/seeders/data/*.json`
+  files) belong in `tools/extract/tests/test_*.py` same as today - they need no
+  source PDFs/xlsx and CI runs them on every push/PR.
+- **Tests that need the real source PDFs/xlsx** (e.g. re-running an
+  `extract_*.py` function against the actual booklet to prove the extractor
+  itself is still correct, not just its last output) cannot run in CI - those
+  files live outside the repo. Such a test must detect a missing source with
+  an explicit, loud `self.skipTest(f"... not available at {path}")` (visible
+  in the test report as SKIP with that reason), never a silent
+  `if not path.exists(): return` that would make an unrun test look green.
+  None of the current test modules need this yet, but the next one that does
+  should follow this pattern from the start.
+
+## A PR gone `CONFLICTING` silently stops triggering CI at all
+
+Found while landing the CI step above (PR #56): once `main` moves past the
+point where two open PRs each independently added the same new file (here,
+both this PR and the RMIB items PR added `tools/extract/requirements.txt`),
+the *older* PR's mergeability flips to `CONFLICTING` - and from that moment,
+pushing new commits to it **does not trigger any `pull_request` workflow run
+at all**. Not a red X, not even a queued run - GitHub can't compute the
+synthetic base+head test-merge commit a `pull_request` trigger needs, so it
+silently declines to schedule anything (confirmed via `gh api
+repos/.../actions/runs?branch=...` and `.../check-suites` both coming back
+empty for the new commits, while `gh pr view --json mergeable` showed
+`CONFLICTING`).
+
+This is easy to misread as "CI is just slow" and wait on. If a push to an
+open PR produces no new run after a couple of minutes, check
+`gh pr view <n> --json mergeable` before assuming a queue backlog - merge
+fresh `origin/main` in and resolve the conflict, and runs resume
+immediately.
