@@ -1,6 +1,13 @@
 // Playwright CLI run-code --filename entrypoint; uses an isolated browser profile.
 // eslint-disable-next-line @typescript-eslint/no-unused-expressions -- CLI evaluates this function expression as its entrypoint.
 async (page) => {
+    // Playwright CLI's run-code sandbox does not expose `process`, so this
+    // can't read PARTICIPANT_LOBBY_FIXTURE_PORT (see vite.config.ts) the
+    // way run-checkpoint.mjs's suites do for IntegratedCheckout — that
+    // orchestrator is a real Node process that resolves the port itself
+    // and writes it into the generated runner file as a literal before
+    // handing it to run-code. Running the dev server on a non-default
+    // port via that env var means editing this literal to match.
     const origin = 'http://127.0.0.1:8011'
     const token = 'synthetic-lobby-fixture-not-a-credential'
     const results = []
