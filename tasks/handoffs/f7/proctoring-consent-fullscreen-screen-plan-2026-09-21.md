@@ -405,10 +405,12 @@ Lead, dicatat sebagai butir 11 di dokumen keputusan, PR #81): **kamera
 WAJIB untuk semua peserta, tanpa pengecualian per cabang.** Dampaknya
 ke implementasi:
 
-- `cameraMandatory` tetap ada sebagai prop `ProctoringConsentScreen`
-  (supaya kedua cabang tetap testable), tapi tidak ada pemanggil
-  produksi yang boleh mengisinya `false` — tidak ada jalur "lanjut
-  tanpa kamera" di produksi.
+- `cameraMandatory` sempat dipertahankan sebagai prop
+  `ProctoringConsentScreen` (supaya kedua cabang tetap testable) dengan
+  komentar "tidak ada pemanggil produksi yang boleh mengisinya
+  `false`" — **ini kemudian dikoreksi lagi, lihat §8.3: prop itu
+  (dan tombol "lanjut tanpa kamera" yang menyertainya) sudah dihapus
+  total dari kode, bukan cuma dilarang lewat komentar.**
 - `denied` dan `unavailable` sama-sama memblokir mulainya sesi, dengan
   notice yang berbeda (prompt izin peramban yang ditolak, vs perangkat
   yang memang tidak ada/tidak berfungsi) — keduanya tidak boleh
@@ -448,3 +450,26 @@ dukungan operasional yang jelas memang dibutuhkan untuk kasus kamera
 benar-benar tidak bisa dipakai, itu perlu didefinisikan dulu di luar
 kode ini (siapa yang dihubungi, apa yang mereka lakukan) sebelum masuk
 ke teks aplikasi lagi.
+
+### 8.3 Penghapusan jalur `cameraMandatory: false` (2026-09-21, tinjauan PR #83)
+
+Lead meninjau PR #83 dan menemukan bahwa §8.1 hanya melarang jalur
+"lanjut tanpa kamera" lewat komentar dokumentasi ("no real caller may
+pass false"), sementara kode itu sendiri tetap menyediakan parameter
+`cameraMandatory` dan tombol "Lanjutkan tanpa kamera" yang siap
+dipakai kapan saja oleh pemanggil berikutnya — larangan yang dijaga
+komentar, bukan oleh kode, persis pola yang CLAUDE.md larang.
+
+**Perbaikan yang masuk kode:** `cameraMandatory` dan `secondaryAction`
+dihapus total dari `ProctoringConsentCopyInput`/`ProctoringConsentCopy`
+(`proctoring-consent-copy.ts`), dari props `ProctoringConsentScreen`
+(`proctoring-consent-screen.tsx`), dan dari fixture-nya
+(`tests/Frontend/ProctoringConsent/preview.tsx` — centang "Kamera
+wajib" ikut dihapus). Tidak ada lagi jalan untuk melewati layar ini
+tanpa kamera aktif, untuk status kamera manapun. Test cameraMandatory
+lama diganti satu test penjaga: untuk setiap `CameraStatus` selain
+`active`, tidak ada `secondaryAction` dan label tombol utama tidak
+pernah menyebut "tanpa kamera". Dokumen varian teks
+(`proctoring-consent-copy-variants-2026-09-21.md`) digenerasi ulang
+dari kode sehingga tidak ada lagi baris "tidak wajib" yang bisa dibaca
+sebagai opsi yang tersedia.
