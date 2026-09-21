@@ -58,6 +58,36 @@ final class PapiItemContentReaderTest extends TestCase
             $this->assertSame($rawPayload['items'][$offset]['statement_a'], $item['statement_a']);
             $this->assertSame($rawPayload['items'][$offset]['statement_b'], $item['statement_b']);
         }
+
+        // Administration text is delivered alongside the items -- one
+        // server-side source of truth, no client-side hardcoded copy.
+        $this->assertSame([
+            'intro' => $rawPayload['instructions']['intro'],
+            'example' => $rawPayload['instructions']['example'],
+            'answer_sheet_demo' => $rawPayload['instructions']['answer_sheet_demo'],
+            'closing' => $rawPayload['instructions']['closing'],
+        ], $content->instructions);
+    }
+
+    public function test_it_fails_closed_when_instructions_are_malformed(): void
+    {
+        $original = (string) DB::table('instrument_versions')->where('code', 'papi_items')->value('source_text');
+        $decoded = json_decode($original, true, flags: JSON_THROW_ON_ERROR);
+        unset($decoded['instructions']['closing']);
+        $tampered = json_encode($decoded, JSON_THROW_ON_ERROR);
+        DB::table('instrument_versions')->where('code', 'papi_items')->update([
+            'source_text' => $tampered,
+            'checksum' => hash('sha256', $tampered),
+        ]);
+
+        $this->expectException(AssessmentItemContentUnavailable::class);
+
+        app(RlsContextRunner::class)->runAsService(
+            fn () => (new PapiItemContentReader)->contentFor(
+                GenericAssessmentInstrument::Papi,
+                $this->syntheticDefinition(),
+            ),
+        );
     }
 
     public function test_it_rejects_a_non_papi_instrument(): void

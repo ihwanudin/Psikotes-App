@@ -26,6 +26,14 @@ use JsonException;
  * `status` the same way it rejects a checksum mismatch: `papi_items.json`
  * is instrument data extracted via tools/extract/, and a draft/unreviewed
  * extraction must never reach a participant.
+ *
+ * `instructions` (Stage 2 continuation, 2026-09-21, GLM request): the
+ * administration text printed alongside the 90 statement pairs
+ * (intro/example/answer_sheet_demo/closing) is delivered through the same
+ * response as the items themselves, so the client has one source of truth
+ * instead of hardcoding this text statically. Whitelisted to exactly the
+ * four fields `papi_items.json` actually has -- an unexpected fifth field
+ * fails closed the same way a malformed item does.
  */
 final readonly class PapiItemContentReader implements AssessmentItemContentAuthority
 {
@@ -34,6 +42,12 @@ final readonly class PapiItemContentReader implements AssessmentItemContentAutho
     private const ITEM_FIELDS = ['item', 'statement_a', 'statement_b'];
 
     private const ITEM_COUNT = 90;
+
+    private const INSTRUCTIONS_FIELDS = ['intro', 'example', 'answer_sheet_demo', 'closing'];
+
+    private const STATEMENT_PAIR_FIELDS = ['statement_a', 'statement_b'];
+
+    private const ANSWER_SHEET_DEMO_FIELDS = ['label', 'statement_a', 'statement_b'];
 
     public function contentFor(
         GenericAssessmentInstrument $instrument,
@@ -51,15 +65,21 @@ final readonly class PapiItemContentReader implements AssessmentItemContentAutho
             ->select(['version', 'checksum', 'source_text'])
             ->first();
 
-        $items = $this->verifiedItems($authority);
+        $verified = $this->verifiedPayload($authority);
 
-        return new AssessmentItemContent($instrument, $items['version'], [
-            ['code' => 'ITEMS', 'items' => $items['items']],
-        ]);
+        return new AssessmentItemContent($instrument, $verified['version'], [
+            ['code' => 'ITEMS', 'items' => $verified['items']],
+        ], $verified['instructions']);
     }
 
-    /** @return array{version: string, items: list<array{item: int, statement_a: string, statement_b: string}>} */
-    private function verifiedItems(?object $authority): array
+    /**
+     * @return array{
+     *     version: string,
+     *     items: list<array{item: int, statement_a: string, statement_b: string}>,
+     *     instructions: array{intro: string, example: array{statement_a: string, statement_b: string}, answer_sheet_demo: array{label: string, statement_a: string, statement_b: string}, closing: string}
+     * }
+     */
+    private function verifiedPayload(?object $authority): array
     {
         $version = $authority->version ?? null;
         $checksum = $authority->checksum ?? null;
@@ -102,6 +122,44 @@ final readonly class PapiItemContentReader implements AssessmentItemContentAutho
             ];
         }
 
-        return ['version' => $version, 'items' => $items];
+        return [
+            'version' => $version,
+            'items' => $items,
+            'instructions' => $this->verifiedInstructions($decoded['instructions']),
+        ];
+    }
+
+    /**
+     * @return array{intro: string, example: array{statement_a: string, statement_b: string}, answer_sheet_demo: array{label: string, statement_a: string, statement_b: string}, closing: string}
+     */
+    private function verifiedInstructions(mixed $instructions): array
+    {
+        if (! is_array($instructions) || array_keys($instructions) !== self::INSTRUCTIONS_FIELDS
+            || ! is_string($instructions['intro']) || $instructions['intro'] === ''
+            || ! is_string($instructions['closing']) || $instructions['closing'] === ''
+            || ! is_array($instructions['example']) || array_keys($instructions['example']) !== self::STATEMENT_PAIR_FIELDS
+            || ! is_string($instructions['example']['statement_a']) || $instructions['example']['statement_a'] === ''
+            || ! is_string($instructions['example']['statement_b']) || $instructions['example']['statement_b'] === ''
+            || ! is_array($instructions['answer_sheet_demo'])
+            || array_keys($instructions['answer_sheet_demo']) !== self::ANSWER_SHEET_DEMO_FIELDS
+            || ! is_string($instructions['answer_sheet_demo']['label']) || $instructions['answer_sheet_demo']['label'] === ''
+            || ! is_string($instructions['answer_sheet_demo']['statement_a']) || $instructions['answer_sheet_demo']['statement_a'] === ''
+            || ! is_string($instructions['answer_sheet_demo']['statement_b']) || $instructions['answer_sheet_demo']['statement_b'] === '') {
+            throw new AssessmentItemContentUnavailable('The PAPI items payload has malformed instructions.');
+        }
+
+        return [
+            'intro' => $instructions['intro'],
+            'example' => [
+                'statement_a' => $instructions['example']['statement_a'],
+                'statement_b' => $instructions['example']['statement_b'],
+            ],
+            'answer_sheet_demo' => [
+                'label' => $instructions['answer_sheet_demo']['label'],
+                'statement_a' => $instructions['answer_sheet_demo']['statement_a'],
+                'statement_b' => $instructions['answer_sheet_demo']['statement_b'],
+            ],
+            'closing' => $instructions['closing'],
+        ];
     }
 }
