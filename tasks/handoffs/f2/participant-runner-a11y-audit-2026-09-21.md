@@ -77,12 +77,13 @@ Ini dicatat supaya urgensi tiap temuan tidak dibesar-besarkan.
 Dua temuan positif yang perlu dicatat eksplisit (bukan cuma daftar masalah):
 (1) tidak ada masalah kontras teks di satu pun dari tiga prototipe yang
 terukur langsung — semua rasio terukur 5.36:1–20.16:1, jauh di atas 4.5:1
-(`Accessibility / Color Contrast`, skill `ux`); (2) **indikator fokus
-keyboard sebenarnya sudah terlihat di semua kontrol yang diverifikasi
-langsung** — bukan lewat styling kustom yang disengaja, tapi outline default
-browser yang belum disupresi. Ini artinya rekomendasi "tambah ring fokus di
-semua tombol" dari draf pertama audit ini **ditarik** — lihat bagian
-Rekomendasi.
+(`Accessibility / Color Contrast`, skill `ux`) — satu-satunya masalah kontras
+yang ditemukan adalah kontras non-teks (ikon pegangan-seret RMIB, T-R1),
+sudah diperbaiki; (2) **indikator fokus keyboard sebenarnya sudah terlihat
+di semua kontrol yang diverifikasi langsung** — bukan lewat styling kustom
+yang disengaja, tapi outline default browser yang belum disupresi. Ini
+artinya rekomendasi "tambah ring fokus di semua tombol" dari draf pertama
+audit ini **ditarik** — lihat bagian Rekomendasi.
 
 ---
 
@@ -120,7 +121,7 @@ elemen paling tidak lazim (tombol pegangan-seret).
 
 | # | Elemen | Ukuran | Kontras | Fokus terlihat (Tab sungguhan)? | Catatan |
 |---|---|---|---|---|---|
-| T-R1 | Tombol pegangan seret "Seret untuk mengurutkan ulang" | 44×44px | **2.63:1** (ikon vs putih) | **Ya** — ring abu-emas jelas (diverifikasi langsung) | Ukuran target sudah pas 44px — masalahnya kontras ikon, lihat di bawah |
+| T-R1 | Tombol pegangan seret "Seret untuk mengurutkan ulang" | 44×44px | ~~2.63:1~~ → **4.76:1 (diperbaiki, lihat di bawah)** | **Ya** — ring abu-emas jelas (diverifikasi langsung) | Ukuran target sudah pas 44px — masalahnya kontras ikon |
 | T-R2 | Tombol ▲ "Naikkan peringkat" / ▼ "Turunkan peringkat" | 44×44px | 20.16:1 | Tidak diverifikasi langsung (pola sama dengan T-R1) | Ukuran target sudah benar |
 | T-R3 | "Sebelumnya" / "Berikutnya" | 111×37px / 101×37px | 20.16:1 | Tidak diverifikasi langsung (komponen shadcn `Button` sama dengan PAPI T-P3) | shadcn `Button` default |
 | T-R4 | "Lihat ringkasan" | 93×20px | 5.36:1 | Tidak diverifikasi langsung (pola sama dengan PAPI T-P4) | Tanpa padding |
@@ -129,15 +130,24 @@ elemen paling tidak lazim (tombol pegangan-seret).
 | T-R7 | "Kembali ke kelompok" | 133×20px | 5.36:1 | Tidak diverifikasi langsung | Tanpa padding |
 
 **Satu-satunya temuan riil dibanding PAPI**: T-R1, tombol pegangan-seret,
-memakai ikon (warna `oklch(0.704 0.04 256.788)` ≈ abu-abu sedang) di atas
-latar putih — rasio 2.63:1. Ini bukan teks (jadi ambang 4.5:1 teks tidak
-berlaku langsung), tapi WCAG 1.4.11 *Non-text Contrast* mensyaratkan 3:1
-untuk komponen antarmuka/objek grafis yang harus dikenali — 2.63:1 gagal
-ambang itu juga. Pencarian skill untuk topik ini (`--domain icons`, kata
-kunci ikon-kontras) **tidak menemukan hasil** — dicatat eksplisit, ini bukan
-kutipan skill, tapi kriteria WCAG umum di luar basis data skill. Kutipan
-skill terdekat yang tersedia adalah `Accessibility / Color Contrast` (prinsip
-umum kontras terbaca) sebagai referensi tambahan, bukan pengganti 1.4.11.
+memakai ikon (warna semula `text-slate-400`, `oklch(0.704 0.04 256.788)` ≈
+abu-abu sedang) di atas latar putih — rasio semula 2.63:1. Ini bukan teks
+(jadi ambang 4.5:1 teks tidak berlaku langsung), tapi WCAG 1.4.11 *Non-text
+Contrast* mensyaratkan 3:1 untuk komponen antarmuka/objek grafis yang harus
+dikenali — 2.63:1 gagal ambang itu juga. Pencarian skill untuk topik ini
+(`--domain icons`, kata kunci ikon-kontras) **tidak menemukan hasil** —
+dicatat eksplisit, ini bukan kutipan skill, tapi kriteria WCAG umum di luar
+basis data skill. Kutipan skill terdekat yang tersedia adalah `Accessibility
+/ Color Contrast` (prinsip umum kontras terbaca) sebagai referensi tambahan,
+bukan pengganti 1.4.11.
+
+**Diperbaiki** (keputusan Lead 2026-09-21: perbaiki, pakai token yang sudah
+ada — satu tingkat lebih gelap pada skala slate, bukan warna baru).
+`rmib-group-list.tsx` diubah dari `text-slate-400` ke `text-slate-500`;
+`hover:text-slate-600` tidak disentuh (masih lebih gelap dari resting state).
+Kontras diukur ulang langsung di browser (resolusi warna via kanvas, aman
+`oklch`) setelah perubahan: **4.76:1** — jauh di atas ambang 3:1. Commit
+`8368fd0` di `glm/rmib-runner-prototype`.
 
 Ukuran ▲/▼ dan pegangan-seret sudah 44×44 — pola drag-and-drop ini justru
 bagian yang paling rapi ukurannya di RMIB. `Accessibility / Target Size
@@ -169,7 +179,7 @@ dilakukan di sini karena belum ada fixture.
 |---|---|---|---|---|---|
 | T-K1 | Tombol angka 0-9 (`kraepelin-keypad.tsx:44-57`) | `h-11` = 44px | Tidak ada kelas `focus-visible:`/`outline-none` — kemungkinan sama seperti PAPI/RMIB (outline default browser tampil) | Ukuran sudah pas 44px |
 | T-K2 | Tombol "Hapus" (`kraepelin-keypad.tsx:59-71`) | `h-11 col-span-5` = 44px penuh lebar | Sama seperti T-K1 | |
-| T-K3 | Kotak jawaban `<input>` per slot (`kraepelin-column.tsx:108-151`) | `h-8 w-10` = 32×40px | Ya, eksplisit — `focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]` (baris 122), DAN `outline-none` (baris 121) | Satu-satunya kontrol di keempat prototipe yang secara eksplisit mengandalkan ring kustom, bukan warisan default browser — perlu dicek langsung begitu ada fixture, sebab pola PAPI/RMIB menunjukkan ring kustom `focus-visible:ring-*` ini sendiri tidak selalu tampak sebagai `box-shadow` (lihat catatan metodologi); di sini `outline-none` SEKALIGUS menyupresi default-nya, jadi kalau ring kustomnya juga tidak render, elemen ini bisa jadi satu-satunya yang benar-benar tanpa indikator fokus. Ukuran 32×40px di bawah 44px juga dicatat, kemungkinan pembatasan tata letak (28 angka + 27 kotak vertikal meniru lembar jawaban fisik, didokumentasikan di baris 36-38) |
+| T-K3 | Kotak jawaban `<input>` per slot (`kraepelin-column.tsx:108-151`) | `h-8 w-10` = 32×40px — **pengecualian yang disengaja terhadap ambang 44px, keputusan Lead 2026-09-21, JANGAN diubah tanpa psikolog** | Ya, eksplisit — `focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]` (baris 122), DAN `outline-none` (baris 121) | Satu-satunya kontrol di keempat prototipe yang secara eksplisit mengandalkan ring kustom, bukan warisan default browser — perlu dicek langsung begitu ada fixture, sebab pola PAPI/RMIB menunjukkan ring kustom `focus-visible:ring-*` ini sendiri tidak selalu tampak sebagai `box-shadow` (lihat catatan metodologi); di sini `outline-none` SEKALIGUS menyupresi default-nya, jadi kalau ring kustomnya juga tidak render, elemen ini bisa jadi satu-satunya yang benar-benar tanpa indikator fokus. 32×40px **sudah di atas** minimum WCAG 2.2 AA murni (24×24px) — cuma di bawah ambang 44px proyek. Lead memutuskan (2026-09-21) untuk TIDAK menaikkan ukuran ini: Kraepelin adalah tes kecepatan, kotak lebih besar berarti lebih banyak gulir dalam 15 detik per kolom, yang bisa memengaruhi kinerja peserta secara psikometri — ini bukan keputusan tampilan, jadi kalau nanti perlu diubah, itu keputusan psikolog, bukan audit a11y ini. Lihat Kategori B #2 |
 | T-K4 | Tombol "Coba lagi" (state reconnecting, `kraepelin-column-runner.tsx:64-66`) | Tanpa kelas sama sekali | Tanpa `outline-none`, jadi default browser kemungkinan tetap tampil | Edge-case (hanya muncul saat gagal sambung), belum distilasi sama sekali secara visual |
 
 Label ARIA (`role="group"` + `aria-label` pada keypad dan kolom,
@@ -256,29 +266,31 @@ tombol custom" — temuan itu berdasarkan metodologi pengukuran yang salah
 yang diverifikasi visual langsung (PAPI, RMIB). Tidak ada perbaikan yang
 perlu dikerjakan untuk ini di Kategori A.
 
-### Kategori B — perlu keputusan Lead/FE dulu (bukan diputuskan sepihak audit ini)
+### Kategori B — keputusan Lead (2026-09-21)
 
-1. **Kontras ikon pegangan-seret RMIB (T-R1, 2.63:1)**: menaikkan kontras
-   berarti mengganti warna ikon (kemungkinan dari abu-abu netral ke token
-   `brand-green`/`slate-600` yang lebih gelap) — ini keputusan visual yang
-   menyentuh nuansa desain drag-list, bukan sekadar CSS tambahan, jadi
-   dikirim dulu untuk persetujuan warna yang dipakai.
-2. **Ukuran kotak jawaban Kraepelin (T-K3, 32×40px)**: menaikkan ke ≥44px
-   berarti mengubah tinggi/lebar setiap slot dalam kolom yang meniru lembar
-   jawaban fisik — berpotensi mengubah berapa banyak angka+slot yang muat
-   di satu layar tanpa scroll berlebihan, dan ini instrumen paten yang
-   formatnya sensitif (CLAUDE.md: larangan mengubah presentasi baku
-   instrumen tanpa izin). Perlu keputusan psikolog/Lead, bukan diputuskan
-   sepihak oleh audit ini.
-3. **Catatan teknis untuk FE (bukan temuan aksesibilitas, tapi layak
-   diselidiki terpisah)**: ring `focus-visible:ring-ring/50 ring-[3px]`
-   milik shadcn `Button` (dan Kraepelin T-K3) tampaknya tidak benar-benar
-   ter-render sebagai `box-shadow` di fixture-fixture ini — yang tampil
-   secara visual adalah outline default browser (`outline-style: auto`),
-   bukan ring kustom Tailwind. Praktiknya aman (indikator tetap terlihat),
-   tapi kalau maksudnya memang memakai ring kustom bermerek (warna brand,
-   bukan warna default browser), ada sesuatu di build Tailwind v4 fixture
-   ini yang layak dicek FE — di luar cakupan audit a11y ini untuk diperbaiki.
+1. ✅ **Kontras ikon pegangan-seret RMIB (T-R1)** — **diperbaiki**. Lead:
+   pakai token yang sudah ada (satu tingkat lebih gelap pada skala slate),
+   bukan warna baru. `text-slate-400` → `text-slate-500`, 2.63:1 → 4.76:1
+   (diukur ulang di browser). Commit `8368fd0` di `glm/rmib-runner-prototype`.
+2. ❌ **Ukuran kotak jawaban Kraepelin (T-K3, 32×40px)** — **JANGAN diubah**.
+   Lead: ukuran itu sudah di atas minimum WCAG 2.2 AA (24px); Kraepelin
+   adalah tes kecepatan, kotak lebih besar berarti lebih banyak gulir dalam
+   15 detik per kolom, yang bisa memengaruhi kinerja peserta — ini urusan
+   psikometri, bukan sekadar tampilan. Ditandai di tabel T-K3 di atas sebagai
+   **pengecualian yang disengaja** terhadap ambang 44px proyek. Perubahan di
+   masa depan, kalau ada, diputuskan psikolog.
+3. **Tombol "Coba lagi" Kraepelin (T-K4)** — **tunggu fixture**. Lead
+   menegaskan: jangan menebak tampilannya tanpa melihat. Status tidak
+   berubah dari rencana awal (lihat Kategori A #4).
+4. **Catatan teknis untuk FE** (bukan temuan aksesibilitas, di luar keputusan
+   Lead di atas, dibiarkan sebagai catatan): ring `focus-visible:ring-ring/50
+   ring-[3px]` milik shadcn `Button` (dan Kraepelin T-K3) tampaknya tidak
+   benar-benar ter-render sebagai `box-shadow` di fixture-fixture ini — yang
+   tampil secara visual adalah outline default browser (`outline-style:
+   auto`), bukan ring kustom Tailwind. Praktiknya aman (indikator tetap
+   terlihat), tapi kalau maksudnya memang memakai ring kustom bermerek, ada
+   sesuatu di build Tailwind v4 fixture ini yang layak dicek FE — di luar
+   cakupan audit a11y ini untuk diperbaiki.
 
 Tidak ada dependency baru yang diperlukan untuk kategori A maupun B — semua
 perbaikan berbasis kelas Tailwind/token yang sudah ada di repo.
@@ -291,17 +303,21 @@ bukan diam-diam ditimpa), dan sekali lagi setelah verifikasi ulang T-P8/T-I6
 lewat accessibility tree sungguhan mengungkap bug yang lebih serius dari
 perkiraan awal (nama aksesibel kosong, bukan cuma tanpa pemisah).
 
-Perbaikan Kategori A 1–3 sudah diterapkan, diverifikasi di browser 360px
-(ukuran via `getBoundingClientRect`, nama aksesibel via `read_page`), dan
-didorong ke masing-masing cabang:
+Perbaikan Kategori A 1–3 dan Kategori B #1 sudah diterapkan, diverifikasi di
+browser 360px (ukuran via `getBoundingClientRect`, nama aksesibel via
+`read_page`, kontras via resolusi warna kanvas), dan didorong ke masing-masing
+cabang:
 
 | Cabang | Commit | Isi |
 |---|---|---|
 | `glm/papi-runner-prototype` | `517e850` | Touch target 44px (nav, ringkasan, chip) + `aria-label` opsi radio |
 | `glm/rmib-runner-prototype` | `f0d296b` | Touch target 44px (nav, ringkasan, chip, kembali) |
+| `glm/rmib-runner-prototype` | `8368fd0` | Kontras ikon pegangan-seret 2.63:1 → 4.76:1 (keputusan Lead) |
 | `glm/ist-runner-prototype` | `ac22a63` | Touch target 44px (nav, ringkasan, chip, kembali, selesai) + `aria-label` opsi radio |
 
-Kraepelin (item 4, tombol "Coba lagi") belum dikerjakan — menunggu fixture
-atau persetujuan Lead untuk commit tanpa verifikasi visual. Kategori B
-(kontras ikon pegangan-seret RMIB, ukuran kotak jawaban Kraepelin, catatan
-teknis ring Tailwind) menunggu keputusan Lead sebelum dikerjakan.
+**Diputuskan Lead, tidak dikerjakan (dengan alasan)**: ukuran kotak jawaban
+Kraepelin (32×40px) — pengecualian disengaja, urusan psikometri kecepatan
+tes, bukan cacat tampilan.
+
+**Masih menunggu**: tombol "Coba lagi" Kraepelin (T-K4) — menunggu fixture,
+sesuai instruksi Lead untuk tidak menebak tampilan tanpa melihat.
