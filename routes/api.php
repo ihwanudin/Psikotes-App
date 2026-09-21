@@ -7,6 +7,7 @@ use App\Http\Controllers\AssessmentResultController;
 use App\Http\Controllers\AutosaveAssessmentAnswersController;
 use App\Http\Controllers\GetAssessmentSessionAnswersController;
 use App\Http\Controllers\GetAssessmentSessionController;
+use App\Http\Controllers\GetAssessmentSessionItemsController;
 use App\Http\Controllers\ParticipantEntitlementController;
 use App\Http\Controllers\ParticipantLoginController;
 use App\Http\Controllers\ParticipantOrderStatusController;
@@ -70,4 +71,10 @@ Route::middleware('participant.jwt')->group(function (): void {
     // comment): only in_progress and before ends_at.
     Route::get('/sessions/{id}/answers', GetAssessmentSessionAnswersController::class)
         ->name('participant.sessions.answers.show');
+
+    // F2 item-delivery (2026-09-21): same rls-excluded group, same reason --
+    // GetAssessmentSessionItems owns its own service transaction. Readable
+    // exactly when writable, same as answers readback.
+    Route::get('/sessions/{id}/items', GetAssessmentSessionItemsController::class)
+        ->name('participant.sessions.items.show');
 });

@@ -8,6 +8,7 @@ use App\Contracts\RequiresRlsContext;
 use App\Http\Controllers\AutosaveAssessmentAnswersController;
 use App\Http\Controllers\GetAssessmentSessionAnswersController;
 use App\Http\Controllers\GetAssessmentSessionController;
+use App\Http\Controllers\GetAssessmentSessionItemsController;
 use App\Http\Controllers\SubmitAssessmentSessionController;
 use App\Http\Middleware\ApplyRlsContext;
 use App\Models\Entitlement;
@@ -55,6 +56,7 @@ final class AssessmentSessionHttpBoundaryTest extends TestCase
         yield 'POST /sessions/{id}/answers' => ['participant.sessions.answers', AutosaveAssessmentAnswersController::class];
         yield 'POST /sessions/{id}/submit' => ['participant.sessions.submit', SubmitAssessmentSessionController::class];
         yield 'GET /sessions/{id}/answers' => ['participant.sessions.answers.show', GetAssessmentSessionAnswersController::class];
+        yield 'GET /sessions/{id}/items' => ['participant.sessions.items.show', GetAssessmentSessionItemsController::class];
     }
 
     #[DataProvider('routes')]
