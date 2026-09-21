@@ -37,7 +37,13 @@ export type KraepelinColumnProps = {
      * that is the bottom-most printed number. Rendered in reverse order
      * so index 0 appears at the bottom of the screen, matching the
      * physical answer sheet. Must have exactly one more entry than
-     * `state.values` (28 numbers, 27 sum slots between them). */
+     * `state.values` (28 numbers, 27 sum slots between them).
+     *
+     * `grid-column.ts`'s `columnNumbersFromGrid()` produces this shape
+     * from a `grid[row][col]` source (row 0 = topmost on the sheet,
+     * matching `database/seeders/data/kraepelin_grid.json` and, most
+     * likely, F2's still-unbuilt `/items` response) — verified against
+     * the real, hash-gated grid data in grid-column.test.ts. */
     numbers: number[];
     state: ColumnInputState;
     onChange: (next: ColumnInputState) => void;
