@@ -107,11 +107,16 @@ declare global {
     interface Window {
         __istAutosaveCalls: { item_no: number; value: unknown }[][];
         __istCompletedSubtests: string[];
+        /** How many times fetchAlwaysBrokenAssetUrl() has been called --
+         * read back by browser.test.mjs to prove the onError cap actually
+         * stops requesting instead of looping forever. */
+        __alwaysBrokenAssetFetchCount: number;
     }
 }
 
 window.__istAutosaveCalls = [];
 window.__istCompletedSubtests = [];
+window.__alwaysBrokenAssetFetchCount = 0;
 
 async function send(batch: AutosaveBatch): Promise<AutosaveSendOutcome> {
     window.__istAutosaveCalls.push(
@@ -176,6 +181,38 @@ async function fetchAssetUrl(assetId: string): Promise<IstAssetUrlOutcome> {
     };
 }
 
+// --- Always-broken asset demo (Lead's 2026-09-21 follow-up, after fixing
+// T-I7's touch target): what happens when fetchAssetUrl keeps returning
+// "available" for a URL the browser can NEVER actually load -- a
+// genuinely broken/missing storage object, or a mobile network that keeps
+// dropping the image download. This URL 404s on this fixture's own dev
+// server EVERY time, with no working variant ever -- proving
+// reportImageLoadFailure()'s cap (ist-asset-url-loader.ts,
+// MAX_CONSECUTIVE_IMAGE_LOAD_FAILURES=2) actually stops the loading/
+// ready/onError cycle instead of spinning forever, and that the "Coba
+// lagi" button eventually appears so the participant isn't stuck looking
+// at a permanently broken image on an item they can no longer answer.
+//
+// Each attempt gets a distinct query string, not a literally identical
+// URL -- a real signed asset URL differs every time it's re-issued (a
+// fresh signature/expiry), and reusing one exact string here let the
+// browser silently serve the SECOND <img> from its HTTP cache in this
+// fixture's first draft, which meant it never even attempted a second
+// network request and never re-fired onError -- an artifact of this
+// fixture, not of the real bug, but it hid the very cap this demo exists
+// to prove. Cache-busting each attempt is what makes every <img> mount
+// genuinely try the network again, the same way a freshly re-signed URL
+// would.
+async function fetchAlwaysBrokenAssetUrl(): Promise<IstAssetUrlOutcome> {
+    window.__alwaysBrokenAssetFetchCount++;
+
+    return {
+        type: 'available',
+        url: `/this-asset-never-exists.png?attempt=${window.__alwaysBrokenAssetFetchCount}`,
+        expiresAt: '2099-01-01T00:00:00+00:00',
+    };
+}
+
 function Fixture() {
     const [activeCode, setActiveCode] = useState<'SE' | 'GE'>('SE');
     const subtest = activeCode === 'SE' ? SE_SUBTEST : GE_SUBTEST;
@@ -217,6 +254,19 @@ function Fixture() {
                         fetchAssetUrl={fetchAssetUrl}
                         alt="Contoh gambar aset"
                         className="size-20 rounded-lg object-cover"
+                    />
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+                    <p className="mb-3 text-sm font-medium text-slate-700">
+                        Contoh gambar opsi yang selalu gagal dimuat
+                        (reportImageLoadFailure cap)
+                    </p>
+                    <IstAssetImage
+                        assetId="asset_always_broken"
+                        fetchAssetUrl={fetchAlwaysBrokenAssetUrl}
+                        alt="Contoh gambar aset yang selalu gagal"
+                        className="size-24 rounded-lg object-cover"
                     />
                 </div>
             </div>

@@ -19,7 +19,29 @@ import type { FetchIstAssetUrl, IstAssetUrlOutcome } from './ist-asset-url.ts';
  * already past its own `expiresAt` (a slow/queued response) — both are
  * explicit, bounded, caller/image-driven triggers, not a background
  * reconnect loop.
+ *
+ * `reportImageLoadFailure()` (Lead's 2026-09-21 follow-up, after fixing
+ * the error state's "Coba lagi" touch target surfaced the question of
+ * what happens when the browser can never actually load an otherwise-
+ * "available" URL — a genuinely broken/missing storage object, or a phone
+ * network that keeps dropping the image download): the `<img>`'s onError
+ * previously called `reload()` directly, with nothing counting how many
+ * times that had already happened for this assetId. If `fetchAssetUrl`
+ * kept returning `available` for a URL the browser can never load, that
+ * was an unbounded loading/ready/onError cycle — never surfacing the
+ * retry button, and a participant on a phone would just see a broken
+ * image forever with no way to unblock an item that image made
+ * unanswerable. `reportImageLoadFailure()` is a SEPARATE signal from
+ * `reload()`, wired to the `<img>`'s onError instead: it counts
+ * consecutive calls, and once `MAX_CONSECUTIVE_IMAGE_LOAD_FAILURES` is
+ * reached, gives up and surfaces the same `error` state `reload()`'s own
+ * caller-visible button already handles, rather than fetching again.
+ * `reload()` (the manual "Coba lagi" click) always resets that count —
+ * the participant asked for a fresh start, not one more spin of a loop
+ * that was already failing.
  */
+
+const MAX_CONSECUTIVE_IMAGE_LOAD_FAILURES = 2;
 
 export type IstAssetUrlLoaderState =
     | { status: 'loading' }
@@ -41,9 +63,16 @@ export type IstAssetUrlLoader = {
     ) => () => void;
     /** Starts the first attempt. Call once. */
     start: () => void;
-    /** Re-fetches a fresh URL for the same asset — wire to the <img>'s
-     * onError. Safe to call from any state. */
+    /** The participant's own "Coba lagi" click — re-fetches a fresh URL
+     * for the same asset AND resets the `reportImageLoadFailure()` count.
+     * Safe to call from any state. */
     reload: () => void;
+    /** Wire to the <img>'s onError — a DIFFERENT signal from `reload()`.
+     * Counts consecutive calls (not reset by a successful re-fetch, only
+     * by `reload()`); once `MAX_CONSECUTIVE_IMAGE_LOAD_FAILURES` is
+     * reached, surfaces the `error` state instead of fetching again, so a
+     * URL the browser can never actually load can't cycle forever. */
+    reportImageLoadFailure: () => void;
     /** Cancels any in-flight attempt so it can never update state again
      * — call on unmount or when the assetId this loader was created for
      * changes (create a new loader for the new assetId instead of
@@ -58,6 +87,7 @@ export function createIstAssetUrlLoader(
     const listeners = new Set<(state: IstAssetUrlLoaderState) => void>();
     let attemptId = 0;
     let disposed = false;
+    let consecutiveImageLoadFailures = 0;
 
     function setState(next: IstAssetUrlLoaderState): void {
         state = next;
@@ -142,9 +172,30 @@ export function createIstAssetUrlLoader(
         },
         reload() {
             // Unlike start(), reload() is always invoked from an event
-            // handler (the <img>'s onError, or an explicit "Coba lagi"
-            // click), never from inside an effect body, so resetting to
-            // 'loading' synchronously here is fine.
+            // handler (the explicit "Coba lagi" click), never from inside
+            // an effect body, so resetting to 'loading' synchronously
+            // here is fine. A fresh manual attempt earns a fresh budget.
+            consecutiveImageLoadFailures = 0;
+            setState({ status: 'loading' });
+            void attempt();
+        },
+        reportImageLoadFailure() {
+            consecutiveImageLoadFailures++;
+
+            if (
+                consecutiveImageLoadFailures >=
+                MAX_CONSECUTIVE_IMAGE_LOAD_FAILURES
+            ) {
+                setState({
+                    status: 'error',
+                    outcome: { type: 'network_error' },
+                });
+
+                return;
+            }
+
+            // Also invoked from an event handler (the <img>'s onError),
+            // same as reload() above — safe to setState synchronously.
             setState({ status: 'loading' });
             void attempt();
         },

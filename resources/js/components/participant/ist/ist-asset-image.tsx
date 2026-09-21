@@ -5,8 +5,11 @@ import type { FetchIstAssetUrl } from './ist-asset-url.ts';
  * General-purpose image-option component, built ahead of FA/WU per Lead's
  * 2026-09-21 instruction so those subtests can use it unchanged once their
  * reader ships an `asset_id` per option/item. Renders one image from an
- * `assetId`, reloading the signed URL when it fails to load or is found
- * already expired (see `use-ist-asset-url.ts`'s doc for both paths).
+ * `assetId`, reloading the signed URL when it is found already expired,
+ * and re-fetching (up to a small bounded cap, then giving up with a
+ * "Coba lagi" the participant can act on) when the `<img>` itself fails
+ * to load — see `ist-asset-url-loader.ts`'s module doc for why those are
+ * two separate signals (`reload` vs `reportImageLoadFailure`).
  */
 
 export type IstAssetImageProps = {
@@ -45,7 +48,10 @@ function IstAssetImageForOneAsset({
     alt,
     className,
 }: IstAssetImageProps) {
-    const { state, reload } = useIstAssetUrl({ assetId, fetchAssetUrl });
+    const { state, reload, reportImageLoadFailure } = useIstAssetUrl({
+        assetId,
+        fetchAssetUrl,
+    });
 
     if (state.status === 'loading') {
         return (
@@ -82,6 +88,11 @@ function IstAssetImageForOneAsset({
     }
 
     return (
-        <img src={state.url} alt={alt} onError={reload} className={className} />
+        <img
+            src={state.url}
+            alt={alt}
+            onError={reportImageLoadFailure}
+            className={className}
+        />
     );
 }

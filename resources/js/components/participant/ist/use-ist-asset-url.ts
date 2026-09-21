@@ -29,9 +29,11 @@ export type UseIstAssetUrlOptions = {
 
 export type UseIstAssetUrlResult = {
     state: IstAssetUrlLoaderState;
-    /** Fetches a fresh URL for the same assetId — wire this to the
-     * <img>'s onError. */
+    /** The participant's own "Coba lagi" click. */
     reload: () => void;
+    /** Wire this to the <img>'s onError — a different, bounded signal
+     * from `reload()`, see ist-asset-url-loader.ts's module doc. */
+    reportImageLoadFailure: () => void;
 };
 
 export function useIstAssetUrl({
@@ -58,5 +60,6 @@ export function useIstAssetUrl({
     return {
         state,
         reload: () => loader.reload(),
+        reportImageLoadFailure: () => loader.reportImageLoadFailure(),
     };
 }
