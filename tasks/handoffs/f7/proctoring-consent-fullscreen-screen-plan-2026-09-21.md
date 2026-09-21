@@ -50,6 +50,10 @@ mengoreksi kalau memang harus termasuk):
   poin 8). Komponen dirancang MENERIMA prop untuk ini (lihat §2), tapi
   siapa yang mengisi prop itu dari data cabang sungguhan adalah kerja
   lane lain setelah F7/entitlement API menyediakannya.
+  **[Diperbarui 2026-09-21, lihat §8.1]:** pertanyaan ini sudah dijawab
+  pemilik proyek — kamera WAJIB untuk semua peserta, tanpa pengecualian
+  per cabang. Prop `cameraMandatory` tetap ada untuk testability, tapi
+  tidak ada lagi konfigurasi per-cabang yang perlu dibangun.
 
 ## 2. Titik integrasi — tanpa menyentuh berkas GLM
 
@@ -102,7 +106,7 @@ function IstTestPage(/* ... */) {
           <ProctoringConsentScreen
             camera={runner.camera}
             fullscreen={fullscreen}
-            cameraMandatory={/* dari data cabang — TBD, lihat §1 */}
+            cameraMandatory={true} // lihat §8.1 — wajib untuk semua peserta, bukan lagi per-cabang
             onProceed={() => setConsentGiven(true)}
           />
         ) : (
@@ -197,6 +201,11 @@ peramban):
 > pengaturan peramban Anda lalu muat ulang halaman ini, atau hubungi
 > pengawas/LPK Anda untuk jalur pengawasan lain.
 >
+> **[Draf awal — lihat §8.2]:** "hubungi pengawas/LPK Anda" DITARIK dari
+> teks yang sebenarnya dikirim ke kode. Dibiarkan di sini apa adanya
+> sebagai draf historis; teks final ada di
+> `proctoring-consent-copy-variants-2026-09-21.md`.
+>
 > [bila `!cameraMandatory`] Anda tetap bisa melanjutkan tanpa kamera.
 > Sesi Anda akan ditandai memerlukan catatan prosedur tambahan
 > sebelum psikolog menandatangani laporan — ini bukan penalti
@@ -217,6 +226,13 @@ lain, atau kendala teknis lain — BUKAN penolakan eksplisit):
 > mungkin memakainya, lalu coba lagi — atau hubungi LPK Anda untuk
 > jalur pengawasan alternatif (8A.7: peserta dengan keterbatasan
 > perangkat tidak langsung gugur).
+>
+> **[Draf awal — lihat §8.2]:** "hubungi LPK Anda untuk jalur
+> pengawasan alternatif" DITARIK — belum pernah ada kebijakan atau
+> proses operasional untuk ini. Diganti dengan langkah periksa/ganti
+> perangkat + kalimat netral "hubungi penyelenggara tes Anda" tanpa
+> menjanjikan hasil. Teks final ada di
+> `proctoring-consent-copy-variants-2026-09-21.md`.
 >
 > [bila `!cameraMandatory`] Anda tetap bisa melanjutkan tanpa kamera.
 > Sesi Anda akan ditandai memerlukan catatan prosedur tambahan.
@@ -354,11 +370,10 @@ sesuatu yang dibangun di PR ini.
 1. **Kapan `persistenceEnabled` boleh `true` di produksi?** Rekomendasi
    §4: tidak sebelum F7 backend + reporter nyata ada. Keputusan Lead/
    pemilik proyek.
-2. **Siapa yang mengisi `cameraMandatory` per peserta/cabang?** Belum
-   ada sumber data (F7 proposal poin 8, masih terbuka). Untuk
-   increment ini, prop-nya ada tapi TIDAK ADA pemanggil produksi yang
-   mengisinya dengan benar — itu kerja lane lain setelah konfigurasi
-   cabang ini dibangun.
+2. **[TERJAWAB 2026-09-21, lihat §8.1]** ~~Siapa yang mengisi
+   `cameraMandatory` per peserta/cabang?~~ Kamera wajib untuk semua
+   peserta, tanpa pengecualian per cabang — tidak ada lagi konfigurasi
+   yang perlu dibangun untuk pertanyaan ini.
 3. **Haruskah 8A.4 (pengerasan ringan) masuk PR yang sama atau PR
    terpisah?** Rencana ini mengasumsikan TERPISAH (§1) — teks di layar
    persetujuan menyebutkannya, kodenya tidak. Tolong konfirmasi kalau
@@ -366,4 +381,70 @@ sesuatu yang dibangun di PR ini.
 4. **Redaksi teks final** — draf §3 adalah titik awal, bukan final;
    psikolog/legal (per struktur dokumen CLAUDE.md — `SPEC_v4.md`/dokumen
    psikolog otoritatif untuk redaksi consent) sebaiknya meninjau kalimat
-   persisnya sebelum ini tampil ke peserta sungguhan.
+   persisnya sebelum ini tampil ke peserta sungguhan. Teks yang
+   sebenarnya diimplementasikan (bukan draf §3) diekspor lengkap di
+   `proctoring-consent-copy-variants-2026-09-21.md` untuk tinjauan ini.
+5. **Usulan terbuka (bukan keputusan):** kalau kamera benar-benar tidak
+   bisa dipakai peserta (`unavailable` + `cameraMandatory`) dan
+   penyelenggara tes tidak punya jalur dukungan operasional yang jelas,
+   apakah perlu satu didefinisikan (bukan LPK — lihat §8.2 kenapa itu
+   ditarik)? Dicatat di sini untuk pemilik proyek, bukan diputuskan
+   sendiri.
+
+## 8. Perubahan pasca-persetujuan rencana ini
+
+Rencana di atas (§1–§7) disetujui Lead/pemilik proyek pada 2026-09-21.
+Dua keputusan berikut datang SETELAH persetujuan itu, selama
+implementasi — dicatat di sini untuk arsip, bukan mengubah §1–§7 secara
+diam-diam (anotasi inline di atas menunjuk balik ke sini).
+
+### 8.1 Kamera wajib untuk semua peserta (2026-09-21)
+
+Keputusan pemilik proyek untuk pertanyaan terbuka §7 butir 2 (relay
+Lead, dicatat sebagai butir 11 di dokumen keputusan, PR #81): **kamera
+WAJIB untuk semua peserta, tanpa pengecualian per cabang.** Dampaknya
+ke implementasi:
+
+- `cameraMandatory` tetap ada sebagai prop `ProctoringConsentScreen`
+  (supaya kedua cabang tetap testable), tapi tidak ada pemanggil
+  produksi yang boleh mengisinya `false` — tidak ada jalur "lanjut
+  tanpa kamera" di produksi.
+- `denied` dan `unavailable` sama-sama memblokir mulainya sesi, dengan
+  notice yang berbeda (prompt izin peramban yang ditolak, vs perangkat
+  yang memang tidak ada/tidak berfungsi) — keduanya tidak boleh
+  menyalahkan peserta.
+- Perilaku kamera mati di TENGAH sesi (`interrupted`/`reactivating`/
+  `reactivation_failed`) sengaja TIDAK dirancang di increment ini
+  (sudah dicatat §1) — Lead eksplisit minta ditanyakan dulu sebelum
+  dirancang, bukan diasumsikan mengikuti pola mandatory ini.
+- Belum ada perubahan pada kapan komponen ini disambungkan ke alur
+  peserta sungguhan (masih menunggu F7 backend, §4) — keputusan ini
+  hanya mengubah ISI prop, bukan kapan komponennya dipakai produksi.
+
+### 8.2 Penarikan klaim jalur LPK untuk kamera `unavailable` (2026-09-21)
+
+Draf §3.2 (dan implementasi awal saya) menulis "atau hubungi
+pengawas/LPK Anda untuk jalur pengawasan alternatif" untuk kasus
+`unavailable` + `cameraMandatory`. Lead mengoreksi ini: **belum ada
+siapa pun — bukan SPEC.md, bukan proses operasional, bukan psikolog —
+yang pernah memutuskan jalur itu ada.** Menampilkannya ke peserta
+sungguhan akan mengarahkan mereka ke staf LPK yang tidak tahu harus
+berbuat apa dengan permintaan itu.
+
+**Perbaikan yang masuk kode:** untuk `unavailable` + `cameraMandatory`,
+teks memberi langkah konkret memeriksa/mengganti perangkat (tutup
+aplikasi lain yang memakai kamera, pastikan kamera berfungsi, coba
+perangkat lain), diikuti SATU kalimat netral yang mengarahkan peserta
+menghubungi **penyelenggara tes** tanpa menjanjikan hasil tertentu:
+"Jika kamera tetap tidak dapat digunakan, hubungi penyelenggara tes
+Anda." Tidak ada klaim jalur/hasil yang belum diputuskan siapa pun.
+Teks lengkap semua varian ada di
+`proctoring-consent-copy-variants-2026-09-21.md`; test regresi
+(`proctoring-consent-copy.test.ts` dan `browser.test.mjs`) menegaskan
+kata "LPK" tidak pernah muncul lagi di notice ini.
+
+**Usulan terbuka** (bukan keputusan, untuk pemilik proyek): kalau jalur
+dukungan operasional yang jelas memang dibutuhkan untuk kasus kamera
+benar-benar tidak bisa dipakai, itu perlu didefinisikan dulu di luar
+kode ini (siapa yang dihubungi, apa yang mereka lakukan) sebelum masuk
+ke teks aplikasi lagi.
