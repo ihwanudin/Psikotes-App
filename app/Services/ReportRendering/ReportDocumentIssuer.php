@@ -21,11 +21,8 @@ use stdClass;
  * no new row) and only issues a fresh link. Renders and stores a new
  * object — bumping render_seq — only when nothing reusable exists.
  *
- * Not wired into ReportGeneration yet: doing so needs a design decision
- * (when a report number is first assigned for a case that has never had
- * a document, given HppReportDraft/ReportIdentity are built before this
- * class runs) that is out of this increment's scope and is flagged
- * separately to the coordinator.
+ * Wired into App\Filament\Pages\ReportGeneration::generate(), reached only
+ * by admins with AdminAbility::GenerateReports (psychologist/super_admin).
  */
 final readonly class ReportDocumentIssuer
 {
