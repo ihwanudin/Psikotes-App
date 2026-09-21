@@ -24,15 +24,30 @@ export function PapiItemNav({
     onReviewAnswers,
 }: PapiItemNavProps) {
     return (
-        <div className="flex items-center justify-between gap-3">
-            <Button
-                type="button"
-                variant="outline"
-                onClick={onPrevious}
-                disabled={itemNumber <= 1}
-            >
-                Sebelumnya
-            </Button>
+        <div className="flex flex-col items-center gap-3">
+            {/* Prev/next on their own full-width row: at 320px, three
+             * items (button, indicator, button) sharing one row don't
+             * fit — measured, not assumed (this exact bug shipped once
+             * before, in lobby.tsx, fixed in #58). Two buttons alone
+             * always fit comfortably, so they get the row to themselves. */}
+            <div className="flex w-full items-center justify-between gap-3">
+                <Button
+                    type="button"
+                    variant="outline"
+                    onClick={onPrevious}
+                    disabled={itemNumber <= 1}
+                >
+                    Sebelumnya
+                </Button>
+                <Button
+                    type="button"
+                    variant="outline"
+                    onClick={onNext}
+                    disabled={itemNumber >= itemCount}
+                >
+                    Berikutnya
+                </Button>
+            </div>
             <div className="flex flex-col items-center gap-1">
                 <span className="text-sm font-medium text-slate-600">
                     Butir {itemNumber} dari {itemCount}
@@ -45,14 +60,6 @@ export function PapiItemNav({
                     Lihat ringkasan
                 </button>
             </div>
-            <Button
-                type="button"
-                variant="outline"
-                onClick={onNext}
-                disabled={itemNumber >= itemCount}
-            >
-                Berikutnya
-            </Button>
         </div>
     );
 }

@@ -1,0 +1,20 @@
+/* Test-only entry: include PAPI runner component utilities outside this
+ * fixture's Vite root.
+ *
+ * The @source line below is not optional decoration — without it, this
+ * fixture's isolated Tailwind build silently drops utilities that are
+ * only referenced inside resources/js/components/participant/papi/*.tsx
+ * (discovered the hard way: a throwaway local preview harness built while
+ * developing these components rendered every utility class correctly
+ * EXCEPT .flex-col/.flex-row — display:flex worked, but not the direction
+ * utilities specifically, because nothing in that harness's own content
+ * told Tailwind's isolated scan to look inside resources/js/components/
+ * participant/papi/ at all. The real app's resources/css/app.css never
+ * hit this because its own build already scans the whole resources/js
+ * tree; a standalone fixture like this one does not inherit that for
+ * free and needs its own @source, same as ParticipantLobby's
+ * preview.css already does for lobby.tsx). Confirmed the real production
+ * build (`npm run build`) already generates `.flex-col` correctly before
+ * concluding this was a fixture-only gap, not a bug in the components. */
+@import '../../../resources/css/app.css';
+@source '../../../resources/js/components/participant/papi/*.tsx';
