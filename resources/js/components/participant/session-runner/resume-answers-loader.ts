@@ -12,31 +12,51 @@ import type {
  *
  * Exists to close a real gap Lead caught in review (2026-09-21): the
  * original hook fetched exactly once, on mount. If that one attempt
- * failed with `network_error` (a transient signal glitch, not a real
- * rejection), the caller was left with no answer UI, no retry mechanism,
- * and a server timer that kept running regardless — the participant lost
+ * failed, the caller was left with no answer UI, no retry mechanism, and
+ * a server timer that kept running regardless — the participant lost
  * test time to a network blip, not to anything about their answers.
  *
- * `network_error` is treated as retryable, not final: on it, this module
- * queues a retry through the caller-supplied `queueRetry` (the SAME
- * connectivity signal offline-queue.ts already tracks — this module has
- * no idea what "online" means, deliberately, so there is only ever one
- * connectivity detector in the app, not two). Every other outcome
- * (`available`, `not_started`, `closed`, `deadline_exceeded`,
- * `not_found`) is final and is never auto-retried.
+ * Two different technical shapes both mean the same thing to a
+ * participant — "couldn't reach the server right now" — and are treated
+ * identically here (Lead's second review pass, 2026-09-21): the
+ * `network_error` OUTCOME the contract defines (a resolved promise; the
+ * fetcher chose to report it that way), and the fetcher's promise
+ * REJECTING outright (e.g. a real `TypeError: Failed to fetch` from an
+ * actual dropped signal — the far more common real-world shape, and the
+ * one the original version of this module missed). Both transition to
+ * `reconnecting` and are retried through the caller-supplied
+ * `queueRetry` — the SAME connectivity signal offline-queue.ts already
+ * tracks (via `useOfflineQueue()`/`SessionRunnerContext.connectivity`),
+ * not a second connectivity detector.
+ *
+ * Every other outcome (`available`, `not_started`, `closed`,
+ * `deadline_exceeded`, `not_found`) is final and is never auto-retried.
+ *
+ * Automatic retries are capped at `MAX_CONSECUTIVE_AUTO_RETRIES`
+ * consecutive connectivity-type failures — `queueRetry` only fires on a
+ * genuine connectivity-restored signal (not a blind timer), but without
+ * a cap, a real programming bug in the injected fetcher (always throws,
+ * unrelated to actual connectivity) would retry forever every time the
+ * browser reports itself online. Once exhausted, the state stays
+ * `reconnecting` (never downgraded to some other terminal-looking state
+ * — "tidak dapat terhubung" is still not final) with
+ * `autoRetryExhausted: true`, and `retry()` remains callable — a manual
+ * retry resets the budget, since a human tapping "Coba lagi" is fresh
+ * intent, not another automatic reflex.
  */
+
+const MAX_CONSECUTIVE_AUTO_RETRIES = 5;
 
 export type ResumeAnswersLoaderState =
     | { status: 'loading' }
-    /** The last attempt returned `network_error`; a retry is queued to
-     * fire once connectivity is believed restored (or `retry()` can be
-     * called directly). Distinct from `error` and from `ready` so a page
-     * can render "Menyambungkan kembali…" rather than a terminal message. */
-    | { status: 'reconnecting' }
-    | { status: 'ready'; outcome: ResumeAnswersOutcome }
-    /** The fetch itself threw/rejected — an unexpected failure, not the
-     * `network_error` outcome the contract defines. Not auto-retried. */
-    | { status: 'error'; error: unknown };
+    /** Couldn't reach the server (network_error outcome or a rejected
+     * fetch) — not final. `autoRetryExhausted` tells the caller whether
+     * this is still being retried automatically or has hit the cap and
+     * is waiting for a manual `retry()`; either way the copy shown must
+     * be "tidak dapat terhubung, coba lagi", never a terminal message
+     * like "tes tidak tersedia". */
+    | { status: 'reconnecting'; autoRetryExhausted: boolean }
+    | { status: 'ready'; outcome: ResumeAnswersOutcome };
 
 export type ResumeAnswersLoaderOptions = {
     fetchResumeAnswers: FetchResumeAnswers;
@@ -53,8 +73,8 @@ export type ResumeAnswersLoader = {
     ) => () => void;
     /** Starts the first attempt. Call once. */
     start: () => void;
-    /** Retries immediately, bypassing any queued reconnect wait. Safe to
-     * call from any state. */
+    /** Retries immediately, bypassing any queued reconnect wait, and
+     * resets the automatic-retry budget. Safe to call from any state. */
     retry: () => void;
     /** Cancels any in-flight or queued attempt so it can never update
      * state again — call on unmount. */
@@ -69,6 +89,7 @@ export function createResumeAnswersLoader(
     let attemptId = 0;
     let unsubscribeQueuedRetry: (() => void) | null = null;
     let disposed = false;
+    let consecutiveFailures = 0;
 
     function setState(next: ResumeAnswersLoaderState): void {
         state = next;
@@ -76,6 +97,20 @@ export function createResumeAnswersLoader(
         for (const listener of listeners) {
             listener(state);
         }
+    }
+
+    function onConnectivityFailure(): void {
+        consecutiveFailures++;
+        const exhausted = consecutiveFailures >= MAX_CONSECUTIVE_AUTO_RETRIES;
+        setState({ status: 'reconnecting', autoRetryExhausted: exhausted });
+
+        if (exhausted) {
+            return;
+        }
+
+        unsubscribeQueuedRetry = options.queueRetry(() => {
+            attempt();
+        });
     }
 
     function attempt(): void {
@@ -92,22 +127,26 @@ export function createResumeAnswersLoader(
                 }
 
                 if (outcome.type === 'network_error') {
-                    setState({ status: 'reconnecting' });
-                    unsubscribeQueuedRetry = options.queueRetry(() => {
-                        attempt();
-                    });
+                    onConnectivityFailure();
 
                     return;
                 }
 
+                consecutiveFailures = 0;
                 setState({ status: 'ready', outcome });
             })
-            .catch((error: unknown) => {
+            .catch(() => {
                 if (disposed || attemptId !== thisAttemptId) {
                     return;
                 }
 
-                setState({ status: 'error', error });
+                // A rejected/thrown fetcher (e.g. a real "Failed to
+                // fetch") is indistinguishable from the network_error
+                // outcome above, from the participant's point of view —
+                // see module doc. The concrete error is intentionally
+                // not surfaced in state; there is nothing UI-actionable
+                // about it beyond "couldn't connect, retrying".
+                onConnectivityFailure();
             });
     }
 
@@ -122,6 +161,7 @@ export function createResumeAnswersLoader(
             attempt();
         },
         retry() {
+            consecutiveFailures = 0;
             setState({ status: 'loading' });
             attempt();
         },

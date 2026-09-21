@@ -62,13 +62,58 @@ test('network_error transitions to reconnecting and queues a retry, not a termin
     loader.start();
     await Promise.resolve();
 
-    assert.deepEqual(loader.getState(), { status: 'reconnecting' });
+    assert.deepEqual(loader.getState(), {
+        status: 'reconnecting',
+        autoRetryExhausted: false,
+    });
     assert.equal(calls, 1);
     assert.equal(
         tracker.queuedCount,
         1,
         'a network_error outcome must queue exactly one retry',
     );
+});
+
+test('a rejected/thrown fetcher (a real dropped-signal failure) is treated identically to the network_error outcome', async () => {
+    const tracker = fakeQueueRetry();
+    const outcomes: (() => Promise<ResumeAnswersOutcome>)[] = [
+        () => Promise.reject(new TypeError('Failed to fetch')),
+        () =>
+            Promise.resolve({
+                type: 'available',
+                sessionId: 'ses_1',
+                answersRevision: 7,
+                answers: [{ itemNo: 1, value: 'A' }],
+            }),
+    ];
+    let call = 0;
+    const loader = createResumeAnswersLoader({
+        fetchResumeAnswers: () => outcomes[call++]!(),
+        queueRetry: tracker.queueRetry,
+    });
+
+    loader.start();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    assert.deepEqual(
+        loader.getState(),
+        { status: 'reconnecting', autoRetryExhausted: false },
+        'a rejected fetch must be treated as a connectivity failure, not a terminal error',
+    );
+
+    tracker.fireQueuedRetry();
+    await Promise.resolve();
+
+    assert.deepEqual(loader.getState(), {
+        status: 'ready',
+        outcome: {
+            type: 'available',
+            sessionId: 'ses_1',
+            answersRevision: 7,
+            answers: [{ itemNo: 1, value: 'A' }],
+        },
+    });
 });
 
 test('network_error -> connectivity restored -> retry fires -> available yields the ready state with the correct outcome', async () => {
@@ -90,7 +135,10 @@ test('network_error -> connectivity restored -> retry fires -> available yields 
 
     loader.start();
     await Promise.resolve();
-    assert.deepEqual(loader.getState(), { status: 'reconnecting' });
+    assert.deepEqual(loader.getState(), {
+        status: 'reconnecting',
+        autoRetryExhausted: false,
+    });
 
     tracker.fireQueuedRetry();
     await Promise.resolve();
@@ -125,25 +173,105 @@ for (const outcome of [
     });
 }
 
-test('a thrown/rejected fetch is reported as error, distinct from network_error, and is not auto-retried', async () => {
+test('automatic retries are capped, and the counter is shared across network_error outcomes and rejections', async () => {
     const tracker = fakeQueueRetry();
+    let calls = 0;
     const loader = createResumeAnswersLoader({
-        fetchResumeAnswers: async () => {
-            throw new Error('boom');
+        fetchResumeAnswers: () => {
+            calls++;
+
+            // Alternate failure shapes to prove the budget is one shared
+            // counter, not one per failure type.
+            return calls % 2 === 0
+                ? Promise.reject(new TypeError('Failed to fetch'))
+                : Promise.resolve({ type: 'network_error' as const });
         },
         queueRetry: tracker.queueRetry,
     });
 
     loader.start();
-    // Two microtask hops: the rejection has to pass through `.then()`'s
-    // fulfillment handler (a no-op pass-through for a rejected promise)
-    // before `.catch()` actually runs.
     await Promise.resolve();
     await Promise.resolve();
 
-    const state = loader.getState();
-    assert.equal(state.status, 'error');
-    assert.equal(tracker.queuedCount, 0);
+    // Cap is 5 consecutive failures. Fire the queued retry repeatedly
+    // until the cap is hit, and assert queueRetry stops being called
+    // beyond that point.
+    for (let i = 0; i < 10; i++) {
+        const state = loader.getState();
+
+        if (state.status === 'reconnecting' && state.autoRetryExhausted) {
+            break;
+        }
+
+        tracker.fireQueuedRetry();
+        await Promise.resolve();
+        await Promise.resolve();
+    }
+
+    assert.deepEqual(loader.getState(), {
+        status: 'reconnecting',
+        autoRetryExhausted: true,
+    });
+    assert.equal(
+        calls,
+        5,
+        'exactly 5 consecutive failures (the cap) should have been attempted',
+    );
+    assert.equal(
+        tracker.queuedCount,
+        4,
+        'the 5th failure must not queue a 6th automatic retry',
+    );
+
+    // Firing the (no longer present) queued retry must be a no-op — no
+    // further fetch attempts happen automatically once exhausted.
+    tracker.fireQueuedRetry();
+    await Promise.resolve();
+    assert.equal(calls, 5);
+});
+
+test('after the automatic-retry cap is reached, a manual retry() still works and resets the budget', async () => {
+    const tracker = fakeQueueRetry();
+    let calls = 0;
+    const loader = createResumeAnswersLoader({
+        fetchResumeAnswers: () => {
+            calls++;
+
+            if (calls <= 5) {
+                return Promise.resolve({ type: 'network_error' as const });
+            }
+
+            return Promise.resolve({ type: 'not_started' as const });
+        },
+        queueRetry: tracker.queueRetry,
+    });
+
+    loader.start();
+
+    for (let i = 0; i < 5; i++) {
+        await Promise.resolve();
+        await Promise.resolve();
+
+        if (i < 4) {
+            tracker.fireQueuedRetry();
+        }
+    }
+
+    assert.deepEqual(loader.getState(), {
+        status: 'reconnecting',
+        autoRetryExhausted: true,
+    });
+    assert.equal(calls, 5);
+
+    loader.retry();
+    assert.deepEqual(loader.getState(), { status: 'loading' });
+    await Promise.resolve();
+
+    assert.deepEqual(loader.getState(), {
+        status: 'ready',
+        outcome: { type: 'not_started' },
+    });
+    assert.equal(calls, 6, 'retry() must have triggered exactly one more attempt');
 });
 
 test('retry() bypasses the queued wait and re-attempts immediately', async () => {
@@ -160,7 +288,10 @@ test('retry() bypasses the queued wait and re-attempts immediately', async () =>
 
     loader.start();
     await Promise.resolve();
-    assert.deepEqual(loader.getState(), { status: 'reconnecting' });
+    assert.deepEqual(loader.getState(), {
+        status: 'reconnecting',
+        autoRetryExhausted: false,
+    });
 
     loader.retry();
     assert.deepEqual(
