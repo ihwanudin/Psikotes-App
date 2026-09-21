@@ -133,17 +133,19 @@ zero mismatches after the fixes above, so nothing forced a `"draft"` state.
 
 ## Hash gate
 
-Not yet pinned, same as RMIB's process: `test_f0_papi_items.py` covers
-structural invariants only (90 unique items, count matches `papi.json`
-mapping, no scoring/dimension-field leakage, nonempty text, no leftover
-leader/arrow glyphs). The byte-hash pin will follow in a commit after you've
-reviewed this content.
+**Pinned**, after Lead's independent review (own `pdftotext` parse with a
+separate parser, 90/90 items, 180/180 statements, zero diffs, reported
+against commit `870b689`): `test_bytes_are_deterministic` in
+`test_f0_papi_items.py` asserts `papi_items.json` is exactly 16486 bytes with
+sha256 `e0e064da79aa86111e06f082b9d06c20b489840c6e0ebe340d252f47886a71fd`
+(`extract_aspect_sources.py`/`test_f0.py` pattern — fail-closed on any future
+content drift).
 
 ## Tests
 
-- `python -m unittest tools.extract.tests.test_f0_papi_items -v` — 7/7 pass.
-- `python -m unittest discover -s tools/extract/tests -t . -v` — 36/36 pass
-  (29 existing + these 7; no regression).
+- `python -m unittest tools.extract.tests.test_f0_papi_items -v` — 8/8 pass.
+- `python -m unittest discover -s tools/extract/tests -t . -v` — 37/37 pass
+  (29 existing + these 8; no regression).
 
 ## Not touched
 

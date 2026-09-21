@@ -1,3 +1,4 @@
+import hashlib
 import json
 import unittest
 from pathlib import Path
@@ -6,13 +7,23 @@ DATA = Path(__file__).parents[3] / "database" / "seeders" / "data"
 
 
 class PapiItemsGateTest(unittest.TestCase):
-    """Structural invariants for `papi_items.json`. The byte-hash pin (following
-    the `extract_aspect_sources.py` / `test_f0.py` pattern, as used for RMIB in
-    PR #55) is added in a follow-up commit after the coordinator has reviewed
-    the extracted content - see PR description."""
+    """Structural invariants and a fail-closed byte-hash gate for
+    `papi_items.json`, following the `extract_aspect_sources.py` / `test_f0.py`
+    pattern (as used for RMIB in PR #55). The hash was pinned after Lead's
+    independent review (own pdftotext parse, 90/90 items, 180/180 statements,
+    zero diffs, reported against commit 870b689)."""
 
     def load(self):
         return json.loads((DATA / "papi_items.json").read_text(encoding="utf-8"))
+
+    def test_bytes_are_deterministic(self):
+        payload = (DATA / "papi_items.json").read_bytes()
+        self.assertEqual(len(payload), 16486)
+        self.assertEqual(
+            hashlib.sha256(payload).hexdigest(),
+            "e0e064da79aa86111e06f082b9d06c20b489840c6e0ebe340d252f47886a71fd",
+        )
+        self.assertEqual(payload, json.dumps(self.load(), ensure_ascii=False, indent=2).encode("utf-8"))
 
     def test_status_is_final(self):
         data = self.load()
