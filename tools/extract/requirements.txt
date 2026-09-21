@@ -1,0 +1,7 @@
+# Extra dependencies for tools/extract/ item-content extraction (F0 soal extraction).
+# Scoped to this internal tooling only - never imported by application code.
+# pypdf chosen over PyMuPDF: BSD-licensed (PyMuPDF is AGPL); handles owner-password
+# PDF decryption and per-glyph text-object coordinates, which is what the column-aware
+# extractors (RMIB, IST WA) need. Revisit only if a subtest genuinely needs something
+# pypdf cannot do (documented inline where that happens).
+pypdf==6.19.0
