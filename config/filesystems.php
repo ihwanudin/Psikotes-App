@@ -3,6 +3,7 @@
 $identityDriver = env('IDENTITY_FILESYSTEM_DRIVER', 'local');
 $paymentProofDriver = env('PAYMENT_PROOF_FILESYSTEM_DRIVER', 'local');
 $reportDriver = env('REPORT_FILESYSTEM_DRIVER', 'local');
+$istAssetDriver = env('IST_ASSET_FILESYSTEM_DRIVER', 'local');
 
 return [
 
@@ -131,6 +132,33 @@ return [
                 'root' => storage_path('app/private/reports'),
                 'serve' => true,
                 'url' => '/private-reports',
+                'visibility' => 'private',
+                'throw' => true,
+                'report' => true,
+            ],
+
+        // F2 IST reader Stage 1 (2026-09-21, Lead plan sign-off): populated
+        // only by `assets:sync-ist` from the checked-in
+        // database/seeders/data/assets/ist/ source, never uploaded directly.
+        'ist-assets' => $istAssetDriver === 's3'
+            ? [
+                'driver' => 's3',
+                'key' => env('AWS_ACCESS_KEY_ID'),
+                'secret' => env('AWS_SECRET_ACCESS_KEY'),
+                'region' => env('AWS_DEFAULT_REGION'),
+                'bucket' => env('AWS_BUCKET'),
+                'endpoint' => env('AWS_ENDPOINT', env('FILESYSTEM_S3_ENDPOINT')),
+                'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
+                'root' => env('IST_ASSET_FILESYSTEM_ROOT', 'ist-assets'),
+                'visibility' => 'private',
+                'throw' => true,
+                'report' => true,
+            ]
+            : [
+                'driver' => 'local',
+                'root' => storage_path('app/private/ist-assets'),
+                'serve' => true,
+                'url' => '/private-ist-assets',
                 'visibility' => 'private',
                 'throw' => true,
                 'report' => true,
