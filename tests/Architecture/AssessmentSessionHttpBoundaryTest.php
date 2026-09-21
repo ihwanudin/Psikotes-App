@@ -6,6 +6,7 @@ namespace Tests\Architecture;
 
 use App\Contracts\RequiresRlsContext;
 use App\Http\Controllers\AutosaveAssessmentAnswersController;
+use App\Http\Controllers\GetAssessmentSessionAnswersController;
 use App\Http\Controllers\GetAssessmentSessionController;
 use App\Http\Controllers\SubmitAssessmentSessionController;
 use App\Http\Middleware\ApplyRlsContext;
@@ -22,15 +23,16 @@ use ReflectionNamedType;
 use Tests\TestCase;
 
 /**
- * F2 session-http (2026-09-21). Same proof obligation as
- * AssessmentSessionStartBoundaryTest, extended to the resume/autosave/submit
- * trio: each of GetAssessmentSession, AutosaveAssessmentAnswers,
- * SubmitAssessmentSession owns its own runAsService() call directly (no
+ * F2 session-http (2026-09-21), extended F2 session-answers-readback
+ * (2026-09-21). Same proof obligation as AssessmentSessionStartBoundaryTest,
+ * covering resume/autosave/submit/answers-readback: each of
+ * GetAssessmentSession, AutosaveAssessmentAnswers, SubmitAssessmentSession,
+ * GetAssessmentSessionAnswers owns its own runAsService() call directly (no
  * assertCleanOuterBoundary() -- see each action's doc comment), and
  * RlsContextRunner::runAsService() itself throws
  * ("Only administrator contexts may elevate to service.") if a participant
  * RLS context is already active. A stray `rls` middleware entry or a
- * DB/Eloquent/RlsContextRunner dependency smuggled into any of these three
+ * DB/Eloquent/RlsContextRunner dependency smuggled into any of these four
  * controllers would recreate that stacked-context failure -- and, per the
  * S4 lesson, it would pass silently on SQLite and only fail against real
  * PostgreSQL.
@@ -52,6 +54,7 @@ final class AssessmentSessionHttpBoundaryTest extends TestCase
         yield 'GET /sessions/{id}' => ['participant.sessions.show', GetAssessmentSessionController::class];
         yield 'POST /sessions/{id}/answers' => ['participant.sessions.answers', AutosaveAssessmentAnswersController::class];
         yield 'POST /sessions/{id}/submit' => ['participant.sessions.submit', SubmitAssessmentSessionController::class];
+        yield 'GET /sessions/{id}/answers' => ['participant.sessions.answers.show', GetAssessmentSessionAnswersController::class];
     }
 
     #[DataProvider('routes')]
