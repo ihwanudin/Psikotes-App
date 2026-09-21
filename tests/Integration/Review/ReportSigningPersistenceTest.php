@@ -781,19 +781,19 @@ final class ReportSigningPersistenceTest extends TestCase
      * row into (assessment_case_id, version) between the service's own
      * "latest" read and its insert, via a query listener - exactly what a
      * second signer racing past the lock would leave behind - and confirm
-     * the service's insert hits the unique constraint and returns a clean
-     * 409, not an unhandled 500.
+     * the service's own insert silently inserts zero rows (insertOrIgnore(),
+     * not insert()) and returns a clean 409, not an unhandled 500.
      *
-     * On PostgreSQL (proven in tests/Postgres/ReportSigningConcurrencyTest,
-     * SQLite doesn't have this failure mode at all) the unique violation
-     * also requires sign() to roll back before returning - otherwise the
-     * poisoned transaction fails the very next statement instead, still
-     * producing a 500. That rollback also undoes the query listener's own
-     * simulated competing insert above, since both run on this same
-     * connection - a same-process-simulation artifact, not something this
-     * test can observe either way (a real second signer's row lives in its
-     * own already-committed transaction, unaffected by this one rolling
-     * back), so this doesn't assert the competing row survived.
+     * insertOrIgnore() rather than a try/catch around insert() matters
+     * specifically on PostgreSQL (see tests/Postgres/
+     * ReportSigningConcurrencyTest and tasks/handoffs/f5/
+     * report-signing-conflict-500.md): a thrown QueryException there aborts
+     * the whole transaction until rolled back, and runAsService()'s own
+     * cleanup query on the way out fails too before sign() ever gets a
+     * chance to handle it. insertOrIgnore() never throws for a unique
+     * violation, so nothing is ever aborted - confirmed here too: the
+     * listener's own simulated competing row is asserted to still exist
+     * below, since nothing rolls anything back anymore.
      */
     public function test_version_conflict_at_insert_returns_409_not_500(): void
     {
@@ -824,10 +824,12 @@ final class ReportSigningPersistenceTest extends TestCase
         $this->assertTrue($injected, 'The query listener never saw the latest-snapshot lookup - test setup is stale.');
         $response->assertStatus(409);
         $response->assertJsonPath('error.code', 'SIGNING_CONFLICT');
-        // The connection must still be usable after the 409 - a plain query
-        // here must not itself blow up (see the PostgreSQL test for the
-        // failure mode this actually guards against).
+        // The connection must still be usable after the 409, and - unlike
+        // the rejected DB::rollBack() approach - nothing else this
+        // connection wrote gets discarded: the listener's own competing row
+        // must still be exactly the one row present.
         $this->assertTrue(DB::table('assessment_cases')->where('id', $case->id)->exists());
+        $this->assertDatabaseCount('report_signing_snapshots', 1);
     }
 
     // Proof that sign() actually issues SELECT ... FOR UPDATE lives in

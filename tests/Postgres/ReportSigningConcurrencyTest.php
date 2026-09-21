@@ -27,28 +27,23 @@ use Tests\Support\AssessmentBillingFixture;
  * grammar compiles lockForUpdate() to an empty string (no-op, verified
  * against SQLiteGrammar::compileLock()), so this can only be proven here.
  *
- * test_version_conflict_on_postgres_documents_the_known_500 pins a KNOWN,
- * UNRESOLVED limitation in the unique-constraint safety net (the second,
- * defense-in-depth layer behind the lock, for if the lock is ever
- * bypassed) rather than asserting it works: on PostgreSQL, a failed insert
- * marks the WHOLE transaction aborted (SQLSTATE 25P02) until rolled back,
- * and RlsContextRunner::runAsService()'s own finally block (restoring the
- * previous RLS role) runs a further query on its way out regardless of
- * whether the closure threw - so on the exact HTTP-request shape
- * production uses (sign() called from within an already-open admin
+ * test_version_conflict_on_postgres_returns_409_and_leaves_everything_usable
+ * proves the SECOND, defense-in-depth safety net (for if the lock is ever
+ * bypassed) actually returns a clean 409 on real PostgreSQL - which an
+ * earlier version of this fix did not: a thrown QueryException from a
+ * unique violation aborts the WHOLE transaction (SQLSTATE 25P02) until
+ * rolled back, and RlsContextRunner::runAsService()'s own finally block
+ * (restoring the previous RLS role) runs a further query on its way out
+ * regardless of whether the closure threw - on the exact HTTP-request
+ * shape production uses (sign() called from inside an already-open admin
  * RlsContext, the "elevate" branch, which owns no transaction of its own),
- * that cleanup query fails too, with a DIFFERENT exception that reaches
- * ReportSigningService's catch instead of the original one, and it still
- * surfaces as an unhandled 500. A manual DB::rollBack() was tried and
- * rejected: it desyncs the outer connection->transaction() call's own
- * bookkeeping, confirmed to discard more than the failed insert (a
- * separate, already-committed transaction level's data came back missing
- * after "recovering" this way). See ReportSigningService::sign()'s own
- * comment on this. Closing it needs either a fix in RlsContextRunner
- * itself (shared infrastructure, out of this PR's scope) or a decision
- * that the row lock's protection is sufficient for now, since a real
- * concurrent second signer would block at the lock and never reach this
- * path at all - only a lock bypass (a bug, not normal operation) would.
+ * that cleanup query used to fail too, masking the original exception and
+ * still surfacing as an unhandled 500 (full history of what was tried:
+ * tasks/handoffs/f5/report-signing-conflict-500.md). The fix: sign() now
+ * uses insertOrIgnore() (INSERT ... ON CONFLICT DO NOTHING on PostgreSQL)
+ * instead of insert() + catch, so a unique violation never throws at all -
+ * nothing is ever aborted, nothing needs recovering, and RlsContextRunner
+ * itself never needed to change.
  *
  * A genuine two-process concurrency test (the pattern already used in
  * AssessmentBillManualReviewTest) is separate tech debt, not included here.
@@ -94,24 +89,16 @@ final class ReportSigningConcurrencyTest extends TestCase
     }
 
     /**
-     * Pins the KNOWN, UNRESOLVED limitation described in the class
-     * docblock and in ReportSigningService::sign()'s own comment above its
-     * try/catch: forces the exact race the row lock exists to prevent (a
-     * competing version landing between sign()'s own "latest" read and its
-     * insert, via a query listener, since a single process can't run two
-     * real concurrent signings) through the exact branch production uses
-     * (an already-open admin RlsContext), and confirms it currently still
-     * surfaces as an uncaught QueryException - NOT the clean 409 the
-     * unique-constraint safety net is meant to produce.
-     *
-     * This is deliberately asserting the CURRENT broken behavior, not the
-     * desired one: it exists so that if RlsContextRunner is ever changed to
-     * fix this (or someone finds a real fix here), this test starts
-     * failing and has to be rewritten to expect 409 - not so it can be
-     * silently regressed further. Do not delete or invert this test without
-     * confirming the underlying issue is actually fixed.
+     * Forces the exact race the row lock exists to prevent: a competing
+     * version lands between sign()'s own "latest" read and its insert (via
+     * a query listener, since a single process can't run two real
+     * concurrent signings), through the exact branch production uses (an
+     * already-open admin RlsContext - see the class docblock for why that
+     * matters here specifically). Confirms all three things Lead asked
+     * for: a clean 409, the connection still usable afterward, and no row
+     * lost from what was already there.
      */
-    public function test_version_conflict_on_postgres_currently_still_surfaces_as_an_exception(): void
+    public function test_version_conflict_on_postgres_returns_409_and_leaves_everything_usable(): void
     {
         [$casePublicId, $eligibilityId, $narrativeId, $psychologist] = $this->seedSigningFixture();
         $caseId = (int) DB::table('assessment_cases')->where('public_id', $casePublicId)->value('id');
@@ -146,17 +133,36 @@ final class ReportSigningConcurrencyTest extends TestCase
         };
         DB::listen($listener);
 
-        $this->expectException(\Illuminate\Database\QueryException::class);
-        $this->expectExceptionMessageMatches('/current transaction is aborted/');
+        $result = app(RlsContextRunner::class)->run(
+            new RlsContext('psychologist'),
+            fn (): array => app(ReportSigningService::class)->sign($casePublicId, $psychologist, $this->signPayload($eligibilityId, $narrativeId)),
+        );
 
-        try {
-            app(RlsContextRunner::class)->run(
-                new RlsContext('psychologist'),
-                fn (): array => app(ReportSigningService::class)->sign($casePublicId, $psychologist, $this->signPayload($eligibilityId, $narrativeId)),
-            );
-        } finally {
-            self::assertTrue($injected, 'The query listener never saw the latest-snapshot lookup - test setup is stale.');
-        }
+        self::assertTrue($injected, 'The query listener never saw the latest-snapshot lookup - test setup is stale.');
+        self::assertFalse($result['success'] ?? true);
+        self::assertSame('SIGNING_CONFLICT', $result['code'] ?? null);
+        self::assertSame(409, $result['status'] ?? null);
+
+        // The connection must still be usable - a plain query here must not
+        // blow up with "current transaction is aborted". Unlike the
+        // rejected DB::rollBack() approach, insertOrIgnore() never throws
+        // in the first place, so nothing this connection wrote gets
+        // discarded either: the listener's own competing row (the
+        // simulated second signer) must still be exactly the one row
+        // present, and the case itself must still be there. Read through
+        // runAsService(), same as sign() itself always does for its own
+        // reads: RLS on assessment_cases/report_signing_snapshots only
+        // allows the service role, so a plain query here under the psychologist
+        // role from this test (not elevated, unlike sign()'s own internal
+        // queries) would see nothing regardless of whether the fix works -
+        // that's a fact about RLS visibility, not something this fix
+        // changed.
+        $stillThere = app(RlsContextRunner::class)->runAsService(fn (): array => [
+            'case' => (int) DB::table('assessment_cases')->where('public_id', $casePublicId)->value('id'),
+            'snapshotCount' => DB::table('report_signing_snapshots')->where('assessment_case_id', $caseId)->count(),
+        ]);
+        self::assertSame($caseId, $stillThere['case']);
+        self::assertSame(1, $stillThere['snapshotCount']);
     }
 
     /** @return array{0: string, 1: string, 2: string, 3: Admin} casePublicId, eligibilityId, narrativeId, psychologist */

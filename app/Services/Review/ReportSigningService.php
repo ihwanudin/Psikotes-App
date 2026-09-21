@@ -15,7 +15,6 @@ use App\Domain\Review\ReportSigningTransitionPolicy;
 use App\Domain\Review\ReviewedEligibilityDecision;
 use App\Models\Admin;
 use App\Security\RlsContextRunner;
-use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use stdClass;
@@ -312,7 +311,21 @@ final class ReportSigningService
             $supersedesId = $latest?->id;
             $id = (string) Str::ulid();
 
-            DB::table('report_signing_snapshots')->insert([
+            // insertOrIgnore(), not insert(): on PostgreSQL this compiles to
+            // INSERT ... ON CONFLICT DO NOTHING (SQLite: INSERT OR IGNORE),
+            // so a unique violation on either (assessment_case_id, version)
+            // or supersedes_id - both mean a concurrent signer already won -
+            // silently inserts zero rows instead of throwing. That matters
+            // specifically here: a thrown QueryException would abort the
+            // WHOLE Postgres transaction (25P02) until rolled back, and
+            // runAsService()'s own cleanup (restoring the previous RLS role
+            // in its finally block) would then itself fail on the poisoned
+            // connection before this method ever got a chance to handle it
+            // - confirmed by actually triggering that, not assumed; see
+            // tasks/handoffs/f5/report-signing-conflict-500.md. Not throwing
+            // at all sidesteps that entirely, with no need to touch
+            // RlsContextRunner.
+            $inserted = DB::table('report_signing_snapshots')->insertOrIgnore([
                 'id' => $id,
                 'assessment_case_id' => $caseId,
                 'version' => $version,
@@ -326,41 +339,17 @@ final class ReportSigningService
                 'created_at' => $signedAt,
             ]);
 
+            if ($inserted === 0) {
+                // Should not happen with the row lock above in place - kept
+                // as a second, independent safety net for if it's ever
+                // bypassed.
+                return ['found' => false, 'error_code' => 'SIGNING_CONFLICT'];
+            }
+
             return ['found' => true, 'row' => DB::table('report_signing_snapshots')->where('id', $id)->sole()];
         };
 
-        // KNOWN LIMITATION, not yet resolved - see
-        // tasks/handoffs/f5/report-signing-conflict-500.md. Catching the
-        // unique-violation QueryException here (outside runAsService) is
-        // necessary but NOT sufficient on PostgreSQL: runAsService()'s own
-        // finally block (RlsContextRunner::applyDatabaseContext, restoring
-        // the previous RLS role) runs an additional query on its way out
-        // regardless of whether the closure threw, and if the transaction
-        // is already aborted (25P02, which a failed statement always causes
-        // until rolled back) THAT query fails too - with a DIFFERENT
-        // exception that reaches this catch instead of the original one, so
-        // isVersionConflict() correctly does not recognize it and re-throws
-        // as an unhandled 500. A manual DB::rollBack() here was tried and
-        // rejected: since runAsService's "elevate" branch (the one always
-        // taken when sign() runs inside an admin RLS context, i.e. every
-        // real HTTP request through ApplyRlsContext) does not own its own
-        // transaction, rolling back mid-flight desyncs the OUTER
-        // connection->transaction() call's own bookkeeping - confirmed
-        // against real PostgreSQL to discard more than the failed insert
-        // (the assessment_case row from an earlier, already-committed
-        // transaction level came back null after "recovering" this way).
-        // The row lock above already makes this race exceedingly unlikely;
-        // it is not closed here pending a decision on whether the fix
-        // belongs in this service or in RlsContextRunner itself.
-        try {
-            $result = $this->runner->runAsService($signingClosure);
-        } catch (QueryException $e) {
-            if (! $this->isVersionConflict($e)) {
-                throw $e;
-            }
-
-            $result = ['found' => false, 'error_code' => 'SIGNING_CONFLICT'];
-        }
+        $result = $this->runner->runAsService($signingClosure);
 
         if (! $result['found']) {
             $messages = [
@@ -424,22 +413,5 @@ final class ReportSigningService
     private function systemLevel(array $baselineArray, string $aspect): int
     {
         return (int) $baselineArray['zone']['aspects'][$aspect]['level'];
-    }
-
-    /**
-     * Whether a QueryException is the (assessment_case_id, version) unique
-     * violation on report_signing_snapshots - the safety net for the race
-     * the row lock in sign() is meant to prevent. Checked by constraint/
-     * column name rather than SQLSTATE alone: Postgres reports a specific
-     * '23505' for this, but SQLite reports the generic '23000' for every
-     * integrity violation (NOT NULL, FK, unique alike), so SQLSTATE alone
-     * can't tell this apart from an unrelated failure on the same insert.
-     */
-    private function isVersionConflict(QueryException $e): bool
-    {
-        $message = $e->getMessage();
-
-        return str_contains($message, 'report_signing_snapshots_case_version_unique')
-            || (str_contains($message, 'UNIQUE constraint failed') && str_contains($message, 'report_signing_snapshots.assessment_case_id') && str_contains($message, 'report_signing_snapshots.version'));
     }
 }
