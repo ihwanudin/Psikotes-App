@@ -74,7 +74,7 @@ export async function verifyCheckoutKeyboardAndReflow(page) {
     };
     const select = (name) =>
         role('combobox', 'Skenario').selectOption({ label: name });
-    await page.goto('http://127.0.0.1:8011');
+    await page.goto('http://127.0.0.1:8012');
     await select('Email opsional · consent tercatat');
     await toggle('Legal review pending (fixture)');
     await tabTo(email());
@@ -374,7 +374,7 @@ export async function verifyCheckoutKeyboardAndReflow(page) {
 
 /** Inject the two existing exports so CLI can concatenate sources without imports. */
 export async function verifyCombinedCheckout(page, runExisting, runOptional) {
-    const origin = 'http://127.0.0.1:8011';
+    const origin = 'http://127.0.0.1:8012';
     const errors = [];
     const requests = [];
     await page.setViewportSize({ width: 1280, height: 900 });
