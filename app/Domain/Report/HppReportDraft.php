@@ -36,7 +36,7 @@ final readonly class HppReportDraft
 
     /**
      * @param  array<string, string>  $clusterNarratives
-     * @param  array{name: string, sipp_number: string, signature_note: string|null, signed_at: string|null}|null  $psychologist
+     * @param  array{name: string, silp_number: string, str_number: string, facility_name: string, facility_address: string, signature_note: string|null, signed_at: string|null}|null  $psychologist
      */
     public static function create(
         ReportIdentity $identity,

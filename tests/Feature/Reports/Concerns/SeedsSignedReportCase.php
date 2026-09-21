@@ -291,11 +291,6 @@ trait SeedsSignedReportCase
                 return (string) $this->inner->reportNumber($assessmentCaseId, $snapshotId);
             }
 
-            public function psychologistSippNumber(int $adminId): string
-            {
-                return (string) $this->inner->psychologistSippNumber($adminId);
-            }
-
             public function recommendationRationale(string $snapshotId): string
             {
                 return (string) $this->inner->recommendationRationale($snapshotId);
@@ -313,7 +308,7 @@ trait SeedsSignedReportCase
         };
     }
 
-    /** Test-only stand-in for the five inputs that have no persisted source yet. */
+    /** Test-only stand-in for the four inputs that have no persisted source yet. */
     private function completeSupplementalData(): ReportSupplementalData
     {
         return new class implements ReportSupplementalData
@@ -321,11 +316,6 @@ trait SeedsSignedReportCase
             public function reportNumber(int $assessmentCaseId, string $snapshotId): string
             {
                 return 'HPP-SYNTH-0001';
-            }
-
-            public function psychologistSippNumber(int $adminId): string
-            {
-                return 'SIPP-SYNTH-0001';
             }
 
             public function recommendationRationale(string $snapshotId): string

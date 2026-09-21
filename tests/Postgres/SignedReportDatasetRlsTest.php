@@ -87,7 +87,6 @@ final class SignedReportDatasetRlsTest extends TestCase
         $this->assertSame([
             SignedReportDataset::TEST_DATE_UNAVAILABLE,
             SignedReportDataset::IQ_CATEGORY_UNAVAILABLE,
-            SignedReportDataset::PSYCHOLOGIST_SIPP_UNAVAILABLE,
             SignedReportDataset::RECOMMENDATION_RATIONALE_UNAVAILABLE,
             SignedReportDataset::ASPECT_LABELS_UNAVAILABLE,
         ], $result->missing);
@@ -109,11 +108,6 @@ final class SignedReportDatasetRlsTest extends TestCase
             public ?string $captured = null;
 
             public function reportNumber(int $assessmentCaseId, string $snapshotId): ?string
-            {
-                return null;
-            }
-
-            public function psychologistSippNumber(int $adminId): ?string
             {
                 return null;
             }

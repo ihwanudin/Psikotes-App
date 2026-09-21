@@ -12,7 +12,7 @@ namespace App\Services\ReportRendering;
  * SignedReportDataset reports as a warning, not a blocking gap — issuing
  * the actual number is ReportDocumentIssuer's job, never this class's.
  *
- * The other four inputs have no persisted source yet
+ * The other three inputs have no persisted source yet
  * (tasks/handoffs/f6/report-supplemental-data-proposal.md); they return
  * null exactly like UnavailableReportSupplementalData rather than
  * duplicating "always null" through composition.
@@ -26,11 +26,6 @@ final readonly class ReportDocumentSupplementalData implements ReportSupplementa
     public function reportNumber(int $assessmentCaseId, string $snapshotId): ?string
     {
         return $this->issuer->existingReportNumberFor($assessmentCaseId);
-    }
-
-    public function psychologistSippNumber(int $adminId): ?string
-    {
-        return null;
     }
 
     public function recommendationRationale(string $snapshotId): ?string
