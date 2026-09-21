@@ -100,7 +100,7 @@ Diukur langsung di 360×800. Ukuran/kontras dari pengukuran `getBoundingClientRe
 | T-P5 | Chip lompat "Butir N" (layar ringkasan) | ~25px tinggi, ±90 chip | — | Tidak diverifikasi langsung (pola sama dengan T-P4, diasumsikan sama) | Jarak antar-chip 8px sudah sesuai (`Touch / Touch Spacing`) |
 | T-P6 | "Kirim jawaban" (submit) | 360×36px | 20.16:1 | Tidak diverifikasi langsung (komponen shadcn `Button` sama dengan T-P1/T-P3) | shadcn `Button` default |
 | T-P7 | "Kembali ke soal" | 96×20px | — | Tidak diverifikasi langsung (pola sama dengan T-P4) | Tanpa padding |
-| T-P8 | Nama aksesibel opsi radio | — | — | — | `aria-label`/teks gabungan huruf+pernyataan tanpa pemisah, mis. "Amurah" bukan "A. murah" |
+| T-P8 | Nama aksesibel opsi radio (`papi-item.tsx:70-97`) | — | — | — | **Lebih serius dari perkiraan awal**: diverifikasi lewat `read_page` (accessibility tree sungguhan, bukan `textContent`) — tombolnya **tidak punya nama aksesibel sama sekali**. Teks pernyataan dirender sebagai node `generic` terpisah di dalam radio, bukan ikut jadi nama radio itu sendiri (huruf opsi sudah benar `aria-hidden`, tapi itu tidak cukup). Screen reader akan mengumumkan "radio, tanpa label" untuk kedua opsi. Diverifikasi juga bahwa menambah `aria-label` eksplisit memperbaikinya (dicoba dulu via patch JS sebelum diterapkan ke kode sungguhan) |
 
 Kutipan skill yang dipakai: `Accessibility / Target Size (Minimum)` (WCAG
 2.2 AA, 24×24 CSS px — T-P4/T-P7 gagal bahkan ambang ini, bukan cuma ambang
@@ -201,7 +201,7 @@ dari komponen produksi — dikeluarkan dari tabel di bawah.
 | T-I3 | "Lihat ringkasan" (`ist-subtest-nav.tsx:49-55`) | — | 93×20px | 5.36:1 | Tidak ada `outline-none` | Tanpa padding, identik T-P4/T-R4 |
 | T-I4 | Chip lompat "Butir N" (`ist-subtest-summary.tsx:63-69`, layar ringkasan) | — | `px-3 py-1 text-xs` (terukur ~25px tinggi) | — | Tidak ada `outline-none` | Identik pola T-P5/T-R5 |
 | T-I5 | Tombol "Selesai" (`ist-subtest-summary.tsx:76-82`) | — | 36px tinggi (shadcn default) | — | shadcn `Button` | |
-| T-I6 | Nama aksesibel opsi radio (`ist-multiple-choice-item.tsx:61-64`) | — | — | — | — | Sama seperti T-P8: huruf+teks opsi nempel tanpa pemisah ("amurah") |
+| T-I6 | Nama aksesibel opsi radio (`ist-multiple-choice-item.tsx:49-65`) | — | — | — | — | Sama seperti T-P8, dan sedikit lebih parah: huruf opsi di sini bahkan tidak `aria-hidden` (beda dari PAPI), tapi lewat `read_page` tetap terbukti radio-nya sendiri tidak bernama — teks jadi node `generic` terpisah, bukan nama radio |
 
 IST mengulang persis pola PAPI (arsitektur & komponen navigasi/ringkasan
 memang mirror satu sama lain, dan tidak ada `outline-none` di satu pun
@@ -219,27 +219,36 @@ cabang masing-masing; lebih besar → dikirim ke Lead dulu.**
 
 ### Kategori A — kecil, aman diperbaiki langsung di tiap cabang
 
-1. **Tambah padding pada tombol "teks-sebagai-tautan"** ("Lihat ringkasan",
+Status: **1–3 sudah diterapkan dan didorong ke masing-masing cabang** (lihat
+tabel commit di bagian Status di bawah). 4 (Kraepelin) belum, karena Kraepelin
+belum punya fixture untuk diverifikasi visual — lihat catatan di bawah.
+
+1. ✅ **Tambah padding pada tombol "teks-sebagai-tautan"** ("Lihat ringkasan",
    "Kembali ke soal/kelompok", chip lompat "Butir N"/"Kelompok X") supaya
-   tinggi ≥44px — cukup ubah kelas Tailwind (mis. tambah `px-3 py-2`), tidak
-   mengubah teks atau perilaku klik. Ini satu-satunya kategori temuan yang
-   konsisten gagal bahkan ambang WCAG AA 24px murni (T-P4/T-P7/T-R4/T-R7/T-I3),
-   bukan cuma ambang 44px proyek — prioritas tertinggi di Kategori A.
-2. **Naikkan tinggi tombol nav shadcn `Button` default** ("Sebelumnya" /
-   "Berikutnya" / "Kirim jawaban" / "Selesai", saat ini 36-37px) ke varian
-   `size="lg"` yang sudah ada di `button.tsx` (`h-10`=40px, masih di bawah
-   44px) atau kelas kustom `h-11` langsung di pemanggilan `<Button>`,
-   konsisten dengan T-K1/T-K2 Kraepelin yang sudah 44px — perubahan kelas
-   murni, tidak mengubah `onClick`/perilaku.
-3. **Perbaiki nama aksesibel opsi radio** (T-P8/T-I6): beri pemisah antara
-   huruf opsi dan teks jawaban, mis. `aria-label` eksplisit `"${key}. ${teks}"`
-   alih-alih membiarkan dua `<span>` bersebelahan digabung otomatis oleh
-   pembaca layar. Perubahan lokal, tidak menyentuh urutan opsi (larangan
-   CLAUDE.md soal pengacakan tidak tersentuh — ini murni soal pemisah teks
-   label, bukan urutan).
-4. **Styling tombol "Coba lagi" Kraepelin** (T-K4): beri kelas dasar yang
-   konsisten dengan tombol lain di repo (border, padding) — edge-case kecil,
-   tidak mengubah perilaku retry itu sendiri.
+   tinggi ≥44px — kelas Tailwind (`min-h-11`/`min-w-11` + `flex items-center
+   justify-center` agar teks tetap tercentang, bukan cuma kotak yang
+   membesar), tidak mengubah teks atau perilaku klik. Diverifikasi ulang di
+   browser (360px) di ketiga cabang setelah diterapkan — semua elemen
+   sekarang 44px, tidak ada regresi layout/overflow.
+2. ✅ **Naikkan tinggi tombol nav shadcn `Button` default** ("Sebelumnya" /
+   "Berikutnya" / "Kirim jawaban" / "Selesai", semula 36-37px) — dipakai
+   `className="h-11"` langsung di pemanggilan `<Button>` (varian `size="lg"`
+   bawaan cuma `h-10`=40px, masih kurang), memakai `tailwind-merge` yang
+   sudah ada di `cn()` jadi override-nya bersih. Diverifikasi 44px di browser.
+3. ✅ **Perbaiki nama aksesibel opsi radio** (T-P8/T-I6) — **ternyata bukan
+   sekadar soal pemisah teks seperti dugaan awal**: opsi radio PAPI dan IST
+   sama sekali tidak punya nama aksesibel (dikonfirmasi via `read_page`
+   sebelum diperbaiki). Ditambahkan `aria-label` eksplisit
+   (`` `${key}. ${statement}` ``) pada tombol radio-nya sendiri, diverifikasi
+   ulang via `read_page` setelah perbaikan — radio sekarang bernama "a.
+   Pernyataan A untuk butir 1" dsb.
+4. **Belum dikerjakan** — Styling tombol "Coba lagi" Kraepelin (T-K4): beri
+   kelas dasar yang konsisten dengan tombol lain di repo (border, padding) —
+   edge-case kecil, tidak mengubah perilaku retry itu sendiri. Ditunda karena
+   Kraepelin tidak punya fixture untuk diverifikasi visual sebelum commit
+   (lihat disiplin "prove it, don't guess" yang dipakai konsisten di seluruh
+   audit ini) — dikerjakan begitu ada fixture, atau atas persetujuan Lead
+   kalau mau diterapkan tanpa verifikasi visual langsung.
 
 **Ditarik dari draf pertama**: "tambah `focus-visible:` ring ke semua
 tombol custom" — temuan itu berdasarkan metodologi pengukuran yang salah
@@ -276,11 +285,23 @@ perbaikan berbasis kelas Tailwind/token yang sudah ada di repo.
 
 ## Status setelah audit ini
 
-Dokumen ini murni pencatatan temuan (sudah dikoreksi sekali setelah audit
-menemukan kesalahan metodologinya sendiri pada pengukuran fokus — dicatat
-transparan, bukan diam-diam ditimpa). Perbaikan Kategori A akan dikerjakan
-menyusul di masing-masing cabang (`glm/papi-runner-prototype`,
-`glm/rmib-runner-prototype`, `glm/kraepelin-runner-items`,
-`glm/ist-runner-prototype`) sebagai commit terpisah, supaya riwayat tiap PR
-tetap bersih dan bisa ditinjau independen. Kategori B menunggu keputusan
-Lead sebelum dikerjakan.
+Dokumen ini sudah dikoreksi sekali setelah audit menemukan kesalahan
+metodologinya sendiri pada pengukuran fokus (dicatat transparan di atas,
+bukan diam-diam ditimpa), dan sekali lagi setelah verifikasi ulang T-P8/T-I6
+lewat accessibility tree sungguhan mengungkap bug yang lebih serius dari
+perkiraan awal (nama aksesibel kosong, bukan cuma tanpa pemisah).
+
+Perbaikan Kategori A 1–3 sudah diterapkan, diverifikasi di browser 360px
+(ukuran via `getBoundingClientRect`, nama aksesibel via `read_page`), dan
+didorong ke masing-masing cabang:
+
+| Cabang | Commit | Isi |
+|---|---|---|
+| `glm/papi-runner-prototype` | `517e850` | Touch target 44px (nav, ringkasan, chip) + `aria-label` opsi radio |
+| `glm/rmib-runner-prototype` | `f0d296b` | Touch target 44px (nav, ringkasan, chip, kembali) |
+| `glm/ist-runner-prototype` | `ac22a63` | Touch target 44px (nav, ringkasan, chip, kembali, selesai) + `aria-label` opsi radio |
+
+Kraepelin (item 4, tombol "Coba lagi") belum dikerjakan — menunggu fixture
+atau persetujuan Lead untuk commit tanpa verifikasi visual. Kategori B
+(kontras ikon pegangan-seret RMIB, ukuran kotak jawaban Kraepelin, catatan
+teknis ring Tailwind) menunggu keputusan Lead sebelum dikerjakan.
