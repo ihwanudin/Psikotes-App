@@ -31,10 +31,19 @@ and still reject exactly as before -- this PR only adds `papi`.
   (`InstrumentSeederTest`, `InstrumentVersionHistorySecurityTest`).
 - `AppServiceProvider`'s readers map gained `'papi' => new
   PapiItemContentReader`.
+- **Added after initial review (GLM request, 2026-09-21)**:
+  `AssessmentItemContent` gained an optional `instructions` field (`null`
+  for readers that don't have any -- always present in the response shape,
+  never an omitted key). PAPI's `intro`/`example`/`answer_sheet_demo`/
+  `closing` administration text now travels through the same `/items`
+  response as its 90 items, whitelisted to exactly those four fields.
+  `GetAssessmentSessionItemsController` and `API_CONTRACT.md` updated to
+  match. One server-side source of truth for this text instead of a
+  hardcoded client-side copy.
 
 ## Test coverage
 
-- `tests/Feature/AssessmentSessions/PapiItemContentReaderTest.php` — 5
+- `tests/Feature/AssessmentSessions/PapiItemContentReaderTest.php` — 6
   tests against the **real, unmodified** seeded `papi_items.json` (via a
   real `InstrumentSeeder` run): exact 90-item source-order preservation
   with per-item value comparison against the raw payload, rejection for a
@@ -42,17 +51,24 @@ and still reject exactly as before -- this PR only adds `papi`.
   checksum mismatch, fail-closed for a tampered `status: draft` (checksum
   recomputed to match the tampered payload, so only the status check is
   what rejects it — proves the status gate is real, not just incidentally
-  covered by the checksum gate).
+  covered by the checksum gate), fail-closed for malformed/incomplete
+  instructions.
+- `AssessmentSessionItemsReadbackTest.php` updated: the strict-whitelist
+  test and the exact-JSON happy path both now account for the always-present
+  `instructions` key.
 
 ## Test suite status
 
 - SQLite: `tests/Feature/AssessmentSessions`, `tests/Unit/AssessmentSessions`,
   `tests/Architecture`, `tests/Feature/Seeders`, `tests/Feature/Eligibility`
-  — 389 tests, 10600 assertions, green.
-- PostgreSQL: `InstrumentVersionHistorySecurityTest` — 7 tests, 77
-  assertions, green. Full organization suite run separately for the exact
-  known-7-baseline check (see PR description for the SHA/counts at time of
-  push).
+  — 369 tests, 10426 assertions, green (re-run after the `instructions`
+  addition; an earlier 389/10600 count from before that addition is
+  superseded).
+- PostgreSQL: `InstrumentVersionHistorySecurityTest` (7 tests, 77
+  assertions) and `AssessmentSessionItemsReadbackControllerTest` (3 tests,
+  12 assertions) both green after the `instructions` addition. Full
+  organization suite: 646 tests, exactly the known 7-test baseline red, no
+  8th failure.
 - Full `phpstan` gate: 0 errors. `pint --test` (full repo): clean.
 
 ## CI note
