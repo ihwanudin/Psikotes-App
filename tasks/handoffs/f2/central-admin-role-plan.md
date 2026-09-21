@@ -1,10 +1,11 @@
 # F2 — Central-office admin role ("central_admin") plan (2026-09-22)
 
-**Status: plan only, no code.** Lead sign-off on direction as a default-deny
-baseline, 2026-09-22, with three additions folded in below. Final ability
-matrix still pending the owner's answer on whether this role needs broader
-operational abilities (verify payments, edit participants, manage packages) —
-Lead is forwarding that question separately.
+**Status: plan only, no code. Ability matrix now final** — the owner's
+answer came back (item 20, PR #81 `77ef777`): `VerifyPayments`,
+`EditParticipants`, `ManageTestPackages`, and read access to the active
+payment-methods list are all granted. `ManageAdmins`, `ReviewReports`,
+`ViewDass` stay denied. See the updated matrix below; the three additions
+from the first review round are unchanged.
 
 ## Source of the requirement
 
@@ -56,28 +57,23 @@ application code). The only DB-level policy in the whole repo that lists
 every admin role together is `payment_methods_read`
 (`database/schema/rls_policies.sql:147-148`).
 
-## Ability matrix — every row decided explicitly, none derived from `super_admin`
+## Ability matrix — final (item 20), every row decided explicitly, none derived from `super_admin`
 
 | Ability | `central_admin` | Why |
 |---|---|---|
 | `AccessPanel` | **true** | granted to every role today |
 | `ViewParticipants` | **true** | granted to every role today |
-| `ManageAdmins` | **false** | per original scoping |
-| `ManageTestPackages` | **false** (pending, see below) | not addressed by the owner's decision — default deny |
-| `ManagePaymentMethods` | **false** (pending, see below) | not addressed — default deny |
-| `ManageIntegrations` | **false** | not addressed — default deny |
-| `EditParticipants` | **false** (pending, see below) | not addressed — default deny |
-| `VerifyPayments` | **false** (pending, see below) | not addressed — default deny |
-| `ViewDass` | **false** | per original scoping |
-| `ReviewReports` | **false** | explicit: signing stays psychologist-only |
-| `GenerateReports` | **true** | the one explicit grant in the owner's decision |
+| `ManageAdmins` | **false** | explicit, item 20 |
+| `ManageTestPackages` | **true** | explicit grant, item 20 ("kelola paket") |
+| `ManagePaymentMethods` | **false** | item 20 grants *viewing* the payment-methods list, not managing it — the owner said "lihat daftar metode pembayaran," not "kelola." Kept as a separate RLS-policy decision below, not this ability. |
+| `ManageIntegrations` | **false** | never addressed — default deny holds |
+| `EditParticipants` | **true** | explicit grant, item 20 |
+| `VerifyPayments` | **true**, unconditional (matching `super_admin`'s own unconditional grant, not the `can_verify_payments`-gated conditional path `branch_admin`/`staff` use) | explicit grant, item 20 ("verifikasi pembayaran") |
+| `ViewDass` | **false** | explicit, item 20 |
+| `ReviewReports` | **false** | explicit, item 20: signing stays psychologist-only |
+| `GenerateReports` | **true** | explicit grant, item 17 |
 
-Rows marked "pending" are exactly the ones Lead is taking back to the owner:
-does central_admin ("admin aplikasi, di bawah superadmin," the owner's own
-phrase) need any broader operational ability — payment verification,
-participant editing, package management? **This plan's matrix is not final
-until that answer comes back.** Nothing here should be implemented as final
-until then.
+This is now the final matrix — nothing here is "pending" anymore.
 
 ## Proposed identity/RLS plumbing (all must land together, per finding #2)
 
@@ -106,20 +102,20 @@ consistent with "never derived from `super_admin`."
   `psychologist` cannot read the `admins` table via RLS (excluded from that
   policy). The same exclusion likely applies cleanly to `central_admin` too,
   but not decided here.
-- **`payment_methods_read`** (Revision 3, Lead): the only "every admin role"
-  DB policy in the repo. **Default: deny for now** — `central_admin` does
-  not see the active payment-methods list until the owner's pending answer
-  (above) resolves whether this role needs payment-adjacent visibility at
-  all.
-- **`packages`/`package_items` read policies, once PR #99 merges**
-  (Revision 3, Lead): PR #99 adds `packages_read`/`package_items_read`
-  granting every existing admin role (`super_admin, branch_admin, staff,
-  psychologist`) read access, mirroring `AdminAbility::ViewParticipants`
-  being true for all of them. **Default: deny for now** — do not add
-  `central_admin` to those policies until the owner's answer resolves
-  whether it's meant to have the same "every admin sees the catalog"
-  visibility. Tracked here so PR #99 merging doesn't silently leave this
-  decided by omission.
+- **`payment_methods_read`** — **now included** (item 20: "lihat daftar
+  metode pembayaran" is exactly this policy, read-only). `central_admin`
+  gets added to this policy's role list; `payment_methods_write` (the
+  actual manage/create/deactivate policy) does **not** include
+  `central_admin`, matching `ManagePaymentMethods` staying denied above.
+- **`packages`/`package_items` read/write policies, once PR #99 merges**:
+  **now included, both read and write**. PR #99 adds `packages_read`
+  (every admin role) and `packages_update` (service + `super_admin`
+  only). Since `ManageTestPackages` is now granted to `central_admin`
+  (item 20), it needs the same access `super_admin` has there — add
+  `central_admin` to **both** `packages_read` and `packages_update`
+  (`package_items` stays service-only for update either way, per PR #99's
+  own design — no admin UI edits `package_items` directly, only
+  `packages`' own fields).
 - All other admin-role-naming policies (`branches`, `participants`,
   `orders`, `entitlements`, `identity_evidence`, `identity_verifications`,
   `audit_logs`, `assessment_participants`, `assessment_bills`/`assessment_bill_items`/
@@ -235,26 +231,39 @@ No existing artisan command in this codebase currently writes to
 would be a new combination (command + audit write), but the audit-row shape
 itself follows strong existing precedent, not a new invention.
 
-## Addition 3 (Lead): explicitly parked pending the owner's answer
+## Addition 3: resolved by the owner's answer (item 20) — no longer parked
 
-- `payment_methods_read` inclusion for `central_admin` — default deny.
-- `packages`/`package_items` read-policy inclusion for `central_admin`, once
-  PR #99 merges — default deny.
-- The five "pending" ability-matrix rows above (`ManageTestPackages`,
-  `ManagePaymentMethods`, `EditParticipants`, `VerifyPayments`, and by
-  extension whatever RLS follows from any of those being granted).
+All items previously parked here are now decided:
+
+- `payment_methods_read` inclusion for `central_admin` — **grant** (see RLS
+  section above).
+- `packages`/`package_items` read/write-policy inclusion for `central_admin`,
+  once PR #99 merges — **grant, both read and write** (see RLS section
+  above).
+- The four ability-matrix rows that were pending (`ManageTestPackages`,
+  `EditParticipants`, `VerifyPayments` — all **granted**; `ManagePaymentMethods`
+  stays **denied**, since item 20 only grants viewing the payment-methods
+  list, not managing it) are now final in the matrix above. Nothing in this
+  document is waiting on a further owner answer.
 
 ## Full access-matrix test (designed, not written)
 
 For every `(AdminRole × AdminAbility)` pair, assert the expected boolean from
 `canPerform()` — including explicitly re-confirming `branch_admin`/`staff`
 remain rejected for `GenerateReports` (regression protection, not new
-behavior). Separately, a test that actually exercises
-`RlsContextRunner::runAsService()` from a `central_admin` `RlsContext` and
-asserts it succeeds (not just that `canPerform()` returns `true` in PHP) —
-this is what would have caught finding #2 above before it reached
-production. Combined with Addition 1's role-parameterized content checks,
-this is the full verification surface for this role once implemented.
+behavior), and now also covering real assertions for the four
+previously-pending abilities (`ManageTestPackages`, `EditParticipants`,
+`VerifyPayments`, `ManagePaymentMethods`) rather than placeholders. Separately,
+a test that actually exercises `RlsContextRunner::runAsService()` from a
+`central_admin` `RlsContext` and asserts it succeeds (not just that
+`canPerform()` returns `true` in PHP) — this is what would have caught
+finding #2 above before it reached production. A third layer, new since the
+matrix went final: Postgres RLS tests proving `central_admin` can actually
+read `payment_methods` and read+update `packages` (mirroring
+`super_admin`'s existing coverage in `TestPackageCatalogRlsSecurityTest`),
+and cannot write `payment_methods` or delete either table. Combined with
+Addition 1's role-parameterized content checks, this is the full
+verification surface for this role once implemented.
 
 ## Nothing changed yet
 
