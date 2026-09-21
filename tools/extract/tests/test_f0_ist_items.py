@@ -1,3 +1,4 @@
+import hashlib
 import json
 import unittest
 from pathlib import Path
@@ -8,21 +9,19 @@ DATA = Path(__file__).parents[3] / "database" / "seeders" / "data"
 # covered by test_f0_ist_fa_wu_items.py - both are present in the same
 # ist_items.json (FA/WU merged in by extract_ist_fa_wu.py), so tests here
 # that iterate "every subtest" are scoped to TEXT_SUBTEST_COUNTS on purpose,
-# not the full file.
+# not the full file. The byte-hash pin below covers the whole file though,
+# same as every other extract_*.py output.
 TEXT_SUBTEST_COUNTS = {"SE": 20, "WA": 20, "AN": 20, "GE": 16, "RA": 20, "ZR": 20, "ME": 20}
 LETTERED_SUBTESTS = {"SE", "WA", "AN", "ME"}
 FILL_IN_SUBTESTS = {"GE": "fill_in_word", "RA": "fill_in_numeric", "ZR": "fill_in_numeric"}
 
 
 class IstItemsGateTest(unittest.TestCase):
-    """Structural invariants for the text-based subtests in `ist_items.json`.
-
-    No byte-hash pin in this module: `ist_items.json` now also carries FA/WU
-    (merged in by extract_ist_fa_wu.py), which are still `status: "draft"`
-    pending Lead's visual review of the crop contact sheets - the hash gate
-    for the *whole* file (following the extract_aspect_sources.py/test_f0.py
-    pattern used for RMIB/PAPI/this file's own text-only predecessor) is
-    added once that review clears and FA/WU flip to "final", not before."""
+    """Structural invariants for the text-based subtests in `ist_items.json`,
+    plus the whole-file byte-hash pin (added once the coordinator's
+    crop-by-crop review of FA/WU cleared in commit e76e036 - see
+    tasks/handoffs/f0/ist-fa-wu-verification.md - following the
+    extract_aspect_sources.py/test_f0.py pattern used for RMIB/PAPI)."""
 
     def load(self):
         return json.loads((DATA / "ist_items.json").read_text(encoding="utf-8"))
@@ -30,9 +29,24 @@ class IstItemsGateTest(unittest.TestCase):
     def load_ist(self):
         return json.loads((DATA / "ist.json").read_text(encoding="utf-8"))
 
-    def test_top_level_status_is_draft_because_me_and_fa_wu_are_draft(self):
+    def test_bytes_are_deterministic(self):
+        payload = (DATA / "ist_items.json").read_bytes()
+        self.assertEqual(len(payload), 43232)
+        self.assertEqual(
+            hashlib.sha256(payload).hexdigest(),
+            "e845613a30f7a8518a94252441573343bfa2ed83f22c9f31aa39a48ebf9d0246",
+        )
+        self.assertEqual(payload, json.dumps(self.load(), ensure_ascii=False, indent=2).encode("utf-8"))
+
+    def test_top_level_status_is_draft_because_me_is_draft(self):
+        # FA/WU (images) are status: "final" as of commit e76e036 - only
+        # ME's still-unresolved memorization word list keeps the top-level
+        # status "draft" now.
         data = self.load()
         self.assertEqual(data["status"], "draft")
+        self.assertEqual(data["subtests"]["ME"]["status"], "draft")
+        for code in ("FA", "WU"):
+            self.assertEqual(data["subtests"][code]["status"], "final", code)
 
     def test_text_subtests_present_and_final(self):
         data = self.load()

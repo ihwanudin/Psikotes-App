@@ -1229,8 +1229,7 @@
       ]
     },
     "FA": {
-      "status": "draft",
-      "draft_reason": "Per-item crops await the coordinator's visual review against the contact sheet (required before FA/WU can be marked final).",
+      "status": "final",
       "answer_type": "image_choice",
       "option_legends": [
         {
@@ -1382,8 +1381,7 @@
       ]
     },
     "WU": {
-      "status": "draft",
-      "draft_reason": "Per-item crops await the coordinator's visual review against the contact sheet (required before FA/WU can be marked final).",
+      "status": "final",
       "answer_type": "image_choice",
       "option_legend": {
         "options": {

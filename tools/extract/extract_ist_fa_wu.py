@@ -51,9 +51,15 @@ not assumed, by reading the reconstructed page composite directly: legend 1
 (rectangle/triangle/square/triangle/parallelogram) covers 129-136. Each
 item's `legend_id` records which.
 
-Output stays `status: "draft"` unconditionally in this module - flipped to
-"final" only by the coordinator after reviewing the contact sheet
-crop-by-crop against the source PDF, per their explicit requirement.
+FA/WU are `status: "final"`: the coordinator reviewed every one of the 40
+item crops and 15 legend-option crops in commit e76e036's contact sheets
+against the source PDF, crop by crop, and confirmed no truncation, no band
+seam, and no crop absorbing a neighboring item's figure (see
+tasks/handoffs/f0/ist-fa-wu-verification.md's revision log for the two real
+defects that review caught in the prior commit, and how each was fixed at
+its root cause). `ist_items.json`'s own top-level `status` stays `"draft"`
+regardless, because ME's memorization word list is still draft pending the
+psychologist's decision - unrelated to FA/WU.
 """
 
 import json
@@ -503,8 +509,7 @@ def _build_fa(page):
         assets[ASSET_ROOT / "fa" / f"legend-2-{letter}.png"] = crop
 
     entry = {
-        "status": "draft",
-        "draft_reason": "Per-item crops await the coordinator's visual review against the contact sheet (required before FA/WU can be marked final).",
+        "status": "final",
         "answer_type": "image_choice",
         "option_legends": option_legends,
         "items": items,
@@ -575,8 +580,7 @@ def _build_wu(page):
         assets[ASSET_ROOT / "wu" / f"legend-{letter}.png"] = crop
 
     entry = {
-        "status": "draft",
-        "draft_reason": "Per-item crops await the coordinator's visual review against the contact sheet (required before FA/WU can be marked final).",
+        "status": "final",
         "answer_type": "image_choice",
         "option_legend": option_legend,
         "items": items,
@@ -684,7 +688,10 @@ def main():
         json.dumps(existing, ensure_ascii=False, indent=2).encode("utf-8"),
     )
 
-    print(f"Wrote FA ({len(subtests['FA']['items'])} items) and WU ({len(subtests['WU']['items'])} items), both status=draft")
+    print(
+        f"Wrote FA ({len(subtests['FA']['items'])} items, status={subtests['FA']['status']}) "
+        f"and WU ({len(subtests['WU']['items'])} items, status={subtests['WU']['status']})"
+    )
     for code, path in contact_sheets.items():
         print(f"  {code} contact sheet: {path}")
 

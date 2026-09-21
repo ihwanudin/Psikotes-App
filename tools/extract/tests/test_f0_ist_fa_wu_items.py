@@ -21,24 +21,28 @@ FA_LEGEND_2_ITEMS = set(range(129, 137))
 
 class IstFaWuItemsGateTest(unittest.TestCase):
     """Structural invariants for FA/WU (images) in `ist_items.json`, produced
-    by extract_ist_fa_wu.py. No byte-hash pin here (or in test_f0_ist_items.py
-    for the file as a whole) - FA/WU stay `status: "draft"` until Lead has
-    reviewed every crop against the contact sheets
-    (tasks/handoffs/f0/ist-{fa,wu}-contact-sheet.png), per their explicit
-    requirement. These tests are the cheap automated first pass (structure,
-    asset existence, no truncation at the file level via PNG validity) - not
-    a substitute for that visual review."""
+    by extract_ist_fa_wu.py. FA and WU are `status: "final"` - the
+    coordinator reviewed every crop against the contact sheets
+    (tasks/handoffs/f0/ist-{fa,wu}-contact-sheet.png) crop by crop and found
+    no defects in commit e76e036 (see
+    tasks/handoffs/f0/ist-fa-wu-verification.md's revision log for the two
+    real defects an earlier commit had, and how each was fixed). The
+    byte-hash pin for `ist_items.json` as a whole now lives in
+    test_f0_ist_items.py, alongside the text subtests it already covers -
+    that file's own top-level `status` stays `"draft"` regardless, because
+    ME is still draft pending the psychologist's decision on its
+    memorization word list, unrelated to FA/WU."""
 
     def load(self):
         return json.loads((DATA / "ist_items.json").read_text(encoding="utf-8"))
 
-    def test_fa_wu_present_and_draft(self):
+    def test_fa_wu_present_and_final(self):
         data = self.load()
         for code in ("FA", "WU"):
             self.assertIn(code, data["subtests"])
             entry = data["subtests"][code]
-            self.assertEqual(entry["status"], "draft")
-            self.assertIn("draft_reason", entry)
+            self.assertEqual(entry["status"], "final")
+            self.assertNotIn("draft_reason", entry)
             self.assertEqual(entry["answer_type"], "image_choice")
 
     def test_fa_item_count_and_numbering(self):
