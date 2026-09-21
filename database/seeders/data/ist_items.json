@@ -1227,6 +1227,255 @@
           "printed_count": 3
         }
       ]
+    },
+    "FA": {
+      "status": "draft",
+      "draft_reason": "Per-item crops await the coordinator's visual review against the contact sheet (required before FA/WU can be marked final).",
+      "answer_type": "image_choice",
+      "option_legends": [
+        {
+          "legend_id": "FA-L1",
+          "items": [
+            117,
+            118,
+            119,
+            120,
+            121,
+            122,
+            123,
+            124,
+            125,
+            126,
+            127,
+            128
+          ],
+          "options": {
+            "a": "assets/ist/fa/legend-1-a.png",
+            "b": "assets/ist/fa/legend-1-b.png",
+            "c": "assets/ist/fa/legend-1-c.png",
+            "d": "assets/ist/fa/legend-1-d.png",
+            "e": "assets/ist/fa/legend-1-e.png"
+          }
+        },
+        {
+          "legend_id": "FA-L2",
+          "items": [
+            129,
+            130,
+            131,
+            132,
+            133,
+            134,
+            135,
+            136
+          ],
+          "options": {
+            "a": "assets/ist/fa/legend-2-a.png",
+            "b": "assets/ist/fa/legend-2-b.png",
+            "c": "assets/ist/fa/legend-2-c.png",
+            "d": "assets/ist/fa/legend-2-d.png",
+            "e": "assets/ist/fa/legend-2-e.png"
+          }
+        }
+      ],
+      "items": [
+        {
+          "item": 117,
+          "image": "assets/ist/fa/117.png",
+          "legend_id": "FA-L1"
+        },
+        {
+          "item": 118,
+          "image": "assets/ist/fa/118.png",
+          "legend_id": "FA-L1"
+        },
+        {
+          "item": 119,
+          "image": "assets/ist/fa/119.png",
+          "legend_id": "FA-L1"
+        },
+        {
+          "item": 120,
+          "image": "assets/ist/fa/120.png",
+          "legend_id": "FA-L1"
+        },
+        {
+          "item": 121,
+          "image": "assets/ist/fa/121.png",
+          "legend_id": "FA-L1"
+        },
+        {
+          "item": 122,
+          "image": "assets/ist/fa/122.png",
+          "legend_id": "FA-L1"
+        },
+        {
+          "item": 123,
+          "image": "assets/ist/fa/123.png",
+          "legend_id": "FA-L1"
+        },
+        {
+          "item": 124,
+          "image": "assets/ist/fa/124.png",
+          "legend_id": "FA-L1"
+        },
+        {
+          "item": 125,
+          "image": "assets/ist/fa/125.png",
+          "legend_id": "FA-L1"
+        },
+        {
+          "item": 126,
+          "image": "assets/ist/fa/126.png",
+          "legend_id": "FA-L1"
+        },
+        {
+          "item": 127,
+          "image": "assets/ist/fa/127.png",
+          "legend_id": "FA-L1"
+        },
+        {
+          "item": 128,
+          "image": "assets/ist/fa/128.png",
+          "legend_id": "FA-L1"
+        },
+        {
+          "item": 129,
+          "image": "assets/ist/fa/129.png",
+          "legend_id": "FA-L2"
+        },
+        {
+          "item": 130,
+          "image": "assets/ist/fa/130.png",
+          "legend_id": "FA-L2"
+        },
+        {
+          "item": 131,
+          "image": "assets/ist/fa/131.png",
+          "legend_id": "FA-L2"
+        },
+        {
+          "item": 132,
+          "image": "assets/ist/fa/132.png",
+          "legend_id": "FA-L2"
+        },
+        {
+          "item": 133,
+          "image": "assets/ist/fa/133.png",
+          "legend_id": "FA-L2"
+        },
+        {
+          "item": 134,
+          "image": "assets/ist/fa/134.png",
+          "legend_id": "FA-L2"
+        },
+        {
+          "item": 135,
+          "image": "assets/ist/fa/135.png",
+          "legend_id": "FA-L2"
+        },
+        {
+          "item": 136,
+          "image": "assets/ist/fa/136.png",
+          "legend_id": "FA-L2"
+        }
+      ]
+    },
+    "WU": {
+      "status": "draft",
+      "draft_reason": "Per-item crops await the coordinator's visual review against the contact sheet (required before FA/WU can be marked final).",
+      "answer_type": "image_choice",
+      "option_legend": {
+        "options": {
+          "a": "assets/ist/wu/legend-a.png",
+          "b": "assets/ist/wu/legend-b.png",
+          "c": "assets/ist/wu/legend-c.png",
+          "d": "assets/ist/wu/legend-d.png",
+          "e": "assets/ist/wu/legend-e.png"
+        }
+      },
+      "items": [
+        {
+          "item": 137,
+          "image": "assets/ist/wu/137.png"
+        },
+        {
+          "item": 138,
+          "image": "assets/ist/wu/138.png"
+        },
+        {
+          "item": 139,
+          "image": "assets/ist/wu/139.png"
+        },
+        {
+          "item": 140,
+          "image": "assets/ist/wu/140.png"
+        },
+        {
+          "item": 141,
+          "image": "assets/ist/wu/141.png"
+        },
+        {
+          "item": 142,
+          "image": "assets/ist/wu/142.png"
+        },
+        {
+          "item": 143,
+          "image": "assets/ist/wu/143.png"
+        },
+        {
+          "item": 144,
+          "image": "assets/ist/wu/144.png"
+        },
+        {
+          "item": 145,
+          "image": "assets/ist/wu/145.png"
+        },
+        {
+          "item": 146,
+          "image": "assets/ist/wu/146.png"
+        },
+        {
+          "item": 147,
+          "image": "assets/ist/wu/147.png"
+        },
+        {
+          "item": 148,
+          "image": "assets/ist/wu/148.png"
+        },
+        {
+          "item": 149,
+          "image": "assets/ist/wu/149.png"
+        },
+        {
+          "item": 150,
+          "image": "assets/ist/wu/150.png"
+        },
+        {
+          "item": 151,
+          "image": "assets/ist/wu/151.png"
+        },
+        {
+          "item": 152,
+          "image": "assets/ist/wu/152.png"
+        },
+        {
+          "item": 153,
+          "image": "assets/ist/wu/153.png"
+        },
+        {
+          "item": 154,
+          "image": "assets/ist/wu/154.png"
+        },
+        {
+          "item": 155,
+          "image": "assets/ist/wu/155.png"
+        },
+        {
+          "item": 156,
+          "image": "assets/ist/wu/156.png"
+        }
+      ]
     }
   }
 }
