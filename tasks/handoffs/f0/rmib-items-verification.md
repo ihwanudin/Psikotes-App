@@ -119,16 +119,16 @@ which is expected to land `"draft"` in the IST PR).
 
 ## Hash gate
 
-Not yet pinned. Per your review note: the byte-hash pin
-(`extract_aspect_sources.py`/`test_f0.py` pattern) will be added in a follow-up
-commit on this branch once you've reviewed this content — `test_f0_rmib_items.py`
-currently covers structural invariants only (108 unique pairs, letter/group
-consistency, no scoring-field leakage, nonempty text) and says so in its class
-docstring.
+**Pinned**, after Lead's independent review (108/108 vs xlsx, 36 cells vs PDF,
+zero diffs, reported against commit `9edeaa8`): `test_bytes_are_deterministic` in
+`test_f0_rmib_items.py` asserts `rmib_items.json` is exactly 18375 bytes with
+sha256 `103541c82b582108630641341f0d476a6e7ed5670f42b51237407cc4ef911bda`
+(`extract_aspect_sources.py`/`test_f0.py` pattern — fail-closed on any future
+content drift).
 
 ## Tests
 
-- `python -m unittest tools.extract.tests.test_f0_rmib_items -v` — 8/8 pass.
+- `python -m unittest tools.extract.tests.test_f0_rmib_items -v` — 9/9 pass.
 - `python -m unittest tools.extract.tests.test_f0 -v` — 20/20 pass (no regression
   in the existing F0 suite).
 
