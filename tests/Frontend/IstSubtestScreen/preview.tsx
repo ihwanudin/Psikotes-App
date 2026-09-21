@@ -81,7 +81,19 @@ const resumeOutcome: ResumeAnswersOutcome = {
     answers: [{ itemNo: 1, value: 'b' }],
 };
 
+// The FIRST call fails with a real network_error, so IstSubtestScreen's
+// resume-reconnecting state ("Tidak dapat memuat jawaban tersimpan") can
+// actually be seen and its "Coba lagi" button clicked, not just read from
+// source (same convention as the PAPI/RMIB/KraepelinRunner fixtures).
+let resumeFetchAttempts = 0;
+
 async function fetchResumeAnswers(): Promise<ResumeAnswersOutcome> {
+    resumeFetchAttempts++;
+
+    if (resumeFetchAttempts === 1) {
+        return { type: 'network_error' };
+    }
+
     return resumeOutcome;
 }
 
