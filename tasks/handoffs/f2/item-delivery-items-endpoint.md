@@ -136,11 +136,18 @@ identical to the norms data path, just a different `code`.
 ## Test suite status
 
 - SQLite: `tests/Feature/AssessmentSessions`, `tests/Unit/AssessmentSessions`,
-  `tests/Architecture` — green (see CI/PR for exact counts at merge time).
-- PostgreSQL (`tools/testing/run-org-postgres.ps1 -Filter
-  AssessmentSessionItemsReadbackControllerTest`): 3 tests, 12 assertions,
-  green, first run.
-- Full `phpstan` gate: 0 errors. `pint --test`: clean.
+  `tests/Architecture`, `tests/Feature/Seeders`, `tests/Feature/Eligibility`
+  — 384 tests, 10217 assertions, green.
+- PostgreSQL: `tools/testing/run-org-postgres.ps1` (full organization
+  suite) — 646 tests, 6290 assertions, exactly the known 7-test baseline
+  red (`AssessmentBillingMigrationTest` x2, `AssessmentCaseSecurityTest`,
+  `AssessmentBillManualReviewTest` x2, `BilingualNarrativeRlsTest`,
+  `EligibilityDecisionRlsTest` — see the `organization-postgres` baseline
+  tracked at every merge), no 8th failure, no new regression. Targeted:
+  `AssessmentSessionItemsReadbackControllerTest` (3 tests, 12 assertions)
+  and `InstrumentVersionHistorySecurityTest` (7 tests, 77 assertions)
+  green on their own.
+- Full `phpstan` gate: 0 errors. `pint --test` (full repo): clean.
 
 ## Noted, not fixed (out of scope for this PR)
 
