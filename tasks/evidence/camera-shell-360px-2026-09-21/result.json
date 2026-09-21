@@ -1,0 +1,60 @@
+{
+    "checks": [
+        {
+            "name": "No horizontal overflow at 360px",
+            "passed": true,
+            "detail": "{\"viewport\":360,\"documentScrollWidth\":360,\"bodyScrollWidth\":360}"
+        },
+        {
+            "name": "Retry button is fully within the viewport (not clipped off the right edge)",
+            "passed": true,
+            "detail": "{\"x\":16,\"y\":80,\"width\":191.15625,\"height\":44,\"top\":80,\"right\":207.15625,\"bottom\":124,\"left\":16}"
+        },
+        {
+            "name": "Retry button meets the 44px touch target minimum",
+            "passed": true,
+            "detail": "height=44"
+        },
+        {
+            "name": "Retry button does not overlap the timer (wrapped onto its own line, not stacked on top)",
+            "passed": true,
+            "detail": "{\"timer\":{\"x\":44,\"y\":12,\"width\":39.390625,\"height\":24,\"top\":12,\"right\":83.390625,\"bottom\":36,\"left\":44},\"retry\":{\"x\":16,\"y\":80,\"width\":191.15625,\"height\":44,\"top\":80,\"right\":207.15625,\"bottom\":124,\"left\":16}}"
+        }
+    ],
+    "geometry": {
+        "viewport": 360,
+        "documentScrollWidth": 360,
+        "bodyScrollWidth": 360,
+        "badgeRect": {
+            "x": 40,
+            "y": 52,
+            "width": 234.640625,
+            "height": 20,
+            "top": 52,
+            "right": 274.640625,
+            "bottom": 72,
+            "left": 40
+        },
+        "retryRect": {
+            "x": 16,
+            "y": 80,
+            "width": 191.15625,
+            "height": 44,
+            "top": 80,
+            "right": 207.15625,
+            "bottom": 124,
+            "left": 16
+        },
+        "timerRect": {
+            "x": 44,
+            "y": 12,
+            "width": 39.390625,
+            "height": 24,
+            "top": 12,
+            "right": 83.390625,
+            "bottom": 36,
+            "left": 44
+        },
+        "retryHeight": 44
+    }
+}
