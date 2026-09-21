@@ -21,6 +21,7 @@ final class InstrumentSeederTest extends TestCase
         'papi' => 'papi.json',
         'rmib' => 'rmib.json',
         'kraepelin' => 'kraepelin.json',
+        'kraepelin_grid' => 'kraepelin_grid.json',
         'dass21' => 'dass21.json',
         'reporting' => 'reporting.json',
         'aspect_sources' => 'aspect_sources.json',
