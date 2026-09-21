@@ -1,0 +1,469 @@
+{
+  "version": "F0-ITEMS-PAPI-2026.09",
+  "status": "final",
+  "instructions": {
+    "intro": "Di dalam buku terdapat 90 pasang pernyataan. Pilihlah satu pernyataan dari pasangan pernyataan itu yang anda rasakan paling mendekati gambaran diri anda, atau yang paling menunjukkan perasaan anda. Kadang-kadang anda merasa bahwa kedua pernyataan itu tidak sesuai benar dengan diri anda, namun demikian anda diminta tetap memilih satu pernyataan yang paling menunjukkan diri anda. Jawaban anda dibuat di LEMBAR JAWABAN dengan cara MELINGKARI PANAH yang terdapat didekat nomor pernyataannya.",
+    "example": {
+      "statement_a": "Saya seorang pekerja “keras”",
+      "statement_b": "Saya bukan seorang pemurung"
+    },
+    "answer_sheet_demo": {
+      "label": "Di LEMBAR JAWABAN",
+      "statement_a": "Bila anda seorang pekerja “keras”, maka lingkarilah semacam ini",
+      "statement_b": "Tapi bila anda bukan seorang pemurung, maka lingkari semacam ini"
+    },
+    "closing": "Pastikanlah bahwa anda memilih jawaban anda pada kolom yang tepat di lembar jawaban anda. Apabila anda meneruskannya ke halaman berikutnya, pastikanlah bahwa nomor di lembar jawaban berada pada garis yang sama dengan nomor buku soal. Bekerjalah dengan cepat, tetapi jangan sampai ada nomor pernyataan yang terlewatkan."
+  },
+  "items": [
+    {
+      "item": 1,
+      "statement_a": "Saya seorang pekerja “keras”",
+      "statement_b": "Saya bukan seorang pemurung"
+    },
+    {
+      "item": 2,
+      "statement_a": "Saya suka bekerja lebih baik dari orang lain",
+      "statement_b": "Saya suka mengerjakan apa yang sedang saya kerjakan, sampai selesai"
+    },
+    {
+      "item": 3,
+      "statement_a": "Saya suka menunjukkan caranya melaksanakan sesuatu hal",
+      "statement_b": "Saya ingin bekerja sebaik mungkin"
+    },
+    {
+      "item": 4,
+      "statement_a": "Saya suka berkelakar",
+      "statement_b": "Saya senang mengatakan kepada orang lain, apa yang harus dilakukannya"
+    },
+    {
+      "item": 5,
+      "statement_a": "Saya suka menggabungkan diri dengan kelompok-kelompok",
+      "statement_b": "Saya suka diperhatikan oleh kelompok-kelompok"
+    },
+    {
+      "item": 6,
+      "statement_a": "Saya senang bersahabat intim dengan seseorang",
+      "statement_b": "Saya senang bersahabat dengan sekolompok orang"
+    },
+    {
+      "item": 7,
+      "statement_a": "Saya cepat berubah bila hal itu diperlukan",
+      "statement_b": "Saya berusaha untuk intim dengan teman-teman"
+    },
+    {
+      "item": 8,
+      "statement_a": "Saya suka “membalas dendam” bila saya benar-benar disakiti",
+      "statement_b": "Saya suka melakukan hal-hal yang baru dan berbeda"
+    },
+    {
+      "item": 9,
+      "statement_a": "Saya ingin atasan saya menyukai saya",
+      "statement_b": "Saya suka mengatakan kepada orang lain, bila mereka salah"
+    },
+    {
+      "item": 10,
+      "statement_a": "Saya suka mengikuti perintah-perintah yang diberikan kepada saya",
+      "statement_b": "Saya suka menyenangkan hati orang yang memimpin saya"
+    },
+    {
+      "item": 11,
+      "statement_a": "Saya mencoba sekuat tenaga",
+      "statement_b": "Saya seorang yang tertib. Saya meletakkan segala sesuatu pada tempatnya"
+    },
+    {
+      "item": 12,
+      "statement_a": "Saya membuat orang lain melakukan apa yang saya inginkan",
+      "statement_b": "Saya bukan orang yang cepat gusar"
+    },
+    {
+      "item": 13,
+      "statement_a": "Saya suka mengatakan kepada kelompok, apa yang harus dilakukan",
+      "statement_b": "Saya menekuni satu pekerjaan sampai selesai"
+    },
+    {
+      "item": 14,
+      "statement_a": "Saya ingin tampak bersemangat dan menarik",
+      "statement_b": "Saya ingin menjadi sangat sukses"
+    },
+    {
+      "item": 15,
+      "statement_a": "Saya suka menyelaraskan diri dengan kelompok",
+      "statement_b": "Saya suka membantu orang lain menentukan pendapatnya"
+    },
+    {
+      "item": 16,
+      "statement_a": "Saya cemas kalau orang lain tidak menyukai saya",
+      "statement_b": "Saya senang kalau orang-orang memperhatikan saya"
+    },
+    {
+      "item": 17,
+      "statement_a": "Saya suka mencoba sesuatu yang baru",
+      "statement_b": "Saya lebih suka bekerja bersama orang-orang daripada bekerja sendiri"
+    },
+    {
+      "item": 18,
+      "statement_a": "Kadang-kadang saya menyalahkan orang lain bila terjadi sesuatu kesalahan",
+      "statement_b": "Saya cemas bila seseorang tidak menyukai saya"
+    },
+    {
+      "item": 19,
+      "statement_a": "Saya suka menyenangkan hati orang yang memimpin saya",
+      "statement_b": "Saya suka mencoba pekerjaan-pekerjaan yang baru dan berbeda"
+    },
+    {
+      "item": 20,
+      "statement_a": "Saya menyukai petunjuk yang terinci untuk melakukan sesuatu pekerjaan",
+      "statement_b": "Saya suka mengatakan kepada orang lain bila mereka mengganggu saya"
+    },
+    {
+      "item": 21,
+      "statement_a": "Saya selalu mencoba sekuat tenaga",
+      "statement_b": "Saya senang bekerja dengan sangat cermat dan hati-hati"
+    },
+    {
+      "item": 22,
+      "statement_a": "Saya adalah seorang pemimpin yang baik",
+      "statement_b": "Saya mengorganisir tugas-tugas secara baik"
+    },
+    {
+      "item": 23,
+      "statement_a": "Saya mudah menjadi gusar",
+      "statement_b": "Saya seorang yang lambat dalam membuat keputusan"
+    },
+    {
+      "item": 24,
+      "statement_a": "Saya senang mengerjakan beberapa pekerjaan pada waktu yang bersamaan",
+      "statement_b": "Bila dalam kelompok, saya lebih suka diam"
+    },
+    {
+      "item": 25,
+      "statement_a": "Saya senang bila diundang",
+      "statement_b": "Saya ingin melakukan sesuatu lebih baik dari orang lain"
+    },
+    {
+      "item": 26,
+      "statement_a": "Saya suka berteman intim dengan teman-teman saya",
+      "statement_b": "Saya suka memberi nasihat kepada orang lain"
+    },
+    {
+      "item": 27,
+      "statement_a": "Saya suka melakukan hal-hal yang baru dan berbeda",
+      "statement_b": "Saya suka menceritakan keberhasilan saya dalam mengerjakan tugas"
+    },
+    {
+      "item": 28,
+      "statement_a": "Bila saya benar, saya suka mempertahankannya “mati-matian”",
+      "statement_b": "Saya suka bergabung ke dalam suatu kelompok"
+    },
+    {
+      "item": 29,
+      "statement_a": "Saya tidak mau berbeda dengan orang lain",
+      "statement_b": "Saya berusaha untuk sangat intim dengan orang-orang"
+    },
+    {
+      "item": 30,
+      "statement_a": "Saya suka diajari mengenai caranya mengerjakan suatu pekerjaan",
+      "statement_b": "Saya mudah merasa jemu (bosan)"
+    },
+    {
+      "item": 31,
+      "statement_a": "Saya bekerja “keras”",
+      "statement_b": "Saya banyak berpikir dan berencana"
+    },
+    {
+      "item": 32,
+      "statement_a": "Saya memimpin kelompok",
+      "statement_b": "Hal-hal yang kecil (detail) menarik hati saya"
+    },
+    {
+      "item": 33,
+      "statement_a": "Saya cepat dan mudah mengambil keputusan",
+      "statement_b": "Saya meletakkan segala sesuatu secara rapi dan teratur"
+    },
+    {
+      "item": 34,
+      "statement_a": "Tugas-tugas saya kerjakan secara cepat",
+      "statement_b": "Saya jarang marah atau sedih"
+    },
+    {
+      "item": 35,
+      "statement_a": "Saya ingin menjadi bagian dari kelompok",
+      "statement_b": "Pada suatu waktu tertentu, saya hanya ingin mengerjakan satu tugas saja"
+    },
+    {
+      "item": 36,
+      "statement_a": "Saya berusaha untuk intim dengan teman-teman saya",
+      "statement_b": "Saya berusaha keras untuk menjadi yang terbaik"
+    },
+    {
+      "item": 37,
+      "statement_a": "Saya menyukai mode baju baru dan tipe-tipe mobil baru",
+      "statement_b": "Saya ingin menjadi penanggung jawab bagi orang-orang lain"
+    },
+    {
+      "item": 38,
+      "statement_a": "Saya suka berdebat",
+      "statement_b": "Saya ingin diperhatikan"
+    },
+    {
+      "item": 39,
+      "statement_a": "Saya suka menyenangkan hati orang yang memipin saya",
+      "statement_b": "Saya tertarik menjadi anggota dari suatu kelompok"
+    },
+    {
+      "item": 40,
+      "statement_a": "Saya senang mengikuti aturan secara tertib",
+      "statement_b": "Saya suka orang-orang mengenal saya benar-benar"
+    },
+    {
+      "item": 41,
+      "statement_a": "Saya mencoba sekuat tenaga",
+      "statement_b": "Saya sangat menyenangkan"
+    },
+    {
+      "item": 42,
+      "statement_a": "Orang lain beranggapan bahwa saya adalah seorang pemimpin yang baik",
+      "statement_b": "Saya berpikir jauh ke depan dan terinci"
+    },
+    {
+      "item": 43,
+      "statement_a": "Seringkali saya memanfaatkan peluang",
+      "statement_b": "Saya senang memperhatikan hal-hal sampai sekecil-kecilnya"
+    },
+    {
+      "item": 44,
+      "statement_a": "Orang lain menganggap saya bekerja cepat",
+      "statement_b": "Orang lain menganggap saya dapat melakukan penataan yang rapi dan teratur"
+    },
+    {
+      "item": 45,
+      "statement_a": "Saya menyukai permainan-permainan dan olahraga",
+      "statement_b": "Saya sangat menyenangkan"
+    },
+    {
+      "item": 46,
+      "statement_a": "Saya senang bila orang-orang dapat intim dan bersahabat",
+      "statement_b": "Saya selalu berusaha menyelesaikan apa yang telah saya mulai"
+    },
+    {
+      "item": 47,
+      "statement_a": "Saya suka bereksperimen dan mencoba sesuatu yang baru",
+      "statement_b": "Saya suka mengerjakan pekerjaan-pekerjaan yang sulit dengan baik"
+    },
+    {
+      "item": 48,
+      "statement_a": "Saya senang diperlakukan secara adil",
+      "statement_b": "Saya senang mengajari orang lain bagaimana caranya mengerjakan sesuatu"
+    },
+    {
+      "item": 49,
+      "statement_a": "Saya suka mengerjakan apa yang diharapkan dari saya",
+      "statement_b": "Saya suka menarik perhatian"
+    },
+    {
+      "item": 50,
+      "statement_a": "Saya suka petunjuk-petunjuk terinci dalam melaksanakan pekerjaan",
+      "statement_b": "Saya senang berada bersama dengan orang lain"
+    },
+    {
+      "item": 51,
+      "statement_a": "Saya selalu berusaha mengerjakan tugas secara sempurna",
+      "statement_b": "Orang lain menganggap, saya tidak mengenal lelah, dalam kerja sehari-hari"
+    },
+    {
+      "item": 52,
+      "statement_a": "Saya tergolong tipe pemimpin",
+      "statement_b": "Saya mudah berteman"
+    },
+    {
+      "item": 53,
+      "statement_a": "Saya memanfaatkan peluang-peluang",
+      "statement_b": "Saya banyak berfikir"
+    },
+    {
+      "item": 54,
+      "statement_a": "Saya bekerja dengan kecepatan yang mantap dan cepat",
+      "statement_b": "Saya senang mengerjakan hal-hal yang detail"
+    },
+    {
+      "item": 55,
+      "statement_a": "Saya memiliki banyak energi untuk permainan-permainan dan olahraga",
+      "statement_b": "Saya menempatkan segala sesuatunya secara rapi dan teratur"
+    },
+    {
+      "item": 56,
+      "statement_a": "Saya bergaul baik dengan semua orang",
+      "statement_b": "Saya “pandai mengendalikan diri”"
+    },
+    {
+      "item": 57,
+      "statement_a": "Saya ingin berkenalan dengan orang-orang baru dan mengerjakan hal baru",
+      "statement_b": "Saya selalu ingin menyelesaikan pekerjaan yang sudah saya mulai"
+    },
+    {
+      "item": 58,
+      "statement_a": "Biasanya saya bersikeras mengenai apa yang saya yakini",
+      "statement_b": "Biasanya saya suka bekerja “keras”"
+    },
+    {
+      "item": 59,
+      "statement_a": "Saya menyukai saran-saran dari orang-orang yang saya kagumi",
+      "statement_b": "Saya senang mengatur orang lain"
+    },
+    {
+      "item": 60,
+      "statement_a": "Saya biarkan orang-orang lain mempengaruhi saya",
+      "statement_b": "Saya suka menerima banyak perhatian"
+    },
+    {
+      "item": 61,
+      "statement_a": "Biasanya saya bekerja sangat “keras”",
+      "statement_b": "Biasanya saya bekerja cepat"
+    },
+    {
+      "item": 62,
+      "statement_a": "Bila saya berbicara, kelompok akan mendengarkan",
+      "statement_b": "Saya terampil mempergunakan alat-alat kerja"
+    },
+    {
+      "item": 63,
+      "statement_a": "Saya lambat membina persahabatan",
+      "statement_b": "Saya lambat dalam mengambil keputusan"
+    },
+    {
+      "item": 64,
+      "statement_a": "Biasanya saya makan secara cepat",
+      "statement_b": "Saya suka membaca"
+    },
+    {
+      "item": 65,
+      "statement_a": "Saya menyukai pekerjaan yang memungkinkan saya “berkeliling”",
+      "statement_b": "Saya menyukai pekerjaan yang harus dilakukan secara teliti"
+    },
+    {
+      "item": 66,
+      "statement_a": "Saya berteman sebanyak mungkin",
+      "statement_b": "Saya dapat menemukan hal-hal yang telah saya pindahkan"
+    },
+    {
+      "item": 67,
+      "statement_a": "Perencanaan saya jauh ke masa depan",
+      "statement_b": "Saya selalu menyenangkan"
+    },
+    {
+      "item": 68,
+      "statement_a": "Saya merasa bangga akan nama baik saya",
+      "statement_b": "Saya tetap menekuni satu permasalahan sampai ia terselesaikan"
+    },
+    {
+      "item": 69,
+      "statement_a": "Saya suka menyenangkan hati orang-orang yang saya kagumi",
+      "statement_b": "Saya suka menjadi seorang yang berhasil"
+    },
+    {
+      "item": 70,
+      "statement_a": "Saya senang bila orang-orang lain mengambil keputusan untuk kelompok",
+      "statement_b": "Saya suka mengambil keputusan untuk kelompok"
+    },
+    {
+      "item": 71,
+      "statement_a": "Saya selalu berusaha sangat “keras”",
+      "statement_b": "Saya cepat dan mudah mengambil keputusan"
+    },
+    {
+      "item": 72,
+      "statement_a": "Biasanya kelompok saya mengerjakan hal-hal yang saya inginkan",
+      "statement_b": "Biasanya saya tergesa-gesa"
+    },
+    {
+      "item": 73,
+      "statement_a": "Saya seringkali merasa lelah",
+      "statement_b": "Saya lambat di dalam mengambil keputusan"
+    },
+    {
+      "item": 74,
+      "statement_a": "Saya bekerja secara cepat",
+      "statement_b": "Saya mudah mendapat kawan"
+    },
+    {
+      "item": 75,
+      "statement_a": "Biasanya saya bersemangat atau bergairah",
+      "statement_b": "Sebagian besar waktu saya untuk berpikir"
+    },
+    {
+      "item": 76,
+      "statement_a": "Saya sangat hangat kepada orang-orang",
+      "statement_b": "Saya menyukai pekerjaan yang menuntut ketepatan"
+    },
+    {
+      "item": 77,
+      "statement_a": "Saya banyak berpikir dan merencana",
+      "statement_b": "Saya meletakkan segala sesuatu pada tempatnya"
+    },
+    {
+      "item": 78,
+      "statement_a": "Saya suka tugas yang perlu ditekuni sampai kepada hal sedetilnya",
+      "statement_b": "Saya tidak cepat marah"
+    },
+    {
+      "item": 79,
+      "statement_a": "Saya senang mengikuti orang-orang yang saya kagumi",
+      "statement_b": "Saya selalu menyelesaikan pekerjaan yang saya mulai"
+    },
+    {
+      "item": 80,
+      "statement_a": "Saya menyukai petunjuk-petunjuk yang jelas",
+      "statement_b": "Saya suka bekerja “keras”"
+    },
+    {
+      "item": 81,
+      "statement_a": "Saya mengejar apa yang saya inginkan",
+      "statement_b": "Saya adalah seorang pemimpin yang baik"
+    },
+    {
+      "item": 82,
+      "statement_a": "Saya membuat orang lain bekerja keras",
+      "statement_b": "Saya adalah seorang yang “gampangan” (tak banyak pertimbangan)"
+    },
+    {
+      "item": 83,
+      "statement_a": "Saya membuat keputusan-keputusan secara cepat",
+      "statement_b": "Bicara saya cepat"
+    },
+    {
+      "item": 84,
+      "statement_a": "Biasanya saya bekerja tergesa-gesa",
+      "statement_b": "Secara teratur saya berolahraga"
+    },
+    {
+      "item": 85,
+      "statement_a": "Saya tidak suka bertemu dengan orang-orang",
+      "statement_b": "Saya cepat lelah"
+    },
+    {
+      "item": 86,
+      "statement_a": "Saya mempunyai banyak sekali teman",
+      "statement_b": "Banyak waktu saya untuk berpikir"
+    },
+    {
+      "item": 87,
+      "statement_a": "Saya suka bekerja dengan teori",
+      "statement_b": "Saya suka bekerja sedetil-detilnya"
+    },
+    {
+      "item": 88,
+      "statement_a": "Saya suka bekerja sampai sedetil-detilnya",
+      "statement_b": "Saya suka mengorganisir pekerjaan saya"
+    },
+    {
+      "item": 89,
+      "statement_a": "Saya meletakkan segala sesuatu pada tempatnya",
+      "statement_b": "Saya selalu menyenangkan"
+    },
+    {
+      "item": 90,
+      "statement_a": "Saya senang diberi petunjuk mengenai apa yang harus saya lakukan",
+      "statement_b": "Saya harus menyelesaikan apa yang sudah saya mulai"
+    }
+  ]
+}
