@@ -139,6 +139,76 @@ final class AspectSourceDiscrepancyPolicyTest extends TestCase
         yield 'spread two remains at G7 threshold' => [4, true, 'SOURCE_LEVEL_SPREAD'];
     }
 
+    public function test_a_single_null_level_forces_review_required_and_withholds_the_summary(): void
+    {
+        $result = (new AspectSourceDiscrepancyPolicy)->evaluate([
+            'aspect' => 'A2',
+            'sources' => [
+                ['source' => 'IST_AN', 'level' => 3],
+                ['source' => 'IST_RA', 'level' => 3],
+                ['source' => 'IST_ZR', 'level' => null],
+                ['source' => 'PAPI_R', 'level' => 3],
+            ],
+        ]);
+
+        $this->assertSame([
+            'type' => 'aspect_source_discrepancy',
+            'review_required' => true,
+            'automatic_narrative_allowed' => false,
+            'reason_code' => 'SOURCE_INCOMPLETE',
+            'provenance' => [
+                'aspect' => 'A2',
+                'sources' => [
+                    ['source' => 'IST_AN', 'level' => 3],
+                    ['source' => 'IST_RA', 'level' => 3],
+                    ['source' => 'IST_ZR', 'level' => null],
+                    ['source' => 'PAPI_R', 'level' => 3],
+                ],
+                'minimum_level' => null,
+                'maximum_level' => null,
+                'spread' => null,
+            ],
+        ], $result);
+    }
+
+    public function test_incompleteness_takes_priority_over_spread_even_when_known_levels_agree(): void
+    {
+        // All THREE known levels are identical (spread among them would be
+        // zero), but one configured source is still missing -- a partial
+        // agreement must not read as "no discrepancy".
+        $result = (new AspectSourceDiscrepancyPolicy)->evaluate([
+            'aspect' => 'C4',
+            'sources' => [
+                ['source' => 'PAPI_E', 'level' => 3],
+                ['source' => 'PAPI_K', 'level' => 3],
+                ['source' => 'KRAEPELIN_HANKER', 'level' => null],
+            ],
+        ]);
+
+        $this->assertTrue($result['review_required']);
+        $this->assertSame('SOURCE_INCOMPLETE', $result['reason_code']);
+        $this->assertNull($result['provenance']['spread']);
+    }
+
+    public function test_all_sources_null_is_still_incomplete_not_an_error(): void
+    {
+        $result = (new AspectSourceDiscrepancyPolicy)->evaluate([
+            'aspect' => 'B1',
+            'sources' => [
+                ['source' => 'IST_ME', 'level' => null],
+                ['source' => 'KRAEPELIN_PANKER', 'level' => null],
+                ['source' => 'KRAEPELIN_JANKER', 'level' => null],
+            ],
+        ]);
+
+        $this->assertTrue($result['review_required']);
+        $this->assertSame('SOURCE_INCOMPLETE', $result['reason_code']);
+        $this->assertSame(
+            [null, null, null],
+            array_column($result['provenance']['sources'], 'level'),
+        );
+    }
+
     public function test_source_order_does_not_change_output(): void
     {
         $policy = new AspectSourceDiscrepancyPolicy;
