@@ -31,20 +31,20 @@ import type { UseFullscreenResult } from './use-fullscreen.ts';
 export type ProctoringConsentScreenProps = {
     camera: UseProctoringCameraResult;
     fullscreen: UseFullscreenResult;
-    /** No data source exists yet for this per branch (see plan §1/§7);
-     * the caller supplies it explicitly until one does. */
-    cameraMandatory: boolean;
     /** Defaults to false: no proctoring ingest endpoint exists yet (see
      * proctoring-reporter.ts's noopProctoringReporter). Do not pass
      * `true` until a real ProctoringReporter is wired in — see plan §4. */
     persistenceEnabled?: boolean;
+    /** Called once the camera reaches 'active'. There is no other way to
+     * proceed — the camera is mandatory for every participant (product
+     * owner decision, PR #81 item 11), so this screen offers no "proceed
+     * without a camera" action. */
     onProceed: () => void;
 };
 
 export function ProctoringConsentScreen({
     camera,
     fullscreen,
-    cameraMandatory,
     persistenceEnabled = false,
     onProceed,
 }: ProctoringConsentScreenProps) {
@@ -69,7 +69,6 @@ export function ProctoringConsentScreen({
     const copy = getProctoringConsentCopy({
         cameraStatus: camera.status,
         fullscreenSupported: fullscreen.isSupported,
-        cameraMandatory,
         persistenceEnabled,
     });
     const isRequesting = camera.status === 'requesting';
@@ -133,17 +132,6 @@ export function ProctoringConsentScreen({
                 >
                     {copy.primaryAction.label}
                 </Button>
-                {copy.secondaryAction ? (
-                    <Button
-                        type="button"
-                        variant="outline"
-                        disabled={isRequesting}
-                        onClick={onProceed}
-                        className="min-h-11"
-                    >
-                        {copy.secondaryAction.label}
-                    </Button>
-                ) : null}
             </div>
         </section>
     );

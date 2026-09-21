@@ -21,16 +21,23 @@ async (page) => {
     const notice = () => page.getByRole('alert');
     const primaryButton = () =>
         page.getByRole('button', { name: /Izinkan kamera|Coba lagi/ });
-    const secondaryButton = () =>
-        page.getByRole('button', { name: 'Lanjutkan tanpa kamera' });
+    // Camera is mandatory for every participant, no exception (product
+    // owner decision, PR #81 item 11) — there is no "proceed without a
+    // camera" action anywhere on this screen. Checked after every
+    // scenario below, not just once, since a regression could plausibly
+    // reintroduce it for only one camera status.
+    const assertNoSkipAction = async (scenarioLabel) => {
+        assert(
+            (await page.getByRole('button', { name: /tanpa kamera/i }).count()) ===
+                0,
+            `${scenarioLabel}: unexpected "proceed without camera" action`,
+        );
+    };
     const proceededCount = async () =>
         Number(await page.getByLabel('Jumlah proceed').textContent());
 
-    async function setScenario({ outcome, cameraMandatory }) {
+    async function setScenario({ outcome }) {
         await page.getByLabel('Hasil kamera simulasi').selectOption(outcome);
-        await page
-            .getByLabel('Kamera wajib (cameraMandatory)')
-            .setChecked(cameraMandatory);
     }
 
     await page.goto(origin);
@@ -40,11 +47,11 @@ async (page) => {
         })
         .waitFor();
 
-    // granted + mandatory: no notice up front, primary action activates
-    // the camera and proceeds exactly once (regression coverage for the
+    // granted: no notice up front, primary action activates the camera
+    // and proceeds exactly once (regression coverage for the
     // onProceed-identity infinite-loop bug this session found and fixed
     // in proctoring-consent-screen.tsx).
-    await setScenario({ outcome: 'granted', cameraMandatory: true });
+    await setScenario({ outcome: 'granted' });
     assert(
         (await notice().count()) === 0,
         'granted: unexpected notice before starting',
@@ -53,6 +60,7 @@ async (page) => {
         (await proceededCount()) === 0,
         'granted: proceeded before starting',
     );
+    await assertNoSkipAction('granted');
     await primaryButton().click();
     await page.waitForFunction(
         () =>
@@ -63,10 +71,10 @@ async (page) => {
         (await proceededCount()) === 1,
         'granted: onProceed did not fire exactly once',
     );
-    results.push('granted + mandatory: PASS (no notice, proceeds once)');
+    results.push('granted: PASS (no notice, proceeds once)');
 
-    // denied + mandatory: factual notice, no accusation, no way to skip.
-    await setScenario({ outcome: 'denied', cameraMandatory: true });
+    // denied: factual notice, no accusation, no way to skip.
+    await setScenario({ outcome: 'denied' });
     await primaryButton().click();
     await notice().waitFor();
     const deniedHeading = await notice().locator('p').first().textContent();
@@ -80,22 +88,19 @@ async (page) => {
         'denied: missing desktop guidance',
     );
     assert(deniedBody.includes('HP'), 'denied: missing mobile guidance');
-    assert(
-        (await secondaryButton().count()) === 0,
-        'denied + mandatory: unexpected "proceed without camera" action',
-    );
+    await assertNoSkipAction('denied');
     assert(
         (await primaryButton().textContent()) === 'Coba lagi',
         'denied: primary action label did not switch to retry',
     );
-    results.push('denied + mandatory: PASS (factual notice, no skip path)');
+    results.push('denied: PASS (factual notice, no skip path)');
 
-    // unavailable + mandatory: distinct non-accusatory heading, device
-    // guidance, and — the specific regression this fixture exists to
-    // guard — no invented LPK/alternative-supervision pathway, only a
-    // neutral pointer to the test organizer (product owner correction,
+    // unavailable: distinct non-accusatory heading, device guidance, and
+    // — the specific regression this fixture exists to guard — no
+    // invented LPK/alternative-supervision pathway, only a neutral
+    // pointer to the test organizer (product owner correction,
     // 2026-09-21).
-    await setScenario({ outcome: 'unavailable', cameraMandatory: true });
+    await setScenario({ outcome: 'unavailable' });
     await primaryButton().click();
     await notice().waitFor();
     const unavailableHeading = await notice()
@@ -127,36 +132,8 @@ async (page) => {
         !unavailableBody.includes('LPK'),
         'unavailable: regressed — reintroduced the retracted LPK/alternative-supervision claim',
     );
-    assert(
-        (await secondaryButton().count()) === 0,
-        'unavailable + mandatory: unexpected "proceed without camera" action',
-    );
-    results.push(
-        'unavailable + mandatory: PASS (no LPK claim, neutral organizer pointer)',
-    );
-
-    // cameraMandatory: false offers an explicit way to proceed without a
-    // camera, and clicking it actually proceeds without ever granting one.
-    await setScenario({ outcome: 'unavailable', cameraMandatory: false });
-    await primaryButton().click();
-    await notice().waitFor();
-    assert(
-        (await proceededCount()) === 0,
-        'optional: proceeded before clicking the skip action',
-    );
-    await secondaryButton().click();
-    await page.waitForFunction(
-        () =>
-            document.querySelector('[aria-label="Jumlah proceed"]')
-                ?.textContent === '1',
-    );
-    assert(
-        (await proceededCount()) === 1,
-        'optional: skip action did not proceed',
-    );
-    results.push(
-        'cameraMandatory: false: PASS (explicit skip action proceeds once)',
-    );
+    await assertNoSkipAction('unavailable');
+    results.push('unavailable: PASS (no LPK claim, neutral organizer pointer)');
 
     // The honesty note (detection, not prevention) is present regardless
     // of scenario — spot-check on whatever scenario is currently mounted.

@@ -26,15 +26,18 @@ import type { CameraStatus } from '../session-runner/camera-controller.ts';
  *   server storage isn't built yet" note instead of the 90-day
  *   disclosure SPEC.md 8A.7 requires once persistence is real.
  *
- * `cameraMandatory` — product owner decision, 2026-09-21 (Lead relay,
- * tasks/handoffs/decisions, item 11, PR #81): the camera is mandatory
- * for every participant, no per-branch exception, because the system
- * persists randomized-interval snapshots (SPEC.md 8A.2's 12-20 second
- * capture model) rather than something optional to opt out of. This
- * parameter stays so both branches remain testable, but no real caller
- * may pass `false` — there is no "proceed without a camera" path in
- * production. `denied` and `unavailable` both now block starting;
- * their notices differ (a browser permission prompt the participant
+ * Camera is mandatory for every participant, no exception — product
+ * owner decision, 2026-09-21 (Lead relay, tasks/handoffs/decisions, item
+ * 11, PR #81), because the system persists randomized-interval snapshots
+ * (SPEC.md 8A.2's 12-20 second capture model) rather than something
+ * optional to opt out of. There is deliberately no `cameraMandatory`
+ * parameter and no "proceed without a camera" action anywhere in this
+ * module — an earlier version kept the parameter for testability with a
+ * doc comment saying "no real caller may pass false", which Lead
+ * flagged in review as a prohibition enforced only by a comment while
+ * the code still shipped a working shortcut (CLAUDE.md forbids exactly
+ * this). `denied` and `unavailable` both always block starting; their
+ * notices differ (a browser permission prompt the participant
  * dismissed, versus hardware that genuinely isn't there or working) and
  * neither may blame the participant — see denialNotice() below.
  *
@@ -49,7 +52,6 @@ import type { CameraStatus } from '../session-runner/camera-controller.ts';
 export type ProctoringConsentCopyInput = {
     cameraStatus: CameraStatus;
     fullscreenSupported: boolean;
-    cameraMandatory: boolean;
     persistenceEnabled: boolean;
 };
 
@@ -75,9 +77,6 @@ export type ProctoringConsentCopy = {
     /** Populated only when cameraStatus is 'denied' or 'unavailable'. */
     notice: ProctoringConsentNotice | null;
     primaryAction: ProctoringConsentAction;
-    /** Null when `cameraMandatory` — there is no "proceed without a
-     * camera" path for a branch that requires one. */
-    secondaryAction: ProctoringConsentAction | null;
 };
 
 const TITLE = 'Sebelum memulai: persetujuan pemantauan';
@@ -112,7 +111,6 @@ function policyParagraphs(fullscreenSupported: boolean): string[] {
 
 function denialNotice(
     cameraStatus: 'denied' | 'unavailable',
-    cameraMandatory: boolean,
 ): ProctoringConsentNotice {
     if (cameraStatus === 'denied') {
         return {
@@ -122,30 +120,21 @@ function denialNotice(
             // blame the participant, tasks/handoffs/decisions).
             heading:
                 'Izin kamera untuk halaman ini belum aktif di peramban Anda.',
-            body: cameraMandatory
-                ? 'Kamera wajib untuk semua peserta, jadi sesi belum bisa dimulai. Klik ikon kamera atau gembok di address bar peramban Anda dan izinkan akses kamera untuk halaman ini, lalu muat ulang. Di HP, buka pengaturan izin aplikasi peramban (Chrome/Safari) di perangkat Anda dan aktifkan izin kamera untuk peramban tersebut, lalu muat ulang halaman ini.'
-                : 'Anda tetap bisa melanjutkan tanpa kamera. Sesi Anda akan ditandai memerlukan catatan prosedur tambahan sebelum psikolog menandatangani laporan — ini bukan penalti otomatis, hanya langkah tinjauan ekstra.',
+            body: 'Kamera wajib untuk semua peserta, jadi sesi belum bisa dimulai. Klik ikon kamera atau gembok di address bar peramban Anda dan izinkan akses kamera untuk halaman ini, lalu muat ulang. Di HP, buka pengaturan izin aplikasi peramban (Chrome/Safari) di perangkat Anda dan aktifkan izin kamera untuk peramban tersebut, lalu muat ulang halaman ini.',
         };
     }
 
     return {
         heading:
             'Kamera tidak terdeteksi di perangkat Anda saat ini. Ini bisa karena kamera sedang dipakai aplikasi lain, perangkat tidak punya kamera, atau kendala teknis lain — bukan berarti Anda menolak.',
-        body: cameraMandatory
-            ? 'Kamera wajib untuk semua peserta. Tutup aplikasi lain yang mungkin memakai kamera Anda (panggilan video, aplikasi kamera lain), pastikan kamera perangkat terpasang dan berfungsi, lalu coba lagi. Jika kamera memang tidak berfungsi atau tidak tersedia di perangkat ini, gunakan perangkat lain yang punya kamera. Jika kamera tetap tidak dapat digunakan, hubungi penyelenggara tes Anda.'
-            : 'Anda tetap bisa melanjutkan tanpa kamera. Sesi Anda akan ditandai memerlukan catatan prosedur tambahan.',
+        body: 'Kamera wajib untuk semua peserta. Tutup aplikasi lain yang mungkin memakai kamera Anda (panggilan video, aplikasi kamera lain), pastikan kamera perangkat terpasang dan berfungsi, lalu coba lagi. Jika kamera memang tidak berfungsi atau tidak tersedia di perangkat ini, gunakan perangkat lain yang punya kamera. Jika kamera tetap tidak dapat digunakan, hubungi penyelenggara tes Anda.',
     };
 }
 
 export function getProctoringConsentCopy(
     input: ProctoringConsentCopyInput,
 ): ProctoringConsentCopy {
-    const {
-        cameraStatus,
-        fullscreenSupported,
-        cameraMandatory,
-        persistenceEnabled,
-    } = input;
+    const { cameraStatus, fullscreenSupported, persistenceEnabled } = input;
 
     const shared = {
         title: TITLE,
@@ -154,9 +143,6 @@ export function getProctoringConsentCopy(
         dataHandlingNote: persistenceEnabled
             ? RETENTION_NOTE_ENABLED
             : RETENTION_NOTE_DISABLED,
-        secondaryAction: cameraMandatory
-            ? null
-            : { label: 'Lanjutkan tanpa kamera' },
     };
 
     switch (cameraStatus) {
@@ -164,7 +150,7 @@ export function getProctoringConsentCopy(
         case 'unavailable':
             return {
                 ...shared,
-                notice: denialNotice(cameraStatus, cameraMandatory),
+                notice: denialNotice(cameraStatus),
                 primaryAction: { label: 'Coba lagi' },
             };
 

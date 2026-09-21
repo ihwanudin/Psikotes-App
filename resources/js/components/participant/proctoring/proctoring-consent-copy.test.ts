@@ -34,21 +34,18 @@ function allStrings(value: unknown): string[] {
 test('every combination produces a title, policy paragraphs, honesty note, and a primary action', () => {
     for (const cameraStatus of ALL_CAMERA_STATUSES) {
         for (const fullscreenSupported of [true, false]) {
-            for (const cameraMandatory of [true, false]) {
-                for (const persistenceEnabled of [true, false]) {
-                    const copy = getProctoringConsentCopy({
-                        cameraStatus,
-                        fullscreenSupported,
-                        cameraMandatory,
-                        persistenceEnabled,
-                    });
+            for (const persistenceEnabled of [true, false]) {
+                const copy = getProctoringConsentCopy({
+                    cameraStatus,
+                    fullscreenSupported,
+                    persistenceEnabled,
+                });
 
-                    assert.equal(copy.title.length > 0, true);
-                    assert.equal(copy.policyParagraphs.length > 0, true);
-                    assert.equal(copy.honestyNote.length > 0, true);
-                    assert.equal(copy.dataHandlingNote.length > 0, true);
-                    assert.equal(copy.primaryAction.label.length > 0, true);
-                }
+                assert.equal(copy.title.length > 0, true);
+                assert.equal(copy.policyParagraphs.length > 0, true);
+                assert.equal(copy.honestyNote.length > 0, true);
+                assert.equal(copy.dataHandlingNote.length > 0, true);
+                assert.equal(copy.primaryAction.label.length > 0, true);
             }
         }
     }
@@ -57,26 +54,23 @@ test('every combination produces a title, policy paragraphs, honesty note, and a
 test('persistenceEnabled: false never claims server-side storage anywhere in the copy', () => {
     for (const cameraStatus of ALL_CAMERA_STATUSES) {
         for (const fullscreenSupported of [true, false]) {
-            for (const cameraMandatory of [true, false]) {
-                const copy = getProctoringConsentCopy({
-                    cameraStatus,
-                    fullscreenSupported,
-                    cameraMandatory,
-                    persistenceEnabled: false,
-                });
-                const text = allStrings(copy).join('\n');
+            const copy = getProctoringConsentCopy({
+                cameraStatus,
+                fullscreenSupported,
+                persistenceEnabled: false,
+            });
+            const text = allStrings(copy).join('\n');
 
-                assert.doesNotMatch(
-                    text,
-                    /disimpan sementara|maksimal 90 hari|ringkasan peristiwa yang bertahan/,
-                    `persistenceEnabled:false leaked a retention claim for ${cameraStatus}`,
-                );
-                assert.match(
-                    copy.dataHandlingNote,
-                    /masih dalam pengembangan/,
-                    'must say persistence is not built yet, not stay silent about it',
-                );
-            }
+            assert.doesNotMatch(
+                text,
+                /disimpan sementara|maksimal 90 hari|ringkasan peristiwa yang bertahan/,
+                `persistenceEnabled:false leaked a retention claim for ${cameraStatus}`,
+            );
+            assert.match(
+                copy.dataHandlingNote,
+                /masih dalam pengembangan/,
+                'must say persistence is not built yet, not stay silent about it',
+            );
         }
     }
 });
@@ -85,7 +79,6 @@ test('persistenceEnabled: true shows the 90-day retention disclosure', () => {
     const copy = getProctoringConsentCopy({
         cameraStatus: 'inactive',
         fullscreenSupported: true,
-        cameraMandatory: false,
         persistenceEnabled: true,
     });
 
@@ -96,13 +89,11 @@ test('denied and unavailable produce different headings — a broken camera is n
     const denied = getProctoringConsentCopy({
         cameraStatus: 'denied',
         fullscreenSupported: true,
-        cameraMandatory: false,
         persistenceEnabled: false,
     });
     const unavailable = getProctoringConsentCopy({
         cameraStatus: 'unavailable',
         fullscreenSupported: true,
-        cameraMandatory: false,
         persistenceEnabled: false,
     });
 
@@ -132,7 +123,6 @@ test('inactive and active/other in-session statuses have no denial notice', () =
         const copy = getProctoringConsentCopy({
             cameraStatus,
             fullscreenSupported: true,
-            cameraMandatory: false,
             persistenceEnabled: false,
         });
 
@@ -144,39 +134,41 @@ test('inactive and active/other in-session statuses have no denial notice', () =
     }
 });
 
-test('cameraMandatory: true removes the secondary action for every camera status', () => {
+test('no camera status ever offers a way to proceed without an active camera', () => {
+    // Camera is mandatory for every participant, no exception (product
+    // owner decision, PR #81 item 11) — there is no `cameraMandatory`
+    // parameter and no secondary "proceed anyway" action anywhere in
+    // this module. The only way past this screen is camera.status
+    // reaching 'active' (handled by the screen component itself, not by
+    // any action this copy describes).
     for (const cameraStatus of ALL_CAMERA_STATUSES) {
+        if (cameraStatus === 'active') {
+            continue;
+        }
+
         const copy = getProctoringConsentCopy({
             cameraStatus,
             fullscreenSupported: true,
-            cameraMandatory: true,
             persistenceEnabled: false,
         });
 
         assert.equal(
-            copy.secondaryAction,
-            null,
-            `mandatory branch must not offer to proceed without a camera (${cameraStatus})`,
+            'secondaryAction' in copy,
+            false,
+            `unexpected secondaryAction field for ${cameraStatus} — no path around the camera may exist`,
+        );
+        assert.doesNotMatch(
+            copy.primaryAction.label,
+            /tanpa kamera/,
+            `primary action for ${cameraStatus} must not offer to skip the camera`,
         );
     }
 });
 
-test('cameraMandatory: false offers a "proceed without camera" secondary action', () => {
+test('a denied notice gives concrete, actionable steps to grant the permission', () => {
     const copy = getProctoringConsentCopy({
         cameraStatus: 'denied',
         fullscreenSupported: true,
-        cameraMandatory: false,
-        persistenceEnabled: false,
-    });
-
-    assert.equal(copy.secondaryAction?.label, 'Lanjutkan tanpa kamera');
-});
-
-test('a mandatory denied notice gives concrete, actionable steps to grant the permission', () => {
-    const copy = getProctoringConsentCopy({
-        cameraStatus: 'denied',
-        fullscreenSupported: true,
-        cameraMandatory: true,
         persistenceEnabled: false,
     });
     const body = copy.notice?.body ?? '';
@@ -191,11 +183,10 @@ test('a mandatory denied notice gives concrete, actionable steps to grant the pe
     assert.match(body, /HP/);
 });
 
-test('a mandatory unavailable notice gives concrete device steps and points to the test organizer, never an invented alternative-supervision pathway', () => {
+test('an unavailable notice gives concrete device steps and points to the test organizer, never an invented alternative-supervision pathway', () => {
     const copy = getProctoringConsentCopy({
         cameraStatus: 'unavailable',
         fullscreenSupported: true,
-        cameraMandatory: true,
         persistenceEnabled: false,
     });
     const body = copy.notice?.body ?? '';
@@ -209,12 +200,11 @@ test('a mandatory unavailable notice gives concrete device steps and points to t
     assert.doesNotMatch(body, /LPK/);
 });
 
-test('a mandatory denial notice never mentions proceeding without a camera', () => {
+test('a denial notice never mentions proceeding without a camera', () => {
     for (const cameraStatus of ['denied', 'unavailable'] as CameraStatus[]) {
         const copy = getProctoringConsentCopy({
             cameraStatus,
             fullscreenSupported: true,
-            cameraMandatory: true,
             persistenceEnabled: false,
         });
 
@@ -226,7 +216,6 @@ test('fullscreenSupported: false never promises fullscreen will activate', () =>
     const copy = getProctoringConsentCopy({
         cameraStatus: 'inactive',
         fullscreenSupported: false,
-        cameraMandatory: false,
         persistenceEnabled: false,
     });
     const text = copy.policyParagraphs.join('\n');
@@ -239,7 +228,6 @@ test('fullscreenSupported: true mentions fullscreen as a per-subtest reminder, n
     const copy = getProctoringConsentCopy({
         cameraStatus: 'inactive',
         fullscreenSupported: true,
-        cameraMandatory: false,
         persistenceEnabled: false,
     });
     const text = copy.policyParagraphs.join('\n');
@@ -252,7 +240,6 @@ test('the honesty note always states detection, not prevention', () => {
     const copy = getProctoringConsentCopy({
         cameraStatus: 'inactive',
         fullscreenSupported: true,
-        cameraMandatory: false,
         persistenceEnabled: false,
     });
 

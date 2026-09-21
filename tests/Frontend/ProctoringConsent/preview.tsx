@@ -44,11 +44,9 @@ function simulatedGetUserMedia(outcome: SimulatedOutcome): GetUserMedia {
 
 function Session({
     outcome,
-    cameraMandatory,
     persistenceEnabled,
 }: {
     outcome: SimulatedOutcome;
-    cameraMandatory: boolean;
     persistenceEnabled: boolean;
 }) {
     const camera = useProctoringCamera({
@@ -65,7 +63,6 @@ function Session({
             <ProctoringConsentScreen
                 camera={camera}
                 fullscreen={fullscreen}
-                cameraMandatory={cameraMandatory}
                 persistenceEnabled={persistenceEnabled}
                 onProceed={() => setProceeded((value) => value + 1)}
             />
@@ -75,13 +72,12 @@ function Session({
 
 function Preview() {
     const [outcome, setOutcome] = useState<SimulatedOutcome>('granted');
-    const [cameraMandatory, setCameraMandatory] = useState(true);
     const [persistenceEnabled, setPersistenceEnabled] = useState(false);
     // Forces the session (and its hooks, which construct their
     // controllers once on mount) to remount whenever a fixture control
     // changes — same pattern as IntegratedCheckout's preview.tsx
     // `key={scenario}`.
-    const sessionKey = `${outcome}:${cameraMandatory}:${persistenceEnabled}`;
+    const sessionKey = `${outcome}:${persistenceEnabled}`;
 
     return (
         <div>
@@ -115,16 +111,6 @@ function Preview() {
                     <label className="flex min-h-11 items-center gap-2">
                         <input
                             type="checkbox"
-                            checked={cameraMandatory}
-                            onChange={(event) =>
-                                setCameraMandatory(event.target.checked)
-                            }
-                        />
-                        Kamera wajib (cameraMandatory)
-                    </label>
-                    <label className="flex min-h-11 items-center gap-2">
-                        <input
-                            type="checkbox"
                             checked={persistenceEnabled}
                             onChange={(event) =>
                                 setPersistenceEnabled(event.target.checked)
@@ -138,7 +124,6 @@ function Preview() {
             <Session
                 key={sessionKey}
                 outcome={outcome}
-                cameraMandatory={cameraMandatory}
                 persistenceEnabled={persistenceEnabled}
             />
         </div>
