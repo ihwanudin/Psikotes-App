@@ -847,6 +847,45 @@ final class ReportSigningPageTest extends TestCase
             ->assertNotFound();
     }
 
+    /**
+     * ReportSigningQueue::mount() runs `abort_unless(self::canAccess(), 404)`
+     * before it ever calls `runAsService()` for the case listing - the
+     * ability check is not itself run inside the service-role context. This
+     * proves that ordering behaviorally (not just by reading the source): a
+     * denied role must produce zero queries against the listing's own
+     * tables, not merely a 404 response that some later, differently-scoped
+     * query also happened to reject.
+     */
+    public function test_queue_page_denied_role_never_queries_the_case_listing(): void
+    {
+        $case = $this->createCase();
+        $this->seedBaseline($case);
+        $this->actingAs($this->branchAdmin(), 'admin');
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        try {
+            $this->get(ReportSigningQueue::getUrl())->assertNotFound();
+            $queries = DB::getQueryLog();
+        } finally {
+            DB::disableQueryLog();
+        }
+
+        $listingQueries = array_filter(
+            $queries,
+            fn (array $q) => str_contains($q['query'], 'assessment_cases')
+                || str_contains($q['query'], 'eligibility_decision_versions')
+                || str_contains($q['query'], 'bilingual_narrative_versions')
+                || str_contains($q['query'], 'report_signing_snapshots'),
+        );
+
+        $this->assertSame(
+            [],
+            array_values($listingQueries),
+            'A denied role must never trigger the queue-listing query - the ability check must run before, not inside, the service-role query.',
+        );
+    }
+
     public function test_queue_page_guest_redirects_to_login(): void
     {
         $case = $this->createCase();
