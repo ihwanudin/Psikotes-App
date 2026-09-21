@@ -1,11 +1,16 @@
 # F2 — Legacy entitlement provisioning: SPEC.md:259 gap and closure plan (2026-09-22)
 
-**Status: unblocked, revised.** The owner has now answered both blocking
-questions (item 18, PR #81 `b7ffd0a`/`77ef777`): the system is not live yet
-(no organization uses any production integration, including the legacy API),
-and the "dana talang" (bridge funding) direction is decided. Direction A
-applies in full, immediately. Direction B is now designed below. Still no
-code in this PR — plan only, revised per Lead's request before implementation.
+**Status: unblocked, revised twice.** The owner has now answered both
+blocking questions (item 18, PR #81 `b7ffd0a`/`77ef777`): the system is not
+live yet (no organization uses any production integration, including the
+legacy API), and the "dana talang" (bridge funding) direction is decided.
+Direction A applies in full, immediately. Direction B is now designed below.
+**This revision replaces the single-site `resolveDirect()` widening from the
+previous draft** after Lead's review found it dangerously incomplete — see
+"Every site that checks `orders.status` against `'paid'`" below for the full
+audit, and "Does `assessment_bills` actually fit?" for why the billing design
+also changed. Still no code in this PR — plan only, revised per Lead's
+request before implementation.
 
 ## The gap
 
@@ -148,56 +153,173 @@ mismatch worth surfacing rather than quietly designing around.
 
 ### Design: extend `orders`, not bypass it
 
-Instead, bridge funding gets a **real `orders` row**, so `resolveDirect()`
-needs the smallest possible change and every existing invariant it checks
-keeps holding:
+Bridge funding gets a **real `orders` row**, with a new `OrderStatus` case:
 
-- **New `OrderStatus` case**, e.g. `BridgeFunded = 'bridge_funded'`
+- **New `OrderStatus` case**, `BridgeFunded = 'bridge_funded'`
   (`app/Enums/OrderStatus.php`, plus widening the `orders_status_check`
   CHECK constraint). Reusing `'paid'` for this would be dishonest in the
   ledger — `'paid'`/`paid_at` mean cash was actually received, which isn't
   true here (the holding company is billed *after* approval, not before).
   A distinct status keeps that distinction real and auditable.
-- **`resolveDirect()`'s one status check widens** from `$order->status->value
-  !== 'paid'` to accepting `'paid'` OR `'bridge_funded'` (and the
-  `paid_at IS NOT NULL` check needs an equivalent for the new status — an
-  `approved_at`-equivalent timestamp, see below). This is the one, minimal,
-  reviewed change to session-start authorization this design requires —
-  everything else routes around it, not through it.
 - **`payment_method_id` (NOT NULL FK, no schema change needed)**: a
   synthetic, non-selectable `payment_methods` row (e.g. `code =
   'bridge_funding'`, `is_active = false` so it never appears in the public
   registration payment-method list, which is already filtered to `active()`
   — confirmed in `ParticipantRegistrationController`). Reuses the existing
   mechanism instead of loosening a NOT NULL column.
-- **The actual invoice-to-collect-later**: a linked `assessment_bills` row,
-  which already has almost the exact right shape for "an amount owed,
-  tracked against an organization/participant, with an admin-verification
-  trail" — `verified_by_admin_id`/`verified_at` (existing columns) *are*
-  the approving-admin trail; add a new `payer_type` value (e.g.
-  `'bridge_funding'`, alongside the existing `'organization'`/`'self'`,
-  requires widening `assessment_bill_payer_check`). This is reuse, not a
-  new table, per the explicit ask — the two existing tables (`orders` for
-  the access-gating side `resolveDirect()` checks, `assessment_bills` for
-  the actual billing-history side) already model the two genuinely
-  distinct concerns here; a new table would duplicate one or the other.
-- **Management-reference field (new, required)**: neither table has a
-  free-text/structured "which instruction authorized this" column today.
-  Add one nullable-except-for-this-payer-type text column to
-  `assessment_bills` (e.g. `management_reference`), required by a CHECK
-  constraint when `payer_type = 'bridge_funding'`, mirroring the existing
-  `assessment_bill_payer_check` pattern of a status/type-conditional
-  constraint. Also recorded in the `audit_logs` row for the approval
-  action (`context`), matching the existing manual-payment-verification
-  audit shape (actor, reason/reference, timestamp — same pattern as
-  `VerifyManualTransfer`/`SetPaymentMethodActivation`).
-- **Participant invisibility**: needs one explicit check at implementation
-  time, not assumed — confirm no participant-facing code (session-start
-  responses, receipts, the registration-received page) branches on
-  `order.status === 'paid'` specifically in a way that would visibly differ
-  for `'bridge_funded'`. `resolveDirect()`'s own output (a `CaseAuthorization`)
-  doesn't leak order status to the participant either way, which is the
-  right shape to preserve.
+- **Participant invisibility**: `resolveDirect()`'s/`resolveSelectedDirect()`'s
+  own output (a `CaseAuthorization`) doesn't leak order status to the
+  participant either way, which is the right shape to preserve. Confirmed no
+  other participant-facing code (session-start responses, receipts, the
+  registration-received page) reads `order.status` at all — the only
+  participant-visible consumer of order status is the activation
+  notification, covered below.
+
+### Every site that checks `orders.status` against `'paid'` (Lead's audit,
+### cross-checked and extended)
+
+Lead grepped `origin/main` for literal `'paid'`/`OrderStatus::Paid`
+comparisons and found the previous draft's single-site fix (`resolveDirect()`
+only) dangerously incomplete. Re-grepping independently (`grep -rn
+"OrderStatus::Paid\|status(->value)?\s*(===|!==)\s*(OrderStatus::Paid|'paid')"`)
+confirms Lead's count and finds **two more real gate sites** neither of us
+had listed yet (`resolveSelectedDirect()`, and the entire
+`ParticipantAssessmentSessionCandidates` class — a second, independent
+session-start authorizer). Every site touching `orders.status`, not just the
+ones Lead named:
+
+| Site | What it does | Bridge-funded included? | Why |
+|---|---|---|---|
+| `CaseAuthorizationResolver::resolveDirect()` (`:408`) | Gates session-start authorization for a DIRECT_PUBLIC participant's main case | **Yes — must include** | This is the primary access gate the whole plan exists to satisfy; item 18 requires identical access to a paying participant. |
+| `CaseAuthorizationResolver::resolveSelectedDirect()` (`:226`) | Gates session-start authorization for the multi-case/selected-case DIRECT_PUBLIC path | **Yes — must include** | Structurally identical gate to `resolveDirect()`, same population, same requirement. Missed entirely by the previous draft — a participant landing on this path instead of `resolveDirect()` would have been rejected even after the original fix. |
+| `ParticipantAssessmentSessionCandidates::directCandidate()` → `candidate()`'s `$eligible` (`:138`, consumed at `:221`) | A **second, independent** session-start eligibility computation (raw `DB::table('orders')` array read, not the `Order` model) | **Yes — must include** | Same population, same requirement, different code path entirely from `CaseAuthorizationResolver`. Confirms Lead's flag on this file/line was correct and non-obvious — this class was not mentioned anywhere in the previous draft. |
+| `Services\Notifications\DeliverParticipantActivation::claimErrorCode()` (`:156`) | Gates whether the `participant.activation` outbox notification is sent | **Yes — must include** | Lead's headline finding: without this, a bridge-funded participant never receives the activation notification a paying participant gets — directly visible to the participant, contradicting item 18's "no difference from a paying participant." |
+| `Services\Commissions\RecordBranchCommissionLedger::recordDirectOrderInService()` (`:90`) | Records a branch commission-ledger entry when an order is paid | **No — stays `'paid'` only** | Explicit decision, not a side effect: the holding company hasn't paid yet at approval time (it's billed *after*, per item 18), so no real revenue exists for the branch to earn commission on. Recording it now would overstate branch commission before the money is actually collected. |
+| `Actions\Payments\VerifyManualTransfer::handle()` (`:129`) | After a manual-transfer review, records the commission-ledger entry if the order is now `Paid` | **No — unrelated to this design** | Only fires on the manual-transfer review flow, which bridge funding never goes through (bridge funding is a dedicated approval action, not a transfer review). No change needed. |
+| `Services\Payments\OrderPaymentEventHandler::apply()` (`:59`) | Sets `paid_at` when a payment-gateway event transitions an order to `Paid` | **No — unrelated to this design** | Only fires on real Xendit/gateway events. Bridge funding never produces a `PaymentStatus` event, so this handler is never invoked for it. No change needed. |
+| `Filament\Resources\Orders\OrderResource.php` (`:88-93` `formatStateUsing`) | Displays the order-status badge label in the admin UI | **New match arm required — not optional** | **Found independently, not on Lead's list, and it's a real break, not a style nit**: this `match ($state) { ... }` over `OrderStatus` has **no `default` arm**. The moment `OrderStatus::BridgeFunded` exists, any admin viewing an order list containing a bridge-funded row hits `UnhandledMatchError` — a 500, not a cosmetic gap. Needs an explicit `OrderStatus::BridgeFunded => 'Ditalangi'` (or similar) arm. The adjacent `color` match already has a `default => 'gray'` fallback, so only the label match is a hard break, though both should get an explicit arm for a sane color. |
+| `Services\Payments\OrderStateMachine::transition()` (`:43`, `unlocksEntitlements: $target === OrderStatus::Paid`) | Decides whether a state transition unlocks `locked` entitlements to `ready` | **New transition method required** | Bridge funding doesn't go through `apply()`/`applyManualReview()` (no gateway event, no transfer review) — it needs its own `applyBridgeFunding(OrderStatus $current): OrderTransition` mirroring `applyManualReview()`'s shape (`Pending → BridgeFunded`, calling the same private `transition()`). That means `transition()`'s `unlocksEntitlements` line must also become `in_array($target, [OrderStatus::Paid, OrderStatus::BridgeFunded], true)` — otherwise the new transition method would report `unlocksEntitlements: false` and bridge-funded entitlements would stay `locked` forever, silently breaking the whole feature at the one step that actually grants access. |
+| `Services\Commissions\RecordBranchCommissionLedger::recordAssessmentBillInService()` (`:120`) | Records commission for a *different* population entirely | **N/A — false positive** | Reads `assessment_bills.status`, the checkout-v2/selection-integration billing table, not `orders.status`. Unrelated to DIRECT_PUBLIC/bridge funding. |
+| `Filament\Widgets\F7OperationalOverview.php` (`:56`) | Operational dashboard metric, `assessment_bills.status = 'paid'` | **N/A — false positive** | Same table as above, same reason. |
+| Everything else matching `'paid'` in the codebase (`FinalizeAssessmentBill.php`, `CheckoutPaymentFactsReader.php`, `CheckoutSelfPayment*`, `PrepareCheckoutSelfPayment.php`, `IssueCheckoutSelfPayment.php`) | Checkout-v2 self-payment / `assessment_bills` flows | **N/A — false positive** | All read `assessment_bills.status` or a `CheckoutSelfPayment*` DTO's `state`, never `orders.status`. Confirmed by grepping every remaining `'paid'` match in `app/` and checking each one's source table. |
+
+### The fix: one semantic method, not four repeated literal checks
+
+Lead's proposed alternative — a semantic method distinguishing
+"grants participant access" from "money actually received" — is the right
+shape, refined one level: put it on **`OrderStatus` itself**, not the `Order`
+model, because one of the four access-gate sites
+(`ParticipantAssessmentSessionCandidates::directCandidate()`) reads the order
+as a raw array via `DB::table()`, never hydrating an `Order` model at all. An
+enum method works identically for both:
+
+```php
+// app/Enums/OrderStatus.php
+public function grantsAccess(): bool
+{
+    return match ($this) {
+        self::Paid, self::BridgeFunded => true,
+        default => false,
+    };
+}
+```
+
+- The four access-gate sites (`resolveDirect()`, `resolveSelectedDirect()`,
+  `ParticipantAssessmentSessionCandidates::directCandidate()`,
+  `DeliverParticipantActivation::claimErrorCode()`) switch from
+  `$order->status->value !== 'paid'` / `$order->status !== OrderStatus::Paid`
+  to `! $order->status->grantsAccess()` (or, for the raw-array read in
+  `ParticipantAssessmentSessionCandidates`,
+  `! OrderStatus::from($order['status'])->grantsAccess()`).
+- The two financial-reporting sites (`RecordBranchCommissionLedger::recordDirectOrderInService()`
+  and the `paid_at`-setting logic in `OrderPaymentEventHandler`) **keep**
+  their literal `=== 'paid'` / `=== OrderStatus::Paid` checks unchanged —
+  intentionally not routed through `grantsAccess()`, so "money actually
+  received" stays a distinct, explicit question in the code, not silently
+  merged with "may access the assessment."
+- This is exactly the failure mode Lead is designing against: a future
+  developer adding a *third* status that should grant access (or shouldn't)
+  now has one place to update, and the two categories of check
+  (access vs. money-received) are named differently in the code, not
+  distinguished only by which literal string happens to appear.
+
+### Does `assessment_bills` actually fit? Tested, not just read.
+
+Lead asked this to be proven by an actual insert attempt in the worktree, not
+schema-reading alone. Wrote a throwaway PHPUnit test
+(`tests/Feature/Scratch/BridgeFundingAssessmentBillFitProbeTest.php`, run
+against the in-memory SQLite test DB, then deleted — not part of this commit)
+using the existing `Tests\Support\DirectPublicOrderFixture` to build a real
+DIRECT_PUBLIC participant/order, then attempted to bill it through
+`assessment_bills`:
+
+1. An `assessment_bills` row itself can be created standalone — it has no FK
+   to `orders` or `entitlements` at all, so this step alone proves nothing.
+2. Attaching an `assessment_bill_items` row for that participant **fails
+   with a real SQL integrity-constraint violation**: `charge_id` is `NOT
+   NULL` + `UNIQUE` + a composite FK into `assessment_charges`
+   (`database/migrations/2026_08_31_000300_create_assessment_bill_items.php:23-24,37-38`),
+   and `assessment_charges.assessment_participant_id` is itself `NOT NULL` +
+   `UNIQUE`, tied to the `assessment_participants` table
+   (`2026_08_31_000200_create_assessment_billing.php:20-22`).
+3. `assessment_participants` rows are created **exclusively** by
+   `ProvisionAssessmentParticipant`/`ProvisionCheckoutParticipant`
+   (`app/Actions/Integrations/`) — both selection-integration-only. A
+   DIRECT_PUBLIC participant (normal `/register` flow) never gets one.
+
+**Conclusion: `assessment_bills` cannot host a DIRECT_PUBLIC bridge-funding
+case without fabricating a fake `assessment_participants`/`assessment_charges`
+row for a participant who never went through selection-integration** — the
+exact structural misuse Lead was right to be skeptical of. Reusing it would
+mean either corrupting a table whose real purpose (checkout-v2 billing
+reconciliation) depends on that row genuinely representing an integration
+attempt, or loosening a `NOT NULL UNIQUE` FK that exists specifically to keep
+that guarantee. Neither is acceptable.
+
+### Revised billing design: one small, new, append-only-in-spirit table
+
+A dedicated `bridge_funding_grants` table instead — small, and modeled
+directly on the columns `assessment_bills` already proved are the right
+shape for "an amount owed with an admin-approval trail," without forcing the
+DIRECT_PUBLIC population through a table built for a different one:
+
+- `id`, `order_id` (FK → `orders`, unique — exactly one grant per order),
+  `participant_id` (FK, redundant convenience/audit column, same pattern as
+  `assessment_bill_items.participant_id` alongside its `bill_id`),
+  `branch_id` (participant's branch, for reporting scope, mirroring
+  `assessment_bills.organization_id`).
+- `amount`, `currency` — CHECK `amount > 0 AND currency = 'IDR'`, same style
+  as `assessment_bill_money_check`.
+- `management_reference` (text, `NOT NULL`, non-blank CHECK) — the
+  "which instruction authorized this" field the owner requires; simpler
+  here than in the original design since this table exists solely for
+  bridge funding, so the column can just be required outright instead of
+  conditionally required by a payer-type CHECK.
+- `approved_by_admin_id` (FK → `admins`, `NOT NULL`) + `approved_at`
+  (`NOT NULL`) — the admin-approval trail, mirroring the existing
+  `verified_by_admin_id`/`verified_at` pairing pattern from `orders`/
+  `assessment_bills`.
+- `status` (default `'invoiced'`, CHECK IN `('invoiced', 'collected',
+  'written_off')`) + `collected_at` (nullable) — minimal collection-lifecycle
+  tracking so the "billing history must not be lost or overwritten"
+  requirement has somewhere to record what happened later without
+  ever touching the approval fields above. Full collection-lifecycle design
+  (dispute handling, partial collection, etc.) is explicitly **not** designed
+  here, consistent with how this doc already treats other out-of-scope
+  lifecycle questions below.
+- RLS: needs the same treatment as every other financial table in this repo
+  (`REVOKE ALL` / narrow `GRANT` / `ENABLE`+`FORCE ROW LEVEL SECURITY` /
+  service-role write policy). Read policy recommendation: `super_admin` only
+  for now (holding-company-level financial data, not branch-operational
+  data), extended to `central_admin` later under the same reasoning as the
+  approval-role recommendation below — exact grant list is an implementation
+  detail, not decided further here.
+- Writing this row and transitioning the order to `BridgeFunded` happen in
+  the same service-role transaction (mirrors `VerifyManualTransfer`'s
+  shape: one action, one audit_logs row, one state change) — the approval
+  action's `audit_logs` row still gets the `management_reference` in
+  `context` too, matching the existing precedent of duplicating
+  audit-relevant fields into both the domain row and the audit trail.
 
 ### Who can approve — this is my technical call, not the owner's
 
@@ -230,6 +352,36 @@ One optional config key (e.g. `config('bridge_funding.max_amount')`,
 `null`/absent = unlimited), read at approval time, not stored as a schema
 constraint — the owner may set a limit later without a migration, per their
 explicit request.
+
+### Mandatory tests at implementation time (Lead's condition #3)
+
+- **Activation notification parity**: a bridge-funded order's
+  `participant.activation` outbox message resolves `claimErrorCode()` to
+  `null` (sendable) exactly like a paid order — directly closes finding #1
+  above as a regression test, not just an argument.
+- **Session-start parity across all four gate sites**: `resolveDirect()`,
+  `resolveSelectedDirect()`, and
+  `ParticipantAssessmentSessionCandidates::directCandidate()` each authorize
+  a bridge-funded order's participant exactly as they would a paid one
+  (reusing `DirectPublicOrderFixture`, extended with a `bridgeFunded()`
+  variant). Three sites, not one — the previous draft's gap was exactly
+  "tested one, shipped three untested."
+- **Commission-ledger exclusion**: a bridge-funded order does **not**
+  produce a `RecordBranchCommissionLedger` entry (regression-protects the
+  explicit exclusion decision above, so a future refactor that
+  accidentally routes `BridgeFunded` through `grantsAccess()`-style logic
+  in the commission path gets caught immediately).
+- **`OrderResource` doesn't throw**: a Filament order-list render including
+  a `BridgeFunded` row succeeds (closes the `UnhandledMatchError` finding
+  above as a regression test, not just a code review note).
+- **`OrderStateMachine::applyBridgeFunding()` unlocks entitlements**: asserts
+  `unlocksEntitlements === true` for the `Pending → BridgeFunded` transition,
+  specifically to catch the `transition()` widening finding above regressing
+  silently.
+- **`bridge_funding_grants` Postgres RLS**: mirrors the existing pattern from
+  `AdminAccountLifecycleRlsSecurityTest`/`TestPackageCatalogRlsSecurityTest`
+  — direct non-service insert denied, service-context insert succeeds, read
+  restricted to the approved role list.
 
 ## Explicitly not designed here (noted only)
 
@@ -264,11 +416,25 @@ explicit request.
   question, isn't decided. Worth a quick check once implementation starts,
   not designed further here.
 
-## Status: both original blockers resolved
+## Status: both original blockers resolved, second review round addressed
 
 1. ~~Owner's answer on funding-bridge (dana talang)~~ — answered, item 18,
    designed above.
 2. ~~Fact check: does any organization already use the legacy integration
    API in production today?~~ — confirmed no; the system is not live.
+3. ~~Single-site `resolveDirect()` fix is incomplete — full audit of every
+   `orders.status`/`'paid'` comparison~~ — done above: 4 access-gate sites now
+   route through `OrderStatus::grantsAccess()`, 2 financial-reporting sites
+   explicitly stay literal, 1 new UI break found and fixed
+   (`OrderResource`'s unhandled match), 1 new state-machine gap found and
+   fixed (`unlocksEntitlements` widening), 3 sites confirmed as false
+   positives (different table, `assessment_bills`).
+4. ~~Does `assessment_bills` actually fit DIRECT_PUBLIC bridge funding~~ —
+   tested empirically, does not fit (FK chain requires a
+   selection-integration-only `assessment_participants` row). Replaced with a
+   small, dedicated `bridge_funding_grants` table.
+
+Ability separation (dedicated `AdminAbility`, unconditional default) —
+**approved by Lead, unchanged from the previous revision.**
 
 This plan is ready for Lead's review before implementation begins.
