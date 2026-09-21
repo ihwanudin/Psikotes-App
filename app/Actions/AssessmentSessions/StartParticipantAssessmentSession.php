@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace App\Actions\AssessmentSessions;
 
+use App\Domain\AssessmentSessions\AssessmentSessionSelectionKind;
 use App\Domain\AssessmentSessions\AssessmentSessionSelectionPolicy;
+use App\Domain\AssessmentSessions\AssessmentSessionStartFailureCode;
+use App\Domain\AssessmentSessions\AssessmentSessionStartRetriesExhausted;
 use App\Domain\AssessmentSessions\GenericAssessmentInstrument;
 use App\Domain\AssessmentSessions\InvalidAssessmentSessionState;
 use App\Security\RlsContextRunner;
@@ -44,8 +47,11 @@ final readonly class StartParticipantAssessmentSession
 
                 return $result;
             } catch (QueryException $exception) {
-                if ($attempt === self::MAX_TRANSACTION_ATTEMPTS || ! $this->isRetryable($exception)) {
+                if (! $this->isRetryable($exception)) {
                     throw $exception;
+                }
+                if ($attempt === self::MAX_TRANSACTION_ATTEMPTS) {
+                    throw new AssessmentSessionStartRetriesExhausted($exception);
                 }
             }
         }
@@ -60,7 +66,22 @@ final readonly class StartParticipantAssessmentSession
         $projection = $this->candidates->project($principal, $instrument);
         $selection = $this->selectionPolicy->select($projection->scope, $projection->candidates);
         if ($selection->candidate === null) {
-            throw new InvalidAssessmentSessionState($selection->kind->value);
+            // See app/Domain/AssessmentSessions/AssessmentSessionStartFailureCode.php
+            // and tasks/handoffs/f2/s5-http-cutover-classification.md for why only
+            // Unavailable/HistoryAmbiguous/SelectionAmbiguous are typed here:
+            // ScopeRejected means the candidate's own scope diverged from the scope
+            // computed from the very same principal that produced it, which the
+            // projection cannot legitimately do -- an invariant, not a participant
+            // outcome. Replay/Selected always carry a non-null candidate, so they
+            // never reach this branch; listed only so the match stays exhaustive.
+            throw new InvalidAssessmentSessionState($selection->kind->value, match ($selection->kind) {
+                AssessmentSessionSelectionKind::Unavailable => AssessmentSessionStartFailureCode::NotAvailable,
+                AssessmentSessionSelectionKind::HistoryAmbiguous,
+                AssessmentSessionSelectionKind::SelectionAmbiguous => AssessmentSessionStartFailureCode::Conflict,
+                AssessmentSessionSelectionKind::ScopeRejected,
+                AssessmentSessionSelectionKind::Replay,
+                AssessmentSessionSelectionKind::Selected => null,
+            });
         }
 
         $authorization = $this->authorizations->resolveSelectedParticipantForUpdate(

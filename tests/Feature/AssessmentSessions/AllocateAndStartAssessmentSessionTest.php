@@ -10,6 +10,7 @@ use App\Contracts\AssessmentSessionDefinitionAuthority;
 use App\Domain\AssessmentSessions\AssessmentAttemptAllocationPolicy;
 use App\Domain\AssessmentSessions\AssessmentSessionDeadlinePolicy;
 use App\Domain\AssessmentSessions\AssessmentSessionSelectionPolicy;
+use App\Domain\AssessmentSessions\AssessmentSessionStartRetriesExhausted;
 use App\Domain\AssessmentSessions\AssessmentSessionStateMachine;
 use App\Domain\AssessmentSessions\CaseAuthorization;
 use App\Domain\AssessmentSessions\CaseAuthorizationRejected;
@@ -378,7 +379,7 @@ final class AllocateAndStartAssessmentSessionTest extends OrganizationPaymentTes
         $this->assertSame(0, DB::transactionLevel());
     }
 
-    public function test_retryable_transaction_failure_is_attempted_at_most_three_times_then_the_final_exception_escapes(): void
+    public function test_retryable_transaction_failure_is_attempted_at_most_three_times_then_a_typed_exhaustion_escapes(): void
     {
         $fixture = $this->participantGraph(direct: true);
         $authority = new FakeAssessmentSessionDefinitionAuthority;
@@ -390,9 +391,16 @@ final class AllocateAndStartAssessmentSessionTest extends OrganizationPaymentTes
                 GenericAssessmentInstrument::Ist,
             );
             $this->fail('A fourth transaction attempt must never be made.');
-        } catch (QueryException $exception) {
-            $this->assertSame('40001', $exception->errorInfo[0] ?? null);
-            $this->assertSame($injector->lastException, $exception);
+        } catch (AssessmentSessionStartRetriesExhausted $exception) {
+            // F2 S5 (2026-09-21): the command wraps the exhausted-retry
+            // QueryException in a typed exception so the HTTP boundary never has
+            // to inspect a SQLSTATE itself (Correction A's leak, one layer up).
+            // The raw QueryException is still reachable via getPrevious() for
+            // logging, but nothing outside this command should catch it directly.
+            $previous = $exception->getPrevious();
+            $this->assertInstanceOf(QueryException::class, $previous);
+            $this->assertSame('40001', $previous->errorInfo[0] ?? null);
+            $this->assertSame($injector->lastException, $previous);
             $this->assertSame(3, $injector->transactionAttempts);
             $this->assertSame($injector->transactionAttempts, $authority->calls);
             $this->assertAllocatorRolledBack($fixture);
