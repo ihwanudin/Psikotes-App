@@ -2,6 +2,7 @@ import { Clock, Video, VideoOff, WifiOff } from 'lucide-react';
 import { useCallback } from 'react';
 import type { ReactNode } from 'react';
 
+import { Button } from '@/components/ui/button';
 import { useAssessmentSession } from './use-assessment-session.ts';
 import type {
     AssessmentSessionState,
@@ -135,6 +136,17 @@ export function SessionRunnerShell({
                             />
                         )}
                         <span>{CAMERA_STATUS_LABEL[camera.status]}</span>
+                        {camera.status === 'reactivation_failed' ? (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => void camera.reactivate()}
+                                className="min-h-11"
+                            >
+                                Coba aktifkan kamera lagi
+                            </Button>
+                        ) : null}
                     </div>
                 </div>
 

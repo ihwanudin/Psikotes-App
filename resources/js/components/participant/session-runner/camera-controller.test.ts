@@ -110,7 +110,7 @@ test('handleStreamEnded after activation marks the stream interrupted and report
     assert.equal(events.at(-1)?.kind, 'camera_interrupted');
 });
 
-test('reactivate() is a no-op unless the status is currently interrupted', async () => {
+test('reactivate() is a no-op unless the status is currently interrupted or reactivation_failed', async () => {
     let requestCount = 0;
     const { reporter } = recordingReporter();
     const controller = createCameraController({
@@ -196,6 +196,56 @@ test('a failed reactivation reports attempted then failed and does not silently 
         !kinds.includes('camera_reactivation_succeeded'),
         'must never report success for a failed reactivation',
     );
+});
+
+test('reactivate() retried from reactivation_failed can still succeed (2026-09-21 fix)', async () => {
+    const { reporter, events } = recordingReporter();
+    let call = 0;
+    const controller = createCameraController({
+        requestStream: async () => {
+            call++;
+
+            // 1st: initial activate() succeeds. 2nd: reactivate() after
+            // the stream dies fails. 3rd: a later reactivate() (e.g. the
+            // hook's next visibilitychange/focus, or a manual retry
+            // button) finally succeeds.
+            if (call === 1) {
+                return 'granted';
+            }
+
+            if (call === 2) {
+                return 'unavailable';
+            }
+
+            return 'granted';
+        },
+        reporter,
+    });
+
+    await controller.activate();
+    controller.handleStreamEnded();
+    await controller.reactivate();
+    assert.equal(
+        controller.getStatus(),
+        'reactivation_failed',
+        'setup: first reactivation attempt must fail',
+    );
+
+    // Without the 2026-09-21 fix, this second reactivate() call would be
+    // a no-op forever (the guard only accepted 'interrupted') — every
+    // later visibilitychange/focus for the rest of the session would do
+    // nothing, even though a fresh attempt could succeed.
+    await controller.reactivate();
+
+    assert.equal(controller.getStatus(), 'active');
+    const kinds = events.map((event) => event.kind);
+    assert.deepEqual(kinds, [
+        'camera_interrupted',
+        'camera_reactivation_attempted',
+        'camera_reactivation_failed',
+        'camera_reactivation_attempted',
+        'camera_reactivation_succeeded',
+    ]);
 });
 
 test('deactivate() resets to inactive and further stream-ended events are ignored', async () => {

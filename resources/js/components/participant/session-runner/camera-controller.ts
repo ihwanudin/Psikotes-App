@@ -54,8 +54,16 @@ export type CameraController = {
      * controller was never activated or has since been deactivated. */
     handleStreamEnded: () => void;
     /** Attempts to re-request a stream after an interruption. A no-op
-     * unless status is currently `interrupted` — reactivating an
-     * inactive or already-active camera is meaningless. */
+     * unless status is currently `interrupted` or `reactivation_failed`
+     * — reactivating an inactive or already-active camera is
+     * meaningless. Also retriable from `reactivation_failed` (not just
+     * `interrupted`, 2026-09-21 fix): without this, a single failed
+     * attempt would permanently stop every later automatic retry for
+     * the rest of the session, even though the hook keeps calling this
+     * on every subsequent `visibilitychange`/`focus` — see
+     * tasks/handoffs/f7/proctoring-camera-interruption-plan-2026-09-21.md
+     * §2. This does not add any new automatic trigger; it only widens
+     * which status the existing external triggers can act on. */
     reactivate: () => Promise<void>;
     subscribe: (listener: (status: CameraStatus) => void) => () => void;
 };
@@ -136,7 +144,7 @@ export function createCameraController(
     }
 
     async function reactivate(): Promise<void> {
-        if (status !== 'interrupted') {
+        if (status !== 'interrupted' && status !== 'reactivation_failed') {
             return;
         }
 
