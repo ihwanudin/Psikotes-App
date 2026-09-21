@@ -38,6 +38,14 @@ existing-test changes precisely.
   logic needed.
 - `StartParticipantSessionController` maps `AssessmentItemContentUnavailable`
   → `503 ASSESSMENT_ITEM_CONTENT_UNAVAILABLE`.
+- **The gate applies only to `allocateNew()`, not session replay**
+  (`AllocateAndStartAssessmentSession::replay()`): an already-started
+  session was already proven able to deliver its content the one time
+  that matters (when it was first allocated), and replay reconstructs its
+  `SessionDefinition` from that session's own immutable stored snapshot,
+  not by asking the item-content authority again — this is intentional,
+  not an oversight, so a later change to the readers map can never affect
+  an already-running session's replay.
 - `API_CONTRACT.md` updated: new code added to the stable list, and to the
   non-enumerating start mapping with its ordering (checked after
   definition, before allocation) explained inline.
