@@ -150,6 +150,21 @@ export function useProctoringCamera({
             track?.addEventListener('ended', () => {
                 controllerRef.current?.handleStreamEnded();
             });
+            // 'mute' is the signal that actually fires on iOS Safari and
+            // several Android browsers when the camera is backgrounded
+            // or taken by another app — 'ended' never comes on those
+            // platforms; the track just stops producing frames while
+            // staying readyState === 'live' (2026-09-21 fix, Lead's
+            // review of PR #91). 'unmute' on that same still-live track
+            // means the camera resumed without ever having actually
+            // stopped, so it goes straight back to active instead of
+            // through a fresh requestStream() round trip.
+            track?.addEventListener('mute', () => {
+                controllerRef.current?.handleStreamEnded();
+            });
+            track?.addEventListener('unmute', () => {
+                controllerRef.current?.handleStreamResumed();
+            });
 
             return 'granted';
         }
@@ -219,6 +234,17 @@ export function useProctoringCamera({
             // explicitly rather than inferring liveness from the
             // stream's mere presence.
             if (!stream || controllerRef.current?.getStatus() !== 'active') {
+                return null;
+            }
+
+            // Belt-and-suspenders against the inherent gap between a
+            // track actually muting and this hook's 'mute' listener
+            // having run yet: never draw a frame from a track the
+            // browser itself says is muted, even if `status` hasn't
+            // caught up to 'interrupted' yet — a muted track's last
+            // decoded frame would otherwise be captured as a stale or
+            // black image instead of correctly reporting no frame.
+            if (stream.getVideoTracks()[0]?.muted) {
                 return null;
             }
 

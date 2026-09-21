@@ -188,6 +188,38 @@ function Preview() {
                                 >
                                     Simulasikan peserta kembali (focus)
                                 </button>
+                                {/* Dispatching a synthetic 'mute'/'unmute'
+                                Event exercises the status transition
+                                (use-proctoring-camera.ts's listeners react
+                                to the event type, not to track.muted
+                                itself) — it does not flip the track's own
+                                read-only `.muted` property, so this proves
+                                the primary mute->interrupted->active path
+                                but not captureFrame()'s extra `.muted`
+                                belt-and-suspenders check, which depends on
+                                a real muted track. */}
+                                <button
+                                    type="button"
+                                    className="min-h-11 rounded border border-slate-500 bg-white px-3"
+                                    onClick={() =>
+                                        liveTrack?.dispatchEvent(
+                                            new Event('mute'),
+                                        )
+                                    }
+                                >
+                                    Mute kamera (simulasikan iOS app-switch)
+                                </button>
+                                <button
+                                    type="button"
+                                    className="min-h-11 rounded border border-slate-500 bg-white px-3"
+                                    onClick={() =>
+                                        liveTrack?.dispatchEvent(
+                                            new Event('unmute'),
+                                        )
+                                    }
+                                >
+                                    Unmute kamera (simulasikan kembali)
+                                </button>
                                 <button
                                     type="button"
                                     className="min-h-11 rounded border border-slate-500 bg-white px-3"

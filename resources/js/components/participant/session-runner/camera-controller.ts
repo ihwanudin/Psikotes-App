@@ -49,10 +49,28 @@ export type CameraController = {
      * MediaStream — that is the hook's responsibility, since this module
      * never holds one. */
     deactivate: () => void;
-    /** Call when the hook observes the underlying track end (SPEC.md
-     * 8A.2's mobile app-switch/lock-screen case). A no-op if the
-     * controller was never activated or has since been deactivated. */
+    /** Call when the hook observes the underlying track end OR mute
+     * (SPEC.md 8A.2's mobile app-switch/lock-screen case). `mute` is the
+     * signal that actually fires on iOS Safari and several Android
+     * browsers when the camera is backgrounded/taken by another app —
+     * `ended` never comes on those platforms, the track just stops
+     * producing frames while staying `readyState === 'live'` (2026-09-21
+     * fix, Lead's review of PR #91). Both signals reach this same
+     * method: from this controller's point of view "stream stopped
+     * producing frames" is one fact regardless of which DOM event
+     * reported it. A no-op if the controller was never activated or has
+     * since been deactivated. */
     handleStreamEnded: () => void;
+    /** Call when the hook observes the underlying track `unmute` on the
+     * SAME still-live track that caused `handleStreamEnded()` — the
+     * camera never actually stopped at the OS level, so frames can
+     * resume immediately without a fresh `requestStream()` round trip.
+     * A no-op unless status is currently `interrupted`: if a later,
+     * separate `reactivate()` cycle has since taken over (e.g. it
+     * already failed and moved to `reactivation_failed`), an unmute on
+     * the old, already-abandoned track must not resurrect a state that
+     * belongs to a different attempt. */
+    handleStreamResumed: () => void;
     /** Attempts to re-request a stream after an interruption. A no-op
      * unless status is currently `interrupted` or `reactivation_failed`
      * — reactivating an inactive or already-active camera is
@@ -143,6 +161,25 @@ export function createCameraController(
         setStatus('interrupted');
     }
 
+    function handleStreamResumed(): void {
+        if (status !== 'interrupted') {
+            return;
+        }
+
+        // Reuses 'camera_reactivation_succeeded' rather than a new kind
+        // — from any consumer's point of view this is the same fact as
+        // a reactivate()-driven recovery ("the camera is producing
+        // frames again"), and the backend's allowed-kinds list for
+        // client observations is a shared, already-scarce resource (see
+        // tasks/handoffs/f7/proctoring-camera-interruption-plan-2026-09-21.md
+        // §3 celah 2 — F2 hasn't decided whether to widen it yet).
+        options.reporter.report({
+            kind: 'camera_reactivation_succeeded',
+            occurredAt: now(),
+        });
+        setStatus('active');
+    }
+
     async function reactivate(): Promise<void> {
         if (status !== 'interrupted' && status !== 'reactivation_failed') {
             return;
@@ -183,6 +220,7 @@ export function createCameraController(
         activate,
         deactivate,
         handleStreamEnded,
+        handleStreamResumed,
         reactivate,
         subscribe(listener) {
             listeners.add(listener);
