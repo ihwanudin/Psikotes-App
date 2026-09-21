@@ -1,5 +1,7 @@
 import { useState } from 'react';
 
+import { Button } from '@/components/ui/button';
+
 import type { AutosaveSend } from '../session-runner/autosave-engine.ts';
 import { useAutosave } from '../session-runner/use-autosave.ts';
 import { useResumeAnswers } from '../session-runner/use-resume-answers.ts';
@@ -90,22 +92,26 @@ export function PapiItemsRunner({
 
     if (items.state.status === 'reconnecting') {
         return (
-            <div role="alert">
-                <p>Tidak dapat terhubung. Coba lagi.</p>
-                <button type="button" onClick={items.retry}>
+            <div role="alert" className="flex flex-col items-start gap-3">
+                <p className="text-sm text-slate-700">
+                    Tidak dapat terhubung. Coba lagi.
+                </p>
+                <Button type="button" className="h-11" onClick={items.retry}>
                     Coba lagi
-                </button>
+                </Button>
             </div>
         );
     }
 
     if (resume.state.status === 'reconnecting') {
         return (
-            <div role="alert">
-                <p>Tidak dapat memuat jawaban tersimpan. Coba lagi.</p>
-                <button type="button" onClick={resume.retry}>
+            <div role="alert" className="flex flex-col items-start gap-3">
+                <p className="text-sm text-slate-700">
+                    Tidak dapat memuat jawaban tersimpan. Coba lagi.
+                </p>
+                <Button type="button" className="h-11" onClick={resume.retry}>
                     Coba lagi
-                </button>
+                </Button>
             </div>
         );
     }

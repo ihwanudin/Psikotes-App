@@ -1,6 +1,9 @@
 import { createRoot } from 'react-dom/client';
 
-import type { AutosaveBatch, AutosaveSendOutcome } from '../../../resources/js/components/participant/session-runner/autosave-engine';
+import type {
+    AutosaveBatch,
+    AutosaveSendOutcome,
+} from '../../../resources/js/components/participant/session-runner/autosave-engine';
 import type { ResumeAnswersOutcome } from '../../../resources/js/components/participant/session-runner/resume-answers';
 import { PapiItemsRunner } from '../../../resources/js/components/participant/papi/papi-items-runner';
 import type { PapiItemsOutcome } from '../../../resources/js/components/participant/papi/papi-items';
@@ -46,7 +49,24 @@ const availableOutcome: PapiItemsOutcome = {
     },
 };
 
+// The FIRST call of each fetcher fails with a real network_error, so both
+// of PapiItemsRunner's reconnecting states (items' "Tidak dapat terhubung"
+// and resume's "Tidak dapat memuat jawaban tersimpan") can actually be
+// seen and their "Coba lagi" buttons clicked, not just read from source
+// (same convention as the KraepelinRunner fixture). Because items' check
+// comes first in PapiItemsRunner's if-chain, they surface one at a time:
+// items reconnects first; clicking its "Coba lagi" resolves it and (since
+// resume's own first attempt also already failed, never retried) resume's
+// reconnecting block appears next.
+let itemsFetchAttempts = 0;
+
 async function fetchItems(): Promise<PapiItemsOutcome> {
+    itemsFetchAttempts++;
+
+    if (itemsFetchAttempts === 1) {
+        return { type: 'network_error' };
+    }
+
     return availableOutcome;
 }
 
@@ -60,14 +80,23 @@ const resumeOutcome: ResumeAnswersOutcome = {
     answers: [{ itemNo: 1, value: 'a' }],
 };
 
+let resumeFetchAttempts = 0;
+
 async function fetchResumeAnswers(): Promise<ResumeAnswersOutcome> {
+    resumeFetchAttempts++;
+
+    if (resumeFetchAttempts === 1) {
+        return { type: 'network_error' };
+    }
+
     return resumeOutcome;
 }
 
 function queueRetry(retry: () => void): () => void {
-    // No real connectivity signal in this fixture -- neither fetchItems
-    // nor fetchResumeAnswers above ever fail, so queueRetry is never
-    // actually invoked.
+    // No real connectivity signal in this fixture -- neither fetcher
+    // above ever auto-recovers, so queueRetry is never actually invoked;
+    // only clicking a "Coba lagi" button (which calls retry() directly,
+    // bypassing the queue) retries.
     void retry;
 
     return () => {};
@@ -94,7 +123,10 @@ async function send(batch: AutosaveBatch): Promise<AutosaveSendOutcome> {
     // own module doc describes ("the caller supplies the actual HTTP
     // transport").
     window.__papiAutosaveCalls.push(
-        batch.items.map((item) => ({ item_no: item.itemNo, value: item.value })),
+        batch.items.map((item) => ({
+            item_no: item.itemNo,
+            value: item.value,
+        })),
     );
 
     return {
