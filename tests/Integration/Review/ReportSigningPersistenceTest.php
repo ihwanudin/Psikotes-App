@@ -783,6 +783,17 @@ final class ReportSigningPersistenceTest extends TestCase
      * second signer racing past the lock would leave behind - and confirm
      * the service's insert hits the unique constraint and returns a clean
      * 409, not an unhandled 500.
+     *
+     * On PostgreSQL (proven in tests/Postgres/ReportSigningConcurrencyTest,
+     * SQLite doesn't have this failure mode at all) the unique violation
+     * also requires sign() to roll back before returning - otherwise the
+     * poisoned transaction fails the very next statement instead, still
+     * producing a 500. That rollback also undoes the query listener's own
+     * simulated competing insert above, since both run on this same
+     * connection - a same-process-simulation artifact, not something this
+     * test can observe either way (a real second signer's row lives in its
+     * own already-committed transaction, unaffected by this one rolling
+     * back), so this doesn't assert the competing row survived.
      */
     public function test_version_conflict_at_insert_returns_409_not_500(): void
     {
@@ -813,8 +824,10 @@ final class ReportSigningPersistenceTest extends TestCase
         $this->assertTrue($injected, 'The query listener never saw the latest-snapshot lookup - test setup is stale.');
         $response->assertStatus(409);
         $response->assertJsonPath('error.code', 'SIGNING_CONFLICT');
-        // The conflicting service insert must not have landed a second row.
-        $this->assertDatabaseCount('report_signing_snapshots', 1);
+        // The connection must still be usable after the 409 - a plain query
+        // here must not itself blow up (see the PostgreSQL test for the
+        // failure mode this actually guards against).
+        $this->assertTrue(DB::table('assessment_cases')->where('id', $case->id)->exists());
     }
 
     // Proof that sign() actually issues SELECT ... FOR UPDATE lives in

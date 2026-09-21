@@ -260,7 +260,7 @@ final class ReportSigningService
         $signedAt = now();
         $signedByAdminId = (int) $psychologist->id;
 
-        $result = $this->runner->runAsService(function () use (
+        $signingClosure = function () use (
             $casePublicId, $input, $signedAt, $signedByAdminId, $snapshot,
         ): array {
             $caseRecord = DB::table('assessment_cases')
@@ -312,33 +312,55 @@ final class ReportSigningService
             $supersedesId = $latest?->id;
             $id = (string) Str::ulid();
 
-            try {
-                DB::table('report_signing_snapshots')->insert([
-                    'id' => $id,
-                    'assessment_case_id' => $caseId,
-                    'version' => $version,
-                    'supersedes_id' => $supersedesId,
-                    'state' => 'SIGNED',
-                    'eligibility_version_id' => $input['eligibility_version_id'],
-                    'narrative_version_id' => $input['narrative_version_id'],
-                    'snapshot_json' => $snapshotJson,
-                    'signed_by_admin_id' => $signedByAdminId,
-                    'signed_at' => $signedAt,
-                    'created_at' => $signedAt,
-                ]);
-            } catch (QueryException $e) {
-                if (! $this->isVersionConflict($e)) {
-                    throw $e;
-                }
-
-                // Should not happen with the row lock above in place - kept
-                // as a second, independent safety net (see the comment on
-                // this closure).
-                return ['found' => false, 'error_code' => 'SIGNING_CONFLICT'];
-            }
+            DB::table('report_signing_snapshots')->insert([
+                'id' => $id,
+                'assessment_case_id' => $caseId,
+                'version' => $version,
+                'supersedes_id' => $supersedesId,
+                'state' => 'SIGNED',
+                'eligibility_version_id' => $input['eligibility_version_id'],
+                'narrative_version_id' => $input['narrative_version_id'],
+                'snapshot_json' => $snapshotJson,
+                'signed_by_admin_id' => $signedByAdminId,
+                'signed_at' => $signedAt,
+                'created_at' => $signedAt,
+            ]);
 
             return ['found' => true, 'row' => DB::table('report_signing_snapshots')->where('id', $id)->sole()];
-        });
+        };
+
+        // KNOWN LIMITATION, not yet resolved - see
+        // tasks/handoffs/f5/report-signing-conflict-500.md. Catching the
+        // unique-violation QueryException here (outside runAsService) is
+        // necessary but NOT sufficient on PostgreSQL: runAsService()'s own
+        // finally block (RlsContextRunner::applyDatabaseContext, restoring
+        // the previous RLS role) runs an additional query on its way out
+        // regardless of whether the closure threw, and if the transaction
+        // is already aborted (25P02, which a failed statement always causes
+        // until rolled back) THAT query fails too - with a DIFFERENT
+        // exception that reaches this catch instead of the original one, so
+        // isVersionConflict() correctly does not recognize it and re-throws
+        // as an unhandled 500. A manual DB::rollBack() here was tried and
+        // rejected: since runAsService's "elevate" branch (the one always
+        // taken when sign() runs inside an admin RLS context, i.e. every
+        // real HTTP request through ApplyRlsContext) does not own its own
+        // transaction, rolling back mid-flight desyncs the OUTER
+        // connection->transaction() call's own bookkeeping - confirmed
+        // against real PostgreSQL to discard more than the failed insert
+        // (the assessment_case row from an earlier, already-committed
+        // transaction level came back null after "recovering" this way).
+        // The row lock above already makes this race exceedingly unlikely;
+        // it is not closed here pending a decision on whether the fix
+        // belongs in this service or in RlsContextRunner itself.
+        try {
+            $result = $this->runner->runAsService($signingClosure);
+        } catch (QueryException $e) {
+            if (! $this->isVersionConflict($e)) {
+                throw $e;
+            }
+
+            $result = ['found' => false, 'error_code' => 'SIGNING_CONFLICT'];
+        }
 
         if (! $result['found']) {
             $messages = [
