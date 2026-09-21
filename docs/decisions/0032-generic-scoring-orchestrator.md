@@ -62,10 +62,45 @@ sebelum commit. Alasan: `status='submitted'` dan hasil ternilai menjadi SATU
 peristiwa atomik — tidak ada jendela waktu di mana sesi berstatus `submitted`
 tapi belum ada (atau gagal punya) hasil karena proses terputus di antaranya.
 Konsisten dengan pola atomik yang sudah dipakai di seluruh basis kode ini
-(mis. autosave, alokasi sesi). Biaya: latensi respons `/submit` bertambah
-sebesar waktu penilaian murni (kalkulator-kalkulator ini murni/cepat, bukan
-I/O berat, jadi kemungkinan besar dapat diabaikan — perlu diukur, bukan
-diasumsikan).
+(mis. autosave, alokasi sesi).
+
+**Koreksi wajib (Lead, 2026-09-21): orkestrator TIDAK BOLEH melempar
+exception untuk kegagalan penilaian yang sudah bisa diduga** (mis.
+kelengkapan ditolak di bawah kebijakan semua-atau-tidak-sama-sekali, Titik
+B — perilaku hari ini). Kalau ia melempar di dalam transaksi submit, SELURUH
+transaksi di-rollback, termasuk `status='submitted'`: peserta menekan
+"Kumpulkan", gagal, mencoba lagi dan gagal lagi, sementara timer terus
+berjalan sampai sesinya kedaluwarsa — kesalahan kelengkapan kita menjadi
+masalah peserta. Baris kegagalan audit di §3, kalau ditulis di transaksi
+yang sama, juga ikut hilang saat rollback, sehingga psikolog/admin tidak
+pernah melihatnya — persis yang §3 ingin cegah.
+
+Perbaikannya, tanpa kehilangan atomisitas yang diinginkan: **orkestrator
+tidak melempar untuk kegagalan yang sudah bisa diduga — ia MENGEMBALIKAN
+NILAI berupa hasil `scored` atau `failed_to_score` (dengan kode alasan), dan
+KEDUANYA (baik hasil penilaian maupun baris kegagalan §3) ditulis dalam
+TRANSAKSI YANG SAMA dengan `status='submitted'`.** Dengan begitu:
+
+- submit peserta SELALU tercatat — `status='submitted'` tidak pernah
+  di-rollback karena alasan penilaian;
+- "status + (hasil-penilaian ATAU baris-kegagalan)" tetap satu peristiwa
+  atomik — tidak ada jendela di mana submit sukses tapi tidak ada satu pun
+  jejak hasil/kegagalan penilaian.
+
+Satu-satunya yang BOLEH me-rollback seluruh submit adalah kegagalan
+infrastruktur yang benar-benar tidak terduga (database mati dan sejenisnya)
+— di kasus itu submit memang belum sungguh terjadi, jadi rollback penuh
+tetap benar dan bukan pengecualian dari aturan di atas.
+
+**Test wajib**: submit dengan jawaban tidak lengkap di bawah kebijakan
+semua-atau-tidak-sama-sekali → respons HTTP **sukses**, `test_sessions.status`
+menjadi `submitted`, dan satu baris kegagalan penilaian (§3) tercatat dalam
+transaksi yang sama. Tidak ada rollback; peserta tidak terjebak mencoba
+submit berulang kali sementara timernya terus berjalan.
+
+Biaya: latensi respons `/submit` bertambah sebesar waktu penilaian murni
+(kalkulator-kalkulator ini murni/cepat, bukan I/O berat, jadi kemungkinan
+besar dapat diabaikan — perlu diukur, bukan diasumsikan).
 
 **(b) Kedaluwarsa tanpa request lanjutan** — peserta meninggalkan tes, tidak
 pernah mengirim autosave/submit lagi setelah `ends_at` lewat. Transisi ke
@@ -86,6 +121,13 @@ psikometri di bawah memutuskan sesi `expired` memang harus dinilai).
 Command ini murni housekeeping/pemicu — tidak menaruh logika waktu di klien,
 tidak mengubah `ends_at`/`started_at`, hanya menyapu sesi yang jamnya SUDAH
 lewat menurut jam server yang sama yang dipakai di tempat lain.
+
+**Prinsip yang sama seperti §1(a) berlaku di sini**: kegagalan menilai SATU
+sesi (dicatat sebagai baris §3) TIDAK BOLEH menghentikan penyapuan sesi-sesi
+lain dalam batch yang sama. Setiap sesi diproses dalam transaksinya sendiri
+(transisi ke `expired` + hasil-penilaian-atau-kegagalan sebagai satu unit
+atomik per sesi, sama seperti §1a); command lanjut ke sesi berikutnya
+setelah mencatat kegagalan satu sesi, tidak berhenti di tengah batch.
 
 ### 2. Penyegelan — sudah cukup, satu perubahan diperlukan pada gerbang status
 
@@ -114,10 +156,22 @@ hilang di worker antrean. Usul: catatan audit tahan-lama (append-only, mis.
 tabel baru `assessment_scoring_attempts` atau perluasan `audit_logs` yang
 sudah ada) berisi minimal: session_id, instrument, waktu percobaan, hasil
 (`scored`/`failed`), alasan gagal (kode, bukan pesan bebas, supaya bisa
-difilter). Ini yang membuat peserta bernilai kosong TERLIHAT oleh
-psikolog/admin, bukan hilang diam-diam persis seperti temuan submit-kelengkapan
-GLM. Menampilkannya di panel admin (Filament) adalah pekerjaan susulan di luar
-scope ADR ini, bukan syarat untuk versi pertama.
+difilter).
+
+**Wajib (Lead, 2026-09-21): baris kegagalan ini HARUS ditulis dalam transaksi
+YANG SAMA dengan transisi status yang memicunya** (`status='submitted'` untuk
+§1a, transisi ke `expired` untuk §1b) — TIDAK BOLEH di transaksi terpisah,
+job susulan, atau proses async lain yang bisa gagal/hilang secara independen
+dari transisi status itu sendiri. Kalau ditulis terpisah, sebuah rollback
+pada transaksi utama (jarang, tapi mungkin untuk kegagalan infrastruktur)
+bisa meninggalkan status berubah tanpa baris kegagalan yang menjelaskannya,
+atau sebaliknya. Menulis di transaksi yang sama menjamin keduanya konsisten
+selalu — persis prinsip yang sama dengan koreksi §1(a) di atas.
+
+Ini yang membuat peserta bernilai kosong TERLIHAT oleh psikolog/admin, bukan
+hilang diam-diam persis seperti temuan submit-kelengkapan GLM. Menampilkannya
+di panel admin (Filament) adalah pekerjaan susulan di luar scope ADR ini,
+bukan syarat untuk versi pertama.
 
 ### 4. Hubungan ke hilir (F3/F4/F5)
 
@@ -192,8 +246,11 @@ seperti bobot/norma lainnya.
   seperti 5 command lain yang sudah berjalan).
 - Test PostgreSQL wajib untuk orkestrator: idempotensi di bawah proses
   konkuren (dua worker mencoba menilai sesi yang sama bersamaan — pola sama
-  seperti test balapan yang sudah ada di lane ini), dan RLS/append-only pada
-  tabel audit kegagalan baru kalau dipilih sebagai tabel terpisah.
+  seperti test balapan yang sudah ada di lane ini), RLS/append-only pada
+  tabel audit kegagalan baru kalau dipilih sebagai tabel terpisah, dan bukti
+  langsung dari koreksi §1(a)/§3: submit dengan jawaban tidak lengkap
+  menghasilkan `status='submitted'` PLUS baris kegagalan, bukan rollback
+  seluruh transaksi.
 
 ## Alternatif yang Dipertimbangkan
 
