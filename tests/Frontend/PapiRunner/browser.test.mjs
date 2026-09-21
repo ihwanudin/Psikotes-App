@@ -1,4 +1,11 @@
 // Playwright CLI run-code --filename entrypoint; uses an isolated browser profile.
+// See tests/Frontend/PsychologistReview/browser.test.mjs for the same guard: the CLI
+// splices this file's raw content into `await (<content>)(page);`, so a trailing `;`
+// after the closing `}` (which a formatting run would otherwise add) breaks the splice
+// with a SyntaxError. The bare `prettier-ignore` line below (nothing else on that line,
+// or Prettier won't recognize it) keeps that from happening even under a broad
+// `prettier --write`, without forcing the body itself to stay semicolon-free.
+// prettier-ignore
 // eslint-disable-next-line @typescript-eslint/no-unused-expressions -- CLI evaluates this function expression as its entrypoint.
 async (page) => {
     const origin = 'http://127.0.0.1:8013'
