@@ -56,6 +56,17 @@ exactly (no normalization) rather than "correcting" it — the codebase's
 existing convention here is deliberate, not an oversight, given both
 original call sites already agreed on it independently.
 
+**Why "fixing" the lexicographic comparison would be wrong, not just
+unnecessary**: that fragility is a property of the SQLite test harness
+(no native timezone-aware type, so the contract trigger falls back to
+string comparison) — production runs on PostgreSQL, where `ends_at`/
+`expired_at` are real `timestamptz` columns and compare correctly
+regardless of stored offset. Normalizing timestamps here would be
+solving a problem production doesn't have while breaking a test that
+correctly proves offset-preservation elsewhere in this lane; if anyone
+is tempted to "normalize for consistency" again, that instinct is
+solving the wrong layer's problem.
+
 ## Per-row isolation, proven two ways
 
 1. **SQLite, deterministic**: `SweepExpiredAssessmentSessionsTest`
