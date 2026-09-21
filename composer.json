@@ -64,6 +64,7 @@
             "npm run lint:check",
             "npm run format:check",
             "npm run types:check",
+            "npm run test:frontend-unit",
             "npm run security:scan:test",
             "npm run security:scan:secret",
             "npm run security:scan:pii",
