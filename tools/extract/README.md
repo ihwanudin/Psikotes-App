@@ -38,3 +38,23 @@ red. Keep this true when adding a new instrument's items:
   `if not path.exists(): return` that would make an unrun test look green.
   None of the current test modules need this yet, but the next one that does
   should follow this pattern from the start.
+
+## A PR gone `CONFLICTING` silently stops triggering CI at all
+
+Found while landing the CI step above (PR #56): once `main` moves past the
+point where two open PRs each independently added the same new file (here,
+both this PR and the RMIB items PR added `tools/extract/requirements.txt`),
+the *older* PR's mergeability flips to `CONFLICTING` - and from that moment,
+pushing new commits to it **does not trigger any `pull_request` workflow run
+at all**. Not a red X, not even a queued run - GitHub can't compute the
+synthetic base+head test-merge commit a `pull_request` trigger needs, so it
+silently declines to schedule anything (confirmed via `gh api
+repos/.../actions/runs?branch=...` and `.../check-suites` both coming back
+empty for the new commits, while `gh pr view --json mergeable` showed
+`CONFLICTING`).
+
+This is easy to misread as "CI is just slow" and wait on. If a push to an
+open PR produces no new run after a couple of minutes, check
+`gh pr view <n> --json mergeable` before assuming a queue backlog - merge
+fresh `origin/main` in and resolve the conflict, and runs resume
+immediately.
