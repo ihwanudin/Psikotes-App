@@ -7,6 +7,49 @@ Scope: Lead's plan sign-off, 2026-09-21 ("Tahap 1 (kerjakan sekarang):
 fixture sintetis. Satu PR."). ME (word-list ambiguity, psikolog belum
 memutuskan) and FA/WU (PR #73, unmerged) are explicitly OUT of scope here.
 
+## Post-review correction (2026-09-21, same day): RLS/GRANT gap on `assessment_asset_references`
+
+Lead's review of the initial PR caught a real S4-class gap: the migration
+created `assessment_asset_references` with no RLS and no GRANT at all. I'd
+based "no RLS needed" on reading only `instrument_versions`'s ORIGINAL
+creation migration (`2026_08_23_000000_create_instrument_versions_table.php`),
+which indeed has none -- but missed that its actual service-only RLS/GRANT
+were added later by a separate migration
+(`2026_09_09_000100_harden_instrument_versions_history.php`), which I never
+read. Without an explicit GRANT, PostgreSQL's default privileges leave
+`psikotes_runtime` with broader-than-intended access (confirmed while
+fixing this: `has_table_privilege('psikotes_runtime', ..., 'DELETE')` was
+`true` until an explicit `REVOKE ALL PRIVILEGES ... FROM psikotes_runtime`
+was added before the narrower `GRANT SELECT, INSERT, UPDATE` -- SQLite has
+no privilege model at all, so this was invisible to every SQLite test that
+had run until this point).
+
+Fixed by folding service-only RLS + GRANT directly into the table's own
+creation migration (matching `identity_evidence`'s single-migration shape,
+since there's no pre-existing unprotected data here to migrate around, so
+no separate harden step is needed): `REVOKE ALL` then `GRANT SELECT,
+INSERT, UPDATE` (no DELETE -- nothing in this codebase deletes a row),
+`ENABLE`/`FORCE ROW LEVEL SECURITY`, and three `app_private.app_role() =
+'service'` policies (select/insert/update). New
+`tests/Postgres/AssessmentAssetReferencesSecurityTest.php` (6 tests)
+proves: the exact privilege/policy shape; a participant context's direct
+`SELECT` is RLS-masked to zero rows and a direct `INSERT` is refused
+(SQLSTATE 42501); the real `GetAssessmentSessionAssetUrlController` issues
+a URL end-to-end under PostgreSQL for an `in_progress` IST session; a
+cross-instrument asset 404s (`ASSET_NOT_FOUND`) under PostgreSQL;
+`SyncIstAssets`'s write path succeeds under the exact role `assets:sync-ist`
+runs as at deploy (`psikotes_runtime`, confirmed by asserting
+`current_user` directly -- see the role clarification below); and a
+migration up→down→up cycle round-trips cleanly.
+
+**Which role runs `assets:sync-ist` at deploy** (Lead asked this
+explicitly): unlike `migrate` (owner-only, `pgsql_migration` connection),
+`assets:sync-ist` is a plain `php artisan` command against the app's
+normal `pgsql` connection -- i.e. the runtime role `psikotes_runtime`,
+under RLS `app.role='service'` via `RlsContextRunner::runAsService()`,
+exactly like every other write this codebase makes. It needs no owner
+credential. Documented in `DEPLOYMENT.md`'s bootstrap sequence.
+
 ## What shipped
 
 - **`IstItemContentReader`** (new,

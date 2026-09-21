@@ -73,13 +73,19 @@ S3, monitoring, dan tunnel tetap tidak aktif sampai owner dan evidence tersedia.
 5. Setelah migrasi, jalankan `php artisan assets:sync-ist` (F2 IST reader
    Stage 1, 2026-09-21) pada tahap yang sama dengan `migrate` -- deploy-time,
    bukan scheduler berkala, karena tidak ada apa pun untuk diperiksa ulang
-   di antara deploy. Command ini menyalin
+   di antara deploy. **Peran DB**: berbeda dari `migrate` (owner-only,
+   `pgsql_migration`), command ini adalah `php artisan` biasa yang jalan
+   lewat koneksi `pgsql` normal milik `app` -- yaitu peran runtime
+   `psikotes_runtime`, RLS `app.role='service'` (lewat
+   `RlsContextRunner::runAsService()`, sama seperti tulisan app lainnya).
+   Tidak butuh credential owner. Command ini menyalin
    `database/seeders/data/assets/ist/**/*.png` (sumber checked-in, ditinjau
    sama seperti `ist_items.json`) ke disk privat `ist-assets` dan mencatat
-   `asset_id` opaque per berkas di `assessment_asset_references`. **Exit
-   code bukan-nol WAJIB menggagalkan deploy** -- command menolak melanjutkan
-   bila checksum berkas yang baru ditulis tidak cocok dengan sumbernya
-   setelah sync (byte korup), dan tidak pernah diam-diam tetap memakai aset
+   `asset_id` opaque per berkas di `assessment_asset_references` (tabel RLS
+   `service`-only, sama pola dengan `instrument_versions`). **Exit code
+   bukan-nol WAJIB menggagalkan deploy** -- command menolak melanjutkan bila
+   checksum berkas yang baru ditulis tidak cocok dengan sumbernya setelah
+   sync (byte korup), dan tidak pernah diam-diam tetap memakai aset
    lama/rusak.
 6. Periksa `GET /health` dan daftar proses/schedule sebelum test. `/up` juga
    terdaftar oleh Laravel, tetapi semantics liveness-vs-readiness belum dibekukan.
