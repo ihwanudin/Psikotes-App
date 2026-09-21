@@ -137,6 +137,18 @@ dihapus:
   error membuat kesalahan itu ketahuan saat build/test, bukan diam-diam lolos
   ke production — konsisten dengan prinsip "jangan diam-diam memilih" di
   CLAUDE.md. Diimplementasikan di PR (a).
+  - **Syarat tambahan Lead:** `throw` di resolver hanya aman kalau tertangkap
+    SEBELUM produksi — tanpa jaring pengaman, halaman baru yang lupa
+    didaftarkan baru ketahuan sebagai layar putih di perangkat peserta,
+    bukan di CI. PR (a) wajib menyertakan test yang mengiterasi semua berkas
+    di `resources/js/pages/**` (glob nama file relatif terhadap `pages/`,
+    dikonversi ke bentuk `name` yang sama seperti dipakai Inertia — tanpa
+    ekstensi `.tsx`, pakai `/` sebagai separator), memanggil resolver layout
+    `app.tsx` untuk tiap nama itu, dan assert TIDAK ADA yang melempar. Test
+    ini otomatis menjaring halaman baru di masa depan yang lupa didaftarkan
+    ke salah satu cabang resolver — kalau resolver-nya sendiri diekstrak
+    supaya bisa diuji lepas dari `createInertiaApp()` (fungsi `layout`
+    murni, diimpor terpisah), bukan cuma dibaca ulang isinya di test.
 
 ### 1.6 Wayfinder-generated routes (`resources/js/routes/`, `resources/js/actions/`)
 Kedua folder ini **di-gitignore** (`.gitignore` baris untuk
