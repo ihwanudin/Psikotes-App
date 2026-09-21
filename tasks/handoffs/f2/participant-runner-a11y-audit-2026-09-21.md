@@ -215,6 +215,7 @@ dari komponen produksi — dikeluarkan dari tabel di bawah.
 | T-I4 | Chip lompat "Butir N" (`ist-subtest-summary.tsx:63-69`, layar ringkasan) | — | `px-3 py-1 text-xs` (terukur ~25px tinggi) | — | Tidak ada `outline-none` | Identik pola T-P5/T-R5 |
 | T-I5 | Tombol "Selesai" (`ist-subtest-summary.tsx:76-82`) | — | 36px tinggi (shadcn default) | — | shadcn `Button` | |
 | T-I6 | Nama aksesibel opsi radio (`ist-multiple-choice-item.tsx:49-65`) | — | — | — | — | Sama seperti T-P8, dan sedikit lebih parah: huruf opsi di sini bahkan tidak `aria-hidden` (beda dari PAPI), tapi lewat `read_page` tetap terbukti radio-nya sendiri tidak bernama — teks jadi node `generic` terpisah, bukan nama radio |
+| T-I7 | Tombol "Coba lagi" gambar opsi gagal dimuat (`ist-asset-image.tsx:65-79`) | — | Semula `px-2 py-1 text-xs` (~20px tinggi), ✅ **diperbaiki** ke `min-h-11 min-w-11` (64×44px terukur) — commit `be6b77a` | — | — | Beda dari T-I2–T-I5: bukan cuma target-sentuh-kecil biasa, tapi kegagalan gambar opsi FA/WU membuat butir itu **tidak bisa dijawab** sama sekali — kalau peserta di HP tidak bisa mengetuk tombol ini, dia kehilangan skor tanpa kesalahan, sementara waktu subtes terus berjalan (Lead, 2026-09-21). Diverifikasi dengan kegagalan `fetchAssetUrl` sungguhan (bukan cuma `<img>` 404, yang TIDAK memicu state `error` ini — lihat `ist-asset-url-loader.ts`), di 360px |
 
 IST mengulang persis pola PAPI (arsitektur & komponen navigasi/ringkasan
 memang mirror satu sama lain, dan tidak ada `outline-none` di satu pun
