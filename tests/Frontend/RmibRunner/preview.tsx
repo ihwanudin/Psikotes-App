@@ -46,7 +46,25 @@ const availableOutcome: RmibItemsOutcome = {
     },
 };
 
+// The FIRST call of each fetcher fails with a real network_error, so both
+// of RmibItemsRunner's reconnecting states (items' "Tidak dapat
+// terhubung" and resume's "Tidak dapat memuat jawaban tersimpan") can
+// actually be seen and their "Coba lagi" buttons clicked, not just read
+// from source (same convention as the PapiRunner/KraepelinRunner
+// fixtures). Because items' check comes first in RmibItemsRunner's
+// if-chain, they surface one at a time: items reconnects first; clicking
+// its "Coba lagi" resolves it and (since resume's own first attempt also
+// already failed, never retried) resume's reconnecting block appears
+// next.
+let itemsFetchAttempts = 0;
+
 async function fetchItems(): Promise<RmibItemsOutcome> {
+    itemsFetchAttempts++;
+
+    if (itemsFetchAttempts === 1) {
+        return { type: 'network_error' };
+    }
+
     return availableOutcome;
 }
 
@@ -68,14 +86,23 @@ const resumeOutcome: ResumeAnswersOutcome = {
     answers: group1ResumedAnswers,
 };
 
+let resumeFetchAttempts = 0;
+
 async function fetchResumeAnswers(): Promise<ResumeAnswersOutcome> {
+    resumeFetchAttempts++;
+
+    if (resumeFetchAttempts === 1) {
+        return { type: 'network_error' };
+    }
+
     return resumeOutcome;
 }
 
 function queueRetry(retry: () => void): () => void {
-    // No real connectivity signal in this fixture -- neither fetchItems
-    // nor fetchResumeAnswers above ever fail, so queueRetry is never
-    // actually invoked.
+    // No real connectivity signal in this fixture -- neither fetcher
+    // above ever auto-recovers, so queueRetry is never actually invoked;
+    // only clicking a "Coba lagi" button (which calls retry() directly,
+    // bypassing the queue) retries.
     void retry;
 
     return () => {};
