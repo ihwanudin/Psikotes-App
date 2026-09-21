@@ -212,6 +212,27 @@ Keputusan pemilik proyek:
    `pre-{aksi}`, dan harus dibuktikan bahwa login admin dan login peserta
    tetap berfungsi.
 
+## 14. Spesifikasi foto berkala proctoring — SELESAI
+
+Keputusan pemilik proyek: foto berkala yang diambil kamera setiap 12–20 detik
+acak (SPEC.md §8A.2) disimpan dengan spesifikasi berikut:
+
+- **Resolusi 480×360** (4:3). Kalau kamera memberi rasio lain, frame diperkecil
+  agar muat di dalam 480×360 tanpa diregangkan.
+- **JPEG, kualitas ≈ 0,6.**
+- **Dihapus otomatis 90 hari** setelah diambil (lifecycle penyimpanan). Setelah
+  itu yang tersisa hanya ringkasan peristiwa, tanpa gambar (SPEC.md §8A.7).
+
+Konsekuensi teknis:
+- Ketiga nilai di atas dibaca dari **konfigurasi server**, bukan ditanam
+  sebagai konstanta di klien, supaya bisa direvisi tanpa rilis frontend.
+- Ukuran satu foto diperkirakan puluhan KB, sehingga beban penyimpanan per
+  peserta per baterai tes tetap kecil. Angka pastinya diukur ulang saat
+  backend F7 dibangun.
+- Frame yang gagal diambil (kamera mati) dicatat sebagai fakta, bukan diisi
+  ulang. Lihat butir 12.
+- Foto identitas (butir 5d) **tidak** diatur oleh butir ini.
+
 ## Butir yang masih terbuka setelah dokumen ini
 
 - Konfirmasi hukum untuk retensi foto identitas (butir 5d). Butir 3
