@@ -69,6 +69,42 @@ Assert-Contains $source 'Assert-OutputExcludesKey $output $identitySecret' 'Each
 Assert-Contains $source 'Assert-OutputExcludesKey (($keygenOutput' 'Key generation output must also be scanned.'
 Assert-Contains $source 'key_output_check=PASS steps=$keyOutputChecks' 'Successful runs must attest the key output checks.'
 Assert-Contains $source '[023456789ACDEFGHJKLMNPQRSTUVWXYZ]+$' 'Native age identities containing L must pass validation.'
+Assert-Contains $source "GetEnvironmentVariable('F9_BACKUP_S3_ENDPOINT')" 'S3 endpoint must come from the environment boundary.'
+Assert-Contains $source "GetEnvironmentVariable('F9_BACKUP_S3_BUCKET')" 'S3 bucket must come from the environment boundary.'
+Assert-Contains $source "GetEnvironmentVariable('F9_BACKUP_S3_ACCESS_KEY_ID')" 'S3 access key must come from the environment boundary.'
+Assert-Contains $source "GetEnvironmentVariable('F9_BACKUP_S3_SECRET_ACCESS_KEY')" 'S3 secret key must come from the environment boundary.'
+Assert-Contains $source "GetEnvironmentVariable('F9_BACKUP_S3_REGION')" 'S3 region must come from the environment boundary.'
+Assert-Contains $source 'All five F9_BACKUP_S3_* environment variables are required together.' 'Partial operator configuration must fail closed.'
+Assert-Contains $source 'quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z' 'Synthetic S3-compatible target image must be pinned.'
+Assert-Contains $source 'quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z' 'S3-compatible client image must be pinned.'
+Assert-Contains $source 'docker network create --internal --label $label $offsiteNetwork' 'Synthetic object storage must use its own internal network.'
+Assert-Contains $source '--network $network --network-alias f9-backup-db' 'Database must remain on the isolated database network.'
+Assert-Contains $source '[System.Text.Encoding]::ASCII.GetBytes("age-encryption.org/v1`n")' 'Upload guard must require the complete age header.'
+Assert-Contains $source 'Assert-AgeCiphertext $archivePath' 'Every offsite upload must pass the structural ciphertext guard.'
+Assert-Contains $source 'Send-EncryptedOffsiteCopy $encryptedArchive $offsiteObject' 'The encrypted archive must be the production upload input.'
+Assert-Contains $source 'Send-EncryptedOffsiteCopy $nonAgeProbe' 'Harness must attempt the negative non-age upload.'
+Assert-Contains $source 'Offsite upload rejected: file is not an age ciphertext.' 'Non-age input must fail with a clear message.'
+Assert-Contains $source 'Get-FileSha256 $encryptedArchive' 'Local ciphertext checksum must be computed.'
+Assert-Contains $source 'source.offsite.download.age' 'Uploaded ciphertext must be downloaded again.'
+Assert-Contains $source '$downloadedEncryptedSha256 -cne $localEncryptedSha256' 'Downloaded and local checksums must be compared explicitly.'
+Assert-Contains $source 'Wrong S3 credential rejection probe' 'Harness must execute the wrong-credential negative probe.'
+Assert-Contains $source 'offsite_copy=PASS' 'Successful runs must attest the offsite copy.'
+Assert-Contains $source 's3_output_check=PASS' 'Successful runs must attest S3 credential output checks.'
+Assert-Contains $source 'Exact-label offsite network cleanup' 'Dedicated offsite network must be cleaned by exact label.'
+
+$s3GuardAst = $ast.Find({
+    param($node)
+    $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -ceq 'Assert-OutputExcludesSecrets'
+}, $true)
+Assert-True ($null -ne $s3GuardAst) 'Runner must define the S3 credential output guard.'
+. ([scriptblock]::Create($s3GuardAst.Extent.Text))
+$syntheticS3Secrets = @('F9_SYNTHETIC_ACCESS', 'F9_SYNTHETIC_SECRET')
+Assert-OutputExcludesSecrets 'mc: transfer complete' $syntheticS3Secrets
+$rejectedLeakedS3Secret = $false
+try { Assert-OutputExcludesSecrets "stderr: $($syntheticS3Secrets[1])" $syntheticS3Secrets }
+catch { $rejectedLeakedS3Secret = $true }
+Assert-True $rejectedLeakedS3Secret 'S3 output guard must reject a credential appearing in stderr.'
 
 $keyGuardAst = $ast.Find({
     param($node)
@@ -106,4 +142,4 @@ Assert-True ((ConvertTo-StableSchemaExpression '"CaseSensitive" = 1') -cne `
     (ConvertTo-StableSchemaExpression '"casesensitive" = 1')) `
     'Canonicalization must preserve quoted-identifier case.'
 
-Write-Output 'postgres-backup-restore-contract: PASS (57 assertions)'
+Write-Output 'postgres-backup-restore-contract: PASS (82 assertions)'
