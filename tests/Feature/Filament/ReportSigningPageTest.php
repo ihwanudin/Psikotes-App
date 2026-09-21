@@ -805,6 +805,108 @@ final class ReportSigningPageTest extends TestCase
         $this->assertSame(1, $v2Json['revision']['supersedes_version']);
     }
 
+    // ─── Cross-psychologist ownership (2026-09-22 finding) ───
+
+    /**
+     * Finding surfaced 2026-09-22 (independent security check on PR #97):
+     * this page set isReadOnly purely from snapshot state, so ANY
+     * psychologist could open ANY already-signed case, see the "Ajukan
+     * Revisi" form, submit a 20+ character reason, and overwrite the
+     * original signer. The button is now hidden here and the page exposes
+     * isSignedByAnotherPsychologist so the view can't offer a path the
+     * backend (ReportSigningService::sign()'s own
+     * SIGNED_BY_ANOTHER_PSYCHOLOGIST check) now rejects.
+     */
+    public function test_revision_form_is_hidden_for_a_case_signed_by_another_psychologist(): void
+    {
+        $case = $this->createCase();
+        $baseline = $this->seedBaseline($case);
+        $psychologistA = $this->psychologist();
+        $psychologistB = $this->psychologist();
+
+        DB::table('report_signing_snapshots')->insert([
+            'id' => (string) Str::ulid(),
+            'assessment_case_id' => $case->id,
+            'version' => 1,
+            'supersedes_id' => null,
+            'state' => 'SIGNED',
+            'eligibility_version_id' => $baseline['eligibilityId'],
+            'narrative_version_id' => $baseline['narrativeId'],
+            'snapshot_json' => json_encode([
+                'prerequisite_input' => [
+                    'label' => 'DISARANKAN',
+                    'validity' => 'V1',
+                    'target_field' => 'UMUM',
+                    'procedure_note' => null,
+                    'accompaniment_conditions' => null,
+                    'narrative_clusters' => ['A' => 'Narasi A.', 'B' => 'Narasi B.', 'C' => 'Narasi C.', 'D' => 'Narasi D.'],
+                    'overrides' => [],
+                ],
+                'provenance' => ['signed' => true],
+            ], JSON_THROW_ON_ERROR),
+            'signed_by_admin_id' => $psychologistA->id,
+            'signed_at' => now(),
+            'created_at' => now(),
+        ]);
+
+        $this->actingAs($psychologistB, 'admin');
+        $component = Livewire::test(ReportSigning::class, ['case' => $case->public_id]);
+        $component->assertSuccessful();
+        $component->assertSet('isReadOnly', true);
+        $component->assertSet('isSignedByAnotherPsychologist', true);
+
+        // The revision form itself (textarea + submit button) is gone —
+        // only the blocked-state message renders.
+        $component->assertDontSee('wire:click="requestRevision"', false);
+        $component->assertSee('sudah ditandatangani oleh psikolog lain');
+
+        // Defense in depth: even calling the Livewire action directly
+        // (bypassing the hidden button) does nothing.
+        $component->set('revisionReason', 'Psikolog B mencoba memaksa masuk mode revisi.');
+        $component->call('requestRevision');
+        $component->assertSet('isReadOnly', true);
+        $component->assertSet('isRevision', false);
+    }
+
+    public function test_revision_form_is_shown_for_the_signing_psychologists_own_case(): void
+    {
+        $case = $this->createCase();
+        $baseline = $this->seedBaseline($case);
+        $psychologist = $this->psychologist();
+
+        DB::table('report_signing_snapshots')->insert([
+            'id' => (string) Str::ulid(),
+            'assessment_case_id' => $case->id,
+            'version' => 1,
+            'supersedes_id' => null,
+            'state' => 'SIGNED',
+            'eligibility_version_id' => $baseline['eligibilityId'],
+            'narrative_version_id' => $baseline['narrativeId'],
+            'snapshot_json' => json_encode([
+                'prerequisite_input' => [
+                    'label' => 'DISARANKAN',
+                    'validity' => 'V1',
+                    'target_field' => 'UMUM',
+                    'procedure_note' => null,
+                    'accompaniment_conditions' => null,
+                    'narrative_clusters' => ['A' => 'Narasi A.', 'B' => 'Narasi B.', 'C' => 'Narasi C.', 'D' => 'Narasi D.'],
+                    'overrides' => [],
+                ],
+                'provenance' => ['signed' => true],
+            ], JSON_THROW_ON_ERROR),
+            'signed_by_admin_id' => $psychologist->id,
+            'signed_at' => now(),
+            'created_at' => now(),
+        ]);
+
+        $this->actingAs($psychologist, 'admin');
+        $component = Livewire::test(ReportSigning::class, ['case' => $case->public_id]);
+        $component->assertSuccessful();
+        $component->assertSet('isReadOnly', true);
+        $component->assertSet('isSignedByAnotherPsychologist', false);
+        $component->assertSee('wire:click="requestRevision"', false);
+    }
+
     // ─── Queue page HTTP tests ───
 
     public function test_queue_page_psychologist_returns_200(): void

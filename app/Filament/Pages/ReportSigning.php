@@ -96,6 +96,9 @@ final class ReportSigning extends Page
     #[Locked]
     public bool $isRevision = false;
 
+    #[Locked]
+    public bool $isSignedByAnotherPsychologist = false;
+
     /** @var array<string, mixed>|null */
     #[Locked]
     public ?array $existingSnapshot = null;
@@ -158,6 +161,10 @@ final class ReportSigning extends Page
         if ($snapshot !== null && $snapshot->state === 'SIGNED') {
             $this->isReadOnly = true;
             $this->existingSnapshot = json_decode($snapshot->snapshot_json, true, 512, JSON_THROW_ON_ERROR);
+
+            $currentAdmin = self::currentReviewer();
+            $this->isSignedByAnotherPsychologist = $currentAdmin === null
+                || (int) $snapshot->signed_by_admin_id !== $currentAdmin->id;
         }
 
         // Load case + eligibility data via RLS
@@ -320,6 +327,21 @@ final class ReportSigning extends Page
     public function requestRevision(): void
     {
         if (! $this->isReadOnly) {
+            return;
+        }
+
+        // Defense in depth: the button for this is already hidden in the
+        // blade view when true, but this Livewire action is directly
+        // callable regardless of what's rendered. The real gate is
+        // ReportSigningService::sign()'s own SIGNED_BY_ANOTHER_PSYCHOLOGIST
+        // check - this just fails the same way without a wasted round trip.
+        if ($this->isSignedByAnotherPsychologist) {
+            Notification::make()
+                ->title('Tidak dapat mengajukan revisi')
+                ->body('Laporan ini sudah ditandatangani oleh psikolog lain.')
+                ->danger()
+                ->send();
+
             return;
         }
 

@@ -288,6 +288,16 @@ final class ReportSigningService
 
             // Validate revision_reason if re-signing over a SIGNED snapshot.
             if ($latest !== null && $latest->state === 'SIGNED') {
+                // A report already signed by a DIFFERENT psychologist may not
+                // be re-signed here. There is deliberately no case-reassignment
+                // path yet - a psychologist who disagrees with a colleague's
+                // signed report is a process question for the project owner,
+                // not something this endpoint decides by simply overwriting
+                // signed_by_admin_id. See handoff doc for the finding this
+                // guards against.
+                if ((int) $latest->signed_by_admin_id !== $signedByAdminId) {
+                    return ['found' => false, 'error_code' => 'SIGNED_BY_ANOTHER_PSYCHOLOGIST'];
+                }
                 $reason = isset($input['revision_reason']) && is_string($input['revision_reason']) ? trim($input['revision_reason']) : '';
                 if (mb_strlen($reason) < 20) {
                     return ['found' => false, 'error_code' => 'REVISION_REASON_REQUIRED'];
@@ -357,12 +367,14 @@ final class ReportSigningService
                 'NARRATIVE_VERSION_NOT_FOUND' => 'Referenced version does not belong to this assessment case.',
                 'REVISION_REASON_REQUIRED' => 'Revisi memerlukan alasan minimal 20 karakter.',
                 'SIGNING_CONFLICT' => 'A conflicting signing attempt for this case was just committed. Reload and try again.',
+                'SIGNED_BY_ANOTHER_PSYCHOLOGIST' => 'Laporan ini sudah ditandatangani oleh psikolog lain. Hanya psikolog yang menandatangani versi sebelumnya yang dapat mengajukan revisi.',
             ];
             $statuses = [
                 'CASE_NOT_FOUND' => 404,
                 'NARRATIVE_VERSION_NOT_FOUND' => 404,
                 'REVISION_REASON_REQUIRED' => 422,
                 'SIGNING_CONFLICT' => 409,
+                'SIGNED_BY_ANOTHER_PSYCHOLOGIST' => 403,
             ];
 
             return ['success' => false, 'code' => $result['error_code'], 'message' => $messages[$result['error_code']], 'status' => $statuses[$result['error_code']]];
