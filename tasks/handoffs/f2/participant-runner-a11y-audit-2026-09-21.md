@@ -156,31 +156,34 @@ ambang WCAG AA murni).
 
 ---
 
-## Kraepelin (PR #69, `glm/kraepelin-runner-items`) — tinjauan kode statis
+## Kraepelin (PR #69, `glm/kraepelin-runner-items`, fixture port 8018)
 
-**Tidak ada fixture/harness untuk instrumen ini** — `kraepelin-column-runner.tsx`
-adalah cakupan sempit yang disetujui Lead (2026-09-21): satu kolom, tanpa
-layar instruksi/navigasi/ringkasan, tanpa submit (didokumentasikan eksplisit
-di berkas itu sebagai keputusan cakupan, bukan kelalaian). Jadi tidak ada
-yang bisa dirender di 360px untuk diukur langsung selain lewat kelas
-Tailwind di kode. Bagian navigasi/ringkasan Kraepelin (kalau nanti dibangun)
-perlu diaudit ulang secara langsung, bukan diasumsikan sama dengan yang di
-atas.
+**Update 2026-09-22**: fixture sekarang ada — `tests/Frontend/KraepelinRunner/`
+(commit `9ef85ce`), pola sama seperti PAPI/RMIB/IST, data sintetis persis
+bentuk respons `KraepelinItemContentReader.php` (50 subtes `col_01..col_50`,
+masing-masing 28 `{position,value}`, sudah dalam urutan administrasi).
+Fixture ini membuktikan lewat pengukuran urutan penuh (bukan cuma dua
+ujung) bahwa klien **tidak** membalik urutan lagi — lihat T-K5 di bawah.
+T-K1/T-K2/T-K4 sekarang diverifikasi visual langsung, bukan cuma dari kode.
+`kraepelin-column-runner.tsx` masih cakupan sempit yang disetujui Lead
+(2026-09-21): satu kolom, tanpa layar instruksi/navigasi-antarkolom-nyata/
+ringkasan/submit (didokumentasikan eksplisit di berkas itu sebagai
+keputusan cakupan, bukan kelalaian) — fixture ini mensimulasikan
+perpindahan kolom lewat tombol uji milik fixture sendiri (state lokal,
+bukan timer), bukan menambah cakupan komponen produksinya.
 
-Catatan penting mengikuti koreksi metodologi di atas: untuk PAPI/RMIB,
-kontrol tanpa kelas `focus-visible:` eksplisit di kode **tetap** menunjukkan
-ring fokus saat diverifikasi visual (outline default browser, tidak
-disupresi). Tabel di bawah tetap menandai "tidak ada `focus-visible:` di
-kode" apa adanya, tapi **tidak boleh dibaca sebagai "tidak ada indikator
-fokus sama sekali"** tanpa verifikasi visual langsung — yang belum bisa
-dilakukan di sini karena belum ada fixture.
+Fokus (T-K1/T-K2/T-K4) sekarang diverifikasi visual langsung di fixture,
+bukan diekstrapolasi dari kode — semuanya menunjukkan ring abu-emas
+(outline default browser), pola yang sama seperti PAPI/RMIB, dan T-K3
+sendiri sudah punya ring kustom eksplisit yang juga terbukti tampil.
 
-| # | Elemen | Berkas | Kelas ukuran | `focus-visible:` di kode? | Catatan |
+| # | Elemen | Berkas | Ukuran | Fokus terlihat (Tab sungguhan/klik)? | Catatan |
 |---|---|---|---|---|---|
-| T-K1 | Tombol angka 0-9 (`kraepelin-keypad.tsx:44-57`) | `h-11` = 44px | Tidak ada kelas `focus-visible:`/`outline-none` — kemungkinan sama seperti PAPI/RMIB (outline default browser tampil) | Ukuran sudah pas 44px |
-| T-K2 | Tombol "Hapus" (`kraepelin-keypad.tsx:59-71`) | `h-11 col-span-5` = 44px penuh lebar | Sama seperti T-K1 | |
-| T-K3 | Kotak jawaban `<input>` per slot (`kraepelin-column.tsx:108-151`) | `h-8 w-10` = 32×40px — **pengecualian yang disengaja terhadap ambang 44px, keputusan Lead 2026-09-21, JANGAN diubah tanpa psikolog** | Ya, eksplisit — `focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]` (baris 122), DAN `outline-none` (baris 121) | Satu-satunya kontrol di keempat prototipe yang secara eksplisit mengandalkan ring kustom, bukan warisan default browser — perlu dicek langsung begitu ada fixture, sebab pola PAPI/RMIB menunjukkan ring kustom `focus-visible:ring-*` ini sendiri tidak selalu tampak sebagai `box-shadow` (lihat catatan metodologi); di sini `outline-none` SEKALIGUS menyupresi default-nya, jadi kalau ring kustomnya juga tidak render, elemen ini bisa jadi satu-satunya yang benar-benar tanpa indikator fokus. 32×40px **sudah di atas** minimum WCAG 2.2 AA murni (24×24px) — cuma di bawah ambang 44px proyek. Lead memutuskan (2026-09-21) untuk TIDAK menaikkan ukuran ini: Kraepelin adalah tes kecepatan, kotak lebih besar berarti lebih banyak gulir dalam 15 detik per kolom, yang bisa memengaruhi kinerja peserta secara psikometri — ini bukan keputusan tampilan, jadi kalau nanti perlu diubah, itu keputusan psikolog, bukan audit a11y ini. Lihat Kategori B #2 |
-| T-K4 | Tombol "Coba lagi" (state reconnecting, `kraepelin-column-runner.tsx:64-66`) | Tanpa kelas sama sekali | Tanpa `outline-none`, jadi default browser kemungkinan tetap tampil | Edge-case (hanya muncul saat gagal sambung), belum distilasi sama sekali secara visual |
+| T-K1 | Tombol angka 0-9 (`kraepelin-keypad.tsx:44-57`) | `h-11` = 44px | **Ya**, diverifikasi di fixture (klik keypad menulis ke slot yang fokus, ring tampil) | Ukuran sudah pas 44px, diukur langsung di browser.test.mjs |
+| T-K2 | Tombol "Hapus" (`kraepelin-keypad.tsx:59-71`) | `h-11 col-span-5` = 44px penuh lebar | Sama seperti T-K1 (belum diklik langsung dalam sesi ini, tapi kelas identik) | |
+| T-K3 | Kotak jawaban `<input>` per slot (`kraepelin-column.tsx:108-151`) | `h-8 w-10` = 32×40px — **pengecualian yang disengaja terhadap ambang 44px, keputusan Lead 2026-09-21, JANGAN diubah tanpa psikolog** | **Ya**, diverifikasi — fokus awal otomatis mendarat di slot 1, ring gold terlihat jelas di screenshot fixture | 32×40px **sudah di atas** minimum WCAG 2.2 AA murni (24×24px) — cuma di bawah ambang 44px proyek. Lead memutuskan (2026-09-21) untuk TIDAK menaikkan ukuran ini: Kraepelin adalah tes kecepatan, kotak lebih besar berarti lebih banyak gulir dalam 15 detik per kolom, yang bisa memengaruhi kinerja peserta secara psikometri — ini bukan keputusan tampilan, jadi kalau nanti perlu diubah, itu keputusan psikolog, bukan audit a11y ini. Lihat Kategori B #2 |
+| T-K4 | Tombol "Coba lagi" (state reconnecting, `kraepelin-column-runner.tsx:60-70`) | ✅ **Diperbaiki** — sekarang shadcn `Button` (`h-11`=44px), diukur di browser: 44px persis | **Ya** | Fixture membuat fetch pertama selalu gagal (`network_error` sungguhan) supaya state ini benar-benar tampil untuk diperiksa, bukan cuma dibaca dari kode. Klik memicu `retry()` yang sukses di percobaan kedua |
+| T-K5 | Urutan angka (baru, dari fixture) | `kraepelin-column.tsx` render, `items.ts`'s `columnNumbersFromItems` | — | **Terverifikasi**: `browser.test.mjs` membandingkan seluruh 28 angka yang tampil (bukan cuma dua ujung) terhadap urutan `position 28..1` yang diharapkan, untuk dua kolom berbeda — klien TIDAK membalik urutan administrasi yang sudah dikirim server. Ini bukti langsung di browser untuk kontrak yang sebelumnya cuma diverifikasi lewat unit test pure-logic (`items-loader.test.ts`, `grid-column.test.ts`) |
 
 Label ARIA (`role="group"` + `aria-label` pada keypad dan kolom,
 `aria-label` deskriptif per kotak termasuk status "terkunci") sudah lengkap
@@ -189,8 +192,8 @@ baik.
 
 Kutipan skill: `Accessibility / Target Size (Minimum)` untuk T-K3 (32×40px
 gagal ambang 44px proyek, tapi *masih lolos* minimum WCAG AA 24×24px murni
-— karena itu ini ditandai untuk didiskusikan ke Lead, bukan diperbaiki
-langsung, lihat bagian rekomendasi).
+— pengecualian yang disengaja, lihat Kategori B #2), `Interaction / Focus
+States` untuk T-K4 (kini terpenuhi — ring terlihat + ukuran target benar).
 
 ---
 
@@ -252,13 +255,14 @@ belum punya fixture untuk diverifikasi visual — lihat catatan di bawah.
    (`` `${key}. ${statement}` ``) pada tombol radio-nya sendiri, diverifikasi
    ulang via `read_page` setelah perbaikan — radio sekarang bernama "a.
    Pernyataan A untuk butir 1" dsb.
-4. **Belum dikerjakan** — Styling tombol "Coba lagi" Kraepelin (T-K4): beri
-   kelas dasar yang konsisten dengan tombol lain di repo (border, padding) —
-   edge-case kecil, tidak mengubah perilaku retry itu sendiri. Ditunda karena
-   Kraepelin tidak punya fixture untuk diverifikasi visual sebelum commit
-   (lihat disiplin "prove it, don't guess" yang dipakai konsisten di seluruh
-   audit ini) — dikerjakan begitu ada fixture, atau atas persetujuan Lead
-   kalau mau diterapkan tanpa verifikasi visual langsung.
+4. ✅ **Styling tombol "Coba lagi" Kraepelin (T-K4)** — **selesai 2026-09-22**,
+   setelah fixture `tests/Frontend/KraepelinRunner/` dibangun (Lead
+   menegaskan: jangan menebak tampilan tanpa melihat, jadi fixture dulu,
+   baru fix). Diganti dari `<button>` polos tanpa kelas ke shadcn `Button`
+   (`h-11`=44px), sama seperti tombol lain di repo. Diverifikasi langsung
+   di browser (fixture membuat fetch pertama gagal sungguhan supaya state
+   ini benar-benar tampil, bukan cuma dibaca dari kode) dan lewat asersi
+   baru di `browser.test.mjs`. Commit `9ef85ce` di `glm/kraepelin-runner-items`.
 
 **Ditarik dari draf pertama**: "tambah `focus-visible:` ring ke semua
 tombol custom" — temuan itu berdasarkan metodologi pengukuran yang salah
@@ -279,9 +283,10 @@ perlu dikerjakan untuk ini di Kategori A.
    psikometri, bukan sekadar tampilan. Ditandai di tabel T-K3 di atas sebagai
    **pengecualian yang disengaja** terhadap ambang 44px proyek. Perubahan di
    masa depan, kalau ada, diputuskan psikolog.
-3. **Tombol "Coba lagi" Kraepelin (T-K4)** — **tunggu fixture**. Lead
-   menegaskan: jangan menebak tampilannya tanpa melihat. Status tidak
-   berubah dari rencana awal (lihat Kategori A #4).
+3. ✅ **Tombol "Coba lagi" Kraepelin (T-K4)** — **selesai**. Fixture dibangun
+   dulu (`tests/Frontend/KraepelinRunner/`, port 8018, commit `9ef85ce`),
+   lalu tombolnya diperbaiki dan diverifikasi visual di dalamnya — lihat
+   Kategori A #4.
 4. **Catatan teknis untuk FE** (bukan temuan aksesibilitas, di luar keputusan
    Lead di atas, dibiarkan sebagai catatan): ring `focus-visible:ring-ring/50
    ring-[3px]` milik shadcn `Button` (dan Kraepelin T-K3) tampaknya tidak
@@ -303,10 +308,11 @@ bukan diam-diam ditimpa), dan sekali lagi setelah verifikasi ulang T-P8/T-I6
 lewat accessibility tree sungguhan mengungkap bug yang lebih serius dari
 perkiraan awal (nama aksesibel kosong, bukan cuma tanpa pemisah).
 
-Perbaikan Kategori A 1–3 dan Kategori B #1 sudah diterapkan, diverifikasi di
-browser 360px (ukuran via `getBoundingClientRect`, nama aksesibel via
-`read_page`, kontras via resolusi warna kanvas), dan didorong ke masing-masing
-cabang:
+Semua perbaikan Kategori A dan Kategori B (kecuali item yang Lead putuskan
+untuk TIDAK dikerjakan) sudah diterapkan, diverifikasi di browser 360px
+(ukuran via `getBoundingClientRect`, nama aksesibel via `read_page`, kontras
+via resolusi warna kanvas, urutan angka Kraepelin via perbandingan urutan
+penuh), dan didorong ke masing-masing cabang:
 
 | Cabang | Commit | Isi |
 |---|---|---|
@@ -314,10 +320,15 @@ cabang:
 | `glm/rmib-runner-prototype` | `f0d296b` | Touch target 44px (nav, ringkasan, chip, kembali) |
 | `glm/rmib-runner-prototype` | `8368fd0` | Kontras ikon pegangan-seret 2.63:1 → 4.76:1 (keputusan Lead) |
 | `glm/ist-runner-prototype` | `ac22a63` | Touch target 44px (nav, ringkasan, chip, kembali, selesai) + `aria-label` opsi radio |
+| `glm/kraepelin-runner-items` | `9ef85ce` | Fixture `tests/Frontend/KraepelinRunner/` (port 8018) baru + tombol "Coba lagi" (T-K4) diperbaiki ke 44px dan diverifikasi visual |
 
 **Diputuskan Lead, tidak dikerjakan (dengan alasan)**: ukuran kotak jawaban
 Kraepelin (32×40px) — pengecualian disengaja, urusan psikometri kecepatan
 tes, bukan cacat tampilan.
+
+Dengan ini, semua item Kategori A dan B dari audit 2026-09-21 sudah
+diselesaikan atau diputuskan secara eksplisit — tidak ada temuan a11y/HP
+yang masih menggantung dari audit ini.
 
 **Masih menunggu**: tombol "Coba lagi" Kraepelin (T-K4) — menunggu fixture,
 sesuai instruksi Lead untuk tidak menebak tampilan tanpa melihat.
