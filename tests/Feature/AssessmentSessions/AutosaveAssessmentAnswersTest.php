@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\AssessmentSessions;
 
 use App\Actions\AssessmentSessions\AutosaveAssessmentAnswers;
+use App\Actions\AssessmentSessions\SealExpiredAssessmentSession;
 use App\Domain\AssessmentSessions\AssessmentAutosavePolicy;
 use App\Domain\AssessmentSessions\SessionDefinition;
 use App\Security\RlsContextRunner;
@@ -271,6 +272,7 @@ final class AutosaveAssessmentAnswersTest extends OrganizationPaymentTestCase
         return new AutosaveAssessmentAnswers(
             $this->app->make(RlsContextRunner::class),
             new AssessmentAutosavePolicy,
+            new SealExpiredAssessmentSession($this->app->make(RlsContextRunner::class)),
             $clock(...),
         );
     }

@@ -6,6 +6,7 @@ namespace Tests\Feature\AssessmentSessions;
 
 use App\Actions\AssessmentSessions\AutosaveAssessmentAnswers;
 use App\Actions\AssessmentSessions\GetAssessmentSession;
+use App\Actions\AssessmentSessions\SealExpiredAssessmentSession;
 use App\Actions\AssessmentSessions\SubmitAssessmentSession;
 use App\Domain\AssessmentSessions\AssessmentAutosavePolicy;
 use App\Domain\AssessmentSessions\AssessmentSessionSubmitPolicy;
@@ -445,6 +446,7 @@ final class AssessmentSessionHttpTest extends OrganizationPaymentTestCase
         $this->app->instance(AutosaveAssessmentAnswers::class, new AutosaveAssessmentAnswers(
             $this->app->make(RlsContextRunner::class),
             new AssessmentAutosavePolicy,
+            new SealExpiredAssessmentSession($this->app->make(RlsContextRunner::class)),
             fn (): DateTimeImmutable => new DateTimeImmutable($iso),
         ));
     }
@@ -454,6 +456,7 @@ final class AssessmentSessionHttpTest extends OrganizationPaymentTestCase
         $this->app->instance(SubmitAssessmentSession::class, new SubmitAssessmentSession(
             $this->app->make(RlsContextRunner::class),
             new AssessmentSessionSubmitPolicy,
+            new SealExpiredAssessmentSession($this->app->make(RlsContextRunner::class)),
             fn (): DateTimeImmutable => new DateTimeImmutable($iso),
         ));
     }
