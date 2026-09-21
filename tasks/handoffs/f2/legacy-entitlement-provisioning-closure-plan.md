@@ -1,8 +1,11 @@
 # F2 — Legacy entitlement provisioning: SPEC.md:259 gap and closure plan (2026-09-22)
 
-**Status: parked.** Blocked on the project owner's "dana talang" (funding-bridge)
-decision and on a fact from Lead: whether any organization already uses the
-legacy integration API in production. No code in this PR — plan only.
+**Status: unblocked, revised.** The owner has now answered both blocking
+questions (item 18, PR #81 `b7ffd0a`/`77ef777`): the system is not live yet
+(no organization uses any production integration, including the legacy API),
+and the "dana talang" (bridge funding) direction is decided. Direction A
+applies in full, immediately. Direction B is now designed below. Still no
+code in this PR — plan only, revised per Lead's request before implementation.
 
 ## The gap
 
@@ -34,7 +37,7 @@ parallel `resolveIntegratedForUpdate` path (for participants provisioned via
 `ProvisionAssessmentParticipant`) accepts a `ready` entitlement the same way,
 regardless of how it was funded.
 
-## Reachability (code-level facts; production state unconfirmed)
+## Reachability — confirmed, no longer a hedge
 
 - `POST /api/integrations/v1/selection/participants` (→ `ProvisionSelectionParticipant`):
   off by default (`SELECTION_INTEGRATION_ENABLED` defaults to `false`), live if
@@ -45,9 +48,11 @@ regardless of how it was funded.
   `IntegrationSource` row (`CheckoutContractAdapter::assertLegacyAllowed`
   closes this path automatically, organization by organization, once that
   migration happens — until then it stays open).
-- Neither fact (which orgs are on `checkout-v2`, whether either route is
-  actually being called in production today) is readable from source; it's a
-  question for Lead/the owner, forwarded separately.
+- **Owner confirmed (item 18, PR #81 `b7ffd0a`): the system is not live.**
+  No organization uses any production integration today, including this
+  legacy API. There is no active client to disrupt — Direction A can land
+  with no transition period, no backward-compatibility shim, no phased
+  rollout by organization.
 
 ## Clause (c) has no existing implementation
 
@@ -75,17 +80,156 @@ clause (c), audited manual activation, whether per-participant or
 per-integration. Designing a separate mechanism for these modes now, ahead of
 that decision, risks two colliding paths later.
 
-## Lead's direction (2026-09-22, not final)
+## Direction A — final, ready for implementation
 
-- **Direction A applies now, in principle**, for `COMMERCIAL_SELF_PAY` and any
-  money-verified mode: entitlement `locked`, then the normal (a)/(b) paths.
-  Not implemented in this PR (plan only) — implementation is unblocked once
-  the parked items below resolve, since the two questions are independent
-  (Direction A doesn't depend on the funding-bridge answer), but landing them
-  together avoids touching this action twice.
-- **Sponsored/free/no-payment modes are explicitly parked** until the owner
-  answers the funding-bridge question, so this plan does not design that half
-  at all.
+For `COMMERCIAL_SELF_PAY` and any other mode where real money must be
+verified: `ProvisionAssessmentParticipant`/`ProvisionSelectionParticipant`
+create the entitlement `locked`, not `ready`, and it proceeds through the
+normal (a)/(b) paths (Xendit webhook / admin-verified manual transfer)
+exactly like public registration does. SPEC is explicit here — not an
+interpretation call, and per the reachability confirmation above, no
+transition period or compatibility shim is needed. Nothing else about this
+direction changed from the original plan; it's unblocked, not redesigned.
+
+## Direction B — bridge funding ("dana talang") design, now unblocked
+
+Owner's decision (item 18, PR #81 `b7ffd0a`, literal): the **holding
+company** (ONCAM's parent) funds it, not the LPK and not ONCAM itself. An
+**admin approves**, acting on management instruction — the approval must
+record which admin and a reference to that instruction (a letter/instruction
+number or similar), not a bare approve button with no trail. The
+**participant experience must be identical** to a paying participant — no
+visible special status. After approval, the system issues a **billing
+invoice** to collect later; that billing history must not be lost or
+overwritten. **Mandatory at go-live.** A per-participant/per-branch amount
+cap is explicitly undecided by the owner — design with an optional,
+config-driven cap, unlimited by default, addable later without a schema
+change.
+
+The owner separately confirmed this and SPEC.md:259 clause (c) ("aktivasi
+manual, super_admin, teraudit") are **one mechanism**, not two — this
+section designs both together.
+
+### Critical finding: this does NOT fit the null-`order_id` pattern the
+### earlier draft of this plan assumed
+
+The earlier version of this plan (and Lead's framing) drew on
+`CaseAuthorizationResolver::resolveLegacy`'s pattern — `ready`, `order_id
+IS NULL` — as the shape a manually-activated entitlement should take.
+That pattern is real, but it belongs to `resolveLegacy`, the resolver for
+`source_system = 'SELEKSI_BEASISWA_JEPANG'` participants only (the legacy
+scholarship integration). Bridge funding's actual population is normal
+`DIRECT_PUBLIC` participants — people who registered through the ordinary
+public `/register` flow, who would ordinarily pay themselves, for whom the
+holding company is now covering the cost. That population is authorized by
+a **different** method, `resolveDirect()`
+(`CaseAuthorizationResolver.php:377-419`), which requires:
+
+```php
+$order = $this->one(Order::query()->where('participant_id', $participant->id)...);
+$grant = $this->readyEntitlement($participant->id, $instrument, $order->id);
+// ...
+if ($entitlements->contains(fn (Entitlement $row): bool => $row->order_id !== $order->id)
+    || $order->status->value !== 'paid' || $order->paid_at === null
+    // ...
+) { $this->reject(); }
+```
+
+`resolveDirect()` has **no path that accepts a null `order_id`** — it
+requires a real `orders` row, with `status === 'paid'` and `paid_at` set,
+and every entitlement's `order_id` must equal that order's id. Designing
+bridge funding around a null `order_id` (the legacy pattern) would mean
+either inventing a second, parallel acceptance path inside this
+security-critical resolver (real risk: this is the exact function that
+gates whether an assessment session can start at all), or leaving bridge-
+funded participants structurally unable to start a session through the
+normal flow. Neither is acceptable, and this is exactly the kind of
+mismatch worth surfacing rather than quietly designing around.
+
+### Design: extend `orders`, not bypass it
+
+Instead, bridge funding gets a **real `orders` row**, so `resolveDirect()`
+needs the smallest possible change and every existing invariant it checks
+keeps holding:
+
+- **New `OrderStatus` case**, e.g. `BridgeFunded = 'bridge_funded'`
+  (`app/Enums/OrderStatus.php`, plus widening the `orders_status_check`
+  CHECK constraint). Reusing `'paid'` for this would be dishonest in the
+  ledger — `'paid'`/`paid_at` mean cash was actually received, which isn't
+  true here (the holding company is billed *after* approval, not before).
+  A distinct status keeps that distinction real and auditable.
+- **`resolveDirect()`'s one status check widens** from `$order->status->value
+  !== 'paid'` to accepting `'paid'` OR `'bridge_funded'` (and the
+  `paid_at IS NOT NULL` check needs an equivalent for the new status — an
+  `approved_at`-equivalent timestamp, see below). This is the one, minimal,
+  reviewed change to session-start authorization this design requires —
+  everything else routes around it, not through it.
+- **`payment_method_id` (NOT NULL FK, no schema change needed)**: a
+  synthetic, non-selectable `payment_methods` row (e.g. `code =
+  'bridge_funding'`, `is_active = false` so it never appears in the public
+  registration payment-method list, which is already filtered to `active()`
+  — confirmed in `ParticipantRegistrationController`). Reuses the existing
+  mechanism instead of loosening a NOT NULL column.
+- **The actual invoice-to-collect-later**: a linked `assessment_bills` row,
+  which already has almost the exact right shape for "an amount owed,
+  tracked against an organization/participant, with an admin-verification
+  trail" — `verified_by_admin_id`/`verified_at` (existing columns) *are*
+  the approving-admin trail; add a new `payer_type` value (e.g.
+  `'bridge_funding'`, alongside the existing `'organization'`/`'self'`,
+  requires widening `assessment_bill_payer_check`). This is reuse, not a
+  new table, per the explicit ask — the two existing tables (`orders` for
+  the access-gating side `resolveDirect()` checks, `assessment_bills` for
+  the actual billing-history side) already model the two genuinely
+  distinct concerns here; a new table would duplicate one or the other.
+- **Management-reference field (new, required)**: neither table has a
+  free-text/structured "which instruction authorized this" column today.
+  Add one nullable-except-for-this-payer-type text column to
+  `assessment_bills` (e.g. `management_reference`), required by a CHECK
+  constraint when `payer_type = 'bridge_funding'`, mirroring the existing
+  `assessment_bill_payer_check` pattern of a status/type-conditional
+  constraint. Also recorded in the `audit_logs` row for the approval
+  action (`context`), matching the existing manual-payment-verification
+  audit shape (actor, reason/reference, timestamp — same pattern as
+  `VerifyManualTransfer`/`SetPaymentMethodActivation`).
+- **Participant invisibility**: needs one explicit check at implementation
+  time, not assumed — confirm no participant-facing code (session-start
+  responses, receipts, the registration-received page) branches on
+  `order.status === 'paid'` specifically in a way that would visibly differ
+  for `'bridge_funded'`. `resolveDirect()`'s own output (a `CaseAuthorization`)
+  doesn't leak order status to the participant either way, which is the
+  right shape to preserve.
+
+### Who can approve — this is my technical call, not the owner's
+
+The owner's item 18 explicitly leaves "which admin role(s)" to Lead/the
+team. Recommendation: **`super_admin` only for now**, extended to
+`central_admin` automatically once that role exists (`tasks/handoffs/f2/central-admin-role-plan.md`,
+still its own separate plan). Reasoning:
+
+- Central_admin's ability matrix is now finalized (Lead, item 20) to include
+  `VerifyPayments`, `EditParticipants`, `ManageTestPackages`, and read
+  access to the payment-methods list — bridge-funding approval is
+  conceptually adjacent to `VerifyPayments` (both are "an admin attests
+  money has been handled outside the normal participant-pays flow"), so
+  central_admin is a natural eventual fit, consistent with the owner
+  already trusting that role with payment verification.
+  - **Not reusing `VerifyPayments` itself for this**, though: a dedicated
+    ability (e.g. `AdminAbility::ApproveBridgeFunding`) keeps the same
+    separation-of-concerns reasoning already applied to `GenerateReports`
+    vs `ReviewReports` in this codebase — widening one ability for a
+    narrow need risks silently widening unrelated access later.
+- Same extensibility pattern already established in the admin
+  bootstrap/lifecycle commands (PR #104): gate on an explicit role list
+  admins actually control (not derived from `AdminRole::cases()` blindly),
+  so adding `central_admin` later is a one-line change to that list, not a
+  redesign.
+
+### Amount cap
+
+One optional config key (e.g. `config('bridge_funding.max_amount')`,
+`null`/absent = unlimited), read at approval time, not stored as a schema
+constraint — the owner may set a limit later without a migration, per their
+explicit request.
 
 ## Explicitly not designed here (noted only)
 
@@ -105,19 +249,26 @@ that decision, risks two colliding paths later.
   Corroborated in `DEPLOYMENT.md:238`: "Command ... tersedia tetapi inert dan
   tidak dijadwalkan."
 
-## Explicitly not designed at all
+## Still not designed here
 
-"Dana talang" / funding-bridge: searched the entire repository (code, config,
-tests, docs, task notes) for any trace — none exists. Nothing here assumes or
-designs toward that feature; it is the owner's open decision, referenced only
-as the reason Direction B is parked.
+- The exact `management_reference` column's format (free text vs. a
+  structured reference number pattern) — the owner's decision only said
+  "a reference to management's instruction," not a specific shape.
+  Free text, unconstrained beyond non-blank, is the simplest default;
+  revisit if the owner wants a specific format later.
+- `SPONSORED`/`INTERNAL`/`WAIVED` funding modes for
+  `ProvisionAssessmentParticipant`/`ProvisionSelectionParticipant`
+  specifically (as opposed to the `/register` bridge-funding flow this
+  section designs) — whether those legacy-integration modes should also
+  route through this same bridge-funding mechanism, or stay a separate
+  question, isn't decided. Worth a quick check once implementation starts,
+  not designed further here.
 
-## Unblocking this plan
+## Status: both original blockers resolved
 
-1. Owner's answer on funding-bridge (dana talang) — determines whether
-   sponsored/free-mode entitlement activation shares one mechanism with a
-   future funding-bridge feature, or needs its own.
-2. Fact check (forwarded to the owner by Lead): does any organization already
-   use the legacy integration API in production today? This affects how
-   urgently, and how carefully (backward-compatibility-wise), Direction A
-   needs to land once unblocked.
+1. ~~Owner's answer on funding-bridge (dana talang)~~ — answered, item 18,
+   designed above.
+2. ~~Fact check: does any organization already use the legacy integration
+   API in production today?~~ — confirmed no; the system is not live.
+
+This plan is ready for Lead's review before implementation begins.
