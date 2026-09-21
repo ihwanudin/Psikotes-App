@@ -25,6 +25,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
+use Tests\Support\AlwaysAvailableAssessmentItemContentAuthority;
 use Throwable;
 
 /**
@@ -442,6 +443,7 @@ final class StartParticipantAssessmentSessionConcurrencyTest extends TestCase
                 $contexts,
                 app(CaseAuthorizationResolver::class),
                 $authority,
+                new AlwaysAvailableAssessmentItemContentAuthority,
                 new AssessmentAttemptAllocationPolicy,
                 new AssessmentSessionStateMachine,
                 new AssessmentSessionDeadlinePolicy,

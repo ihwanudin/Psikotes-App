@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Contracts\AssessmentItemContentAuthority;
 use App\Contracts\AssessmentSessionDefinitionAuthority;
 use App\Contracts\IdentityMatcher;
 use App\Contracts\Notifier;
@@ -11,6 +12,8 @@ use App\Contracts\PaymentProvider;
 use App\Contracts\RunsRlsContext;
 use App\Security\RlsContextRunner;
 use App\Services\AssessmentSessions\DatabaseAssessmentSessionDefinitionAuthority;
+use App\Services\AssessmentSessions\KraepelinItemContentReader;
+use App\Services\AssessmentSessions\RegistryAssessmentItemContentAuthority;
 use App\Services\Identity\ManualReviewIdentityMatcher;
 use App\Services\Integrations\GenericAssessmentResultCallbackConfiguration;
 use App\Services\Notifications\N8nNotifier;
@@ -43,6 +46,19 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(
             AssessmentSessionDefinitionAuthority::class,
             DatabaseAssessmentSessionDefinitionAuthority::class,
+        );
+        // Fail-closed by design (Lead sign-off, 2026-09-21): an instrument
+        // with no entry below rejects with ASSESSMENT_ITEM_CONTENT_UNAVAILABLE
+        // rather than falling through to a permissive default. Kraepelin is
+        // the first real reader (Stage 2, 2026-09-21) -- ist/papi/rmib still
+        // have none, so those three instruments still reject the same way
+        // Stage 1 shipped them. Stage 2 only ever ADDS entries to this map;
+        // it never changes RegistryAssessmentItemContentAuthority's default.
+        $this->app->bind(
+            AssessmentItemContentAuthority::class,
+            fn (): RegistryAssessmentItemContentAuthority => new RegistryAssessmentItemContentAuthority([
+                'kraepelin' => new KraepelinItemContentReader,
+            ]),
         );
         $this->app->bind(ReportSupplementalData::class, ReportDocumentSupplementalData::class);
     }

@@ -1,7 +1,7 @@
 /** CLI runner: copy this function expression without its final semicolon. */
 // eslint-disable-next-line @typescript-eslint/no-unused-expressions -- Playwright CLI entrypoint.
 async (page) => {
-    const origin = 'http://127.0.0.1:8011';
+    const origin = 'http://127.0.0.1:8012';
     const errors = [];
     const results = [];
     const check = (condition, message) => {

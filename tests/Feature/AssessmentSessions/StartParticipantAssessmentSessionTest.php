@@ -29,6 +29,7 @@ use Illuminate\Support\Str;
 use LogicException;
 use ReflectionMethod;
 use Tests\OrganizationPaymentTestCase;
+use Tests\Support\AlwaysAvailableAssessmentItemContentAuthority;
 
 final class StartParticipantAssessmentSessionTest extends OrganizationPaymentTestCase
 {
@@ -252,6 +253,7 @@ final class StartParticipantAssessmentSessionTest extends OrganizationPaymentTes
             app(RlsContextRunner::class),
             app(CaseAuthorizationResolver::class),
             $authority,
+            new AlwaysAvailableAssessmentItemContentAuthority,
             new AssessmentAttemptAllocationPolicy,
             new AssessmentSessionStateMachine,
             new AssessmentSessionDeadlinePolicy,

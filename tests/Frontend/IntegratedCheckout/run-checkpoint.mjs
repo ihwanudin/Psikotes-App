@@ -11,9 +11,15 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
-// Requires an already running, isolated 8011 fixture; never starts a backend or installs packages.
+// Requires an already running, isolated fixture (default port 8012, see
+// vite.config.ts); never starts a backend or installs packages.
 const root = fileURLToPath(new URL('../../../', import.meta.url));
 const cli = process.argv[2];
+// Keep in sync with vite.config.ts's default. Overridable so two concurrent
+// sessions can each run this fixture without colliding.
+const PORT = Number(process.env.INTEGRATED_CHECKOUT_FIXTURE_PORT) || 8012;
+const DEFAULT_ORIGIN = 'http://127.0.0.1:8012';
+const origin = `http://127.0.0.1:${PORT}`;
 
 if (!cli || !path.isAbsolute(cli) || !existsSync(cli)) {
     throw new Error(
@@ -67,7 +73,7 @@ const suites = [
 ];
 const guard = `
  const checkpointErrors = [];
- const origin = 'http://127.0.0.1:8011';
+ const origin = '${origin}';
  await page.setViewportSize({width:1280,height:1000});
  await page.route('**/*', route => {
   const url=route.request().url();
@@ -119,10 +125,16 @@ for (const suite of suites) {
     const result = { name: suite.name, session, pass: false, log };
 
     try {
+        // Each suite file hardcodes DEFAULT_ORIGIN itself (they're written
+        // to stay portable/self-contained), so propagate a non-default port
+        // here rather than requiring every suite file to read process.env
+        // (the run-code sandbox these are ultimately executed in doesn't
+        // expose it anyway — see ParticipantLobby/browser.test.mjs's comment
+        // for the same constraint).
         const source = readFileSync(
             new URL(suite.file, import.meta.url),
             'utf8',
-        );
+        ).replaceAll(DEFAULT_ORIGIN, origin);
         // Only baseline expects an existing document. Other helpers install their
         // own routes before navigating; an extra goto races their unrouteAll.
         const navigation = suite.initialNavigation

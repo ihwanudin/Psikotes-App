@@ -88,6 +88,7 @@ final class InstrumentVersionHistorySecurityTest extends TestCase
             'dass21' => ['F0-2026.08', 'dass21.json'],
             'ist' => ['F2-2026.09', 'ist.json'],
             'kraepelin' => ['F2-2026.09', 'kraepelin.json'],
+            'kraepelin_grid' => ['F0-2026.09', 'kraepelin_grid.json'],
             'papi' => ['F2-2026.09', 'papi.json'],
             'reporting' => ['GA-2026.08', 'reporting.json'],
             'rmib' => ['F2-2026.09', 'rmib.json'],

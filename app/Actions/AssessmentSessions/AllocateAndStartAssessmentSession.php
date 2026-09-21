@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Actions\AssessmentSessions;
 
+use App\Contracts\AssessmentItemContentAuthority;
 use App\Contracts\AssessmentSessionDefinitionAuthority;
 use App\Domain\AssessmentSessions\AssessmentAttempt;
 use App\Domain\AssessmentSessions\AssessmentAttemptAllocation;
@@ -52,6 +53,7 @@ final class AllocateAndStartAssessmentSession
         private readonly RlsContextRunner $contexts,
         private readonly CaseAuthorizationResolver $authorizations,
         private readonly AssessmentSessionDefinitionAuthority $definitions,
+        private readonly AssessmentItemContentAuthority $itemContent,
         private readonly AssessmentAttemptAllocationPolicy $allocationPolicy,
         private readonly AssessmentSessionStateMachine $stateMachine,
         private readonly AssessmentSessionDeadlinePolicy $deadlinePolicy,
@@ -182,6 +184,16 @@ final class AllocateAndStartAssessmentSession
         if ($definition->instrument !== $instrument) {
             throw new InvalidAssessmentSessionState('Definition authority returned the wrong instrument.');
         }
+        // A session must never start for an instrument whose item content
+        // cannot actually be delivered -- otherwise the participant's timer
+        // runs against a question screen with nothing to show (Lead
+        // sign-off, 2026-09-21). Called before any row is written, same as
+        // the definition-authority call above it: a thrown
+        // AssessmentItemContentUnavailable rolls back this whole
+        // transaction via the same mechanism, no separate cleanup needed.
+        // The returned content itself is not needed here -- only that it
+        // could be produced; GET /sessions/{id}/items reads it for real.
+        $this->itemContent->contentFor($instrument, $definition);
         $serverTime = $this->serverTime();
         $start = $this->stateMachine->start(
             AssessmentSessionStatus::Created,

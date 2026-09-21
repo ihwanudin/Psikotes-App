@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\AssessmentSessions;
 
+use App\Contracts\AssessmentItemContentAuthority;
 use App\Contracts\AssessmentSessionDefinitionAuthority;
 use App\Domain\AssessmentSessions\CaseAuthorization;
 use App\Domain\AssessmentSessions\GenericAssessmentInstrument;
@@ -16,6 +17,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use PDOException;
 use Tests\OrganizationPaymentTestCase;
+use Tests\Support\AlwaysAvailableAssessmentItemContentAuthority;
 
 /**
  * F2 S5 (2026-09-21). HTTP-level coverage for the real, ADR-0030-compliant
@@ -198,6 +200,51 @@ final class StartParticipantSessionHttpTest extends OrganizationPaymentTestCase
         $this->assertSame(0, DB::table('test_sessions')->count());
     }
 
+    /**
+     * F2 item-delivery Stage 1 (2026-09-21), Lead's explicit mandatory
+     * requirement: proves the REAL container binding
+     * (RegistryAssessmentItemContentAuthority, bound in AppServiceProvider
+     * with zero registered readers), not a fake swapped in for this test.
+     * A definition-authority fake is still needed to get an active catalog
+     * row past the earlier gate -- that gate is proven separately above --
+     * but AssessmentItemContentAuthority is deliberately left as whatever
+     * the real application container resolves. If a permissive default
+     * ever crept back into that binding, this is the test that would catch
+     * it; a fake here would not.
+     */
+    public function test_real_container_binding_rejects_start_for_an_instrument_with_no_registered_item_content_reader(): void
+    {
+        $this->app->instance(AssessmentSessionDefinitionAuthority::class, new class implements AssessmentSessionDefinitionAuthority
+        {
+            public function issueForNewSession(
+                GenericAssessmentInstrument $instrument,
+                CaseAuthorization $authorization,
+                string $sessionPublicId,
+            ): SessionDefinition {
+                $payload = [
+                    'instrument' => $instrument->value,
+                    'version' => 'synthetic-v1',
+                    'provenance' => 's5-http-test',
+                    'total_duration_seconds' => 600,
+                    'subtests' => [['code' => 'all', 'duration_seconds' => 600, 'item_count' => 10]],
+                    'randomization' => 'fixed',
+                    'seed' => null,
+                    'generator' => null,
+                ];
+                $payload['checksum'] = SessionDefinition::checksumFor($payload);
+
+                return SessionDefinition::fromArray($payload);
+            }
+        });
+        $fixture = $this->participantGraph(direct: true);
+
+        $this->withToken($this->issueToken($fixture))->postJson('/api/sessions/ist/start')
+            ->assertStatus(503)
+            ->assertJsonPath('error.code', 'ASSESSMENT_ITEM_CONTENT_UNAVAILABLE');
+        $this->assertSame(0, DB::table('test_sessions')->count());
+        $this->assertSame(0, DB::table('test_session_grants')->count());
+    }
+
     public function test_retries_exhausted_on_the_real_route_returns_503(): void
     {
         $this->bindFakeAuthority();
@@ -236,6 +283,14 @@ final class StartParticipantSessionHttpTest extends OrganizationPaymentTestCase
                 return SessionDefinition::fromArray($payload);
             }
         });
+        // F2 item-delivery Stage 1 (2026-09-21): the real container binding
+        // for AssessmentItemContentAuthority is fail-closed (no readers
+        // registered for any instrument yet), so any test that needs the
+        // real route to reach past the definition-authority stage also
+        // needs a stand-in here -- otherwise every one of them would now
+        // fail at the new gate instead of exercising what they actually
+        // test.
+        $this->app->instance(AssessmentItemContentAuthority::class, new AlwaysAvailableAssessmentItemContentAuthority);
     }
 
     private function issueToken(array $fixture): string

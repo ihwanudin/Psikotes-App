@@ -7,3 +7,12 @@ openpyxl==3.1.5
 # extractors (RMIB, IST WA) need. Revisit only if a subtest genuinely needs something
 # pypdf cannot do (documented inline where that happens).
 pypdf==6.19.0
+
+# pdfminer.six (MIT licensed): the PAPI item PDF has no second structured source like
+# RMIB's xlsx, so the coordinator required two genuinely independent extraction
+# methods diffed word-for-word for the 90 statement pairs. pdftotext (poppler, C++,
+# external CLI) is one; pdfminer.six is a separate pure-Python implementation used as
+# the other - pypdf's layout mode fails outright on this PDF ("Rotated text
+# discovered", empty output), and its default mode has the same mid-word phantom-space
+# defect pypdf's coordinate extraction had for RMIB before switching to layout mode.
+pdfminer.six==20260107
