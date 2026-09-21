@@ -6,6 +6,7 @@ use App\Http\Controllers\AssessmentParticipantProvisioningController;
 use App\Http\Controllers\AssessmentResultController;
 use App\Http\Controllers\AutosaveAssessmentAnswersController;
 use App\Http\Controllers\GetAssessmentSessionAnswersController;
+use App\Http\Controllers\GetAssessmentSessionAssetUrlController;
 use App\Http\Controllers\GetAssessmentSessionController;
 use App\Http\Controllers\GetAssessmentSessionItemsController;
 use App\Http\Controllers\ParticipantEntitlementController;
@@ -77,4 +78,12 @@ Route::middleware('participant.jwt')->group(function (): void {
     // exactly when writable, same as answers readback.
     Route::get('/sessions/{id}/items', GetAssessmentSessionItemsController::class)
         ->name('participant.sessions.items.show');
+
+    // F2 IST reader Stage 1 (2026-09-21, Lead plan sign-off): same
+    // rls-excluded group, same reason -- GetAssessmentSessionAssetUrl owns
+    // its own service transaction. GET, not POST: issuing a temporary URL
+    // changes no persisted state.
+    Route::get('/sessions/{id}/assets/{assetId}/url', GetAssessmentSessionAssetUrlController::class)
+        ->whereUlid('assetId')
+        ->name('participant.sessions.assets.url');
 });
