@@ -42,8 +42,8 @@ final class SessionDefinitionTest extends TestCase
 
         $this->assertSame(GenericAssessmentInstrument::Kraepelin, $definition->instrument);
         $this->assertSame(750, $definition->totalDurationSeconds);
-        $this->assertSame('seeded', $definition->randomization);
-        $this->assertSame('synthetic-seed', $definition->seed);
+        $this->assertSame('fixed', $definition->randomization);
+        $this->assertNull($definition->seed);
         $this->assertSame([
             'algorithm' => 'synthetic-generator',
             'version' => 'synthetic-generator-v1',
@@ -78,7 +78,7 @@ final class SessionDefinitionTest extends TestCase
         $this->assertEquals(SessionDefinition::fromArray($input), SessionDefinition::fromArray($exported));
     }
 
-    public function test_it_exports_seeded_kraepelin_as_an_exact_canonical_round_trip(): void
+    public function test_it_exports_fixed_kraepelin_as_an_exact_canonical_round_trip(): void
     {
         $input = $this->kraepelinDefinition();
         $reordered = array_reverse($input, preserve_keys: true);
@@ -91,8 +91,8 @@ final class SessionDefinitionTest extends TestCase
         $this->assertSame('synthetic-v1', $exported['version']);
         $this->assertSame('synthetic-test-fixture', $exported['provenance']);
         $this->assertSame(750, $exported['total_duration_seconds']);
-        $this->assertSame('seeded', $exported['randomization']);
-        $this->assertSame('synthetic-seed', $exported['seed']);
+        $this->assertSame('fixed', $exported['randomization']);
+        $this->assertNull($exported['seed']);
         $this->assertSame($input['generator'], $exported['generator']);
         $this->assertSame($input['checksum'], $exported['checksum']);
         $this->assertEquals(SessionDefinition::fromArray($input), SessionDefinition::fromArray($exported));
@@ -221,10 +221,6 @@ final class SessionDefinitionTest extends TestCase
         yield 'format character in subtest code' => [static function (array &$input): void {
             $input['subtests'][0]['code'] = "SYN\u{200B}THETIC";
         }];
-        yield 'unicode separator in seed' => [static function (array &$input): void {
-            $input = self::syntheticKraepelinDefinition();
-            $input['seed'] = "synthetic\u{00A0}seed";
-        }];
         yield 'padded generator algorithm' => [static function (array &$input): void {
             $input = self::syntheticKraepelinDefinition();
             $input['generator']['algorithm'] = ' synthetic-generator';
@@ -274,11 +270,11 @@ final class SessionDefinitionTest extends TestCase
     /** @return iterable<string, array{callable(array<string, mixed>&): void}> */
     public static function invalidKraepelinDefinitions(): iterable
     {
-        yield 'fixed mode' => [static function (array &$input): void {
-            $input['randomization'] = 'fixed';
+        yield 'seeded mode' => [static function (array &$input): void {
+            $input['randomization'] = 'seeded';
         }];
-        yield 'missing seed' => [static function (array &$input): void {
-            $input['seed'] = null;
+        yield 'non-null seed' => [static function (array &$input): void {
+            $input['seed'] = 'unexpected';
         }];
         yield 'blank generator algorithm' => [static function (array &$input): void {
             $input['generator']['algorithm'] = '';
@@ -351,8 +347,8 @@ final class SessionDefinitionTest extends TestCase
                 'duration_seconds' => 750,
                 'item_count' => 1350,
             ]],
-            'randomization' => 'seeded',
-            'seed' => 'synthetic-seed',
+            'randomization' => 'fixed',
+            'seed' => null,
             'generator' => [
                 'algorithm' => 'synthetic-generator',
                 'version' => 'synthetic-generator-v1',

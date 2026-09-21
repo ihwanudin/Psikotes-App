@@ -131,7 +131,15 @@ final class TestSessionDefinitionSnapshotSchemaTest extends OrganizationPaymentT
         );
     }
 
-    public function test_kraepelin_snapshot_accepts_only_the_canonical_seeded_matrix(): void
+    /**
+     * F2 (2026-09-21): renamed from test_kraepelin_snapshot_accepts_only_the_canonical_seeded_matrix.
+     * Kraepelin numbers are fixed, not seeded (owner decision, 2026-09-21) --
+     * the canonical Kraepelin snapshot is now 'fixed' randomization with a
+     * null seed, the same contract ist/papi/rmib already use. The old
+     * 'seeded' mode and any non-null seed are now themselves the invalid
+     * cases, not just malformed seed strings.
+     */
+    public function test_kraepelin_snapshot_accepts_only_the_canonical_fixed_matrix(): void
     {
         $definition = $this->kraepelinDefinition();
         DB::table('test_sessions')->insert($this->sessionRow(duration: 750, testType: 'kraepelin')
@@ -149,10 +157,16 @@ final class TestSessionDefinitionSnapshotSchemaTest extends OrganizationPaymentT
             $this->sessionRow(duration: 750, testType: 'kraepelin') + $this->snapshot($wrongItems),
         ));
 
-        $badSeed = $definition;
-        $badSeed['seed'] = "seed\u{00A0}";
+        $seededMode = $definition;
+        $seededMode['randomization'] = 'seeded';
         $this->assertRejected(fn () => DB::table('test_sessions')->insert(
-            $this->sessionRow(duration: 750, testType: 'kraepelin') + $this->snapshot($badSeed),
+            $this->sessionRow(duration: 750, testType: 'kraepelin') + $this->snapshot($seededMode),
+        ));
+
+        $nonNullSeed = $definition;
+        $nonNullSeed['seed'] = 'synthetic-seed';
+        $this->assertRejected(fn () => DB::table('test_sessions')->insert(
+            $this->sessionRow(duration: 750, testType: 'kraepelin') + $this->snapshot($nonNullSeed),
         ));
     }
 
@@ -297,8 +311,8 @@ final class TestSessionDefinitionSnapshotSchemaTest extends OrganizationPaymentT
                 'duration_seconds' => 750,
                 'item_count' => 1350,
             ]],
-            'randomization' => 'seeded',
-            'seed' => 'synthetic-seed',
+            'randomization' => 'fixed',
+            'seed' => null,
             'generator' => [
                 'algorithm' => 'synthetic-generator',
                 'version' => 'synthetic-v1',

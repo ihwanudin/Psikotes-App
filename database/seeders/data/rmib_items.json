@@ -1,0 +1,766 @@
+{
+  "version": "F0-ITEMS-RMIB-2026.09",
+  "status": "final",
+  "instructions": {
+    "text": "Dibawah ini anda akan menemui daftar-daftar berbagai macam pekerjaan yang tersusun dalam berbagai kelompok. Setiap kelompok terdiri dari 12 macam pekerjaan. Setiap pekerjaan merupakan keahlian khusus yang memerlukan latihan atau pendidikan keahlian sendiri. Mungkin hanya beberapa diantaranya yang anda sukai. Disini anda diminta untuk memilih pekerjaan mana yang ingin anda lakukan atau pekerjaan mana yang anda sukai, terlepas dari besarnya upah gaji yang akan anda terima. Juga terlepas apakah anda berhasil atau tidak dalam mengerjakan pekerjaan tersebut. Tugas anda adalah mencantumkan nomor atau angka pada tiap pekerjaan dalam kelompok-kelompok yang tersedia. Berikanlah nomor (angka) 1 untuk pekerjaan yang paling anda sukai diantara ke 12 pekerjaan yang tersedia pada setiap kelompok, dan dilanjutkan dengan pemberian nomor 2, 3, dan seterusnya berurutan berdasarkan besarnya kadar kesukaan/minat anda terhadap pekerjaan itu, dan nomor/angka 12 anda cantumkan untuk pekerjaan yang paling tidak disukai dari daftar pekerjaan yang tersedia pada kelompok-kelompok tersebut. Bekerjalah secepatnya dan tulislah nomor-nomor (angka-angka) sesuai dengan kesan dan keinginan anda yang pertama muncul. Jika anda Perempuan gunakanlah daftar pekerjaan yang tersusun di bagian kanan pada setiap kelompok. Jika anda Laki-laki, gunakanlah daftar pekerjaan yang tersusun di bagian kiri pada setiap kelompok. Selamat bekerja !",
+    "write_preferred_jobs_prompt": "Tulislah dibawah ini tiga (3) macam pekerjaan yang paling ingin anda lakukan atau paling anda sukai (tidak harus pekerjaan yang tercantum di dalam daftar yang ada):"
+  },
+  "positions": [
+    {
+      "group": 1,
+      "group_letter": "A",
+      "position": 1,
+      "job_male": "Petani",
+      "job_female": "Pekerjaan pertanian"
+    },
+    {
+      "group": 1,
+      "group_letter": "A",
+      "position": 2,
+      "job_male": "Insinyur sipil",
+      "job_female": "Sopir kendaraan militer"
+    },
+    {
+      "group": 1,
+      "group_letter": "A",
+      "position": 3,
+      "job_male": "Akuntan",
+      "job_female": "Akuntan"
+    },
+    {
+      "group": 1,
+      "group_letter": "A",
+      "position": 4,
+      "job_male": "Ilmiawan",
+      "job_female": "Ilmiawati"
+    },
+    {
+      "group": 1,
+      "group_letter": "A",
+      "position": 5,
+      "job_male": "Manager penjualan",
+      "job_female": "Penjual hasil-hasil mode"
+    },
+    {
+      "group": 1,
+      "group_letter": "A",
+      "position": 6,
+      "job_male": "Seniman",
+      "job_female": "Seniwati"
+    },
+    {
+      "group": 1,
+      "group_letter": "A",
+      "position": 7,
+      "job_male": "Wartawan",
+      "job_female": "Wartawati"
+    },
+    {
+      "group": 1,
+      "group_letter": "A",
+      "position": 8,
+      "job_male": "Pianis konser",
+      "job_female": "Pianis konser"
+    },
+    {
+      "group": 1,
+      "group_letter": "A",
+      "position": 9,
+      "job_male": "Guru sekolah dasar",
+      "job_female": "Guru sekolah dasar"
+    },
+    {
+      "group": 1,
+      "group_letter": "A",
+      "position": 10,
+      "job_male": "Manager bank",
+      "job_female": "Sekretaris pribadi"
+    },
+    {
+      "group": 1,
+      "group_letter": "A",
+      "position": 11,
+      "job_male": "Tukang kayu",
+      "job_female": "Modiste"
+    },
+    {
+      "group": 1,
+      "group_letter": "A",
+      "position": 12,
+      "job_male": "Dokter",
+      "job_female": "Dokter"
+    },
+    {
+      "group": 2,
+      "group_letter": "B",
+      "position": 1,
+      "job_male": "Ahli pembuat alat-alat",
+      "job_female": "Petugas perakitan alat"
+    },
+    {
+      "group": 2,
+      "group_letter": "B",
+      "position": 2,
+      "job_male": "Ahli statistik",
+      "job_female": "Pegawai urusan gaji"
+    },
+    {
+      "group": 2,
+      "group_letter": "B",
+      "position": 3,
+      "job_male": "Insinyur kimia industri",
+      "job_female": "Insinyur kimia industri"
+    },
+    {
+      "group": 2,
+      "group_letter": "B",
+      "position": 4,
+      "job_male": "Penyiar radio",
+      "job_female": "Penyiar radio"
+    },
+    {
+      "group": 2,
+      "group_letter": "B",
+      "position": 5,
+      "job_male": "Artis profesional",
+      "job_female": "Artis profesional"
+    },
+    {
+      "group": 2,
+      "group_letter": "B",
+      "position": 6,
+      "job_male": "Pengarang",
+      "job_female": "Pengarang"
+    },
+    {
+      "group": 2,
+      "group_letter": "B",
+      "position": 7,
+      "job_male": "Dirigen orkestra",
+      "job_female": "Pemain musik orkestra"
+    },
+    {
+      "group": 2,
+      "group_letter": "B",
+      "position": 8,
+      "job_male": "Psikolog pendidikan",
+      "job_female": "Psikolog pendidikan"
+    },
+    {
+      "group": 2,
+      "group_letter": "B",
+      "position": 9,
+      "job_male": "Sekretaris perusahaan",
+      "job_female": "Juru ketik"
+    },
+    {
+      "group": 2,
+      "group_letter": "B",
+      "position": 10,
+      "job_male": "Ahli bangunan",
+      "job_female": "Pembuat pot keramik"
+    },
+    {
+      "group": 2,
+      "group_letter": "B",
+      "position": 11,
+      "job_male": "Ahli bedah",
+      "job_female": "Ahli bedah"
+    },
+    {
+      "group": 2,
+      "group_letter": "B",
+      "position": 12,
+      "job_male": "Ahli kehutanan",
+      "job_female": "Guru pendidikan olahraga"
+    },
+    {
+      "group": 3,
+      "group_letter": "C",
+      "position": 1,
+      "job_male": "Auditor",
+      "job_female": "Auditor"
+    },
+    {
+      "group": 3,
+      "group_letter": "C",
+      "position": 2,
+      "job_male": "Ahli Meteorologi",
+      "job_female": "Ahli meteorologi"
+    },
+    {
+      "group": 3,
+      "group_letter": "C",
+      "position": 3,
+      "job_male": "Salesman",
+      "job_female": "Salesgirl"
+    },
+    {
+      "group": 3,
+      "group_letter": "C",
+      "position": 4,
+      "job_male": "Arsitek",
+      "job_female": "Guru kesenian"
+    },
+    {
+      "group": 3,
+      "group_letter": "C",
+      "position": 5,
+      "job_male": "Penulis drama",
+      "job_female": "Penulis drama"
+    },
+    {
+      "group": 3,
+      "group_letter": "C",
+      "position": 6,
+      "job_male": "Komponis",
+      "job_female": "Komponis"
+    },
+    {
+      "group": 3,
+      "group_letter": "C",
+      "position": 7,
+      "job_male": "Kepala sekolah",
+      "job_female": "Kepala yayasan sosial"
+    },
+    {
+      "group": 3,
+      "group_letter": "C",
+      "position": 8,
+      "job_male": "Pegawai pemerintah daerah",
+      "job_female": "Resepsionis"
+    },
+    {
+      "group": 3,
+      "group_letter": "C",
+      "position": 9,
+      "job_male": "Ahli meubel",
+      "job_female": "Penata rambut"
+    },
+    {
+      "group": 3,
+      "group_letter": "C",
+      "position": 10,
+      "job_male": "Dokter hewan",
+      "job_female": "Dokter hewan"
+    },
+    {
+      "group": 3,
+      "group_letter": "C",
+      "position": 11,
+      "job_male": "Juru ukur tanah",
+      "job_female": "Pramugari"
+    },
+    {
+      "group": 3,
+      "group_letter": "C",
+      "position": 12,
+      "job_male": "Tukang bubut",
+      "job_female": "Operator mesin rajut"
+    },
+    {
+      "group": 4,
+      "group_letter": "D",
+      "position": 1,
+      "job_male": "Ahli biologi",
+      "job_female": "Ahli biologi"
+    },
+    {
+      "group": 4,
+      "group_letter": "D",
+      "position": 2,
+      "job_male": "Agen biro periklanan",
+      "job_female": "Agen biro periklanan"
+    },
+    {
+      "group": 4,
+      "group_letter": "D",
+      "position": 3,
+      "job_male": "Dekorator interior",
+      "job_female": "Dekorator interior"
+    },
+    {
+      "group": 4,
+      "group_letter": "D",
+      "position": 4,
+      "job_male": "Ahli sejarah",
+      "job_female": "Ahli sejarah"
+    },
+    {
+      "group": 4,
+      "group_letter": "D",
+      "position": 5,
+      "job_male": "Kritikus musik",
+      "job_female": "Kritikus musik"
+    },
+    {
+      "group": 4,
+      "group_letter": "D",
+      "position": 6,
+      "job_male": "Pekerja sosial",
+      "job_female": "Pekerja sosial"
+    },
+    {
+      "group": 4,
+      "group_letter": "D",
+      "position": 7,
+      "job_male": "Pegawai asuransi",
+      "job_female": "Penulis steno"
+    },
+    {
+      "group": 4,
+      "group_letter": "D",
+      "position": 8,
+      "job_male": "Tukang cat",
+      "job_female": "Penjilid buku"
+    },
+    {
+      "group": 4,
+      "group_letter": "D",
+      "position": 9,
+      "job_male": "Apoteker",
+      "job_female": "Apoteker"
+    },
+    {
+      "group": 4,
+      "group_letter": "D",
+      "position": 10,
+      "job_male": "Penjelajah",
+      "job_female": "Ahli pertanaman"
+    },
+    {
+      "group": 4,
+      "group_letter": "D",
+      "position": 11,
+      "job_male": "Tukang listrik",
+      "job_female": "Petugas pompa bensin"
+    },
+    {
+      "group": 4,
+      "group_letter": "D",
+      "position": 12,
+      "job_male": "Penilai pajak pendapatan",
+      "job_female": "Petugas mesin hitung"
+    },
+    {
+      "group": 5,
+      "group_letter": "E",
+      "position": 1,
+      "job_male": "Petugas wawancara",
+      "job_female": "Petugas wawancara"
+    },
+    {
+      "group": 5,
+      "group_letter": "E",
+      "position": 2,
+      "job_male": "Perancang perhiasan",
+      "job_female": "Perancang pakaian"
+    },
+    {
+      "group": 5,
+      "group_letter": "E",
+      "position": 3,
+      "job_male": "Ahli perpustakaan",
+      "job_female": "Ahli perpustakaan"
+    },
+    {
+      "group": 5,
+      "group_letter": "E",
+      "position": 4,
+      "job_male": "Guru musik",
+      "job_female": "Guru musik"
+    },
+    {
+      "group": 5,
+      "group_letter": "E",
+      "position": 5,
+      "job_male": "Pembina rohani",
+      "job_female": "Penyebar agama"
+    },
+    {
+      "group": 5,
+      "group_letter": "E",
+      "position": 6,
+      "job_male": "Petugas arsip",
+      "job_female": "Petugas arsip"
+    },
+    {
+      "group": 5,
+      "group_letter": "E",
+      "position": 7,
+      "job_male": "Tukang batu",
+      "job_female": "Tukang bungkus cokelat"
+    },
+    {
+      "group": 5,
+      "group_letter": "E",
+      "position": 8,
+      "job_male": "Dokter gigi",
+      "job_female": "Pelatih rehabilitasi pasien"
+    },
+    {
+      "group": 5,
+      "group_letter": "E",
+      "position": 9,
+      "job_male": "Prospektor",
+      "job_female": "Pembina keolahragaan"
+    },
+    {
+      "group": 5,
+      "group_letter": "E",
+      "position": 10,
+      "job_male": "Montir",
+      "job_female": "Ahli reparasi jam"
+    },
+    {
+      "group": 5,
+      "group_letter": "E",
+      "position": 11,
+      "job_male": "Guru ilmu pasti",
+      "job_female": "Guru ilmu pasti"
+    },
+    {
+      "group": 5,
+      "group_letter": "E",
+      "position": 12,
+      "job_male": "Ahli pertanian",
+      "job_female": "Ahli pertanian"
+    },
+    {
+      "group": 6,
+      "group_letter": "F",
+      "position": 1,
+      "job_male": "Pemotret",
+      "job_female": "Pemotret"
+    },
+    {
+      "group": 6,
+      "group_letter": "F",
+      "position": 2,
+      "job_male": "Penulis majalah",
+      "job_female": "Penulis majalah"
+    },
+    {
+      "group": 6,
+      "group_letter": "F",
+      "position": 3,
+      "job_male": "Pemain orgel (organ)",
+      "job_female": "Pemain orgel (organ)"
+    },
+    {
+      "group": 6,
+      "group_letter": "F",
+      "position": 4,
+      "job_male": "Organisasi pramuka",
+      "job_female": "Petugas palang merah"
+    },
+    {
+      "group": 6,
+      "group_letter": "F",
+      "position": 5,
+      "job_male": "Petugas pengiriman barang",
+      "job_female": "Pegawai bank"
+    },
+    {
+      "group": 6,
+      "group_letter": "F",
+      "position": 6,
+      "job_male": "Petugas mesin perkayuan",
+      "job_female": "Pengurus kerumahtanggaan"
+    },
+    {
+      "group": 6,
+      "group_letter": "F",
+      "position": 7,
+      "job_male": "Ahli kacamata",
+      "job_female": "Perawat"
+    },
+    {
+      "group": 6,
+      "group_letter": "F",
+      "position": 8,
+      "job_male": "Ahli sortir kulit",
+      "job_female": "Peternak"
+    },
+    {
+      "group": 6,
+      "group_letter": "F",
+      "position": 9,
+      "job_male": "Instalator",
+      "job_female": "Ahli gosok lensa"
+    },
+    {
+      "group": 6,
+      "group_letter": "F",
+      "position": 10,
+      "job_male": "Pembantu kasir bank",
+      "job_female": "Kasir"
+    },
+    {
+      "group": 6,
+      "group_letter": "F",
+      "position": 11,
+      "job_male": "Ahli botani",
+      "job_female": "Ahli botani"
+    },
+    {
+      "group": 6,
+      "group_letter": "F",
+      "position": 12,
+      "job_male": "Pedagang keliling",
+      "job_female": "Pedagang keliling"
+    },
+    {
+      "group": 7,
+      "group_letter": "G",
+      "position": 1,
+      "job_male": "Kritikus buku",
+      "job_female": "Kritikus buku"
+    },
+    {
+      "group": 7,
+      "group_letter": "G",
+      "position": 2,
+      "job_male": "Ahli pustaka musik",
+      "job_female": "Ahli pustaka musik"
+    },
+    {
+      "group": 7,
+      "group_letter": "G",
+      "position": 3,
+      "job_male": "Pejabat klub remaja",
+      "job_female": "Pejabat klub remaja"
+    },
+    {
+      "group": 7,
+      "group_letter": "G",
+      "position": 4,
+      "job_male": "Pegawai kantor",
+      "job_female": "Pegawai kantor"
+    },
+    {
+      "group": 7,
+      "group_letter": "G",
+      "position": 5,
+      "job_male": "Tukang plester tembok",
+      "job_female": "Tukang binatu"
+    },
+    {
+      "group": 7,
+      "group_letter": "G",
+      "position": 6,
+      "job_male": "Ahli rontgent",
+      "job_female": "Ahli rontgent"
+    },
+    {
+      "group": 7,
+      "group_letter": "G",
+      "position": 7,
+      "job_male": "Nelayan",
+      "job_female": "Petani bunga"
+    },
+    {
+      "group": 7,
+      "group_letter": "G",
+      "position": 8,
+      "job_male": "Pembuat arloji",
+      "job_female": "Operator mesin sulam"
+    },
+    {
+      "group": 7,
+      "group_letter": "G",
+      "position": 9,
+      "job_male": "Kasir",
+      "job_female": "Ahli tata buku"
+    },
+    {
+      "group": 7,
+      "group_letter": "G",
+      "position": 10,
+      "job_male": "Ahli astronomi",
+      "job_female": "Ahli astronomi"
+    },
+    {
+      "group": 7,
+      "group_letter": "G",
+      "position": 11,
+      "job_male": "Juru lelang",
+      "job_female": "Peraga alat kosmetika"
+    },
+    {
+      "group": 7,
+      "group_letter": "G",
+      "position": 12,
+      "job_male": "Penata panggung",
+      "job_female": "Penata panggung"
+    },
+    {
+      "group": 8,
+      "group_letter": "H",
+      "position": 1,
+      "job_male": "Pemimpin band",
+      "job_female": "Pemain musik band"
+    },
+    {
+      "group": 8,
+      "group_letter": "H",
+      "position": 2,
+      "job_male": "Ahli penyuluh jabatan",
+      "job_female": "Ahli penyuluh jabatan"
+    },
+    {
+      "group": 8,
+      "group_letter": "H",
+      "position": 3,
+      "job_male": "Pegawai pos",
+      "job_female": "Pegawai kantorpos"
+    },
+    {
+      "group": 8,
+      "group_letter": "H",
+      "position": 4,
+      "job_male": "Tukang ledeng",
+      "job_female": "Penjahit"
+    },
+    {
+      "group": 8,
+      "group_letter": "H",
+      "position": 5,
+      "job_male": "Ahli fisioterapi",
+      "job_female": "Ahli fisioterapi"
+    },
+    {
+      "group": 8,
+      "group_letter": "H",
+      "position": 6,
+      "job_male": "Sopir angkutan",
+      "job_female": "Peternak ayam"
+    },
+    {
+      "group": 8,
+      "group_letter": "H",
+      "position": 7,
+      "job_male": "Montir radio",
+      "job_female": "Ahli reparasi permata"
+    },
+    {
+      "group": 8,
+      "group_letter": "H",
+      "position": 8,
+      "job_male": "Juru bayar",
+      "job_female": "Juru bayar"
+    },
+    {
+      "group": 8,
+      "group_letter": "H",
+      "position": 9,
+      "job_male": "Ahli geologi",
+      "job_female": "Ahli geologi"
+    },
+    {
+      "group": 8,
+      "group_letter": "H",
+      "position": 10,
+      "job_male": "Petugas hub. Masyarakat",
+      "job_female": "Petugas hub. Masyarakat"
+    },
+    {
+      "group": 8,
+      "group_letter": "H",
+      "position": 11,
+      "job_male": "Penata etalase",
+      "job_female": "Penata etalase"
+    },
+    {
+      "group": 8,
+      "group_letter": "H",
+      "position": 12,
+      "job_male": "Penulis sandiwara radio",
+      "job_female": "Penulis sandiwara radio"
+    },
+    {
+      "group": 9,
+      "group_letter": "I",
+      "position": 1,
+      "job_male": "Petugas kesejahteraan sosial",
+      "job_female": "Petugas kesejahteraan sosial"
+    },
+    {
+      "group": 9,
+      "group_letter": "I",
+      "position": 2,
+      "job_male": "Petugas ekspedisi surat",
+      "job_female": "Petugas arsip"
+    },
+    {
+      "group": 9,
+      "group_letter": "I",
+      "position": 3,
+      "job_male": "Tukang sepatu",
+      "job_female": "Juru masak"
+    },
+    {
+      "group": 9,
+      "group_letter": "I",
+      "position": 4,
+      "job_male": "Paramedik / mantri kesehatan",
+      "job_female": "Perawat orang2 tua"
+    },
+    {
+      "group": 9,
+      "group_letter": "I",
+      "position": 5,
+      "job_male": "Petani tanaman hias",
+      "job_female": "Tukang kebun"
+    },
+    {
+      "group": 9,
+      "group_letter": "I",
+      "position": 6,
+      "job_male": "Tukang las",
+      "job_female": "Operator mesin kaos kaki"
+    },
+    {
+      "group": 9,
+      "group_letter": "I",
+      "position": 7,
+      "job_male": "Petugas pajak",
+      "job_female": "Petugas pajak"
+    },
+    {
+      "group": 9,
+      "group_letter": "I",
+      "position": 8,
+      "job_male": "Asisten laboratorium",
+      "job_female": "Asisten laboratorium"
+    },
+    {
+      "group": 9,
+      "group_letter": "I",
+      "position": 9,
+      "job_male": "Salesman asuransi",
+      "job_female": "Peraga barang2/bahan"
+    },
+    {
+      "group": 9,
+      "group_letter": "I",
+      "position": 10,
+      "job_male": "Perancang motif tekstil",
+      "job_female": "Perancang motif tekstil"
+    },
+    {
+      "group": 9,
+      "group_letter": "I",
+      "position": 11,
+      "job_male": "Penyair",
+      "job_female": "Penyair"
+    },
+    {
+      "group": 9,
+      "group_letter": "I",
+      "position": 12,
+      "job_male": "Pramuniaga toko musik",
+      "job_female": "Pramuniaga toko musik"
+    }
+  ]
+}

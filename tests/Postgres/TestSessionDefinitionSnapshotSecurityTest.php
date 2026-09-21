@@ -218,6 +218,20 @@ final class TestSessionDefinitionSnapshotSecurityTest extends TestCase
         });
     }
 
+    /**
+     * F2 (2026-09-21): re-applies the later Kraepelin randomization-mode
+     * migration's up() after this migration's own up(). That later
+     * migration (database/migrations/2026_09_21_000100_fix_kraepelin_randomization_mode.php)
+     * uses CREATE OR REPLACE FUNCTION on guard_test_session_definition_snapshot(),
+     * so $before (captured against the fully-migrated, corrected function)
+     * would otherwise never equal $after (this migration's own up()
+     * recreates its own hardcoded, pre-correction function body via a plain
+     * CREATE FUNCTION, since it has no knowledge of later migrations). A
+     * real rollback-and-remigrate of this one migration in isolation would
+     * hit the exact same gap; re-applying the later migration here mirrors
+     * what `artisan migrate` would actually do (replay every later
+     * migration in order), not a workaround specific to this test.
+     */
     public function test_owner_down_up_preserves_historical_null_session_without_backfill(): void
     {
         $this->asOwner(function (): void {
@@ -230,6 +244,7 @@ final class TestSessionDefinitionSnapshotSecurityTest extends TestCase
                 $this->assertFalse(Schema::hasColumn('test_sessions', 'session_definition_payload'));
                 $historical = $this->directFixture(false);
                 $migration->up();
+                (require database_path('migrations/2026_09_21_000100_fix_kraepelin_randomization_mode.php'))->up();
                 $this->assertEquals($before, $this->definitions());
                 foreach ($this->snapshotColumns() as $column) {
                     $this->assertNull(DB::table('test_sessions')
@@ -271,7 +286,7 @@ final class TestSessionDefinitionSnapshotSecurityTest extends TestCase
             'provenance' => 'synthetic-test-fixture', 'checksum' => '',
             'total_duration_seconds' => 750,
             'subtests' => [['code' => 'SYNTHETIC', 'duration_seconds' => 750, 'item_count' => 1350]],
-            'randomization' => 'seeded', 'seed' => 'synthetic-seed',
+            'randomization' => 'fixed', 'seed' => null,
             'generator' => [
                 'algorithm' => 'synthetic-generator', 'version' => 'synthetic-v1',
                 'columns' => 50, 'seconds_per_column' => 15,
