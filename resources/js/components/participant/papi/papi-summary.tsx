@@ -69,7 +69,7 @@ export function PapiSummary({
                                 <button
                                     type="button"
                                     onClick={() => onJumpToItem(index)}
-                                    className="rounded-full border border-amber-300 bg-white px-3 py-1 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+                                    className="flex min-h-11 min-w-11 items-center justify-center rounded-full border border-amber-300 bg-white px-3 py-1 text-xs font-semibold text-amber-900 hover:bg-amber-100"
                                 >
                                     Butir {index + 1}
                                 </button>
@@ -81,6 +81,7 @@ export function PapiSummary({
 
             <Button
                 type="button"
+                className="h-11"
                 onClick={onSubmit}
                 disabled={!complete || submitting}
             >

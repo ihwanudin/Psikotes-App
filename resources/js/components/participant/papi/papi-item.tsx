@@ -71,6 +71,7 @@ function PapiChoiceOption({
             type="button"
             role="radio"
             aria-checked={selected}
+            aria-label={`${letter}. ${statement}`}
             disabled={disabled}
             onClick={onSelect}
             className={cn(

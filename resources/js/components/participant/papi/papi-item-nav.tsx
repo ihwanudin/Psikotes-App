@@ -34,6 +34,7 @@ export function PapiItemNav({
                 <Button
                     type="button"
                     variant="outline"
+                    className="h-11"
                     onClick={onPrevious}
                     disabled={itemNumber <= 1}
                 >
@@ -42,6 +43,7 @@ export function PapiItemNav({
                 <Button
                     type="button"
                     variant="outline"
+                    className="h-11"
                     onClick={onNext}
                     disabled={itemNumber >= itemCount}
                 >
@@ -55,7 +57,7 @@ export function PapiItemNav({
                 <button
                     type="button"
                     onClick={onReviewAnswers}
-                    className="text-xs text-teal-700 underline-offset-4 hover:underline"
+                    className="flex min-h-11 items-center px-1 text-xs text-teal-700 underline-offset-4 hover:underline"
                 >
                     Lihat ringkasan
                 </button>
