@@ -124,6 +124,22 @@ norma baru — bukan dihitung ulang sendiri oleh sistem.
 Pemilik proyek menyatakan psikolognya sudah tersertifikasi dan butir ini
 tidak perlu dibahas lagi. Dicatat sekali di sini; jangan diangkat ulang.
 
+## 9. Admin cabang dan pembuatan laporan — SELESAI
+
+Keputusan: **`branch_admin` TIDAK boleh membuat/menghasilkan laporan**
+(`GenerateReports`), termasuk untuk peserta di cabangnya sendiri.
+
+Pembagian yang berlaku sekarang:
+
+| Aksi | Siapa |
+|---|---|
+| Menandatangani laporan (`ReviewReports`) | Hanya psikolog (butir 4, keputusan 2026-09-20) |
+| Membuat/menerbitkan laporan yang sudah ditandatangani (`GenerateReports`) | Psikolog atau super_admin |
+| `branch_admin` | Tidak keduanya |
+
+Jangan menambahkan `GenerateReports` ke `branch_admin`, baik dengan
+pembatasan cabang maupun tanpa, kecuali pemilik proyek memutuskan ulang.
+
 ## Butir yang masih terbuka setelah dokumen ini
 
 - Konfirmasi hukum untuk retensi foto identitas (butir 5d). Butir 3
