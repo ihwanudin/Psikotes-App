@@ -172,7 +172,7 @@ final class AssessmentSessionDefinitionCatalogSchemaTest extends OrganizationPay
                 'duration_seconds' => 750,
                 'item_count' => 1350,
             ]],
-            'randomization' => 'seeded',
+            'randomization' => 'fixed',
             'seed' => null,
             'generator' => [
                 'algorithm' => 'synthetic-generator',

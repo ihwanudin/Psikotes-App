@@ -172,7 +172,7 @@ final class PersistSealedKraepelinResultTest extends TestCase
             'instrument' => 'kraepelin', 'version' => 'synthetic-definition-v1',
             'provenance' => 'synthetic-test-only', 'total_duration_seconds' => 750,
             'subtests' => [['code' => 'KRAEPELIN', 'duration_seconds' => 750, 'item_count' => 1350]],
-            'randomization' => 'seeded', 'seed' => 'synthetic-seed-01',
+            'randomization' => 'fixed', 'seed' => null,
             'generator' => [
                 'algorithm' => 'synthetic-test-generator', 'version' => 'v1', 'columns' => 50,
                 'seconds_per_column' => 15, 'numbers_per_column' => 28, 'answer_slots_per_column' => 27,
