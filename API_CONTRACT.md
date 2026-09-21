@@ -99,14 +99,19 @@ Fallback status: scheduler menjalankan `php artisan payments:reconcile-xendit --
 
 Deadline tulis persis `ends_at` berdasarkan waktu penerimaan server/database: request pada `ends_at` diterima, sedangkan request setelahnya ditolak atomik tanpa perubahan jawaban/revisi/ledger dan sesi aktif berubah menjadi `expired`. Waktu klien tidak memiliki otoritas. Autosave dan submit mengunci sesi atau memakai conditional update ekuivalen agar balapan menghasilkan satu urutan commit yang sah.
 
-Kode error sesi stabil: `ENTITLEMENT_NOT_READY`, `RETEST_NOT_AUTHORIZED`, `SESSION_NOT_FOUND`, `ATTEMPT_ALREADY_EXISTS`, `SESSION_NOT_STARTED`, `SESSION_CLOSED`, `DEADLINE_EXCEEDED`, `AUTOSAVE_STALE_REVISION`, `AUTOSAVE_REVISION_GAP`, `MUTATION_PAYLOAD_MISMATCH`, `INVALID_ANSWER_BATCH`, dan `INVALID_SESSION_TRANSITION`, dengan envelope `{error:{code,message,details}}`. Detail keberadaan resource lintas tenant tidak dibocorkan.
+Kode error sesi stabil: `ENTITLEMENT_NOT_READY`, `RETEST_NOT_AUTHORIZED`, `SESSION_NOT_FOUND`, `ATTEMPT_ALREADY_EXISTS`, `SESSION_NOT_STARTED`, `SESSION_CLOSED`, `DEADLINE_EXCEEDED`, `AUTOSAVE_STALE_REVISION`, `AUTOSAVE_REVISION_GAP`, `MUTATION_PAYLOAD_MISMATCH`, `INVALID_ANSWER_BATCH`, `INVALID_SESSION_TRANSITION`, dan `ASSESSMENT_ITEM_CONTENT_UNAVAILABLE`, dengan envelope `{error:{code,message,details}}`. Detail keberadaan resource lintas tenant tidak dibocorkan.
 
 Khusus endpoint start generik, mapping non-enumerating adalah: `422
 INVALID_ASSESSMENT_START_REQUEST` untuk instrumen/selector request invalid; `403
 ASSESSMENT_NOT_AVAILABLE` untuk authority missing, foreign, revoked, stale, belum
 siap, atau retest tanpa izin; `409 ASSESSMENT_START_CONFLICT` untuk history atau
 kandidat ambigu; `503 ASSESSMENT_DEFINITION_UNAVAILABLE` untuk definition
-missing/duplikat/invalid; dan `503
+missing/duplikat/invalid; `503 ASSESSMENT_ITEM_CONTENT_UNAVAILABLE` untuk
+instrumen yang isi soalnya belum bisa dikirim (termasuk saat belum ada
+pembaca terdaftar untuk instrumen itu sama sekali) -- diperiksa setelah
+definition tersedia, sebelum attempt/grant dialokasikan, sehingga tidak ada
+sesi yang mulai dan timernya berjalan untuk instrumen yang soalnya tidak
+bisa ditampilkan; dan `503
 ASSESSMENT_START_TEMPORARILY_UNAVAILABLE` setelah retry serialisasi/deadlock
 terbatas habis. Respons tersebut tidak memuat jumlah/ID kasus, detail tenant,
 grant, entitlement, definition, SQL, atau exception. Kontrak ini menggantikan

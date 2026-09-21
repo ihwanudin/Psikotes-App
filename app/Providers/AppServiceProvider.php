@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Contracts\AssessmentItemContentAuthority;
 use App\Contracts\AssessmentSessionDefinitionAuthority;
 use App\Contracts\IdentityMatcher;
 use App\Contracts\Notifier;
@@ -11,6 +12,7 @@ use App\Contracts\PaymentProvider;
 use App\Contracts\RunsRlsContext;
 use App\Security\RlsContextRunner;
 use App\Services\AssessmentSessions\DatabaseAssessmentSessionDefinitionAuthority;
+use App\Services\AssessmentSessions\RegistryAssessmentItemContentAuthority;
 use App\Services\Identity\ManualReviewIdentityMatcher;
 use App\Services\Integrations\GenericAssessmentResultCallbackConfiguration;
 use App\Services\Notifications\N8nNotifier;
@@ -43,6 +45,19 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(
             AssessmentSessionDefinitionAuthority::class,
             DatabaseAssessmentSessionDefinitionAuthority::class,
+        );
+        // Fail-closed by design (Lead sign-off, 2026-09-21): no readers are
+        // registered yet for any instrument, so every instrument's session
+        // start rejects with ASSESSMENT_ITEM_CONTENT_UNAVAILABLE until a
+        // real per-instrument reader is added here. This is not a
+        // regression risk today -- no seeder populates
+        // assessment_session_definitions in any environment yet, so every
+        // instrument's start already rejects earlier, at the definition-
+        // authority gate. Stage 2 only ever ADDS entries to this map; it
+        // never changes RegistryAssessmentItemContentAuthority's default.
+        $this->app->bind(
+            AssessmentItemContentAuthority::class,
+            fn (): RegistryAssessmentItemContentAuthority => new RegistryAssessmentItemContentAuthority([]),
         );
         $this->app->bind(ReportSupplementalData::class, ReportDocumentSupplementalData::class);
     }

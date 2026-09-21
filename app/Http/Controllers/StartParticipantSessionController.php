@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Actions\AssessmentSessions\StartParticipantAssessmentSession;
+use App\Domain\AssessmentSessions\AssessmentItemContentUnavailable;
 use App\Domain\AssessmentSessions\AssessmentSessionDefinitionUnavailable;
 use App\Domain\AssessmentSessions\AssessmentSessionStartFailureCode;
 use App\Domain\AssessmentSessions\AssessmentSessionStartRetriesExhausted;
@@ -68,6 +69,8 @@ final class StartParticipantSessionController extends Controller
             };
         } catch (AssessmentSessionDefinitionUnavailable|InvalidAssessmentSessionDefinitionCatalog) {
             return $this->definitionUnavailable();
+        } catch (AssessmentItemContentUnavailable) {
+            return $this->itemContentUnavailable();
         } catch (AssessmentSessionStartRetriesExhausted) {
             return $this->error(503, 'ASSESSMENT_START_TEMPORARILY_UNAVAILABLE', 'Server sedang sibuk. Coba lagi sesaat lagi.');
         } catch (Throwable $exception) {
@@ -88,6 +91,11 @@ final class StartParticipantSessionController extends Controller
     private function definitionUnavailable(): JsonResponse
     {
         return $this->error(503, 'ASSESSMENT_DEFINITION_UNAVAILABLE', 'Definisi tes belum tersedia. Coba lagi nanti.');
+    }
+
+    private function itemContentUnavailable(): JsonResponse
+    {
+        return $this->error(503, 'ASSESSMENT_ITEM_CONTENT_UNAVAILABLE', 'Isi soal belum tersedia. Coba lagi nanti.');
     }
 
     /**

@@ -6,8 +6,10 @@ namespace Tests\Postgres;
 
 use App\Actions\AssessmentSessions\AllocateAndStartAssessmentSession;
 use App\Actions\AssessmentSessions\StartParticipantAssessmentSession;
+use App\Contracts\AssessmentItemContentAuthority;
 use App\Contracts\AssessmentSessionDefinitionAuthority;
 use App\Domain\AssessmentSessions\AssessmentAttemptAllocationPolicy;
+use App\Domain\AssessmentSessions\AssessmentItemContent;
 use App\Domain\AssessmentSessions\AssessmentSessionDeadlinePolicy;
 use App\Domain\AssessmentSessions\AssessmentSessionSelectionPolicy;
 use App\Domain\AssessmentSessions\AssessmentSessionStateMachine;
@@ -19,6 +21,7 @@ use App\Http\Requests\StartGenericAssessmentSessionRequest;
 use App\Security\RlsContextRunner;
 use App\Services\AssessmentSessions\CaseAuthorizationResolver;
 use App\Services\AssessmentSessions\ParticipantAssessmentSessionCandidates;
+use App\Services\AssessmentSessions\RegistryAssessmentItemContentAuthority;
 use App\Services\ParticipantAuth\ParticipantPrincipal;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -65,6 +68,127 @@ final class StartParticipantSessionControllerSecurityTest extends TestCase
         $this->fixtures[] = $fixture;
     }
 
+    /**
+     * F2 item-delivery Stage 1 (2026-09-21), Lead's explicit requirement:
+     * the same production behaviour proven on SQLite
+     * (StartParticipantSessionHttpTest::test_real_container_binding_rejects_start_for_an_instrument_with_no_registered_item_content_reader),
+     * proven again here against real PostgreSQL RLS/transaction semantics.
+     * Uses the actual RegistryAssessmentItemContentAuthority class with zero
+     * registered readers -- not a throwing test double -- so this proves
+     * the real production class fails closed under Postgres, not just that
+     * some class can be made to throw.
+     */
+    public function test_participant_with_a_ready_entitlement_is_rejected_with_503_when_no_item_content_reader_is_registered(): void
+    {
+        $fixture = $this->participantGraphWithReadyIstEntitlement();
+        $request = StartGenericAssessmentSessionRequest::create('/api/sessions/ist/start', 'POST');
+        $request->attributes->set('participant_principal', new ParticipantPrincipal($fixture['participant'], $fixture['branch']));
+
+        $controller = new StartParticipantSessionController;
+        $response = $controller($request, 'ist', $this->commandWithRealItemContentGate());
+
+        $this->assertSame(503, $response->getStatusCode());
+        $this->assertSame('ASSESSMENT_ITEM_CONTENT_UNAVAILABLE', $response->getData(true)['error']['code']);
+        app(RlsContextRunner::class)->runAsService(function () use ($fixture): void {
+            $this->assertSame(0, DB::table('test_sessions')->where('participant_id', $fixture['participant'])->count());
+            $this->assertSame(0, DB::table('test_session_grants')->where('participant_id', $fixture['participant'])->count());
+        });
+
+        $this->fixtures[] = $fixture;
+    }
+
+    private function commandWithRealItemContentGate(): StartParticipantAssessmentSession
+    {
+        $contexts = app(RlsContextRunner::class);
+
+        return new StartParticipantAssessmentSession(
+            $contexts,
+            app(ParticipantAssessmentSessionCandidates::class),
+            new AssessmentSessionSelectionPolicy,
+            app(CaseAuthorizationResolver::class),
+            new AllocateAndStartAssessmentSession(
+                $contexts,
+                app(CaseAuthorizationResolver::class),
+                new class implements AssessmentSessionDefinitionAuthority
+                {
+                    public function issueForNewSession(
+                        GenericAssessmentInstrument $instrument,
+                        CaseAuthorization $authorization,
+                        string $sessionPublicId,
+                    ): SessionDefinition {
+                        $payload = [
+                            'instrument' => $instrument->value, 'version' => 'synthetic-v1',
+                            'provenance' => 's5-security-test', 'total_duration_seconds' => 60,
+                            'subtests' => [['code' => 'all', 'duration_seconds' => 60, 'item_count' => 1]],
+                            'randomization' => 'fixed', 'seed' => null, 'generator' => null,
+                        ];
+                        $payload['checksum'] = SessionDefinition::checksumFor($payload);
+
+                        return SessionDefinition::fromArray($payload);
+                    }
+                },
+                new RegistryAssessmentItemContentAuthority([]),
+                new AssessmentAttemptAllocationPolicy,
+                new AssessmentSessionStateMachine,
+                new AssessmentSessionDeadlinePolicy,
+            ),
+        );
+    }
+
+    /** @return array{branch:int,package:int,participant:int,case:int,order:int,paymentMethod:int} */
+    private function participantGraphWithReadyIstEntitlement(): array
+    {
+        return app(RlsContextRunner::class)->runAsService(function (): array {
+            $key = (string) Str::ulid();
+            $branch = DB::table('branches')->insertGetId([
+                'code' => $key, 'ref_code' => $key, 'name' => 'S5 Synthetic',
+                'organization_code' => $key, 'display_name' => 'S5 Synthetic',
+            ]);
+            $package = DB::table('packages')->insertGetId([
+                'code' => 'PKG-'.$key, 'name' => 'S5 Synthetic', 'amount' => 99000,
+                'currency' => 'IDR', 'is_active' => true, 'created_at' => now(), 'updated_at' => now(),
+            ]);
+            foreach (['dass21', 'ist'] as $sort => $type) {
+                DB::table('package_items')->insert([
+                    'package_id' => $package, 'test_type' => $type, 'sort_order' => $sort,
+                    'created_at' => now(), 'updated_at' => now(),
+                ]);
+            }
+            $participant = DB::table('participants')->insertGetId([
+                'branch_id' => $branch, 'referral_branch_id' => $branch, 'referral_source' => 'default',
+                'package_id' => $package, 'source_system' => 'DIRECT_PUBLIC',
+                'full_name' => 'S5 Synthetic', 'phone' => '620000000000',
+            ]);
+            $publicId = (string) Str::ulid();
+            $case = DB::table('assessment_cases')->insertGetId([
+                'public_id' => $publicId, 'participant_id' => $participant,
+                'organization_id' => $branch, 'package_id' => $package,
+                'origin' => 'DIRECT_PUBLIC', 'intended_field_snapshot' => null,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+            $paymentMethod = DB::table('payment_methods')->insertGetId([
+                'code' => 'METHOD-'.$key, 'display_name' => $key, 'is_active' => true,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+            $order = DB::table('orders')->insertGetId([
+                'public_id' => $publicId, 'participant_id' => $participant,
+                'assessment_case_id' => $case, 'payment_method_id' => $paymentMethod,
+                'status' => 'paid', 'amount' => 99000, 'currency' => 'IDR', 'paid_at' => now()->subMinute(),
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+            foreach (['dass21', 'ist'] as $type) {
+                DB::table('entitlements')->insert([
+                    'participant_id' => $participant, 'order_id' => $order, 'test_type' => $type,
+                    'assessment_case_id' => $type === 'dass21' ? null : $case,
+                    'status' => 'ready', 'ready_at' => now()->subMinute(),
+                    'created_at' => now(), 'updated_at' => now(),
+                ]);
+            }
+
+            return compact('branch', 'package', 'participant', 'case', 'order', 'paymentMethod');
+        });
+    }
+
     private function command(): StartParticipantAssessmentSession
     {
         $contexts = app(RlsContextRunner::class);
@@ -84,6 +208,15 @@ final class StartParticipantSessionControllerSecurityTest extends TestCase
                         CaseAuthorization $authorization,
                         string $sessionPublicId,
                     ): SessionDefinition {
+                        throw new RuntimeException('Must never be reached: no ready entitlement exists.');
+                    }
+                },
+                new class implements AssessmentItemContentAuthority
+                {
+                    public function contentFor(
+                        GenericAssessmentInstrument $instrument,
+                        SessionDefinition $definition,
+                    ): AssessmentItemContent {
                         throw new RuntimeException('Must never be reached: no ready entitlement exists.');
                     }
                 },
