@@ -34,6 +34,9 @@ use JsonException;
  * instead of hardcoding this text statically. Whitelisted to exactly the
  * four fields `papi_items.json` actually has -- an unexpected fifth field
  * fails closed the same way a malformed item does.
+ *
+ * $participantId/$lockedVariant (interface, 2026-09-21): ignored -- PAPI
+ * content has no per-participant variant axis.
  */
 final readonly class PapiItemContentReader implements AssessmentItemContentAuthority
 {
@@ -52,6 +55,8 @@ final readonly class PapiItemContentReader implements AssessmentItemContentAutho
     public function contentFor(
         GenericAssessmentInstrument $instrument,
         SessionDefinition $definition,
+        int $participantId,
+        ?string $lockedVariant = null,
     ): AssessmentItemContent {
         if ($instrument !== GenericAssessmentInstrument::Papi) {
             throw new AssessmentItemContentUnavailable(

@@ -670,6 +670,8 @@ final readonly class ThrowingAssessmentItemContentAuthority implements Assessmen
     public function contentFor(
         GenericAssessmentInstrument $instrument,
         SessionDefinition $definition,
+        int $participantId,
+        ?string $lockedVariant = null,
     ): AssessmentItemContent {
         throw $this->failure;
     }
