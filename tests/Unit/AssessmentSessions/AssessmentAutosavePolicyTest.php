@@ -146,6 +146,60 @@ final class AssessmentAutosavePolicyTest extends TestCase
         yield 'nested infinity' => [[['item_no' => 1, 'value' => ['nested' => [INF]]]]];
     }
 
+    public function test_item_no_beyond_the_session_item_count_is_rejected_fail_closed(): void
+    {
+        $decision = (new AssessmentAutosavePolicy)->decide(
+            AssessmentSessionStatus::InProgress,
+            new DateTimeImmutable('2026-09-08T03:05:00.000000Z'),
+            new DateTimeImmutable('2026-09-08T03:04:00.000000Z'),
+            '01J75D9KJ6M8K2Q4V7X1N3P5RS',
+            0,
+            '01J75D9KJ6M8K2Q4V7X1N3P5RT',
+            1,
+            [['item_no' => 21, 'value' => 'A']],
+            null,
+            maxItemNo: 20,
+        );
+
+        $this->assertFalse($decision->accepted);
+        $this->assertSame(AssessmentSessionErrorCode::InvalidAnswerBatch, $decision->errorCode);
+    }
+
+    public function test_item_no_at_exactly_the_session_item_count_is_accepted(): void
+    {
+        $decision = (new AssessmentAutosavePolicy)->decide(
+            AssessmentSessionStatus::InProgress,
+            new DateTimeImmutable('2026-09-08T03:05:00.000000Z'),
+            new DateTimeImmutable('2026-09-08T03:04:00.000000Z'),
+            '01J75D9KJ6M8K2Q4V7X1N3P5RS',
+            0,
+            '01J75D9KJ6M8K2Q4V7X1N3P5RT',
+            1,
+            [['item_no' => 20, 'value' => 'A']],
+            null,
+            maxItemNo: 20,
+        );
+
+        $this->assertTrue($decision->accepted);
+    }
+
+    public function test_no_max_item_no_means_no_bound_is_enforced(): void
+    {
+        $decision = (new AssessmentAutosavePolicy)->decide(
+            AssessmentSessionStatus::InProgress,
+            new DateTimeImmutable('2026-09-08T03:05:00.000000Z'),
+            new DateTimeImmutable('2026-09-08T03:04:00.000000Z'),
+            '01J75D9KJ6M8K2Q4V7X1N3P5RS',
+            0,
+            '01J75D9KJ6M8K2Q4V7X1N3P5RT',
+            1,
+            [['item_no' => 999999, 'value' => 'A']],
+            null,
+        );
+
+        $this->assertTrue($decision->accepted);
+    }
+
     public function test_new_mutation_after_deadline_is_rejected_and_expires_session(): void
     {
         $decision = $this->decide(
