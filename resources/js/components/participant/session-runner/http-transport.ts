@@ -288,22 +288,20 @@ export function createHttpTransport(
         if (status >= 200 && status < 300 && body !== null) {
             const b = body as Record<string, unknown>;
 
+            // The real POST /sessions/:id/answers success response
+            // (session_id, status, replayed, answers_revision,
+            // accepted_item_numbers) has no server timestamp field —
+            // confirmed by reading AutosaveAssessmentAnswersController.php,
+            // not assumed. AutosaveSendOutcome's accepted variant used to
+            // require a receivedAt field; Lead's 2026-09-21 review caught
+            // that the first version of this file filled it with a
+            // client-side capture time, which would eventually be misread
+            // as a server-authoritative timestamp given the field's name.
+            // The field was removed from the type entirely rather than
+            // fabricated here — see autosave-engine.ts's doc on it.
             return {
                 type: 'accepted',
                 revision: Number(b.answers_revision),
-                // The real POST /sessions/:id/answers success response
-                // (session_id, status, replayed, answers_revision,
-                // accepted_item_numbers) has no server timestamp field,
-                // even though AutosaveSendOutcome's accepted variant
-                // requires receivedAt — confirmed by reading
-                // AutosaveAssessmentAnswersController.php, not assumed.
-                // Nothing in resources/js/ reads .receivedAt today (see
-                // this module's HTTP transport plan for the full
-                // citation), so a client-side capture time is used here
-                // as an inert placeholder rather than fabricating a
-                // fake server value; flagged to Lead as a real, minor
-                // contract mismatch, not silently papered over.
-                receivedAt: new Date().toISOString(),
                 acceptedItemNos: (b.accepted_item_numbers as number[]) ?? [],
             } satisfies AutosaveSendOutcome;
         }

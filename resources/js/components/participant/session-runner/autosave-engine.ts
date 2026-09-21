@@ -30,9 +30,19 @@ export type AutosaveItem = { itemNo: number; value: unknown };
 
 export type AutosaveSendOutcome =
     | {
+          // No receivedAt/timestamp field here on purpose: the real
+          // POST /sessions/:id/answers success response
+          // (session_id, status, replayed, answers_revision,
+          // accepted_item_numbers) never sends one, and CLAUDE.md
+          // forbids the client inventing server-authoritative time.
+          // An earlier version of this type required one and a
+          // client-side capture time was used to fill it -- Lead's
+          // 2026-09-21 review caught that a field named receivedAt
+          // holding a device clock reading would eventually be
+          // misread as server fact. Removed rather than left optional,
+          // since nothing in resources/js/ has ever read it.
           type: 'accepted';
           revision: number;
-          receivedAt: string;
           acceptedItemNos: number[];
       }
     | { type: 'stale_revision' }
@@ -76,7 +86,6 @@ export type FlushResult =
     | {
           status: 'accepted';
           revision: number;
-          receivedAt: string;
           acceptedItemNos: number[];
       }
     | { status: 'stale_revision' }
@@ -222,7 +231,6 @@ export function createAutosaveEngine(
                 return {
                     status: 'accepted',
                     revision: outcome.revision,
-                    receivedAt: outcome.receivedAt,
                     acceptedItemNos: outcome.acceptedItemNos,
                 };
             case 'stale_revision':

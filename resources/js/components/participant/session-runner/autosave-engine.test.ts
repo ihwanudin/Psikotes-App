@@ -32,7 +32,6 @@ test('flush with nothing pending is a no-op and never calls send', async () => {
             return {
                 type: 'accepted',
                 revision: 1,
-                receivedAt: 'x',
                 acceptedItemNos: [],
             };
         },
@@ -55,7 +54,6 @@ test('accepted flush advances revision and clears pending changes', async () => 
             return {
                 type: 'accepted',
                 revision: batch.revision,
-                receivedAt: '2026-09-21T00:00:00Z',
                 acceptedItemNos: batch.items.map((item) => item.itemNo),
             };
         },
@@ -104,7 +102,6 @@ test('a second flush while one is in flight does not send twice', async () => {
     gate.resolve({
         type: 'accepted',
         revision: 1,
-        receivedAt: 'x',
         acceptedItemNos: [1],
     });
     await firstFlush;
@@ -130,7 +127,6 @@ test('changes queued while a batch is in flight are not merged into that batch',
     gate.resolve({
         type: 'accepted',
         revision: 1,
-        receivedAt: 'x',
         acceptedItemNos: [1],
     });
     await firstFlush;
@@ -171,7 +167,6 @@ test('a network error retries the identical mutation_id, revision, and items', a
             return {
                 type: 'accepted',
                 revision: batch.revision,
-                receivedAt: 'x',
                 acceptedItemNos: batch.items.map((i) => i.itemNo),
             };
         },
@@ -406,7 +401,6 @@ test('each real (non-retry) batch gets its own mutation_id from the injected gen
             return {
                 type: 'accepted',
                 revision: batch.revision,
-                receivedAt: 'x',
                 acceptedItemNos: batch.items.map((i) => i.itemNo),
             };
         },
