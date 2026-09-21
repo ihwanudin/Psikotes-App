@@ -156,6 +156,31 @@ Yang TIDAK berubah oleh keputusan ini:
   pembatasan ini.
 - DASS-21 tetap tidak pernah masuk ekspresi zona/label kelayakan (G4).
 
+## 11. Kamera proctoring — WAJIB untuk semua peserta — SELESAI
+
+Keputusan: **kamera wajib hidup untuk SEMUA peserta**, tanpa pengecualian per
+cabang. Alasannya dari pemilik proyek: sistem akan menyimpan foto (snapshot)
+acak selama tes.
+
+Ini konsisten dengan `SPEC.md` (model perekaman): foto diambil pada selang acak
+setiap 12–20 detik sepanjang sesi, ditambah wajib saat mulai dan saat
+mengumpulkan. Penanda "wajib kamera per cabang" yang sempat disebut di SPEC
+tidak dipakai: satu aturan untuk semua cabang.
+
+Konsekuensi yang mengikat:
+- Peserta **tidak bisa memulai tes** tanpa kamera aktif. Status `denied`
+  (menolak izin) dan `unavailable` (kamera tidak ada/rusak) sama-sama menahan
+  start, dengan pesan yang membedakan keduanya dan memberi petunjuk cara
+  mengaktifkannya.
+- Proctoring tetap **DETEKSI, bukan CEGAH** (`CLAUDE.md`). Keputusan validitas
+  (V1/V2/V3) tetap di psikolog.
+- Karena kamera wajib dan foto disimpan, **backend penyimpanan proctoring (F7)
+  menjadi syarat go-live**. Layar persetujuan tidak boleh dipasang ke alur
+  peserta sungguhan sebelum penyimpanan itu ada.
+
+Belum diputuskan: perilaku bila kamera mati **di tengah tes** (misalnya HP
+berpindah aplikasi). Lihat butir terbuka di bawah.
+
 ## Butir yang masih terbuka setelah dokumen ini
 
 - Konfirmasi hukum untuk retensi foto identitas (butir 5d). Butir 3
@@ -163,3 +188,5 @@ Yang TIDAK berubah oleh keputusan ini:
   menunggu konfirmasi.
 - Pembagian waktu subtes ME sudah diputuskan (180 detik menghafal + 360
   detik menjawab) dan tercatat di `CLAUDE.md`.
+
+- Kamera mati di tengah tes (butir 11): apakah tes dijeda sampai kamera aktif lagi, atau tes berlanjut sementara sistem mencoba menyalakan ulang dan mencatat celahnya untuk psikolog.
