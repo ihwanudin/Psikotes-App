@@ -171,7 +171,7 @@ final readonly class SignedReportDataset
 
         $iqCategory = is_int($iq) && is_string($istVersion)
             ? $this->iqCategory($this->runner->runAsService(static fn (): ?stdClass => DB::table('instrument_versions')
-                ->select(['payload', 'checksum'])
+                ->select(['source_text', 'checksum'])
                 ->where('code', 'ist')
                 ->where('version', $istVersion)
                 ->first()), $iq)
@@ -404,18 +404,25 @@ final readonly class SignedReportDataset
     }
 
     /**
-     * Same integrity rule as the IST scorer: the payload must match its
-     * recorded checksum before its band table is trusted.
+     * Same integrity rule as the IST scorer (ScoreSealedIstAnswerSet),
+     * and the same fix for the same twin defect: `payload` is jsonb,
+     * which PostgreSQL normalizes on write, so it can never be hashed
+     * back to `checksum`. `source_text` is the byte-identical raw text
+     * the checksum was actually computed from and is what gets verified
+     * here — never `payload`, with no fallback. A NULL `source_text`
+     * (nullable: historical rows whose on-disk source can't be honestly
+     * reconstructed are left incomplete rather than faked) fails closed
+     * the same as a checksum mismatch.
      */
     private function iqCategory(?stdClass $row, int $iq): ?string
     {
-        if ($row === null || ! is_string($row->payload) || ! is_string($row->checksum)
-            || ! hash_equals($row->checksum, hash('sha256', $row->payload))) {
+        if ($row === null || ! is_string($row->source_text) || ! is_string($row->checksum)
+            || ! hash_equals($row->checksum, hash('sha256', $row->source_text))) {
             return null;
         }
 
         try {
-            $data = json_decode($row->payload, true, 512, JSON_THROW_ON_ERROR);
+            $data = json_decode($row->source_text, true, 512, JSON_THROW_ON_ERROR);
             if (! is_array($data) || ! is_array($data['iq_level_bands'] ?? null)) {
                 return null;
             }

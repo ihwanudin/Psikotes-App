@@ -77,16 +77,22 @@ final class SignedReportDatasetRlsTest extends TestCase
         $this->assertFalse(hash_equals($row->checksum, hash('sha256', (string) $row->payload)));
     }
 
+    /**
+     * IQ_CATEGORY_UNAVAILABLE is deliberately NOT in the expected list
+     * (2026-09-21 fix): iqCategory() now reads source_text, which this
+     * fixture populates byte-identical to checksum's source, so it
+     * resolves under real RLS instead of blocking. Before the fix this
+     * test failed here with IQ_CATEGORY_UNAVAILABLE present — see this
+     * commit's paired "red" commit, and the now-inverted assertion in
+     * test_jsonb_payload_is_readable_but_not_byte_identical above, which
+     * still proves payload itself never round-trips.
+     */
     public function test_default_adapter_reaches_every_persisted_source_under_rls(): void
     {
         $result = app(SignedReportDataset::class)->hpp($this->casePublicId);
 
-        // Snapshot, identity, and DASS were all readable. IQ_CATEGORY stays
-        // blocked on PostgreSQL until the jsonb checksum rule is decided (see
-        // test above); the adapter fails closed rather than skip integrity.
         $this->assertSame([
             SignedReportDataset::TEST_DATE_UNAVAILABLE,
-            SignedReportDataset::IQ_CATEGORY_UNAVAILABLE,
             SignedReportDataset::RECOMMENDATION_RATIONALE_UNAVAILABLE,
             SignedReportDataset::ASPECT_LABELS_UNAVAILABLE,
         ], $result->missing);
@@ -99,6 +105,34 @@ final class SignedReportDatasetRlsTest extends TestCase
             SignedReportDataset::REPORT_NUMBER_NOT_YET_ISSUED,
             SignedReportDataset::DASS_TEXT_UNAVAILABLE,
         ], $result->warnings);
+    }
+
+    /**
+     * Regression guard (Lead's requirement): a NULL source_text must fail
+     * closed even when payload's checksum would incorrectly "verify" if
+     * iqCategory() ever fell back to reading payload. Without this test,
+     * someone could reintroduce a payload fallback later and the original
+     * PostgreSQL jsonb checksum bug would return invisibly.
+     */
+    public function test_iq_category_fails_closed_when_source_text_is_null_even_though_payload_checksum_matches(): void
+    {
+        $nullSourceTextVersion = self::IST_VERSION.'-null-source-text';
+        $ist = json_decode((string) file_get_contents(dirname(__DIR__, 2).'/database/seeders/data/ist.json'), true, flags: JSON_THROW_ON_ERROR);
+        $payload = json_encode(['version' => $nullSourceTextVersion, 'iq_level_bands' => $ist['iq_level_bands']], JSON_THROW_ON_ERROR);
+
+        app(RlsContextRunner::class)->runAsService(function () use ($payload, $nullSourceTextVersion): void {
+            DB::table('instrument_versions')->insert([
+                'code' => 'ist', 'version' => $nullSourceTextVersion, 'source_file' => 'synthetic-report-ist-pg-null.json',
+                'checksum' => hash('sha256', $payload), 'payload' => $payload, 'source_text' => null,
+                'is_active' => false, 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        });
+
+        $casePublicId = $this->signFreshCase($nullSourceTextVersion);
+
+        $result = app(SignedReportDataset::class)->hpp($casePublicId);
+
+        $this->assertContains(SignedReportDataset::IQ_CATEGORY_UNAVAILABLE, $result->missing);
     }
 
     public function test_dass_read_selects_only_the_general_category_before_signing(): void
@@ -210,13 +244,97 @@ final class SignedReportDatasetRlsTest extends TestCase
         }
     }
 
+    /**
+     * Self-contained variant of signCase() for a fresh case pointed at a
+     * caller-chosen IST version, used only by the null-source_text
+     * regression test so it doesn't disturb the shared setUp() case.
+     */
+    private function signFreshCase(string $istVersion): string
+    {
+        $casePublicId = app(RlsContextRunner::class)->runAsService(static function (): string {
+            $fixture = AssessmentBillingFixture::create();
+            DB::table('participants')->where('id', $fixture['participant'])->update(['test_number' => 'T26-09-PG02']);
+
+            return (string) DB::table('assessment_cases')->where('id', $fixture['case'])->value('public_id');
+        });
+
+        $data = json_decode((string) file_get_contents(dirname(__DIR__, 2).'/database/seeders/data/reporting.json'), true, flags: JSON_THROW_ON_ERROR);
+        $reporting = ['standard_version' => $data['standard_version'], 'base_standards' => $data['base_standards'], 'fields' => $data['fields']];
+        $canonicalInput = [
+            'levels' => array_fill_keys(self::ASPECTS, 4),
+            'field_code' => 'UMUM',
+            'iq' => 110,
+            'validity' => 'V1',
+            'standard_configuration' => $reporting,
+            'eligibility_source_versions' => [
+                'ist' => $istVersion, 'papi' => 'F0-2026.08', 'kraepelin' => 'F0-2026.08',
+                'rmib' => 'F0-2026.08', 'reporting' => $reporting['standard_version'],
+            ],
+        ];
+        $snapshot = EligibilityDecisionSnapshot::create($canonicalInput)->toArray();
+
+        [$eligibilityId, $narrativeId, $psychologist] = app(RlsContextRunner::class)->runAsService(function () use ($casePublicId, $canonicalInput, $snapshot): array {
+            $caseId = (int) DB::table('assessment_cases')->where('public_id', $casePublicId)->value('id');
+            $eligibilityId = (string) Str::ulid();
+            DB::table('eligibility_decision_versions')->insert([
+                'id' => $eligibilityId, 'assessment_case_id' => $caseId, 'version' => 1, 'supersedes_id' => null,
+                'standard_version' => $snapshot['provenance']['eligibility_standard_version'],
+                'field_code' => $snapshot['zone']['field_code'],
+                'publication_blocked' => $snapshot['publication_blocked'],
+                'recommendation_label' => $snapshot['recommendation']['label'] ?? null,
+                'iq' => 110, 'validity' => 'V1',
+                'snapshot_json' => json_encode($snapshot, JSON_THROW_ON_ERROR),
+                'canonical_input_json' => json_encode($canonicalInput, JSON_THROW_ON_ERROR),
+                'created_at' => now(),
+            ]);
+            $narrativeId = (string) Str::ulid();
+            DB::table('bilingual_narrative_versions')->insert([
+                'id' => $narrativeId, 'assessment_case_id' => $caseId, 'version' => 1, 'supersedes_id' => null,
+                'eligibility_version_id' => $eligibilityId, 'review_required' => false,
+                'cluster_a_id' => 'A', 'cluster_a_jp' => 'A', 'cluster_b_id' => 'B', 'cluster_b_jp' => 'B',
+                'cluster_c_id' => 'C', 'cluster_c_jp' => 'C', 'cluster_d_id' => 'D', 'cluster_d_jp' => 'D',
+                'snapshot_json' => json_encode(['type' => 'bilingual_cluster_narratives'], JSON_THROW_ON_ERROR),
+                'created_at' => now(),
+            ]);
+            $adminId = DB::table('admins')->insertGetId([
+                'name' => 'Psikolog Sintetis PG2', 'email' => Str::uuid().'@example.test',
+                'password' => bcrypt('password'), 'role' => 'psychologist',
+                'silp_number' => 'SILP-PG-TEST-2', 'str_number' => 'STR-PG-TEST-2',
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+
+            return [$eligibilityId, $narrativeId, Admin::query()->findOrFail($adminId)];
+        });
+
+        $result = app(ReportSigningService::class)->sign($casePublicId, $psychologist, [
+            'eligibility_version_id' => $eligibilityId,
+            'narrative_version_id' => $narrativeId,
+            'level_overrides' => [],
+            'label_override' => null,
+            'g7_resolutions' => [],
+            'procedure_note' => null,
+            'accompaniment_conditions' => null,
+            'narrative_clusters' => ['A' => 'Narasi A.', 'B' => 'Narasi B.', 'C' => 'Narasi C.', 'D' => 'Narasi D.'],
+        ]);
+        if ($result['success'] !== true) {
+            throw new \RuntimeException('Synthetic signing failed: '.$result['code'].' '.$result['message']);
+        }
+
+        return $casePublicId;
+    }
+
     private function seedIstVersion(): void
     {
         $ist = json_decode((string) file_get_contents(dirname(__DIR__, 2).'/database/seeders/data/ist.json'), true, flags: JSON_THROW_ON_ERROR);
         $payload = json_encode(['version' => self::IST_VERSION, 'iq_level_bands' => $ist['iq_level_bands']], JSON_THROW_ON_ERROR);
         DB::table('instrument_versions')->insert([
             'code' => 'ist', 'version' => self::IST_VERSION, 'source_file' => 'synthetic-report-ist-pg.json',
-            'checksum' => hash('sha256', $payload), 'payload' => $payload, 'is_active' => false,
+            'checksum' => hash('sha256', $payload), 'payload' => $payload,
+            // Byte-identical to what checksum was computed from, exactly like
+            // InstrumentSeeder.php:78 — the fix under test reads this, never
+            // payload (jsonb, normalized by PostgreSQL on write).
+            'source_text' => $payload,
+            'is_active' => false,
             'created_at' => now(), 'updated_at' => now(),
         ]);
     }

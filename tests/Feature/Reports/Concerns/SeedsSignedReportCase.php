@@ -254,7 +254,14 @@ trait SeedsSignedReportCase
 
         DB::table('instrument_versions')->insert([
             'code' => 'ist', 'version' => self::IST_VERSION, 'source_file' => 'synthetic-report-ist.json',
-            'checksum' => hash('sha256', $payload), 'payload' => $payload, 'is_active' => false,
+            'checksum' => hash('sha256', $payload), 'payload' => $payload,
+            // Byte-identical to what checksum was computed from, exactly like
+            // InstrumentSeeder.php:78. SignedReportDataset::iqCategory() reads
+            // this column, never payload (jsonb — a Postgres-only concern, but
+            // populated here too so this SQLite fixture keeps matching the
+            // production query shape).
+            'source_text' => $payload,
+            'is_active' => false,
             'created_at' => now(), 'updated_at' => now(),
         ]);
     }
