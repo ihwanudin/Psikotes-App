@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Http\Controllers\AssessmentParticipantProvisioningController;
 use App\Http\Controllers\AssessmentResultController;
 use App\Http\Controllers\AutosaveAssessmentAnswersController;
+use App\Http\Controllers\GetAssessmentSessionAnswersController;
 use App\Http\Controllers\GetAssessmentSessionController;
 use App\Http\Controllers\ParticipantEntitlementController;
 use App\Http\Controllers\ParticipantLoginController;
@@ -62,4 +63,11 @@ Route::middleware('participant.jwt')->group(function (): void {
         ->name('participant.sessions.answers');
     Route::post('/sessions/{id}/submit', SubmitAssessmentSessionController::class)
         ->name('participant.sessions.submit');
+
+    // F2 session-answers-readback (2026-09-21): same rls-excluded group,
+    // same reason -- GetAssessmentSessionAnswers owns its own service
+    // transaction. Readable exactly when writable (see the action's doc
+    // comment): only in_progress and before ends_at.
+    Route::get('/sessions/{id}/answers', GetAssessmentSessionAnswersController::class)
+        ->name('participant.sessions.answers.show');
 });
