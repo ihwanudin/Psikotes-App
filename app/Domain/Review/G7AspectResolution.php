@@ -117,18 +117,27 @@ final readonly class G7AspectResolution
     }
 
     /**
+     * F2 G7-server-side-sources (2026-09-21): minimum_level/maximum_level/
+     * spread widened to int|null and reason_code gained 'SOURCE_INCOMPLETE'
+     * -- App\Domain\Eligibility\AspectSourceDiscrepancyPolicy now represents
+     * a configured source with no ledger reading yet as `level: null` and
+     * withholds the summary numbers rather than compute them from a partial
+     * set. This method's own validation (hasExactKeys + re-derive-and-compare
+     * against the policy) is unaffected: it checks key presence and full
+     * array equality, neither of which depends on int vs null.
+     *
      * @param  array<mixed>  $result
      * @return array{
      *     type: 'aspect_source_discrepancy',
      *     review_required: bool,
      *     automatic_narrative_allowed: bool,
-     *     reason_code: 'SOURCE_LEVEL_SPREAD'|null,
+     *     reason_code: 'SOURCE_LEVEL_SPREAD'|'SOURCE_INCOMPLETE'|null,
      *     provenance: array{
      *         aspect: string,
-     *         sources: list<array{source: string, level: int}>,
-     *         minimum_level: int,
-     *         maximum_level: int,
-     *         spread: int
+     *         sources: list<array{source: string, level: int|null}>,
+     *         minimum_level: int|null,
+     *         maximum_level: int|null,
+     *         spread: int|null
      *     }
      * }
      */
