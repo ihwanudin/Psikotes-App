@@ -6,6 +6,7 @@ namespace Tests\Postgres;
 
 use App\Actions\AssessmentSessions\AutosaveAssessmentAnswers;
 use App\Domain\AssessmentSessions\AssessmentAutosavePolicy;
+use App\Domain\AssessmentSessions\SessionDefinition;
 use App\Registration\ConsentDocument;
 use App\Security\RlsContextRunner;
 use DateTimeImmutable;
@@ -279,6 +280,20 @@ final class AssessmentSessionAutosaveActionTest extends TestCase
         $graph = $this->graph();
 
         return app(RlsContextRunner::class)->runAsService(function () use ($graph): array {
+            // F2 session-http (2026-09-21): a real S3-allocated session
+            // always has this snapshot; AutosaveAssessmentAnswers now reads
+            // it to bound item_no against the session's real item count.
+            // item_count=10 is generous headroom above every item_no this
+            // file's tests use (1-2).
+            $definitionSource = [
+                'instrument' => 'ist', 'version' => 'synthetic-definition-v1',
+                'provenance' => 'synthetic-autosave-pg-test-only', 'total_duration_seconds' => 3600,
+                'subtests' => [['code' => 'SYN', 'duration_seconds' => 3600, 'item_count' => 10]],
+                'randomization' => 'fixed', 'seed' => null, 'generator' => null,
+            ];
+            $definition = SessionDefinition::fromArray([
+                ...$definitionSource, 'checksum' => SessionDefinition::checksumFor($definitionSource),
+            ]);
             $publicId = (string) Str::ulid();
             $session = DB::table('test_sessions')->insertGetId([
                 'public_id' => $publicId, 'participant_id' => $graph['participant'],
@@ -288,6 +303,10 @@ final class AssessmentSessionAutosaveActionTest extends TestCase
                 'duration_seconds' => 3600, 'status' => 'in_progress', 'answers_revision' => 0,
                 'started_at' => '2026-09-08 03:00:00.000000+00',
                 'ends_at' => '2026-09-08 04:00:00.000000+00',
+                'session_definition_version' => $definition->version,
+                'session_definition_provenance' => $definition->provenance,
+                'session_definition_checksum' => $definition->checksum,
+                'session_definition_payload' => json_encode($definition->toArray(), JSON_THROW_ON_ERROR),
             ]);
 
             return [...$graph, 'session' => $session, 'public_id' => $publicId];

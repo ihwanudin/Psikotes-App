@@ -6,6 +6,7 @@ namespace Tests\Feature\AssessmentSessions;
 
 use App\Actions\AssessmentSessions\AutosaveAssessmentAnswers;
 use App\Domain\AssessmentSessions\AssessmentAutosavePolicy;
+use App\Domain\AssessmentSessions\SessionDefinition;
 use App\Security\RlsContextRunner;
 use DateTimeImmutable;
 use Illuminate\Database\QueryException;
@@ -232,6 +233,39 @@ final class AutosaveAssessmentAnswersTest extends OrganizationPaymentTestCase
         $this->assertDatabaseHas('test_sessions', ['id' => $sessionId, 'answers_revision' => 0]);
     }
 
+    public function test_item_no_beyond_the_sessions_real_item_count_is_rejected(): void
+    {
+        $participant = $this->participant();
+        $definitionSource = [
+            'instrument' => 'ist', 'version' => 'synthetic-definition-v1',
+            'provenance' => 'synthetic-autosave-bound-test-only', 'total_duration_seconds' => 3600,
+            'subtests' => [['code' => 'SYN', 'duration_seconds' => 3600, 'item_count' => 2]],
+            'randomization' => 'fixed', 'seed' => null, 'generator' => null,
+        ];
+        $definition = SessionDefinition::fromArray([
+            ...$definitionSource, 'checksum' => SessionDefinition::checksumFor($definitionSource),
+        ]);
+        $publicId = (string) Str::ulid();
+        DB::table('test_sessions')->insert([
+            'public_id' => $publicId, 'participant_id' => $participant, 'test_type' => 'ist',
+            'attempt_no' => ++$this->attempt,
+            'authorization_id' => (string) Str::ulid(), 'allocation_intent_id' => (string) Str::ulid(),
+            'duration_seconds' => 3600, 'status' => 'in_progress', 'answers_revision' => 0,
+            'started_at' => '2026-09-08 03:00:00.000000+07:00', 'ends_at' => '2026-09-08 04:00:00.000000+07:00',
+            'session_definition_version' => $definition->version,
+            'session_definition_provenance' => $definition->provenance,
+            'session_definition_checksum' => $definition->checksum,
+            'session_definition_payload' => json_encode($definition->toArray(), JSON_THROW_ON_ERROR),
+        ]);
+
+        $result = $this->action(fn (): DateTimeImmutable => new DateTimeImmutable('2026-09-08T03:30:00+07:00'))
+            ->execute($participant, $publicId, (string) Str::ulid(), 1, [['item_no' => 3, 'value' => 'A']]);
+
+        $this->assertFalse($result->accepted);
+        $this->assertSame('INVALID_ANSWER_BATCH', $result->errorCode);
+        $this->assertSame(0, DB::table('answers')->count());
+    }
+
     private function action(callable $clock): AutosaveAssessmentAnswers
     {
         return new AutosaveAssessmentAnswers(
@@ -259,6 +293,19 @@ final class AutosaveAssessmentAnswersTest extends OrganizationPaymentTestCase
     {
         $publicId = (string) Str::ulid();
         $started = $status === 'created' ? null : '2026-09-08 03:00:00.000000+07:00';
+        // F2 session-http (2026-09-21): a real S3-allocated session always has
+        // this snapshot; AutosaveAssessmentAnswers now reads it to bound
+        // item_no against the session's real item count. item_count=10 is
+        // generous headroom above every item_no this file's tests use (1-2).
+        $definitionSource = [
+            'instrument' => 'ist', 'version' => 'synthetic-definition-v1',
+            'provenance' => 'synthetic-autosave-test-only', 'total_duration_seconds' => 3600,
+            'subtests' => [['code' => 'SYN', 'duration_seconds' => 3600, 'item_count' => 10]],
+            'randomization' => 'fixed', 'seed' => null, 'generator' => null,
+        ];
+        $definition = SessionDefinition::fromArray([
+            ...$definitionSource, 'checksum' => SessionDefinition::checksumFor($definitionSource),
+        ]);
         DB::table('test_sessions')->insert([
             'public_id' => $publicId, 'participant_id' => $participant, 'test_type' => 'ist',
             'attempt_no' => $attempt ?? ++$this->attempt,
@@ -266,6 +313,10 @@ final class AutosaveAssessmentAnswersTest extends OrganizationPaymentTestCase
             'duration_seconds' => 3600, 'status' => $status, 'answers_revision' => 0,
             'started_at' => $started, 'ends_at' => $started === null ? null : '2026-09-08 04:00:00.000000+07:00',
             'submitted_at' => $status === 'submitted' ? '2026-09-08 03:59:00.000000+07:00' : null,
+            'session_definition_version' => $definition->version,
+            'session_definition_provenance' => $definition->provenance,
+            'session_definition_checksum' => $definition->checksum,
+            'session_definition_payload' => json_encode($definition->toArray(), JSON_THROW_ON_ERROR),
         ]);
 
         return $publicId;
