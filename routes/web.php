@@ -121,7 +121,7 @@ Route::post('/registration/manual-payment-proof', ManualPaymentProofUploadContro
 
 Route::post('/admin/identity-evidence/{evidence}/temporary-url', IdentityEvidenceAccessController::class)
     ->whereUlid('evidence')
-    ->middleware(['auth:admin', 'throttle:identity-evidence-access'])
+    ->middleware(['auth:admin', 'admin.not-disabled', 'throttle:identity-evidence-access'])
     ->name('admin.identity-evidence.temporary-url');
 Route::get('/admin/manual-payment-proofs/{order}/open', ManualPaymentProofAccessController::class)
     ->whereUlid('order')
