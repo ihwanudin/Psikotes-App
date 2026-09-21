@@ -150,8 +150,9 @@ class F0GateTest(unittest.TestCase):
         self.assertEqual([(score + 1)//2 for score in scores], [4,4,4,5])
 
     def test_kraepelin_digit_grid_structure(self):
-        data = self.load("kraepelin.json")
-        dg = data["digit_grid"]
+        # Grid lives in its own file, not inside kraepelin.json — see
+        # test_kraepelin_json_has_no_digit_grid_key below for why.
+        dg = self.load("kraepelin_grid.json")
         grid = dg["grid"]
 
         self.assertEqual(len(grid), 28, "harus 28 baris")
@@ -164,12 +165,33 @@ class F0GateTest(unittest.TestCase):
 
         self.assertEqual(dg["numbers_per_column"], 28)
         self.assertEqual(dg["answer_slots_per_column"], 27)
+        self.assertIn("version", dg)
 
         computed = hashlib.sha256(
             json.dumps(grid, separators=(",", ":")).encode()
         ).hexdigest()
         self.assertEqual(computed, self.KRAEPELIN_GRID_HASH)
         self.assertEqual(dg["sha256"], self.KRAEPELIN_GRID_HASH)
+
+    def test_kraepelin_json_has_no_digit_grid_key(self):
+        # SealPrecomputedKraepelinFactors::hasExactFields() requires
+        # kraepelin.json to contain EXACTLY 5 fields (version,
+        # hanker_formula, panker_achievement, factor_rounding,
+        # score_bands) — a 6th field (digit_grid was briefly added here)
+        # stops Kraepelin scoring closed. The grid belongs in its own
+        # file (kraepelin_grid.json), never inline here.
+        data = self.load("kraepelin.json")
+        self.assertNotIn("digit_grid", data)
+        self.assertEqual(
+            set(data.keys()),
+            {
+                "version",
+                "hanker_formula",
+                "panker_achievement",
+                "factor_rounding",
+                "score_bands",
+            },
+        )
 
     def test_reporting_data(self):
         data = self.load("reporting.json")

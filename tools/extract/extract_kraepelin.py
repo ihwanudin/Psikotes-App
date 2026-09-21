@@ -21,8 +21,7 @@ def extract(root):
         data = {"version": "F2-2026.09", "hanker_formula": "slope_b_x_50",
                 "panker_achievement": "correct_plus_incorrect",
                 "factor_rounding": {"stage": "before_band_lookup", "precision": 3, "mode": "half_up"},
-                "score_bands": bands,
-                "digit_grid": digit_grid}
+                "score_bands": bands}
     else:
         existing_path = OUTPUT / "kraepelin.json"
         if not existing_path.is_file():
@@ -31,9 +30,15 @@ def extract(root):
                 f"tidak ada kraepelin.json yang sudah ada di {existing_path}."
             )
         data = json.loads(existing_path.read_text(encoding="utf-8"))
-        data["digit_grid"] = digit_grid
+        # Grid lives in its own file (kraepelin_grid.json) — never let a
+        # digit_grid key from an older extraction propagate back in here.
+        # SealPrecomputedKraepelinFactors::hasExactFields() requires
+        # kraepelin.json to contain EXACTLY these 5 fields; a 6th field
+        # stops Kraepelin scoring closed.
+        data.pop("digit_grid", None)
 
     write("kraepelin.json", data)
+    write("kraepelin_grid.json", {"version": "F0-2026.09", **digit_grid})
     return data
 
 
