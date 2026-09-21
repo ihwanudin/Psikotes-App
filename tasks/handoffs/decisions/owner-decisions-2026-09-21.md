@@ -96,7 +96,7 @@ menyelesaikan pertentangan antar dokumen yang ada:
 | a. Media proctoring (foto DAN video, diperlakukan sama) | **90 hari** | SPEC §12 dan SECURITY sudah menyebut 90 hari; `PRIVACY_POLICY.md` yang menyebut foto 6 bulan DIKOREKSI mengikuti ini |
 | b. Jejak audit (tanpa PII) | **5 tahun** | SPEC dan SECURITY sudah sepakat |
 | c. Log aplikasi | **2 tahun** | Berbeda dari jejak audit; `PRIVACY_POLICY.md` "log 2 tahun" merujuk ini |
-| d. Foto dokumen identitas + selfie awal | **90 hari setelah laporan terbit**, lalu dihapus; catatan verifikasi (hash, waktu, pemeriksa) disimpan 5 tahun | Minimalisasi data: gambar identitas tidak perlu disimpan setelah fungsinya selesai. **PERLU KONFIRMASI HUKUM** |
+| d. Foto dokumen identitas + selfie awal | **90 hari setelah laporan terbit**, lalu dihapus; catatan verifikasi (hash, waktu, pemeriksa) disimpan 5 tahun | Minimalisasi data: gambar identitas tidak perlu disimpan setelah fungsinya selesai. Ditetapkan pemilik proyek (butir 15); bukan penghambat produksi |
 | Data psikotes & laporan | 5 tahun | sudah diputuskan sebelumnya |
 | DASS / skrining | 2 tahun | sudah diputuskan sebelumnya |
 
@@ -233,9 +233,33 @@ Konsekuensi teknis:
   ulang. Lihat butir 12.
 - Foto identitas (butir 5d) **tidak** diatur oleh butir ini.
 
+## 15. Retensi foto identitas (butir 5d) — SELESAI
+
+Keputusan pemilik proyek: **angka usulan butir 5d berlaku**. Foto dokumen
+identitas dan selfie awal dihapus 90 hari setelah laporan terbit, dan catatan
+verifikasinya (hash, waktu, pemeriksa) disimpan 5 tahun. Tanda "perlu
+konfirmasi hukum" dicabut, dan butir ini **bukan penghambat produksi**. Kalau
+nanti ada masukan hukum, angkanya direvisi lewat konfigurasi, bukan rilis.
+
+## 16. Teks layar persetujuan proctoring — SELESAI
+
+Keputusan pemilik proyek: teks layar persetujuan kamera mengikuti **praktik
+terbaik**, tanpa tinjauan kata per kata oleh pemilik. Acuannya prinsip
+persetujuan yang sah menurut UU No. 27/2022 tentang Pelindungan Data Pribadi:
+- tujuan pengumpulan disebut jelas;
+- jenis data disebut (foto berkala, pencocokan wajah, catatan kepergian
+  layar);
+- masa simpan disebut (90 hari, butir 14);
+- siapa yang memproses dan siapa yang melihat hasilnya (psikolog);
+- hak peserta atas datanya, serta kontak untuk menggunakannya;
+- bahasa yang tidak menyalahkan dan tidak mengklaim mencegah kecurangan.
+
+Lane FE mencocokkan teks yang ada (PR #83) dengan daftar ini dan melengkapi
+bagian yang kurang.
+
 ## Butir yang masih terbuka setelah dokumen ini
 
-- Konfirmasi hukum untuk retensi foto identitas (butir 5d). Butir 3
+- Retensi foto identitas (butir 5d) sudah ditetapkan di butir 15. Butir 3
   (penyimpanan backup) sudah diputuskan pemilik proyek dan tidak lagi
   menunggu konfirmasi.
 - Pembagian waktu subtes ME sudah diputuskan (180 detik menghafal + 360
