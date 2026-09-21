@@ -11,10 +11,10 @@ export default defineConfig({
     root,
     envDir: false,
     publicDir: false,
-    // Generates resources/css/oncam-design-tokens.generated.css, which
-    // resources/css/app.css imports by real relative path. Must run here too:
-    // this fixture's dev server is a separate process from the main app's,
-    // and the generated file is gitignored (never trusted stale).
+    // Adding a new fixture? Register oncamTokenRuntimeBridge() here too —
+    // see https://github.com/ihwanudin/Psikotes-App/pull/53 for why (each
+    // fixture is its own Vite process, and the generated token CSS is
+    // gitignored, so nothing else produces it for that process).
     plugins: [react(), oncamTokenRuntimeBridge(), tailwindcss()],
     server: {
         host: '127.0.0.1',
