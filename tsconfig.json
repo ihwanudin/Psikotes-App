@@ -35,7 +35,15 @@
         // "types": [],                                      /* Specify type package names to be included without being referenced in a source file. */
         // "allowUmdGlobalAccess": true,                     /* Allow accessing UMD globals from modules. */
         // "moduleSuffixes": [],                             /* List of file name suffixes to search when resolving a module. */
-        // "allowImportingTsExtensions": true,               /* Allow imports to include TypeScript file extensions. Requires '--moduleResolution bundler' and either '--noEmit' or '--emitDeclarationOnly' to be set. */
+        // Enabled for resources/js/components/participant/session-runner/**:
+        // its pure-logic modules run directly via `node --test <file>.ts`
+        // (native Node TypeScript stripping, no build step), which requires
+        // explicit .ts extensions in relative ESM imports. Safe with
+        // noEmit (already true above) and moduleResolution "bundler"
+        // (already set below), per TypeScript's own requirement for this
+        // flag; purely additive — it does not change resolution for the
+        // extension-less imports used everywhere else in the codebase.
+        "allowImportingTsExtensions": true,
         // "rewriteRelativeImportExtensions": true,          /* Rewrite '.ts', '.tsx', '.mts', and '.cts' file extensions in relative import paths to their JavaScript equivalent in output files. */
         // "resolvePackageJsonExports": true,                /* Use the package.json 'exports' field when resolving package imports. */
         // "resolvePackageJsonImports": true,                /* Use the package.json 'imports' field when resolving imports. */
