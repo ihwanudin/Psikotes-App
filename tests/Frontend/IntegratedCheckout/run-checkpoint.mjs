@@ -13,12 +13,23 @@ import { fileURLToPath } from 'node:url';
 
 // Requires an already running, isolated 8011 fixture; never starts a backend or installs packages.
 const root = fileURLToPath(new URL('../../../', import.meta.url));
-const cli = process.argv[2];
+const cliArg = process.argv[2];
+// An explicit path stays supported for local use (it's what this repo's own
+// evidence docs document). With no argument, resolve @playwright/cli from
+// node_modules instead — CI installs it there (`npm install --no-save
+// @playwright/cli`) rather than relying on a machine-specific npx cache path.
+let cli;
 
-if (!cli || !path.isAbsolute(cli) || !existsSync(cli)) {
-    throw new Error(
-        'Pass the absolute path of the existing Playwright CLI script.',
-    );
+if (cliArg) {
+    if (!path.isAbsolute(cliArg) || !existsSync(cliArg)) {
+        throw new Error(
+            'Pass the absolute path of the existing Playwright CLI script.',
+        );
+    }
+
+    cli = cliArg;
+} else {
+    cli = fileURLToPath(import.meta.resolve('@playwright/cli/playwright-cli.js'));
 }
 
 const output = path.join(root, 'output/playwright/checkout-checkpoint');
@@ -136,9 +147,12 @@ for (const suite of suites) {
             runner,
             `async(page)=>{\n${code}\nif(checkpointErrors.length) throw new Error(JSON.stringify(checkpointErrors));\nreturn result;\n}`,
         );
+        // Headless: a CI runner has no display server, and headed mode
+        // needs one (Xvfb or a real X server) or the browser fails to
+        // launch. Nothing here needs a human watching.
         command(
             session,
-            ['open', 'about:blank', '--headed'],
+            ['open', 'about:blank'],
             path.join(output, `${suite.name}-open.log`),
         );
         command(session, ['run-code', '--filename', runner], log);
