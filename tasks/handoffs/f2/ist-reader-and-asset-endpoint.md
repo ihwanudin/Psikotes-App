@@ -138,6 +138,29 @@ credential. Documented in `DEPLOYMENT.md`'s bootstrap sequence.
     `Cache-Control: no-store, private` — distinct from the header the
     actual asset fetch gets once the client follows the URL.
 
+## Proposal (not implemented): drop or fail-close the `IST_ASSET_FILESYSTEM_DRIVER=s3` branch (2026-09-22)
+
+Follow-up to the cache/nonce fix above (`1f66417`). The nonce mechanism in
+`AppServiceProvider::configureIstAssetTemporaryUrls()` is silently inert for
+an S3-backed `ist-assets` disk: `FilesystemAdapter::temporaryUrl()` checks
+`method_exists($adapter, 'getTemporaryUrl')` before ever consulting
+`buildTemporaryUrlsUsing()`, and the S3 adapter has that method, so the
+callback never runs — an S3-backed disk would silently reopen the exact
+same-second URL-collision gap this PR closes for local. Separately,
+`league/flysystem-aws-s3-v3` is not installed in local `vendor/` at all
+(untestable here either way).
+
+Lead's proposal (2026-09-22, pending their final decision): in production,
+IST assets should stay on the **local** disk. The asset set is small,
+static, read-only, deployed alongside the application as instrument data
+via `tools/extract/` — S3 buys nothing here but adds a dependency and
+reopens this cache bug. Concretely: either remove the
+`IST_ASSET_FILESYSTEM_DRIVER=s3` branch in `config/filesystems.php`
+entirely, or make it fail-closed at boot in production (reuse
+`AppServiceProvider::missingProductionConfiguration()`'s pattern — refuse
+to boot if `IST_ASSET_FILESYSTEM_DRIVER=s3` is set, until S3 gets its own
+nonce/cache-header design). Not implemented; Lead is deciding.
+
 ## Explicitly deferred (see Lead's plan-review reply, 2026-09-21)
 
 - **FA/WU item shape** — PR #73 (`f0/extract-ist-fa-wu`, `73f709b`) has the
