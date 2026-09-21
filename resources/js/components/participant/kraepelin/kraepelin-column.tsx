@@ -39,11 +39,16 @@ export type KraepelinColumnProps = {
      * physical answer sheet. Must have exactly one more entry than
      * `state.values` (28 numbers, 27 sum slots between them).
      *
-     * `grid-column.ts`'s `columnNumbersFromGrid()` produces this shape
-     * from a `grid[row][col]` source (row 0 = topmost on the sheet,
-     * matching `database/seeders/data/kraepelin_grid.json` and, most
-     * likely, F2's still-unbuilt `/items` response) — verified against
-     * the real, hash-gated grid data in grid-column.test.ts. */
+     * From a real `GET /sessions/:id/items` response, build this with
+     * `items.ts`'s `columnNumbersFromItems()` — a straight position-order
+     * copy, NO reversal, because `KraepelinItemContentReader` (#67)
+     * already delivers each column in administration order server-side.
+     * `grid-column.ts`'s `columnNumbersFromGrid()` DOES reverse and is
+     * test-only (an oracle against the raw, sheet-order
+     * `kraepelin_grid.json`, used only in grid-column.test.ts) — it must
+     * never be called on a server response, or the grid silently flips
+     * back to sheet order and every answer pairs with the wrong pair of
+     * numbers (Lead's 2026-09-21 review, before and after #67 merged). */
     numbers: number[];
     state: ColumnInputState;
     onChange: (next: ColumnInputState) => void;

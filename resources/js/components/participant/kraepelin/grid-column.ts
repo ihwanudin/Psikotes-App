@@ -1,24 +1,24 @@
 /**
- * Converts a Kraepelin grid into the per-column numbers array
- * kraepelin-column.tsx expects — no React, no fetch, testable via
- * `node --test`.
+ * TEST-ONLY oracle. Converts the RAW, sheet-order Kraepelin grid
+ * (`database/seeders/data/kraepelin_grid.json`'s own `grid[row][col]`
+ * shape, row 0 = the topmost row on the printed sheet) into the same
+ * per-column numbers shape `kraepelin-column.tsx` expects, by reversing
+ * each column once (SPEC.md §4.3's addition-proceeds-bottom-to-top rule
+ * makes index 0 = the BOTTOM-most printed number, the opposite end from
+ * `grid`'s row 0).
  *
- * `KraepelinGrid` mirrors `database/seeders/data/kraepelin_grid.json`'s
- * own `grid` field shape (`grid[row][col]`, row 0 = the topmost row on
- * the printed sheet, per Lead's 2026-09-21 confirmation) — the most
- * natural pass-through shape for F2's still-unbuilt `/items` endpoint to
- * deliver, but that endpoint's exact wire contract is F2's call, not
- * decided here. This module exists so the frontend never reads
- * kraepelin_grid.json directly (that file is server-side seed data, not
- * something the browser fetches) — it only defines the conversion any
- * real transport layer will need once `/items` exists.
- *
- * kraepelin-column.tsx's `numbers` prop is documented as index 0 = the
- * first number the participant works from, which SPEC.md §4.3's
- * addition-proceeds-bottom-to-top rule makes the BOTTOM-most printed
- * number — the opposite end from `grid`'s row 0. `columnNumbersFromGrid`
- * does that reversal once, here, so kraepelin-column.tsx itself never
- * has to know which row index means "top" on the source grid.
+ * **Do not call this on a `GET /sessions/:id/items` response.**
+ * `KraepelinItemContentReader` (#67) already performs this exact
+ * reversal server-side before the response ever reaches a client — see
+ * `items.ts`'s module doc and `columnNumbersFromItems`, which is what
+ * real `/items` data goes through instead (a straight position-order
+ * copy, no reversal). Calling this function on already-reversed data
+ * flips the column back to sheet order, silently pairing every
+ * participant's answer with the wrong pair of numbers (Lead's
+ * 2026-09-21 review). The only legitimate use of this module today is
+ * as grid-column.test.ts's independent oracle for reading raw values
+ * out of the committed `kraepelin_grid.json` fixture — it is
+ * deliberately not imported by any other application file.
  */
 
 export type KraepelinGrid = {
