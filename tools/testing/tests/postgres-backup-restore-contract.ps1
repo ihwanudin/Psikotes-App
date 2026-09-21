@@ -55,6 +55,9 @@ Assert-Contains $source "GetEnvironmentVariable('F9_BACKUP_AGE_IDENTITY')" 'Oper
 Assert-Contains $source '/rehearsal/age-keygen -o /rehearsal/identity.txt' 'Default rehearsal must generate a fresh identity inside the disposable container.'
 Assert-Contains $source 'Join-Path $tempDirectory ''identity.txt''' 'Identity must live in the GUID task directory.'
 Assert-Contains $source 'apk add --no-cache age' 'Established age tooling must be installed ephemerally.'
+Assert-Contains $source 'test -x /usr/bin/age ||' 'Fixed age path must be checked before copying.'
+Assert-Contains $source 'test -x /usr/bin/age-keygen ||' 'Fixed age-keygen path must be checked before copying.'
+Assert-True (-not $source.Contains('command -v age')) 'Windows PowerShell 5.1-unsafe command substitution must not be used.'
 Assert-Contains $source '/rehearsal/age -r $recipient -o /rehearsal/source.dump.age /rehearsal/source.dump' 'Archive encryption must be mandatory.'
 Assert-Contains $source '/rehearsal/age -d -i /rehearsal/identity.txt' 'Restore must decrypt with the identity.'
 Assert-Contains $source 'encryptedBytes -le $archiveBytes' 'Encrypted archive size must be checked.'
@@ -103,4 +106,4 @@ Assert-True ((ConvertTo-StableSchemaExpression '"CaseSensitive" = 1') -cne `
     (ConvertTo-StableSchemaExpression '"casesensitive" = 1')) `
     'Canonicalization must preserve quoted-identifier case.'
 
-Write-Output 'postgres-backup-restore-contract: PASS (54 assertions)'
+Write-Output 'postgres-backup-restore-contract: PASS (57 assertions)'

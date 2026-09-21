@@ -266,7 +266,7 @@ try {
     docker run --rm --pull=never --label $label --network bridge `
         --mount "type=bind,source=$tempDirectory,target=/rehearsal" `
         --entrypoint sh postgres:17.6-alpine -euc `
-        'apk add --no-cache age >/dev/null; cp "$(command -v age)" /rehearsal/age; cp "$(command -v age-keygen)" /rehearsal/age-keygen'
+        'apk add --no-cache age >/dev/null; test -x /usr/bin/age || { echo age executable missing at /usr/bin/age >&2; exit 1; }; test -x /usr/bin/age-keygen || { echo age-keygen executable missing at /usr/bin/age-keygen >&2; exit 1; }; cp /usr/bin/age /rehearsal/age; cp /usr/bin/age-keygen /rehearsal/age-keygen'
     Assert-NativeSuccess 'Ephemeral age tooling installation'
     if (-not (Test-Path -LiteralPath (Join-Path $tempDirectory 'age') -PathType Leaf) -or
         -not (Test-Path -LiteralPath (Join-Path $tempDirectory 'age-keygen') -PathType Leaf)) {
