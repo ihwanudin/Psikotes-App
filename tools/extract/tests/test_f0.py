@@ -136,6 +136,8 @@ class F0GateTest(unittest.TestCase):
         y = [10,11,11,10,12,11,11,12,12,11,12,12,11,12,13,12,12,13,12,13,12,13,13,12,14,13,13,14,13,14,13,14,14,13,15,14,14,15,14,15,14,15,15,14,16,15,15,16,15,16]
         self.assertEqual(kraepelin_factors(y, 4, 1), {"panker": 13.12, "tianker": 5, "hanker": 5.032, "janker": 6})
 
+    KRAEPELIN_GRID_HASH = "6df51224c36bea665b9f8b0f8792139489f3c3204476089134657e3ae6ff9ee0"
+
     def test_kraepelin_golden_scores(self):
         data = self.load("kraepelin.json")
         bands = data["score_bands"]
@@ -146,6 +148,28 @@ class F0GateTest(unittest.TestCase):
         second = [("Panker",13.12),("Tianker",5),("Janker",6),("Hanker",5.032)]
         scores = [kraepelin_score(bands,f,"SMA/SMK",v) for f,v in second]
         self.assertEqual([(score + 1)//2 for score in scores], [4,4,4,5])
+
+    def test_kraepelin_digit_grid_structure(self):
+        data = self.load("kraepelin.json")
+        dg = data["digit_grid"]
+        grid = dg["grid"]
+
+        self.assertEqual(len(grid), 28, "harus 28 baris")
+        self.assertTrue(all(len(row) == 50 for row in grid), "setiap baris harus 50 kolom")
+        for row in grid:
+            for cell in row:
+                self.assertIsInstance(cell, int)
+                self.assertGreaterEqual(cell, 1)
+                self.assertLessEqual(cell, 9)
+
+        self.assertEqual(dg["numbers_per_column"], 28)
+        self.assertEqual(dg["answer_slots_per_column"], 27)
+
+        computed = hashlib.sha256(
+            json.dumps(grid, separators=(",", ":")).encode()
+        ).hexdigest()
+        self.assertEqual(computed, self.KRAEPELIN_GRID_HASH)
+        self.assertEqual(dg["sha256"], self.KRAEPELIN_GRID_HASH)
 
     def test_reporting_data(self):
         data = self.load("reporting.json")
