@@ -3,3 +3,4 @@ resources/js/actions/**
 resources/js/routes/**
 resources/js/wayfinder/**
 resources/views/mail/*
+resources/css/oncam-design-tokens.generated.css
