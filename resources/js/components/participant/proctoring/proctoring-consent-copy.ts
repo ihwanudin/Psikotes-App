@@ -47,12 +47,43 @@ import type { CameraStatus } from '../session-runner/camera-controller.ts';
  * this screen, inside a running session — out of scope for this
  * component by design, and Lead asked that nothing be designed for that
  * case in this increment without asking first.
+ *
+ * UU No. 27/2022 PDP consent checklist (owner decision item 16, PR #81
+ * `c0c772a`: the copy follows best practice, no word-by-word owner
+ * review) — every element below must be present for this to count as
+ * valid consent, cross-checked against this file's actual text:
+ * 1. Purpose stated plainly — `policyParagraphs()`'s opening line.
+ * 2. Data types named — periodic photos, face matching, screen-
+ *    departure logging, each their own bullet in `policyParagraphs()`.
+ * 3. Retention period (90 days, owner decision item 14) — only on the
+ *    `persistenceEnabled: true` variant (`RETENTION_NOTE_ENABLED`);
+ *    saying it on the `false` variant would be dishonest, since nothing
+ *    is actually stored yet (see the `persistenceEnabled` note above).
+ * 4. Who processes/views it — the psychologist handling the report
+ *    (`PROCESSOR_NOTE` bullet in `policyParagraphs()`), not a claim
+ *    that no one else ever does (that boundary isn't settled — see
+ *    tasks/handoffs/f7/proctoring-persistence-proposal.md's RLS table).
+ * 5. Data-subject rights + a way to exercise them — `dataRightsNote()`.
+ *    `contactReference` is a configuration placeholder, never a
+ *    hardcoded email/phone (none has been decided, and inventing one
+ *    would be worse than a generic pointer) — see its own doc comment.
+ * 6. Still true throughout: never blames the participant, and states
+ *    detection/evidence rather than prevention (`HONESTY_NOTE`).
  */
 
 export type ProctoringConsentCopyInput = {
     cameraStatus: CameraStatus;
     fullscreenSupported: boolean;
     persistenceEnabled: boolean;
+    /** Where a participant is told to go to exercise their UU PDP
+     * data-subject rights (access/correction/deletion) or ask
+     * questions. Defaults to a generic, non-committal pointer
+     * ("hubungi penyelenggara tes Anda") — this default is a
+     * PLACEHOLDER, not a real contact channel, because no owner
+     * decision has named one (CLAUDE.md: never invent an email/phone
+     * number). Whoever wires this screen into a real page MUST pass a
+     * real, configured value before go-live. */
+    contactReference?: string;
 };
 
 export type ProctoringConsentNotice = {
@@ -74,6 +105,10 @@ export type ProctoringConsentCopy = {
      * the honest not-yet-built substitute otherwise. Never null — there
      * is always something honest to say about where the data goes. */
     dataHandlingNote: string;
+    /** UU PDP data-subject rights (access, correction, deletion) plus
+     * how to exercise them. Always shown — the right to ask exists
+     * regardless of whether server persistence is live yet. */
+    dataRightsNote: string;
     /** Populated only when cameraStatus is 'denied' or 'unavailable'. */
     notice: ProctoringConsentNotice | null;
     primaryAction: ProctoringConsentAction;
@@ -96,17 +131,37 @@ const FULLSCREEN_BULLET_SUPPORTED =
 const FULLSCREEN_BULLET_UNSUPPORTED =
     'Perangkat/peramban Anda tidak mendukung mode layar penuh. Sesi tetap berjalan normal; kamera dan pencatatan kepergian layar tetap aktif seperti biasa.';
 
+// UU PDP checklist item 4 (siapa memproses/melihat hasil): names the
+// psychologist as processor without claiming exclusivity — branch
+// admin/staff operational visibility into proctoring status is a real,
+// separately-tracked open question (proctoring-persistence-proposal.md),
+// not something this screen should overclaim either way.
+const PROCESSOR_NOTE =
+    'Data pemantauan ini menjadi bagian penilaian psikolog yang menangani laporan Anda.';
+
+// UU PDP checklist item 5 (hak peserta + kontak). `contactReference` is
+// a configuration placeholder (see ProctoringConsentCopyInput's doc
+// comment) — never a hardcoded email/phone.
+const DEFAULT_CONTACT_REFERENCE = 'penyelenggara tes Anda';
+
 function policyParagraphs(fullscreenSupported: boolean): string[] {
     return [
         'Untuk menjaga keadilan bagi semua peserta, sesi ini dipantau selama berlangsung:',
         'Kamera Anda akan mengambil foto secara berkala (bukan merekam video terus-menerus), termasuk saat mulai dan saat mengirim jawaban.',
         'Wajah Anda dibandingkan sekali di awal dengan foto identitas Anda, dan sesekali selama sesi, untuk memastikan Anda peserta yang terdaftar.',
         'Sistem mencatat bila Anda meninggalkan layar tes (berpindah aplikasi/tab, mengunci layar, atau keluar dari mode layar penuh). Waktu tidak berhenti saat ini terjadi.',
+        PROCESSOR_NOTE,
         fullscreenSupported
             ? FULLSCREEN_BULLET_SUPPORTED
             : FULLSCREEN_BULLET_UNSUPPORTED,
         'Selama mengerjakan soal, klik kanan, seleksi teks, salin, dan tempel dinonaktifkan pada halaman soal.',
     ];
+}
+
+function dataRightsNote(contactReference: string | undefined): string {
+    const contact = contactReference ?? DEFAULT_CONTACT_REFERENCE;
+
+    return `Anda berhak mengetahui, mengoreksi identitas Anda, dan meminta penghapusan data pemantauan yang tersimpan tentang Anda, sesuai ketentuan yang berlaku. Untuk menggunakan hak ini atau bertanya lebih lanjut, hubungi ${contact}.`;
 }
 
 function denialNotice(
@@ -134,7 +189,12 @@ function denialNotice(
 export function getProctoringConsentCopy(
     input: ProctoringConsentCopyInput,
 ): ProctoringConsentCopy {
-    const { cameraStatus, fullscreenSupported, persistenceEnabled } = input;
+    const {
+        cameraStatus,
+        fullscreenSupported,
+        persistenceEnabled,
+        contactReference,
+    } = input;
 
     const shared = {
         title: TITLE,
@@ -143,6 +203,7 @@ export function getProctoringConsentCopy(
         dataHandlingNote: persistenceEnabled
             ? RETENTION_NOTE_ENABLED
             : RETENTION_NOTE_DISABLED,
+        dataRightsNote: dataRightsNote(contactReference),
     };
 
     switch (cameraStatus) {

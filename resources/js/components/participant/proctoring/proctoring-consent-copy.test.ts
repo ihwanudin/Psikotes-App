@@ -45,6 +45,7 @@ test('every combination produces a title, policy paragraphs, honesty note, and a
                 assert.equal(copy.policyParagraphs.length > 0, true);
                 assert.equal(copy.honestyNote.length > 0, true);
                 assert.equal(copy.dataHandlingNote.length > 0, true);
+                assert.equal(copy.dataRightsNote.length > 0, true);
                 assert.equal(copy.primaryAction.label.length > 0, true);
             }
         }
@@ -245,4 +246,102 @@ test('the honesty note always states detection, not prevention', () => {
 
     assert.match(copy.honestyNote, /mendeteksi dan mencatat/);
     assert.match(copy.honestyNote, /bukan mencegah/);
+});
+
+// UU No. 27/2022 PDP consent checklist (owner decision item 16, PR #81)
+// — each of these tests maps to one numbered item in
+// proctoring-consent-copy.ts's own module doc comment.
+
+test('PDP item 1: the purpose of monitoring is stated plainly', () => {
+    const copy = getProctoringConsentCopy({
+        cameraStatus: 'inactive',
+        fullscreenSupported: true,
+        persistenceEnabled: false,
+    });
+    const text = copy.policyParagraphs.join('\n');
+
+    assert.match(text, /Untuk menjaga keadilan bagi semua peserta/);
+});
+
+test('PDP item 2: every data type collected is named — periodic photos, face matching, screen-departure logging', () => {
+    const copy = getProctoringConsentCopy({
+        cameraStatus: 'inactive',
+        fullscreenSupported: true,
+        persistenceEnabled: false,
+    });
+    const text = copy.policyParagraphs.join('\n');
+
+    assert.match(text, /mengambil foto secara berkala/);
+    assert.match(text, /dibandingkan.*foto identitas/);
+    assert.match(text, /meninggalkan layar tes/);
+});
+
+test('PDP item 4: names the psychologist as who reviews this data, for every camera status', () => {
+    for (const cameraStatus of ALL_CAMERA_STATUSES) {
+        const copy = getProctoringConsentCopy({
+            cameraStatus,
+            fullscreenSupported: true,
+            persistenceEnabled: false,
+        });
+        const text = copy.policyParagraphs.join('\n');
+
+        assert.match(
+            text,
+            /psikolog yang menangani laporan Anda/,
+            `missing processor note for ${cameraStatus}`,
+        );
+    }
+});
+
+test('PDP item 5: data-subject rights (access, correction, deletion) are stated, with a contact', () => {
+    const copy = getProctoringConsentCopy({
+        cameraStatus: 'inactive',
+        fullscreenSupported: true,
+        persistenceEnabled: false,
+    });
+
+    assert.match(copy.dataRightsNote, /berhak mengetahui/);
+    assert.match(copy.dataRightsNote, /mengoreksi identitas/);
+    assert.match(copy.dataRightsNote, /meminta penghapusan/);
+    assert.match(copy.dataRightsNote, /sesuai ketentuan yang berlaku/);
+});
+
+test('PDP item 5: the contact reference defaults to a generic, non-invented pointer, never a hardcoded email/phone', () => {
+    const copy = getProctoringConsentCopy({
+        cameraStatus: 'inactive',
+        fullscreenSupported: true,
+        persistenceEnabled: false,
+    });
+
+    assert.match(copy.dataRightsNote, /hubungi penyelenggara tes Anda/);
+    // No invented contact detail of any kind.
+    assert.doesNotMatch(copy.dataRightsNote, /@/);
+    assert.doesNotMatch(copy.dataRightsNote, /\d{3,}/);
+});
+
+test('PDP item 5: a caller-supplied contactReference replaces the default placeholder', () => {
+    const copy = getProctoringConsentCopy({
+        cameraStatus: 'inactive',
+        fullscreenSupported: true,
+        persistenceEnabled: false,
+        contactReference: 'admin cabang Anda',
+    });
+
+    assert.match(copy.dataRightsNote, /hubungi admin cabang Anda/);
+    assert.doesNotMatch(copy.dataRightsNote, /penyelenggara tes Anda/);
+});
+
+test('PDP item 5: the rights note is present regardless of persistenceEnabled — the right to ask does not depend on it', () => {
+    for (const persistenceEnabled of [true, false]) {
+        const copy = getProctoringConsentCopy({
+            cameraStatus: 'inactive',
+            fullscreenSupported: true,
+            persistenceEnabled,
+        });
+
+        assert.ok(
+            copy.dataRightsNote.length > 0,
+            `missing rights note for persistenceEnabled:${persistenceEnabled}`,
+        );
+    }
 });

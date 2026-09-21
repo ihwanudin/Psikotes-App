@@ -35,6 +35,11 @@ export type ProctoringConsentScreenProps = {
      * proctoring-reporter.ts's noopProctoringReporter). Do not pass
      * `true` until a real ProctoringReporter is wired in — see plan §4. */
     persistenceEnabled?: boolean;
+    /** UU PDP data-subject rights contact — see
+     * ProctoringConsentCopyInput's doc comment in proctoring-consent-copy.ts.
+     * The default is a placeholder; a real page MUST pass a configured
+     * value before go-live. */
+    contactReference?: string;
     /** Called once the camera reaches 'active'. There is no other way to
      * proceed — the camera is mandatory for every participant (product
      * owner decision, PR #81 item 11), so this screen offers no "proceed
@@ -46,6 +51,7 @@ export function ProctoringConsentScreen({
     camera,
     fullscreen,
     persistenceEnabled = false,
+    contactReference,
     onProceed,
 }: ProctoringConsentScreenProps) {
     // `onProceed` is read via a ref, not a direct effect dependency: a
@@ -70,6 +76,7 @@ export function ProctoringConsentScreen({
         cameraStatus: camera.status,
         fullscreenSupported: fullscreen.isSupported,
         persistenceEnabled,
+        contactReference,
     });
     const isRequesting = camera.status === 'requesting';
 
@@ -105,6 +112,10 @@ export function ProctoringConsentScreen({
 
             <p className="text-sm leading-6 text-slate-600">
                 {copy.dataHandlingNote}
+            </p>
+
+            <p className="text-sm leading-6 text-slate-600">
+                {copy.dataRightsNote}
             </p>
 
             {copy.notice ? (
