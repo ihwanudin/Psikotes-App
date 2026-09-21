@@ -276,6 +276,48 @@ wajib, konteks RLS `staff` per cabang), dan peran admin aplikasi pusat
 bisa menerbitkan. Membuat peran baru (ability, konteks RLS, pengelolaan akun)
 adalah perubahan keamanan: rencana dulu, ditinjau Lead, baru kode.
 
+## 18. Dana talang (bridge funding) — SELESAI, arah kebijakan
+
+Sistem **belum live** (belum ada organisasi memakai integrasi produksi apa pun,
+termasuk API integrasi versi lama). Ini melonggarkan penutupan celah
+entitlement lama (lihat handoff `legacy-entitlement-provisioning-plan`,
+PR #100): tidak ada klien aktif yang bisa terganggu, sehingga Direction A
+(kunci entitlement sampai pembayaran terverifikasi untuk mode berbayar)
+boleh diterapkan penuh tanpa periode transisi.
+
+Keputusan pemilik proyek untuk dana talang:
+
+- **Yang menalangi:** holding (induk perusahaan ONCAM), bukan LPK/lembaga
+  dan bukan ONCAM sendiri sebagai penanggung akhir.
+- **Yang menyetujui:** admin, bertindak berdasarkan data/instruksi dari
+  manajemen — bukan keputusan admin sendiri secara independen. Butuh jalur
+  persetujuan yang mencatat siapa admin-nya dan referensi data manajemen
+  yang menjadi dasar (nomor surat/instruksi, dsb.), bukan sekadar tombol
+  approve tanpa jejak.
+- **Pengalaman peserta:** **tidak ada perbedaan** dengan peserta yang
+  membayar. Akses, urutan tes, dan penerbitan laporan berjalan sama
+  persis. Dana talang tidak boleh terlihat oleh peserta maupun tercatat
+  sebagai status khusus yang membedakan perlakuan tesnya.
+- **Tagihan:** setelah talangan diberikan, sistem menerbitkan **invoice
+  tagihan** untuk ditagihkan kemudian. Riwayat tagihan ini tidak boleh
+  hilang atau tertimpa (lihat temuan retensi pembayaran di audit RLS).
+- **Wajib saat go-live:** ya. Ini bukan fitur yang bisa menyusul setelah
+  peluncuran.
+
+Konsekuensi teknis (untuk tim, bukan bagian keputusan pemilik):
+- Ini adalah implementasi konkret dari SPEC.md:259 klausul (c) —
+  "aktivasi manual (super_admin, teraudit)" — yang sampai saat ini belum
+  punya kode sama sekali. Dana talang dan klausul (c) dirancang sebagai
+  **satu mekanisme yang sama**, bukan dua jalur terpisah.
+- "Admin" yang menyetujui: perlu diperjelas peran mana (super_admin,
+  admin aplikasi pusat butir 17, atau keduanya) saat desain teknis
+  dibuat — psikolog/pemilik tidak diminta memutuskan detail peran di
+  sini, itu keputusan teknis Lead.
+- Batas jumlah/nominal talangan per peserta atau per cabang **belum
+  ditentukan** pemilik proyek. Desain teknis dibuat agar batas ini bisa
+  ditambahkan lewat konfigurasi tanpa perubahan skema, dan defaultnya
+  tanpa batas sampai pemilik menentukan lain.
+
 ## Butir yang masih terbuka setelah dokumen ini
 
 - Retensi foto identitas (butir 5d) sudah ditetapkan di butir 15. Butir 3
