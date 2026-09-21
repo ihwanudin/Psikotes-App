@@ -1,5 +1,7 @@
 import { useState } from 'react';
 
+import { Button } from '@/components/ui/button';
+
 import { createColumnInputState } from './column-input-state.ts';
 import type { ColumnInputState } from './column-input-state.ts';
 import { columnNumbersFromItems } from './items.ts';
@@ -59,11 +61,13 @@ export function KraepelinColumnRunner({
 
     if (state.status === 'reconnecting') {
         return (
-            <div role="alert">
-                <p>Tidak dapat terhubung. Coba lagi.</p>
-                <button type="button" onClick={retry}>
+            <div role="alert" className="flex flex-col items-start gap-3">
+                <p className="text-sm text-slate-700">
+                    Tidak dapat terhubung. Coba lagi.
+                </p>
+                <Button type="button" className="h-11" onClick={retry}>
                     Coba lagi
-                </button>
+                </Button>
             </div>
         );
     }
