@@ -249,7 +249,7 @@ final readonly class SessionDefinition
      * @param  list<array{code: string, duration_seconds: int, item_count: int}>  $subtests
      * @return array{
      *     string,
-     *     string,
+     *     null,
      *     array{
      *         algorithm: string,
      *         version: string,
@@ -267,11 +267,18 @@ final readonly class SessionDefinition
         int $totalDurationSeconds,
         array $subtests,
     ): array {
-        if ($randomization !== 'seeded') {
-            throw new InvalidArgumentException('Kraepelin definitions must use seeded randomization.');
+        // F2 (2026-09-21): owner decision "Kraepelin numbers are fixed, not
+        // seeded" -- the answer numbers come from the official sheet,
+        // identical for every participant, not generated per session. This
+        // used to require 'seeded' randomization with a real seed; it now
+        // requires 'fixed' with no seed, exactly like ist/papi/rmib
+        // (fixedConfiguration() below). The `generator` block stays required
+        // and validated: it describes the grid's structural shape/timing
+        // (50 columns, 15s/column, 28 numbers/column, 27 answer slots), not
+        // a randomization seed.
+        if ($randomization !== 'fixed' || $seed !== null) {
+            throw new InvalidArgumentException('Kraepelin definitions must be fixed and contain no seed -- the answer numbers come from the official sheet, identical for every participant, not generated per session.');
         }
-
-        $seed = self::nonBlankString($seed, 'Kraepelin seed');
 
         if (! is_array($generator)) {
             throw new InvalidArgumentException('Kraepelin generator configuration is required.');
@@ -309,7 +316,7 @@ final readonly class SessionDefinition
             throw new InvalidArgumentException('Kraepelin subtest item count must match its answer matrix.');
         }
 
-        return ['seeded', $seed, [
+        return ['fixed', null, [
             'algorithm' => $algorithm,
             'version' => $version,
             'columns' => $columns,

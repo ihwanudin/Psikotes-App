@@ -61,27 +61,39 @@ final class DatabaseAssessmentSessionDefinitionAuthorityTest extends Organizatio
         $this->assertSame(SessionDefinition::checksumFor($template), $definition->checksum);
     }
 
-    public function test_seeded_template_issues_a_fresh_server_seed_without_storing_it_in_the_catalog(): void
+    /**
+     * F2 (2026-09-21), replaces test_seeded_template_issues_a_fresh_server_seed_without_storing_it_in_the_catalog.
+     * That test proved the old mechanism: a fresh, cryptographically random
+     * seed generated per session for Kraepelin. The owner decision
+     * "Kraepelin numbers are fixed, not seeded" (2026-09-21) makes that
+     * mechanism itself the bug -- Kraepelin's answer numbers must be
+     * identical for every participant, sourced from the official sheet, not
+     * randomized per session. DatabaseAssessmentSessionDefinitionAuthority's
+     * $seedIssuer closure and its Kraepelin-only seed injection were removed
+     * entirely as a direct consequence (explicit sign-off, 2026-09-21). This
+     * test proves the corrected behaviour: a Kraepelin template now issues
+     * its definition exactly like every other instrument -- straight from
+     * the catalog, seed always null, no per-session injection of any kind.
+     */
+    public function test_active_kraepelin_template_issues_an_exact_session_definition_with_no_seed(): void
     {
         $template = $this->kraepelinTemplate();
         $this->insertTemplate($template);
-        $provider = new DatabaseAssessmentSessionDefinitionAuthority(
-            app(RlsContextRunner::class),
-            static fn (): string => 'synthetic-issued-seed',
-        );
 
-        $definition = app(RlsContextRunner::class)->runAsService(fn (): SessionDefinition => $provider
+        $definition = app(RlsContextRunner::class)->runAsService(fn (): SessionDefinition => $this->provider()
             ->issueForNewSession(
                 GenericAssessmentInstrument::Kraepelin,
                 $this->authorization(GenericAssessmentInstrument::Kraepelin),
                 '01ARZ3NDEKTSV4RRFFQ69G5FAV',
             ));
 
-        $this->assertSame('synthetic-issued-seed', $definition->seed);
+        $this->assertSame('synthetic-v1', $definition->version);
+        $this->assertSame('synthetic-catalog-test', $definition->provenance);
+        $this->assertSame('fixed', $definition->randomization);
+        $this->assertNull($definition->seed);
         $this->assertSame('synthetic-generator', $definition->generator['algorithm'] ?? null);
-        $stored = json_decode((string) DB::table('assessment_session_definitions')->value('template_payload'), true);
-        $this->assertNull($stored['seed'] ?? null);
-        $this->assertNotSame(
+        $this->assertSame(SessionDefinition::checksumFor($template), $definition->checksum);
+        $this->assertSame(
             DB::table('assessment_session_definitions')->value('template_checksum'),
             $definition->checksum,
         );
@@ -164,7 +176,7 @@ final class DatabaseAssessmentSessionDefinitionAuthorityTest extends Organizatio
                 'duration_seconds' => 750,
                 'item_count' => 1350,
             ]],
-            'randomization' => 'seeded',
+            'randomization' => 'fixed',
             'seed' => null,
             'generator' => [
                 'algorithm' => 'synthetic-generator',
