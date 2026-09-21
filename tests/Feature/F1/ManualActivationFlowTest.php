@@ -109,16 +109,20 @@ final class ManualActivationFlowTest extends TestCase
         $this->assertSame('processed', $message->fresh()->status);
         $this->assertDatabaseCount('audit_logs', 3);
 
-        $login = $this->postJson('/api/auth/participant/login', [
+        $this->postJson('/api/auth/participant/login', [
             'test_number' => $participant->test_number,
             'birth_date' => '2001-04-15',
         ])->assertOk()->assertJsonStructure(['jwt']);
 
-        $jwt = (string) $login->json('jwt');
-        $this->withToken($jwt)
-            ->postJson('/api/sessions/ist/start')
-            ->assertStatus(501)
-            ->assertJsonPath('error.code', 'SESSION_ENGINE_PENDING');
+        // F2 S5 (2026-09-21): this used to also assert on
+        // POST /api/sessions/ist/start here (was 501 SESSION_ENGINE_PENDING).
+        // Moved to tests/Feature/AssessmentSessions/StartParticipantSessionHttpTest.php
+        // (DatabaseTruncation-based fixture reaching the same "freshly-activated,
+        // fully legitimate participant, no instrument manifest approved yet" case,
+        // now asserting 503 ASSESSMENT_DEFINITION_UNAVAILABLE). This file uses
+        // RefreshDatabase, which is structurally incompatible with the real
+        // command's assertCleanOuterBoundary() -- see that file's class docblock
+        // for why. Not thinned: the coverage moved, it did not disappear.
 
         $this->assertDatabaseHas('audit_logs', [
             'action' => 'payment_method.activation_changed',

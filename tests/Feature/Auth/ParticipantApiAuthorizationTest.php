@@ -82,22 +82,21 @@ final class ParticipantApiAuthorizationTest extends TestCase
             ->assertJsonPath('error.code', 'INVALID_TOKEN');
     }
 
-    public function test_locked_entitlement_cannot_start_a_session(): void
-    {
-        $participant = $this->participant('Ayu Pratiwi', 'LSI-202608-000001-ABCDEF');
-        $this->createCaseScopedEntitlement($participant, 'ist', 'locked');
-
-        $this->withToken($this->token($participant))
-            ->postJson('/api/sessions/ist/start')
-            ->assertForbidden()
-            ->assertJsonPath('error.code', 'ENTITLEMENT_LOCKED');
-
-        $this->assertDatabaseHas('entitlements', [
-            'participant_id' => $participant->id,
-            'test_type' => 'ist',
-            'status' => 'locked',
-        ]);
-    }
+    // F2 S5 (2026-09-21): test_locked_entitlement_cannot_start_a_session moved to
+    // tests/Feature/AssessmentSessions/StartParticipantSessionHttpTest.php as
+    // test_locked_entitlement_is_rejected_with_403. It used to assert
+    // 403 ENTITLEMENT_LOCKED, produced by this controller's own
+    // ParticipantEntitlementGate::assertReady() check. ADR-0030 removes that
+    // check entirely (the controller must not read entitlements at all); the
+    // real command now rejects a locked entitlement with the generic
+    // 403 ASSESSMENT_NOT_AVAILABLE bucket, by design (ADR-0030: "... yang
+    // missing, foreign, revoked, stale, belum siap ... memakai pesan generik
+    // dan tanpa details" -- entitlement state is explicitly one of the
+    // conditions this bucket covers). This is a genuine contract change, not a
+    // relocation of an unchanged assertion; confirmed with the coordinator
+    // before moving. The other three tests in this file (/api/me,
+    // /api/me/entitlements, token tampering) are unrelated to session-start
+    // and unchanged.
 
     private function participant(string $name, string $testNumber): Participant
     {

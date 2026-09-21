@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Auth;
 
-use App\Http\Controllers\StartParticipantSessionController;
+use App\Http\Controllers\StartIntegratedAssessmentSessionController;
 use App\Http\Middleware\AuthenticateAssessmentToken;
 use App\Http\Requests\StartAssessmentSessionRequest;
 use App\Models\Entitlement;
@@ -41,7 +41,7 @@ final class AssessmentSessionAuthorizationTest extends OrganizationPaymentTestCa
         $this->freezeTime();
         config()->set('participant_auth.jwt.secret', 'base64:'.base64_encode(str_repeat('A', 32)));
         $this->f = Fixture::create();
-        Route::post('/__testing/assessment/sessions/{testType}/start', StartParticipantSessionController::class)
+        Route::post('/__testing/assessment/sessions/{testType}/start', StartIntegratedAssessmentSessionController::class)
             ->middleware(AuthenticateAssessmentToken::class);
     }
 
@@ -133,8 +133,17 @@ final class AssessmentSessionAuthorizationTest extends OrganizationPaymentTestCa
         $this->withToken($this->token($next))->postJson(self::URL)->assertForbidden();
         $legacy = app(ParticipantJwt::class)->issue($this->f['participant'], $this->f['organization']);
         $this->withToken($legacy)->postJson(self::URL)->assertUnauthorized();
-        $this->withToken($legacy)->postJson('/api/sessions/ist/start')->assertStatus(501)->assertJsonPath('error.code', 'SESSION_ENGINE_PENDING');
-        $this->withToken($legacy)->postJson('/api/sessions/ist/start', ['unrelatedLegacyField' => true])->assertStatus(501);
+        // F2 S5 (2026-09-21): the two "does a legacy ParticipantJwt reach the real
+        // production route" assertions that used to live here moved to
+        // tests/Feature/AssessmentSessions/StartParticipantSessionHttpTest.php
+        // (same legacy-token fixture, now asserting 403 ASSESSMENT_NOT_AVAILABLE
+        // instead of the old unconditional 501). This file uses RefreshDatabase,
+        // which wraps every test in an outer transaction; the real command's
+        // StartParticipantAssessmentSession::assertCleanOuterBoundary() requires
+        // DB::transactionLevel() === 0 before any SQL, which RefreshDatabase makes
+        // structurally impossible here -- not a bug, the same boundary check
+        // ADR-0030 requires, just incompatible with this file's isolation trait.
+        // Not thinned: the coverage moved, it did not disappear.
         $this->withToken($legacy)->postJson('/api/sessions/ist/start', ['assessment_participant_id' => $next['attempt']])->assertUnprocessable();
         $this->withToken($this->token())->postJson('/api/sessions/ist/start')->assertUnauthorized();
     }
@@ -234,7 +243,7 @@ final class AssessmentSessionAuthorizationTest extends OrganizationPaymentTestCa
         $request->attributes->set('assessment_principal', ['participantId' => $this->f['participant']]);
         $request->attributes->set('participant_principal', new ParticipantPrincipal($this->f['participant'], $this->f['organization']));
         $this->expectException(UnauthorizedHttpException::class);
-        app(StartParticipantSessionController::class)($request, 'ist', app(ParticipantEntitlementGate::class),
+        app(StartIntegratedAssessmentSessionController::class)($request, 'ist', app(ParticipantEntitlementGate::class),
             app(AssessmentEntitlementGate::class), app(RlsContextRunner::class));
     }
 
@@ -253,7 +262,7 @@ final class AssessmentSessionAuthorizationTest extends OrganizationPaymentTestCa
         $request = StartAssessmentSessionRequest::create(self::URL, 'POST');
         $request->attributes->set('assessment_principal', new AssessmentPrincipal($this->f['participant'], $this->f['organization'], $this->f['attempt']));
         DB::table('assessment_participants')->where('id', $this->f['attempt'])->update(['revoked_at' => now()]);
-        $response = app(StartParticipantSessionController::class)($request, 'ist', app(ParticipantEntitlementGate::class),
+        $response = app(StartIntegratedAssessmentSessionController::class)($request, 'ist', app(ParticipantEntitlementGate::class),
             app(AssessmentEntitlementGate::class), app(RlsContextRunner::class));
         $this->assertSame(403, $response->getStatusCode());
         $this->assertSame('ENTITLEMENT_LOCKED', $response->getData(true)['error']['code']);

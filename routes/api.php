@@ -36,6 +36,15 @@ Route::middleware(['participant.jwt', 'rls'])->group(function (): void {
     Route::get('/me/order', ParticipantOrderStatusController::class)
         ->middleware('cache.headers:no_store;private')
         ->name('participant.order');
+});
+
+// ADR-0030: the trusted session-start command owns its own service transaction and
+// rejects any pre-existing RLS context before touching SQL, so this one route
+// deliberately excludes the `rls` middleware every other participant route uses.
+// `dass21` stays in the route pattern (it must reach validation and produce a real
+// 422 INVALID_ASSESSMENT_START_REQUEST, not a bare 404 from a route non-match); the
+// FormRequest is what rejects it.
+Route::middleware('participant.jwt')->group(function (): void {
     Route::post('/sessions/{testType}/start', StartParticipantSessionController::class)
         ->whereIn('testType', ['ist', 'papi', 'rmib', 'kraepelin', 'dass21'])
         ->name('participant.sessions.start');

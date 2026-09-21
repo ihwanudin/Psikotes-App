@@ -9,6 +9,8 @@ use App\Domain\AssessmentSessions\AssessmentAttempt;
 use App\Domain\AssessmentSessions\AssessmentAttemptAllocation;
 use App\Domain\AssessmentSessions\AssessmentAttemptAllocationPolicy;
 use App\Domain\AssessmentSessions\AssessmentSessionDeadlinePolicy;
+use App\Domain\AssessmentSessions\AssessmentSessionErrorCode;
+use App\Domain\AssessmentSessions\AssessmentSessionStartFailureCode;
 use App\Domain\AssessmentSessions\AssessmentSessionStateMachine;
 use App\Domain\AssessmentSessions\AssessmentSessionStatus;
 use App\Domain\AssessmentSessions\CaseAuthorization;
@@ -150,8 +152,29 @@ final class AllocateAndStartAssessmentSession
         if (! $decision->accepted || ! $decision->shouldPersist || $decision->allocation === null
             || $decision->allocation->attempt->attemptNumber !== 1) {
             $errorCode = $decision->errorCode;
+            // No retest grant is ever passed from this call site (retest authority
+            // is out of scope, ADR-0031), so decide() can only reject here with
+            // AttemptAlreadyExists or RetestNotAuthorized -- its other cases belong
+            // to the deadline/autosave policies for different endpoints and can
+            // never reach this call. RetestNotAuthorized maps to 403 verbatim per
+            // ADR-0030 ("... tidak memiliki authority retest"), not 409. A null
+            // errorCode here would mean the decision was accepted with the wrong
+            // attempt number, which fresh (empty) history can never produce --
+            // an invariant, not a participant outcome.
             throw new InvalidAssessmentSessionState(
                 $errorCode === null ? 'FIRST_ATTEMPT_ALLOCATION_REJECTED' : $errorCode->value,
+                match ($errorCode) {
+                    AssessmentSessionErrorCode::AttemptAlreadyExists => AssessmentSessionStartFailureCode::Conflict,
+                    AssessmentSessionErrorCode::RetestNotAuthorized => AssessmentSessionStartFailureCode::NotAvailable,
+                    AssessmentSessionErrorCode::SessionNotStarted,
+                    AssessmentSessionErrorCode::SessionClosed,
+                    AssessmentSessionErrorCode::DeadlineExceeded,
+                    AssessmentSessionErrorCode::AutosaveStaleRevision,
+                    AssessmentSessionErrorCode::AutosaveRevisionGap,
+                    AssessmentSessionErrorCode::MutationPayloadMismatch,
+                    AssessmentSessionErrorCode::InvalidAnswerBatch,
+                    null => null,
+                },
             );
         }
 
@@ -330,7 +353,15 @@ final class AllocateAndStartAssessmentSession
         );
         $deadline = $this->deadlinePolicy->evaluateAnswerWrite($status, $endsAt, $serverTime);
         if (! $deadline->accepted) {
-            throw new InvalidAssessmentSessionState('Expired assessment sessions cannot be replayed.');
+            // Genuinely reachable, not an invariant: the stored session status is
+            // still 'in_progress' (a sweep job has not yet lazily transitioned it),
+            // so isLiveReplay() legitimately selected it, but its ends_at has
+            // already passed. ADR-0030 403 bucket: "... stale". Maps to
+            // NotAvailable, not Conflict -- retrying will never succeed.
+            throw new InvalidAssessmentSessionState(
+                'Expired assessment sessions cannot be replayed.',
+                AssessmentSessionStartFailureCode::NotAvailable,
+            );
         }
         $definition = $this->storedDefinition($session);
 
