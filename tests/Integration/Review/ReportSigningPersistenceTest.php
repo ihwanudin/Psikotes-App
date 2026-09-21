@@ -767,6 +767,61 @@ final class ReportSigningPersistenceTest extends TestCase
         $this->assertSame('SIGNED', $row2->state);
     }
 
+    // ═══════════════════════════════════════════════
+    // CONCURRENT SIGNING SAFETY NET
+    // ═══════════════════════════════════════════════
+
+    /**
+     * ReportSigningService::sign() locks the assessment_cases row
+     * (lockForUpdate) before reading the latest snapshot, which is what
+     * actually serializes concurrent signing attempts for the same case in
+     * production (two real processes/connections). A single-process test
+     * can't reproduce that lock contention directly, but it CAN reproduce
+     * the failure mode the lock (and this test) exist to prevent: force a
+     * row into (assessment_case_id, version) between the service's own
+     * "latest" read and its insert, via a query listener - exactly what a
+     * second signer racing past the lock would leave behind - and confirm
+     * the service's insert hits the unique constraint and returns a clean
+     * 409, not an unhandled 500.
+     */
+    public function test_version_conflict_at_insert_returns_409_not_500(): void
+    {
+        $case = $this->createCase();
+        $baseline = $this->seedBaseline($case);
+        $admin = $this->psychologist();
+
+        $injected = false;
+        $listener = function ($query) use (&$injected, $case, $baseline, $admin): void {
+            if ($injected || ! str_contains($query->sql, 'report_signing_snapshots') || ! str_contains(strtolower($query->sql), 'order by')) {
+                return;
+            }
+            $injected = true;
+
+            // Simulate a competing signer that already inserted version 1
+            // for this case, landing between this SELECT and the service's
+            // own INSERT - the exact window lockForUpdate() closes in real
+            // concurrency, forced here without needing two real processes.
+            DB::table('report_signing_snapshots')->insert(
+                $this->snapshotRow($case->id, $baseline['eligibilityId'], $baseline['narrativeId'], $admin->id, 1),
+            );
+        };
+        DB::listen($listener);
+
+        $response = $this->actingAs($admin, 'admin')
+            ->postJson("/admin/assessment-cases/{$case->public_id}/signing", $this->validPayload($baseline));
+
+        $this->assertTrue($injected, 'The query listener never saw the latest-snapshot lookup - test setup is stale.');
+        $response->assertStatus(409);
+        $response->assertJsonPath('error.code', 'SIGNING_CONFLICT');
+        // The conflicting service insert must not have landed a second row.
+        $this->assertDatabaseCount('report_signing_snapshots', 1);
+    }
+
+    // Proof that sign() actually issues SELECT ... FOR UPDATE lives in
+    // tests/Postgres/ReportSigningConcurrencyTest.php - SQLite's grammar
+    // compiles lockForUpdate() to an empty string (verified: SQLiteGrammar
+    // ::compileLock() always returns ''), so it can't be observed here.
+
     // ─── Helper ───
 
     private function canonicalReporting(): array

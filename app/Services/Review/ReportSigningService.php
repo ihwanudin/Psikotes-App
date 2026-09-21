@@ -15,6 +15,7 @@ use App\Domain\Review\ReportSigningTransitionPolicy;
 use App\Domain\Review\ReviewedEligibilityDecision;
 use App\Models\Admin;
 use App\Security\RlsContextRunner;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use stdClass;
@@ -241,11 +242,21 @@ final class ReportSigningService
             return ['success' => false, 'code' => 'SIGNING_BLOCKED', 'message' => 'Report cannot be signed.', 'status' => 422, 'blocking_reason_codes' => $transitionResult['blocking_reason_codes']];
         }
 
-        // Step 9: Persist snapshot. Revision-reason validation and version-chain
-        // query are inside the SAME runAsService closure to prevent TOCTOU:
-        // if we queried the latest snapshot in a separate transaction first,
-        // another concurrent signing could slip in between, bypassing the
-        // revision_reason requirement.
+        // Step 9: Persist snapshot. Running the revision-reason check and the
+        // version-chain read inside one runAsService closure does NOT by
+        // itself close the TOCTOU window - it's one transaction, but an
+        // unlocked `SELECT ... ORDER BY version DESC` under READ COMMITTED
+        // (Postgres's default) still lets two concurrent signings both read
+        // the same `latest` row, so both could pass (or both wrongly skip)
+        // the revision_reason check and both try to insert the next version.
+        // What actually closes the window is the `lockForUpdate()` below: it
+        // serializes concurrent signing attempts on the SAME case (the
+        // second request blocks until the first's transaction commits or
+        // rolls back), so by the time this closure reads `latest`, no other
+        // signing for this case can be mid-flight. The unique constraint on
+        // (assessment_case_id, version) is kept as a second, independent
+        // safety net - if it's ever hit anyway, the second signer gets a
+        // clean 409 SIGNING_CONFLICT instead of an unhandled 500.
         $signedAt = now();
         $signedByAdminId = (int) $psychologist->id;
 
@@ -254,6 +265,7 @@ final class ReportSigningService
         ): array {
             $caseRecord = DB::table('assessment_cases')
                 ->where('public_id', $casePublicId)
+                ->lockForUpdate()
                 ->first();
             if ($caseRecord === null) {
                 return ['found' => false, 'error_code' => 'CASE_NOT_FOUND'];
@@ -268,16 +280,14 @@ final class ReportSigningService
                 return ['found' => false, 'error_code' => 'NARRATIVE_VERSION_NOT_FOUND'];
             }
 
-            // Single atomic read of the latest snapshot — used for BOTH
-            // revision_reason validation AND version/supersedesId calculation.
+            // Safe to read as "the" latest now: the case row lock above
+            // means no other signing attempt for this case is mid-flight.
             $latest = DB::table('report_signing_snapshots')
                 ->where('assessment_case_id', $caseId)
                 ->orderByDesc('version')
                 ->first();
 
             // Validate revision_reason if re-signing over a SIGNED snapshot.
-            // This check MUST stay inside this closure (not in a separate
-            // transaction) to close the TOCTOU window.
             if ($latest !== null && $latest->state === 'SIGNED') {
                 $reason = isset($input['revision_reason']) && is_string($input['revision_reason']) ? trim($input['revision_reason']) : '';
                 if (mb_strlen($reason) < 20) {
@@ -302,19 +312,30 @@ final class ReportSigningService
             $supersedesId = $latest?->id;
             $id = (string) Str::ulid();
 
-            DB::table('report_signing_snapshots')->insert([
-                'id' => $id,
-                'assessment_case_id' => $caseId,
-                'version' => $version,
-                'supersedes_id' => $supersedesId,
-                'state' => 'SIGNED',
-                'eligibility_version_id' => $input['eligibility_version_id'],
-                'narrative_version_id' => $input['narrative_version_id'],
-                'snapshot_json' => $snapshotJson,
-                'signed_by_admin_id' => $signedByAdminId,
-                'signed_at' => $signedAt,
-                'created_at' => $signedAt,
-            ]);
+            try {
+                DB::table('report_signing_snapshots')->insert([
+                    'id' => $id,
+                    'assessment_case_id' => $caseId,
+                    'version' => $version,
+                    'supersedes_id' => $supersedesId,
+                    'state' => 'SIGNED',
+                    'eligibility_version_id' => $input['eligibility_version_id'],
+                    'narrative_version_id' => $input['narrative_version_id'],
+                    'snapshot_json' => $snapshotJson,
+                    'signed_by_admin_id' => $signedByAdminId,
+                    'signed_at' => $signedAt,
+                    'created_at' => $signedAt,
+                ]);
+            } catch (QueryException $e) {
+                if (! $this->isVersionConflict($e)) {
+                    throw $e;
+                }
+
+                // Should not happen with the row lock above in place - kept
+                // as a second, independent safety net (see the comment on
+                // this closure).
+                return ['found' => false, 'error_code' => 'SIGNING_CONFLICT'];
+            }
 
             return ['found' => true, 'row' => DB::table('report_signing_snapshots')->where('id', $id)->sole()];
         });
@@ -324,11 +345,13 @@ final class ReportSigningService
                 'CASE_NOT_FOUND' => 'Assessment case not found.',
                 'NARRATIVE_VERSION_NOT_FOUND' => 'Referenced version does not belong to this assessment case.',
                 'REVISION_REASON_REQUIRED' => 'Revisi memerlukan alasan minimal 20 karakter.',
+                'SIGNING_CONFLICT' => 'A conflicting signing attempt for this case was just committed. Reload and try again.',
             ];
             $statuses = [
                 'CASE_NOT_FOUND' => 404,
                 'NARRATIVE_VERSION_NOT_FOUND' => 404,
                 'REVISION_REASON_REQUIRED' => 422,
+                'SIGNING_CONFLICT' => 409,
             ];
 
             return ['success' => false, 'code' => $result['error_code'], 'message' => $messages[$result['error_code']], 'status' => $statuses[$result['error_code']]];
@@ -379,5 +402,22 @@ final class ReportSigningService
     private function systemLevel(array $baselineArray, string $aspect): int
     {
         return (int) $baselineArray['zone']['aspects'][$aspect]['level'];
+    }
+
+    /**
+     * Whether a QueryException is the (assessment_case_id, version) unique
+     * violation on report_signing_snapshots - the safety net for the race
+     * the row lock in sign() is meant to prevent. Checked by constraint/
+     * column name rather than SQLSTATE alone: Postgres reports a specific
+     * '23505' for this, but SQLite reports the generic '23000' for every
+     * integrity violation (NOT NULL, FK, unique alike), so SQLSTATE alone
+     * can't tell this apart from an unrelated failure on the same insert.
+     */
+    private function isVersionConflict(QueryException $e): bool
+    {
+        $message = $e->getMessage();
+
+        return str_contains($message, 'report_signing_snapshots_case_version_unique')
+            || (str_contains($message, 'UNIQUE constraint failed') && str_contains($message, 'report_signing_snapshots.assessment_case_id') && str_contains($message, 'report_signing_snapshots.version'));
     }
 }
