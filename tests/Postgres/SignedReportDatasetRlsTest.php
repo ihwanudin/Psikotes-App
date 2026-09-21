@@ -251,7 +251,7 @@ final class SignedReportDatasetRlsTest extends TestCase
      */
     private function signFreshCase(string $istVersion): string
     {
-        $casePublicId = app(RlsContextRunner::class)->runAsService(static function () use ($istVersion): string {
+        $casePublicId = app(RlsContextRunner::class)->runAsService(static function (): string {
             $fixture = AssessmentBillingFixture::create();
             DB::table('participants')->where('id', $fixture['participant'])->update(['test_number' => 'T26-09-PG02']);
 
