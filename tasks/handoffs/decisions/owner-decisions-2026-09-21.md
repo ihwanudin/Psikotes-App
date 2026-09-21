@@ -318,6 +318,43 @@ Konsekuensi teknis (untuk tim, bukan bagian keputusan pemilik):
   ditambahkan lewat konfigurasi tanpa perubahan skema, dan defaultnya
   tanpa batas sampai pemilik menentukan lain.
 
+## 19. Batas percobaan ulang tes (retest) — SELESAI
+
+Keputusan pemilik proyek:
+
+- **Batas: 3 kali percobaan per peserta di lembaga yang sama.** Dihitung
+  per kasus/lembaga seperti cara sistem bekerja sekarang, **bukan** lintas
+  lembaga — pemilik proyek eksplisit memilih ini karena "yang penting
+  tidak ribet", yaitu tanpa perlu menyimpan nomor identitas resmi (KTP/
+  paspor) peserta untuk mencocokkan orang yang sama lintas lembaga.
+  Peserta yang pindah lembaga otomatis mendapat hitungan baru, sesuai
+  cara data peserta tersimpan hari ini (baris peserta baru per lembaga).
+- **Yang boleh menyetujui percobaan ke-4 dan seterusnya:** super_admin,
+  **admin aplikasi pusat** (butir 17), dan **psikolog**. Admin cabang dan
+  staf cabang **tidak** termasuk.
+
+Konsekuensi teknis (untuk tim): mekanisme "izin mengulang tes"
+(`AssessmentRetestGrant`) sudah ada di kode tapi belum pernah dipakai —
+saat ini mengulang tes SELALU ditolak. Menyambungkannya perlu: ability
+baru untuk menyetujui retest (digerbangi ketiga peran di atas), hitungan
+percobaan per `assessment_case`/lembaga, dan audit trail yang sama
+polanya dengan verifikasi pembayaran manual (aktor, alasan, waktu).
+
+## 20. Hak admin aplikasi pusat — SELESAI (pelebaran dari butir 17)
+
+Keputusan pemilik proyek: admin aplikasi pusat, selain menerbitkan
+laporan yang sudah ditandatangani (butir 17), juga diberi:
+- verifikasi pembayaran transfer manual (`VerifyPayments`);
+- edit data peserta (`EditParticipants`);
+- kelola paket tes (`ManageTestPackages`);
+- lihat daftar metode pembayaran (bagian dari `ManagePaymentMethods` yang
+  bersifat baca; pengelolaan penuh tetap dipertimbangkan terpisah oleh
+  tim teknis saat desain ability dibuat).
+
+Yang **tetap tidak boleh**: mengelola akun admin lain (`ManageAdmins`),
+menandatangani laporan (`ReviewReports`), dan melihat DASS (`ViewDass`) —
+tidak berubah dari butir 17.
+
 ## Butir yang masih terbuka setelah dokumen ini
 
 - Retensi foto identitas (butir 5d) sudah ditetapkan di butir 15. Butir 3
