@@ -23,6 +23,7 @@
 /resources/js/actions/
 /resources/js/routes/
 /resources/js/wayfinder/
+/resources/css/oncam-design-tokens.generated.css
 /coverage/
 
 # Secrets and credentials

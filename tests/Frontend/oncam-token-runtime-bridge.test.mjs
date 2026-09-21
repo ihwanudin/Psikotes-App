@@ -1,9 +1,14 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 
+import tailwindcss from '@tailwindcss/vite';
+import { build } from 'vite';
+
 import {
-    VIRTUAL_ONCAM_CSS_ID,
+    GENERATED_CSS_FILENAME,
     oncamTokenRuntimeBridge,
     transformOncamTokens,
 } from '../../tools/design-tokens/oncam-runtime-bridge.mjs';
@@ -408,78 +413,100 @@ test('rejects raw semantic values and cross-mode aliases', async () => {
     );
 });
 
-test('Vite plugin serves virtual CSS and watches the canonical JSON', async () => {
-    const plugin = oncamTokenRuntimeBridge();
-    const watched = [];
-    const resolved = plugin.resolveId(VIRTUAL_ONCAM_CSS_ID);
-    const css = await plugin.load.call(
-        { addWatchFile: (file) => watched.push(file) },
-        resolved,
-    );
+async function withTempDir(run) {
+    const dir = await mkdtemp(join(tmpdir(), 'oncam-runtime-bridge-'));
 
-    assert.equal(plugin.name, 'oncam-token-runtime-bridge');
-    assert.equal(plugin.enforce, 'pre');
-    assert.equal(resolved, `\0${VIRTUAL_ONCAM_CSS_ID}`);
-    assert.match(css, /^:root \{/);
-    assert.equal(watched.length, 1);
-    assert.match(
-        watched[0].replaceAll('\\', '/'),
-        /resources\/design-tokens\/oncam\.tokens\.json$/,
-    );
-});
+    try {
+        return await run(dir);
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+}
 
-test('Vite pre-transform expands the CSS import before Tailwind resolves it', async () => {
-    const plugin = oncamTokenRuntimeBridge();
-    const watched = [];
-    const source = [
-        "@import 'tailwindcss';",
-        "@import 'virtual:oncam-design-tokens.css';",
-        "@source '../views';",
-    ].join('\n');
-    const result = await plugin.transform.call(
-        { addWatchFile: (file) => watched.push(file) },
-        source,
-        'resources/css/app.css',
-    );
+test('Vite plugin writes the runtime CSS to disk and watches the canonical JSON', async () => {
+    await withTempDir(async (dir) => {
+        const outputFile = join(dir, GENERATED_CSS_FILENAME);
+        const plugin = oncamTokenRuntimeBridge({ outputFile });
+        const watched = [];
 
-    assert.doesNotMatch(result.code, /virtual:oncam-design-tokens\.css/);
-    assert.match(result.code, /:root \{/);
-    assert.match(result.code, /@theme inline static \{/);
-    assert.match(result.code, /@source '\.\.\/views';/);
-    assert.equal(watched.length, 1);
-});
+        await plugin.buildStart.call({
+            addWatchFile: (file) => watched.push(file),
+        });
 
-test('Vite invalidates and reloads the virtual CSS when canonical JSON changes', () => {
-    const plugin = oncamTokenRuntimeBridge();
-    const resolved = plugin.resolveId(VIRTUAL_ONCAM_CSS_ID);
-    const module = { id: resolved };
-    const invalidated = [];
-    const messages = [];
-    const watched = plugin.handleHotUpdate({
-        file: decodeURIComponent(tokenFile.pathname).replace(
-            /^\/(?:[A-Z]:)/,
-            (path) => path.slice(1),
-        ),
-        server: {
-            moduleGraph: {
-                getModuleById: (id) => (id === resolved ? module : undefined),
-                invalidateModule: (value) => invalidated.push(value),
-            },
-            ws: { send: (message) => messages.push(message) },
-        },
+        const css = await readFile(outputFile, 'utf8');
+
+        assert.equal(plugin.name, 'oncam-token-runtime-bridge');
+        assert.equal(plugin.enforce, 'pre');
+        assert.match(css, /^:root \{/);
+        assert.equal(watched.length, 1);
+        assert.match(
+            watched[0].replaceAll('\\', '/'),
+            /resources\/design-tokens\/oncam\.tokens\.json$/,
+        );
     });
-
-    assert.deepEqual(watched, [module]);
-    assert.deepEqual(invalidated, [module]);
-    assert.deepEqual(messages, [{ type: 'full-reload' }]);
 });
 
-test('registers the virtual CSS exactly once in the required Tailwind/Vite order', async () => {
+test('Vite plugin overwrites a stale file unconditionally on every start', async () => {
+    await withTempDir(async (dir) => {
+        const outputFile = join(dir, GENERATED_CSS_FILENAME);
+        await writeFile(outputFile, '/* stale CSS from a previous run */');
+
+        const plugin = oncamTokenRuntimeBridge({ outputFile });
+        await plugin.buildStart.call({ addWatchFile: () => {} });
+
+        const css = await readFile(outputFile, 'utf8');
+
+        assert.doesNotMatch(css, /stale CSS from a previous run/);
+        assert.match(css, /^:root \{/);
+    });
+});
+
+test('Vite plugin fails closed when the token source is invalid, without touching the output file', async () => {
+    await withTempDir(async (dir) => {
+        const badTokenFile = join(dir, 'oncam.tokens.json');
+        const outputFile = join(dir, GENERATED_CSS_FILENAME);
+        await writeFile(badTokenFile, '{ not valid json');
+
+        const plugin = oncamTokenRuntimeBridge({
+            tokenFile: badTokenFile,
+            outputFile,
+        });
+
+        await assert.rejects(
+            plugin.buildStart.call({ addWatchFile: () => {} }),
+        );
+        await assert.rejects(readFile(outputFile, 'utf8'));
+    });
+});
+
+test('Vite regenerates the file and reloads when the canonical JSON changes', async () => {
+    await withTempDir(async (dir) => {
+        const outputFile = join(dir, GENERATED_CSS_FILENAME);
+        const plugin = oncamTokenRuntimeBridge({ outputFile });
+        const messages = [];
+
+        const result = await plugin.handleHotUpdate({
+            file: decodeURIComponent(tokenFile.pathname).replace(
+                /^\/(?:[A-Z]:)/,
+                (path) => path.slice(1),
+            ),
+            server: { ws: { send: (message) => messages.push(message) } },
+        });
+
+        const css = await readFile(outputFile, 'utf8');
+
+        assert.deepEqual(result, []);
+        assert.match(css, /^:root \{/);
+        assert.deepEqual(messages, [{ type: 'full-reload' }]);
+    });
+});
+
+test('registers the generated CSS import exactly once in the required Tailwind/Vite order', async () => {
     const [appCss, viteConfig] = await Promise.all([
         readFile(appCssFile, 'utf8'),
         readFile(viteConfigFile, 'utf8'),
     ]);
-    const bridgeImport = "@import 'virtual:oncam-design-tokens.css';";
+    const bridgeImport = `@import './${GENERATED_CSS_FILENAME}';`;
 
     assert.equal(appCss.split(bridgeImport).length - 1, 1);
     assert.ok(
@@ -492,6 +519,46 @@ test('registers the virtual CSS exactly once in the required Tailwind/Vite order
         viteConfig.indexOf('oncamTokenRuntimeBridge()') <
             viteConfig.indexOf('tailwindcss()'),
     );
+});
+
+test('resolves the generated token CSS through a nested @import, not just a top-level entry', async () => {
+    // Regression test for the frontend fixture harness bug (2026-09-21):
+    // @tailwindcss/vite resolves `@import` internally via its own
+    // filesystem-based resolver, which never runs Vite's resolveId/load/
+    // transform plugin hooks for files reached through a *nested* @import
+    // (only the literal top-level entry id Vite dispatches a transform for
+    // gets that treatment). A fixture whose CSS entry imports app.css
+    // (rather than being app.css itself) reproduces that nesting exactly.
+    // This must fail with a virtual-module-based bridge and pass with a
+    // real-file-based one.
+    await withTempDir(async (dir) => {
+        const outputFile = join(dir, GENERATED_CSS_FILENAME);
+        await writeFile(
+            join(dir, 'app.css'),
+            `@import './${GENERATED_CSS_FILENAME}';\n`,
+        );
+        await writeFile(join(dir, 'entry.css'), "@import './app.css';\n");
+
+        const result = await build({
+            root: dir,
+            configFile: false,
+            logLevel: 'silent',
+            plugins: [oncamTokenRuntimeBridge({ outputFile }), tailwindcss()],
+            build: {
+                write: false,
+                cssMinify: false,
+                rollupOptions: { input: join(dir, 'entry.css') },
+            },
+        });
+
+        const [{ output }] = [].concat(result);
+        const cssAsset = output.find((chunk) =>
+            chunk.fileName.endsWith('.css'),
+        );
+
+        assert.ok(cssAsset, 'expected Tailwind to emit a CSS asset');
+        assert.match(cssAsset.source, /--oncam-/);
+    });
 });
 
 test('generated runtime CSS contains definitions only', async () => {
