@@ -419,6 +419,7 @@ export async function verifyCheckoutInteractions(page) {
         assert.equal(await confirm().isEnabled(), false);
         await mainConsent().check();
         assert.equal(await confirm().isEnabled(), false);
+        await dassConsent().check();
         const previous = await counter();
         await confirm().click();
         assert.equal(
@@ -433,7 +434,11 @@ export async function verifyCheckoutInteractions(page) {
             true,
         );
         await role('textbox', 'Nomor WhatsApp *').fill('080000000002');
-        assert.equal(await confirm().isEnabled(), false);
+        // Both consents were already accepted above (needed to make the
+        // native-validation click at :424 reach the browser instead of
+        // hanging on a disabled button); the phone number is now the only
+        // previously-missing requirement, so confirm is enabled here.
+        assert.equal(await confirm().isEnabled(), true);
         await dassConsent().check();
         await confirm().click();
         assert.equal(Number(await counter()), Number(previous) + 1);
