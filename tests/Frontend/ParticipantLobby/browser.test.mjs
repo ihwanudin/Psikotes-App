@@ -113,6 +113,15 @@ async (page) => {
                               // or crashing (Entitlement.status describes the
                               // expected shape, not a runtime guarantee).
                               { test_type: 'future_test', status: 'archived' },
+                              // Matches an inherited Object.prototype property name.
+                              // A plain-object lookup without an own-property guard
+                              // would return that inherited value (e.g. the
+                              // constructor function) instead of falling back,
+                              // crashing the render.
+                              {
+                                  test_type: 'prototype_pollution_check',
+                                  status: 'constructor',
+                              },
                           ],
             },
         })
@@ -204,10 +213,31 @@ async (page) => {
             listText.includes('Status tes ini tidak dikenali oleh sistem.'),
             `${name}: unknown status fallback description changed`,
         )
+        // A status matching an inherited Object.prototype property name
+        // (e.g. "constructor") must still fall back safely, not return the
+        // inherited value and crash the render.
+        const prototypePollutionRowText = await page
+            .getByRole('listitem')
+            .filter({ hasText: 'PROTOTYPE_POLLUTION_CHECK' })
+            .textContent()
+        assert(
+            prototypePollutionRowText.includes('Status tidak dikenali'),
+            `${name}: status "constructor" did not fall back to the unknown-status label`,
+        )
+        assert(
+            !prototypePollutionRowText.includes('function'),
+            `${name}: status "constructor" leaked an inherited Object.prototype value`,
+        )
 
         // The whole point of this fix: no raw English/DB word ever reaches
         // the participant.
-        for (const rawWord of ['locked', 'in_progress', 'done', 'archived']) {
+        for (const rawWord of [
+            'locked',
+            'in_progress',
+            'done',
+            'archived',
+            'constructor',
+        ]) {
             assert(
                 !listText.includes(rawWord),
                 `${name}: raw status word "${rawWord}" leaked to the participant`,

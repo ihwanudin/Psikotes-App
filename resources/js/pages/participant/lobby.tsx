@@ -84,7 +84,14 @@ const UNKNOWN_STATUS_META: StatusMeta = {
 };
 
 function statusMeta(status: string): StatusMeta {
-    return STATUS_META[status] ?? UNKNOWN_STATUS_META;
+    // A plain object inherits Object.prototype, so a status string that
+    // happens to match an inherited property name (e.g. "constructor",
+    // "toString", "__proto__", "hasOwnProperty") would otherwise skip the
+    // fallback below and hand back that inherited value instead of a
+    // StatusMeta, crashing the render. Object.hasOwn guards against that.
+    return Object.hasOwn(STATUS_META, status)
+        ? STATUS_META[status]
+        : UNKNOWN_STATUS_META;
 }
 
 export default function ParticipantLobby() {
