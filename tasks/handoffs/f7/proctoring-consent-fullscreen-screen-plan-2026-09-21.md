@@ -85,20 +85,33 @@ pemisahan hook/komponen-murni yang sudah dipakai `camera-controller.ts`
 mengedit `session-runner-shell.tsx` sekarang:**
 
 ```
-<SessionRunnerShell fetchSession={...} proctoring={{ reporter, getUserMedia }}>
-  {(runner) =>
-    !consentGiven ? (
-      <ProctoringConsentScreen
-        camera={runner.camera}
-        fullscreen={useFullscreen()}
-        cameraMandatory={/* dari data cabang — TBD, lihat §1 */}
-        onProceed={() => setConsentGiven(true)}
-      />
-    ) : (
-      <ActualTestContent session={runner.session} />
-    )
-  }
-</SessionRunnerShell>
+function IstTestPage(/* ... */) {
+  // useFullscreen() dipanggil di TINGKAT ATAS komponen halaman, bukan di
+  // dalam callback render-prop di bawah — memanggilnya di dalam
+  // `{(runner) => ...}` melanggar Rules of Hooks React (hook yang
+  // dipanggil di dalam callback bisa terpanggil kondisional/jumlah
+  // berbeda antar render, dan lint react-hooks akan menolaknya). Hasilnya
+  // diteruskan ke bawah sebagai nilai biasa.
+  const fullscreen = useFullscreen();
+  const [consentGiven, setConsentGiven] = useState(false);
+
+  return (
+    <SessionRunnerShell fetchSession={...} proctoring={{ reporter, getUserMedia }}>
+      {(runner) =>
+        !consentGiven ? (
+          <ProctoringConsentScreen
+            camera={runner.camera}
+            fullscreen={fullscreen}
+            cameraMandatory={/* dari data cabang — TBD, lihat §1 */}
+            onProceed={() => setConsentGiven(true)}
+          />
+        ) : (
+          <ActualTestContent session={runner.session} />
+        )
+      }
+    </SessionRunnerShell>
+  );
+}
 ```
 
 `session-runner-shell.tsx` **tidak perlu diubah sama sekali** —
@@ -107,7 +120,11 @@ Halaman per-instrumen (milik GLM, belum dibangun) yang memutuskan
 kapan merender `ProctoringConsentScreen` vs konten tes sungguhan.
 Titik integrasi ini dicatat di sini supaya siapa pun yang membangun
 halaman IST/PAPI/RMIB/Kraepelin tahu pola yang dimaksud, tanpa saya
-perlu menyentuh berkas GLM sekarang.
+perlu menyentuh berkas GLM sekarang. **Catatan Lead (2026-09-21):**
+contoh sebelumnya memanggil `useFullscreen()` di dalam callback
+render-prop — salah, sudah diperbaiki di atas. Pola yang benar (hook di
+tingkat atas komponen halaman) juga yang dipakai di fixture-nya (§6),
+karena GLM akan meniru contoh ini untuk halaman IST/PAPI/RMIB/Kraepelin.
 
 ## 3. Isi teks persetujuan (draf, Bahasa Indonesia)
 
