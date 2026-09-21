@@ -7,6 +7,8 @@ import {
     enterDigit,
     focusSlot,
     isComplete,
+    lockFilledSlots,
+    lockSlot,
 } from './column-input-state.ts';
 
 test('createColumnInputState builds an all-empty state focused at slot 0', () => {
@@ -140,4 +142,116 @@ test('typing a full sequence advances through every slot in order and stops at t
     assert.deepEqual(state.values, digits);
     assert.equal(state.focusedIndex, 4);
     assert.equal(isComplete(state), true);
+});
+
+test('lockSlot marks exactly one slot locked and is a no-op if already locked', () => {
+    let state = createColumnInputState(3);
+    state = lockSlot(state, 1);
+
+    assert.deepEqual(state.locked, [false, true, false]);
+
+    const next = lockSlot(state, 1);
+    assert.equal(next, state, 'locking an already-locked slot must be a no-op');
+});
+
+test('lockSlot rejects an out-of-range index', () => {
+    const state = createColumnInputState(3);
+
+    assert.throws(() => lockSlot(state, -1), RangeError);
+    assert.throws(() => lockSlot(state, 3), RangeError);
+});
+
+test('lockFilledSlots locks every currently-filled slot and leaves empty ones open', () => {
+    let state = createColumnInputState(4);
+    state = enterDigit(state, '1'); // slot 0
+    state = enterDigit(state, '2'); // slot 1
+    // slot 2, 3 left empty
+
+    state = lockFilledSlots(state);
+
+    assert.deepEqual(state.locked, [true, true, false, false]);
+});
+
+test('lockFilledSlots is a no-op (same reference) when nothing new needs locking', () => {
+    const state = createColumnInputState(3);
+    const next = lockFilledSlots(state);
+
+    assert.equal(next, state, 'no filled slots means nothing to lock');
+});
+
+// --- "No correction" mode: lock a slot immediately after it is filled ---
+
+test('no-correction mode: a locked slot cannot be re-focused for correction', () => {
+    let state = createColumnInputState(3);
+    state = enterDigit(state, '1');
+    state = lockSlot(state, 0); // policy: lock immediately after fill
+
+    const attemptToCorrect = focusSlot(state, 0);
+
+    assert.equal(
+        attemptToCorrect,
+        state,
+        'focusSlot on a locked slot must be a no-op, not throw and not move focus',
+    );
+});
+
+test('no-correction mode: backspace cannot reach back into an already-locked slot', () => {
+    let state = createColumnInputState(3);
+    state = enterDigit(state, '1');
+    state = lockSlot(state, 0); // slot 0 locked, focus is now at slot 1 (empty)
+
+    const afterBackspace = backspace(state);
+
+    assert.deepEqual(
+        afterBackspace,
+        state,
+        'backspace must not clear a locked previous slot',
+    );
+});
+
+test('no-correction mode: a full column locked slot-by-slot ends fully locked and unmodifiable', () => {
+    let state = createColumnInputState(3);
+    const digits = ['1', '2', '3'];
+
+    for (let i = 0; i < digits.length; i++) {
+        state = enterDigit(state, digits[i]!);
+        state = lockSlot(state, i); // policy: lock the slot just filled
+    }
+
+    assert.deepEqual(state.values, ['1', '2', '3']);
+    assert.deepEqual(state.locked, [true, true, true]);
+
+    // Nothing can be changed anymore.
+    assert.equal(backspace(state), state);
+    assert.equal(focusSlot(state, 0), state);
+});
+
+// --- "Correction allowed until sent" mode: lock only on flush ---
+
+test('correction-until-flush mode: filled slots stay freely correctable before lockFilledSlots is called', () => {
+    let state = createColumnInputState(3);
+    state = enterDigit(state, '1');
+    state = enterDigit(state, '2');
+
+    // Still correctable: nothing has been locked yet (no flush happened).
+    state = focusSlot(state, 0);
+    state = enterDigit(state, '9');
+
+    assert.deepEqual(state.values, ['9', '2', null]);
+});
+
+test('correction-until-flush mode: after a simulated flush, the flushed slots become uncorrectable but new typing is unaffected', () => {
+    let state = createColumnInputState(3);
+    state = enterDigit(state, '1');
+    state = enterDigit(state, '2');
+
+    // Simulated flush confirmation: lock everything filled so far.
+    state = lockFilledSlots(state);
+    assert.deepEqual(state.locked, [true, true, false]);
+
+    // The already-flushed slots are now final...
+    assert.equal(focusSlot(state, 0), state);
+    // ...but the still-open slot keeps working normally.
+    state = enterDigit(state, '3');
+    assert.deepEqual(state.values, ['1', '2', '3']);
 });
