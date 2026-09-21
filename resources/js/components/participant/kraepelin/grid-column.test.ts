@@ -6,6 +6,8 @@ import { test } from 'node:test';
 
 import { columnNumbersFromGrid } from './grid-column.ts';
 import type { KraepelinGrid } from './grid-column.ts';
+import { columnNumbersFromItems } from './items.ts';
+import type { KraepelinItem } from './items.ts';
 
 // --- Synthetic fixture: core reversal/bounds logic, independent of the
 // real (large) grid file. ---
@@ -120,3 +122,64 @@ test('the real column 0 conversion is exactly reversed row order', () => {
     assert.equal(numbers[27], data.grid[0][0]);
     assert.equal(numbers[14], data.grid[13][0]);
 });
+
+// --- Mandatory test (Lead's 2026-09-21 review of PR #67): prove the
+// FRONTEND-SIDE mapping from a real GET /sessions/:id/items response
+// (columnNumbersFromItems, in items.ts) lands the participant's first
+// answer slot between the two bottom-most sheet numbers — grid[27][col]
+// and grid[26][col] — using columnNumbersFromGrid (this file's own,
+// independently-tested oracle) only to read those two raw values, never
+// to build the fixture itself. The /items fixture below is built
+// directly from the documented contract (item-delivery-items-endpoint.md):
+// position=1 -> the sheet's bottom-most row, position=28 -> the top-most
+// — NOT by calling grid-column.ts's reversal, so this test cannot pass by
+// the two implementations sharing the same bug.
+//
+// This must fail under either mistake:
+// - a DOUBLE reversal (columnNumbersFromItems wrongly re-reverses an
+//   already-administration-ordered response) would put grid[0][col] (the
+//   sheet's TOP-most number) at numbers[0] instead of grid[27][col].
+// - a MISSING reversal in the fixture itself (simulating a server that
+//   forgot to flip, i.e. still sheet-order) would put grid[0][col] at
+//   position 1 instead of grid[27][col] — caught by the same assertion,
+//   from the other direction. ---
+
+function itemsFixtureFromRawGrid(
+    data: RealGridFile,
+    columnIndex: number,
+): KraepelinItem[] {
+    // Directly expresses the CONTRACT ("position=1 is the sheet's
+    // bottom-most number"), not grid-column.ts's algorithm — grid.length
+    // - 1 is the last (bottom-most) sheet row.
+    const rowCount = data.grid.length;
+
+    return Array.from({ length: rowCount }, (_, offset) => ({
+        position: offset + 1,
+        value: data.grid[rowCount - 1 - offset]![columnIndex]!,
+    }));
+}
+
+for (const columnIndex of [0, 1, 24, 49]) {
+    test(`column ${columnIndex}: the first answer slot from a real /items fixture sits between the two bottom-most sheet numbers`, () => {
+        const data = loadRealGrid();
+        const items = itemsFixtureFromRawGrid(data, columnIndex);
+
+        const numbers = columnNumbersFromItems(items);
+
+        assert.equal(
+            numbers[0],
+            data.grid[27]![columnIndex],
+            "numbers[0] (the first answer slot's lower flank) must be the sheet's bottom-most number for this column",
+        );
+        assert.equal(
+            numbers[1],
+            data.grid[26]![columnIndex],
+            "numbers[1] (the first answer slot's upper flank) must be the sheet's second-from-bottom number",
+        );
+        assert.equal(
+            numbers[27],
+            data.grid[0]![columnIndex],
+            "numbers[27] (the last, top-most slot) must be the sheet's top-most number",
+        );
+    });
+}
