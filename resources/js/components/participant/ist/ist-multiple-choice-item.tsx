@@ -51,6 +51,7 @@ export function IstMultipleChoiceItemView({
                         type="button"
                         role="radio"
                         aria-checked={selected === key}
+                        aria-label={`${key}. ${item.options[key]}`}
                         onClick={() => onSelect(key)}
                         className={`flex items-center gap-3 rounded-xl border p-3 text-left text-sm transition-colors ${
                             selected === key
