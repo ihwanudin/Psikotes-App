@@ -2,7 +2,15 @@ import json
 import unittest
 from pathlib import Path
 
+import numpy as np
 from PIL import Image
+
+from tools.extract.extract_ist_fa_wu import (
+    BAND_SEAM_MIN_RUN,
+    MAX_ITEM_ASPECT_RATIO,
+    _assert_no_band_seam,
+    _assert_single_figure,
+)
 
 DATA = Path(__file__).parents[3] / "database" / "seeders" / "data"
 FA_ITEM_RANGE = range(117, 137)
@@ -111,6 +119,94 @@ class IstFaWuItemsGateTest(unittest.TestCase):
         payload = json.dumps(data["subtests"]["FA"]) + json.dumps(data["subtests"]["WU"])
         for marker in ("@", "tanggal_lahir", "no_tes", "password", "token"):
             self.assertNotIn(marker, payload.lower())
+
+    def test_no_shipped_crop_has_a_band_seam_or_is_too_elongated(self):
+        """End-to-end regression gate for both defects the coordinator found
+        in their crop-by-crop review (see
+        tasks/handoffs/f0/ist-fa-wu-verification.md): re-runs the two new
+        automated checks against every currently-shipped PNG, not just a
+        synthetic case - so a future regeneration that reintroduces either
+        defect fails here, not just in a unit test of the check function in
+        isolation."""
+        data = self.load()
+        for code in ("FA", "WU"):
+            entry = data["subtests"][code]
+            for item in entry["items"]:
+                with Image.open(DATA / item["image"]) as img:
+                    _assert_no_band_seam(img, f"{code} item {item['item']}")
+                    w, h = img.size
+                ratio = max(w, h) / max(1, min(w, h))
+                self.assertLessEqual(
+                    ratio, MAX_ITEM_ASPECT_RATIO,
+                    f"{code} item {item['item']}: {w}x{h} ratio={ratio:.2f} exceeds {MAX_ITEM_ASPECT_RATIO} "
+                    f"- looks like it absorbed a neighboring item's figure",
+                )
+            legend_options = (
+                [opt for legend in entry["option_legends"] for opt in legend["options"].values()]
+                if code == "FA" else list(entry["option_legend"]["options"].values())
+            )
+            for rel_path in legend_options:
+                with Image.open(DATA / rel_path) as img:
+                    _assert_no_band_seam(img, f"{code} legend option {rel_path}")
+
+    def test_wu_138_and_143_are_distinct_crops_not_the_old_merged_defect(self):
+        """Regression pin for the specific defect the coordinator found: WU
+        138's crop used to be 307x833 (ratio 2.71) because it had absorbed
+        the entirety of item 143's cube. Both are now separate, normally
+        proportioned crops - this fails if that merge ever comes back."""
+        data = self.load()
+        items_by_no = {item["item"]: item["image"] for item in data["subtests"]["WU"]["items"]}
+        for item_no in (138, 143):
+            with Image.open(DATA / items_by_no[item_no]) as img:
+                w, h = img.size
+            ratio = max(w, h) / max(1, min(w, h))
+            self.assertLessEqual(ratio, MAX_ITEM_ASPECT_RATIO, f"WU {item_no}: {w}x{h}")
+
+
+class BandSeamAndSingleFigureCheckTest(unittest.TestCase):
+    """Unit tests for the two check functions themselves, on synthetic
+    images - independent of the real PDF/output, so these pin the exact
+    threshold behavior (what should and shouldn't raise) without depending
+    on any particular extraction run."""
+
+    def _solid_image(self, w=300, h=400, margin=20):
+        arr = np.full((h, w), 255, dtype=np.uint8)
+        arr[margin:h - margin, margin:w - margin] = 0  # solid dark rectangle
+        return Image.fromarray(arr, mode="L").convert("RGB")
+
+    def test_band_seam_check_raises_on_a_wide_blank_row_through_a_shape(self):
+        img = self._solid_image()
+        arr = np.array(img.convert("L"))
+        arr[200, 20:280] = 255  # a full BAND_SEAM_MIN_RUN+-wide blank row through the dark rectangle
+        seamed = Image.fromarray(arr, mode="L").convert("RGB")
+        with self.assertRaises(ValueError):
+            _assert_no_band_seam(seamed, "synthetic")
+
+    def test_band_seam_check_tolerates_a_short_gap_like_wu_line_art(self):
+        img = self._solid_image()
+        arr = np.array(img.convert("L"))
+        self.assertLess(12, BAND_SEAM_MIN_RUN)  # the gap below must stay under the real threshold
+        arr[200, 100:112] = 255  # a 12px gap, well under BAND_SEAM_MIN_RUN=60
+        gapped = Image.fromarray(arr, mode="L").convert("RGB")
+        _assert_no_band_seam(gapped, "synthetic")  # must not raise
+
+    def test_single_figure_check_raises_on_an_elongated_merged_box(self):
+        img = self._solid_image(w=400, h=1000, margin=20)
+        with self.assertRaises(ValueError):
+            _assert_single_figure(img, (0, 0, 400, 1000), "synthetic")  # ratio 2.5 > 2.0
+
+    def test_single_figure_check_tolerates_a_normally_proportioned_box(self):
+        img = self._solid_image(w=400, h=500, margin=20)
+        _assert_single_figure(img, (0, 0, 400, 500), "synthetic")  # ratio 1.25, must not raise
+
+    def test_single_figure_check_raises_on_two_widely_separated_groups(self):
+        w, h = 300, 500
+        arr = np.full((h, w), 255, dtype=np.uint8)
+        arr[20:100, 100:200] = 0  # top figure
+        arr[400:480, 100:200] = 0  # bottom figure, far below - simulates two merged items
+        img = Image.fromarray(arr, mode="L").convert("RGB")
+        with self.assertRaises(ValueError):
+            _assert_single_figure(img, (0, 0, w, h), "synthetic")
 
 
 if __name__ == "__main__":

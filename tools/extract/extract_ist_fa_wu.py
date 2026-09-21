@@ -10,11 +10,16 @@ several horizontal raster bands (not one image per item), and the band cuts
 don't align with item boundaries - individual item boxes are visibly split
 across two consecutive band images. Fixed the same way as the RMIB/PAPI
 sessions handled their own layout surprises: pulled each image's exact
-placement (position + size) from the page's content stream, confirmed the
-bands are pixel-perfect contiguous at a consistent px/pt scale, and
-recomposited them into one seamless page image with Pillow (`pypdf` for
+placement (position + size) from the page's content stream, and
+recomposited the bands into one seamless page image with Pillow (`pypdf` for
 extraction + placement data, Pillow for compositing, `scipy.ndimage` for
 connected-component analysis - no PyMuPDF anywhere in this shipped path).
+Adjacent bands share an exact PDF-coordinate boundary and are snapped to
+canvas pixels through that shared boundary value (`_composite_page`), which
+is what actually guarantees contiguity - an earlier version rounded each
+band's own width/height independently, which the coordinator's crop-by-crop
+review caught leaving a real 1px gap at one boundary (see that function's
+docstring and tasks/handoffs/f0/ist-fa-wu-verification.md).
 
 Per-item cropping, from the reconstructed composite:
   - FA: every item is drawn inside a rectangular border box - the box's
@@ -65,6 +70,9 @@ VERSION_SUFFIX = "IST-FA-WU-2026.09"
 DARK_THRESHOLD = 150
 DILATE_ITERATIONS = 2
 CROP_MARGIN = 6
+EXTEND_HARD_LIMIT_MARGIN = 4
+BAND_SEAM_MIN_RUN = 60
+MAX_ITEM_ASPECT_RATIO = 2.0
 ASSET_ROOT = Path("assets") / "ist"
 
 FA_PAGE_INDEX = 13  # 0-based
@@ -93,6 +101,21 @@ def _page_placements(page):
 
 
 def _composite_page(page, scale=4.1655):
+    """Adjacent raster bands share an exact PDF-coordinate boundary (e.g. one
+    band's bottom edge is the next band's top edge, same float value) - so
+    each edge is snapped to a canvas pixel via a function of that *absolute*
+    coordinate, and a band's target width/height is the difference between
+    two independently-snapped edges, not `round(w * scale)` computed on its
+    own. Rounding width/height in isolation (the original approach) can
+    disagree by a pixel with where the neighboring band's edge snaps to, even
+    though both edges are the same PDF coordinate - e.g. one real page had
+    one band's bottom edge round down to canvas row 1026 while the next
+    band's top edge (the identical PDF y) rounded up to 1027, leaving row
+    1026 unpainted: a 1px white seam slicing through every item box in that
+    row (found via the coordinator's crop-by-crop review - see
+    tasks/handoffs/f0/ist-fa-wu-verification.md). Snapping every edge through
+    one shared function of its absolute coordinate makes that impossible:
+    the same input always snaps to the same output pixel."""
     placements = _page_placements(page)
     images_by_name = {img.name.split(".")[0]: img.image for img in page.images}
 
@@ -101,19 +124,23 @@ def _composite_page(page, scale=4.1655):
     min_y = min(p[2] for p in placements)
     max_y = max(p[2] + p[4] for p in placements)
 
-    canvas_w = int(round((max_x - min_x) * scale)) + 4
-    canvas_h = int(round((max_y - min_y) * scale)) + 4
+    def px(x_pdf):
+        return int(round((x_pdf - min_x) * scale))
+
+    def py(y_pdf):  # PDF y is bottom-up; canvas is top-down
+        return int(round((max_y - y_pdf) * scale))
+
+    canvas_w = px(max_x) + 4
+    canvas_h = py(min_y) + 4
     canvas = Image.new("RGB", (canvas_w, canvas_h), "white")
 
     for name, x, y, w, h in placements:
         if name not in images_by_name:
             raise ValueError(f"Placement {name!r} has no matching embedded image")
         img = images_by_name[name]
-        px = int(round((x - min_x) * scale))
-        py = int(round((max_y - (y + h)) * scale))  # PDF y is bottom-up; canvas is top-down
-        target_w = int(round(w * scale))
-        target_h = int(round(h * scale))
-        canvas.paste(img.resize((target_w, target_h)), (px, py))
+        left, right = px(x), px(x + w)
+        top, bottom = py(y + h), py(y)
+        canvas.paste(img.resize((right - left, bottom - top)), (left, top))
 
     return canvas
 
@@ -242,7 +269,7 @@ def _detect_free_shapes(image, y_range, x_range, expected_count, dilate_iteratio
     return top
 
 
-def _extend_box_with_nearby_content(image, box, initial_below=90, sides=30, max_below=400, step=80):
+def _extend_box_with_nearby_content(image, box, initial_below=90, sides=30, max_below=400, step=80, hard_limit_y1=None):
     """WU's item number label sits just below its cube as its own,
     unmerged component (individual digit strokes, ~9x9px each - far too
     small to survive dilation into the cube's own component, or to pass any
@@ -252,9 +279,27 @@ def _extend_box_with_nearby_content(image, box, initial_below=90, sides=30, max_
     report), search the band directly below the box and keep widening it
     while the found content still touches the search window's own bottom
     edge (a sign there's more below that the window didn't reach), stopping
-    once there's a real gap or `max_below` is hit."""
+    once there's a real gap or `max_below` is hit.
+
+    `hard_limit_y1`, when given, caps how far the search window can ever
+    reach - callers pass the next item's own raw box top so this can never
+    walk past it. Needed because the window-widening loop only asks "is
+    there more dark content just past my current edge", and scan noise
+    between two items (isolated speckle, not real content) can trigger that
+    over and over just like a real label would, until the window reaches
+    the *next* item's own figure and keeps absorbing it as if it were part
+    of this one's label - found via the coordinator's review: WU item 138's
+    crop absorbed all of item 143's cube this way, because the two are only
+    ~29px apart (most items have 79-197px of real clearance) and a scan
+    speckle in that narrow gap kept the window growing until it reached
+    143's own solid content and merged into it (see
+    tasks/handoffs/f0/ist-fa-wu-verification.md for the full trace). Capping
+    the search at the neighbor's own boundary makes that impossible
+    regardless of what noise sits in between."""
     x0, y0, x1, y1 = box
     w, h = image.size
+    if hard_limit_y1 is not None:
+        h = min(h, hard_limit_y1)
     search_x0, search_x1 = max(0, x0 - sides), min(w, x1 + sides)
     mask = _dark_mask(image)
 
@@ -307,6 +352,87 @@ def _assert_no_truncated_content(crop, label, min_run=4):
         raise ValueError(f"{label}: a dark region touches the crop edge - likely a truncated figure")
 
 
+def _assert_no_band_seam(crop, label, min_run=BAND_SEAM_MIN_RUN):
+    """Catches a composite seam: a row that's blank at a column while the
+    rows immediately above *and* below it are dark at that same column,
+    running for a wide contiguous span - exactly what a 1px gap between two
+    mis-aligned raster bands looks like when it happens to cross a real
+    shape (see `_composite_page`'s docstring for the root cause this used to
+    let through). Found on FA items 121-124: a completely blank row 247px
+    wide sliced through a filled rectangle. `min_run=60` is comfortably
+    above the widest natural inter-stroke gap the coordinator measured on
+    WU's line-art cubes (8-12px) and comfortably below that 247px case, so
+    real line-art texture never trips this."""
+    mask = _dark_mask(crop)
+    above, cur, below = mask[:-2, :], mask[1:-1, :], mask[2:, :]
+    seam_candidate = above & below & ~cur
+    for row in seam_candidate:
+        run = 0
+        for value in row:
+            if value:
+                run += 1
+                if run >= min_run:
+                    raise ValueError(
+                        f"{label}: a blank row is sandwiched between dark content above and below it "
+                        f"for {run}+ px - likely a raster-band seam cutting through the figure"
+                    )
+            else:
+                run = 0
+
+
+def _assert_single_figure(image, box, label, max_aspect_ratio=MAX_ITEM_ASPECT_RATIO, min_group_gap_fraction=0.12):
+    """Catches a box that absorbed a second item's whole figure (found on WU
+    138, which merged with all of 143's cube - see
+    _extend_box_with_nearby_content's docstring), two ways:
+
+    1. Aspect ratio: every legitimate FA/WU item crop measured by the
+       coordinator has a height:width (or width:height) ratio of roughly
+       1.0-1.5; the defective 138 crop was 307x833, a ratio of 2.71.
+       `max_aspect_ratio=2.0` sits well above every real crop and well below
+       that failure.
+    2. Disjoint figure groups: even a merge that didn't distort the aspect
+       ratio enough to trip (1) would still show up as two separate,
+       widely-spaced connected-component clusters within the box - a real
+       item's own content (figure + its label, if any) never has an
+       internal gap wider than ~12% of the box's own height, since both
+       belong to the same small figure.
+
+    Either signal alone raises - this is a coarse, cheap pair of checks (not
+    a substitute for the coordinator's visual review), not a guarantee of
+    catching every possible merge."""
+    x0, y0, x1, y1 = box
+    width, height = x1 - x0, y1 - y0
+    ratio = max(width, height) / max(1, min(width, height))
+    if ratio > max_aspect_ratio:
+        raise ValueError(
+            f"{label}: crop is {width}x{height} (aspect ratio {ratio:.2f} > {max_aspect_ratio}) - "
+            f"likely absorbed a neighboring item's figure"
+        )
+
+    mask = _dark_mask(image)[y0:y1, x0:x1]
+    dilated = ndimage.binary_dilation(mask, structure=np.ones((5, 5)), iterations=DILATE_ITERATIONS)
+    labeled, _ = ndimage.label(dilated)
+    spans = sorted(
+        (region[0].start, region[0].stop) for region in ndimage.find_objects(labeled) if region is not None
+    )
+    if not spans:
+        return
+    merged = [spans[0]]
+    for start, stop in spans[1:]:
+        if start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], stop))
+        else:
+            merged.append((start, stop))
+    if len(merged) < 2:
+        return
+    max_gap = max(b[0] - a[1] for a, b in zip(merged, merged[1:]))
+    if max_gap > height * min_group_gap_fraction:
+        raise ValueError(
+            f"{label}: crop contains separate figure groups {max_gap}px apart (>{min_group_gap_fraction:.0%} "
+            f"of the {height}px crop height) - likely two items' figures merged into one crop"
+        )
+
+
 # ---------------------------------------------------------------------------
 # FA
 # ---------------------------------------------------------------------------
@@ -340,6 +466,7 @@ def _build_fa(page):
     legend_2_crops = {letters[i]: _crop_with_margin(composite, b) for i, b in enumerate(legend_2_boxes)}
     for letter, crop in {**legend_1_crops, **legend_2_crops}.items():
         _assert_no_truncated_content(crop, f"FA legend option {letter}")
+        _assert_no_band_seam(crop, f"FA legend option {letter}")
 
     items = []
     item_crops = {}
@@ -347,6 +474,8 @@ def _build_fa(page):
         item_no = FA_START + offset
         crop = _crop_with_margin(composite, box)
         _assert_no_truncated_content(crop, f"FA item {item_no}")
+        _assert_no_band_seam(crop, f"FA item {item_no}")
+        _assert_single_figure(composite, box, f"FA item {item_no}")
         item_crops[item_no] = crop
         legend_id = "FA-L1" if item_no in FA_LEGEND_1_ITEMS else "FA-L2"
         path = ASSET_ROOT / "fa" / f"{item_no}.png"
@@ -401,16 +530,27 @@ def _build_wu(page):
     legend_boxes = [_extend_box_with_nearby_content(composite, b) for b in legend_boxes]
     items_top = max(b[3] for b in legend_boxes)
 
-    item_boxes = _detect_boxes(
+    raw_item_boxes = _detect_boxes(
         composite, y_range=(items_top, h), expected_count=WU_COUNT,
         expected_per_row=WU_ITEMS_PER_ROW, dilate_iterations=6,
     )
-    item_boxes = [_extend_box_with_nearby_content(composite, b) for b in item_boxes]
+    # Cap each item's label-search extension at the next row's own raw box
+    # top (same column) so it can never grow into a neighboring item's
+    # figure - see _extend_box_with_nearby_content's docstring for why this
+    # is necessary (WU 138 absorbing all of 143 without it).
+    rows = [raw_item_boxes[i:i + WU_ITEMS_PER_ROW] for i in range(0, WU_COUNT, WU_ITEMS_PER_ROW)]
+    item_boxes = []
+    for row_index, row in enumerate(rows):
+        next_row = rows[row_index + 1] if row_index + 1 < len(rows) else None
+        for col_index, box in enumerate(row):
+            hard_limit = next_row[col_index][1] - EXTEND_HARD_LIMIT_MARGIN if next_row is not None else None
+            item_boxes.append(_extend_box_with_nearby_content(composite, box, hard_limit_y1=hard_limit))
 
     letters = "abcde"
     legend_crops = {letters[i]: _crop_with_margin(composite, b) for i, b in enumerate(legend_boxes)}
     for letter, crop in legend_crops.items():
         _assert_no_truncated_content(crop, f"WU legend option {letter}")
+        _assert_no_band_seam(crop, f"WU legend option {letter}")
 
     items = []
     item_crops = {}
@@ -418,6 +558,8 @@ def _build_wu(page):
         item_no = WU_START + offset
         crop = _crop_with_margin(composite, box)
         _assert_no_truncated_content(crop, f"WU item {item_no}")
+        _assert_no_band_seam(crop, f"WU item {item_no}")
+        _assert_single_figure(composite, box, f"WU item {item_no}")
         item_crops[item_no] = crop
         path = ASSET_ROOT / "wu" / f"{item_no}.png"
         items.append({"item": item_no, "image": str(path).replace("\\", "/")})

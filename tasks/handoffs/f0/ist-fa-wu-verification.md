@@ -132,3 +132,105 @@ to what PR #66 merged, only FA/WU keys added. `ist.json`,
 `InstrumentSeeder.php`, `resources/js/**`, `routes/api.php`, F2's session/
 item-delivery controllers, `ReportSigning*.php`, `tests/Frontend/**`,
 `extract_kraepelin.py`, `kraepelin*.json`.
+
+## Revision (2026-09-21): two real defects found in the coordinator's crop-by-crop review
+
+The coordinator reviewed every crop in `c619380`'s contact sheets and found
+two real defects. Both are fixed at the root (reconstruction/detection
+logic), not patched per-item, and both now have an automated regression
+test in addition to the coordinator's required visual re-review.
+
+### Defect 1: a composite seam cut through FA 121-124
+
+`_composite_page` pasted each raster band at a position and size that were
+each independently rounded from that band's own x/y/width/height - so two
+adjacent bands could each round consistently with *themselves* but not with
+each other, since nothing tied one band's bottom edge to the next band's
+top edge being the *same* number of canvas pixels. On the real FA page this
+left canvas row 1026 completely unpainted (still white) between bands R69
+and R70, which happened to slice straight through the item boxes in row
+121-124 - confirmed by measuring dark-pixel counts row by row: count
+dropped from 410-418 on the neighboring rows to exactly 0 at row 1026, for
+the full width of all four boxes in that row. Row 117-120 crosses a
+different band boundary (R68/R69 at canvas row 513) that happened to round
+consistently in the old code, so it showed no symptom there - the bug
+wasn't specific to one row, just luck about which particular boundary
+rounded which way.
+
+**Fix**: every band edge is now snapped to a canvas pixel through one
+shared function of its *absolute* PDF coordinate (`px()`/`py()` in
+`_composite_page`), and a band's target width/height is derived as the
+difference between two such snapped edges, never from `round(w * scale)` in
+isolation. Two bands that share a boundary (one's bottom edge is the next
+one's top edge, literally the same PDF y-value) now always snap to the same
+canvas pixel, by construction - not by coincidence.
+
+**New test**: `_assert_no_band_seam` (in `extract_ist_fa_wu.py`) runs on
+every item and legend-option crop before it's written - it raises if a
+row is blank at a column while the rows immediately above and below it are
+both dark at that same column, for a contiguous run of at least
+`BAND_SEAM_MIN_RUN=60` px. That threshold sits well above the widest
+natural gap measured in WU's line-art texture (8-12px, confirmed not to
+trip it) and well below the FA defect (a 247px-wide gap). Pinned with both
+a synthetic unit test (`BandSeamAndSingleFigureCheckTest`, in
+`test_f0_ist_fa_wu_items.py`) and an end-to-end test that re-runs the check
+against every currently-shipped PNG.
+
+### Defect 2: WU 138's crop absorbed all of item 143's cube
+
+`_extend_box_with_nearby_content` (used to pull each cube's number label
+into its box) widens its search window below the box for as long as it
+keeps finding *any* dark content near the window's far edge, up to a
+400px safety cap. For most items this correctly stops once it's captured
+the label and hit real whitespace (79-197px of real clearance to the next
+row in every other column). Item 138 sits only 29px above item 143's own
+box - the narrowest gap on the page - and isolated scan-noise specks in
+that gap (confirmed: scattered single dark pixels down to grayscale value
+10, not a connected shape) were enough to keep the window "finding
+content" on each iteration, so it kept growing until it reached item 143's
+own solid cube and merged straight into it: the shipped `wu/138.png` was
+307x833px (aspect ratio 2.71) and visibly contained two cubes with two
+number labels.
+
+**Fix**: `_extend_box_with_nearby_content` now accepts a `hard_limit_y1`
+that the search window can never cross. `_build_wu` computes it per item as
+the next row's own raw-detected box top (same column) minus a 4px margin -
+information already available from `_detect_boxes`' row grouping, not a
+guess. This makes the specific failure structurally impossible: the window
+can no longer reach into a neighboring item's own territory regardless of
+what noise sits in the gap between them. Re-running extraction with this
+fix: `wu/138.png` is now 295x456 (ratio 1.55), and `wu/143.png` is
+unaffected (300x415, ratio 1.38) since it never depended on 138's box.
+
+**New test**: `_assert_single_figure` runs on every item crop (not legend
+options, which are legitimately irregular shapes) and raises on either of
+two signals - (1) aspect ratio beyond `MAX_ITEM_ASPECT_RATIO=2.0` (every
+real crop across both subtests measures 1.13-1.55; the old 138 defect was
+2.71), or (2) more than one connected-component group inside the crop
+separated by a gap wider than 12% of the crop's own height (a defense in
+depth for a merge that didn't happen to distort the aspect ratio as
+severely). Pinned three ways: a synthetic unit test for each signal
+independently, an end-to-end test re-running the check against every
+shipped item crop, and a regression test that replays the *exact* old
+`wu/138.png` bytes (read back from commit `c619380`) through the aspect
+ratio check to confirm it would have failed loudly before this fix.
+
+### Side effect: other crops shifted by ~1px
+
+Because the seam fix changes how every band boundary rounds (not just the
+one that produced a visible defect), item boxes whose detection sits near
+*any* band boundary on either page shifted by roughly a pixel, so their
+crops were regenerated too even though they had no visible defect before:
+FA 117-124 and 129-132 (near FA's band boundaries), WU 147-156 (near a WU
+band boundary). None of these fail either new check or the existing
+truncation check. **Both contact sheets are regenerated in full** and need
+the coordinator's crop-by-crop review from scratch, per their request,
+since a reconstruction-level fix can shift crops beyond the two rows they
+originally flagged.
+
+### Tests after this revision
+
+`python -m unittest discover -s tools/extract/tests -t . -v` - 67/67 pass
+(60 from before this revision + 7 new: 2 end-to-end regression checks in
+`IstFaWuItemsGateTest`, 5 synthetic unit tests in the new
+`BandSeamAndSingleFigureCheckTest`).
