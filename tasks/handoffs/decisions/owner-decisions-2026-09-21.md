@@ -178,8 +178,39 @@ Konsekuensi yang mengikat:
   menjadi syarat go-live**. Layar persetujuan tidak boleh dipasang ke alur
   peserta sungguhan sebelum penyimpanan itu ada.
 
-Belum diputuskan: perilaku bila kamera mati **di tengah tes** (misalnya HP
-berpindah aplikasi). Lihat butir terbuka di bawah.
+Perilaku bila kamera mati **di tengah tes**: lihat butir 12.
+
+## 12. Kamera mati di tengah tes — SELESAI
+
+Keputusan: **tes BERLANJUT**, dan celahnya **dicatat**.
+
+Bila kamera berhenti di tengah tes (di HP: berpindah aplikasi, layar
+terkunci, telepon masuk), tes tidak dijeda dan timer server tidak berhenti.
+Sistem mencoba menyalakan ulang kamera, dan rentang waktu tanpa kamera dicatat
+sebagai sinyal untuk ditinjau psikolog. Konsisten dengan `CLAUDE.md`:
+proctoring adalah DETEKSI, bukan CEGAH, dan keputusan validitas (V1/V2/V3)
+ada di psikolog. Deteksi stream mati + upaya aktif ulang sudah ada di
+kerangka runner (`useProctoringCamera`); pencatatan celahnya menunggu backend
+penyimpanan proctoring (F7).
+
+## 13. Login bawaan starter kit dan tombol "Portal pengelola" — SELESAI
+
+Temuan (lane F2, 2026-09-21): tombol **"Portal pengelola"** di beranda
+mengarah ke `/login` milik Fortify (guard `web`, tabel `users` yang selalu
+kosong), bukan ke login admin yang sebenarnya di **`/admin/login`** (Filament,
+guard `admin`). Sistem login `users` bawaan starter kit (login, reset kata
+sandi, verifikasi email, 2FA, passkeys, `/dashboard`, `/settings/*`) aktif
+tetapi tidak dipakai apa pun.
+
+Keputusan pemilik proyek:
+1. **Arahkan tombol "Portal pengelola" ke `/admin/login`.**
+2. **Hapus sistem login bawaan yang tidak terpakai** beserta tabelnya
+   (`users`, `password_reset_tokens`, `sessions` bila tidak dipakai guard
+   lain, `passkeys`). Ini izin eksplisit menurut `CLAUDE.md` untuk menghapus
+   kode yang ada. Rute `/register` untuk pendaftaran peserta **tidak** ikut
+   dihapus. Penghapusan tabel adalah migrasi destruktif: wajib tag snapshot
+   `pre-{aksi}`, dan harus dibuktikan bahwa login admin dan login peserta
+   tetap berfungsi.
 
 ## Butir yang masih terbuka setelah dokumen ini
 
@@ -188,5 +219,3 @@ berpindah aplikasi). Lihat butir terbuka di bawah.
   menunggu konfirmasi.
 - Pembagian waktu subtes ME sudah diputuskan (180 detik menghafal + 360
   detik menjawab) dan tercatat di `CLAUDE.md`.
-
-- Kamera mati di tengah tes (butir 11): apakah tes dijeda sampai kamera aktif lagi, atau tes berlanjut sementara sistem mencoba menyalakan ulang dan mencatat celahnya untuk psikolog.
