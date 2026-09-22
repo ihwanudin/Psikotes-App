@@ -184,32 +184,6 @@ async (page) => {
                 range.selectNodeContents(element);
                 const lines = [...range.getClientRects()];
 
-                // TEMP DIAGNOSTIC: find the widest element anywhere in the
-                // document (not just this element) to identify what's
-                // actually pushing scrollWidth past clientWidth.
-                let widest = null;
-                let widestRight = 0;
-
-                for (const candidate of document.body.querySelectorAll('*')) {
-                    const candidateRect = candidate.getBoundingClientRect();
-                    if (candidateRect.right > widestRight && candidateRect.width > 0) {
-                        widestRight = candidateRect.right;
-                        widest = candidate;
-                    }
-                }
-
-                const widestInfo = widest
-                    ? {
-                          tag: widest.tagName,
-                          text: widest.textContent?.trim().slice(0, 80),
-                          className:
-                              typeof widest.className === 'string'
-                                  ? widest.className
-                                  : null,
-                          right: widestRight,
-                      }
-                    : null;
-
                 return {
                     clientWidth: document.documentElement.clientWidth,
                     scrollWidth: document.documentElement.scrollWidth,
@@ -225,7 +199,6 @@ async (page) => {
                                 line.top < rect.top ||
                                 line.bottom > rect.bottom),
                     ),
-                    widestInfo,
                 };
             });
             check(

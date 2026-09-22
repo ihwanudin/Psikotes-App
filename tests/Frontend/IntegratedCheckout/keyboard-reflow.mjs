@@ -336,31 +336,6 @@ export async function verifyCheckoutKeyboardAndReflow(page) {
                     }
                 }
 
-                // TEMP DIAGNOSTIC: find the widest element anywhere in the
-                // document (not just <main>) to identify what's actually
-                // pushing scrollWidth past clientWidth.
-                let widest = null;
-                let widestRight = 0;
-                for (const element of document.body.querySelectorAll('*')) {
-                    const rect = element.getBoundingClientRect();
-                    if (rect.right > widestRight && rect.width > 0) {
-                        widestRight = rect.right;
-                        widest = element;
-                    }
-                }
-
-                const widestInfo = widest
-                    ? {
-                          tag: widest.tagName,
-                          text: widest.textContent?.trim().slice(0, 80),
-                          className:
-                              typeof widest.className === 'string'
-                                  ? widest.className
-                                  : null,
-                          right: widestRight,
-                      }
-                    : null;
-
                 return {
                     width: innerWidth,
                     clientWidth: document.documentElement.clientWidth,
@@ -371,7 +346,6 @@ export async function verifyCheckoutKeyboardAndReflow(page) {
                     cardPadding: getComputedStyle(card).paddingLeft,
                     cardRadius: getComputedStyle(card).borderRadius,
                     issues,
-                    widestInfo,
                 };
             });
             check(
