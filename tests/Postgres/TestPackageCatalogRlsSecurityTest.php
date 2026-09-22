@@ -40,7 +40,7 @@ final class TestPackageCatalogRlsSecurityTest extends TestCase
 {
     private const array TABLES = ['packages', 'package_items'];
 
-    private const array ADMIN_ROLES = ['super_admin', 'branch_admin', 'staff', 'psychologist'];
+    private const array ADMIN_ROLES = ['super_admin', 'central_admin', 'branch_admin', 'staff', 'psychologist'];
 
     protected function setUp(): void
     {
@@ -96,10 +96,10 @@ final class TestPackageCatalogRlsSecurityTest extends TestCase
             );
         }
 
-        // packages: read is every role, update is service+super_admin only.
+        // packages: read is every admin role, update is service+super_admin+central_admin.
         $this->assertPolicyRoles('packages_read', [...self::ADMIN_ROLES, 'service']);
         $this->assertPolicyRoles('packages_insert', ['service']);
-        $this->assertPolicyRoles('packages_update', ['service', 'super_admin']);
+        $this->assertPolicyRoles('packages_update', ['service', 'super_admin', 'central_admin']);
         // package_items: same broad read, but update is service-only -- no
         // admin UI ever writes to it (Filament only edits packages fields).
         $this->assertPolicyRoles('package_items_read', [...self::ADMIN_ROLES, 'service']);
@@ -141,13 +141,13 @@ final class TestPackageCatalogRlsSecurityTest extends TestCase
         $this->assertNotSame('hijacked', $unchanged);
     }
 
-    public function test_every_admin_role_can_read_packages_but_only_super_admin_can_update(): void
+    public function test_every_admin_role_can_read_packages_but_only_super_admin_and_central_admin_can_update(): void
     {
         $packageId = $this->seedPackage();
 
         foreach (self::ADMIN_ROLES as $role) {
             $count = app(RlsContextRunner::class)->run(
-                new RlsContext($role, $role === 'super_admin' ? null : 1),
+                new RlsContext($role, in_array($role, ['super_admin', 'central_admin'], true) ? null : 1),
                 fn () => DB::table('packages')->count(),
             );
             $this->assertGreaterThan(0, $count, $role);
@@ -170,6 +170,16 @@ final class TestPackageCatalogRlsSecurityTest extends TestCase
             fn () => DB::table('packages')->where('id', $packageId)->value('name'),
         );
         $this->assertSame('renamed-by-super-admin', $name);
+
+        $affected = app(RlsContextRunner::class)->run(
+            new RlsContext('central_admin'),
+            fn () => DB::table('packages')->where('id', $packageId)->update(['name' => 'renamed-by-central-admin']),
+        );
+        $this->assertSame(1, $affected);
+        $name = app(RlsContextRunner::class)->runAsService(
+            fn () => DB::table('packages')->where('id', $packageId)->value('name'),
+        );
+        $this->assertSame('renamed-by-central-admin', $name);
     }
 
     public function test_service_context_can_insert_select_and_lock_for_update(): void
