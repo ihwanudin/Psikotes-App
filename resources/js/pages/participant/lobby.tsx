@@ -253,7 +253,7 @@ export default function ParticipantLobby() {
                                                             }
                                                             className="rounded-xl border border-slate-200 p-4"
                                                         >
-                                                            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                                                            <div className="flex flex-col items-start gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-4 sm:gap-y-2">
                                                                 <span className="min-w-0 flex-1 break-words font-medium">
                                                                     {testNames[
                                                                         entitlement
