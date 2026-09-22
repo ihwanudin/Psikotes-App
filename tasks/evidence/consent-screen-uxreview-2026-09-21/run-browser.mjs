@@ -27,7 +27,6 @@ async (page) => {
 
     const mobileMeasurements = await page.evaluate(() => {
         const policyItem = document.querySelector('ul li');
-        const honestyNote = document.querySelectorAll('p')[0];
         const list = document.querySelector('ul');
 
         return {
