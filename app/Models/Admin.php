@@ -16,6 +16,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Carbon;
 
 /**
  * @property int $id
@@ -27,6 +28,7 @@ use Illuminate\Notifications\Notifiable;
  * @property bool $can_verify_payments
  * @property string|null $silp_number
  * @property string|null $str_number
+ * @property Carbon|null $disabled_at
  */
 #[Fillable(['branch_id', 'name', 'email', 'password', 'role', 'can_verify_payments', 'silp_number', 'str_number'])]
 #[Hidden(['password', 'remember_token'])]
@@ -43,6 +45,7 @@ final class Admin extends Authenticatable implements FilamentUser, ProvidesRlsCo
     public function canAccessPanel(Panel $panel): bool
     {
         return $panel->getId() === 'admin'
+            && $this->disabled_at === null
             && $this->canPerform(AdminAbility::AccessPanel);
     }
 
@@ -104,6 +107,7 @@ final class Admin extends Authenticatable implements FilamentUser, ProvidesRlsCo
             'password' => 'hashed',
             'role' => AdminRole::class,
             'can_verify_payments' => 'boolean',
+            'disabled_at' => 'datetime',
         ];
     }
 }

@@ -99,6 +99,13 @@ class AppServiceProvider extends ServiceProvider
             app()->isProduction(),
         );
 
+        // Only for the `web` starter-kit guard (App\Models\User) -- that
+        // login system is scheduled for removal per the FE plan in PR #94.
+        // Admin password rules live in App\Security\AdminPasswordPolicy,
+        // a standalone policy applied in every environment, not gated on
+        // app()->isProduction() the way this one is (Lead's 2026-09-22
+        // decision: don't touch this one, don't couple admin rules to a
+        // login system on its way out).
         Password::defaults(fn (): ?Password => app()->isProduction()
             ? Password::min(12)
                 ->mixedCase()
