@@ -13,11 +13,13 @@ use UnexpectedValueException;
 
 /**
  * F2 lane G7 (2026-09-20), Lead-required guard — see SealedIstResultTest's
- * docblock for why this exists: RMIB's `raw_score` (a rank-total sum, 9-108)
- * never needs to be negative, so it must keep rejecting negative/low values
- * itself now that the database-level `raw_score >= 0` check was dropped
- * (for Kraepelin's Hanker only). RMIB already enforces a floor of 9 (the
- * minimum possible rank-total), which is strictly stronger than >= 0.
+ * docblock for why this exists: RMIB's `raw_score` (a rank-total sum) never
+ * needs to be negative, so it must keep rejecting negative/low values itself
+ * now that the database-level `raw_score >= 0` check was dropped (for
+ * Kraepelin's Hanker only). RMIB enforces a floor of 8 (ADR-0032 PR3,
+ * 2026-09-23: was 9 pre-tiering, when all 9 groups always contributed to
+ * every category; P3's single-group-exclusion tier can drop a category to
+ * 8 contributing cells), which is still strictly stronger than >= 0.
  */
 final class SealedRmibResultTest extends TestCase
 {
@@ -29,21 +31,65 @@ final class SealedRmibResultTest extends TestCase
         $categories[0]['rawScore'] = -1;
 
         try {
-            SealedRmibResult::seal($this->source(), $this->scoringSource(), $categories);
+            SealedRmibResult::seal($this->source(), $this->scoringSource(), $categories, reviewRequired: false, excludedGroups: []);
             $this->fail('A negative RMIB raw score must be rejected.');
         } catch (UnexpectedValueException $exception) {
             $this->assertSame('SEALED_RMIB_RESULT_INVALID', $exception->getMessage());
         }
     }
 
-    public function test_a_valid_minimum_raw_score_of_nine_is_accepted(): void
+    public function test_a_below_floor_raw_score_of_seven_is_rejected(): void
     {
         $categories = $this->validCategories();
-        $categories[0]['rawScore'] = 9;
+        $categories[0]['rawScore'] = 7;
 
-        $result = SealedRmibResult::seal($this->source(), $this->scoringSource(), $categories);
+        try {
+            SealedRmibResult::seal($this->source(), $this->scoringSource(), $categories, reviewRequired: false, excludedGroups: []);
+            $this->fail('An RMIB raw score below the eight-cell floor must be rejected.');
+        } catch (UnexpectedValueException $exception) {
+            $this->assertSame('SEALED_RMIB_RESULT_INVALID', $exception->getMessage());
+        }
+    }
+
+    public function test_a_valid_minimum_raw_score_of_eight_is_accepted(): void
+    {
+        $categories = $this->validCategories();
+        $categories[0]['rawScore'] = 8;
+
+        $result = SealedRmibResult::seal($this->source(), $this->scoringSource(), $categories, reviewRequired: false, excludedGroups: []);
 
         $this->assertInstanceOf(SealedRmibResult::class, $result);
+    }
+
+    public function test_review_required_must_agree_with_excluded_groups_presence(): void
+    {
+        $categories = $this->validCategories();
+
+        try {
+            SealedRmibResult::seal($this->source(), $this->scoringSource(), $categories, reviewRequired: false, excludedGroups: [3]);
+            $this->fail('reviewRequired=false with a non-empty excludedGroups must be rejected.');
+        } catch (UnexpectedValueException $exception) {
+            $this->assertSame('SEALED_RMIB_RESULT_INVALID', $exception->getMessage());
+        }
+
+        try {
+            SealedRmibResult::seal($this->source(), $this->scoringSource(), $categories, reviewRequired: true, excludedGroups: []);
+            $this->fail('reviewRequired=true with an empty excludedGroups must be rejected.');
+        } catch (UnexpectedValueException $exception) {
+            $this->assertSame('SEALED_RMIB_RESULT_INVALID', $exception->getMessage());
+        }
+    }
+
+    public function test_two_or_more_excluded_groups_are_rejected(): void
+    {
+        $categories = $this->validCategories();
+
+        try {
+            SealedRmibResult::seal($this->source(), $this->scoringSource(), $categories, reviewRequired: true, excludedGroups: [3, 5]);
+            $this->fail('2+ excluded groups is the not-scorable case and must never reach SealedRmibResult::seal().');
+        } catch (UnexpectedValueException $exception) {
+            $this->assertSame('SEALED_RMIB_RESULT_INVALID', $exception->getMessage());
+        }
     }
 
     /** @return array{id:int,code:string,version:string,sourceFile:string,checksum:string} */

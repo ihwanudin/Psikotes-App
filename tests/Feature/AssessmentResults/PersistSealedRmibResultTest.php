@@ -280,6 +280,6 @@ final class PersistSealedRmibResultTest extends TestCase
             ];
         }
 
-        return SealedRmibResult::seal($source, $scoringSource, $categories);
+        return SealedRmibResult::seal($source, $scoringSource, $categories, reviewRequired: false, excludedGroups: []);
     }
 }

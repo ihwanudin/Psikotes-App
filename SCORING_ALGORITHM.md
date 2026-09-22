@@ -1,6 +1,6 @@
 # SCORING ALGORITHM — psikotes.oncam.id
 
-Versi kontrak: **SCORING-4.4.0**
+Versi kontrak: **SCORING-4.5.0**
 Versi data normalisasi: **F2-2026.09**
 Status: FINAL untuk implementasi F2
 
@@ -54,8 +54,12 @@ DASS-21 berjalan pada jalur terpisah dan tidak menjadi input zona atau label kel
 
 ## 5. RMIB
 
-- Sembilan kelompok masing-masing memakai rank unik 1–12; jumlah per kelompok 78 dan total seluruh respons 702.
-- Skor kategori adalah jumlah sembilan rank. Nilai lebih kecil berarti minat lebih tinggi.
+- Sembilan kelompok masing-masing memakai rank unik 1–12; jumlah per kelompok 78 dan total seluruh respons 702 bila kesembilan kelompok lengkap.
+- **Aturan bertingkat untuk ranking tidak lengkap (ADR-0032 PR3, keputusan psikolog P3, 2026-09-21)**, dievaluasi per kelompok (bukan per sesi):
+  - **Kurang satu peringkat**: peringkat yang hilang direkonstruksi (satu-satunya nilai 1–12 yang belum dipakai di kelompok itu) dan dianggap sepenuhnya sah — skor identik dengan kelompok yang lengkap. Sebelum dipakai, kelompok hasil rekonstruksi WAJIB diverifikasi memuat tepat rank 1–12 dan berjumlah 78.
+  - **Lebih dari satu peringkat hilang, dan/atau ada peringkat berduplikat** di kelompok yang sama (dua kondisi independen, bisa terjadi bersamaan): kelompok itu dikecualikan dari SEMUA kategori (bukan hanya kontribusinya sendiri), tetapi kategori lain tetap dihitung dan sesi tetap dinilai — dibaca kualitatif oleh psikolog (`review_required`). Karena setiap kategori muncul tepat sekali per kelompok pada rotasi, satu kelompok dikecualikan mengurangi `cell_count` setiap kategori tepat satu, secara seragam — perbandingan rank antar-kategori tetap adil.
+  - **Dua kelompok atau lebih cacat** (sesuai kriteria di atas): sesi tidak dapat dinilai sama sekali (`scorable: false`) — administrasi ulang, bukan skor sebagian.
+- Skor kategori adalah jumlah rank dari kelompok yang TIDAK dikecualikan. Nilai lebih kecil berarti minat lebih tinggi.
 - Rank kategori memakai competition ranking setara formula Excel `RANK(...,1)`: total sama mendapat rank sama dan rank sesudahnya terlewati.
 - Sheet 11 memberi rank→skor: `1→10`, `2→9`, `3→8`, `4→7`, `5→6`, `6→6`, `7→5`, `8→5`, `9→4`, `10→3`, `11→2`, `12→1`.
 - Mapping `rank_to_level` memadatkan skor berpasangan: rank `1–2→5`, `3–4→4`, `5–8→3`, `9–10→2`, `11–12→1`.

@@ -22,6 +22,20 @@ use UnexpectedValueException;
  * app/Services/AssessmentResults/ScoreSealedIstAnswerSet.php. Reads
  * `source_text` (never `payload`, no fallback) for the same jsonb-checksum
  * reason documented there and fixed in the F2 lane's 3a increment.
+ *
+ * ADR-0032 PR3 (2026-09-23): `responses()` no longer requires every one of
+ * the 108 item_no slots to be answered -- a missing item_no is passed
+ * through to RmibRawScoreCalculator as a missing (group, position) cell, and
+ * the calculator's own tiered rule (P3) decides per-group whether that's
+ * reconstructable, excludes the group, or (2+ excluded groups) makes the
+ * whole session not scorable. A PRESENT but malformed value (wrong item_no
+ * pairing, or a value not matching the rank pattern) is NOT treated as
+ * missing -- it stays a hard `self::invalid()` for the whole result, same as
+ * before PR3. Reasoning: answers reaching this class have already passed
+ * the write-side FormRequest validation that constrains rank values, so a
+ * malformed-but-present value here signals a data-integrity problem, not a
+ * participant who left an item blank -- exactly the same distinction
+ * ScoreAssessmentSession's own docblock draws for the loader's exceptions.
  */
 final readonly class ScoreSealedRmibAnswerSet
 {
@@ -60,6 +74,17 @@ final readonly class ScoreSealedRmibAnswerSet
             $responses = $this->responses($source);
             $rawResult = (new RmibRawScoreCalculator($data['categories'], $this->rotation($data['rotation'])))
                 ->calculate($responses);
+
+            if (! $rawResult['scorable']) {
+                // ADR-0032 PR3 (P3): 2+ rank groups excluded (missing 2+
+                // positions and/or a duplicate rank) -- not a bug, a
+                // predictable outcome ScoreAssessmentSession is expected to
+                // catch and record as `not_scorable`, never partially
+                // scored. Thrown before touching RmibScoreCalculator/
+                // RmibRankLevelCalculator, which assume a real rank.
+                throw self::notScorable();
+            }
+
             $scoreCalculator = new RmibScoreCalculator($data['rank_to_score']);
             $levelCalculator = new RmibRankLevelCalculator($data['rank_to_level']);
 
@@ -95,9 +120,11 @@ final readonly class ScoreSealedRmibAnswerSet
                     'checksum' => (string) $row->checksum,
                 ],
                 categories: $categories,
+                reviewRequired: $rawResult['review_required'],
+                excludedGroups: $rawResult['excluded_groups'],
             );
         } catch (UnexpectedValueException $exception) {
-            if ($exception->getMessage() === 'SEALED_RMIB_RESULT_INVALID') {
+            if (in_array($exception->getMessage(), ['SEALED_RMIB_RESULT_INVALID', 'SEALED_RMIB_RESULT_NOT_SCORABLE'], true)) {
                 throw $exception;
             }
 
@@ -167,9 +194,16 @@ final readonly class ScoreSealedRmibAnswerSet
     {
         $totalItems = array_sum(array_column($source->definition->subtests, 'item_count'));
         if ($totalItems !== self::TOTAL_ITEMS
-            || count($source->definition->subtests) !== self::GROUP_COUNT
-            || count($source->answers) !== self::TOTAL_ITEMS) {
+            || count($source->definition->subtests) !== self::GROUP_COUNT) {
             throw self::invalid();
+        }
+
+        $values = [];
+        foreach ($source->answers as $answer) {
+            if (! is_array($answer) || ! is_int($answer['item_no'] ?? null)) {
+                throw self::invalid();
+            }
+            $values[$answer['item_no']] = $answer['value'] ?? null;
         }
 
         $responses = [];
@@ -179,18 +213,24 @@ final readonly class ScoreSealedRmibAnswerSet
                 throw self::invalid();
             }
             for ($position = 1; $position <= self::POSITIONS_PER_GROUP; $position++) {
-                $answer = $source->answers[$globalItem] ?? null;
                 $globalItem++;
-                if (! is_array($answer)
-                    || ($answer['item_no'] ?? null) !== $globalItem
-                    || ! is_string($answer['value'] ?? null)
-                    || preg_match('/\A(?:[1-9]|1[0-2])\z/', $answer['value']) !== 1) {
+                if (! array_key_exists($globalItem, $values)) {
+                    // No item_no recorded for this cell -- RmibRawScoreCalculator
+                    // decides per-group (P3 tiering) whether that's
+                    // reconstructable, excludes the group, or makes the
+                    // whole session not scorable. See this class's own
+                    // docblock for why a PRESENT-but-malformed value below is
+                    // NOT treated the same way.
+                    continue;
+                }
+                $value = $values[$globalItem];
+                if (! is_string($value) || preg_match('/\A(?:[1-9]|1[0-2])\z/', $value) !== 1) {
                     throw self::invalid();
                 }
                 $responses[] = [
                     'group' => $groupIndex + 1,
                     'position' => $position,
-                    'rank' => (int) $answer['value'],
+                    'rank' => (int) $value,
                 ];
             }
         }
@@ -223,5 +263,19 @@ final readonly class ScoreSealedRmibAnswerSet
     private static function invalid(): UnexpectedValueException
     {
         return new UnexpectedValueException('SEALED_RMIB_RESULT_INVALID');
+    }
+
+    /**
+     * Distinct from `invalid()` on purpose -- mirrors
+     * LoadSealedGenericAnswerSet::incomplete()'s reasoning. This is the one
+     * rejection ScoreAssessmentSession is expected to catch and record as
+     * `not_scorable` without rolling back the caller's transaction
+     * (ADR-0032 PR3, P3's "2+ defective groups" rule). Every other
+     * UnexpectedValueException this class throws stays
+     * `SEALED_RMIB_RESULT_INVALID` and is NOT meant to be swallowed.
+     */
+    private static function notScorable(): UnexpectedValueException
+    {
+        return new UnexpectedValueException('SEALED_RMIB_RESULT_NOT_SCORABLE');
     }
 }
