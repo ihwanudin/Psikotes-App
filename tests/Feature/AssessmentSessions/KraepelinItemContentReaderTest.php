@@ -41,6 +41,7 @@ final class KraepelinItemContentReaderTest extends TestCase
             fn () => (new KraepelinItemContentReader)->contentFor(
                 GenericAssessmentInstrument::Kraepelin,
                 $this->syntheticDefinition(),
+                1,
             ),
         );
 
@@ -83,6 +84,7 @@ final class KraepelinItemContentReaderTest extends TestCase
             fn () => (new KraepelinItemContentReader)->contentFor(
                 GenericAssessmentInstrument::Ist,
                 $this->syntheticDefinition(instrument: 'ist'),
+                1,
             ),
         );
     }
@@ -97,6 +99,7 @@ final class KraepelinItemContentReaderTest extends TestCase
             fn () => (new KraepelinItemContentReader)->contentFor(
                 GenericAssessmentInstrument::Kraepelin,
                 $this->syntheticDefinition(),
+                1,
             ),
         );
     }
@@ -113,6 +116,7 @@ final class KraepelinItemContentReaderTest extends TestCase
             fn () => (new KraepelinItemContentReader)->contentFor(
                 GenericAssessmentInstrument::Kraepelin,
                 $this->syntheticDefinition(),
+                1,
             ),
         );
     }

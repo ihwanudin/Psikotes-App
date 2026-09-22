@@ -37,6 +37,19 @@ final class ParticipantPolicy
         return $admin->role === AdminRole::SuperAdmin;
     }
 
+    public function authorizeRetestBeyondLimit(Admin $admin, Participant $participant): bool
+    {
+        if (! $admin->canPerform(AdminAbility::AuthorizeRetestBeyondLimit)) {
+            return false;
+        }
+
+        // Not branch-scoped: only super_admin/psychologist (and later
+        // central_admin) can ever reach this ability, none of which are
+        // branch-scoped roles, so there is no branch-ownership check to
+        // apply here (unlike view()/update() above).
+        return true;
+    }
+
     private function isCentralOrPsychologist(Admin $admin): bool
     {
         return in_array($admin->role, [AdminRole::SuperAdmin, AdminRole::Psychologist], true);

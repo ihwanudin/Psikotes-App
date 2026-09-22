@@ -38,4 +38,15 @@ enum AdminAbility: string
      * silently widen access to ordinary manual-transfer verification too.
      */
     case ApproveBridgeFunding = 'approve_bridge_funding';
+
+    /**
+     * Authorize a specific retest attempt beyond
+     * config('assessment_retests.free_attempt_limit') (item 19). Not
+     * "authorize retests" generally -- attempts within the free limit need
+     * no ability check at all, since they need no admin action. No upper
+     * bound past the free limit; the owner's explicit decision is that
+     * repeated individual human approval is the deterrent, not a fixed
+     * ceiling.
+     */
+    case AuthorizeRetestBeyondLimit = 'authorize_retest_beyond_limit';
 }

@@ -77,14 +77,18 @@ final class AdminAuthorizationTest extends TestCase
         $this->assertFalse($branchAdmin->canPerform(AdminAbility::ViewDass));
         $this->assertFalse($staff->canPerform(AdminAbility::ViewDass));
 
-        // ReviewReports: only Psychologist (SuperAdmin widened via lane deepseek/f5-resign-and-rls)
+        // ReviewReports: only Psychologist
         $this->assertTrue($psychologist->canPerform(AdminAbility::ReviewReports));
         $this->assertFalse($superAdmin->canPerform(AdminAbility::ReviewReports));
         $this->assertFalse($branchAdmin->canPerform(AdminAbility::ReviewReports));
         $this->assertFalse($staff->canPerform(AdminAbility::ReviewReports));
 
-        // ApproveBridgeFunding: only SuperAdmin for now (item 18, technical call)
+        // ApproveBridgeFunding: SuperAdmin + CentralAdmin (item 18/#123
+        // reconciliation, 2026-09-22 -- central_admin's holding-company-level
+        // oversight is the same level this ability already gates at)
+        $centralAdmin = $this->admin(AdminRole::CentralAdmin);
         $this->assertTrue($superAdmin->canPerform(AdminAbility::ApproveBridgeFunding));
+        $this->assertTrue($centralAdmin->canPerform(AdminAbility::ApproveBridgeFunding));
         $this->assertFalse($psychologist->canPerform(AdminAbility::ApproveBridgeFunding));
         $this->assertFalse($branchAdmin->canPerform(AdminAbility::ApproveBridgeFunding));
         $this->assertFalse($staff->canPerform(AdminAbility::ApproveBridgeFunding));
@@ -147,6 +151,7 @@ final class AdminAuthorizationTest extends TestCase
     public static function adminRoles(): iterable
     {
         yield 'super admin' => [AdminRole::SuperAdmin, 'super_admin', false];
+        yield 'central admin' => [AdminRole::CentralAdmin, 'central_admin', false];
         yield 'branch admin' => [AdminRole::BranchAdmin, 'branch_admin', true];
         yield 'staff' => [AdminRole::Staff, 'staff', true];
         yield 'psychologist' => [AdminRole::Psychologist, 'psychologist', false];

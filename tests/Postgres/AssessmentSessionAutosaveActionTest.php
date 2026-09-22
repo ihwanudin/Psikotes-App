@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Postgres;
 
 use App\Actions\AssessmentSessions\AutosaveAssessmentAnswers;
+use App\Actions\AssessmentSessions\SealExpiredAssessmentSession;
 use App\Domain\AssessmentSessions\AssessmentAutosavePolicy;
 use App\Domain\AssessmentSessions\SessionDefinition;
 use App\Registration\ConsentDocument;
@@ -251,6 +252,7 @@ final class AssessmentSessionAutosaveActionTest extends TestCase
         return new AutosaveAssessmentAnswers(
             app(RlsContextRunner::class),
             new AssessmentAutosavePolicy,
+            new SealExpiredAssessmentSession(app(RlsContextRunner::class)),
             $clock(...),
         );
     }

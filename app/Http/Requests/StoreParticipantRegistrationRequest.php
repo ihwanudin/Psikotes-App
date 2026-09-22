@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Http\Requests;
 
 use App\Models\TestPackage;
-use Illuminate\Database\Query\Builder;
+use App\Security\RlsContextRunner;
+use Closure;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 final class StoreParticipantRegistrationRequest extends FormRequest
@@ -30,13 +32,16 @@ final class StoreParticipantRegistrationRequest extends FormRequest
                 'bail',
                 'required',
                 'integer',
-                Rule::exists('packages', 'id')->where(
-                    fn (Builder $query): Builder => $query
-                        ->where('is_active', true)
-                        ->whereNotNull('amount')
-                        ->where('amount', '>=', 0)
-                        ->where('currency', 'IDR'),
-                ),
+                // Not Rule::exists('packages', 'id')->where(...): that
+                // builds a lazy rule object whose actual query only runs
+                // later, inside the validator's own
+                // DatabasePresenceVerifier -- wrapping *this* method in
+                // runAsService() would do nothing, the query still runs
+                // outside any RLS context. A closure rule runs the query
+                // itself, so the runAsService() call has to be inside it.
+                function (string $attribute, mixed $value, Closure $fail): void {
+                    $this->assertPackageAvailable($value, $fail);
+                },
             ],
             'payment_method_code' => [
                 'bail',
@@ -85,9 +90,14 @@ final class StoreParticipantRegistrationRequest extends FormRequest
 
     private function paymentRequired(): bool
     {
-        $package = TestPackage::query()
-            ->availableForRegistration()
-            ->find($this->integer('package_id'));
+        // Rule::requiredIf()'s closure, like the package_id rule above, is
+        // evaluated lazily by the validator -- runAsService() has to wrap
+        // the query itself, not the method that returns the closure.
+        $package = app(RlsContextRunner::class)->runAsService(
+            fn () => TestPackage::query()
+                ->availableForRegistration()
+                ->find($this->integer('package_id')),
+        );
 
         if ($package === null) {
             return true;
@@ -96,5 +106,29 @@ final class StoreParticipantRegistrationRequest extends FormRequest
         return (int) $package->amount
             + ($this->boolean('include_consultation') ? ($package->consultation_amount ?? 0) : 0)
             > 0;
+    }
+
+    private function assertPackageAvailable(mixed $value, Closure $fail): void
+    {
+        // Same availability conditions Rule::exists('packages', 'id')
+        // used to check inline -- deliberately NOT
+        // TestPackage::availableForRegistration() (that scope also
+        // requires a dass21 item plus one of {code === 'DASS21', a
+        // non-dass21 item}, a stricter check paymentRequired() above
+        // already applies separately; widening this rule to match would
+        // change validation behavior beyond this RLS fix's scope).
+        $exists = app(RlsContextRunner::class)->runAsService(
+            fn (): bool => DB::table('packages')
+                ->where('id', $value)
+                ->where('is_active', true)
+                ->whereNotNull('amount')
+                ->where('amount', '>=', 0)
+                ->where('currency', 'IDR')
+                ->exists(),
+        );
+
+        if (! $exists) {
+            $fail('Paket tidak ditemukan atau tidak tersedia.');
+        }
     }
 }

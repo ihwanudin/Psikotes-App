@@ -6,15 +6,20 @@ use App\Http\Controllers\AssessmentParticipantProvisioningController;
 use App\Http\Controllers\AssessmentResultController;
 use App\Http\Controllers\AutosaveAssessmentAnswersController;
 use App\Http\Controllers\GetAssessmentSessionAnswersController;
+use App\Http\Controllers\GetAssessmentSessionAssetUrlController;
 use App\Http\Controllers\GetAssessmentSessionController;
 use App\Http\Controllers\GetAssessmentSessionItemsController;
+use App\Http\Controllers\GetDassAssessmentController;
 use App\Http\Controllers\ParticipantEntitlementController;
 use App\Http\Controllers\ParticipantLoginController;
 use App\Http\Controllers\ParticipantOrderStatusController;
 use App\Http\Controllers\ParticipantProfileController;
 use App\Http\Controllers\SelectionParticipantProvisioningController;
+use App\Http\Controllers\StartDassAssessmentController;
 use App\Http\Controllers\StartParticipantSessionController;
 use App\Http\Controllers\SubmitAssessmentSessionController;
+use App\Http\Controllers\SubmitDassAssessmentController;
+use App\Http\Controllers\SubtestNextController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/integrations/v1/selection/participants', SelectionParticipantProvisioningController::class)
@@ -77,4 +82,31 @@ Route::middleware('participant.jwt')->group(function (): void {
     // exactly when writable, same as answers readback.
     Route::get('/sessions/{id}/items', GetAssessmentSessionItemsController::class)
         ->name('participant.sessions.items.show');
+
+    // F2 IST reader Stage 1 (2026-09-21, Lead plan sign-off): same
+    // rls-excluded group, same reason -- GetAssessmentSessionAssetUrl owns
+    // its own service transaction. GET, not POST: issuing a temporary URL
+    // changes no persisted state.
+    Route::get('/sessions/{id}/assets/{assetId}/url', GetAssessmentSessionAssetUrlController::class)
+        ->whereUlid('assetId')
+        ->name('participant.sessions.assets.url');
+
+    // F2 timed-segments stage 4 (2026-09-22): same rls-excluded group, same
+    // reason -- SubtestNext owns its own service transaction and locks the
+    // session row itself.
+    Route::post('/sessions/{id}/subtest/next', SubtestNextController::class)
+        ->name('participant.sessions.subtest.next');
+
+    // DASS-21's own isolated session-taking flow (never /sessions/:test_type/...,
+    // reserved for the generic four -- API_CONTRACT.md:89,
+    // tasks/handoffs/f2/dass21-participant-flow-investigation.md). Same
+    // rls-excluded group, same reason: each action owns its own service
+    // transaction. No result-display route here yet -- Lead: held back
+    // until the project owner answers decision (c).
+    Route::post('/dass21/start', StartDassAssessmentController::class)
+        ->name('participant.dass21.start');
+    Route::get('/dass21/{id}', GetDassAssessmentController::class)
+        ->name('participant.dass21.show');
+    Route::post('/dass21/{id}/submit', SubmitDassAssessmentController::class)
+        ->name('participant.dass21.submit');
 });
