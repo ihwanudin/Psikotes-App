@@ -21,10 +21,35 @@ final readonly class SessionDefinition
         'generator',
     ];
 
-    private const SUBTEST_FIELDS = [
+    private const SUBTEST_REQUIRED_FIELDS = [
         'code',
         'duration_seconds',
         'item_count',
+    ];
+
+    /**
+     * F2 timed-segments stage 2 (2026-09-22): optional, not required, and
+     * deliberately NOT filled with defaults in the array used for checksum
+     * recomputation below -- only in the derived $segments/
+     * $totalReadingCapSeconds properties, computed AFTER checksum
+     * verification. A payload written before this stage never had these
+     * keys; requiring them here would break replay of every already-
+     * persisted PAPI/RMIB/Kraepelin session (IST cannot start yet, so this
+     * is about the instruments that already have real sessions in
+     * 'created'/'in_progress' status). See tasks/handoffs/f2/
+     * timed-segments-plan.md's "data model changes" section.
+     */
+    private const SUBTEST_OPTIONAL_FIELDS = [
+        'reading_cap_seconds',
+        'allow_early_finish',
+        'segments',
+    ];
+
+    private const SEGMENT_FIELDS = [
+        'code',
+        'duration_seconds',
+        'reading_cap_seconds',
+        'allow_early_finish',
     ];
 
     private const KRAEPELIN_GENERATOR_FIELDS = [
@@ -45,7 +70,14 @@ final readonly class SessionDefinition
     private const KRAEPELIN_ANSWER_SLOTS_PER_COLUMN = 27;
 
     /**
-     * @param  list<array{code: string, duration_seconds: int, item_count: int}>  $subtests
+     * @param  list<array<string, mixed>>  $subtests
+     * @param  list<TimedSegment>  $segments  Derived, not part of the serialized
+     *                                        shape: the whole session's segments,
+     *                                        flattened to one global ordered list
+     *                                        (one per subtest, except a subtest
+     *                                        with its own `segments`, which
+     *                                        contributes each of those instead).
+     *                                        See flattenSegments().
      * @param  array{
      *     algorithm: string,
      *     version: string,
@@ -62,6 +94,8 @@ final readonly class SessionDefinition
         public string $checksum,
         public int $totalDurationSeconds,
         public array $subtests,
+        public array $segments,
+        public int $totalReadingCapSeconds,
         public string $randomization,
         public ?string $seed,
         public ?array $generator,
@@ -121,6 +155,14 @@ final readonly class SessionDefinition
             throw new InvalidArgumentException('Session definition checksum does not match its canonical payload.');
         }
 
+        // Derived from $subtests AFTER checksum verification, never fed back
+        // into it -- see SUBTEST_OPTIONAL_FIELDS's docblock.
+        $segments = self::flattenSegments($subtests);
+        $totalReadingCapSeconds = array_sum(array_map(
+            static fn (TimedSegment $segment): int => $segment->readingCapSeconds,
+            $segments,
+        ));
+
         return new self(
             instrument: $instrument,
             version: $version,
@@ -128,6 +170,8 @@ final readonly class SessionDefinition
             checksum: $checksum,
             totalDurationSeconds: $totalDurationSeconds,
             subtests: $subtests,
+            segments: $segments,
+            totalReadingCapSeconds: $totalReadingCapSeconds,
             randomization: $randomization,
             seed: $seed,
             generator: $generator,
@@ -141,7 +185,7 @@ final readonly class SessionDefinition
      *     provenance: string,
      *     checksum: string,
      *     total_duration_seconds: int,
-     *     subtests: list<array{code: string, duration_seconds: int, item_count: int}>,
+     *     subtests: list<array<string, mixed>>,
      *     randomization: string,
      *     seed: string|null,
      *     generator: array{
@@ -190,7 +234,7 @@ final readonly class SessionDefinition
     }
 
     /**
-     * @return list<array{code: string, duration_seconds: int, item_count: int}>
+     * @return list<array<string, mixed>>
      */
     private static function subtests(mixed $value, int $totalDurationSeconds): array
     {
@@ -207,25 +251,48 @@ final readonly class SessionDefinition
                 throw new InvalidArgumentException('Session definition subtest must be an object.');
             }
 
-            self::assertExactFields($subtest, self::SUBTEST_FIELDS, 'Session definition subtest');
+            self::assertKnownFields(
+                $subtest,
+                self::SUBTEST_REQUIRED_FIELDS,
+                self::SUBTEST_OPTIONAL_FIELDS,
+                'Session definition subtest',
+            );
             $code = self::nonBlankString($subtest['code'], 'Session definition subtest code');
-
-            if (isset($codes[$code])) {
-                throw new InvalidArgumentException('Session definition subtest codes must be unique.');
-            }
+            self::assertUniqueCode($codes, $code);
 
             $durationSeconds = self::positiveInteger(
                 $subtest['duration_seconds'],
                 'Session definition subtest duration',
             );
             $itemCount = self::positiveInteger($subtest['item_count'], 'Session definition subtest item count');
-            $codes[$code] = true;
             $durationSum += $durationSeconds;
-            $subtests[] = [
+
+            $normalized = [
                 'code' => $code,
                 'duration_seconds' => $durationSeconds,
                 'item_count' => $itemCount,
             ];
+
+            // Left absent (never defaulted) when the input omits them --
+            // required for old, already-persisted payloads to still
+            // checksum-verify. See SUBTEST_OPTIONAL_FIELDS's docblock.
+            if (array_key_exists('reading_cap_seconds', $subtest)) {
+                $normalized['reading_cap_seconds'] = self::nonNegativeInteger(
+                    $subtest['reading_cap_seconds'],
+                    'Session definition subtest reading cap',
+                );
+            }
+            if (array_key_exists('allow_early_finish', $subtest)) {
+                $normalized['allow_early_finish'] = self::boolean(
+                    $subtest['allow_early_finish'],
+                    'Session definition subtest allow_early_finish',
+                );
+            }
+            if (array_key_exists('segments', $subtest)) {
+                $normalized['segments'] = self::segments($subtest['segments'], $durationSeconds, $codes);
+            }
+
+            $subtests[] = $normalized;
         }
 
         if ($durationSum !== $totalDurationSeconds) {
@@ -233,6 +300,122 @@ final readonly class SessionDefinition
         }
 
         return $subtests;
+    }
+
+    /**
+     * Only present when a subtest has more than one timed phase (IST's ME
+     * today). Each segment's own reading_cap_seconds/allow_early_finish are
+     * required here (not optional like the parent subtest's) -- this key
+     * never existed before this stage, so there is no old-payload
+     * compatibility concern for it.
+     *
+     * @param  array<string, bool>  $codes  Shared code registry across the
+     *                                      whole definition, passed by
+     *                                      reference so segment codes and
+     *                                      subtest codes can never collide --
+     *                                      current_segment.code must
+     *                                      unambiguously address exactly one
+     *                                      entry in the flattened session-wide
+     *                                      segment list.
+     * @return list<array{code: string, duration_seconds: int, reading_cap_seconds: int, allow_early_finish: bool}>
+     */
+    private static function segments(mixed $value, int $subtestDurationSeconds, array &$codes): array
+    {
+        if (! is_array($value) || ! array_is_list($value) || $value === []) {
+            throw new InvalidArgumentException('Session definition subtest segments must be a non-empty list.');
+        }
+
+        $segments = [];
+        $durationSum = 0;
+
+        foreach ($value as $segment) {
+            if (! is_array($segment)) {
+                throw new InvalidArgumentException('Session definition segment must be an object.');
+            }
+
+            self::assertExactFields($segment, self::SEGMENT_FIELDS, 'Session definition segment');
+            $code = self::nonBlankString($segment['code'], 'Session definition segment code');
+            self::assertUniqueCode($codes, $code);
+
+            $durationSeconds = self::positiveInteger(
+                $segment['duration_seconds'],
+                'Session definition segment duration',
+            );
+            $readingCapSeconds = self::nonNegativeInteger(
+                $segment['reading_cap_seconds'],
+                'Session definition segment reading cap',
+            );
+            $allowEarlyFinish = self::boolean(
+                $segment['allow_early_finish'],
+                'Session definition segment allow_early_finish',
+            );
+            $durationSum += $durationSeconds;
+
+            $segments[] = [
+                'code' => $code,
+                'duration_seconds' => $durationSeconds,
+                'reading_cap_seconds' => $readingCapSeconds,
+                'allow_early_finish' => $allowEarlyFinish,
+            ];
+        }
+
+        if ($durationSum !== $subtestDurationSeconds) {
+            throw new InvalidArgumentException('Session definition segment durations must equal the parent subtest duration.');
+        }
+
+        return $segments;
+    }
+
+    /**
+     * The whole session's segments as one global ordered list: one entry
+     * per subtest, except a subtest carrying its own `segments`, which
+     * contributes each of those instead of the subtest itself. A subtest
+     * with no explicit `segments` degenerates to a single implicit segment
+     * built from its own code/duration/reading-cap/early-finish (defaulting
+     * the latter two to 0/false here -- this is the one place old-payload
+     * absence is finally defaulted, purely for runtime use, never fed back
+     * into anything checksummed).
+     *
+     * @param  list<array<string, mixed>>  $subtests
+     * @return list<TimedSegment>
+     */
+    private static function flattenSegments(array $subtests): array
+    {
+        $segments = [];
+
+        foreach ($subtests as $subtest) {
+            if (isset($subtest['segments'])) {
+                foreach ($subtest['segments'] as $segment) {
+                    $segments[] = new TimedSegment(
+                        $segment['code'],
+                        $segment['duration_seconds'],
+                        $segment['reading_cap_seconds'],
+                        $segment['allow_early_finish'],
+                    );
+                }
+
+                continue;
+            }
+
+            $segments[] = new TimedSegment(
+                $subtest['code'],
+                $subtest['duration_seconds'],
+                $subtest['reading_cap_seconds'] ?? 0,
+                $subtest['allow_early_finish'] ?? false,
+            );
+        }
+
+        return $segments;
+    }
+
+    /** @param  array<string, bool>  $codes */
+    private static function assertUniqueCode(array &$codes, string $code): void
+    {
+        if (isset($codes[$code])) {
+            throw new InvalidArgumentException('Session definition codes must be unique.');
+        }
+
+        $codes[$code] = true;
     }
 
     /** @return array{string, null, null} */
@@ -246,7 +429,7 @@ final readonly class SessionDefinition
     }
 
     /**
-     * @param  list<array{code: string, duration_seconds: int, item_count: int}>  $subtests
+     * @param  list<array<string, mixed>>  $subtests
      * @return array{
      *     string,
      *     null,
@@ -341,6 +524,26 @@ final readonly class SessionDefinition
         }
     }
 
+    /**
+     * Like assertExactFields(), but $optional keys may be absent -- used
+     * where old, already-persisted payloads must keep parsing after a
+     * field becomes available going forward. Still rejects anything not in
+     * $required or $optional, and still requires everything in $required.
+     *
+     * @param  array<string, mixed>  $value
+     * @param  list<string>  $required
+     * @param  list<string>  $optional
+     */
+    private static function assertKnownFields(array $value, array $required, array $optional, string $label): void
+    {
+        $actual = array_keys($value);
+        $allowed = array_merge($required, $optional);
+
+        if (array_diff($actual, $allowed) !== [] || array_diff($required, $actual) !== []) {
+            throw new InvalidArgumentException("{$label} fields are incomplete or unknown.");
+        }
+    }
+
     private static function nonBlankString(mixed $value, string $label): string
     {
         if (
@@ -387,6 +590,24 @@ final readonly class SessionDefinition
     {
         if (! is_int($value) || $value < 1) {
             throw new InvalidArgumentException("{$label} must be a positive integer.");
+        }
+
+        return $value;
+    }
+
+    private static function nonNegativeInteger(mixed $value, string $label): int
+    {
+        if (! is_int($value) || $value < 0) {
+            throw new InvalidArgumentException("{$label} must be a non-negative integer.");
+        }
+
+        return $value;
+    }
+
+    private static function boolean(mixed $value, string $label): bool
+    {
+        if (! is_bool($value)) {
+            throw new InvalidArgumentException("{$label} must be a boolean.");
         }
 
         return $value;
