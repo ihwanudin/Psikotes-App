@@ -78,6 +78,15 @@ final class Admin extends Authenticatable implements FilamentUser, ProvidesRlsCo
                 [AdminRole::Psychologist, AdminRole::SuperAdmin],
                 true,
             ),
+            // super_admin + psychologist only for now (item 19, owner's
+            // decision); extends to central_admin automatically once that
+            // role exists, same one-line-addition pattern already used
+            // elsewhere in this enum.
+            AdminAbility::AuthorizeRetestBeyondLimit => in_array(
+                $this->role,
+                [AdminRole::SuperAdmin, AdminRole::Psychologist],
+                true,
+            ),
         };
     }
 
