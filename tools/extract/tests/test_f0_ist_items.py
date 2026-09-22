@@ -20,7 +20,13 @@ class IstItemsGateTest(unittest.TestCase):
     independent review (own PDF text extraction, all 516 stem/option strings
     matched after normalization, the 4 RA fraction items re-verified by
     recomputing their answers against ist.json's keys, reported against
-    commit f8ac705). This pin covers the TEXT-ONLY shape - it will need
+    commit f8ac705). Re-pinned 2026-09-22 when ME moved draft -> final via
+    `extract_ist_items.py --finalize-me` (psychologist-confirmed P7, "Versi
+    A": TEKUKUR/Burung, QUINTET/Kesenian - see
+    tasks/handoffs/decisions/owner-decisions-2026-09-21.md item 21). Only
+    ME's status/word_list fields and the top-level status changed; every
+    other subtest and ME's own items/instructions are byte-identical to the
+    prior pin. This pin covers the TEXT-ONLY shape - it will need
     re-pinning once FA/WU (a separate PR) are merged in, since that changes
     the file's bytes. FA/WU are covered by a separate test module once that
     PR lands, not here."""
@@ -33,16 +39,16 @@ class IstItemsGateTest(unittest.TestCase):
 
     def test_bytes_are_deterministic(self):
         payload = (DATA / "ist_items.json").read_bytes()
-        self.assertEqual(len(payload), 37509)
+        self.assertEqual(len(payload), 36105)
         self.assertEqual(
             hashlib.sha256(payload).hexdigest(),
-            "7ba88a3c29a1bd91b85357967d0710ea6f6d8347e03b2f64a96379067af58061",
+            "f4b3015fc1e5dd8c24c622cc5e10c3e8a4c03fc99b183b235be9fc8e2b6b6304",
         )
         self.assertEqual(payload, json.dumps(self.load(), ensure_ascii=False, indent=2).encode("utf-8"))
 
-    def test_top_level_status_is_draft_because_me_is_draft(self):
+    def test_top_level_status_is_final_since_me_is_now_final(self):
         data = self.load()
-        self.assertEqual(data["status"], "draft")
+        self.assertEqual(data["status"], "final")
 
     def test_fa_wu_are_absent_not_stubbed(self):
         data = self.load()
@@ -124,22 +130,20 @@ class IstItemsGateTest(unittest.TestCase):
             self.assertGreater(len(text), 50, code)
             self.assertNotIn("  ", text, code)
 
-    def test_me_is_draft_with_both_word_list_variants_recorded(self):
+    def test_me_is_final_with_confirmed_word_list(self):
         data = self.load()
         me = data["subtests"]["ME"]
-        self.assertEqual(me["status"], "draft")
-        self.assertIn("draft_reason", me)
-        variants = me["word_list_variants"]
-        self.assertEqual(len(variants), 2)
-        self.assertEqual(sum(v["printed_count"] for v in variants), 4)
-        burung = {tuple(v["categories"]["BURUNG"]) for v in variants}
-        kesenian = {tuple(v["categories"]["KESENIAN"]) for v in variants}
-        self.assertEqual(len(burung), 2)
-        self.assertEqual(len(kesenian), 2)
-        for v in variants:
-            self.assertEqual(set(v["categories"]), {"BUNGA", "PERKAKAS", "BURUNG", "KESENIAN", "BINATANG"})
-            for words in v["categories"].values():
-                self.assertEqual(len(words), 5)
+        self.assertEqual(me["status"], "final")
+        self.assertNotIn("draft_reason", me)
+        self.assertNotIn("word_list_variants", me)
+        word_list = me["word_list"]
+        self.assertEqual(set(word_list), {"BUNGA", "PERKAKAS", "BURUNG", "KESENIAN", "BINATANG"})
+        for words in word_list.values():
+            self.assertEqual(len(words), 5)
+        # P7 (2026-09-22): "Versi A" - psychologist-confirmed, see
+        # tasks/handoffs/decisions/owner-decisions-2026-09-21.md item 21.
+        self.assertIn("TEKUKUR", word_list["BURUNG"])
+        self.assertIn("QUINTET", word_list["KESENIAN"])
 
     def test_no_participant_data_or_secrets(self):
         payload = (DATA / "ist_items.json").read_text(encoding="utf-8")
