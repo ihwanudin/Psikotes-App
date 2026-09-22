@@ -130,6 +130,68 @@ Assert-Contains $source 'retention_prune=PASS' 'Successful apply must print its 
 Assert-Contains $source 'retention_secret_output_check=PASS' 'Successful retention must attest credential-output checks.'
 Assert-Contains $source 'Invoke-S3Step ''Retention object deletion''' 'Each destructive object operation must use the credential guard.'
 Assert-Contains $source 'Invoke-RetentionPrune $retentionReferenceDate $retentionDays $retentionApply' 'Operator mode must honor the safe explicit apply signal.'
+Assert-Contains $source '$disasterRecoveryDatabase = ''psikotes_backup_disaster_recovery''' 'Disaster recovery must use a dedicated fresh database.'
+Assert-Contains $source "'source.disaster-recovery.download.age'" 'Disaster recovery must use a distinct downloaded ciphertext path.'
+Assert-Contains $source "'source.disaster-recovery.dump'" 'Disaster recovery must use a distinct decrypted archive path.'
+Assert-Contains $source '$rtoTargetSeconds = 8 * 3600' 'The disaster recovery RTO target must be eight hours.'
+Assert-Contains $source 'function Invoke-DisasterRecovery' 'Synthetic and operator targets must share one disaster recovery function.'
+Assert-Contains $source 'offsite/$s3Bucket/$currentBackupObject' 'Disaster recovery must download the retained current backup object.'
+Assert-Contains $source 'Invoke-S3Step ''Disaster recovery download stage''' 'The recovery download must use the S3 credential guard.'
+Assert-Contains $source 'Assert-AgeCiphertext $disasterRecoveryEncryptedArchive' 'The recovered ciphertext must pass the age structural guard.'
+Assert-Contains $source 'Test-Path -LiteralPath $disasterRecoveryEncryptedArchive -PathType Leaf' 'The recovery download must be verified on disk.'
+Assert-Contains $source '(Get-Item -LiteralPath $disasterRecoveryEncryptedArchive).Length -ne $encryptedBytes' 'The recovery download size must match the uploaded ciphertext.'
+Assert-Contains $source 'Invoke-KeyStep ''Disaster recovery decrypt stage''' 'The recovery decryption must use the key output guard.'
+Assert-Contains $source '/rehearsal/age -d -i /rehearsal/identity.txt' 'Disaster recovery must reuse the run identity.'
+Assert-Contains $source 'Test-Path -LiteralPath $disasterRecoveryDumpArchive -PathType Leaf' 'The decrypted recovery archive must be verified on disk.'
+Assert-Contains $source '(Get-Item -LiteralPath $disasterRecoveryDumpArchive).Length -ne $archiveBytes' 'The decrypted recovery archive size must match the original dump.'
+Assert-Contains $source 'pg_restore --list /rehearsal/source.disaster-recovery.dump' 'The decrypted recovery archive must be inspected before restore.'
+Assert-Contains $source 'Invoke-Psql ''postgres'' "CREATE DATABASE $disasterRecoveryDatabase"' 'Recovery database creation must not depend on the lost source database.'
+Assert-Contains $source '--dbname $disasterRecoveryDatabase --no-owner --single-transaction --exit-on-error' 'Disaster recovery restore must be atomic and fail once.'
+Assert-Contains $source 'if ($disasterRecoveryCounts -cne ''1|1|1|1|1|9'')' 'Recovery readiness must prove the real integrity graph.'
+Assert-Contains $source '$disasterRecoveryTimer = [System.Diagnostics.Stopwatch]::StartNew()' 'RTO timing must start immediately before recovery work.'
+Assert-Contains $source '$disasterRecoveryTimer.Stop()' 'RTO timing must stop after readiness succeeds.'
+Assert-Contains $source '[Math]::Ceiling($disasterRecoveryTimer.Elapsed.TotalSeconds)' 'RTO evidence must report measured whole seconds.'
+Assert-Contains $source 'Assert-RtoWithinTarget $disasterRecoveryActualSeconds $rtoTargetSeconds' 'Measured recovery time must enforce the target.'
+Assert-Contains $source 'disaster_recovery=PASS rto_target_seconds=$rtoTargetSeconds rto_actual_seconds=$disasterRecoveryActualSeconds within_target=$disasterRecoveryWithinTarget' 'Successful recovery must print target, actual, and comparison.'
+Assert-Contains $source 'Get-SchemaManifest $disasterRecoveryDatabase' 'Recovery must compute a schema manifest.'
+Assert-Contains $source 'Get-DataFingerprint $disasterRecoveryDatabase' 'Recovery must compute a data fingerprint.'
+Assert-Contains $source 'Get-SequenceFingerprint $disasterRecoveryDatabase' 'Recovery must compute a sequence fingerprint.'
+Assert-Contains $source '$disasterRecoverySchemaFingerprint -cne $sourceSchemaFingerprint' 'Recovery schema must match the source exactly.'
+Assert-Contains $source '$disasterRecoveryDataFingerprint -cne $sourceDataFingerprint' 'Recovery data must match the source exactly.'
+Assert-Contains $source '$disasterRecoverySequenceFingerprint -cne $sourceSequenceFingerprint' 'Recovery sequence state must match the source exactly.'
+Assert-Contains $source 'disaster_recovery_fingerprints=PASS' 'Successful recovery must print explicit fingerprint evidence.'
+Assert-Contains $source 'disaster_recovery_secret_output_check=PASS' 'Successful recovery must attest credential and key output checks.'
+Assert-Contains $source 'Disaster recovery download stage failed:' 'Download failures must identify their stage.'
+Assert-Contains $source 'Disaster recovery decrypt stage failed:' 'Decryption failures must identify their stage.'
+Assert-Contains $source 'Disaster recovery restore stage failed:' 'Restore failures must identify their stage.'
+Assert-Contains $source 'Disaster recovery readiness stage failed:' 'Readiness and fingerprint failures must identify their stage.'
+Assert-Contains $source 'function Assert-RtoWithinTarget' 'RTO enforcement must be independently testable.'
+
+$recoveryAst = $ast.Find({
+    param($node)
+    $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -ceq 'Invoke-DisasterRecovery'
+}, $true)
+Assert-True ($null -ne $recoveryAst) 'Runner must define one shared disaster recovery path.'
+$recoverySource = $recoveryAst.Extent.Text
+Assert-True (-not $recoverySource.Contains('$offsiteObject')) 'Disaster recovery must not use the connection-rehearsal object.'
+Assert-True (-not $recoverySource.Contains('$encryptedArchive')) 'Disaster recovery must not restore from the local encrypted archive.'
+$retentionEvidenceOffset = $source.IndexOf('retention_secret_output_check=PASS', [StringComparison]::Ordinal)
+$recoveryInvocationOffset = $source.LastIndexOf('Invoke-DisasterRecovery', [StringComparison]::Ordinal)
+Assert-True ($recoveryInvocationOffset -gt $retentionEvidenceOffset) 'Disaster recovery must run after retention evidence succeeds.'
+
+$rtoGuardAst = $ast.Find({
+    param($node)
+    $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -ceq 'Assert-RtoWithinTarget'
+}, $true)
+Assert-True ($null -ne $rtoGuardAst) 'Runner must define the RTO enforcement helper.'
+. ([scriptblock]::Create($rtoGuardAst.Extent.Text))
+Assert-RtoWithinTarget 28800 28800
+$rtoExceededRejected = $false
+try { Assert-RtoWithinTarget 28801 28800 }
+catch { $rtoExceededRejected = $_.Exception.Message.Contains('exceeded RTO target') }
+Assert-True $rtoExceededRejected 'RTO enforcement must fail when measured recovery exceeds the target.'
 
 $writerAst = $ast.Find({
     param($node)
@@ -203,4 +265,4 @@ Assert-True ((ConvertTo-StableSchemaExpression '"CaseSensitive" = 1') -cne `
     (ConvertTo-StableSchemaExpression '"casesensitive" = 1')) `
     'Canonicalization must preserve quoted-identifier case.'
 
-Write-Output 'postgres-backup-restore-contract: PASS (127 assertions)'
+Write-Output 'postgres-backup-restore-contract: PASS (170 assertions)'

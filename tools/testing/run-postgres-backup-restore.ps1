@@ -20,6 +20,7 @@ $minioContainer = "$network-minio"
 $label = "oncam.f9-backup-restore=$runId"
 $sourceDatabase = 'psikotes_backup_source'
 $destinationDatabase = 'psikotes_backup_destination'
+$disasterRecoveryDatabase = 'psikotes_backup_disaster_recovery'
 $corruptDatabase = 'psikotes_backup_corrupt'
 $tempDirectory = Join-Path ([System.IO.Path]::GetTempPath()) "psikotes-f9-backup-$runId"
 $snapshotArchive = Join-Path $tempDirectory 'snapshot.tar'
@@ -29,6 +30,8 @@ $encryptedArchive = Join-Path $tempDirectory 'source.dump.age'
 $restoredArchive = Join-Path $tempDirectory 'source.restored.dump'
 $corruptArchive = Join-Path $tempDirectory 'source.corrupt.dump.age'
 $offsiteDownload = Join-Path $tempDirectory 'source.offsite.download.age'
+$disasterRecoveryEncryptedArchive = Join-Path $tempDirectory 'source.disaster-recovery.download.age'
+$disasterRecoveryDumpArchive = Join-Path $tempDirectory 'source.disaster-recovery.dump'
 $nonAgeProbe = Join-Path $tempDirectory 'not-an-age-archive.txt'
 $mcConfigDirectory = Join-Path $tempDirectory 'mc-config'
 $badMcConfigDirectory = Join-Path $tempDirectory 'mc-config-bad'
@@ -42,6 +45,7 @@ $minioImage = 'quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z'
 $mcImage = 'quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z'
 $backupKeyTemplate = 'backups/{date}/{name}.dump.age'
 $backupPrefix = $backupKeyTemplate.Substring(0, $backupKeyTemplate.IndexOf('{'))
+$rtoTargetSeconds = 8 * 3600
 
 function Assert-NativeSuccess([string] $operation) {
     if ($LASTEXITCODE -ne 0) {
@@ -419,6 +423,104 @@ SELECT string_agg(format('%I.%I|%s|%s|%s|%s|%s|%s|%s|%s',
 FROM pg_sequences WHERE schemaname IN ('public', 'dass');
 '@
     return Get-TextSha256 $sequenceManifest
+}
+
+function Assert-RtoWithinTarget([long] $actualSeconds, [long] $targetSeconds) {
+    if ($actualSeconds -gt $targetSeconds) {
+        throw "Disaster recovery exceeded RTO target: actual_seconds=$actualSeconds target_seconds=$targetSeconds."
+    }
+}
+
+function Invoke-DisasterRecovery {
+    $recoveryS3ChecksBefore = $s3OutputChecks
+    $recoveryKeyChecksBefore = $keyOutputChecks
+    $disasterRecoveryTimer = [System.Diagnostics.Stopwatch]::StartNew()
+    try {
+        [void] (Invoke-S3Step 'Disaster recovery download stage' {
+            docker @mcCommand cp "offsite/$s3Bucket/$currentBackupObject" /rehearsal/source.disaster-recovery.download.age
+        } $s3Secrets)
+        if (-not (Test-Path -LiteralPath $disasterRecoveryEncryptedArchive -PathType Leaf) -or
+            (Get-Item -LiteralPath $disasterRecoveryEncryptedArchive).Length -ne $encryptedBytes) {
+            throw 'Downloaded ciphertext is missing or differs in size from the retained backup.'
+        }
+        Assert-AgeCiphertext $disasterRecoveryEncryptedArchive
+    }
+    catch {
+        throw "Disaster recovery download stage failed: $($_.Exception.Message)"
+    }
+
+    try {
+        [void] (Invoke-KeyStep 'Disaster recovery decrypt stage' {
+            docker exec $databaseContainer /rehearsal/age -d -i /rehearsal/identity.txt `
+                -o /rehearsal/source.disaster-recovery.dump /rehearsal/source.disaster-recovery.download.age
+        })
+        if (-not (Test-Path -LiteralPath $disasterRecoveryDumpArchive -PathType Leaf) -or
+            (Get-Item -LiteralPath $disasterRecoveryDumpArchive).Length -ne $archiveBytes) {
+            throw 'Decrypted archive is missing or differs in size from the original dump.'
+        }
+        docker exec $databaseContainer pg_restore --list /rehearsal/source.disaster-recovery.dump | Out-Null
+        Assert-NativeSuccess 'Disaster recovery decrypted archive inspection'
+    }
+    catch {
+        throw "Disaster recovery decrypt stage failed: $($_.Exception.Message)"
+    }
+
+    try {
+        [void] (Invoke-Psql 'postgres' "CREATE DATABASE $disasterRecoveryDatabase")
+        docker exec $databaseContainer pg_restore --host 127.0.0.1 --username f9_backup_owner `
+            --dbname $disasterRecoveryDatabase --no-owner --single-transaction --exit-on-error `
+            /rehearsal/source.disaster-recovery.dump
+        Assert-NativeSuccess 'Disaster recovery atomic restore'
+    }
+    catch {
+        throw "Disaster recovery restore stage failed: $($_.Exception.Message)"
+    }
+
+    try {
+        $disasterRecoveryCounts = Invoke-Psql $disasterRecoveryDatabase @'
+SELECT concat_ws('|',
+    (SELECT count(*) FROM branches WHERE code='F9-SYNTHETIC'),
+    (SELECT count(*) FROM participants WHERE source_system='F9_BACKUP_REHEARSAL'),
+    (SELECT count(*) FROM assessment_cases WHERE public_id='01J00000000000000000000001'),
+    (SELECT count(*) FROM test_sessions WHERE public_id='01J00000000000000000000002'),
+    (SELECT count(*) FROM generic_instrument_results WHERE public_id='01J00000000000000000000005'),
+    (SELECT count(*) FROM generic_instrument_result_sources s JOIN generic_instrument_results r ON r.id=s.result_id
+        WHERE r.public_id='01J00000000000000000000005'));
+'@
+        if ($disasterRecoveryCounts -cne '1|1|1|1|1|9') {
+            throw "Recovered graph is incomplete: $disasterRecoveryCounts"
+        }
+        $disasterRecoveryTimer.Stop()
+        $disasterRecoveryActualSeconds = [long] [Math]::Ceiling($disasterRecoveryTimer.Elapsed.TotalSeconds)
+
+        $disasterRecoverySchemaManifest = Get-SchemaManifest $disasterRecoveryDatabase
+        $disasterRecoverySchemaFingerprint = Get-TextSha256 $disasterRecoverySchemaManifest
+        $disasterRecoveryDataFingerprint = Get-DataFingerprint $disasterRecoveryDatabase
+        $disasterRecoverySequenceFingerprint = Get-SequenceFingerprint $disasterRecoveryDatabase
+        if ($disasterRecoverySchemaFingerprint -cne $sourceSchemaFingerprint) {
+            throw 'Recovered schema fingerprint differs from source.'
+        }
+        if ($disasterRecoveryDataFingerprint -cne $sourceDataFingerprint) {
+            throw 'Recovered row/value fingerprint differs from source.'
+        }
+        if ($disasterRecoverySequenceFingerprint -cne $sourceSequenceFingerprint) {
+            throw 'Recovered sequence fingerprint differs from source.'
+        }
+    }
+    catch {
+        throw "Disaster recovery readiness stage failed: $($_.Exception.Message)"
+    }
+
+    $disasterRecoveryWithinTarget = ($disasterRecoveryActualSeconds -le $rtoTargetSeconds).ToString().ToLowerInvariant()
+    Write-Output "disaster_recovery_fingerprints=PASS schema_sha256=$disasterRecoverySchemaFingerprint data_sha256=$disasterRecoveryDataFingerprint sequence_sha256=$disasterRecoverySequenceFingerprint schema_match=true data_match=true sequence_match=true"
+    Write-Output "disaster_recovery_secret_output_check=PASS s3_steps=$($s3OutputChecks - $recoveryS3ChecksBefore) key_steps=$($keyOutputChecks - $recoveryKeyChecksBefore)"
+    if ($disasterRecoveryActualSeconds -le $rtoTargetSeconds) {
+        Write-Output "disaster_recovery=PASS rto_target_seconds=$rtoTargetSeconds rto_actual_seconds=$disasterRecoveryActualSeconds within_target=$disasterRecoveryWithinTarget"
+    }
+    else {
+        Write-Output "disaster_recovery=FAIL rto_target_seconds=$rtoTargetSeconds rto_actual_seconds=$disasterRecoveryActualSeconds within_target=$disasterRecoveryWithinTarget"
+    }
+    Assert-RtoWithinTarget $disasterRecoveryActualSeconds $rtoTargetSeconds
 }
 
 try {
@@ -926,6 +1028,8 @@ SELECT concat_ws('|',
         }
     }
     Write-Output "retention_secret_output_check=PASS s3_steps=$s3OutputChecks"
+
+    Invoke-DisasterRecovery
 
     $archive = [System.IO.File]::ReadAllBytes($encryptedArchive)
     if ($archive.Length -lt 128) { throw 'Encrypted archive is too small for a corruption probe.' }
