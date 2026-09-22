@@ -224,6 +224,7 @@ final readonly class PersistSealedRmibResult
             'instrument_source_file' => $result->scoringSource['sourceFile'],
             'instrument_checksum' => $result->scoringSource['checksum'],
             'result_contract_version' => $result->resultContractVersion,
+            'engine_version' => $result->engineVersion,
             'result_payload' => $result->canonicalJson(),
             'result_checksum' => $result->resultChecksum,
         ];

@@ -50,7 +50,8 @@ final class ScoreSealedPapiAnswerSetTest extends OrganizationPaymentTestCase
         $this->assertSame($first->canonicalJson(), $second->canonicalJson());
         $this->assertSame($first->resultChecksum, $second->resultChecksum);
         $this->assertMatchesRegularExpression('/\A[a-f0-9]{64}\z/', $first->resultChecksum);
-        $this->assertSame('papi-result:v1', $first->resultContractVersion);
+        $this->assertSame('papi-result:v2', $first->resultContractVersion);
+        $this->assertSame('papi-scoring:v1', $first->engineVersion);
         $this->assertSame($source->sourceChecksum, $first->sealedSourceChecksum);
         $this->assertSame([
             'id' => $scoringSourceId,

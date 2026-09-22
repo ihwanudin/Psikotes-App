@@ -283,7 +283,8 @@ final class LoadPersistedIstResultTest extends TestCase
                 'session_definition_payload' => json_encode($definition->toArray(), JSON_THROW_ON_ERROR),
                 'instrument_version_id' => $versionId, 'instrument_version' => 'synthetic-papi-v1',
                 'instrument_source_file' => 'synthetic-papi.json', 'instrument_checksum' => $checksum,
-                'result_contract_version' => 'papi-result:v1', 'result_payload' => '{}',
+                'result_contract_version' => 'papi-result:v2', 'engine_version' => 'papi-scoring:v1',
+                'result_payload' => '{}',
                 'result_checksum' => str_repeat('e', 64), 'created_at' => now(),
             ]);
         });

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\AssessmentSessions;
 
+use App\Actions\AssessmentResults\ScoreAssessmentSession;
 use App\Actions\AssessmentSessions\AutosaveAssessmentAnswers;
 use App\Actions\AssessmentSessions\GetAssessmentSession;
 use App\Actions\AssessmentSessions\SealExpiredAssessmentSession;
@@ -429,7 +430,14 @@ final class AssessmentSessionHttpTest extends OrganizationPaymentTestCase
     {
         $this->bindSubmitClock('2026-09-21T00:30:00.000000+00:00');
         $participant = $this->participant();
-        $session = $this->sessionRow($participant, 'in_progress');
+        // ADR-0032 (2026-09-22): kraepelin, deliberately -- this test is about
+        // the submit endpoint's own response shape, not scoring, and this
+        // fixture never inserts any answers (answers_revision stays 0,
+        // which LoadSealedGenericAnswerSet always rejects regardless of
+        // instrument). Kraepelin is the one supported test_type
+        // ScoreAssessmentSession skips, so submit succeeds without needing
+        // a real answer set.
+        $session = $this->sessionRow($participant, 'in_progress', testType: 'kraepelin');
 
         $response = $this->withToken($this->token($participant))->postJson("/api/sessions/{$session}/submit")->assertOk();
 
@@ -443,7 +451,8 @@ final class AssessmentSessionHttpTest extends OrganizationPaymentTestCase
     public function test_submit_is_safely_repeatable_without_reopening_answers(): void
     {
         $participant = $this->participant();
-        $session = $this->sessionRow($participant, 'in_progress');
+        // ADR-0032 (2026-09-22): kraepelin -- see the previous test's comment.
+        $session = $this->sessionRow($participant, 'in_progress', testType: 'kraepelin');
         $token = $this->token($participant);
 
         $first = $this->withToken($token)->postJson("/api/sessions/{$session}/submit")->assertOk();
@@ -525,6 +534,7 @@ final class AssessmentSessionHttpTest extends OrganizationPaymentTestCase
             $this->app->make(RlsContextRunner::class),
             new AssessmentSessionSubmitPolicy,
             new SealExpiredAssessmentSession($this->app->make(RlsContextRunner::class)),
+            $this->app->make(ScoreAssessmentSession::class),
             fn (): DateTimeImmutable => new DateTimeImmutable($iso),
         ));
     }
@@ -559,24 +569,37 @@ final class AssessmentSessionHttpTest extends OrganizationPaymentTestCase
         ]);
     }
 
-    private function sessionRow(int $participant, string $status, int $itemCount = 5): string
+    private function sessionRow(int $participant, string $status, int $itemCount = 5, string $testType = 'ist'): string
     {
         $publicId = (string) Str::ulid();
+        // ADR-0032 (2026-09-22): kraepelin's SessionDefinition validation is
+        // rigid (fixed 50-column/27-slot/15s matrix, see SessionDefinition's
+        // kraepelinConfiguration()) -- it cannot share the generic
+        // itemCount/3600s shape every other test_type here uses, so it gets
+        // its own fixed constants instead.
+        $totalDurationSeconds = $testType === 'kraepelin' ? 750 : 3600;
         $definitionSource = [
-            'instrument' => 'ist', 'version' => 'synthetic-definition-v1',
-            'provenance' => 'session-http-test-only', 'total_duration_seconds' => 3600,
-            'subtests' => [['code' => 'SYN', 'duration_seconds' => 3600, 'item_count' => $itemCount]],
-            'randomization' => 'fixed', 'seed' => null, 'generator' => null,
+            'instrument' => $testType, 'version' => 'synthetic-definition-v1',
+            'provenance' => 'session-http-test-only', 'total_duration_seconds' => $totalDurationSeconds,
+            'subtests' => $testType === 'kraepelin'
+                ? [['code' => 'K', 'duration_seconds' => 750, 'item_count' => 1350]]
+                : [['code' => 'SYN', 'duration_seconds' => 3600, 'item_count' => $itemCount]],
+            'randomization' => 'fixed', 'seed' => null,
+            'generator' => $testType === 'kraepelin' ? [
+                'algorithm' => 'synthetic-generator', 'version' => 'synthetic-v1',
+                'columns' => 50, 'seconds_per_column' => 15,
+                'numbers_per_column' => 28, 'answer_slots_per_column' => 27,
+            ] : null,
         ];
         $definition = SessionDefinition::fromArray([
             ...$definitionSource, 'checksum' => SessionDefinition::checksumFor($definitionSource),
         ]);
 
         $row = [
-            'public_id' => $publicId, 'participant_id' => $participant, 'test_type' => 'ist',
+            'public_id' => $publicId, 'participant_id' => $participant, 'test_type' => $testType,
             'attempt_no' => ++$this->attempt,
             'authorization_id' => (string) Str::ulid(), 'allocation_intent_id' => (string) Str::ulid(),
-            'duration_seconds' => 3600, 'status' => $status, 'answers_revision' => 0,
+            'duration_seconds' => $totalDurationSeconds, 'status' => $status, 'answers_revision' => 0,
             'started_at' => null, 'ends_at' => null, 'submitted_at' => null,
             'scored_at' => null, 'expired_at' => null, 'voided_at' => null, 'void_reason' => null,
             'session_definition_version' => $definition->version,

@@ -21,6 +21,9 @@ use UnexpectedValueException;
 
 final readonly class ScoreSealedIstAnswerSet
 {
+    /** ADR-0032 (2026-09-22): stand-in for "no response was recorded for this item". */
+    private const UNANSWERED = '';
+
     private const PAYLOAD_FIELDS = [
         'version',
         'keys',
@@ -191,7 +194,24 @@ final readonly class ScoreSealedIstAnswerSet
         $expectedCodes = array_keys($itemCounts);
         sort($definitionCodes);
         sort($expectedCodes);
-        if ($definitionCodes !== $expectedCodes || count($source->answers) !== array_sum($itemCounts)) {
+        if ($definitionCodes !== $expectedCodes || count($source->answers) > array_sum($itemCounts)) {
+            throw self::invalid();
+        }
+
+        // ADR-0032 (2026-09-22): P1 -- a blank IST item scores as wrong, it
+        // is no longer rejected outright. `$source->answers` can now be
+        // shorter than the full item count (LoadSealedGenericAnswerSet no
+        // longer requires an exact match for IST), so this can no longer
+        // walk it positionally; it looks answers up by their own item_no
+        // and fills any gap with the sentinel below.
+        $answersByItemNo = [];
+        foreach ($source->answers as $answer) {
+            if (! is_array($answer) || ! is_int($answer['item_no'] ?? null) || ! is_string($answer['value'] ?? null)) {
+                throw self::invalid();
+            }
+            $answersByItemNo[$answer['item_no']] = $answer['value'];
+        }
+        if (count($answersByItemNo) !== count($source->answers)) {
             throw self::invalid();
         }
 
@@ -203,14 +223,18 @@ final readonly class ScoreSealedIstAnswerSet
                 throw self::invalid();
             }
             for ($item = 1; $item <= $subtest['item_count']; $item++) {
-                $answer = $source->answers[$globalItem] ?? null;
                 $globalItem++;
-                if (! is_array($answer)
-                    || ($answer['item_no'] ?? null) !== $globalItem
-                    || ! is_string($answer['value'] ?? null)) {
-                    throw self::invalid();
-                }
-                $responses[] = ['subtest' => $code, 'item' => $item, 'answer' => $answer['value']];
+                // '' can never equal an answer key (single letters a-e) or a
+                // recorded GE answer (IstRawScoreCalculator rejects an empty
+                // GE answer text at construction time), so an unanswered
+                // item scores as wrong through the exact same comparison a
+                // real wrong answer takes -- IstRawScoreCalculator itself
+                // needs no change for this rule.
+                $responses[] = [
+                    'subtest' => $code,
+                    'item' => $item,
+                    'answer' => $answersByItemNo[$globalItem] ?? self::UNANSWERED,
+                ];
             }
         }
 
