@@ -13,8 +13,10 @@ Set-StrictMode -Version Latest
 $workspace = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $runId = [guid]::NewGuid().ToString('N')
 $network = "oncam-f9-backup-$runId"
+$offsiteNetwork = "$network-offsite"
 $databaseContainer = "$network-db"
 $migrationContainer = "$network-migrate"
+$minioContainer = "$network-minio"
 $label = "oncam.f9-backup-restore=$runId"
 $sourceDatabase = 'psikotes_backup_source'
 $destinationDatabase = 'psikotes_backup_destination'
@@ -26,10 +28,18 @@ $identityFile = Join-Path $tempDirectory 'identity.txt'
 $encryptedArchive = Join-Path $tempDirectory 'source.dump.age'
 $restoredArchive = Join-Path $tempDirectory 'source.restored.dump'
 $corruptArchive = Join-Path $tempDirectory 'source.corrupt.dump.age'
+$offsiteDownload = Join-Path $tempDirectory 'source.offsite.download.age'
+$nonAgeProbe = Join-Path $tempDirectory 'not-an-age-archive.txt'
+$mcConfigDirectory = Join-Path $tempDirectory 'mc-config'
+$badMcConfigDirectory = Join-Path $tempDirectory 'mc-config-bad'
 $networkCreated = $false
+$offsiteNetworkCreated = $false
 $failure = $null
 $identitySecret = $null
 $keyOutputChecks = 0
+$s3OutputChecks = 0
+$minioImage = 'quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z'
+$mcImage = 'quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z'
 
 function Assert-NativeSuccess([string] $operation) {
     if ($LASTEXITCODE -ne 0) {
@@ -40,6 +50,14 @@ function Assert-NativeSuccess([string] $operation) {
 function Assert-OutputExcludesKey([string] $output, [string] $secret) {
     if ($output.Contains($secret)) {
         throw 'A key-touching step exposed the identity in its output.'
+    }
+}
+
+function Assert-OutputExcludesSecrets([string] $output, [string[]] $secrets) {
+    foreach ($secret in $secrets) {
+        if (-not [string]::IsNullOrEmpty($secret) -and $output.Contains($secret)) {
+            throw 'An S3 credential-touching step exposed a secret in its output.'
+        }
     }
 }
 
@@ -60,6 +78,79 @@ function Invoke-KeyStep([string] $operation, [scriptblock] $command, [bool] $req
         throw "$operation failed with exit code $exitCode."
     }
     return @{ Output = $output; ExitCode = $exitCode }
+}
+
+function Invoke-S3Step([string] $operation, [scriptblock] $command, [string[]] $secrets, [bool] $requireSuccess = $true) {
+    $previousPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $captured = & $command 2>&1
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousPreference
+    }
+    $output = ($captured | ForEach-Object { [string] $_ }) -join "`n"
+    Assert-OutputExcludesSecrets $output $secrets
+    $script:s3OutputChecks++
+    if ($requireSuccess -and $exitCode -ne 0) {
+        throw "$operation failed with exit code $exitCode."
+    }
+    return @{ Output = $output; ExitCode = $exitCode }
+}
+
+function Assert-AgeCiphertext([string] $path) {
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        throw 'Offsite upload rejected: archive file is missing.'
+    }
+    $expectedHeader = [System.Text.Encoding]::ASCII.GetBytes("age-encryption.org/v1`n")
+    $stream = [System.IO.File]::OpenRead($path)
+    try {
+        $actualHeader = [byte[]]::new($expectedHeader.Length)
+        $bytesRead = $stream.Read($actualHeader, 0, $actualHeader.Length)
+    }
+    finally {
+        $stream.Dispose()
+    }
+    if ($bytesRead -ne $expectedHeader.Length -or
+        [Convert]::ToBase64String($actualHeader) -cne [Convert]::ToBase64String($expectedHeader)) {
+        throw 'Offsite upload rejected: file is not an age ciphertext.'
+    }
+}
+
+function Get-FileSha256([string] $path) {
+    $stream = [System.IO.File]::OpenRead($path)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return (($sha256.ComputeHash($stream) | ForEach-Object { $_.ToString('x2') }) -join '')
+    }
+    finally {
+        $sha256.Dispose()
+        $stream.Dispose()
+    }
+}
+
+function Write-McConfig([string] $directory, [string] $endpoint, [string] $accessKey, [string] $secretKey) {
+    [void] (New-Item -ItemType Directory -Path $directory)
+    $config = @{
+        version = '10'
+        aliases = @{
+            offsite = @{ url = $endpoint; accessKey = $accessKey; secretKey = $secretKey; api = 'S3v4'; path = 'auto' }
+        }
+    } | ConvertTo-Json -Depth 5
+    [System.IO.File]::WriteAllText((Join-Path $directory 'config.json'), $config, [System.Text.UTF8Encoding]::new($false))
+}
+
+function Send-EncryptedOffsiteCopy([string] $archivePath, [string] $objectName) {
+    Assert-AgeCiphertext $archivePath
+    $resolvedArchive = (Resolve-Path -LiteralPath $archivePath).Path
+    if ([System.IO.Directory]::GetParent($resolvedArchive).FullName -cne $resolvedTemp) {
+        throw 'Offsite upload rejected: archive must be owned by the task temp directory.'
+    }
+    $containerArchive = '/rehearsal/' + [System.IO.Path]::GetFileName($resolvedArchive)
+    [void] (Invoke-S3Step 'Encrypted offsite upload' {
+        docker @mcCommand cp $containerArchive "offsite/$s3Bucket/$objectName"
+    } $s3Secrets)
 }
 
 function Invoke-Psql([string] $database, [string] $sql) {
@@ -248,10 +339,57 @@ try {
         throw 'VendorDirectory must be a real Composer vendor installation.'
     }
 
+    $s3Environment = @{
+        Endpoint = [Environment]::GetEnvironmentVariable('F9_BACKUP_S3_ENDPOINT')
+        Bucket = [Environment]::GetEnvironmentVariable('F9_BACKUP_S3_BUCKET')
+        AccessKey = [Environment]::GetEnvironmentVariable('F9_BACKUP_S3_ACCESS_KEY_ID')
+        SecretKey = [Environment]::GetEnvironmentVariable('F9_BACKUP_S3_SECRET_ACCESS_KEY')
+        Region = [Environment]::GetEnvironmentVariable('F9_BACKUP_S3_REGION')
+    }
+    $providedS3Values = @($s3Environment.Values | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }).Count
+    if ($providedS3Values -eq 0) {
+        $offsiteMode = 'synthetic-minio'
+        $s3Endpoint = 'http://f9-backup-minio:9000'
+        $s3Bucket = "f9-backup-$runId"
+        $s3AccessKey = 'f9syntheticaccess'
+        $s3SecretKey = "f9syntheticsecret-$runId"
+        $s3Region = 'us-east-1'
+    }
+    elseif ($providedS3Values -eq $s3Environment.Count) {
+        $offsiteMode = 'operator-s3-compatible'
+        $s3Endpoint = $s3Environment.Endpoint
+        $s3Bucket = $s3Environment.Bucket
+        $s3AccessKey = $s3Environment.AccessKey
+        $s3SecretKey = $s3Environment.SecretKey
+        $s3Region = $s3Environment.Region
+    }
+    else {
+        throw 'All five F9_BACKUP_S3_* environment variables are required together.'
+    }
+    $endpointUri = $null
+    if (-not [Uri]::TryCreate($s3Endpoint, [UriKind]::Absolute, [ref] $endpointUri) -or
+        $endpointUri.Scheme -notin @('http', 'https') -or -not [string]::IsNullOrEmpty($endpointUri.UserInfo)) {
+        throw 'F9_BACKUP_S3_ENDPOINT must be an absolute HTTP(S) URL without embedded credentials.'
+    }
+    if ($s3Bucket -cnotmatch '^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$') {
+        throw 'F9_BACKUP_S3_BUCKET must be a valid 3-63 character S3 bucket name.'
+    }
+    if ($s3Region -cnotmatch '^[A-Za-z0-9][A-Za-z0-9-]{0,62}$') {
+        throw 'F9_BACKUP_S3_REGION is invalid.'
+    }
+    $s3Secrets = @($s3AccessKey, $s3SecretKey)
+    $offsiteObject = "rehearsal/$ExpectedCommit/$runId/source.dump.age"
+
     docker image inspect postgres:17.6-alpine --format '{{.Id}}' | Out-Null
     Assert-NativeSuccess 'PostgreSQL image check'
     docker image inspect psikotes-app:dev --format '{{.Id}}' | Out-Null
     Assert-NativeSuccess 'Application image check'
+    docker image inspect $mcImage --format '{{.Id}}' | Out-Null
+    Assert-NativeSuccess 'S3-compatible client image check'
+    if ($offsiteMode -ceq 'synthetic-minio') {
+        docker image inspect $minioImage --format '{{.Id}}' | Out-Null
+        Assert-NativeSuccess 'Synthetic S3-compatible target image check'
+    }
 
     [void] (New-Item -ItemType Directory -Path $tempDirectory)
     $resolvedTemp = (Resolve-Path -LiteralPath $tempDirectory).Path
@@ -262,6 +400,10 @@ try {
     }
     git -C $workspace archive --format=tar --output=$snapshotArchive $ExpectedCommit
     Assert-NativeSuccess 'Immutable Git snapshot creation'
+    Write-McConfig $mcConfigDirectory $s3Endpoint $s3AccessKey $s3SecretKey
+    if (-not (Test-Path -LiteralPath (Join-Path $mcConfigDirectory 'config.json') -PathType Leaf)) {
+        throw 'S3-compatible client configuration is missing.'
+    }
 
     docker run --rm --pull=never --label $label --network bridge `
         --mount "type=bind,source=$tempDirectory,target=/rehearsal" `
@@ -276,6 +418,44 @@ try {
     docker network create --internal --label $label $network | Out-Null
     Assert-NativeSuccess 'Internal rehearsal network creation'
     $networkCreated = $true
+
+    if ($offsiteMode -ceq 'synthetic-minio') {
+        docker network create --internal --label $label $offsiteNetwork | Out-Null
+    }
+    else {
+        docker network create --label $label $offsiteNetwork | Out-Null
+    }
+    Assert-NativeSuccess 'Dedicated offsite client network creation'
+    $offsiteNetworkCreated = $true
+
+    $mcCommand = @(
+        'run', '--rm', '--pull=never', '--label', $label,
+        '--network', $offsiteNetwork,
+        '--mount', "type=bind,source=$tempDirectory,target=/rehearsal",
+        '--env', "MC_REGION=$s3Region",
+        '--entrypoint', '/usr/bin/mc', $mcImage,
+        '--config-dir', '/rehearsal/mc-config'
+    )
+    if ($offsiteMode -ceq 'synthetic-minio') {
+        [void] (Invoke-S3Step 'Synthetic S3-compatible target creation' {
+            docker run --detach --pull=never --name $minioContainer --label $label `
+                --network $offsiteNetwork --network-alias f9-backup-minio --tmpfs /data:rw `
+                --env "MINIO_ROOT_USER=$s3AccessKey" --env "MINIO_ROOT_PASSWORD=$s3SecretKey" `
+                $minioImage server /data --address ':9000'
+        } $s3Secrets)
+        $offsiteReady = $false
+        for ($attempt = 0; $attempt -lt 40; $attempt++) {
+            $readyStep = Invoke-S3Step 'Synthetic S3-compatible readiness check' {
+                docker @mcCommand ls offsite
+            } $s3Secrets $false
+            if ($readyStep.ExitCode -eq 0) { $offsiteReady = $true; break }
+            Start-Sleep -Milliseconds 500
+        }
+        if (-not $offsiteReady) { throw 'Synthetic S3-compatible target did not become ready.' }
+        [void] (Invoke-S3Step 'Synthetic offsite bucket creation' {
+            docker @mcCommand mb "offsite/$s3Bucket"
+        } $s3Secrets)
+    }
 
     docker run --detach --pull=never --name $databaseContainer --label $label `
         --network $network --network-alias f9-backup-db --tmpfs /var/lib/postgresql/data:rw `
@@ -507,6 +687,54 @@ SELECT concat_ws('|',
 '@
     if ($destinationCounts -cne '1|1|1|1|1|9') { throw "Restored graph is incomplete: $destinationCounts" }
 
+    [System.IO.File]::WriteAllText($nonAgeProbe, 'plaintext must never be uploaded', [System.Text.UTF8Encoding]::new($false))
+    $nonAgeRejected = $false
+    try {
+        Send-EncryptedOffsiteCopy $nonAgeProbe 'negative/not-age.txt'
+    }
+    catch {
+        if ($_.Exception.Message -ceq 'Offsite upload rejected: file is not an age ciphertext.') {
+            $nonAgeRejected = $true
+        }
+        else { throw }
+    }
+    if (-not $nonAgeRejected) { throw 'Non-age upload probe was incorrectly accepted.' }
+    Remove-Item -LiteralPath $nonAgeProbe -Force
+
+    $localEncryptedSha256 = Get-FileSha256 $encryptedArchive
+    Send-EncryptedOffsiteCopy $encryptedArchive $offsiteObject
+    [void] (Invoke-S3Step 'Encrypted offsite download verification' {
+        docker @mcCommand cp "offsite/$s3Bucket/$offsiteObject" /rehearsal/source.offsite.download.age
+    } $s3Secrets)
+    if (-not (Test-Path -LiteralPath $offsiteDownload -PathType Leaf) -or
+        (Get-Item -LiteralPath $offsiteDownload).Length -ne $encryptedBytes) {
+        throw 'Downloaded offsite ciphertext is missing or differs in size.'
+    }
+    $downloadedEncryptedSha256 = Get-FileSha256 $offsiteDownload
+    if ($downloadedEncryptedSha256 -cne $localEncryptedSha256) {
+        throw 'Downloaded offsite ciphertext checksum differs from the local encrypted archive.'
+    }
+
+    $badCredentialExit = 'not-run'
+    if ($offsiteMode -ceq 'synthetic-minio') {
+        $badS3Secret = "f9-wrong-secret-$runId"
+        Write-McConfig $badMcConfigDirectory $s3Endpoint $s3AccessKey $badS3Secret
+        $negativeSecrets = @($s3Secrets + $badS3Secret)
+        $badMcCommand = @(
+            'run', '--rm', '--pull=never', '--label', $label,
+            '--network', $offsiteNetwork,
+            '--mount', "type=bind,source=$tempDirectory,target=/rehearsal",
+            '--env', "MC_REGION=$s3Region",
+            '--entrypoint', '/usr/bin/mc', $mcImage,
+            '--config-dir', '/rehearsal/mc-config-bad'
+        )
+        $badCredentialStep = Invoke-S3Step 'Wrong S3 credential rejection probe' {
+            docker @badMcCommand ls "offsite/$s3Bucket"
+        } $negativeSecrets $false
+        $badCredentialExit = $badCredentialStep.ExitCode
+        if ($badCredentialExit -eq 0) { throw 'Wrong S3 credentials were incorrectly accepted.' }
+    }
+
     $archive = [System.IO.File]::ReadAllBytes($encryptedArchive)
     if ($archive.Length -lt 128) { throw 'Encrypted archive is too small for a corruption probe.' }
     $truncated = [byte[]]::new([Math]::Floor($archive.Length / 2))
@@ -538,6 +766,9 @@ SELECT concat_ws('|',
     Write-Output "schema_sha256=$sourceSchemaFingerprint data_sha256=$sourceDataFingerprint sequence_sha256=$sourceSequenceFingerprint graph=1|1|1|1|1|9"
     Write-Output "encryption=age key_mode=$keyMode key_output_check=PASS steps=$keyOutputChecks"
     Write-Output "corrupt_ciphertext_decrypt_exit=$corruptExitCode corrupt_partial_state=0"
+    Write-Output "offsite_copy=PASS mode=$offsiteMode target_label=$label bucket=$s3Bucket object=$offsiteObject"
+    Write-Output "offsite_local_sha256=$localEncryptedSha256 offsite_download_sha256=$downloadedEncryptedSha256"
+    Write-Output "offsite_negative_non_age=PASS bad_credentials_exit=$badCredentialExit s3_output_check=PASS steps=$s3OutputChecks"
 }
 catch {
     $failure = $_
@@ -560,6 +791,15 @@ finally {
             }
             docker network rm $network | Out-Null
             Assert-NativeSuccess 'Exact-label network cleanup'
+        }
+        if ($offsiteNetworkCreated) {
+            $offsiteNetworkLabels = docker network inspect --format '{{json .Labels}}' $offsiteNetwork | ConvertFrom-Json
+            Assert-NativeSuccess 'Offsite network inspection'
+            if ($offsiteNetworkLabels.'oncam.f9-backup-restore' -cne $runId) {
+                throw 'Offsite network label mismatch; cleanup refused.'
+            }
+            docker network rm $offsiteNetwork | Out-Null
+            Assert-NativeSuccess 'Exact-label offsite network cleanup'
         }
         if (Test-Path -LiteralPath $tempDirectory) {
             Remove-Item -LiteralPath $tempDirectory -Recurse -Force
