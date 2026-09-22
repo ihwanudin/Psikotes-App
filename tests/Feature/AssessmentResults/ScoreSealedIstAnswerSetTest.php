@@ -49,7 +49,8 @@ final class ScoreSealedIstAnswerSetTest extends OrganizationPaymentTestCase
         $this->assertSame($first->canonicalJson(), $second->canonicalJson());
         $this->assertSame($first->resultChecksum, $second->resultChecksum);
         $this->assertMatchesRegularExpression('/\A[a-f0-9]{64}\z/', $first->resultChecksum);
-        $this->assertSame('ist-result:v1', $first->resultContractVersion);
+        $this->assertSame('ist-result:v2', $first->resultContractVersion);
+        $this->assertSame('ist-scoring:v1', $first->engineVersion);
         $this->assertSame($source->sourceChecksum, $first->sealedSourceChecksum);
         $this->assertSame([
             'id' => $scoringSourceId,
@@ -66,6 +67,31 @@ final class ScoreSealedIstAnswerSetTest extends OrganizationPaymentTestCase
         $this->assertSame(3, $first->iq['level']);
         $this->assertSame(2, count($queries));
         $this->assertStringNotContainsString('dass', strtolower($first->canonicalJson()));
+    }
+
+    public function test_a_blank_item_scores_as_wrong_not_as_a_rejection(): void
+    {
+        // ADR-0032 P1 (2026-09-22): the psychologist-confirmed rule -- an
+        // unanswered IST item counts against the subtest, it does not
+        // reject the whole session. SE item 1 is skipped entirely (no
+        // answer row at all, not merely an empty value) to prove this goes
+        // through the same item_no lookup as a present-but-wrong answer,
+        // not silent positional misalignment of every item after the gap.
+        $scoringSourceId = $this->insertCanonicalScoringSource();
+        $fullScore = $this->score($this->istSource(), $scoringSourceId);
+        $blankFirstItem = $this->score($this->istSource(skipItem: 1), $scoringSourceId);
+
+        $se = static fn (SealedIstResult $result): int => $result->subtests[
+            array_search('SE', array_column($result->subtests, 'code'), true)
+        ]['rawScore'];
+
+        $this->assertSame(20, $se($fullScore));
+        $this->assertSame(19, $se($blankFirstItem));
+        // Every other subtest is completely unaffected by SE's gap.
+        $this->assertSame(
+            array_diff_key($fullScore->subtests, [0 => null]),
+            array_diff_key($blankFirstItem->subtests, [0 => null]),
+        );
     }
 
     public function test_it_requires_a_service_transaction_and_positive_internal_source_id_before_sql(): void
@@ -206,6 +232,7 @@ final class ScoreSealedIstAnswerSetTest extends OrganizationPaymentTestCase
         string $valueOverride = '',
         int $valueOverrideItem = 0,
         bool $asObject = false,
+        int $skipItem = 0,
     ): SealedGenericAnswerSet {
         $data = $this->canonicalData();
         $keys = [];
@@ -233,17 +260,19 @@ final class ScoreSealedIstAnswerSetTest extends OrganizationPaymentTestCase
             }
         }
 
-        return $this->sealedSource(GenericAssessmentInstrument::Ist, $subtests, $values);
+        return $this->sealedSource(GenericAssessmentInstrument::Ist, $subtests, $values, $skipItem > 0 ? [$skipItem] : []);
     }
 
     /**
      * @param  list<array{code:string,duration_seconds:int,item_count:int}>  $subtests
      * @param  list<mixed>  $values
+     * @param  list<int>  $skipItemNos  1-based item numbers to omit entirely (a real gap, not a blank value)
      */
     private function sealedSource(
         GenericAssessmentInstrument $instrument,
         array $subtests,
         array $values,
+        array $skipItemNos = [],
     ): SealedGenericAnswerSet {
         $definitionSource = [
             'instrument' => $instrument->value,
@@ -261,6 +290,9 @@ final class ScoreSealedIstAnswerSetTest extends OrganizationPaymentTestCase
         ]);
         $answers = [];
         foreach ($values as $offset => $value) {
+            if (in_array($offset + 1, $skipItemNos, true)) {
+                continue;
+            }
             $answers[] = [
                 'item_no' => $offset + 1,
                 'value' => $value,

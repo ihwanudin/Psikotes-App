@@ -372,6 +372,23 @@ return new class extends Migration
                     }
                 }
             }
+            if ($table === self::PARENT) {
+                // generic_instrument_results gains `engine_version` (NOT NULL
+                // varchar(100)) after
+                // 2026_09_22_000100_add_engine_version_to_generic_instrument_results.php.
+                // Same reasoning as the CHILD widenable columns above: this
+                // method runs unconditionally at the end of up(), including
+                // when THIS migration's own up() re-runs on an already
+                // up-to-date table (the "owner rerun" tests) -- by then the
+                // later migration has already run and added the column,
+                // which this migration's own original column list predates.
+                // Postgres ALTER TABLE ADD COLUMN has no positioning, so the
+                // column lands last (after created_at), not where the later
+                // migration's `->after()` hint asked -- also legitimate.
+                if (($actual['engine_version'] ?? null) === ['character varying(100)', true]) {
+                    unset($actual['engine_version']);
+                }
+            }
             if ($actual !== $expected) {
                 throw new RuntimeException("Generic instrument result ledger {$table} columns are not exact.");
             }
@@ -406,6 +423,18 @@ return new class extends Migration
             sort($names);
         }
         unset($names);
+        // ADR-0032 PR1 (2026-09-22): same "owner rerun" reasoning as the
+        // column check above -- generic_instrument_results_engine_version_check
+        // (added by 2026_09_22_000100) legitimately exists by the time this
+        // method can observe a rerun of this migration's own up().
+        $actualParentConstraints = $constraintNames[self::PARENT] ?? null;
+        if (is_array($actualParentConstraints)) {
+            $actualParentConstraints = array_values(array_diff(
+                $actualParentConstraints,
+                ['generic_instrument_results_engine_version_check'],
+            ));
+        }
+        $constraintNames[self::PARENT] = $actualParentConstraints;
         foreach ($expectedConstraints as $table => $expected) {
             if (($constraintNames[$table] ?? null) !== $expected) {
                 throw new RuntimeException("Generic instrument result ledger {$table} constraints are not exact.");

@@ -362,6 +362,12 @@ final class AssessmentSessionSchemaTest extends TestCase
         if ($method === 'down' && Schema::hasTable('test_session_grants')) {
             (require database_path('migrations/2026_09_09_000700_create_test_session_grants.php'))->down();
         }
+        // ADR-0032 PR1 (2026-09-22): assessment_scoring_attempts also has a
+        // foreign key to test_sessions -- same reasoning as test_session_grants
+        // above, dropped before test_sessions can be dropped.
+        if ($method === 'down' && Schema::hasTable('assessment_scoring_attempts')) {
+            (require database_path('migrations/2026_09_22_000200_create_assessment_scoring_attempts.php'))->down();
+        }
         $migration = require database_path('migrations/2026_09_08_000100_create_generic_assessment_sessions.php');
         if (! is_object($migration) || ! in_array($method, ['up', 'down'], true) || ! method_exists($migration, $method)) {
             throw new RuntimeException('Assessment session migration is invalid.');

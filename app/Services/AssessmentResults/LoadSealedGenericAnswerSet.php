@@ -84,20 +84,35 @@ final readonly class LoadSealedGenericAnswerSet
             ->where('session_id', $sessionId)
             ->orderBy('item_no')
             ->get(['item_no', 'value', 'revision', 'answered_at']);
-        if ($answerRows->count() !== $expectedItems) {
+        if ($answerRows->count() > $expectedItems) {
             throw self::invalid();
+        }
+        // ADR-0032 (2026-09-22): completeness is a psychometric policy that
+        // differs per instrument, not a property of the loader. PAPI keeps
+        // today's all-or-nothing behaviour verbatim (Lead: do not touch
+        // ScoreSealedPapiAnswerSet/PapiRawScoreCalculator at all -- so the
+        // exact-match gate has to stay here). IST and RMIB may score an
+        // incomplete session under their own new rules (blank IST items
+        // score as wrong; RMIB's tiered incomplete-ranking rules land in
+        // ADR-0032 PR3) -- this loader only has to stop assuming every item
+        // was answered, not decide what a gap means.
+        if (! self::allowsIncompleteAnswers($instrument) && $answerRows->count() !== $expectedItems) {
+            throw self::incomplete();
         }
 
         $answers = [];
-        foreach ($answerRows as $offset => $answer) {
+        $previousItemNo = 0;
+        foreach ($answerRows as $answer) {
             $itemNo = (int) ($answer->item_no ?? 0);
             $revision = (int) ($answer->revision ?? 0);
-            if ($itemNo !== $offset + 1
+            if ($itemNo <= $previousItemNo
+                || $itemNo > $expectedItems
                 || $revision < 1
                 || $revision > (int) $session->answers_revision
                 || ! is_string($answer->value ?? null)) {
                 throw self::invalid();
             }
+            $previousItemNo = $itemNo;
             $answers[] = [
                 'item_no' => $itemNo,
                 'value' => $this->decodeAnswer((string) $answer->value),
@@ -254,8 +269,27 @@ final readonly class LoadSealedGenericAnswerSet
         }
     }
 
+    private static function allowsIncompleteAnswers(GenericAssessmentInstrument $instrument): bool
+    {
+        return in_array($instrument, [GenericAssessmentInstrument::Ist, GenericAssessmentInstrument::Rmib], true);
+    }
+
     private static function invalid(): UnexpectedValueException
     {
         return new UnexpectedValueException('SEALED_GENERIC_ANSWER_INVALID');
+    }
+
+    /**
+     * Distinct from `invalid()` on purpose: this is the one rejection an
+     * orchestrator is expected to catch and record as `failed_to_score`
+     * without rolling back the caller's transaction (ADR-0032 §1a/§3).
+     * Every other UnexpectedValueException this class throws stays
+     * `SEALED_GENERIC_ANSWER_INVALID` and is NOT meant to be swallowed --
+     * it signals a data-integrity problem elsewhere, not a participant who
+     * left items blank.
+     */
+    private static function incomplete(): UnexpectedValueException
+    {
+        return new UnexpectedValueException('SEALED_GENERIC_ANSWER_INCOMPLETE');
     }
 }

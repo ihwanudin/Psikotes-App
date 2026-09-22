@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Postgres;
 
+use App\Actions\AssessmentResults\ScoreAssessmentSession;
 use App\Actions\AssessmentSessions\SubmitAssessmentSession;
 use App\Domain\AssessmentSessions\AssessmentSessionSubmitPolicy;
 use App\Security\RlsContextRunner;
@@ -36,7 +37,13 @@ final class AssessmentSessionSubmitActionTest extends TestCase
         $this->assertFalse($identity->rolsuper);
         $this->assertFalse($identity->rolbypassrls);
 
-        $exact = $this->fixture('in_progress', 7);
+        // ADR-0032 (2026-09-22): kraepelin -- this fixture never sets a
+        // session_definition_payload, so any instrument ScoreAssessmentSession
+        // would actually try to score fails closed. Kraepelin is skipped
+        // entirely by ScoreAssessmentSession (its own pipeline, out of
+        // ADR-0032's scope), so this test's own concern -- submit's RLS role
+        // and exact-deadline acceptance -- stays isolated from scoring.
+        $exact = $this->fixture('in_progress', 7, 'kraepelin');
         $observedRole = null;
         $accepted = $this->action(function () use (&$observedRole): DateTimeImmutable {
             $observedRole = app(RlsContextRunner::class)->current()?->role;
@@ -92,14 +99,15 @@ final class AssessmentSessionSubmitActionTest extends TestCase
         return new SubmitAssessmentSession(
             app(RlsContextRunner::class),
             new AssessmentSessionSubmitPolicy,
+            app(ScoreAssessmentSession::class),
             $clock(...),
         );
     }
 
     /** @return array{participant:int,session:int,public_id:string} */
-    private function fixture(string $status, int $revision): array
+    private function fixture(string $status, int $revision, string $testType = 'ist'): array
     {
-        return app(RlsContextRunner::class)->runAsService(function () use ($status, $revision): array {
+        return app(RlsContextRunner::class)->runAsService(function () use ($status, $revision, $testType): array {
             $key = (string) Str::ulid();
             $branch = DB::table('branches')->insertGetId([
                 'code' => $key, 'ref_code' => $key, 'name' => 'Submit Synthetic',
@@ -112,7 +120,7 @@ final class AssessmentSessionSubmitActionTest extends TestCase
             ]);
             $publicId = (string) Str::ulid();
             $session = DB::table('test_sessions')->insertGetId([
-                'public_id' => $publicId, 'participant_id' => $participant, 'test_type' => 'ist',
+                'public_id' => $publicId, 'participant_id' => $participant, 'test_type' => $testType,
                 'attempt_no' => 1, 'authorization_id' => (string) Str::ulid(),
                 'allocation_intent_id' => (string) Str::ulid(), 'duration_seconds' => 3600,
                 'status' => $status, 'answers_revision' => $revision,

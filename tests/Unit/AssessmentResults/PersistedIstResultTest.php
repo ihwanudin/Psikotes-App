@@ -171,7 +171,8 @@ final class PersistedIstResultTest extends TestCase
             ...$definitionSource, 'checksum' => SessionDefinition::checksumFor($definitionSource),
         ];
         $payloadWithoutChecksum = [
-            'resultContractVersion' => 'ist-result:v1', 'assessmentCaseId' => 3,
+            'resultContractVersion' => 'ist-result:v2', 'engineVersion' => 'ist-scoring:v1',
+            'assessmentCaseId' => 3,
             'sessionId' => 4, 'participantId' => 2,
             'sessionPublicId' => '01K53GZQ5W3H7G9JTF6ZV8YQ4M', 'attemptNo' => 1,
             'submittedAt' => '2026-09-13T04:20:00.654321Z', 'answersRevision' => 1,
@@ -204,7 +205,7 @@ final class PersistedIstResultTest extends TestCase
             'session_definition_payload' => json_encode($definition, JSON_THROW_ON_ERROR),
             'instrument_version_id' => 5, 'instrument_version' => 'scorer-v1',
             'instrument_source_file' => 'ist.json', 'instrument_checksum' => str_repeat('c', 64),
-            'result_contract_version' => 'ist-result:v1',
+            'result_contract_version' => 'ist-result:v2', 'engine_version' => 'ist-scoring:v1',
             'result_payload' => json_encode($payload, JSON_THROW_ON_ERROR), 'result_checksum' => $checksum,
             'created_at' => '2026-09-13T05:00:00.000000Z',
         ];

@@ -27,6 +27,7 @@ final readonly class PersistedIstResult
         public string $publicId,
         public string $createdAt,
         public string $resultContractVersion,
+        public string $engineVersion,
         public int $assessmentCaseId,
         public int $sessionId,
         public int $participantId,
@@ -72,6 +73,7 @@ final readonly class PersistedIstResult
         $createdAt = self::timestamp($parent['created_at'] ?? null);
         if (($parent['instrument_code'] ?? null) !== 'ist'
             || ($parent['result_contract_version'] ?? null) !== SealedIstResult::CONTRACT_VERSION
+            || ($parent['engine_version'] ?? null) !== SealedIstResult::ENGINE_VERSION
             || ! is_string($parent['result_payload'] ?? null)
             || ! self::sha256($parent['result_checksum'] ?? null)) {
             throw self::invalid();
@@ -79,7 +81,7 @@ final readonly class PersistedIstResult
 
         $payload = self::canonicalize(self::decodeObject($parent['result_payload']));
         if (array_keys($payload) !== [
-            'answersRevision', 'assessmentCaseId', 'attemptNo', 'iq', 'participantId',
+            'answersRevision', 'assessmentCaseId', 'attemptNo', 'engineVersion', 'iq', 'participantId',
             'resultChecksum', 'resultContractVersion', 'scoringSource', 'sealedSourceChecksum',
             'sessionDefinition', 'sessionId', 'sessionPublicId', 'submittedAt', 'subtests',
         ]) {
@@ -94,6 +96,7 @@ final readonly class PersistedIstResult
             throw self::invalid();
         }
 
+        $engineVersion = self::identity($payload['engineVersion'] ?? null);
         $assessmentCaseId = self::positiveInteger($payload['assessmentCaseId'] ?? null);
         $sessionId = self::positiveInteger($payload['sessionId'] ?? null);
         $participantId = self::positiveInteger($payload['participantId'] ?? null);
@@ -111,7 +114,8 @@ final readonly class PersistedIstResult
             || self::timestamp($parent['submitted_at'] ?? null) !== $submittedAt
             || self::databasePositiveInteger($parent['answers_revision'] ?? null) !== $answersRevision
             || self::checksum($parent['sealed_source_checksum'] ?? null) !== $sealedSourceChecksum
-            || $payload['resultContractVersion'] !== $parent['result_contract_version']) {
+            || $payload['resultContractVersion'] !== $parent['result_contract_version']
+            || $payload['engineVersion'] !== $parent['engine_version']) {
             throw self::invalid();
         }
 
@@ -141,6 +145,7 @@ final readonly class PersistedIstResult
             publicId: $publicId,
             createdAt: $createdAt,
             resultContractVersion: SealedIstResult::CONTRACT_VERSION,
+            engineVersion: $engineVersion,
             assessmentCaseId: $assessmentCaseId,
             sessionId: $sessionId,
             participantId: $participantId,
