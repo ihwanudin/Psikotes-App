@@ -28,6 +28,15 @@ use DateTimeImmutable;
  */
 final readonly class AssessmentSessionSnapshot
 {
+    /**
+     * F2 timed-segments stage 5 (2026-09-22): $currentSegmentIndex/
+     * $currentSegmentBecameCurrentAt/$currentSegmentStartedAt are the raw
+     * test_sessions.current_segment_* columns, unswept -- AssessmentSessionResource
+     * runs TimedSegmentSweep itself to derive the client-facing current_segment,
+     * the same compute-only pattern GetAssessmentSession already uses for
+     * remainingSeconds. All three are null for a session that has never
+     * subtest/next'd (or hasn't started at all), exactly as stored.
+     */
     public function __construct(
         public string $sessionId,
         public GenericAssessmentInstrument $instrument,
@@ -40,5 +49,8 @@ final readonly class AssessmentSessionSnapshot
         public DateTimeImmutable $serverTime,
         public int $remainingSeconds,
         public SessionDefinition $definition,
+        public ?int $currentSegmentIndex = null,
+        public ?DateTimeImmutable $currentSegmentBecameCurrentAt = null,
+        public ?DateTimeImmutable $currentSegmentStartedAt = null,
     ) {}
 }

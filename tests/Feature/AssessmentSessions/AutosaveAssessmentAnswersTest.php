@@ -267,6 +267,71 @@ final class AutosaveAssessmentAnswersTest extends OrganizationPaymentTestCase
         $this->assertSame(0, DB::table('answers')->count());
     }
 
+    /**
+     * F2 timed-segments stage 5 (2026-09-22). An item_no that exists in the
+     * instrument overall (unlike the flat-bound test above) but belongs to
+     * a DIFFERENT subtest than the one the timed-segment sweep currently
+     * resolves to must be rejected with the new, more specific code.
+     */
+    public function test_item_no_outside_the_current_segments_subtest_is_rejected(): void
+    {
+        $participant = $this->participant();
+        $publicId = $this->twoSubtestSessionPublicId($participant);
+
+        $result = $this->action(fn (): DateTimeImmutable => new DateTimeImmutable('2026-09-08T03:30:00+07:00'))
+            ->execute($participant, $publicId, (string) Str::ulid(), 1, [['item_no' => 25, 'value' => 'A']]);
+
+        $this->assertFalse($result->accepted);
+        $this->assertSame('ITEM_OUTSIDE_CURRENT_SEGMENT', $result->errorCode);
+        $this->assertSame(0, DB::table('answers')->count());
+    }
+
+    public function test_item_no_inside_the_current_segments_subtest_is_accepted(): void
+    {
+        $participant = $this->participant();
+        $publicId = $this->twoSubtestSessionPublicId($participant);
+
+        $result = $this->action(fn (): DateTimeImmutable => new DateTimeImmutable('2026-09-08T03:30:00+07:00'))
+            ->execute($participant, $publicId, (string) Str::ulid(), 1, [['item_no' => 5, 'value' => 'A']]);
+
+        $this->assertTrue($result->accepted);
+        $this->assertSame(1, DB::table('answers')->count());
+    }
+
+    /** SE: items 1-20, current segment. WA: items 21-40, not yet reached. */
+    private function twoSubtestSessionPublicId(int $participant): string
+    {
+        $definitionSource = [
+            'instrument' => 'ist', 'version' => 'synthetic-definition-v1',
+            'provenance' => 'synthetic-autosave-segment-range-test-only', 'total_duration_seconds' => 3600,
+            'subtests' => [
+                ['code' => 'SE', 'duration_seconds' => 1800, 'item_count' => 20],
+                ['code' => 'WA', 'duration_seconds' => 1800, 'item_count' => 20],
+            ],
+            'randomization' => 'fixed', 'seed' => null, 'generator' => null,
+        ];
+        $definition = SessionDefinition::fromArray([
+            ...$definitionSource, 'checksum' => SessionDefinition::checksumFor($definitionSource),
+        ]);
+        $publicId = (string) Str::ulid();
+        DB::table('test_sessions')->insert([
+            'public_id' => $publicId, 'participant_id' => $participant, 'test_type' => 'ist',
+            'attempt_no' => ++$this->attempt,
+            'authorization_id' => (string) Str::ulid(), 'allocation_intent_id' => (string) Str::ulid(),
+            'duration_seconds' => 3600, 'status' => 'in_progress', 'answers_revision' => 0,
+            'started_at' => '2026-09-08 03:00:00.000000+07:00', 'ends_at' => '2026-09-08 04:00:00.000000+07:00',
+            'current_segment_index' => 0,
+            'current_segment_became_current_at' => '2026-09-08 03:00:00.000000+07:00',
+            'current_segment_started_at' => '2026-09-08 03:00:00.000000+07:00',
+            'session_definition_version' => $definition->version,
+            'session_definition_provenance' => $definition->provenance,
+            'session_definition_checksum' => $definition->checksum,
+            'session_definition_payload' => json_encode($definition->toArray(), JSON_THROW_ON_ERROR),
+        ]);
+
+        return $publicId;
+    }
+
     private function action(callable $clock): AutosaveAssessmentAnswers
     {
         return new AutosaveAssessmentAnswers(

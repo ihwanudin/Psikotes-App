@@ -90,22 +90,48 @@ final class ItemContentVariantMigrationTest extends TestCase
         });
     }
 
-    public function test_down_then_up_restores_the_exact_original_trigger_definition(): void
+    /**
+     * item-delivery reconciliation (2026-09-22, per
+     * database/migrations/2026_09_22_030000_reconcile_item_content_variant_with_timed_segments_guard.php's
+     * own docblock): this used to assert an EXACT round-trip -- down() then
+     * up() on #76's own migration file reproduces byte-identical function
+     * source. That assumed #76 was the only migration ever touching
+     * guard_test_sessions_identity_revision() again after it ran. It is
+     * not: 2026_09_22_010000 (timed-segments) independently extends the
+     * SAME function with its own full-body CREATE OR REPLACE, and the
+     * 030000 reconciliation migration above is now the actual last word on
+     * this function's live definition. Re-running #76's own up() in
+     * isolation reinstalls ONLY #76's pre-segment body -- by design no
+     * longer identical to what was live before, since that live version
+     * also carried segment-awareness #76 knows nothing about. What #76's
+     * own down()/up() toggle can still be held to, and is still verified
+     * here: it correctly adds/removes the `item_content_variant` fragment
+     * from whatever function body it's given. The reconciliation
+     * migration's own exact round-trip is verified separately in
+     * ReconcileItemContentVariantWithTimedSegmentsGuardMigrationTest.
+     */
+    public function test_down_then_up_toggles_item_content_variant_presence_in_the_function(): void
     {
         $this->asOwner(function (): void {
             DB::beginTransaction();
             try {
                 DB::statement("SELECT set_config('app.role','service',true)");
-                $withVariant = $this->functionSource('guard_test_sessions_identity_revision');
-                $this->assertStringContainsString('item_content_variant', $withVariant);
+                $this->assertStringContainsString(
+                    'item_content_variant',
+                    $this->functionSource('guard_test_sessions_identity_revision'),
+                );
 
                 $this->runMigration('down');
-                $withoutColumn = $this->functionSource('guard_test_sessions_identity_revision');
-                $this->assertStringNotContainsString('item_content_variant', $withoutColumn);
-                $this->assertNotSame($withVariant, $withoutColumn);
+                $this->assertStringNotContainsString(
+                    'item_content_variant',
+                    $this->functionSource('guard_test_sessions_identity_revision'),
+                );
 
                 $this->runMigration('up');
-                $this->assertSame($withVariant, $this->functionSource('guard_test_sessions_identity_revision'));
+                $this->assertStringContainsString(
+                    'item_content_variant',
+                    $this->functionSource('guard_test_sessions_identity_revision'),
+                );
             } finally {
                 DB::rollBack();
             }

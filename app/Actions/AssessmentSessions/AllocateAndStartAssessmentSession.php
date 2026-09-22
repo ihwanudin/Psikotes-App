@@ -185,6 +185,12 @@ final class AllocateAndStartAssessmentSession
                     AssessmentSessionErrorCode::AutosaveRevisionGap,
                     AssessmentSessionErrorCode::MutationPayloadMismatch,
                     AssessmentSessionErrorCode::InvalidAnswerBatch,
+                    // Timed-segments stage 4/5 additions (SubtestNext/autosave's
+                    // own range check) -- same reasoning as every other arm in
+                    // this group: belongs to a different endpoint's policy,
+                    // can never be produced by this call site's decide() call.
+                    AssessmentSessionErrorCode::InvalidSessionTransition,
+                    AssessmentSessionErrorCode::ItemOutsideCurrentSegment,
                     null => null,
                 },
             );
@@ -220,7 +226,7 @@ final class AllocateAndStartAssessmentSession
             null,
             null,
             $serverTime,
-            $definition->totalDurationSeconds,
+            $this->sessionDurationSeconds($definition),
         );
         $deadline = $this->deadlinePolicy->evaluateAnswerWrite($start->status, $start->endsAt, $serverTime);
         if (! $deadline->accepted) {
@@ -569,7 +575,7 @@ final class AllocateAndStartAssessmentSession
             'attempt_no' => $allocation->attempt->attemptNumber,
             'authorization_id' => $allocation->attempt->authorizationId,
             'allocation_intent_id' => $allocation->intentId,
-            'duration_seconds' => $definition->totalDurationSeconds,
+            'duration_seconds' => $this->sessionDurationSeconds($definition),
             'status' => AssessmentSessionStatus::Created->value,
             'answers_revision' => 0,
             'session_definition_version' => $definition->version,
@@ -697,12 +703,35 @@ final class AllocateAndStartAssessmentSession
         if ($definition->version !== (string) $session['session_definition_version']
             || $definition->provenance !== (string) $session['session_definition_provenance']
             || $definition->checksum !== (string) $session['session_definition_checksum']
-            || $definition->totalDurationSeconds !== (int) ($session['duration_seconds'] ?? 0)
+            || $this->sessionDurationSeconds($definition) !== (int) ($session['duration_seconds'] ?? 0)
             || $definition->instrument->value !== (string) ($session['test_type'] ?? '')) {
             throw new InvalidAssessmentSessionState('Stored session definition identity is inconsistent.');
         }
 
         return $definition;
+    }
+
+    /**
+     * F2 timed-segments stage 3 (2026-09-22), revision 1 of
+     * tasks/handoffs/f2/timed-segments-plan.md: test_sessions.duration_seconds
+     * (and the value fed into AssessmentSessionStateMachine::start(), which
+     * computes ends_at = now + this value for a brand-new session) must
+     * cover every segment's reading gap on top of its timed duration --
+     * otherwise a session could expire mid-segment through no fault of the
+     * participant's pacing. Unconditional: when every segment's
+     * reading_cap_seconds is 0 (every instrument today, since P8 is still
+     * open and no catalog sets a real value yet), this is exactly
+     * $definition->totalDurationSeconds, today's behaviour reproduced
+     * exactly. No trigger/CHECK change was needed for this formula --
+     * ends_at is computed entirely in application code (this value), never
+     * by the database; see guard_test_sessions_identity_revision()'s
+     * participant-role branch, which only fires for a write path this
+     * codebase never actually uses (every test_sessions write goes through
+     * the service role).
+     */
+    private function sessionDurationSeconds(SessionDefinition $definition): int
+    {
+        return $definition->totalDurationSeconds + $definition->totalReadingCapSeconds;
     }
 
     /** @return array<string, mixed> */
