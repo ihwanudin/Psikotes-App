@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Feature\Reports\Concerns\SeedsSignedReportCase;
 use Tests\TestCase;
 
@@ -303,6 +304,62 @@ final class ReportGenerationPageTest extends TestCase
 
         $preview->assertSet('ready', true)->assertDontSee(SignedReportDataset::REPORT_NUMBER_NOT_YET_ISSUED);
         $this->assertSame($countAfterFirstGenerate, DB::table('report_documents')->count(), 'A preview must never insert a ledger row.');
+    }
+
+    // -----------------------------------------------------------------
+    // Addition 1: content-check generate() for SuperAdmin + CentralAdmin
+    // (closes a pre-existing gap — generate() was only tested as
+    // psychologist; also covers the new central_admin role)
+    // -----------------------------------------------------------------
+
+    /** @return iterable<string, array{AdminRole}> */
+    public static function nonPsychologistReportGenerators(): iterable
+    {
+        yield 'super admin' => [AdminRole::SuperAdmin];
+        yield 'central admin' => [AdminRole::CentralAdmin];
+    }
+
+    #[DataProvider('nonPsychologistReportGenerators')]
+    public function test_non_psychologist_can_generate_signed_report_without_internal_only_material(AdminRole $role): void
+    {
+        $psychologist = $this->reportPsychologist();
+        $case = $this->createReportCase();
+        $this->signCase($case, $psychologist);
+        $this->seedSubmittedSession($case);
+        $this->seedDassResult($case, 'Ringan', now()->subDay()->toDateTimeString());
+
+        $admin = $this->admin($role);
+        $this->actingAs($admin, 'admin');
+        $this->app->instance(SignedReportDataset::class, $this->completeDataset());
+
+        $component = Livewire::test(ReportGeneration::class, ['case' => $case->public_id])
+            ->assertSet('ready', true)
+            ->call('generate');
+
+        $published = $component->get('published');
+        $this->assertIsArray($published);
+        $this->assertNotSame('', $published['url']);
+
+        $files = Storage::disk('reports')->allFiles();
+        $this->assertCount(1, $files);
+
+        $pdfContent = (string) Storage::disk('reports')->get($files[0]);
+        $this->assertStringStartsWith('%PDF-', $pdfContent);
+
+        // Same assertions as HppReportRenderingTest::test_hpp_template_never_prints_internal_only_material()
+        $this->assertStringNotContainsString('Subskala', $pdfContent);
+        $this->assertStringNotContainsString('Depresi', $pdfContent);
+        $this->assertStringNotContainsString('INTEGRASI', $pdfContent);
+        $this->assertStringNotContainsString('Validitas Sesi', $pdfContent);
+        $this->assertStringNotContainsString('Kraepelin', $pdfContent);
+        $this->assertStringNotContainsString('PAPI', $pdfContent);
+        $this->assertStringNotContainsString('RMIB', $pdfContent);
+
+        // Verify ledger row was created with correct admin
+        $row = DB::table('report_documents')->where('object_key', $files[0])->sole();
+        $this->assertSame('hpp', $row->document_type);
+        $this->assertSame((int) $case->id, (int) $row->assessment_case_id);
+        $this->assertMatchesRegularExpression('#^HPP/\d{4}/\d{2}/\d{4}$#', $row->report_number);
     }
 
     private function datasetWithRealReportNumberLookup(): SignedReportDataset

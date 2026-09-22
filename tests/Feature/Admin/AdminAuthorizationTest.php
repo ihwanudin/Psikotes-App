@@ -141,6 +141,7 @@ final class AdminAuthorizationTest extends TestCase
     public static function adminRoles(): iterable
     {
         yield 'super admin' => [AdminRole::SuperAdmin, 'super_admin', false];
+        yield 'central admin' => [AdminRole::CentralAdmin, 'central_admin', false];
         yield 'branch admin' => [AdminRole::BranchAdmin, 'branch_admin', true];
         yield 'staff' => [AdminRole::Staff, 'staff', true];
         yield 'psychologist' => [AdminRole::Psychologist, 'psychologist', false];
