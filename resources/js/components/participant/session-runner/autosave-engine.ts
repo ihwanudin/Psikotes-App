@@ -30,9 +30,19 @@ export type AutosaveItem = { itemNo: number; value: unknown };
 
 export type AutosaveSendOutcome =
     | {
+          // No receivedAt/timestamp field here on purpose: the real
+          // POST /sessions/:id/answers success response
+          // (session_id, status, replayed, answers_revision,
+          // accepted_item_numbers) never sends one, and CLAUDE.md
+          // forbids the client inventing server-authoritative time.
+          // An earlier version of this type required one and a
+          // client-side capture time was used to fill it -- Lead's
+          // 2026-09-21 review caught that a field named receivedAt
+          // holding a device clock reading would eventually be
+          // misread as server fact. Removed rather than left optional,
+          // since nothing in resources/js/ has ever read it.
           type: 'accepted';
           revision: number;
-          receivedAt: string;
           acceptedItemNos: number[];
       }
     | { type: 'stale_revision' }
@@ -40,6 +50,23 @@ export type AutosaveSendOutcome =
     | { type: 'payload_mismatch' }
     | { type: 'session_closed' }
     | { type: 'deadline_exceeded' }
+    /** SESSION_NOT_FOUND (404) / SESSION_NOT_STARTED (409) — Lead's
+     * 2026-09-21 HTTP transport review: terminal, same as
+     * `session_closed`/`deadline_exceeded` (no requeue, no retry), but
+     * ALSO blocks any further `queueChange` the same way `needsReload`
+     * does — unlike a revision desync, there is no `reload()` that can
+     * recover a session that doesn't exist or was never started, so
+     * pretending one is available would be misleading. See `terminal`
+     * below. */
+    | { type: 'not_started' }
+    | { type: 'not_found' }
+    /** INVALID_ANSWER_BATCH (422) — a client-side bug (a malformed
+     * item_no/value reached the server), not a connectivity problem.
+     * Lead's 2026-09-21 instruction: never retry the same payload (an
+     * unfixed bug would retry-loop forever and hammer the server), but
+     * this is per-BATCH, not terminal for the engine — new edits (a
+     * fresh batch) are still accepted normally afterward. */
+    | { type: 'invalid_batch' }
     | { type: 'network_error' };
 
 export type AutosaveBatch = {
@@ -59,7 +86,6 @@ export type FlushResult =
     | {
           status: 'accepted';
           revision: number;
-          receivedAt: string;
           acceptedItemNos: number[];
       }
     | { status: 'stale_revision' }
@@ -67,6 +93,11 @@ export type FlushResult =
     | { status: 'payload_mismatch' }
     | { status: 'session_closed' }
     | { status: 'deadline_exceeded' }
+    /** See AutosaveSendOutcome's matching variants for the terminal-vs-
+     * per-batch distinction between these three. */
+    | { status: 'not_started' }
+    | { status: 'not_found' }
+    | { status: 'invalid_batch' }
     | { status: 'network_error' };
 
 export type AutosaveEngineOptions = {
@@ -82,20 +113,34 @@ export type AutosaveEngineOptions = {
 export type AutosaveEngine = {
     /** Queues a local edit. Throws if the engine currently needs a reload
      * (see module doc) — the caller must not let the participant keep
-     * editing blind against a known-desynced revision. */
+     * editing blind against a known-desynced revision. A no-op (not a
+     * throw) once the engine has hit a terminal outcome
+     * (`not_found`/`not_started` — see AutosaveSendOutcome's doc): this
+     * is called directly from UI event handlers, so a session that is
+     * already known unusable is silently ignored here rather than
+     * surfaced as an uncaught exception; check `isTerminal()` to show
+     * the session's terminal state instead. */
     queueChange: (itemNo: number, value: unknown) => void;
     hasPendingChanges: () => boolean;
     isFlushing: () => boolean;
     needsReload: () => boolean;
+    /** True once a `not_found`/`not_started` outcome has been seen —
+     * unlike `needsReload`, there is no `reload()` call that can recover
+     * from this; the caller should show the session's terminal state and
+     * stop offering to retry. */
+    isTerminal: () => boolean;
     /** Sends the current pending batch, or retries the last batch that
      * failed with a network error. No-ops (`skipped`) when there is
-     * nothing to send and no retry pending. */
+     * nothing to send and no retry pending. Once terminal, short-circuits
+     * to the same terminal status every time without contacting the
+     * server again. */
     flush: () => Promise<FlushResult>;
     getRevision: () => number;
     /** Resets the engine to a freshly reloaded server revision and clears
      * `needsReload`. Does not resend or discard queued local edits made
      * before the reload was needed — those remain pending so nothing the
-     * participant typed is silently dropped. */
+     * participant typed is silently dropped. Does not clear a terminal
+     * outcome — there is nothing to reload into for those. */
     reload: (revision: number) => void;
 };
 
@@ -107,8 +152,25 @@ export function createAutosaveEngine(
     let retriableBatch: AutosaveBatch | null = null;
     let inFlight = false;
     let needsReloadFlag = false;
+    let terminalStatus: 'not_started' | 'not_found' | null = null;
 
     function queueChange(itemNo: number, value: unknown): void {
+        if (terminalStatus !== null) {
+            // A no-op, not a throw (Lead's 2026-09-21 review): this is
+            // called directly from a UI event handler (the participant
+            // picking an answer), so throwing here would surface as an
+            // uncaught exception in the participant's hands. The
+            // session's terminal state is already visible to the caller
+            // via isTerminal()/lastResult, so silently dropping this
+            // queueChange (never adding it to pendingChanges, since a
+            // terminal session will never send anything again) is
+            // correct — whatever the participant picked still lives in
+            // the CALLER's own separate local UI state (e.g. the
+            // instrument runner's own nav/group state), which this
+            // engine has no involvement in and never touches either way.
+            return;
+        }
+
         if (needsReloadFlag) {
             throw new Error(
                 'autosave: engine needs reload() before accepting more changes',
@@ -127,6 +189,10 @@ export function createAutosaveEngine(
     }
 
     async function flush(): Promise<FlushResult> {
+        if (terminalStatus !== null) {
+            return { status: terminalStatus };
+        }
+
         if (needsReloadFlag) {
             return { status: 'needs_reload' };
         }
@@ -179,7 +245,6 @@ export function createAutosaveEngine(
                 return {
                     status: 'accepted',
                     revision: outcome.revision,
-                    receivedAt: outcome.receivedAt,
                     acceptedItemNos: outcome.acceptedItemNos,
                 };
             case 'stale_revision':
@@ -205,6 +270,28 @@ export function createAutosaveEngine(
                 retriableBatch = null;
 
                 return { status: 'deadline_exceeded' };
+            case 'not_started':
+            case 'not_found':
+                // Terminal (Lead's 2026-09-21 instruction): the session
+                // doesn't exist or was never started, so there is nothing
+                // to requeue against and no reload that could fix it —
+                // every later queueChange/flush must keep reporting this
+                // same status without touching the server again.
+                retriableBatch = null;
+                terminalStatus = outcome.type;
+
+                return { status: outcome.type };
+            case 'invalid_batch':
+                // A client-side bug rejected this exact payload, not a
+                // connectivity problem — Lead's 2026-09-21 instruction:
+                // never resend the same batch (an unfixed bug would
+                // retry-loop forever). Deliberately NOT requeued into
+                // pendingChanges, unlike stale_revision/revision_gap
+                // above. Not terminal: a genuinely new edit (a fresh
+                // queueChange call) is still accepted normally.
+                retriableBatch = null;
+
+                return { status: 'invalid_batch' };
             case 'network_error':
                 retriableBatch = batch;
 
@@ -217,6 +304,7 @@ export function createAutosaveEngine(
         hasPendingChanges: () => pendingChanges.size > 0,
         isFlushing: () => inFlight,
         needsReload: () => needsReloadFlag,
+        isTerminal: () => terminalStatus !== null,
         flush,
         getRevision: () => currentRevision,
         reload: (revision: number) => {
