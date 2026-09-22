@@ -11,7 +11,7 @@ final class SweepExpiredAssessmentSessionsCommand extends Command
 {
     protected $signature = 'sessions:sweep-expired {--limit=200}';
 
-    protected $description = 'Transition overdue in_progress assessment sessions to expired -- housekeeping only, never scores anything';
+    protected $description = 'Transition overdue in_progress assessment sessions to expired, scoring each one (IST/PAPI/RMIB) in the same transaction as its seal';
 
     public function handle(SweepExpiredAssessmentSessions $sweep): int
     {

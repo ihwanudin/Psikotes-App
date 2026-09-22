@@ -757,6 +757,24 @@ return new class extends Migration
                 RETURN NEW;
             END;
             SQL;
+        // ADR-0032 PR2 (2026-09-23): the guard function's own body legitimately
+        // changes after 2026_09_23_000100_allow_expired_sessions_in_generic_
+        // instrument_result_ledger.php's CREATE OR REPLACE -- same "owner
+        // rerun" reasoning as the column/constraint tolerances above. Widens
+        // the accepted source session status set and reads the submitted_at
+        // comparison through COALESCE(submitted_at, expired_at); nothing else
+        // in the body changes.
+        $widenedParentBody = str_replace(
+            [
+                "session.status IN ('submitted','scored')",
+                'session.submitted_at = NEW.submitted_at',
+            ],
+            [
+                "session.status IN ('submitted','scored','expired')",
+                'COALESCE(session.submitted_at, session.expired_at) = NEW.submitted_at',
+            ],
+            $parentBody,
+        );
         $childBody = <<<'SQL'
             BEGIN
                 IF TG_OP <> 'INSERT' THEN
@@ -765,8 +783,9 @@ return new class extends Migration
                 RETURN NEW;
             END;
             SQL;
-        if ($this->normalize($triggers['generic_instrument_results_guard']->prosrc)
-                !== $this->normalize($parentBody)
+        $actualParentBody = $this->normalize($triggers['generic_instrument_results_guard']->prosrc);
+        if (($actualParentBody !== $this->normalize($parentBody)
+                && $actualParentBody !== $this->normalize($widenedParentBody))
             || $this->normalize($triggers['generic_instrument_result_sources_guard']->prosrc)
                 !== $this->normalize($childBody)) {
             throw new RuntimeException('Generic instrument result ledger guard body is not exact.');

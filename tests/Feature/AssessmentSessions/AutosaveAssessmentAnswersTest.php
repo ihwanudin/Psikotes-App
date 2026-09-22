@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\AssessmentSessions;
 
+use App\Actions\AssessmentResults\ScoreAssessmentSession;
 use App\Actions\AssessmentSessions\AutosaveAssessmentAnswers;
 use App\Actions\AssessmentSessions\SealExpiredAssessmentSession;
 use App\Domain\AssessmentSessions\AssessmentAutosavePolicy;
@@ -156,7 +157,7 @@ final class AutosaveAssessmentAnswersTest extends OrganizationPaymentTestCase
         $this->assertTrue($accepted->accepted);
 
         $lateParticipant = $this->participant();
-        $late = $this->sessionPublicId($lateParticipant);
+        $late = $this->sessionPublicId($lateParticipant, testType: 'kraepelin');
         $rejected = $this->action(fn (): DateTimeImmutable => new DateTimeImmutable('2026-09-08T04:00:00.000001+07:00'))
             ->execute($lateParticipant, $late, (string) Str::ulid(), 1, [['item_no' => 1, 'value' => 'A']]);
 
@@ -337,7 +338,10 @@ final class AutosaveAssessmentAnswersTest extends OrganizationPaymentTestCase
         return new AutosaveAssessmentAnswers(
             $this->app->make(RlsContextRunner::class),
             new AssessmentAutosavePolicy,
-            new SealExpiredAssessmentSession($this->app->make(RlsContextRunner::class)),
+            new SealExpiredAssessmentSession(
+                $this->app->make(RlsContextRunner::class),
+                $this->app->make(ScoreAssessmentSession::class),
+            ),
             $clock(...),
         );
     }
@@ -356,28 +360,49 @@ final class AutosaveAssessmentAnswersTest extends OrganizationPaymentTestCase
         ]);
     }
 
-    private function sessionPublicId(int $participant, ?int $attempt = null, string $status = 'in_progress'): string
-    {
+    private function sessionPublicId(
+        int $participant,
+        ?int $attempt = null,
+        string $status = 'in_progress',
+        string $testType = 'ist',
+    ): string {
         $publicId = (string) Str::ulid();
         $started = $status === 'created' ? null : '2026-09-08 03:00:00.000000+07:00';
         // F2 session-http (2026-09-21): a real S3-allocated session always has
         // this snapshot; AutosaveAssessmentAnswers now reads it to bound
         // item_no against the session's real item count. item_count=10 is
         // generous headroom above every item_no this file's tests use (1-2).
-        $definitionSource = [
+        // ADR-0032 PR2 (2026-09-23): kraepelin gets its own rigid shape --
+        // SessionDefinition::fromArray() requires the canonical 50-column
+        // matrix for it, and it is the one test_type ScoreAssessmentSession
+        // (now wired into the expiry seal) skips entirely, used only by the
+        // one test here that needs a session to actually reach 'expired'
+        // without a real assessment_case/scoring-data fixture.
+        $definitionSource = $testType === 'kraepelin' ? [
+            'instrument' => 'kraepelin', 'version' => 'synthetic-definition-v1',
+            'provenance' => 'synthetic-autosave-test-only', 'total_duration_seconds' => 750,
+            'subtests' => [['code' => 'K', 'duration_seconds' => 750, 'item_count' => 1350]],
+            'randomization' => 'fixed', 'seed' => null,
+            'generator' => [
+                'algorithm' => 'synthetic-generator', 'version' => 'synthetic-v1',
+                'columns' => 50, 'seconds_per_column' => 15,
+                'numbers_per_column' => 28, 'answer_slots_per_column' => 27,
+            ],
+        ] : [
             'instrument' => 'ist', 'version' => 'synthetic-definition-v1',
             'provenance' => 'synthetic-autosave-test-only', 'total_duration_seconds' => 3600,
             'subtests' => [['code' => 'SYN', 'duration_seconds' => 3600, 'item_count' => 10]],
             'randomization' => 'fixed', 'seed' => null, 'generator' => null,
         ];
+        $duration = $definitionSource['total_duration_seconds'];
         $definition = SessionDefinition::fromArray([
             ...$definitionSource, 'checksum' => SessionDefinition::checksumFor($definitionSource),
         ]);
         DB::table('test_sessions')->insert([
-            'public_id' => $publicId, 'participant_id' => $participant, 'test_type' => 'ist',
+            'public_id' => $publicId, 'participant_id' => $participant, 'test_type' => $testType,
             'attempt_no' => $attempt ?? ++$this->attempt,
             'authorization_id' => (string) Str::ulid(), 'allocation_intent_id' => (string) Str::ulid(),
-            'duration_seconds' => 3600, 'status' => $status, 'answers_revision' => 0,
+            'duration_seconds' => $duration, 'status' => $status, 'answers_revision' => 0,
             'started_at' => $started, 'ends_at' => $started === null ? null : '2026-09-08 04:00:00.000000+07:00',
             'submitted_at' => $status === 'submitted' ? '2026-09-08 03:59:00.000000+07:00' : null,
             'session_definition_version' => $definition->version,

@@ -332,7 +332,10 @@ final class AssessmentSessionHttpTest extends OrganizationPaymentTestCase
 
         $this->bindAutosaveClock('2026-09-21T01:00:00.000001+00:00');
         $lateParticipant = $this->participant();
-        $lateSession = $this->sessionRow($lateParticipant, 'in_progress');
+        // ADR-0032 PR2 (2026-09-23): kraepelin -- this session actually
+        // reaches the expiry seal (now wired to score), and this fixture
+        // has no assessment_case_id for a real instrument to score against.
+        $lateSession = $this->sessionRow($lateParticipant, 'in_progress', testType: 'kraepelin');
         $this->withToken($this->token($lateParticipant))->postJson("/api/sessions/{$lateSession}/answers", [
             'mutation_id' => (string) Str::ulid(), 'revision' => 1, 'items' => [['item_no' => 1, 'value' => 'A']],
         ])->assertStatus(409)->assertJsonPath('error.code', 'DEADLINE_EXCEEDED');
@@ -484,7 +487,9 @@ final class AssessmentSessionHttpTest extends OrganizationPaymentTestCase
     {
         $this->bindSubmitClock('2026-09-21T01:00:00.000001+00:00');
         $participant = $this->participant();
-        $session = $this->sessionRow($participant, 'in_progress');
+        // ADR-0032 PR2 (2026-09-23): kraepelin -- see the autosave test
+        // above's identical comment.
+        $session = $this->sessionRow($participant, 'in_progress', testType: 'kraepelin');
 
         $this->withToken($this->token($participant))->postJson("/api/sessions/{$session}/submit")
             ->assertStatus(409)
@@ -523,7 +528,10 @@ final class AssessmentSessionHttpTest extends OrganizationPaymentTestCase
         $this->app->instance(AutosaveAssessmentAnswers::class, new AutosaveAssessmentAnswers(
             $this->app->make(RlsContextRunner::class),
             new AssessmentAutosavePolicy,
-            new SealExpiredAssessmentSession($this->app->make(RlsContextRunner::class)),
+            new SealExpiredAssessmentSession(
+                $this->app->make(RlsContextRunner::class),
+                $this->app->make(ScoreAssessmentSession::class),
+            ),
             fn (): DateTimeImmutable => new DateTimeImmutable($iso),
         ));
     }
@@ -533,7 +541,10 @@ final class AssessmentSessionHttpTest extends OrganizationPaymentTestCase
         $this->app->instance(SubmitAssessmentSession::class, new SubmitAssessmentSession(
             $this->app->make(RlsContextRunner::class),
             new AssessmentSessionSubmitPolicy,
-            new SealExpiredAssessmentSession($this->app->make(RlsContextRunner::class)),
+            new SealExpiredAssessmentSession(
+                $this->app->make(RlsContextRunner::class),
+                $this->app->make(ScoreAssessmentSession::class),
+            ),
             $this->app->make(ScoreAssessmentSession::class),
             fn (): DateTimeImmutable => new DateTimeImmutable($iso),
         ));

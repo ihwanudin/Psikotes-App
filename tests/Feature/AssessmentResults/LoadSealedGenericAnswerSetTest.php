@@ -8,6 +8,8 @@ use App\Domain\AssessmentResults\SealedGenericAnswerSet;
 use App\Domain\AssessmentSessions\SessionDefinition;
 use App\Security\RlsContextRunner;
 use App\Services\AssessmentResults\LoadSealedGenericAnswerSet;
+use DateTimeImmutable;
+use DateTimeZone;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Illuminate\Support\Facades\DB;
@@ -134,13 +136,42 @@ final class LoadSealedGenericAnswerSetTest extends OrganizationPaymentTestCase
 
     public function test_open_terminal_and_unbound_sessions_fail_closed(): void
     {
-        foreach (['in_progress', 'expired', 'void'] as $status) {
+        // ADR-0032 PR2 (2026-09-23): 'expired' moved OUT of this rejected
+        // list -- it is now a loadable status (psychologist P4), covered
+        // separately by test_expired_sessions_are_readable_via_coalesced_
+        // submitted_at() below. This list stays for statuses that are
+        // still never scoreable.
+        foreach (['in_progress', 'void'] as $status) {
             $sessionId = $this->sealedSession('rmib', $this->completeAnswers(), $status);
             $this->assertInvalid($sessionId);
         }
 
         $unbound = $this->sealedSession('ist', $this->completeAnswers(), bindCase: false);
         $this->assertInvalid($unbound);
+    }
+
+    public function test_expired_sessions_are_readable_via_coalesced_submitted_at(): void
+    {
+        // ADR-0032 PR2 (2026-09-23), psychologist P4: a session that expires
+        // without an explicit submit is still scoreable from whatever
+        // answers already made it in. submitted_at is NULL for 'expired'
+        // (test_sessions_lifecycle_check makes the two mutually exclusive);
+        // the sealed answer set's submittedAt must fall back to expired_at.
+        $sessionId = $this->sealedSession('ist', $this->completeAnswers(), 'expired');
+        $before = DB::table('test_sessions')->where('id', $sessionId)->first();
+
+        $snapshot = $this->load($sessionId);
+
+        $after = DB::table('test_sessions')->where('id', $sessionId)->first();
+        $this->assertSame('ist', $snapshot->instrument->value);
+        $this->assertNull($before->submitted_at);
+        $this->assertNotNull($before->expired_at);
+        $this->assertSame(
+            (new DateTimeImmutable((string) $before->expired_at))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d\TH:i:s.u\Z'),
+            $snapshot->submittedAt,
+        );
+        $this->assertSame($before->status, $after->status);
+        $this->assertSame($before->updated_at, $after->updated_at);
     }
 
     public function test_definition_snapshot_mismatch_fails_closed_without_exposing_authority_values(): void

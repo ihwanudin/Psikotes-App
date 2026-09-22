@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Postgres;
 
+use App\Actions\AssessmentResults\ScoreAssessmentSession;
 use App\Actions\AssessmentSessions\AutosaveAssessmentAnswers;
 use App\Actions\AssessmentSessions\SealExpiredAssessmentSession;
 use App\Domain\AssessmentSessions\AssessmentAutosavePolicy;
@@ -107,7 +108,9 @@ final class AssessmentSessionAutosaveActionTest extends TestCase
             ]);
         $this->assertTrue($accepted->accepted);
 
-        $late = $this->fixture();
+        // ADR-0032 PR2 (2026-09-23): kraepelin -- this one actually reaches
+        // the expiry seal (now wired to score).
+        $late = $this->fixture('kraepelin');
         $rejected = $this->action(fn (): DateTimeImmutable => new DateTimeImmutable('2026-09-08T04:00:00.000001+00:00'))
             ->execute($late['participant'], $late['public_id'], (string) Str::ulid(), 1, [
                 ['item_no' => 1, 'value' => 'A'],
@@ -252,7 +255,7 @@ final class AssessmentSessionAutosaveActionTest extends TestCase
         return new AutosaveAssessmentAnswers(
             app(RlsContextRunner::class),
             new AssessmentAutosavePolicy,
-            new SealExpiredAssessmentSession(app(RlsContextRunner::class)),
+            new SealExpiredAssessmentSession(app(RlsContextRunner::class), app(ScoreAssessmentSession::class)),
             $clock(...),
         );
     }
@@ -277,32 +280,48 @@ final class AssessmentSessionAutosaveActionTest extends TestCase
     }
 
     /** @return array{branch:int,participant:int,session:int,public_id:string} */
-    private function fixture(): array
+    private function fixture(string $testType = 'ist'): array
     {
         $graph = $this->graph();
 
-        return app(RlsContextRunner::class)->runAsService(function () use ($graph): array {
+        return app(RlsContextRunner::class)->runAsService(function () use ($graph, $testType): array {
             // F2 session-http (2026-09-21): a real S3-allocated session
             // always has this snapshot; AutosaveAssessmentAnswers now reads
             // it to bound item_no against the session's real item count.
             // item_count=10 is generous headroom above every item_no this
             // file's tests use (1-2).
-            $definitionSource = [
+            // ADR-0032 PR2 (2026-09-23): kraepelin gets its own rigid shape
+            // (SessionDefinition::fromArray() requires the canonical
+            // 50-column matrix) -- used by tests whose session actually
+            // reaches the expiry seal (now wired to score), which this
+            // fixture never sets up assessment_case_id/scoring data for.
+            $definitionSource = $testType === 'kraepelin' ? [
+                'instrument' => 'kraepelin', 'version' => 'synthetic-definition-v1',
+                'provenance' => 'synthetic-autosave-pg-test-only', 'total_duration_seconds' => 750,
+                'subtests' => [['code' => 'K', 'duration_seconds' => 750, 'item_count' => 1350]],
+                'randomization' => 'fixed', 'seed' => null,
+                'generator' => [
+                    'algorithm' => 'synthetic-generator', 'version' => 'synthetic-v1',
+                    'columns' => 50, 'seconds_per_column' => 15,
+                    'numbers_per_column' => 28, 'answer_slots_per_column' => 27,
+                ],
+            ] : [
                 'instrument' => 'ist', 'version' => 'synthetic-definition-v1',
                 'provenance' => 'synthetic-autosave-pg-test-only', 'total_duration_seconds' => 3600,
                 'subtests' => [['code' => 'SYN', 'duration_seconds' => 3600, 'item_count' => 10]],
                 'randomization' => 'fixed', 'seed' => null, 'generator' => null,
             ];
+            $duration = $definitionSource['total_duration_seconds'];
             $definition = SessionDefinition::fromArray([
                 ...$definitionSource, 'checksum' => SessionDefinition::checksumFor($definitionSource),
             ]);
             $publicId = (string) Str::ulid();
             $session = DB::table('test_sessions')->insertGetId([
                 'public_id' => $publicId, 'participant_id' => $graph['participant'],
-                'test_type' => 'ist', 'attempt_no' => 1,
+                'test_type' => $testType, 'attempt_no' => 1,
                 'authorization_id' => (string) Str::ulid(),
                 'allocation_intent_id' => (string) Str::ulid(),
-                'duration_seconds' => 3600, 'status' => 'in_progress', 'answers_revision' => 0,
+                'duration_seconds' => $duration, 'status' => 'in_progress', 'answers_revision' => 0,
                 'started_at' => '2026-09-08 03:00:00.000000+00',
                 'ends_at' => '2026-09-08 04:00:00.000000+00',
                 'session_definition_version' => $definition->version,

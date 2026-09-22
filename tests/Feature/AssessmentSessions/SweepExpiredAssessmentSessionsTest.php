@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\AssessmentSessions;
 
+use App\Actions\AssessmentResults\ScoreAssessmentSession;
 use App\Actions\AssessmentSessions\SealExpiredAssessmentSession;
 use App\Actions\AssessmentSessions\SweepExpiredAssessmentSessions;
 use App\Contracts\SealsExpiredAssessmentSessions;
@@ -16,13 +17,14 @@ use RuntimeException;
 use Tests\TestCase;
 
 /**
- * F2 (2026-09-21). Housekeeping-only sweep: transitions overdue
- * `in_progress` sessions to `expired`, never scores anything. Extracted
+ * F2 (2026-09-21), scoring wired in ADR-0032 PR2 (2026-09-23). Extracted
  * sealing logic (`SealExpiredAssessmentSession`) is the exact same one
  * `AutosaveAssessmentAnswers`/`SubmitAssessmentSession` use when they
  * discover expiry incidentally -- see those tests for that side; this
  * file covers the sweep's own candidate-selection and per-session
- * isolation behavior.
+ * isolation behavior, deliberately using `kraepelin` fixtures (skipped by
+ * `ScoreAssessmentSession` entirely) so it stays about sweep mechanics, not
+ * scoring -- see `SealExpiredAssessmentSessionScoringTest` for that.
  */
 final class SweepExpiredAssessmentSessionsTest extends TestCase
 {
@@ -84,7 +86,7 @@ final class SweepExpiredAssessmentSessionsTest extends TestCase
         // batch. (Real PostgreSQL concurrent-failure evidence, a sweep
         // racing a participant's own last autosave, is a separate test.)
         $contexts = app(RlsContextRunner::class);
-        $real = new SealExpiredAssessmentSession($contexts);
+        $real = new SealExpiredAssessmentSession($contexts, app(ScoreAssessmentSession::class));
         $sealer = new class($real, $poisonedId) implements SealsExpiredAssessmentSessions
         {
             public function __construct(
@@ -142,7 +144,7 @@ final class SweepExpiredAssessmentSessionsTest extends TestCase
 
         return new SweepExpiredAssessmentSessions(
             $contexts,
-            new SealExpiredAssessmentSession($contexts),
+            new SealExpiredAssessmentSession($contexts, app(ScoreAssessmentSession::class)),
             fn (): DateTimeImmutable => new DateTimeImmutable($iso),
         );
     }
@@ -173,8 +175,15 @@ final class SweepExpiredAssessmentSessionsTest extends TestCase
         // test_type) would otherwise collide across the multiple
         // in_progress fixtures these tests need side by side.
         $publicId = (string) Str::ulid();
+        // ADR-0032 PR2 (2026-09-23): kraepelin, deliberately -- this file is
+        // about the sweep's own candidate-selection and per-session
+        // isolation, not scoring, and these fixtures never set up a
+        // session_definition_payload. Kraepelin is the one supported
+        // test_type ScoreAssessmentSession (now wired into
+        // SealExpiredAssessmentSession::sealWithinTransaction()) skips
+        // entirely, so sealing succeeds without a real answer set.
         $row = [
-            'public_id' => $publicId, 'participant_id' => $this->participant(), 'test_type' => 'ist',
+            'public_id' => $publicId, 'participant_id' => $this->participant(), 'test_type' => 'kraepelin',
             'attempt_no' => ++$this->attempt,
             'authorization_id' => (string) Str::ulid(), 'allocation_intent_id' => (string) Str::ulid(),
             'duration_seconds' => 3600, 'status' => $status, 'answers_revision' => 0,

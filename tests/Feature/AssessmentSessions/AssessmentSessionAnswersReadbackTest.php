@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\AssessmentSessions;
 
+use App\Actions\AssessmentResults\ScoreAssessmentSession;
 use App\Actions\AssessmentSessions\AutosaveAssessmentAnswers;
 use App\Actions\AssessmentSessions\GetAssessmentSessionAnswers;
 use App\Actions\AssessmentSessions\SealExpiredAssessmentSession;
@@ -209,7 +210,10 @@ final class AssessmentSessionAnswersReadbackTest extends OrganizationPaymentTest
         $action = new AutosaveAssessmentAnswers(
             $this->app->make(RlsContextRunner::class),
             new AssessmentAutosavePolicy,
-            new SealExpiredAssessmentSession($this->app->make(RlsContextRunner::class)),
+            new SealExpiredAssessmentSession(
+                $this->app->make(RlsContextRunner::class),
+                $this->app->make(ScoreAssessmentSession::class),
+            ),
             fn (): DateTimeImmutable => new DateTimeImmutable(self::DEFAULT_NOW),
         );
         $result = $action->execute($participant, $sessionPublicId, (string) Str::ulid(), $revision, $items);
