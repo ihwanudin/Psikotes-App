@@ -12,7 +12,7 @@ use LogicException;
 final class RlsContextRunner implements RunsRlsContext
 {
     /** @var list<string> */
-    private const array ADMIN_ROLES = ['super_admin', 'branch_admin', 'staff', 'psychologist'];
+    private const array ADMIN_ROLES = ['super_admin', 'central_admin', 'branch_admin', 'staff', 'psychologist'];
 
     private ?RlsContext $current = null;
 

@@ -52,15 +52,20 @@ final class Admin extends Authenticatable implements FilamentUser, ProvidesRlsCo
             AdminAbility::AccessPanel,
             AdminAbility::ViewParticipants => true,
             AdminAbility::ManageAdmins,
-            AdminAbility::ManageTestPackages,
             AdminAbility::ManagePaymentMethods,
             AdminAbility::ManageIntegrations => $this->role === AdminRole::SuperAdmin,
+            AdminAbility::ManageTestPackages => in_array(
+                $this->role,
+                [AdminRole::SuperAdmin, AdminRole::CentralAdmin],
+                true,
+            ),
             AdminAbility::EditParticipants => in_array(
                 $this->role,
-                [AdminRole::SuperAdmin, AdminRole::BranchAdmin, AdminRole::Staff],
+                [AdminRole::SuperAdmin, AdminRole::CentralAdmin, AdminRole::BranchAdmin, AdminRole::Staff],
                 true,
             ),
             AdminAbility::VerifyPayments => $this->role === AdminRole::SuperAdmin
+                || $this->role === AdminRole::CentralAdmin
                 || ($this->can_verify_payments
                     && in_array($this->role, [AdminRole::BranchAdmin, AdminRole::Staff], true)),
             AdminAbility::ViewDass => $this->role === AdminRole::Psychologist,
@@ -72,7 +77,7 @@ final class Admin extends Authenticatable implements FilamentUser, ProvidesRlsCo
             // is its own increment, not an addition to this match arm.
             AdminAbility::GenerateReports => in_array(
                 $this->role,
-                [AdminRole::Psychologist, AdminRole::SuperAdmin],
+                [AdminRole::Psychologist, AdminRole::SuperAdmin, AdminRole::CentralAdmin],
                 true,
             ),
         };
@@ -82,6 +87,7 @@ final class Admin extends Authenticatable implements FilamentUser, ProvidesRlsCo
     {
         return match ($this->role) {
             AdminRole::SuperAdmin => new RlsContext('super_admin'),
+            AdminRole::CentralAdmin => new RlsContext('central_admin'),
             AdminRole::BranchAdmin => new RlsContext('branch_admin', $this->requiredBranchId()),
             AdminRole::Staff => new RlsContext('staff', $this->requiredBranchId()),
             AdminRole::Psychologist => new RlsContext('psychologist'),
