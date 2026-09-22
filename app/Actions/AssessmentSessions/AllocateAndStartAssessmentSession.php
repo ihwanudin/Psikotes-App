@@ -175,6 +175,12 @@ final class AllocateAndStartAssessmentSession
                     AssessmentSessionErrorCode::AutosaveRevisionGap,
                     AssessmentSessionErrorCode::MutationPayloadMismatch,
                     AssessmentSessionErrorCode::InvalidAnswerBatch,
+                    // Timed-segments stage 4/5 additions (SubtestNext/autosave's
+                    // own range check) -- same reasoning as every other arm in
+                    // this group: belongs to a different endpoint's policy,
+                    // can never be produced by this call site's decide() call.
+                    AssessmentSessionErrorCode::InvalidSessionTransition,
+                    AssessmentSessionErrorCode::ItemOutsideCurrentSegment,
                     null => null,
                 },
             );

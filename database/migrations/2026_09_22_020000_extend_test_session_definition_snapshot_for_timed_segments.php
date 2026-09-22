@@ -78,7 +78,7 @@ return new class extends Migration
             $driver = DB::getDriverName();
             if ($driver === 'pgsql') {
                 DB::statement('LOCK TABLE test_sessions IN ACCESS EXCLUSIVE MODE');
-                DB::unprepared($this->postgresSnapshotFunctionBody(timedSegments: true));
+                $this->executeUnprepared($this->postgresSnapshotFunctionBody(timedSegments: true));
             } elseif ($driver === 'sqlite') {
                 $this->installSqliteSnapshotTriggers($this->sqliteSnapshotValidExpression(timedSegments: true));
             }
@@ -91,7 +91,7 @@ return new class extends Migration
             $driver = DB::getDriverName();
             if ($driver === 'pgsql') {
                 DB::statement('LOCK TABLE test_sessions IN ACCESS EXCLUSIVE MODE');
-                DB::unprepared($this->postgresSnapshotFunctionBody(timedSegments: false));
+                $this->executeUnprepared($this->postgresSnapshotFunctionBody(timedSegments: false));
             } elseif ($driver === 'sqlite') {
                 $this->installSqliteSnapshotTriggers($this->sqliteSnapshotValidExpression(timedSegments: false));
             }
@@ -376,11 +376,11 @@ return new class extends Migration
     {
         DB::unprepared('DROP TRIGGER IF EXISTS test_sessions_definition_snapshot_insert_guard');
         DB::unprepared('DROP TRIGGER IF EXISTS test_sessions_definition_snapshot_update_guard');
-        DB::unprepared("CREATE TRIGGER test_sessions_definition_snapshot_insert_guard
+        $this->executeUnprepared("CREATE TRIGGER test_sessions_definition_snapshot_insert_guard
             BEFORE INSERT ON test_sessions FOR EACH ROW
             WHEN COALESCE(({$valid['insert']}), 0) = 0
             BEGIN SELECT RAISE(ABORT, 'test session definition snapshot is invalid'); END");
-        DB::unprepared("CREATE TRIGGER test_sessions_definition_snapshot_update_guard
+        $this->executeUnprepared("CREATE TRIGGER test_sessions_definition_snapshot_update_guard
             BEFORE UPDATE ON test_sessions FOR EACH ROW
             WHEN NEW.session_definition_version IS NOT OLD.session_definition_version
               OR NEW.session_definition_provenance IS NOT OLD.session_definition_provenance
@@ -388,6 +388,24 @@ return new class extends Migration
               OR NEW.session_definition_payload IS NOT OLD.session_definition_payload
               OR COALESCE(({$valid['update']}), 0) = 0
             BEGIN SELECT RAISE(ABORT, 'test session definition snapshot is immutable or invalid'); END");
+    }
+
+    /**
+     * Same reasoning as the sibling 2026_09_10_000100 migration's own
+     * executeSqliteStatement(): these strings are always fully composed
+     * from this class's own literal SQL fragments (heredocs/ternaries
+     * between literal branches), never external input, but they cross a
+     * private-method-return boundary that PHPStan's literal-string check on
+     * Connection::unprepared() can't trace through. Going straight to the
+     * PDO handle sidesteps that without loosening any type or suppressing
+     * the check -- same established pattern, now reused for both
+     * PostgreSQL and SQLite in this migration.
+     */
+    private function executeUnprepared(string $sql): void
+    {
+        if (DB::connection()->getPdo()->exec($sql) === false) {
+            throw new RuntimeException('Unable to execute a timed-segments snapshot enforcement statement.');
+        }
     }
 
     /** @return array{insert: string, update: string} */
