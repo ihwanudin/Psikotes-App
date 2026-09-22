@@ -15,6 +15,7 @@ use App\Services\AssessmentSessions\DatabaseAssessmentSessionDefinitionAuthority
 use App\Services\AssessmentSessions\KraepelinItemContentReader;
 use App\Services\AssessmentSessions\PapiItemContentReader;
 use App\Services\AssessmentSessions\RegistryAssessmentItemContentAuthority;
+use App\Services\AssessmentSessions\RmibItemContentReader;
 use App\Services\Identity\ManualReviewIdentityMatcher;
 use App\Services\Integrations\GenericAssessmentResultCallbackConfiguration;
 use App\Services\Notifications\N8nNotifier;
@@ -50,17 +51,18 @@ class AppServiceProvider extends ServiceProvider
         );
         // Fail-closed by design (Lead sign-off, 2026-09-21): an instrument
         // with no entry below rejects with ASSESSMENT_ITEM_CONTENT_UNAVAILABLE
-        // rather than falling through to a permissive default. Kraepelin
-        // (Stage 2, 2026-09-21) and PAPI (Stage 2 continuation, same day)
-        // are the only real readers so far -- ist/rmib still have none, so
-        // those two instruments still reject the same way Stage 1 shipped
-        // them. Stage 2 only ever ADDS entries to this map; it never
-        // changes RegistryAssessmentItemContentAuthority's default.
+        // rather than falling through to a permissive default. Kraepelin,
+        // PAPI, and RMIB (Stage 2 continuation, 2026-09-21) are the only
+        // real readers so far -- ist still has none, so it still rejects
+        // the same way Stage 1 shipped it. Stage 2 only ever ADDS entries
+        // to this map; it never changes RegistryAssessmentItemContentAuthority's
+        // default.
         $this->app->bind(
             AssessmentItemContentAuthority::class,
             fn (): RegistryAssessmentItemContentAuthority => new RegistryAssessmentItemContentAuthority([
                 'kraepelin' => new KraepelinItemContentReader,
                 'papi' => new PapiItemContentReader,
+                'rmib' => new RmibItemContentReader,
             ]),
         );
         $this->app->bind(ReportSupplementalData::class, ReportDocumentSupplementalData::class);

@@ -30,6 +30,12 @@ final class InstrumentSeeder extends Seeder
         // (that one holds the scoring dimension mapping). See
         // app/Services/AssessmentSessions/PapiItemContentReader.php.
         'papi_items' => 'papi_items.json',
+        // F2 item-delivery Stage 2 continuation (2026-09-21): the raw job
+        // labels (both gender tracks), kept as a separate instrument_versions
+        // row from 'rmib' above (that one holds the scoring
+        // categories/rotation). See
+        // app/Services/AssessmentSessions/RmibItemContentReader.php.
+        'rmib_items' => 'rmib_items.json',
         'dass21' => 'dass21.json',
         'reporting' => 'reporting.json',
         'aspect_sources' => 'aspect_sources.json',
