@@ -74,10 +74,12 @@ return new class extends Migration
         // consistent with the approving-role recommendation in the plan.
         DB::statement(<<<'SQL'
             CREATE POLICY bridge_funding_grants_read ON bridge_funding_grants FOR SELECT TO psikotes_runtime
-                USING (app_private.app_role() IN ('service', 'super_admin'));
+                USING (app_private.app_role() IN ('service', 'super_admin'))
+            SQL);
+        DB::statement(<<<'SQL'
             CREATE POLICY bridge_funding_grants_service_write ON bridge_funding_grants FOR ALL TO psikotes_runtime
                 USING (app_private.app_role() = 'service')
-                WITH CHECK (app_private.app_role() = 'service');
+                WITH CHECK (app_private.app_role() = 'service')
             SQL);
     }
 
