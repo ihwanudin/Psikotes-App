@@ -5,10 +5,8 @@ from pathlib import Path
 
 DATA = Path(__file__).parents[3] / "database" / "seeders" / "data"
 
-# FA/WU are a separate PR (image crops need visual review) - see
-# extract_ist_items.py's module docstring. Everything here covers the
-# text-based subtests this PR actually produces.
 TEXT_SUBTEST_COUNTS = {"SE": 20, "WA": 20, "AN": 20, "GE": 16, "RA": 20, "ZR": 20, "ME": 20}
+ALL_SUBTEST_COUNTS = TEXT_SUBTEST_COUNTS | {"FA": 20, "WU": 20}
 LETTERED_SUBTESTS = {"SE", "WA", "AN", "ME"}
 FILL_IN_SUBTESTS = {"GE": "fill_in_word", "RA": "fill_in_numeric", "ZR": "fill_in_numeric"}
 
@@ -26,10 +24,10 @@ class IstItemsGateTest(unittest.TestCase):
     tasks/handoffs/decisions/owner-decisions-2026-09-21.md item 21). Only
     ME's status/word_list fields and the top-level status changed; every
     other subtest and ME's own items/instructions are byte-identical to the
-    prior pin. This pin covers the TEXT-ONLY shape - it will need
-    re-pinning once FA/WU (a separate PR) are merged in, since that changes
-    the file's bytes. FA/WU are covered by a separate test module once that
-    PR lands, not here."""
+    prior pin. Re-pinned again when the already-reviewed FA/WU image subtests
+    from PR #73 were merged into main's ME-final baseline with
+    merge_ist_fa_wu_subtests.py; FA/WU's own structural gates live in
+    test_f0_ist_fa_wu_items.py."""
 
     def load(self):
         return json.loads((DATA / "ist_items.json").read_text(encoding="utf-8"))
@@ -39,10 +37,10 @@ class IstItemsGateTest(unittest.TestCase):
 
     def test_bytes_are_deterministic(self):
         payload = (DATA / "ist_items.json").read_bytes()
-        self.assertEqual(len(payload), 36105)
+        self.assertEqual(len(payload), 41828)
         self.assertEqual(
             hashlib.sha256(payload).hexdigest(),
-            "f4b3015fc1e5dd8c24c622cc5e10c3e8a4c03fc99b183b235be9fc8e2b6b6304",
+            "544d852ed7d92a03cc495c682bc0d4a6ebbcb1392ca42fe59dba921e4c585b2d",
         )
         self.assertEqual(payload, json.dumps(self.load(), ensure_ascii=False, indent=2).encode("utf-8"))
 
@@ -50,33 +48,32 @@ class IstItemsGateTest(unittest.TestCase):
         data = self.load()
         self.assertEqual(data["status"], "final")
 
-    def test_fa_wu_are_absent_not_stubbed(self):
+    def test_every_subtest_is_final(self):
         data = self.load()
-        self.assertNotIn("FA", data["subtests"])
-        self.assertNotIn("WU", data["subtests"])
+        for code in ALL_SUBTEST_COUNTS:
+            self.assertEqual(data["subtests"][code]["status"], "final", code)
 
     def test_present_subtests_match_expected_set(self):
         data = self.load()
-        self.assertEqual(set(data["subtests"]), set(TEXT_SUBTEST_COUNTS))
+        self.assertEqual(set(data["subtests"]), set(ALL_SUBTEST_COUNTS))
 
     def test_item_counts_per_subtest(self):
         data = self.load()
-        for code, expected_count in TEXT_SUBTEST_COUNTS.items():
+        for code, expected_count in ALL_SUBTEST_COUNTS.items():
             items = data["subtests"][code]["items"]
             self.assertEqual(len(items), expected_count, code)
 
     def test_item_numbers_are_globally_contiguous_and_unique(self):
         data = self.load()
-        order = ["SE", "WA", "AN", "GE", "RA", "ZR"]  # ME (157-176) checked separately below
+        order = ["SE", "WA", "AN", "GE", "RA", "ZR", "FA", "WU", "ME"]
         all_numbers = []
         for code in order:
             all_numbers.extend(item["item"] for item in data["subtests"][code]["items"])
         self.assertEqual(len(all_numbers), len(set(all_numbers)))
         self.assertEqual(all_numbers, sorted(all_numbers))
         self.assertEqual(min(all_numbers), 1)
-        self.assertEqual(max(all_numbers), 116)  # ZR ends at 116; FA/WU/ME (117-176) not covered here
-        me_numbers = [item["item"] for item in data["subtests"]["ME"]["items"]]
-        self.assertEqual(me_numbers, list(range(157, 177)))
+        self.assertEqual(max(all_numbers), 176)
+        self.assertEqual(all_numbers, list(range(1, 177)))
 
     def test_lettered_items_have_exactly_five_options_and_no_scoring_fields(self):
         data = self.load()

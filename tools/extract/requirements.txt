@@ -16,3 +16,15 @@ pypdf==6.19.0
 # discovered", empty output), and its default mode has the same mid-word phantom-space
 # defect pypdf's coordinate extraction had for RMIB before switching to layout mode.
 pdfminer.six==20260107
+
+# IST FA/WU (image subtests): Pillow for compositing the page's raster bands
+# and cropping; numpy for the dark-pixel mask; scipy for connected-component
+# analysis, used two ways - detecting each item's/legend option's natural
+# figure boundary (a uniform grid division was tried first and produced
+# content bounding boxes landing exactly on the arbitrary grid line, a sign
+# of clipping rather than a real edge - see the PR's report), and the
+# required check that no crop's edge cuts through a dark region. All three
+# are BSD-licensed, no PyMuPDF anywhere in this path.
+Pillow==12.3.0
+numpy==2.4.0
+scipy==1.18.1
