@@ -1,13 +1,19 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
+import type { GenericItemsOutcome } from '../session-runner/http-transport.ts';
 import {
     groupRmibPositions,
     rmibGroupAndPositionFromItemNo,
     rmibItemNo,
+    rmibItemsOutcomeFromGeneric,
     rmibPositionsFromSubtests,
 } from './rmib-items.ts';
-import type { RmibPosition } from './rmib-items.ts';
+import type {
+    RmibInstructions,
+    RmibItemsOutcome,
+    RmibPosition,
+} from './rmib-items.ts';
 
 function syntheticPositions(): RmibPosition[] {
     const positions: RmibPosition[] = [];
@@ -115,4 +121,66 @@ test('groupRmibPositions rejects a list that is not exactly 108 entries', () => 
             ]),
         RangeError,
     );
+});
+
+const INSTRUCTIONS: RmibInstructions = {
+    text: 'text',
+    write_preferred_jobs_prompt: 'prompt',
+};
+
+test('rmibItemsOutcomeFromGeneric unwraps an available generic outcome into RmibItemsOutcome', () => {
+    const positions = syntheticPositions();
+    const generic: GenericItemsOutcome = {
+        type: 'available',
+        content: {
+            sessionId: 'ses_1',
+            instrument: 'rmib',
+            version: 'v1',
+            subtests: [{ code: 'POSITIONS', items: positions }],
+            instructions: INSTRUCTIONS,
+        },
+    };
+
+    const result = rmibItemsOutcomeFromGeneric(generic);
+
+    assert.deepEqual(result, {
+        type: 'available',
+        content: {
+            sessionId: 'ses_1',
+            instrument: 'rmib',
+            version: 'v1',
+            positions,
+            instructions: INSTRUCTIONS,
+        },
+    } satisfies RmibItemsOutcome);
+});
+
+test('rmibItemsOutcomeFromGeneric passes every non-available outcome through unchanged', () => {
+    const nonAvailable: GenericItemsOutcome[] = [
+        { type: 'not_started' },
+        { type: 'closed' },
+        { type: 'deadline_exceeded' },
+        { type: 'not_found' },
+        { type: 'content_unavailable' },
+        { type: 'network_error' },
+    ];
+
+    for (const outcome of nonAvailable) {
+        assert.deepEqual(rmibItemsOutcomeFromGeneric(outcome), outcome);
+    }
+});
+
+test('rmibItemsOutcomeFromGeneric still throws on a malformed available envelope (not RMIB-shaped)', () => {
+    const generic: GenericItemsOutcome = {
+        type: 'available',
+        content: {
+            sessionId: 'ses_1',
+            instrument: 'rmib',
+            version: 'v1',
+            subtests: [{ code: 'ITEMS', items: [] }],
+            instructions: INSTRUCTIONS,
+        },
+    };
+
+    assert.throws(() => rmibItemsOutcomeFromGeneric(generic), RangeError);
 });
