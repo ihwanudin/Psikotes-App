@@ -10,6 +10,11 @@ import type {
 } from './use-assessment-session.ts';
 import { useOfflineQueue } from './use-offline-queue.ts';
 import type { UseOfflineQueueResult } from './use-offline-queue.ts';
+import { usePeriodicPhotoCapture } from './use-periodic-photo-capture.ts';
+import type {
+    PeriodicPhotoCaptureConfig,
+    UsePeriodicPhotoCaptureResult,
+} from './use-periodic-photo-capture.ts';
 import { useProctoringCamera } from './use-proctoring-camera.ts';
 import type {
     GetUserMedia,
@@ -26,6 +31,14 @@ import type { ProctoringReporter } from './proctoring-reporter.ts';
  * deliberately NOT owned here: only the per-instrument page knows what
  * "moving to a different item" means, which is what decides when to
  * flush (see use-autosave.ts's module doc).
+ *
+ * Periodic photo capture (SPEC.md 8A.2, butir 12/PR #87 wired to the
+ * live camera here) rides on top of the camera's own status: it is only
+ * ever running while `camera.status === 'active'`, via
+ * use-periodic-photo-capture.ts. Passing no `photoCapture` prop disables
+ * it entirely — no scheduler is constructed, matching every other
+ * proctoring feature in this shell (nothing happens without an explicit
+ * caller-supplied trigger/config).
  */
 
 export type SessionRunnerContext = {
@@ -35,6 +48,7 @@ export type SessionRunnerContext = {
     reloadSession: () => Promise<AssessmentSessionState>;
     camera: UseProctoringCameraResult;
     connectivity: UseOfflineQueueResult;
+    photoCapture: UsePeriodicPhotoCaptureResult;
 };
 
 export type SessionRunnerShellProps = {
@@ -44,6 +58,13 @@ export type SessionRunnerShellProps = {
         reporter?: ProctoringReporter;
         getUserMedia?: GetUserMedia;
     };
+    /** Server-supplied cadence/size/quality for periodic proctoring
+     * photo capture — see use-periodic-photo-capture.ts's module doc.
+     * `undefined` disables the feature (no scheduler is ever
+     * constructed). Must be referentially stable across renders (e.g.
+     * `useMemo`d by the caller from server config) — a new object tears
+     * down and restarts the capture cadence. */
+    photoCapture?: PeriodicPhotoCaptureConfig;
     children: (runner: SessionRunnerContext) => ReactNode;
 };
 
@@ -75,6 +96,7 @@ export function SessionRunnerShell({
     fetchSession,
     pollIntervalMs,
     proctoring,
+    photoCapture,
     children,
 }: SessionRunnerShellProps) {
     const connectivity = useOfflineQueue();
@@ -108,6 +130,11 @@ export function SessionRunnerShell({
         });
 
     const camera = useProctoringCamera(proctoring);
+    const periodicPhotoCapture = usePeriodicPhotoCapture({
+        cameraStatus: camera.status,
+        captureFrame: camera.captureFrame,
+        config: photoCapture ?? null,
+    });
 
     return (
         <div className="min-h-screen bg-slate-50 text-slate-950">
@@ -201,6 +228,7 @@ export function SessionRunnerShell({
                     reloadSession: reload,
                     camera,
                     connectivity,
+                    photoCapture: periodicPhotoCapture,
                 })}
             </main>
         </div>

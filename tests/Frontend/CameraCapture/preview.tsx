@@ -1,9 +1,25 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { SessionRunnerShell } from '../../../resources/js/components/participant/session-runner/session-runner-shell';
 import type { AssessmentSessionState } from '../../../resources/js/components/participant/session-runner/use-assessment-session';
+import type { PeriodicPhotoCaptureConfig } from '../../../resources/js/components/participant/session-runner/use-periodic-photo-capture';
 import type { GetUserMedia } from '../../../resources/js/components/participant/session-runner/use-proctoring-camera';
 import './preview.css';
+
+// Deliberately NOT 480x360/0.6 (the manual capture buttons below use
+// that pair) — a distinctive, non-round size/quality proves a periodic
+// capture actually used THESE injected values and not some coincidental
+// default. Short interval (real seconds, not minutes) so the evidence
+// harness can observe several periodic ticks without a long wait; this
+// is fixture-only tuning, never a value baked into application code
+// (see use-periodic-photo-capture.ts's module doc — CLAUDE.md forbids
+// embedding configurable thresholds in code, so the real cadence always
+// comes from server config, not from anything here).
+const PHOTO_CAPTURE_MIN_INTERVAL_SECONDS = 1.5;
+const PHOTO_CAPTURE_MAX_INTERVAL_SECONDS = 2;
+const PHOTO_CAPTURE_MAX_WIDTH = 321;
+const PHOTO_CAPTURE_MAX_HEIGHT = 241;
+const PHOTO_CAPTURE_JPEG_QUALITY = 0.42;
 
 // A real MediaStream from a real <canvas> — canvas.captureStream() is
 // implemented by every evergreen browser and needs no camera hardware,
@@ -95,15 +111,64 @@ type CaptureResult =
           bytes: number;
       };
 
+type PeriodicCaptureLogEntry = {
+    kind: string;
+    at: string;
+    width: number;
+    height: number;
+    type: string;
+    bytes: number;
+};
+
 function Preview() {
     useEffect(() => startDrawing(), []);
     const [result, setResult] = useState<CaptureResult>({ state: 'idle' });
     const imgRef = useRef<HTMLImageElement | null>(null);
+    const [periodicLog, setPeriodicLog] = useState<PeriodicCaptureLogEntry[]>(
+        [],
+    );
+
+    // useMemo, not a fresh object literal every render: photoCapture.md
+    // requires this to be referentially stable across renders (see
+    // use-periodic-photo-capture.ts's module doc) — a new object every
+    // render would tear down and restart the scheduler's cadence
+    // constantly, which this fixture's own evidence run would otherwise
+    // never be able to distinguish from the real, intended behavior.
+    const photoCaptureConfig = useMemo<PeriodicPhotoCaptureConfig>(
+        () => ({
+            minIntervalSeconds: PHOTO_CAPTURE_MIN_INTERVAL_SECONDS,
+            maxIntervalSeconds: PHOTO_CAPTURE_MAX_INTERVAL_SECONDS,
+            maxWidth: PHOTO_CAPTURE_MAX_WIDTH,
+            maxHeight: PHOTO_CAPTURE_MAX_HEIGHT,
+            jpegQuality: PHOTO_CAPTURE_JPEG_QUALITY,
+            onCapture: (blob, kind) => {
+                const url = URL.createObjectURL(blob);
+                const img = new Image();
+                img.onload = () => {
+                    setPeriodicLog((log) => [
+                        ...log,
+                        {
+                            kind,
+                            at: new Date().toLocaleTimeString(),
+                            width: img.naturalWidth,
+                            height: img.naturalHeight,
+                            type: blob.type,
+                            bytes: blob.size,
+                        },
+                    ]);
+                    URL.revokeObjectURL(url);
+                };
+                img.src = url;
+            },
+        }),
+        [],
+    );
 
     return (
         <SessionRunnerShell
             fetchSession={fetchSession}
             proctoring={{ getUserMedia }}
+            photoCapture={photoCaptureConfig}
         >
             {(runner) => {
                 async function runCapture(maxWidth: number, maxHeight: number) {
@@ -234,6 +299,17 @@ function Preview() {
                                 >
                                     Capture (100x100)
                                 </button>
+                                <button
+                                    type="button"
+                                    className="min-h-11 rounded border border-slate-500 bg-white px-3"
+                                    onClick={() =>
+                                        void runner.photoCapture.captureNow(
+                                            'session_submit',
+                                        )
+                                    }
+                                >
+                                    Trigger capture sekarang (session_submit)
+                                </button>
                             </div>
                         </section>
                         <output
@@ -245,6 +321,33 @@ function Preview() {
                                 'Hasil: null (tidak ada frame)'}
                             {result.state === 'captured' &&
                                 `Hasil: ${result.width}x${result.height}, type=${result.type}, bytes=${result.bytes}`}
+                        </output>
+                        <output
+                            aria-label="Status penjadwal foto periodik"
+                            className="block space-y-1 px-4"
+                        >
+                            <p
+                                data-photo-scheduler-running={String(
+                                    runner.photoCapture.isRunning,
+                                )}
+                            >
+                                Penjadwal foto periodik:{' '}
+                                {runner.photoCapture.isRunning
+                                    ? 'AKTIF'
+                                    : 'BERHENTI'}
+                            </p>
+                            <ul
+                                aria-label="Log capture periodik"
+                                data-periodic-log-count={periodicLog.length}
+                            >
+                                {periodicLog.map((entry, index) => (
+                                    <li key={index}>
+                                        [{entry.at}] {entry.kind}: {entry.width}
+                                        x{entry.height}, type=
+                                        {entry.type}, bytes={entry.bytes}
+                                    </li>
+                                ))}
+                            </ul>
                         </output>
                     </div>
                 );
