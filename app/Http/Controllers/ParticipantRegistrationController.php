@@ -35,11 +35,14 @@ final class ParticipantRegistrationController extends Controller
         );
         $token = (string) Str::uuid();
         $request->session()->put('registration.token', $token);
-        $packages = TestPackage::query()
-            ->availableForRegistration()
-            ->with('items:id,package_id,test_type,sort_order')
-            ->orderBy('name')
-            ->get();
+        $packages = $runner->run(
+            new RlsContext('service'),
+            fn () => TestPackage::query()
+                ->availableForRegistration()
+                ->with('items:id,package_id,test_type,sort_order')
+                ->orderBy('name')
+                ->get(),
+        );
         $paymentMethods = $runner->run(
             new RlsContext('service'),
             fn () => PaymentMethod::query()

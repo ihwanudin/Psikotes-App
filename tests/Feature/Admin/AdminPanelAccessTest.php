@@ -47,6 +47,7 @@ final class AdminPanelAccessTest extends TestCase
             'email' => 'central@example.test',
             'password' => 'not-a-real-password',
             'role' => AdminRole::SuperAdmin,
+            'has_email_authentication' => true,
         ]);
 
         $this->actingAs($admin, 'admin')

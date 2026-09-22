@@ -114,6 +114,8 @@ final class AssessmentSessionItemsReadbackControllerTest extends TestCase
             public function contentFor(
                 GenericAssessmentInstrument $instrument,
                 SessionDefinition $definition,
+                int $participantId,
+                ?string $lockedVariant = null,
                 ?string $currentSegmentCode = null,
             ): AssessmentItemContent {
                 return new AssessmentItemContent($instrument, 'synthetic-content-v1', [

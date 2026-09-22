@@ -29,6 +29,7 @@ final class AutosaveAssessmentAnswers
     public function __construct(
         private readonly RlsContextRunner $contexts,
         private readonly AssessmentAutosavePolicy $policy,
+        private readonly SealExpiredAssessmentSession $sealer,
         ?Closure $clock = null,
     ) {
         $this->clock = $clock ?? static fn (): DateTimeImmutable => new DateTimeImmutable('now');
@@ -122,16 +123,7 @@ final class AutosaveAssessmentAnswers
         if (! $decision->accepted) {
             if ($decision->status === AssessmentSessionStatus::Expired
                 && $status === AssessmentSessionStatus::InProgress) {
-                $updated = DB::table('test_sessions')->where('id', $session->id)
-                    ->where('status', AssessmentSessionStatus::InProgress->value)
-                    ->update([
-                        'status' => AssessmentSessionStatus::Expired->value,
-                        'expired_at' => $this->timestamp($receivedAt),
-                        'updated_at' => $this->timestamp($receivedAt),
-                    ]);
-                if ($updated !== 1) {
-                    throw new RuntimeException('The expired assessment session could not be sealed.');
-                }
+                $this->sealer->sealWithinTransaction((int) $session->id, $receivedAt);
             }
 
             return $this->reject($decision->status->value, $decision->errorCode?->value, (int) $session->answers_revision);

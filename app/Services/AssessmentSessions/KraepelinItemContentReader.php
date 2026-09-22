@@ -36,6 +36,10 @@ use JsonException;
  * pairs every participant's answer with the wrong pair of numbers") that
  * belongs in exactly one place, proven by one test, rather than depend on a
  * second implementation staying in lockstep with this one.
+ *
+ * $participantId/$lockedVariant (interface, 2026-09-21): ignored -- Kraepelin
+ * content has no per-participant variant axis, every participant sees the
+ * same grid. $currentSegmentCode is also ignored -- no multi-phase subtest.
  */
 final readonly class KraepelinItemContentReader implements AssessmentItemContentAuthority
 {
@@ -48,6 +52,8 @@ final readonly class KraepelinItemContentReader implements AssessmentItemContent
     public function contentFor(
         GenericAssessmentInstrument $instrument,
         SessionDefinition $definition,
+        int $participantId,
+        ?string $lockedVariant = null,
         ?string $currentSegmentCode = null,
     ): AssessmentItemContent {
         // Kraepelin has no multi-phase subtest -- nothing to filter by segment.

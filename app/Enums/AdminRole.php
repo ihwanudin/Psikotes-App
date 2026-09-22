@@ -10,4 +10,5 @@ enum AdminRole: string
     case BranchAdmin = 'branch_admin';
     case Staff = 'staff';
     case Psychologist = 'psychologist';
+    case CentralAdmin = 'central_admin';
 }

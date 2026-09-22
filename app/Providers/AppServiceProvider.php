@@ -14,7 +14,9 @@ use App\Security\RlsContextRunner;
 use App\Services\AssessmentSessions\DatabaseAssessmentSessionDefinitionAuthority;
 use App\Services\AssessmentSessions\IstItemContentReader;
 use App\Services\AssessmentSessions\KraepelinItemContentReader;
+use App\Services\AssessmentSessions\PapiItemContentReader;
 use App\Services\AssessmentSessions\RegistryAssessmentItemContentAuthority;
+use App\Services\AssessmentSessions\RmibItemContentReader;
 use App\Services\Identity\ManualReviewIdentityMatcher;
 use App\Services\Integrations\GenericAssessmentResultCallbackConfiguration;
 use App\Services\Notifications\N8nNotifier;
@@ -54,20 +56,19 @@ class AppServiceProvider extends ServiceProvider
         );
         // Fail-closed by design (Lead sign-off, 2026-09-21): an instrument
         // with no entry below rejects with ASSESSMENT_ITEM_CONTENT_UNAVAILABLE
-        // rather than falling through to a permissive default. Kraepelin was
-        // the first real reader (Stage 2, 2026-09-21); IST is registered
-        // here too (Stage 1, IST plan sign-off, 2026-09-21) but its own
-        // ist_items.json stays `status:"draft"` until ME's word-list
-        // ambiguity is resolved and FA/WU land -- see
+        // rather than falling through to a permissive default. Kraepelin,
+        // PAPI, and RMIB (Stage 2 continuation, 2026-09-21) and IST (IST
+        // plan sign-off, 2026-09-21, extended for ME per
         // app/Services/AssessmentSessions/IstItemContentReader.php's doc
-        // comment. papi/rmib still have no entry, so those two instruments
-        // still reject the same way Stage 1 shipped them. New entries only
+        // comment) are the real readers registered so far. New entries only
         // ever get ADDED to this map; it never changes
         // RegistryAssessmentItemContentAuthority's default.
         $this->app->bind(
             AssessmentItemContentAuthority::class,
             fn (): RegistryAssessmentItemContentAuthority => new RegistryAssessmentItemContentAuthority([
                 'kraepelin' => new KraepelinItemContentReader,
+                'papi' => new PapiItemContentReader,
+                'rmib' => new RmibItemContentReader,
                 'ist' => new IstItemContentReader,
             ]),
         );
@@ -108,6 +109,13 @@ class AppServiceProvider extends ServiceProvider
             app()->isProduction(),
         );
 
+        // Only for the `web` starter-kit guard (App\Models\User) -- that
+        // login system is scheduled for removal per the FE plan in PR #94.
+        // Admin password rules live in App\Security\AdminPasswordPolicy,
+        // a standalone policy applied in every environment, not gated on
+        // app()->isProduction() the way this one is (Lead's 2026-09-22
+        // decision: don't touch this one, don't couple admin rules to a
+        // login system on its way out).
         Password::defaults(fn (): ?Password => app()->isProduction()
             ? Password::min(12)
                 ->mixedCase()

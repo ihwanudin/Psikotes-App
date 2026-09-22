@@ -82,8 +82,14 @@ final readonly class IstItemContentReader implements AssessmentItemContentAuthor
     public function contentFor(
         GenericAssessmentInstrument $instrument,
         SessionDefinition $definition,
+        int $participantId,
+        ?string $lockedVariant = null,
         ?string $currentSegmentCode = null,
     ): AssessmentItemContent {
+        // $participantId/$lockedVariant (interface, RMIB gender-track
+        // selection): ignored -- IST has no per-participant variant axis,
+        // every participant sees the same content (subject to the
+        // memorize/answer phase filtering below).
         if ($instrument !== GenericAssessmentInstrument::Ist) {
             throw new AssessmentItemContentUnavailable(
                 'IstItemContentReader only serves the IST instrument.',

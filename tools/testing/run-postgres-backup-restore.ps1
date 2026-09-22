@@ -13,11 +13,14 @@ Set-StrictMode -Version Latest
 $workspace = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $runId = [guid]::NewGuid().ToString('N')
 $network = "oncam-f9-backup-$runId"
+$offsiteNetwork = "$network-offsite"
 $databaseContainer = "$network-db"
 $migrationContainer = "$network-migrate"
+$minioContainer = "$network-minio"
 $label = "oncam.f9-backup-restore=$runId"
 $sourceDatabase = 'psikotes_backup_source'
 $destinationDatabase = 'psikotes_backup_destination'
+$disasterRecoveryDatabase = 'psikotes_backup_disaster_recovery'
 $corruptDatabase = 'psikotes_backup_corrupt'
 $tempDirectory = Join-Path ([System.IO.Path]::GetTempPath()) "psikotes-f9-backup-$runId"
 $snapshotArchive = Join-Path $tempDirectory 'snapshot.tar'
@@ -26,10 +29,23 @@ $identityFile = Join-Path $tempDirectory 'identity.txt'
 $encryptedArchive = Join-Path $tempDirectory 'source.dump.age'
 $restoredArchive = Join-Path $tempDirectory 'source.restored.dump'
 $corruptArchive = Join-Path $tempDirectory 'source.corrupt.dump.age'
+$offsiteDownload = Join-Path $tempDirectory 'source.offsite.download.age'
+$disasterRecoveryEncryptedArchive = Join-Path $tempDirectory 'source.disaster-recovery.download.age'
+$disasterRecoveryDumpArchive = Join-Path $tempDirectory 'source.disaster-recovery.dump'
+$nonAgeProbe = Join-Path $tempDirectory 'not-an-age-archive.txt'
+$mcConfigDirectory = Join-Path $tempDirectory 'mc-config'
+$badMcConfigDirectory = Join-Path $tempDirectory 'mc-config-bad'
 $networkCreated = $false
+$offsiteNetworkCreated = $false
 $failure = $null
 $identitySecret = $null
 $keyOutputChecks = 0
+$s3OutputChecks = 0
+$minioImage = 'quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z'
+$mcImage = 'quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z'
+$backupKeyTemplate = 'backups/{date}/{name}.dump.age'
+$backupPrefix = $backupKeyTemplate.Substring(0, $backupKeyTemplate.IndexOf('{'))
+$rtoTargetSeconds = 8 * 3600
 
 function Assert-NativeSuccess([string] $operation) {
     if ($LASTEXITCODE -ne 0) {
@@ -40,6 +56,14 @@ function Assert-NativeSuccess([string] $operation) {
 function Assert-OutputExcludesKey([string] $output, [string] $secret) {
     if ($output.Contains($secret)) {
         throw 'A key-touching step exposed the identity in its output.'
+    }
+}
+
+function Assert-OutputExcludesSecrets([string] $output, [string[]] $secrets) {
+    foreach ($secret in $secrets) {
+        if (-not [string]::IsNullOrEmpty($secret) -and $output.Contains($secret)) {
+            throw 'An S3 credential-touching step exposed a secret in its output.'
+        }
     }
 }
 
@@ -60,6 +84,174 @@ function Invoke-KeyStep([string] $operation, [scriptblock] $command, [bool] $req
         throw "$operation failed with exit code $exitCode."
     }
     return @{ Output = $output; ExitCode = $exitCode }
+}
+
+function Invoke-S3Step([string] $operation, [scriptblock] $command, [string[]] $secrets, [bool] $requireSuccess = $true) {
+    $previousPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $captured = & $command 2>&1
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousPreference
+    }
+    $output = ($captured | ForEach-Object { [string] $_ }) -join "`n"
+    Assert-OutputExcludesSecrets $output $secrets
+    $script:s3OutputChecks++
+    if ($requireSuccess -and $exitCode -ne 0) {
+        throw "$operation failed with exit code $exitCode."
+    }
+    return @{ Output = $output; ExitCode = $exitCode }
+}
+
+function Assert-AgeCiphertext([string] $path) {
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        throw 'Offsite upload rejected: archive file is missing.'
+    }
+    $expectedHeader = [System.Text.Encoding]::ASCII.GetBytes("age-encryption.org/v1`n")
+    $stream = [System.IO.File]::OpenRead($path)
+    try {
+        $actualHeader = [byte[]]::new($expectedHeader.Length)
+        $bytesRead = $stream.Read($actualHeader, 0, $actualHeader.Length)
+    }
+    finally {
+        $stream.Dispose()
+    }
+    if ($bytesRead -ne $expectedHeader.Length -or
+        [Convert]::ToBase64String($actualHeader) -cne [Convert]::ToBase64String($expectedHeader)) {
+        throw 'Offsite upload rejected: file is not an age ciphertext.'
+    }
+}
+
+function Get-FileSha256([string] $path) {
+    $stream = [System.IO.File]::OpenRead($path)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return (($sha256.ComputeHash($stream) | ForEach-Object { $_.ToString('x2') }) -join '')
+    }
+    finally {
+        $sha256.Dispose()
+        $stream.Dispose()
+    }
+}
+
+function Write-McConfig([string] $directory, [string] $endpoint, [string] $accessKey, [string] $secretKey) {
+    [void] (New-Item -ItemType Directory -Path $directory)
+    $config = @{
+        version = '10'
+        aliases = @{
+            offsite = @{ url = $endpoint; accessKey = $accessKey; secretKey = $secretKey; api = 'S3v4'; path = 'auto' }
+        }
+    } | ConvertTo-Json -Depth 5
+    [System.IO.File]::WriteAllText((Join-Path $directory 'config.json'), $config, [System.Text.UTF8Encoding]::new($false))
+}
+
+function Send-EncryptedOffsiteCopy([string] $archivePath, [string] $objectName) {
+    Assert-AgeCiphertext $archivePath
+    $resolvedArchive = (Resolve-Path -LiteralPath $archivePath).Path
+    if ([System.IO.Directory]::GetParent($resolvedArchive).FullName -cne $resolvedTemp) {
+        throw 'Offsite upload rejected: archive must be owned by the task temp directory.'
+    }
+    $containerArchive = '/rehearsal/' + [System.IO.Path]::GetFileName($resolvedArchive)
+    [void] (Invoke-S3Step 'Encrypted offsite upload' {
+        docker @mcCommand cp $containerArchive "offsite/$s3Bucket/$objectName"
+    } $s3Secrets)
+}
+
+function New-BackupObjectKey([DateTime] $backupDate, [string] $name) {
+    if ($name -cnotmatch '^[a-z0-9][a-z0-9._-]*$') {
+        throw 'Backup object name contains unsupported characters.'
+    }
+    return $backupKeyTemplate.Replace('{date}', $backupDate.ToUniversalTime().ToString('yyyy-MM-dd')).Replace('{name}', $name)
+}
+
+function Get-BackupObjectDate([string] $objectKey) {
+    $pattern = '^' + [regex]::Escape($backupKeyTemplate).
+        Replace('\{date}', '(?<date>\d{4}-\d{2}-\d{2})').
+        Replace('\{name}', '(?<name>[a-z0-9][a-z0-9._-]*)') + '$'
+    $match = [regex]::Match($objectKey, $pattern, [System.Text.RegularExpressions.RegexOptions]::CultureInvariant)
+    if (-not $match.Success) { return $null }
+    $parsedDate = [DateTime]::MinValue
+    $parsed = [DateTime]::TryParseExact(
+        $match.Groups['date'].Value,
+        'yyyy-MM-dd',
+        [System.Globalization.CultureInfo]::InvariantCulture,
+        [System.Globalization.DateTimeStyles]::AssumeUniversal,
+        [ref] $parsedDate
+    )
+    if (-not $parsed) { return $null }
+    return [DateTime]::SpecifyKind($parsedDate.Date, [DateTimeKind]::Utc)
+}
+
+function Get-RetentionPlan([DateTime] $referenceDate, [int] $days) {
+    $listStep = Invoke-S3Step 'Retention object listing' {
+        docker @mcCommand ls --recursive --json "offsite/$s3Bucket/$backupPrefix"
+    } $s3Secrets
+    $delete = @()
+    $keep = @()
+    $anomalies = @()
+    $cutoffDate = $referenceDate.Date.AddDays(-$days)
+    foreach ($line in ($listStep.Output -split "`n")) {
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        $item = $line | ConvertFrom-Json
+        $listedKey = [string] $item.key
+        if ([string]::IsNullOrWhiteSpace($listedKey) -or $listedKey.StartsWith('/', [StringComparison]::Ordinal)) {
+            throw 'Retention listing returned an invalid relative key.'
+        }
+        $objectKey = $backupPrefix + $listedKey
+        $backupDate = Get-BackupObjectDate $objectKey
+        if ($null -eq $backupDate) {
+            $keep += $objectKey
+            $anomalies += [pscustomobject] @{ Type = 'unparseable'; Key = $objectKey }
+        }
+        elseif ($backupDate -gt $referenceDate.Date) {
+            $keep += $objectKey
+            $anomalies += [pscustomobject] @{ Type = 'future'; Key = $objectKey }
+        }
+        elseif ($backupDate -lt $cutoffDate) {
+            $delete += $objectKey
+        }
+        else {
+            $keep += $objectKey
+        }
+    }
+    return [pscustomobject] @{ Delete = @($delete); Keep = @($keep); Anomalies = @($anomalies) }
+}
+
+function Invoke-RetentionPrune([DateTime] $referenceDate, [int] $days, [bool] $apply) {
+    $plan = Get-RetentionPlan $referenceDate $days
+    if ($apply) {
+        foreach ($objectKey in $plan.Delete) {
+            [void] (Invoke-S3Step 'Retention object deletion' {
+                docker @mcCommand rm "offsite/$s3Bucket/$objectKey"
+            } $s3Secrets)
+        }
+    }
+    return $plan
+}
+
+function Test-OffsiteObjectExists([string] $objectKey) {
+    $statStep = Invoke-S3Step 'Retention object state check' {
+        docker @mcCommand stat --json "offsite/$s3Bucket/$objectKey"
+    } $s3Secrets $false
+    return $statStep.ExitCode -eq 0
+}
+
+function Assert-RetentionObjectState([string] $phase, [string] $scenario, [string] $objectKey, [bool] $expectedPresent) {
+    $actualPresent = Test-OffsiteObjectExists $objectKey
+    $expected = if ($expectedPresent) { 'present' } else { 'absent' }
+    $actual = if ($actualPresent) { 'present' } else { 'absent' }
+    if ($actualPresent -ne $expectedPresent) {
+        throw "Retention object check failed in $phase for $scenario ($objectKey): expected $expected, found $actual."
+    }
+    Write-Output "retention_object_check=PASS phase=$phase scenario=$scenario expected=$expected actual=$actual object=$objectKey"
+}
+
+function Write-RetentionAnomalies([string] $phase, [object[]] $anomalies) {
+    foreach ($anomaly in $anomalies) {
+        Write-Output "retention_anomaly phase=$phase type=$($anomaly.Type) action=kept object=$($anomaly.Key)"
+    }
 }
 
 function Invoke-Psql([string] $database, [string] $sql) {
@@ -233,6 +425,104 @@ FROM pg_sequences WHERE schemaname IN ('public', 'dass');
     return Get-TextSha256 $sequenceManifest
 }
 
+function Assert-RtoWithinTarget([long] $actualSeconds, [long] $targetSeconds) {
+    if ($actualSeconds -gt $targetSeconds) {
+        throw "Disaster recovery exceeded RTO target: actual_seconds=$actualSeconds target_seconds=$targetSeconds."
+    }
+}
+
+function Invoke-DisasterRecovery {
+    $recoveryS3ChecksBefore = $s3OutputChecks
+    $recoveryKeyChecksBefore = $keyOutputChecks
+    $disasterRecoveryTimer = [System.Diagnostics.Stopwatch]::StartNew()
+    try {
+        [void] (Invoke-S3Step 'Disaster recovery download stage' {
+            docker @mcCommand cp "offsite/$s3Bucket/$currentBackupObject" /rehearsal/source.disaster-recovery.download.age
+        } $s3Secrets)
+        if (-not (Test-Path -LiteralPath $disasterRecoveryEncryptedArchive -PathType Leaf) -or
+            (Get-Item -LiteralPath $disasterRecoveryEncryptedArchive).Length -ne $encryptedBytes) {
+            throw 'Downloaded ciphertext is missing or differs in size from the retained backup.'
+        }
+        Assert-AgeCiphertext $disasterRecoveryEncryptedArchive
+    }
+    catch {
+        throw "Disaster recovery download stage failed: $($_.Exception.Message)"
+    }
+
+    try {
+        [void] (Invoke-KeyStep 'Disaster recovery decrypt stage' {
+            docker exec $databaseContainer /rehearsal/age -d -i /rehearsal/identity.txt `
+                -o /rehearsal/source.disaster-recovery.dump /rehearsal/source.disaster-recovery.download.age
+        })
+        if (-not (Test-Path -LiteralPath $disasterRecoveryDumpArchive -PathType Leaf) -or
+            (Get-Item -LiteralPath $disasterRecoveryDumpArchive).Length -ne $archiveBytes) {
+            throw 'Decrypted archive is missing or differs in size from the original dump.'
+        }
+        docker exec $databaseContainer pg_restore --list /rehearsal/source.disaster-recovery.dump | Out-Null
+        Assert-NativeSuccess 'Disaster recovery decrypted archive inspection'
+    }
+    catch {
+        throw "Disaster recovery decrypt stage failed: $($_.Exception.Message)"
+    }
+
+    try {
+        [void] (Invoke-Psql 'postgres' "CREATE DATABASE $disasterRecoveryDatabase")
+        docker exec $databaseContainer pg_restore --host 127.0.0.1 --username f9_backup_owner `
+            --dbname $disasterRecoveryDatabase --no-owner --single-transaction --exit-on-error `
+            /rehearsal/source.disaster-recovery.dump
+        Assert-NativeSuccess 'Disaster recovery atomic restore'
+    }
+    catch {
+        throw "Disaster recovery restore stage failed: $($_.Exception.Message)"
+    }
+
+    try {
+        $disasterRecoveryCounts = Invoke-Psql $disasterRecoveryDatabase @'
+SELECT concat_ws('|',
+    (SELECT count(*) FROM branches WHERE code='F9-SYNTHETIC'),
+    (SELECT count(*) FROM participants WHERE source_system='F9_BACKUP_REHEARSAL'),
+    (SELECT count(*) FROM assessment_cases WHERE public_id='01J00000000000000000000001'),
+    (SELECT count(*) FROM test_sessions WHERE public_id='01J00000000000000000000002'),
+    (SELECT count(*) FROM generic_instrument_results WHERE public_id='01J00000000000000000000005'),
+    (SELECT count(*) FROM generic_instrument_result_sources s JOIN generic_instrument_results r ON r.id=s.result_id
+        WHERE r.public_id='01J00000000000000000000005'));
+'@
+        if ($disasterRecoveryCounts -cne '1|1|1|1|1|9') {
+            throw "Recovered graph is incomplete: $disasterRecoveryCounts"
+        }
+        $disasterRecoveryTimer.Stop()
+        $disasterRecoveryActualSeconds = [long] [Math]::Ceiling($disasterRecoveryTimer.Elapsed.TotalSeconds)
+
+        $disasterRecoverySchemaManifest = Get-SchemaManifest $disasterRecoveryDatabase
+        $disasterRecoverySchemaFingerprint = Get-TextSha256 $disasterRecoverySchemaManifest
+        $disasterRecoveryDataFingerprint = Get-DataFingerprint $disasterRecoveryDatabase
+        $disasterRecoverySequenceFingerprint = Get-SequenceFingerprint $disasterRecoveryDatabase
+        if ($disasterRecoverySchemaFingerprint -cne $sourceSchemaFingerprint) {
+            throw 'Recovered schema fingerprint differs from source.'
+        }
+        if ($disasterRecoveryDataFingerprint -cne $sourceDataFingerprint) {
+            throw 'Recovered row/value fingerprint differs from source.'
+        }
+        if ($disasterRecoverySequenceFingerprint -cne $sourceSequenceFingerprint) {
+            throw 'Recovered sequence fingerprint differs from source.'
+        }
+    }
+    catch {
+        throw "Disaster recovery readiness stage failed: $($_.Exception.Message)"
+    }
+
+    $disasterRecoveryWithinTarget = ($disasterRecoveryActualSeconds -le $rtoTargetSeconds).ToString().ToLowerInvariant()
+    Write-Output "disaster_recovery_fingerprints=PASS schema_sha256=$disasterRecoverySchemaFingerprint data_sha256=$disasterRecoveryDataFingerprint sequence_sha256=$disasterRecoverySequenceFingerprint schema_match=true data_match=true sequence_match=true"
+    Write-Output "disaster_recovery_secret_output_check=PASS s3_steps=$($s3OutputChecks - $recoveryS3ChecksBefore) key_steps=$($keyOutputChecks - $recoveryKeyChecksBefore)"
+    if ($disasterRecoveryActualSeconds -le $rtoTargetSeconds) {
+        Write-Output "disaster_recovery=PASS rto_target_seconds=$rtoTargetSeconds rto_actual_seconds=$disasterRecoveryActualSeconds within_target=$disasterRecoveryWithinTarget"
+    }
+    else {
+        Write-Output "disaster_recovery=FAIL rto_target_seconds=$rtoTargetSeconds rto_actual_seconds=$disasterRecoveryActualSeconds within_target=$disasterRecoveryWithinTarget"
+    }
+    Assert-RtoWithinTarget $disasterRecoveryActualSeconds $rtoTargetSeconds
+}
+
 try {
     $actualCommit = (git -C $workspace rev-parse HEAD).Trim()
     Assert-NativeSuccess 'Git revision resolution'
@@ -248,10 +538,78 @@ try {
         throw 'VendorDirectory must be a real Composer vendor installation.'
     }
 
+    $s3Environment = @{
+        Endpoint = [Environment]::GetEnvironmentVariable('F9_BACKUP_S3_ENDPOINT')
+        Bucket = [Environment]::GetEnvironmentVariable('F9_BACKUP_S3_BUCKET')
+        AccessKey = [Environment]::GetEnvironmentVariable('F9_BACKUP_S3_ACCESS_KEY_ID')
+        SecretKey = [Environment]::GetEnvironmentVariable('F9_BACKUP_S3_SECRET_ACCESS_KEY')
+        Region = [Environment]::GetEnvironmentVariable('F9_BACKUP_S3_REGION')
+    }
+    $providedS3Values = @($s3Environment.Values | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }).Count
+    if ($providedS3Values -eq 0) {
+        $offsiteMode = 'synthetic-minio'
+        $s3Endpoint = 'http://f9-backup-minio:9000'
+        $s3Bucket = "f9-backup-$runId"
+        $s3AccessKey = 'f9syntheticaccess'
+        $s3SecretKey = "f9syntheticsecret-$runId"
+        $s3Region = 'us-east-1'
+    }
+    elseif ($providedS3Values -eq $s3Environment.Count) {
+        $offsiteMode = 'operator-s3-compatible'
+        $s3Endpoint = $s3Environment.Endpoint
+        $s3Bucket = $s3Environment.Bucket
+        $s3AccessKey = $s3Environment.AccessKey
+        $s3SecretKey = $s3Environment.SecretKey
+        $s3Region = $s3Environment.Region
+    }
+    else {
+        throw 'All five F9_BACKUP_S3_* environment variables are required together.'
+    }
+    $endpointUri = $null
+    if (-not [Uri]::TryCreate($s3Endpoint, [UriKind]::Absolute, [ref] $endpointUri) -or
+        $endpointUri.Scheme -notin @('http', 'https') -or -not [string]::IsNullOrEmpty($endpointUri.UserInfo)) {
+        throw 'F9_BACKUP_S3_ENDPOINT must be an absolute HTTP(S) URL without embedded credentials.'
+    }
+    if ($s3Bucket -cnotmatch '^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$') {
+        throw 'F9_BACKUP_S3_BUCKET must be a valid 3-63 character S3 bucket name.'
+    }
+    if ($s3Region -cnotmatch '^[A-Za-z0-9][A-Za-z0-9-]{0,62}$') {
+        throw 'F9_BACKUP_S3_REGION is invalid.'
+    }
+    $s3Secrets = @($s3AccessKey, $s3SecretKey)
+    $offsiteObject = "rehearsal/$ExpectedCommit/$runId/source.dump.age"
+
+    $retentionDaysValue = [Environment]::GetEnvironmentVariable('F9_BACKUP_RETENTION_DAYS')
+    $retentionDays = 30
+    if (-not [string]::IsNullOrWhiteSpace($retentionDaysValue)) {
+        $parsedRetentionDays = 0
+        if (-not [int]::TryParse($retentionDaysValue, [ref] $parsedRetentionDays) -or
+            $parsedRetentionDays -lt 1 -or $parsedRetentionDays -gt 3650) {
+            throw 'F9_BACKUP_RETENTION_DAYS must be an integer from 1 through 3650.'
+        }
+        $retentionDays = $parsedRetentionDays
+    }
+    $retentionApplyValue = [Environment]::GetEnvironmentVariable('F9_BACKUP_RETENTION_APPLY')
+    $retentionApply = $false
+    if (-not [string]::IsNullOrWhiteSpace($retentionApplyValue)) {
+        if ($retentionApplyValue -ieq 'true') { $retentionApply = $true }
+        elseif ($retentionApplyValue -ine 'false') {
+            throw 'F9_BACKUP_RETENTION_APPLY must be exactly true or false.'
+        }
+    }
+    $retentionReferenceDate = [DateTime]::UtcNow.Date
+    $currentBackupObject = New-BackupObjectKey $retentionReferenceDate "backup-$runId"
+
     docker image inspect postgres:17.6-alpine --format '{{.Id}}' | Out-Null
     Assert-NativeSuccess 'PostgreSQL image check'
     docker image inspect psikotes-app:dev --format '{{.Id}}' | Out-Null
     Assert-NativeSuccess 'Application image check'
+    docker image inspect $mcImage --format '{{.Id}}' | Out-Null
+    Assert-NativeSuccess 'S3-compatible client image check'
+    if ($offsiteMode -ceq 'synthetic-minio') {
+        docker image inspect $minioImage --format '{{.Id}}' | Out-Null
+        Assert-NativeSuccess 'Synthetic S3-compatible target image check'
+    }
 
     [void] (New-Item -ItemType Directory -Path $tempDirectory)
     $resolvedTemp = (Resolve-Path -LiteralPath $tempDirectory).Path
@@ -262,6 +620,10 @@ try {
     }
     git -C $workspace archive --format=tar --output=$snapshotArchive $ExpectedCommit
     Assert-NativeSuccess 'Immutable Git snapshot creation'
+    Write-McConfig $mcConfigDirectory $s3Endpoint $s3AccessKey $s3SecretKey
+    if (-not (Test-Path -LiteralPath (Join-Path $mcConfigDirectory 'config.json') -PathType Leaf)) {
+        throw 'S3-compatible client configuration is missing.'
+    }
 
     docker run --rm --pull=never --label $label --network bridge `
         --mount "type=bind,source=$tempDirectory,target=/rehearsal" `
@@ -276,6 +638,44 @@ try {
     docker network create --internal --label $label $network | Out-Null
     Assert-NativeSuccess 'Internal rehearsal network creation'
     $networkCreated = $true
+
+    if ($offsiteMode -ceq 'synthetic-minio') {
+        docker network create --internal --label $label $offsiteNetwork | Out-Null
+    }
+    else {
+        docker network create --label $label $offsiteNetwork | Out-Null
+    }
+    Assert-NativeSuccess 'Dedicated offsite client network creation'
+    $offsiteNetworkCreated = $true
+
+    $mcCommand = @(
+        'run', '--rm', '--pull=never', '--label', $label,
+        '--network', $offsiteNetwork,
+        '--mount', "type=bind,source=$tempDirectory,target=/rehearsal",
+        '--env', "MC_REGION=$s3Region",
+        '--entrypoint', '/usr/bin/mc', $mcImage,
+        '--config-dir', '/rehearsal/mc-config'
+    )
+    if ($offsiteMode -ceq 'synthetic-minio') {
+        [void] (Invoke-S3Step 'Synthetic S3-compatible target creation' {
+            docker run --detach --pull=never --name $minioContainer --label $label `
+                --network $offsiteNetwork --network-alias f9-backup-minio --tmpfs /data:rw `
+                --env "MINIO_ROOT_USER=$s3AccessKey" --env "MINIO_ROOT_PASSWORD=$s3SecretKey" `
+                $minioImage server /data --address ':9000'
+        } $s3Secrets)
+        $offsiteReady = $false
+        for ($attempt = 0; $attempt -lt 40; $attempt++) {
+            $readyStep = Invoke-S3Step 'Synthetic S3-compatible readiness check' {
+                docker @mcCommand ls offsite
+            } $s3Secrets $false
+            if ($readyStep.ExitCode -eq 0) { $offsiteReady = $true; break }
+            Start-Sleep -Milliseconds 500
+        }
+        if (-not $offsiteReady) { throw 'Synthetic S3-compatible target did not become ready.' }
+        [void] (Invoke-S3Step 'Synthetic offsite bucket creation' {
+            docker @mcCommand mb "offsite/$s3Bucket"
+        } $s3Secrets)
+    }
 
     docker run --detach --pull=never --name $databaseContainer --label $label `
         --network $network --network-alias f9-backup-db --tmpfs /var/lib/postgresql/data:rw `
@@ -507,6 +907,130 @@ SELECT concat_ws('|',
 '@
     if ($destinationCounts -cne '1|1|1|1|1|9') { throw "Restored graph is incomplete: $destinationCounts" }
 
+    [System.IO.File]::WriteAllText($nonAgeProbe, 'plaintext must never be uploaded', [System.Text.UTF8Encoding]::new($false))
+    $nonAgeRejected = $false
+    try {
+        Send-EncryptedOffsiteCopy $nonAgeProbe 'negative/not-age.txt'
+    }
+    catch {
+        if ($_.Exception.Message -ceq 'Offsite upload rejected: file is not an age ciphertext.') {
+            $nonAgeRejected = $true
+        }
+        else { throw }
+    }
+    if (-not $nonAgeRejected) { throw 'Non-age upload probe was incorrectly accepted.' }
+    Remove-Item -LiteralPath $nonAgeProbe -Force
+
+    $localEncryptedSha256 = Get-FileSha256 $encryptedArchive
+    Send-EncryptedOffsiteCopy $encryptedArchive $offsiteObject
+    [void] (Invoke-S3Step 'Encrypted offsite download verification' {
+        docker @mcCommand cp "offsite/$s3Bucket/$offsiteObject" /rehearsal/source.offsite.download.age
+    } $s3Secrets)
+    if (-not (Test-Path -LiteralPath $offsiteDownload -PathType Leaf) -or
+        (Get-Item -LiteralPath $offsiteDownload).Length -ne $encryptedBytes) {
+        throw 'Downloaded offsite ciphertext is missing or differs in size.'
+    }
+    $downloadedEncryptedSha256 = Get-FileSha256 $offsiteDownload
+    if ($downloadedEncryptedSha256 -cne $localEncryptedSha256) {
+        throw 'Downloaded offsite ciphertext checksum differs from the local encrypted archive.'
+    }
+
+    $badCredentialExit = 'not-run'
+    if ($offsiteMode -ceq 'synthetic-minio') {
+        $badS3Secret = "f9-wrong-secret-$runId"
+        Write-McConfig $badMcConfigDirectory $s3Endpoint $s3AccessKey $badS3Secret
+        $negativeSecrets = @($s3Secrets + $badS3Secret)
+        $badMcCommand = @(
+            'run', '--rm', '--pull=never', '--label', $label,
+            '--network', $offsiteNetwork,
+            '--mount', "type=bind,source=$tempDirectory,target=/rehearsal",
+            '--env', "MC_REGION=$s3Region",
+            '--entrypoint', '/usr/bin/mc', $mcImage,
+            '--config-dir', '/rehearsal/mc-config-bad'
+        )
+        $badCredentialStep = Invoke-S3Step 'Wrong S3 credential rejection probe' {
+            docker @badMcCommand ls "offsite/$s3Bucket"
+        } $negativeSecrets $false
+        $badCredentialExit = $badCredentialStep.ExitCode
+        if ($badCredentialExit -eq 0) { throw 'Wrong S3 credentials were incorrectly accepted.' }
+    }
+
+    Send-EncryptedOffsiteCopy $encryptedArchive $currentBackupObject
+    if ($offsiteMode -ceq 'synthetic-minio') {
+        $oldRetentionObject = New-BackupObjectKey ($retentionReferenceDate.AddDays(-$retentionDays - 1)) "old-$runId"
+        $youngRetentionObject = $currentBackupObject
+        $outsideRetentionObject = "outside-backups/2000-01-01/outside-$runId.dump.age"
+        $invalidRetentionObject = "${backupPrefix}not-a-date/invalid-$runId.dump.age"
+        $futureRetentionObject = New-BackupObjectKey ($retentionReferenceDate.AddDays(1)) "future-$runId"
+        Send-EncryptedOffsiteCopy $encryptedArchive $oldRetentionObject
+        Send-EncryptedOffsiteCopy $encryptedArchive $outsideRetentionObject
+        Send-EncryptedOffsiteCopy $encryptedArchive $invalidRetentionObject
+        Send-EncryptedOffsiteCopy $encryptedArchive $futureRetentionObject
+
+        $dryRunPlan = Invoke-RetentionPrune $retentionReferenceDate $retentionDays $false
+        if ($dryRunPlan.Delete.Count -ne 1 -or $dryRunPlan.Delete[0] -cne $oldRetentionObject) {
+            throw 'Retention dry-run did not select exactly the old in-prefix object.'
+        }
+        if ($dryRunPlan.Keep.Count -ne 3 -or
+            $dryRunPlan.Keep -cnotcontains $youngRetentionObject -or
+            $dryRunPlan.Keep -cnotcontains $invalidRetentionObject -or
+            $dryRunPlan.Keep -cnotcontains $futureRetentionObject) {
+            throw 'Retention dry-run keep-set differs from the expected in-prefix objects.'
+        }
+        if ($dryRunPlan.Anomalies.Count -ne 2 -or
+            $dryRunPlan.Anomalies.Key -cnotcontains $invalidRetentionObject -or
+            $dryRunPlan.Anomalies.Key -cnotcontains $futureRetentionObject) {
+            throw 'Retention dry-run anomaly-set differs from the expected invalid and future objects.'
+        }
+        Write-RetentionAnomalies 'dry-run' $dryRunPlan.Anomalies
+        foreach ($objectKey in $dryRunPlan.Delete) {
+            Write-Output "retention_would_delete phase=dry-run object=$objectKey"
+        }
+        Assert-RetentionObjectState 'dry-run' 'old' $oldRetentionObject $true
+        Assert-RetentionObjectState 'dry-run' 'young' $youngRetentionObject $true
+        Assert-RetentionObjectState 'dry-run' 'outside-prefix' $outsideRetentionObject $true
+        Assert-RetentionObjectState 'dry-run' 'unparseable' $invalidRetentionObject $true
+        Assert-RetentionObjectState 'dry-run' 'future' $futureRetentionObject $true
+        Write-Output "retention_dry_run=PASS days=$retentionDays prefix=$backupPrefix would_delete=$($dryRunPlan.Delete.Count) kept=$($dryRunPlan.Keep.Count) anomalies=$($dryRunPlan.Anomalies.Count)"
+
+        $applyPlan = Invoke-RetentionPrune $retentionReferenceDate $retentionDays $true
+        if ($applyPlan.Delete.Count -ne 1 -or $applyPlan.Delete[0] -cne $oldRetentionObject) {
+            throw 'Retention apply did not select exactly the old in-prefix object.'
+        }
+        if ($applyPlan.Anomalies.Count -ne 2 -or
+            $applyPlan.Anomalies.Key -cnotcontains $invalidRetentionObject -or
+            $applyPlan.Anomalies.Key -cnotcontains $futureRetentionObject) {
+            throw 'Retention apply anomaly-set differs from the expected invalid and future objects.'
+        }
+        Write-RetentionAnomalies 'apply' $applyPlan.Anomalies
+        foreach ($objectKey in $applyPlan.Delete) {
+            Write-Output "retention_deleted phase=apply object=$objectKey"
+        }
+        Assert-RetentionObjectState 'apply' 'old' $oldRetentionObject $false
+        Assert-RetentionObjectState 'apply' 'young' $youngRetentionObject $true
+        Assert-RetentionObjectState 'apply' 'outside-prefix' $outsideRetentionObject $true
+        Assert-RetentionObjectState 'apply' 'unparseable' $invalidRetentionObject $true
+        Assert-RetentionObjectState 'apply' 'future' $futureRetentionObject $true
+        Write-Output "retention_prune=PASS days=$retentionDays prefix=$backupPrefix deleted=$($applyPlan.Delete.Count) kept=$($applyPlan.Keep.Count) anomalies=$($applyPlan.Anomalies.Count)"
+    }
+    else {
+        $operatorPlan = Invoke-RetentionPrune $retentionReferenceDate $retentionDays $retentionApply
+        $operatorPhase = if ($retentionApply) { 'apply' } else { 'dry-run' }
+        Write-RetentionAnomalies $operatorPhase $operatorPlan.Anomalies
+        if ($retentionApply) {
+            Write-Output "retention_prune=PASS days=$retentionDays prefix=$backupPrefix deleted=$($operatorPlan.Delete.Count) kept=$($operatorPlan.Keep.Count) anomalies=$($operatorPlan.Anomalies.Count)"
+        }
+        else {
+            foreach ($objectKey in $operatorPlan.Delete) {
+                Write-Output "retention_would_delete phase=dry-run object=$objectKey"
+            }
+            Write-Output "retention_dry_run=PASS days=$retentionDays prefix=$backupPrefix would_delete=$($operatorPlan.Delete.Count) kept=$($operatorPlan.Keep.Count) anomalies=$($operatorPlan.Anomalies.Count)"
+        }
+    }
+    Write-Output "retention_secret_output_check=PASS s3_steps=$s3OutputChecks"
+
+    Invoke-DisasterRecovery
+
     $archive = [System.IO.File]::ReadAllBytes($encryptedArchive)
     if ($archive.Length -lt 128) { throw 'Encrypted archive is too small for a corruption probe.' }
     $truncated = [byte[]]::new([Math]::Floor($archive.Length / 2))
@@ -538,6 +1062,9 @@ SELECT concat_ws('|',
     Write-Output "schema_sha256=$sourceSchemaFingerprint data_sha256=$sourceDataFingerprint sequence_sha256=$sourceSequenceFingerprint graph=1|1|1|1|1|9"
     Write-Output "encryption=age key_mode=$keyMode key_output_check=PASS steps=$keyOutputChecks"
     Write-Output "corrupt_ciphertext_decrypt_exit=$corruptExitCode corrupt_partial_state=0"
+    Write-Output "offsite_copy=PASS mode=$offsiteMode target_label=$label bucket=$s3Bucket object=$offsiteObject"
+    Write-Output "offsite_local_sha256=$localEncryptedSha256 offsite_download_sha256=$downloadedEncryptedSha256"
+    Write-Output "offsite_negative_non_age=PASS bad_credentials_exit=$badCredentialExit s3_output_check=PASS steps=$s3OutputChecks"
 }
 catch {
     $failure = $_
@@ -560,6 +1087,15 @@ finally {
             }
             docker network rm $network | Out-Null
             Assert-NativeSuccess 'Exact-label network cleanup'
+        }
+        if ($offsiteNetworkCreated) {
+            $offsiteNetworkLabels = docker network inspect --format '{{json .Labels}}' $offsiteNetwork | ConvertFrom-Json
+            Assert-NativeSuccess 'Offsite network inspection'
+            if ($offsiteNetworkLabels.'oncam.f9-backup-restore' -cne $runId) {
+                throw 'Offsite network label mismatch; cleanup refused.'
+            }
+            docker network rm $offsiteNetwork | Out-Null
+            Assert-NativeSuccess 'Exact-label offsite network cleanup'
         }
         if (Test-Path -LiteralPath $tempDirectory) {
             Remove-Item -LiteralPath $tempDirectory -Recurse -Force

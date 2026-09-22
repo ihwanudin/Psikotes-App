@@ -1,0 +1,63 @@
+{
+  "checks": [
+    {
+      "name": "Before camera activation: photo-capture log is empty",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Before camera activation: scheduler status reads BERHENTI",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "While camera active: scheduler ran at least 2 periodic captures",
+      "passed": true,
+      "detail": "count=2"
+    },
+    {
+      "name": "While camera active: scheduler status reads AKTIF",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Every periodic capture used the injected 321x241 bound (fit to 321x181, not the manual buttons' 480x360/100x100) and image/jpeg type",
+      "passed": true,
+      "detail": "[\"[6:36:41 AM] periodic: 321x181, type=image/jpeg, bytes=1371\",\"[6:36:42 AM] periodic: 321x181, type=image/jpeg, bytes=1438\"]"
+    },
+    {
+      "name": "Manual capture button (480x360 bound) produces 480x270, distinct from the periodic scheduler's 321x181",
+      "passed": true,
+      "detail": "Hasil: 480x270, type=image/jpeg, bytes=2009"
+    },
+    {
+      "name": "After the camera is interrupted: scheduler status reads BERHENTI",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "After the camera is interrupted: no new periodic captures happen even after waiting past a full interval",
+      "passed": true,
+      "detail": "at_interruption=2 after_wait=2"
+    },
+    {
+      "name": "After a failed reactivation attempt (reactivation_failed): scheduler status still reads BERHENTI and no new captures happen",
+      "passed": true,
+      "detail": "after_wait_interrupted=2 after_failed_reactivation=2"
+    },
+    {
+      "name": "After the camera successfully reactivates: the scheduler resumes on its own and captures more photos",
+      "passed": true,
+      "detail": "after_failed_reactivation=2 after_resume=4"
+    }
+  ],
+  "countWhileActive": 2,
+  "countAtInterruption": 2,
+  "countAfterWaitWhileInterrupted": 2,
+  "countAfterFailedReactivation": 2,
+  "countAfterResume": 4,
+  "entriesWhileActive": [
+    "[6:36:41 AM] periodic: 321x181, type=image/jpeg, bytes=1371",
+    "[6:36:42 AM] periodic: 321x181, type=image/jpeg, bytes=1438"
+  ]
+}
