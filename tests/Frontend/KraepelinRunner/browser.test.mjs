@@ -68,6 +68,7 @@ async (page) => {
     const readNumbersTopToBottom = () =>
         page.evaluate(() => {
             const groupEl = document.querySelector('[aria-label="Kolom Kraepelin"]')
+
             return Array.from(groupEl.querySelectorAll(':scope > div')).map((el) =>
                 Number(el.textContent),
             )
