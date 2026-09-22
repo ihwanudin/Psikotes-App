@@ -216,6 +216,7 @@ final class StartParticipantSessionControllerSecurityTest extends TestCase
                     public function contentFor(
                         GenericAssessmentInstrument $instrument,
                         SessionDefinition $definition,
+                        ?string $currentSegmentCode = null,
                     ): AssessmentItemContent {
                         throw new RuntimeException('Must never be reached: no ready entitlement exists.');
                     }

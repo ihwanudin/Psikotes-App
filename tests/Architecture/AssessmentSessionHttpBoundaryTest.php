@@ -11,6 +11,7 @@ use App\Http\Controllers\GetAssessmentSessionAssetUrlController;
 use App\Http\Controllers\GetAssessmentSessionController;
 use App\Http\Controllers\GetAssessmentSessionItemsController;
 use App\Http\Controllers\SubmitAssessmentSessionController;
+use App\Http\Controllers\SubtestNextController;
 use App\Http\Middleware\ApplyRlsContext;
 use App\Models\Entitlement;
 use App\Security\RlsContextRunner;
@@ -59,6 +60,7 @@ final class AssessmentSessionHttpBoundaryTest extends TestCase
         yield 'GET /sessions/{id}/answers' => ['participant.sessions.answers.show', GetAssessmentSessionAnswersController::class];
         yield 'GET /sessions/{id}/items' => ['participant.sessions.items.show', GetAssessmentSessionItemsController::class];
         yield 'GET /sessions/{id}/assets/{assetId}/url' => ['participant.sessions.assets.url', GetAssessmentSessionAssetUrlController::class];
+        yield 'POST /sessions/{id}/subtest/next' => ['participant.sessions.subtest.next', SubtestNextController::class];
     }
 
     #[DataProvider('routes')]

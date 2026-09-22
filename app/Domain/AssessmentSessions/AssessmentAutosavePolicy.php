@@ -20,6 +20,18 @@ final class AssessmentAutosavePolicy
      * count, read from the session_definition_payload the server itself
      * stored at start time -- never from the client.
      *
+     * F2 timed-segments stage 5 (2026-09-22): $currentSubtestMinItemNo/
+     * $currentSubtestMaxItemNo are a second, narrower bound -- the item_no
+     * range belonging to whichever subtest the swept-current timed segment
+     * is in (SessionDefinition::currentSubtestItemRange()), not the whole
+     * instrument. An item_no outside $maxItemNo doesn't exist in this
+     * instrument at all (INVALID_ANSWER_BATCH, malformed request); an
+     * item_no that DOES exist but belongs to a past or future subtest is a
+     * different, more specific rejection (ITEM_OUTSIDE_CURRENT_SEGMENT) --
+     * checked only for a genuinely new submission, never for a replayed
+     * mutation_id (already-committed work is never re-validated against
+     * current segment state).
+     *
      * @param  array<int, mixed>  $items
      */
     public function decide(
@@ -33,6 +45,8 @@ final class AssessmentAutosavePolicy
         array $items,
         ?AssessmentAutosaveMutation $existingMutation,
         ?int $maxItemNo = null,
+        ?int $currentSubtestMinItemNo = null,
+        ?int $currentSubtestMaxItemNo = null,
     ): AssessmentAutosaveDecision {
         if ($currentRevision < 0) {
             throw new InvalidAssessmentSessionState('The accepted answer revision cannot be negative.');
@@ -68,6 +82,14 @@ final class AssessmentAutosavePolicy
         $deadline = (new AssessmentSessionDeadlinePolicy)->evaluateAnswerWrite($status, $endsAt, $receivedAt);
         if (! $deadline->accepted) {
             return $this->reject($deadline->status, $deadline->errorCode);
+        }
+
+        if ($currentSubtestMinItemNo !== null && $currentSubtestMaxItemNo !== null) {
+            foreach ($canonical['item_numbers'] as $itemNo) {
+                if ($itemNo < $currentSubtestMinItemNo || $itemNo > $currentSubtestMaxItemNo) {
+                    return $this->reject($status, AssessmentSessionErrorCode::ItemOutsideCurrentSegment);
+                }
+            }
         }
 
         if ($proposedRevision <= $currentRevision) {

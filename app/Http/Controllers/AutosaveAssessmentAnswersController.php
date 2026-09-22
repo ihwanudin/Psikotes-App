@@ -25,7 +25,10 @@ use Throwable;
  * - SESSION_NOT_FOUND: 404 (nonexistent and foreign-owned are identical here,
  *   see AutosaveAssessmentAnswers -- same WHERE clause, same empty result).
  * - SESSION_NOT_STARTED, SESSION_CLOSED, DEADLINE_EXCEEDED,
- *   AUTOSAVE_STALE_REVISION, AUTOSAVE_REVISION_GAP, MUTATION_PAYLOAD_MISMATCH:
+ *   AUTOSAVE_STALE_REVISION, AUTOSAVE_REVISION_GAP, MUTATION_PAYLOAD_MISMATCH,
+ *   ITEM_OUTSIDE_CURRENT_SEGMENT (F2 timed-segments stage 5, 2026-09-22 --
+ *   an item_no that exists in the instrument but not in the currently open
+ *   subtest, a conflict against current segment state, not malformed input):
  *   409 -- all are optimistic-concurrency/lifecycle conflicts against the
  *   session's current state, not malformed input.
  * - INVALID_ANSWER_BATCH: 422 -- request-shape/domain-batch rejection.
@@ -45,6 +48,7 @@ final class AutosaveAssessmentAnswersController extends Controller
         'AUTOSAVE_STALE_REVISION',
         'AUTOSAVE_REVISION_GAP',
         'MUTATION_PAYLOAD_MISMATCH',
+        'ITEM_OUTSIDE_CURRENT_SEGMENT',
     ];
 
     public function __invoke(

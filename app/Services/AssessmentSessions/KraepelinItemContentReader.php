@@ -48,7 +48,9 @@ final readonly class KraepelinItemContentReader implements AssessmentItemContent
     public function contentFor(
         GenericAssessmentInstrument $instrument,
         SessionDefinition $definition,
+        ?string $currentSegmentCode = null,
     ): AssessmentItemContent {
+        // Kraepelin has no multi-phase subtest -- nothing to filter by segment.
         if ($instrument !== GenericAssessmentInstrument::Kraepelin) {
             throw new AssessmentItemContentUnavailable(
                 'KraepelinItemContentReader only serves the Kraepelin instrument.',

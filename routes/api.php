@@ -16,6 +16,7 @@ use App\Http\Controllers\ParticipantProfileController;
 use App\Http\Controllers\SelectionParticipantProvisioningController;
 use App\Http\Controllers\StartParticipantSessionController;
 use App\Http\Controllers\SubmitAssessmentSessionController;
+use App\Http\Controllers\SubtestNextController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/integrations/v1/selection/participants', SelectionParticipantProvisioningController::class)
@@ -86,4 +87,10 @@ Route::middleware('participant.jwt')->group(function (): void {
     Route::get('/sessions/{id}/assets/{assetId}/url', GetAssessmentSessionAssetUrlController::class)
         ->whereUlid('assetId')
         ->name('participant.sessions.assets.url');
+
+    // F2 timed-segments stage 4 (2026-09-22): same rls-excluded group, same
+    // reason -- SubtestNext owns its own service transaction and locks the
+    // session row itself.
+    Route::post('/sessions/{id}/subtest/next', SubtestNextController::class)
+        ->name('participant.sessions.subtest.next');
 });

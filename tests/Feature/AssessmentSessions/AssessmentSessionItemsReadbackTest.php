@@ -207,6 +207,7 @@ final class AssessmentSessionItemsReadbackTest extends OrganizationPaymentTestCa
             public function contentFor(
                 GenericAssessmentInstrument $instrument,
                 SessionDefinition $definition,
+                ?string $currentSegmentCode = null,
             ): AssessmentItemContent {
                 return new AssessmentItemContent($instrument, 'synthetic-content-v1', [
                     ['code' => 'SYN', 'items' => [

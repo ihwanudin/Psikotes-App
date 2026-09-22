@@ -6,6 +6,7 @@ namespace Tests\Unit\AssessmentSessions;
 
 use App\Domain\AssessmentSessions\GenericAssessmentInstrument;
 use App\Domain\AssessmentSessions\SessionDefinition;
+use App\Domain\AssessmentSessions\TimedSegment;
 use App\Domain\AssessmentSessions\UnsupportedGenericAssessmentInstrument;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -301,6 +302,196 @@ final class SessionDefinitionTest extends TestCase
         yield 'item count does not match the matrix' => [static function (array &$input): void {
             $input['subtests'][0]['item_count'] = 1349;
         }];
+    }
+
+    // ═══════════════════════════════════════════════
+    // TIMED SEGMENTS (F2 stage 2, 2026-09-22) --
+    // tasks/handoffs/f2/timed-segments-plan.md
+    // ═══════════════════════════════════════════════
+
+    // ─── stage 5: currentSubtestItemRange() ───
+
+    public function test_current_subtest_item_range_maps_a_flattened_segment_index_back_to_its_owning_subtest(): void
+    {
+        $input = $this->fixedDefinition('ist');
+        $input['total_duration_seconds'] = 120;
+        $input['subtests'][0]['duration_seconds'] = 60;
+        $input['subtests'][0]['item_count'] = 20;
+        $input['subtests'][] = ['code' => 'OTHER', 'duration_seconds' => 60, 'item_count' => 20];
+        $input['checksum'] = SessionDefinition::checksumFor($input);
+
+        $definition = SessionDefinition::fromArray($input);
+
+        $first = $definition->currentSubtestItemRange(0);
+        $this->assertSame(1, $first->start);
+        $this->assertSame(20, $first->end);
+
+        $second = $definition->currentSubtestItemRange(1);
+        $this->assertSame(21, $second->start);
+        $this->assertSame(40, $second->end);
+    }
+
+    public function test_current_subtest_item_range_resolves_every_segment_of_a_multi_segment_subtest_to_the_same_range(): void
+    {
+        $input = $this->fixedDefinition('ist');
+        $input['subtests'][0]['item_count'] = 10;
+        $input['subtests'][0]['segments'] = [
+            ['code' => 'SYNTHETIC_MEMORIZE', 'duration_seconds' => 20, 'reading_cap_seconds' => 0, 'allow_early_finish' => false],
+            ['code' => 'SYNTHETIC_ANSWER', 'duration_seconds' => 40, 'reading_cap_seconds' => 0, 'allow_early_finish' => false],
+        ];
+        $input['checksum'] = SessionDefinition::checksumFor($input);
+
+        $definition = SessionDefinition::fromArray($input);
+
+        $memorize = $definition->currentSubtestItemRange(0);
+        $answer = $definition->currentSubtestItemRange(1);
+        $this->assertEquals($memorize, $answer);
+        $this->assertSame(1, $memorize->start);
+        $this->assertSame(10, $memorize->end);
+    }
+
+    public function test_a_definition_with_no_timed_segment_fields_degenerates_to_one_segment_per_subtest(): void
+    {
+        $definition = SessionDefinition::fromArray($this->fixedDefinition('ist'));
+
+        $this->assertSame(0, $definition->totalReadingCapSeconds);
+        $this->assertCount(1, $definition->segments);
+        $segment = $definition->segments[0];
+        $this->assertInstanceOf(TimedSegment::class, $segment);
+        $this->assertSame('SYNTHETIC', $segment->code);
+        $this->assertSame(60, $segment->durationSeconds);
+        $this->assertSame(0, $segment->readingCapSeconds);
+        $this->assertFalse($segment->allowEarlyFinish);
+    }
+
+    /**
+     * The core backward-compatibility guarantee this stage depends on: a
+     * payload written and checksummed BEFORE reading_cap_seconds/
+     * allow_early_finish/segments existed must still parse and verify
+     * today, because real PAPI/RMIB/Kraepelin sessions in 'created'/
+     * 'in_progress' status already have such payloads persisted. Proven two
+     * ways: it parses without error, AND recomputing the checksum with the
+     * new fields explicitly present (even at their same default values)
+     * produces a DIFFERENT digest -- so this isn't passing by accident
+     * because the fields are being silently defaulted back into the
+     * checksummed payload.
+     */
+    public function test_a_pre_existing_payload_without_timed_segment_fields_still_checksum_verifies(): void
+    {
+        $oldPayload = $this->fixedDefinition('papi');
+
+        $definition = SessionDefinition::fromArray($oldPayload);
+
+        $this->assertSame($oldPayload['checksum'], $definition->checksum);
+        $this->assertSame(0, $definition->totalReadingCapSeconds);
+
+        $withExplicitDefaults = $oldPayload;
+        $withExplicitDefaults['subtests'][0]['reading_cap_seconds'] = 0;
+        $withExplicitDefaults['subtests'][0]['allow_early_finish'] = false;
+        $this->assertNotSame(
+            $oldPayload['checksum'],
+            SessionDefinition::checksumFor($withExplicitDefaults),
+            'Presence of the new fields must affect the checksum, proving old payloads are never silently defaulted before hashing.',
+        );
+    }
+
+    public function test_a_subtest_reading_cap_and_early_finish_produce_one_segment_carrying_them(): void
+    {
+        $input = $this->fixedDefinition('ist');
+        $input['subtests'][0]['reading_cap_seconds'] = 30;
+        $input['subtests'][0]['allow_early_finish'] = true;
+        $input['checksum'] = SessionDefinition::checksumFor($input);
+
+        $definition = SessionDefinition::fromArray($input);
+
+        $this->assertSame(30, $definition->totalReadingCapSeconds);
+        $this->assertCount(1, $definition->segments);
+        $segment = $definition->segments[0];
+        $this->assertSame(60, $segment->durationSeconds);
+        $this->assertSame(30, $segment->readingCapSeconds);
+        $this->assertTrue($segment->allowEarlyFinish);
+    }
+
+    public function test_a_multi_segment_subtest_flattens_to_its_own_segments_not_the_subtest_itself(): void
+    {
+        $input = $this->fixedDefinition('ist');
+        $input['subtests'][0]['segments'] = [
+            ['code' => 'SYNTHETIC_MEMORIZE', 'duration_seconds' => 20, 'reading_cap_seconds' => 0, 'allow_early_finish' => false],
+            ['code' => 'SYNTHETIC_ANSWER', 'duration_seconds' => 40, 'reading_cap_seconds' => 10, 'allow_early_finish' => true],
+        ];
+        $input['checksum'] = SessionDefinition::checksumFor($input);
+
+        $definition = SessionDefinition::fromArray($input);
+
+        // The parent subtest code itself never appears as a segment -- only
+        // its own explicit phases do.
+        $this->assertCount(2, $definition->segments);
+        $this->assertSame(['SYNTHETIC_MEMORIZE', 'SYNTHETIC_ANSWER'], array_map(
+            static fn (TimedSegment $s): string => $s->code,
+            $definition->segments,
+        ));
+        $this->assertSame(10, $definition->totalReadingCapSeconds);
+
+        [$memorize, $answer] = $definition->segments;
+        $this->assertSame(20, $memorize->durationSeconds);
+        $this->assertFalse($memorize->allowEarlyFinish);
+        $this->assertSame(40, $answer->durationSeconds);
+        $this->assertTrue($answer->allowEarlyFinish);
+    }
+
+    public function test_a_segment_code_colliding_with_another_subtests_code_is_rejected(): void
+    {
+        $input = $this->fixedDefinition('ist');
+        $input['total_duration_seconds'] = 120;
+        $input['subtests'][0]['duration_seconds'] = 60;
+        $input['subtests'][] = ['code' => 'OTHER', 'duration_seconds' => 60, 'item_count' => 1];
+        // A segment inside SYNTHETIC re-uses OTHER's code.
+        $input['subtests'][0]['segments'] = [
+            ['code' => 'OTHER', 'duration_seconds' => 60, 'reading_cap_seconds' => 0, 'allow_early_finish' => false],
+        ];
+        $input['checksum'] = SessionDefinition::checksumFor($input);
+
+        $this->expectException(InvalidArgumentException::class);
+
+        SessionDefinition::fromArray($input);
+    }
+
+    public function test_segment_durations_must_sum_to_the_parent_subtest_duration(): void
+    {
+        $input = $this->fixedDefinition('ist');
+        $input['subtests'][0]['segments'] = [
+            ['code' => 'SYNTHETIC_MEMORIZE', 'duration_seconds' => 20, 'reading_cap_seconds' => 0, 'allow_early_finish' => false],
+            ['code' => 'SYNTHETIC_ANSWER', 'duration_seconds' => 30, 'reading_cap_seconds' => 0, 'allow_early_finish' => false],
+        ];
+        $input['checksum'] = SessionDefinition::checksumFor($input);
+
+        $this->expectException(InvalidArgumentException::class);
+
+        SessionDefinition::fromArray($input);
+    }
+
+    public function test_an_unknown_subtest_field_is_still_rejected(): void
+    {
+        $input = $this->fixedDefinition('ist');
+        $input['subtests'][0]['unexpected'] = true;
+        $input['checksum'] = SessionDefinition::checksumFor($input);
+
+        $this->expectException(InvalidArgumentException::class);
+
+        SessionDefinition::fromArray($input);
+    }
+
+    public function test_a_segment_missing_a_required_field_is_rejected(): void
+    {
+        $input = $this->fixedDefinition('ist');
+        $input['subtests'][0]['segments'] = [
+            ['code' => 'SYNTHETIC_ONLY', 'duration_seconds' => 60, 'allow_early_finish' => false],
+        ];
+        $input['checksum'] = SessionDefinition::checksumFor($input);
+
+        $this->expectException(InvalidArgumentException::class);
+
+        SessionDefinition::fromArray($input);
     }
 
     /** @return array<string, mixed> */
