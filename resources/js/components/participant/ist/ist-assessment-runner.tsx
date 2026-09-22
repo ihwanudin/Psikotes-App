@@ -16,6 +16,7 @@ import type { ProctoringReporter } from '../session-runner/proctoring-reporter.t
 import type { GetUserMedia } from '../session-runner/use-proctoring-camera.ts';
 import { useIstItems } from './use-ist-items.ts';
 import { IstSubtestScreen } from './ist-subtest-screen.tsx';
+import { IstMemorizeScreen } from './ist-memorize-screen.tsx';
 import type { IstSubtestContent } from './ist-items.ts';
 
 /**
@@ -26,18 +27,24 @@ import type { IstSubtestContent } from './ist-items.ts';
  * timer or sequence (CLAUDE.md: "JANGAN menaruh logika timer atau skoring
  * di frontend").
  *
- * Scope (Lead's instruction, 2026-09-22, narrowed after this session found
- * that merging #118's finalized ME word list without an ME-aware
- * `IstItemContentReader` would fail the WHOLE instrument closed — see
- * `tasks/handoffs/f2/item-delivery-segment-awareness-deferred.md` and this
- * session's report to Lead): SE/WA/AN/GE/RA/ZR run for real — real
- * sequencing, real per-subtest timer display, real "Mulai mengerjakan"
- * confirmation via `POST /sessions/:id/subtest/next`, real autosave. ME
- * (and FA/WU, already out of scope pending #73) is explicitly NOT rendered
- * as if it works: `current_segment.code` pointing at a subtest this
- * component's `/items` fetch didn't receive (`IstItemContentReader`
- * doesn't build ME yet) renders a clearly-labeled "belum didukung" state,
- * never a fixture standing in for real content.
+ * ME (2026-09-22, `IstItemContentReader` extended in
+ * `f2/ist-me-reader-segment-awareness`, commit `bf31b940` — merged here
+ * once F2 shipped it, after this session first reported the "merging #118
+ * as originally instructed would fail SE-ZR closed too" finding to Lead):
+ * ME's wire subtest `code` is always `"ME"`, but it occupies TWO flattened
+ * segments with their own codes, `ME_MEMORIZE` and `ME_ANSWER` — a
+ * segment-to-subtest lookup by exact code equality (fine for every
+ * single-segment subtest) misses it, so `subtestCodeForSegment()` below
+ * maps both phase codes back to `"ME"`. The server also computes ME's
+ * `word_list`/`items` split fresh per request from the live segment state
+ * (`GetAssessmentSessionItems.php`'s `currentSegmentCode()`), so a single
+ * `/items` fetch captured once is stale the moment ME's phase advances —
+ * `IstSegmentBody` below re-fetches on every `segment.code` change (keyed
+ * remount), not just once at mount.
+ *
+ * FA/WU remain out of scope, still blocked on #73 — same "belum didukung
+ * sistem" fallback as before for any segment code this component's
+ * `/items` fetch doesn't recognize.
  *
  * `allow_early_finish` is false for every real segment today (Lead's
  * instruction) — completing a subtest's items and confirming still calls
@@ -162,10 +169,6 @@ function IstAssessmentBody({
     subtestNextSend,
 }: IstAssessmentBodyProps) {
     const { session, reloadSession, connectivity } = runner;
-    const items = useIstItems({
-        fetchItems,
-        queueRetry: connectivity.queueRetry,
-    });
 
     if (session === null) {
         return (
@@ -183,6 +186,65 @@ function IstAssessmentBody({
             </p>
         );
     }
+
+    const segment = session.currentSegment;
+
+    if (segment === null) {
+        return (
+            <p role="status" aria-busy="true">
+                Menunggu sesi dimulai…
+            </p>
+        );
+    }
+
+    return (
+        <IstSegmentBody
+            // Remounts (and so re-fetches /items) on every segment
+            // change — required now that the server's own response for a
+            // given subtest can vary by current segment (ME's
+            // memorize/answer split); see this module's doc.
+            key={segment.code}
+            segment={segment}
+            fetchItems={fetchItems}
+            fetchResumeAnswers={fetchResumeAnswers}
+            send={send}
+            subtestNextSend={subtestNextSend}
+            queueRetry={connectivity.queueRetry}
+            reloadSession={reloadSession}
+        />
+    );
+}
+
+/** ME occupies two flattened segments (`ME_MEMORIZE`, `ME_ANSWER`) under
+ * one subtest `code` (`"ME"`) — see this module's doc. Every other
+ * subtest today is single-segment, where the segment code IS the subtest
+ * code, so this is the only mapping needed. */
+const ME_PHASE_SEGMENT_CODES = new Set(['ME_MEMORIZE', 'ME_ANSWER']);
+
+function subtestCodeForSegment(segmentCode: string): string {
+    return ME_PHASE_SEGMENT_CODES.has(segmentCode) ? 'ME' : segmentCode;
+}
+
+type IstSegmentBodyProps = {
+    segment: CurrentSegmentState;
+    fetchItems: () => Promise<GenericItemsOutcome>;
+    fetchResumeAnswers: FetchResumeAnswers;
+    send: AutosaveSend;
+    subtestNextSend: SubtestNextSend;
+    queueRetry: (retry: () => void) => () => void;
+    reloadSession: () => Promise<unknown>;
+};
+
+function IstSegmentBody({
+    segment,
+    fetchItems,
+    fetchResumeAnswers,
+    send,
+    subtestNextSend,
+    queueRetry,
+    reloadSession,
+}: IstSegmentBodyProps) {
+    const items = useIstItems({ fetchItems, queueRetry });
 
     if (items.state.status === 'loading') {
         return (
@@ -216,17 +278,9 @@ function IstAssessmentBody({
         );
     }
 
-    const segment = session.currentSegment;
-
-    if (segment === null) {
-        return (
-            <p role="status" aria-busy="true">
-                Menunggu sesi dimulai…
-            </p>
-        );
-    }
-
-    const subtest = itemsOutcome.subtests.find((s) => s.code === segment.code);
+    const subtest = itemsOutcome.subtests.find(
+        (s) => s.code === subtestCodeForSegment(segment.code),
+    );
 
     if (subtest === undefined) {
         return (
@@ -249,7 +303,7 @@ function IstAssessmentBody({
             fetchResumeAnswers={fetchResumeAnswers}
             send={send}
             subtestNextSend={subtestNextSend}
-            queueRetry={connectivity.queueRetry}
+            queueRetry={queueRetry}
             reloadSession={reloadSession}
         />
     );
@@ -332,6 +386,29 @@ function IstCurrentSegment({
                     {confirming ? 'Memulai…' : 'Mulai mengerjakan'}
                 </Button>
             </div>
+        );
+    }
+
+    if (segment.code === 'ME_MEMORIZE') {
+        if (
+            subtest.answerType !== 'multiple_choice' ||
+            subtest.wordList === undefined
+        ) {
+            // Contract violation, not a normal "not supported yet" state —
+            // IstItemContentReader guarantees word_list is present exactly
+            // while the segment is ME_MEMORIZE (see ist-items.ts's doc).
+            // Fail loudly rather than silently rendering wrong/stale content.
+            throw new Error(
+                'ME_MEMORIZE is current but the "ME" subtest has no word_list.',
+            );
+        }
+
+        return (
+            <IstMemorizeScreen
+                wordList={subtest.wordList}
+                instructions={subtest.instructions}
+                remainingSeconds={displayRemainingSeconds ?? 0}
+            />
         );
     }
 

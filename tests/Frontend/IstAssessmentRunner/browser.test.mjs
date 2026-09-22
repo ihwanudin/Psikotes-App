@@ -67,15 +67,49 @@ async (page) => {
     // --- No client-side timer/sequencing: the fixture's fake server (never
     // this component) decides when SE's window elapses and the sequence
     // auto-advances through WA/AN/GE/RA/ZR, purely via the next
-    // GET /sessions/:id poll's current_segment. Eventually it reaches
-    // ME_MEMORIZE, which IstItemContentReader (and this fixture's own
-    // ITEM_SUBTESTS) deliberately does not build -- the "belum didukung"
-    // message must appear instead of any fixture content standing in for
-    // real ME behaviour. ---
+    // GET /sessions/:id poll's current_segment. ---
+    await page.getByText('BUNGA').waitFor({ timeout: 20000 })
+    const memorizeBody = await page.evaluate(() => document.body.innerText)
+    assert(
+        memorizeBody.includes('mawar') && memorizeBody.includes('kenanga'),
+        'ME_MEMORIZE must render every word in every category, not a partial/synthetic stand-in',
+    )
+    assert(
+        !memorizeBody.includes('Berikutnya'),
+        'ME_MEMORIZE is read-only: no item navigation/answer controls belong on the memorize screen',
+    )
+    results.push('ME_MEMORIZE: real word_list renders (server-computed segment-aware split), read-only, no answer controls')
+
+    // --- ME_ANSWER: IstItemContentReader flips word_list out and items in
+    // for the SAME "ME" subtest code, purely because the fixture's fake
+    // server (mirroring GetAssessmentSessionItems.php's
+    // currentSegmentCode()) computed a different response for the new
+    // current segment -- proving IstSegmentBody actually re-fetches /items
+    // on every segment change instead of reusing a stale mount-time
+    // snapshot. IstSubtestScreen is reused unchanged for this phase. ---
+    const meRadiogroup = page.getByRole('radiogroup')
+    await meRadiogroup.waitFor({ timeout: 10000 })
+    const meBody = await page.evaluate(() => document.body.innerText)
+    assert(
+        meBody.includes('BUNGA') && !meBody.includes('PERKAKAS'),
+        'ME_ANSWER must show its own recall question, not the memorize word_list',
+    )
+    await page.getByRole('radio').nth(1).click() // "b. melati"
+    await page.getByRole('button', { name: 'Berikutnya' }).click()
+    const afterMeNav = await page.evaluate(() => window.__istRunnerAutosaveCalls)
+    const item157Batches = afterMeNav.filter((batch) =>
+        batch.some((entry) => entry.item_no === 157),
+    )
+    assert(item157Batches.length > 0, 'answering ME_ANSWER\'s item must autosave with item_no 157 (ME\'s real global item number)')
+    results.push('ME_ANSWER: real recall item renders and autosaves as item_no 157, reusing IstSubtestScreen unchanged')
+
+    // --- FA is still blocked on #73 -- same "belum didukung sistem"
+    // fallback as ME used to have, now exercised at the next boundary the
+    // fixture's fake server (and the real reader) doesn't build yet. ---
     await page
         .getByText(/belum didukung sistem/)
-        .waitFor({ timeout: 20000 })
-    results.push('sequencing: SE -> WA -> AN -> GE -> RA -> ZR auto-advances via server polls alone, ending at ME_MEMORIZE\'s "belum didukung" state, never a fixture standing in for real ME content')
+        .waitFor({ timeout: 10000 })
+    results.push('sequencing: SE -> WA -> AN -> GE -> RA -> ZR -> ME_MEMORIZE -> ME_ANSWER auto-advances via server polls alone, ending at FA\'s "belum didukung" state, never a fixture standing in for real FA content')
 
     // --- No horizontal overflow at 320/375px on the reading-gap screen
     // (the state most likely to overflow: full instructions + a button). ---

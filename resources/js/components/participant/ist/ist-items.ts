@@ -102,7 +102,9 @@ export function istSubtestContentFromWire(wire: {
             answerType: 'multiple_choice',
             instructions: wire.instructions,
             items: wire.items as IstMultipleChoiceItem[],
-            ...(wire.word_list !== undefined ? { wordList: wire.word_list } : {}),
+            ...(wire.word_list !== undefined
+                ? { wordList: wire.word_list }
+                : {}),
         };
     }
 

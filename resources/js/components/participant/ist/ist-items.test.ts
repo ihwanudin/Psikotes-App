@@ -110,6 +110,7 @@ test('istSubtestContentFromWire maps ME during the memorize phase: word_list pre
 
     assert.equal(content.answerType, 'multiple_choice');
     assert.equal(content.items.length, 0);
+
     if (content.answerType !== 'multiple_choice') {
         return;
     }
@@ -126,19 +127,29 @@ test('istSubtestContentFromWire maps ME during the answer phase: items present, 
             {
                 item: 157,
                 text: 'Kata pertama di kategori BUNGA adalah ...',
-                options: { a: 'mawar', b: 'melati', c: 'anggrek', d: 'kamboja', e: 'kenanga' },
+                options: {
+                    a: 'mawar',
+                    b: 'melati',
+                    c: 'anggrek',
+                    d: 'kamboja',
+                    e: 'kenanga',
+                },
             },
         ],
     });
 
     assert.equal(content.answerType, 'multiple_choice');
     assert.equal(content.items.length, 1);
+
     if (content.answerType !== 'multiple_choice') {
         return;
     }
 
     assert.equal(content.wordList, undefined);
-    assert.ok(!('wordList' in content), 'wordList must be entirely absent, not an undefined key');
+    assert.ok(
+        !('wordList' in content),
+        'wordList must be entirely absent, not an undefined key',
+    );
 });
 
 test('istItemsOutcomeFromGeneric maps every subtest in an available outcome', () => {

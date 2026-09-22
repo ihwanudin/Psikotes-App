@@ -14,18 +14,19 @@ import './preview.css';
 // Standalone fixture: exercises the real IstAssessmentRunner orchestration
 // (sequencing via current_segment, the "Mulai mengerjakan" reading-gap
 // confirmation, per-subtest timer display, the early-finish
-// invalid_transition rejection path, and the ME-not-yet-supported message)
-// with real component/hook logic underneath (useIstItems' real retry
-// loader, IstSubtestScreen's real autosave/resume wiring, the real
-// subtestNextSend outcome handling). Not a real fetch()/HTTP layer — a
+// invalid_transition rejection path, ME's memorize/answer split, and the
+// FA-not-yet-supported message) with real component/hook logic underneath
+// (useIstItems' real retry loader -- now re-fetching on every segment
+// change, IstSubtestScreen's real autosave/resume wiring, the real
+// subtestNextSend outcome handling). Not a real fetch()/HTTP layer -- a
 // synthetic in-memory fake server, same convention IstSubtestScreen's own
 // fixture already uses for send/fetchResumeAnswers (that component never
 // owned a fetch() layer either). The HTTP wire-format parsing itself
 // (snake_case -> camelCase, including current_segment and subtestNextSend)
 // is separately covered by http-transport.test.ts, and PR #108's
 // PapiRunner/RmibRunner fixtures already proved createHttpTransport()
-// live against a fake endpoint for the other endpoints — this fixture's
-// job is the NEW orchestration logic, not re-proving the transport.
+// live against a fake endpoint for the other endpoints -- this fixture's
+// job is the orchestration logic, not re-proving the transport.
 
 type FakeSegment = {
     code: string;
@@ -45,15 +46,20 @@ const SEGMENTS: FakeSegment[] = [
     { code: 'GE', startedAt: null, durationMs: 1_500, readingCapMs: 0 },
     { code: 'RA', startedAt: null, durationMs: 1_500, readingCapMs: 0 },
     { code: 'ZR', startedAt: null, durationMs: 1_500, readingCapMs: 0 },
-    // Deliberately NOT in ITEM_SUBTESTS below — models
-    // IstItemContentReader not building ME yet (see
-    // ist-assessment-runner.tsx's module doc).
+    // ME's two flattened segments, both under subtest code "ME" -- see
+    // ist-assessment-runner.tsx's module doc. word_list/items below are
+    // built per-request from whichever of these two is current, exactly
+    // mirroring GetAssessmentSessionItems.php's currentSegmentCode().
     {
         code: 'ME_MEMORIZE',
         startedAt: null,
-        durationMs: 1_500,
+        durationMs: 3_000,
         readingCapMs: 0,
     },
+    { code: 'ME_ANSWER', startedAt: null, durationMs: 3_000, readingCapMs: 0 },
+    // Deliberately NOT in ITEM_SUBTESTS below -- models FA still being
+    // blocked on #73, same as real IstItemContentReader today.
+    { code: 'FA', startedAt: null, durationMs: 1_500, readingCapMs: 0 },
 ];
 
 let currentIndex = 0;
@@ -151,6 +157,28 @@ async function subtestNextSend(): Promise<SubtestNextOutcome> {
     return { type: 'invalid_transition' };
 }
 
+const ME_WORD_LIST = {
+    BUNGA: ['mawar', 'melati', 'anggrek', 'kamboja', 'kenanga'],
+    PERKAKAS: ['palu', 'gergaji', 'obeng', 'tang', 'kunci'],
+    BURUNG: ['merpati', 'elang', 'gagak', 'pipit', 'kutilang'],
+    KESENIAN: ['wayang', 'gamelan', 'batik', 'tari', 'lukis'],
+    BINATANG: ['kucing', 'anjing', 'kuda', 'sapi', 'kambing'],
+};
+
+const ME_ANSWER_ITEMS = [
+    {
+        item: 157,
+        text: 'Kata pertama di kategori BUNGA adalah ...',
+        options: {
+            a: 'mawar',
+            b: 'melati',
+            c: 'anggrek',
+            d: 'kamboja',
+            e: 'kenanga',
+        },
+    },
+];
+
 const ITEM_SUBTESTS: Record<
     string,
     { answer_type: string; instructions: string; items: unknown[] }
@@ -239,6 +267,25 @@ async function fetchItems(): Promise<GenericItemsOutcome> {
         return { type: 'network_error' };
     }
 
+    sweep(Date.now());
+    const currentSegmentCode = SEGMENTS[currentIndex]!.code;
+
+    // Mirrors GetAssessmentSessionItems.php's currentSegmentCode() ->
+    // IstItemContentReader::buildMemorizationSubtest(): word_list only
+    // while ME_MEMORIZE is current, items only (as a real array, never
+    // omitted) while ME_ANSWER is current.
+    const me: Record<string, unknown> = {
+        code: 'ME',
+        answer_type: 'multiple_choice',
+        instructions:
+            'Hafalkan lima kata di tiap kategori, lalu jawab soalnya.',
+        items: currentSegmentCode === 'ME_ANSWER' ? ME_ANSWER_ITEMS : [],
+    };
+
+    if (currentSegmentCode === 'ME_MEMORIZE') {
+        me.word_list = ME_WORD_LIST;
+    }
+
     return {
         type: 'available',
         content: {
@@ -246,10 +293,13 @@ async function fetchItems(): Promise<GenericItemsOutcome> {
             instrument: 'ist',
             version: 'v1',
             instructions: null,
-            subtests: Object.entries(ITEM_SUBTESTS).map(([code, subtest]) => ({
-                code,
-                ...subtest,
-            })) as unknown as { code: string; items: unknown[] }[],
+            subtests: [
+                ...Object.entries(ITEM_SUBTESTS).map(([code, subtest]) => ({
+                    code,
+                    ...subtest,
+                })),
+                me,
+            ] as unknown as { code: string; items: unknown[] }[],
         },
     };
 }
