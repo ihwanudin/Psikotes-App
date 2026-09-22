@@ -7,6 +7,7 @@ namespace Tests\Postgres;
 use App\Actions\AssessmentResults\ScoreAssessmentSession;
 use App\Actions\AssessmentSessions\AutosaveAssessmentAnswers;
 use App\Actions\AssessmentSessions\GetAssessmentSession;
+use App\Actions\AssessmentSessions\SealExpiredAssessmentSession;
 use App\Actions\AssessmentSessions\SubmitAssessmentSession;
 use App\Domain\AssessmentSessions\AssessmentAutosavePolicy;
 use App\Domain\AssessmentSessions\AssessmentSessionSubmitPolicy;
@@ -236,6 +237,7 @@ final class AssessmentSessionHttpControllerTest extends TestCase
         return new AutosaveAssessmentAnswers(
             app(RlsContextRunner::class),
             new AssessmentAutosavePolicy,
+            new SealExpiredAssessmentSession(app(RlsContextRunner::class)),
             fn (): DateTimeImmutable => new DateTimeImmutable($iso),
         );
     }
@@ -245,6 +247,7 @@ final class AssessmentSessionHttpControllerTest extends TestCase
         return new SubmitAssessmentSession(
             app(RlsContextRunner::class),
             new AssessmentSessionSubmitPolicy,
+            new SealExpiredAssessmentSession(app(RlsContextRunner::class)),
             app(ScoreAssessmentSession::class),
             fn (): DateTimeImmutable => new DateTimeImmutable($iso),
         );
@@ -378,6 +381,7 @@ final class AssessmentSessionHttpControllerTest extends TestCase
                 $action = new AutosaveAssessmentAnswers(
                     app(RlsContextRunner::class),
                     new AssessmentAutosavePolicy,
+                    new SealExpiredAssessmentSession(app(RlsContextRunner::class)),
                     function () use ($pair): DateTimeImmutable {
                         $this->writeEvent($pair[1], ['event' => 'locked']);
                         if (fgets($pair[1]) !== "release\n") {

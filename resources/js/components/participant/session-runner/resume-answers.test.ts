@@ -56,7 +56,6 @@ test('resume -> initial revision from readback -> the first real autosave uses r
             return {
                 type: 'accepted',
                 revision: batch.revision,
-                receivedAt: '2026-09-21T00:00:00Z',
                 acceptedItemNos: batch.items.map((item) => item.itemNo),
             };
         },

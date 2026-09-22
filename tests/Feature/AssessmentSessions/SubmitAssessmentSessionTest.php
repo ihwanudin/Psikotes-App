@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\AssessmentSessions;
 
 use App\Actions\AssessmentResults\ScoreAssessmentSession;
+use App\Actions\AssessmentSessions\SealExpiredAssessmentSession;
 use App\Actions\AssessmentSessions\SubmitAssessmentSession;
 use App\Domain\AssessmentSessions\AssessmentSessionSubmitPolicy;
 use App\Domain\AssessmentSessions\SessionDefinition;
@@ -235,6 +236,7 @@ final class SubmitAssessmentSessionTest extends OrganizationPaymentTestCase
         return new SubmitAssessmentSession(
             $this->app->make(RlsContextRunner::class),
             new AssessmentSessionSubmitPolicy,
+            new SealExpiredAssessmentSession($this->app->make(RlsContextRunner::class)),
             $this->app->make(ScoreAssessmentSession::class),
             $clock(...),
         );

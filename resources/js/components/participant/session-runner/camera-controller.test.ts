@@ -110,7 +110,103 @@ test('handleStreamEnded after activation marks the stream interrupted and report
     assert.equal(events.at(-1)?.kind, 'camera_interrupted');
 });
 
-test('reactivate() is a no-op unless the status is currently interrupted', async () => {
+test('a muted track (handleStreamEnded reused for mute — no ended event on iOS Safari) is treated identically to a genuinely ended one', async () => {
+    const { reporter, events } = recordingReporter();
+    const controller = createCameraController({
+        requestStream: async () => 'granted',
+        reporter,
+    });
+
+    await controller.activate();
+    // The hook wires both the 'ended' and 'mute' DOM events to this
+    // same method (2026-09-21 fix) — this test documents that the pure
+    // controller has no separate mute concept, by design.
+    controller.handleStreamEnded();
+
+    assert.equal(controller.getStatus(), 'interrupted');
+    assert.equal(events.at(-1)?.kind, 'camera_interrupted');
+});
+
+test('handleStreamResumed() is a no-op unless status is currently interrupted', async () => {
+    const { reporter, events } = recordingReporter();
+    const controller = createCameraController({
+        requestStream: async () => 'granted',
+        reporter,
+    });
+
+    controller.handleStreamResumed(); // status is 'inactive'
+    assert.equal(controller.getStatus(), 'inactive');
+    assert.deepEqual(events, []);
+
+    await controller.activate(); // status is now 'active'
+    controller.handleStreamResumed();
+    assert.equal(
+        controller.getStatus(),
+        'active',
+        'resuming an already-active camera does nothing',
+    );
+    assert.deepEqual(events, []);
+});
+
+test('handleStreamResumed() returns directly to active and reports reactivation_succeeded, without a fresh requestStream() call', async () => {
+    let requestCount = 0;
+    const { reporter, events } = recordingReporter();
+    const controller = createCameraController({
+        requestStream: async () => {
+            requestCount++;
+
+            return 'granted';
+        },
+        reporter,
+    });
+
+    await controller.activate();
+    assert.equal(requestCount, 1);
+    controller.handleStreamEnded(); // simulates a 'mute' event
+    assert.equal(controller.getStatus(), 'interrupted');
+
+    controller.handleStreamResumed(); // simulates the matching 'unmute'
+
+    assert.equal(controller.getStatus(), 'active');
+    assert.equal(
+        requestCount,
+        1,
+        'the same still-live track resumed — no new stream should ever be requested',
+    );
+    assert.deepEqual(
+        events.map((event) => event.kind),
+        ['camera_interrupted', 'camera_reactivation_succeeded'],
+    );
+});
+
+test('handleStreamResumed() does not resurrect a status left behind by a separate, later reactivate() cycle', async () => {
+    const { reporter } = recordingReporter();
+    // Put the controller into reactivation_failed via its own full
+    // cycle: granted (activate) -> ended -> reactivate() -> unavailable.
+    const controller = createCameraController({
+        requestStream: (() => {
+            let call = 0;
+
+            return async () => {
+                call++;
+
+                return call === 1 ? 'granted' : 'unavailable';
+            };
+        })(),
+        reporter,
+    });
+    await controller.activate();
+    controller.handleStreamEnded();
+    await controller.reactivate();
+    assert.equal(controller.getStatus(), 'reactivation_failed');
+
+    // An unmute arriving late, from the ORIGINAL (now-abandoned) track,
+    // must not pull this back to 'active'.
+    controller.handleStreamResumed();
+    assert.equal(controller.getStatus(), 'reactivation_failed');
+});
+
+test('reactivate() is a no-op unless the status is currently interrupted or reactivation_failed', async () => {
     let requestCount = 0;
     const { reporter } = recordingReporter();
     const controller = createCameraController({
@@ -196,6 +292,56 @@ test('a failed reactivation reports attempted then failed and does not silently 
         !kinds.includes('camera_reactivation_succeeded'),
         'must never report success for a failed reactivation',
     );
+});
+
+test('reactivate() retried from reactivation_failed can still succeed (2026-09-21 fix)', async () => {
+    const { reporter, events } = recordingReporter();
+    let call = 0;
+    const controller = createCameraController({
+        requestStream: async () => {
+            call++;
+
+            // 1st: initial activate() succeeds. 2nd: reactivate() after
+            // the stream dies fails. 3rd: a later reactivate() (e.g. the
+            // hook's next visibilitychange/focus, or a manual retry
+            // button) finally succeeds.
+            if (call === 1) {
+                return 'granted';
+            }
+
+            if (call === 2) {
+                return 'unavailable';
+            }
+
+            return 'granted';
+        },
+        reporter,
+    });
+
+    await controller.activate();
+    controller.handleStreamEnded();
+    await controller.reactivate();
+    assert.equal(
+        controller.getStatus(),
+        'reactivation_failed',
+        'setup: first reactivation attempt must fail',
+    );
+
+    // Without the 2026-09-21 fix, this second reactivate() call would be
+    // a no-op forever (the guard only accepted 'interrupted') — every
+    // later visibilitychange/focus for the rest of the session would do
+    // nothing, even though a fresh attempt could succeed.
+    await controller.reactivate();
+
+    assert.equal(controller.getStatus(), 'active');
+    const kinds = events.map((event) => event.kind);
+    assert.deepEqual(kinds, [
+        'camera_interrupted',
+        'camera_reactivation_attempted',
+        'camera_reactivation_failed',
+        'camera_reactivation_attempted',
+        'camera_reactivation_succeeded',
+    ]);
 });
 
 test('deactivate() resets to inactive and further stream-ended events are ignored', async () => {

@@ -52,12 +52,27 @@ parameter merges FA/WU's own output back in once that PR lands, so re-running
 this text extractor afterwards doesn't wipe them out.
 
 ME's memorization word list has two non-identical printed variants (see the
-verification report) - the psychologist has not confirmed which is correct,
-so ME is unconditionally emitted as `status: "draft"` with both variants
-recorded (deduplicated from the 4 printed copies, with a print count each),
-never invented or "corrected" text, per CLAUDE.md/AGENTS.md fail-closed
-conventions. There is no code path in this module that can mark ME "final" -
-its status is hardcoded, not computed from any input.
+verification report) - `build()` unconditionally emits ME as `status: "draft"`
+with both variants recorded (deduplicated from the 4 printed copies, with a
+print count each), never invented or "corrected" text, per CLAUDE.md/AGENTS.md
+fail-closed conventions. Re-running the PDF extraction can never finalize ME
+by itself, no matter what the PDF says - that would mean this module could
+silently overturn a human decision the next time someone re-extracts.
+
+The psychologist confirmed which variant is correct on 2026-09-22 (P7,
+tasks/handoffs/decisions/owner-decisions-2026-09-21.md item 21, PR #81
+`4050eb9b`): Version A - BURUNG includes TEKUKUR, KESENIAN includes QUINTET
+(the variant printed once out of four copies, not the majority one - it also
+matches the worked example already printed on ME's own instructions page,
+which names "Quintet" specifically). `finalize_me()` (below) is the one and
+only code path that can move ME from draft to final: it takes an
+ALREADY-extracted `ist_items.json` (no PDF access needed - the words were
+already read off the page and verified, this step only SELECTS between two
+already-recorded candidates, it never re-reads or re-derives anything),
+asserts the confirmed word list is byte-for-byte one of the variants already
+on record (never invents a word list from ME_CONFIRMED_WORD_LIST alone), and
+is invoked explicitly (`--finalize-me`), never automatically as part of a
+routine PDF re-extraction.
 """
 
 import json
@@ -71,6 +86,18 @@ from .common import OUTPUT
 
 VERSION = "F0-ITEMS-IST-2026.09"
 OPTION_LETTERS = "abcde"
+
+# P7 (2026-09-22): the psychologist-confirmed variant. Used only to SELECT
+# among extract_ist_items.py's own already-extracted word_list_variants
+# (finalize_me() asserts this is actually one of them) - never written into
+# ist_items.json unless that assertion passes.
+ME_CONFIRMED_WORD_LIST = {
+    "BUNGA": ["SOKA", "LARAT", "FLAMBOYAN", "YASMIN", "DAHLIA"],
+    "PERKAKAS": ["WAJAN", "JARUM", "KIKIR", "CANGKUL", "PALU"],
+    "BURUNG": ["ITIK", "ELANG", "WALET", "TEKUKUR", "NURI"],
+    "KESENIAN": ["QUINTET", "ARCA", "OPERA", "UKIRAN", "GAMELAN"],
+    "BINATANG": ["RUSA", "MUSANG", "BERUANG", "HARIMAU", "ZEBRA"],
+}
 
 # (first item number, item count, 0-based PDF page index of the items page).
 # The instructions page for each subtest is always items_page_index - 1.
@@ -233,6 +260,49 @@ def extract(pdf_path, ist_json_path, output=OUTPUT, existing_subtests=None):
     merged_subtests.update(subtests)
     top_status = "draft" if any(s["status"] == "draft" for s in merged_subtests.values()) else "final"
     data = {"version": VERSION, "status": top_status, "subtests": merged_subtests}
+
+    output.mkdir(parents=True, exist_ok=True)
+    (output / "ist_items.json").write_bytes(_serialize(data))
+    return data
+
+
+def finalize_me(ist_items_json_path, output=OUTPUT):
+    """The one and only code path that can move ME from `status: "draft"` to
+    `"final"` - see the module docstring for why this is deliberately
+    separate from `extract()`/`build()` (which can never do this themselves,
+    no matter what a re-extracted PDF says) and from `ME_CONFIRMED_WORD_LIST`'s
+    own provenance (P7, 2026-09-22).
+
+    Reads an ALREADY-extracted `ist_items.json` - no PDF access, no
+    re-extraction. Fails closed at every step: raises if ME is missing,
+    already final (calling this twice must be a deliberate no-op-detecting
+    error, not a silent re-write), or - the one check that actually matters -
+    if `ME_CONFIRMED_WORD_LIST` is not byte-for-byte identical to one of the
+    `word_list_variants` this module itself already recorded from the PDF.
+    That last check is what keeps this a SELECTION, not an invention: the
+    confirmed word list can only ever be a variant that was actually printed
+    on the source document and already extracted, never hand-typed content
+    substituting for extraction.
+    """
+    data = json.loads(Path(ist_items_json_path).read_text(encoding="utf-8"))
+    me = data["subtests"]["ME"]
+    if me["status"] != "draft":
+        raise ValueError(f"ME is not in draft status (found {me['status']!r}) - nothing to finalize.")
+
+    variants = me["word_list_variants"]
+    if not any(v["categories"] == ME_CONFIRMED_WORD_LIST for v in variants):
+        raise ValueError(
+            "ME_CONFIRMED_WORD_LIST does not exactly match any already-extracted "
+            "word_list_variants entry - refusing to finalize with an invented word list."
+        )
+
+    data["subtests"]["ME"] = {
+        "status": "final",
+        "instructions": me["instructions"],
+        "items": me["items"],
+        "word_list": ME_CONFIRMED_WORD_LIST,
+    }
+    data["status"] = "draft" if any(s["status"] == "draft" for s in data["subtests"].values()) else "final"
 
     output.mkdir(parents=True, exist_ok=True)
     (output / "ist_items.json").write_bytes(_serialize(data))
@@ -581,12 +651,30 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("pdf_path", type=Path, help="Path to the IST PDF booklet")
+    parser.add_argument("pdf_path", type=Path, nargs="?", help="Path to the IST PDF booklet")
     parser.add_argument(
         "--ist-json", type=Path, default=OUTPUT / "ist.json",
         help="Path to the existing ist.json scoring file (default: database/seeders/data/ist.json)",
     )
+    parser.add_argument(
+        "--finalize-me", type=Path, metavar="IST_ITEMS_JSON",
+        help="Select the psychologist-confirmed ME word list (P7) from an ALREADY-extracted "
+             "ist_items.json and mark ME final - no PDF needed, mutually exclusive with pdf_path.",
+    )
     args = parser.parse_args()
+
+    if args.finalize_me is not None:
+        if args.pdf_path is not None:
+            parser.error("--finalize-me does not take a pdf_path - it operates on an already-extracted ist_items.json.")
+        data = finalize_me(args.finalize_me)
+        print(f"Finalized ME in ist_items.json: status={data['status']}")
+        for code, entry in data["subtests"].items():
+            print(f"  {code}: status={entry['status']} items={len(entry.get('items', []))}")
+        return
+
+    if args.pdf_path is None:
+        parser.error("pdf_path is required unless --finalize-me is given.")
+
     data = extract(args.pdf_path, args.ist_json)
     print(f"Wrote ist_items.json: status={data['status']}")
     for code, entry in data["subtests"].items():

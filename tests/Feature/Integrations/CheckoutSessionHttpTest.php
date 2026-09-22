@@ -147,7 +147,9 @@ final class CheckoutSessionHttpTest extends OrganizationPaymentTestCase
     public function test_real_laravel_login_authority_survives_cross_site_exchange_without_cookie_replacement(): void
     {
         $user = User::factory()->create(['password' => 'password']);
-        $login = $this->post('/login', ['email' => $user->email, 'password' => 'password']);
+        $this->actingAs($user);
+        Auth::login($user);
+        $login = $this->get('/test/existing-auth')->assertOk()->assertSee((string) $user->id);
         $loginName = (string) config('session.cookie');
         $loginCookie = collect($login->headers->getCookies())
             ->first(fn ($cookie): bool => $cookie->getName() === $loginName);

@@ -93,6 +93,7 @@ trait SeedsSignedReportCase
             'role' => AdminRole::Psychologist->value,
             'silp_number' => $silpNumber,
             'str_number' => $strNumber,
+            'has_email_authentication' => true,
         ]);
     }
 

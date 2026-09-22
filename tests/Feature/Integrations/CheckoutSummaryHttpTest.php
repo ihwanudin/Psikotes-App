@@ -47,6 +47,18 @@ final class CheckoutSummaryHttpTest extends OrganizationPaymentTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // Defensive: a prior test that renders a real Livewire-powered page via a plain
+        // HTTP call (e.g. TestPackageManagementTest's ->get('/admin/test-packages')) never
+        // goes through Livewire::test()'s render lifecycle, so Livewire's own 'flush-state'
+        // event -- the only thing that resets its ComponentHook/Mechanism classes' static
+        // properties (e.g. SupportAutoInjectedAssets::$hasRenderedAComponentThisRequest) --
+        // never fires. Those statics survive for the rest of the PHPUnit process (PHP
+        // statics aren't touched by Laravel's own per-test app()->flush()), so a later,
+        // unrelated non-Livewire page render (this test's /checkout summary) silently gets
+        // livewire.min.js auto-injected into its response, breaking the exact-script-count
+        // assertion below. Reset explicitly rather than relying on some other, unrelated
+        // test happening to call Livewire::test() first and incidentally cleaning up.
+        app('livewire')->flushState();
         $command = $this->artisan('migrate', ['--force' => true]);
         if (is_int($command)) {
             $this->fail('Migration wrapper unavailable.');
@@ -304,7 +316,9 @@ final class CheckoutSummaryHttpTest extends OrganizationPaymentTestCase
     public function test_summary_native_logout_and_real_encrypted_login_cookie_remain_independent(): void
     {
         $user = User::factory()->create();
-        $login = $this->post('/login', ['email' => $user->email, 'password' => 'password']);
+        $this->actingAs($user);
+        Auth::login($user);
+        $login = $this->get('/test/summary-existing-auth')->assertOk()->assertSee((string) $user->id);
         $name = (string) config('session.cookie');
         $cookie = collect($login->headers->getCookies())->first(fn ($cookie) => $cookie->getName() === $name);
         $this->assertNotNull($cookie);

@@ -6,6 +6,7 @@ use App\Http\Middleware\AuthenticateParticipantJwt;
 use App\Http\Middleware\AuthenticateSelectionIntegration;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\RejectDisabledAdmin;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -34,6 +35,16 @@ return Application::configure(basePath: dirname(__DIR__))
             'participant.jwt' => AuthenticateParticipantJwt::class,
             'integration.client' => AuthenticateIntegrationClient::class,
             'selection.integration' => AuthenticateSelectionIntegration::class,
+            // Global alias (not just wired into the Filament panel's own
+            // authMiddleware) so any future hand-written `auth:admin` route
+            // in routes/web.php gets this by construction, not by whoever
+            // writes it remembering to add it -- the gap this closes
+            // (2026-09-22, Lead's independent security review of #104):
+            // routes outside the Filament panel never go through
+            // Admin::canAccessPanel() or AdminPanelProvider's authMiddleware
+            // at all, so a disabled admin's still-valid session kept working
+            // against them.
+            'admin.not-disabled' => RejectDisabledAdmin::class,
         ]);
 
         $middleware->web(append: [

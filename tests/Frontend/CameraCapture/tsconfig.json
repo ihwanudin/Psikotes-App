@@ -1,0 +1,13 @@
+{
+    "extends": "../../../tsconfig.json",
+    "include": [
+        "./*.ts",
+        "./*.tsx",
+        "../../../resources/js/types/vite-env.d.ts",
+        "../../../resources/js/components/participant/session-runner/**/*.ts",
+        "../../../resources/js/components/participant/session-runner/**/*.tsx",
+        "../../../resources/js/components/participant/proctoring/**/*.ts",
+        "../../../resources/js/components/ui/button.tsx",
+        "../../../resources/js/lib/utils.ts"
+    ]
+}

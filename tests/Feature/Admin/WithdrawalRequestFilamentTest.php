@@ -113,6 +113,7 @@ final class WithdrawalRequestFilamentTest extends TestCase
             'email' => Str::uuid().'@example.test',
             'password' => 'password',
             'role' => $role,
+            'has_email_authentication' => true,
         ]);
     }
 

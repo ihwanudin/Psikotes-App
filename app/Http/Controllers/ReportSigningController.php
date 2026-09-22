@@ -45,6 +45,7 @@ final class ReportSigningController extends Controller
             'narrative_clusters.B' => ['nullable', 'string'],
             'narrative_clusters.C' => ['nullable', 'string'],
             'narrative_clusters.D' => ['nullable', 'string'],
+            'revision_reason' => ['nullable', 'string'],
         ]);
 
         $result = $service->sign($case, $admin, $input);

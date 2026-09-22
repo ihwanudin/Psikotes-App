@@ -54,6 +54,7 @@ final class FundingPolicyPanelTest extends OrganizationPaymentTestCase
         $this->admin = Admin::create([
             'name' => 'Admin Uji', 'email' => 'panel@example.test',
             'password' => 'synthetic-test-password', 'role' => AdminRole::SuperAdmin,
+            'has_email_authentication' => true,
         ]);
         $this->actingAs($this->admin, 'admin');
     }

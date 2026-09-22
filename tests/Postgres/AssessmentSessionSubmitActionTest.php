@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Postgres;
 
 use App\Actions\AssessmentResults\ScoreAssessmentSession;
+use App\Actions\AssessmentSessions\SealExpiredAssessmentSession;
 use App\Actions\AssessmentSessions\SubmitAssessmentSession;
 use App\Domain\AssessmentSessions\AssessmentSessionSubmitPolicy;
 use App\Security\RlsContextRunner;
@@ -99,6 +100,7 @@ final class AssessmentSessionSubmitActionTest extends TestCase
         return new SubmitAssessmentSession(
             app(RlsContextRunner::class),
             new AssessmentSessionSubmitPolicy,
+            new SealExpiredAssessmentSession(app(RlsContextRunner::class)),
             app(ScoreAssessmentSession::class),
             $clock(...),
         );

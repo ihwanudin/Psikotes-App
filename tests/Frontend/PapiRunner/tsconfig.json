@@ -1,0 +1,10 @@
+{
+    "extends": "../../../tsconfig.json",
+    "include": [
+        "./*.ts",
+        "./*.tsx",
+        "../../../resources/js/types/vite-env.d.ts",
+        "../../../resources/js/components/participant/papi/*.ts",
+        "../../../resources/js/components/participant/papi/*.tsx"
+    ]
+}

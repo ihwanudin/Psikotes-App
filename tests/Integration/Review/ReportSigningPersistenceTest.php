@@ -741,9 +741,11 @@ final class ReportSigningPersistenceTest extends TestCase
         // Ensure distinct ULID timestamps between signings
         usleep(10000);
 
-        // Second signing
+        // Second signing — requires revision_reason since there's already a SIGNED snapshot
+        $payload2 = $this->validPayload($baseline);
+        $payload2['revision_reason'] = 'Psikolog perlu merevisi laporan untuk memperbarui narasi klaster.';
         $r2 = $this->actingAs($admin, 'admin')
-            ->postJson("/admin/assessment-cases/{$case->public_id}/signing", $this->validPayload($baseline));
+            ->postJson("/admin/assessment-cases/{$case->public_id}/signing", $payload2);
         $r2->assertStatus(201);
         $id2 = $r2->json('data.id');
 
@@ -764,6 +766,158 @@ final class ReportSigningPersistenceTest extends TestCase
         $this->assertSame('SIGNED', $row1->state);
         $this->assertSame('SIGNED', $row2->state);
     }
+
+    // ═══════════════════════════════════════════════
+    // CROSS-PSYCHOLOGIST OWNERSHIP
+    // ═══════════════════════════════════════════════
+
+    /**
+     * Finding surfaced 2026-09-22 (independent security check on PR #97,
+     * verified directly against b6adb91): the re-signing closure in
+     * ReportSigningService::sign() checked only $latest->state === 'SIGNED'
+     * and the revision_reason length - never whether the psychologist
+     * making this request is the one who signed the version being revised.
+     * Any psychologist with ReviewReports could open ANY already-signed
+     * case, type any 20+ character reason, and overwrite the original
+     * signer as the report's signed_by_admin_id - their own SILP/STR number
+     * then prints on a case they never reviewed, with no involvement from
+     * the original signer or a super_admin. Fixed by comparing
+     * $latest->signed_by_admin_id to the requesting psychologist's id
+     * before accepting a revision.
+     */
+    public function test_revision_by_a_different_psychologist_is_rejected(): void
+    {
+        $case = $this->createCase();
+        $baseline = $this->seedBaseline($case);
+        $psychologistA = $this->psychologist();
+        $psychologistB = $this->psychologist();
+
+        $r1 = $this->actingAs($psychologistA, 'admin')
+            ->postJson("/admin/assessment-cases/{$case->public_id}/signing", $this->validPayload($baseline));
+        $r1->assertStatus(201);
+
+        usleep(10000);
+
+        $payload2 = $this->validPayload($baseline);
+        $payload2['revision_reason'] = 'Psikolog lain mencoba merevisi laporan yang bukan miliknya.';
+        $r2 = $this->actingAs($psychologistB, 'admin')
+            ->postJson("/admin/assessment-cases/{$case->public_id}/signing", $payload2);
+
+        $r2->assertStatus(403);
+        $r2->assertJsonPath('error.code', 'SIGNED_BY_ANOTHER_PSYCHOLOGIST');
+
+        // Nothing was persisted for the rejected attempt - still exactly the
+        // one row psychologist A signed, still attributed to A.
+        $this->assertDatabaseCount('report_signing_snapshots', 1);
+        $this->assertDatabaseHas('report_signing_snapshots', [
+            'assessment_case_id' => $case->id,
+            'version' => 1,
+            'signed_by_admin_id' => $psychologistA->id,
+        ]);
+    }
+
+    /**
+     * Regression guard for the fix above: the same psychologist revising
+     * their own signed report must keep working exactly as before -
+     * ownership is keyed on signed_by_admin_id matching the requester, not
+     * on some broader "no re-signing at all" rule.
+     */
+    public function test_revision_by_the_same_psychologist_still_succeeds(): void
+    {
+        $case = $this->createCase();
+        $baseline = $this->seedBaseline($case);
+        $admin = $this->psychologist();
+
+        $r1 = $this->actingAs($admin, 'admin')
+            ->postJson("/admin/assessment-cases/{$case->public_id}/signing", $this->validPayload($baseline));
+        $r1->assertStatus(201);
+
+        usleep(10000);
+
+        $payload2 = $this->validPayload($baseline);
+        $payload2['revision_reason'] = 'Psikolog yang sama merevisi laporan miliknya sendiri.';
+        $r2 = $this->actingAs($admin, 'admin')
+            ->postJson("/admin/assessment-cases/{$case->public_id}/signing", $payload2);
+
+        $r2->assertStatus(201);
+        $this->assertSame(2, $r2->json('data.version'));
+        $this->assertDatabaseCount('report_signing_snapshots', 2);
+        $this->assertDatabaseHas('report_signing_snapshots', [
+            'assessment_case_id' => $case->id,
+            'version' => 2,
+            'signed_by_admin_id' => $admin->id,
+        ]);
+    }
+
+    // ═══════════════════════════════════════════════
+    // CONCURRENT SIGNING SAFETY NET
+    // ═══════════════════════════════════════════════
+
+    /**
+     * ReportSigningService::sign() locks the assessment_cases row
+     * (lockForUpdate) before reading the latest snapshot, which is what
+     * actually serializes concurrent signing attempts for the same case in
+     * production (two real processes/connections). A single-process test
+     * can't reproduce that lock contention directly, but it CAN reproduce
+     * the failure mode the lock (and this test) exist to prevent: force a
+     * row into (assessment_case_id, version) between the service's own
+     * "latest" read and its insert, via a query listener - exactly what a
+     * second signer racing past the lock would leave behind - and confirm
+     * the service's own insert silently inserts zero rows (insertOrIgnore(),
+     * not insert()) and returns a clean 409, not an unhandled 500.
+     *
+     * insertOrIgnore() rather than a try/catch around insert() matters
+     * specifically on PostgreSQL (see tests/Postgres/
+     * ReportSigningConcurrencyTest and tasks/handoffs/f5/
+     * report-signing-conflict-500.md): a thrown QueryException there aborts
+     * the whole transaction until rolled back, and runAsService()'s own
+     * cleanup query on the way out fails too before sign() ever gets a
+     * chance to handle it. insertOrIgnore() never throws for a unique
+     * violation, so nothing is ever aborted - confirmed here too: the
+     * listener's own simulated competing row is asserted to still exist
+     * below, since nothing rolls anything back anymore.
+     */
+    public function test_version_conflict_at_insert_returns_409_not_500(): void
+    {
+        $case = $this->createCase();
+        $baseline = $this->seedBaseline($case);
+        $admin = $this->psychologist();
+
+        $injected = false;
+        $listener = function ($query) use (&$injected, $case, $baseline, $admin): void {
+            if ($injected || ! str_contains($query->sql, 'report_signing_snapshots') || ! str_contains(strtolower($query->sql), 'order by')) {
+                return;
+            }
+            $injected = true;
+
+            // Simulate a competing signer that already inserted version 1
+            // for this case, landing between this SELECT and the service's
+            // own INSERT - the exact window lockForUpdate() closes in real
+            // concurrency, forced here without needing two real processes.
+            DB::table('report_signing_snapshots')->insert(
+                $this->snapshotRow($case->id, $baseline['eligibilityId'], $baseline['narrativeId'], $admin->id, 1),
+            );
+        };
+        DB::listen($listener);
+
+        $response = $this->actingAs($admin, 'admin')
+            ->postJson("/admin/assessment-cases/{$case->public_id}/signing", $this->validPayload($baseline));
+
+        $this->assertTrue($injected, 'The query listener never saw the latest-snapshot lookup - test setup is stale.');
+        $response->assertStatus(409);
+        $response->assertJsonPath('error.code', 'SIGNING_CONFLICT');
+        // The connection must still be usable after the 409, and - unlike
+        // the rejected DB::rollBack() approach - nothing else this
+        // connection wrote gets discarded: the listener's own competing row
+        // must still be exactly the one row present.
+        $this->assertTrue(DB::table('assessment_cases')->where('id', $case->id)->exists());
+        $this->assertDatabaseCount('report_signing_snapshots', 1);
+    }
+
+    // Proof that sign() actually issues SELECT ... FOR UPDATE lives in
+    // tests/Postgres/ReportSigningConcurrencyTest.php - SQLite's grammar
+    // compiles lockForUpdate() to an empty string (verified: SQLiteGrammar
+    // ::compileLock() always returns ''), so it can't be observed here.
 
     // ─── Helper ───
 
