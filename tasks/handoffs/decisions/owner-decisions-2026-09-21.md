@@ -432,6 +432,25 @@ Mengganti angka di butir yang sudah "diputuskan" sebelumnya (dan di
   dari server apa adanya (tidak ada logika timer baru di klien) —
   hanya angkanya yang berubah jadi lebih longgar.
 
+## 23. Batas kamera mati sebelum validitas V2 (P9) — SELESAI (2026-09-22)
+
+Keputusan pemilik proyek, gabungan opsi per-kejadian dan opsi total-per-sesi
+dari dokumen susulan P9:
+
+- **Per kejadian: 30 detik.** Satu kali kamera mati berturut-turut lebih
+  lama dari ini langsung ditandai V2.
+- **Total per sesi: 90 detik.** Akumulasi seluruh jeda kamera mati
+  sepanjang satu sesi tes melebihi ini juga ditandai V2, meski setiap
+  jeda sendiri di bawah 30 detik.
+- **Mana pun yang tercapai lebih dulu yang berlaku** — bukan harus dua-
+  duanya sekaligus.
+- Kedua angka dibaca dari konfigurasi, bukan konstanta tertanam
+  (`ProctoringValidityPolicy` sudah ada tapi saat ini tidak punya ambang
+  durasi sama sekali — satu kemunculan langsung V2; perlu diperbarui).
+- Semua jeda, di bawah maupun di atas ambang, tetap dicatat dan terlihat
+  psikolog — ambang ini hanya menentukan tanda V2 otomatis, bukan apa
+  yang dicatat.
+
 ## Susulan yang masih menunggu psikolog
 
 - **P9** (batas waktu kamera mati sebelum dianggap validitas V2) dan
