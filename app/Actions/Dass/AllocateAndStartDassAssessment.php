@@ -17,6 +17,7 @@ use DateTimeImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use LogicException;
+use stdClass;
 
 /**
  * Idempotent DASS-21 start: replays the participant's existing
@@ -116,7 +117,7 @@ final readonly class AllocateAndStartDassAssessment
         });
     }
 
-    private function snapshotOf(object $row): DassAssessmentSnapshot
+    private function snapshotOf(stdClass $row): DassAssessmentSnapshot
     {
         $status = DassAssessmentStatus::tryFrom((string) $row->status)
             ?? throw new LogicException('The persisted DASS-21 assessment status is invalid.');
