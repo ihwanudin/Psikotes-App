@@ -355,6 +355,93 @@ Yang **tetap tidak boleh**: mengelola akun admin lain (`ManageAdmins`),
 menandatangani laporan (`ReviewReports`), dan melihat DASS (`ViewDass`) —
 tidak berubah dari butir 17.
 
+## 21. Jawaban psikolog atas dokumen "Sepuluh keputusan psikometri" — SEBAGIAN SELESAI (2026-09-22)
+
+Psikolog menjawab dokumen versi 8 pertanyaan (P1–P8); P9 (batas kamera mati)
+dan P10 (selesai lebih awal IST) belum dikirimkan — susulan terpisah.
+
+**P1 (IST, soal kosong)** — SELESAI: dihitung salah (nilai 0). Psikolog:
+wajar ada soal tak terjawab karena waktu subtes terbatas.
+
+**P2 (PAPI, durasi/soal kosong)** — SELESAI, lihat juga butir 22 di bawah.
+PAPI Kostick aslinya dirancang tanpa batas waktu dan idealnya wajib
+dijawab semua. Karena versi online tetap perlu batas waktu, psikolog
+memilih **40 menit** (bukan dihapus). Dengan batas waktu ini tetap ada,
+kemungkinan soal kosong tetap ada — psikolog tidak eksplisit memilih
+opsi P1-gaya (nilai 0) untuk PAPI; **default aman**: perlakukan sama
+seperti P1 (nilai netral/tidak dihitung sebagai salah untuk soal ganjil-
+genap PAPI, ikuti `SCORING_ALGORITHM.md`) — **tim teknis: konfirmasi ke
+psikolog secara terpisah kalau rumus PAPI butuh aturan soal-kosong
+eksplisit**, jangan diasumsikan sama dengan IST tanpa konfirmasi karena
+mekanisme skoring PAPI (ipsative ROLE/NEED) berbeda dari IST.
+
+**P3 (RMIB, peringkat tidak lengkap)** — SELESAI:
+- Tepat satu peringkat hilang dalam satu kelompok → **direkonstruksi**
+  (angka 1–12 dipakai sekali, sisanya pasti angka yang hilang), skor
+  penuh tetap sah.
+- Lebih dari satu hilang, atau ada angka ganda, dalam satu kelompok →
+  **kelompok itu diabaikan** untuk semua kategori minat, supaya skor
+  antar-peserta tetap sebanding; hasil kelompok itu dibaca kualitatif
+  saja, tidak masuk perhitungan.
+- Lebih dari satu kelompok cacat (memenuhi kondisi di atas) → **tidak
+  bisa diskor sama sekali**, peserta perlu administrasi ulang.
+- **Prasyarat wajib sebelum aturan di atas dijalankan**: verifikasi
+  tiap kelompok RMIB berjumlah tepat 78 (1+2+...+12), totalnya 702
+  untuk 9 kelompok. Ini pemeriksaan integritas data sebelum skoring,
+  bukan bagian dari kebijakan kelompok cacat itu sendiri.
+
+**P4 (waktu habis sebelum "Kumpulkan")** — SELESAI: tetap dinilai dari
+jawaban yang sudah masuk saat sesi ditutup sistem, mengikuti aturan
+P1–P3 untuk bagian yang kosong.
+
+**P5 (Kraepelin, koreksi angka)** — SELESAI: boleh dibetulkan selama
+kolom itu masih berjalan (dalam 15 detik); begitu pindah kolom,
+terkunci, tidak bisa diubah lagi.
+
+**P6 (Kraepelin, jawaban telat)** — SELESAI: **tidak dihitung**. Kolom
+dinilai hanya dari jawaban yang tiba tepat waktu di server.
+
+**P7 (IST subtes ME, daftar hafalan)** — SELESAI, dikonfirmasi pemilik
+proyek 2026-09-22: **Versi A — TEKUKUR (Burung) dan QUINTET (Kesenian)**.
+Ini juga versi yang cocok dengan contoh soal tercetak di halaman
+petunjuk ME. Data instrumen ME di `ist_items.json` (dan turunannya)
+sekarang boleh diubah dari status `draft` menjadi `final` HANYA setelah
+kata-kata Versi A ini benar-benar dipakai (lewat `tools/extract/` +
+review, bukan ditulis tangan) — sesuai batas fail-closed yang sudah
+ditetapkan untuk ME.
+
+**P8 (IST, waktu membaca petunjuk)** — SELESAI: **tidak termasuk waktu
+subtes**. Peserta membaca petunjuk dan contoh tanpa batas waktu khusus,
+lalu menekan tombol untuk memulai — dan psikolog secara spesifik minta
+label tombolnya **"Mulai mengerjakan"** (bukan "Mulai subtes").
+
+## 22. Revisi durasi PAPI dan RMIB — SELESAI (2026-09-22)
+
+Mengganti angka di butir yang sudah "diputuskan" sebelumnya (dan di
+`CLAUDE.md`):
+
+- **PAPI: 40 menit**, batas waktu keras tetap ditegakkan server (naik
+  dari 30 menit). Teks pembuka PAPI tidak lagi menyebutkan aturan
+  waktu khusus tambahan apa pun di luar angka ini.
+- **RMIB: tanpa batas waktu keras yang terasa oleh peserta**, tapi
+  server tetap punya deadline sungguhan sebagai batas teknis, diset
+  longgar (60 menit) supaya praktis tidak pernah tersentuh peserta
+  yang mengerjakan wajar. Teks pembuka RMIB diganti: **"tidak ada
+  batas waktu, biasanya selesai sekitar 20 menit."** Tampilan
+  hitung-mundur di halaman tes tetap mengikuti `remaining_seconds`
+  dari server apa adanya (tidak ada logika timer baru di klien) —
+  hanya angkanya yang berubah jadi lebih longgar.
+
+## Susulan yang masih menunggu psikolog
+
+- **P9** (batas waktu kamera mati sebelum dianggap validitas V2) dan
+  **P10** (bolehkah peserta pindah subtes IST sebelum waktu habis) —
+  belum dikirim ke psikolog dalam dokumen yang sudah dijawab ini,
+  perlu susulan terpisah.
+- **P2 lanjutan**: apakah PAPI butuh aturan soal-kosong eksplisit
+  terpisah dari IST, mengingat skoringnya ipsative (lihat catatan di
+  butir 21).
+
 ## Butir yang masih terbuka setelah dokumen ini
 
 - Retensi foto identitas (butir 5d) sudah ditetapkan di butir 15. Butir 3
