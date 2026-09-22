@@ -5,25 +5,23 @@ from pathlib import Path
 
 DATA = Path(__file__).parents[3] / "database" / "seeders" / "data"
 
-# FA/WU are a separate PR (image crops need visual review) - see
-# extract_ist_items.py's module docstring. Everything here covers the
-# text-based subtests this PR actually produces.
+# This module covers only the text-based subtests. FA/WU (images) are
+# covered by test_f0_ist_fa_wu_items.py - both are present in the same
+# ist_items.json (FA/WU merged in by extract_ist_fa_wu.py), so tests here
+# that iterate "every subtest" are scoped to TEXT_SUBTEST_COUNTS on purpose,
+# not the full file. The byte-hash pin below covers the whole file though,
+# same as every other extract_*.py output.
 TEXT_SUBTEST_COUNTS = {"SE": 20, "WA": 20, "AN": 20, "GE": 16, "RA": 20, "ZR": 20, "ME": 20}
 LETTERED_SUBTESTS = {"SE", "WA", "AN", "ME"}
 FILL_IN_SUBTESTS = {"GE": "fill_in_word", "RA": "fill_in_numeric", "ZR": "fill_in_numeric"}
 
 
 class IstItemsGateTest(unittest.TestCase):
-    """Structural invariants and a fail-closed byte-hash gate for
-    `ist_items.json`, following the `extract_aspect_sources.py` / `test_f0.py`
-    pattern (as used for RMIB and PAPI). The hash was pinned after Lead's
-    independent review (own PDF text extraction, all 516 stem/option strings
-    matched after normalization, the 4 RA fraction items re-verified by
-    recomputing their answers against ist.json's keys, reported against
-    commit f8ac705). This pin covers the TEXT-ONLY shape - it will need
-    re-pinning once FA/WU (a separate PR) are merged in, since that changes
-    the file's bytes. FA/WU are covered by a separate test module once that
-    PR lands, not here."""
+    """Structural invariants for the text-based subtests in `ist_items.json`,
+    plus the whole-file byte-hash pin (added once the coordinator's
+    crop-by-crop review of FA/WU cleared in commit e76e036 - see
+    tasks/handoffs/f0/ist-fa-wu-verification.md - following the
+    extract_aspect_sources.py/test_f0.py pattern used for RMIB/PAPI)."""
 
     def load(self):
         return json.loads((DATA / "ist_items.json").read_text(encoding="utf-8"))
@@ -33,25 +31,29 @@ class IstItemsGateTest(unittest.TestCase):
 
     def test_bytes_are_deterministic(self):
         payload = (DATA / "ist_items.json").read_bytes()
-        self.assertEqual(len(payload), 37509)
+        self.assertEqual(len(payload), 43232)
         self.assertEqual(
             hashlib.sha256(payload).hexdigest(),
-            "7ba88a3c29a1bd91b85357967d0710ea6f6d8347e03b2f64a96379067af58061",
+            "e845613a30f7a8518a94252441573343bfa2ed83f22c9f31aa39a48ebf9d0246",
         )
         self.assertEqual(payload, json.dumps(self.load(), ensure_ascii=False, indent=2).encode("utf-8"))
 
     def test_top_level_status_is_draft_because_me_is_draft(self):
+        # FA/WU (images) are status: "final" as of commit e76e036 - only
+        # ME's still-unresolved memorization word list keeps the top-level
+        # status "draft" now.
         data = self.load()
         self.assertEqual(data["status"], "draft")
+        self.assertEqual(data["subtests"]["ME"]["status"], "draft")
+        for code in ("FA", "WU"):
+            self.assertEqual(data["subtests"][code]["status"], "final", code)
 
-    def test_fa_wu_are_absent_not_stubbed(self):
+    def test_text_subtests_present_and_final(self):
         data = self.load()
-        self.assertNotIn("FA", data["subtests"])
-        self.assertNotIn("WU", data["subtests"])
-
-    def test_present_subtests_match_expected_set(self):
-        data = self.load()
-        self.assertEqual(set(data["subtests"]), set(TEXT_SUBTEST_COUNTS))
+        for code in TEXT_SUBTEST_COUNTS:
+            self.assertIn(code, data["subtests"])
+            if code != "ME":
+                self.assertEqual(data["subtests"][code]["status"], "final", code)
 
     def test_item_counts_per_subtest(self):
         data = self.load()
