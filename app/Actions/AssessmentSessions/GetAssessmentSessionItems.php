@@ -176,7 +176,7 @@ final class GetAssessmentSessionItems
         return $definition->segments[$swept->index]->code;
     }
 
-    private function storedDefinition(object $session): SessionDefinition
+    private function storedDefinition(stdClass $session): SessionDefinition
     {
         $definitionPayload = $session->session_definition_payload ?? null;
         if (! is_string($definitionPayload)) {

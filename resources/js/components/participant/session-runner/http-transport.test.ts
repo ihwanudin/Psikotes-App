@@ -58,6 +58,7 @@ test('fetchSession maps the snake_case response to AssessmentSessionState', asyn
                 config: { total_duration_seconds: 3600 },
                 seed: 'seed-1',
                 replayed: false,
+                current_segment: null,
             },
         },
     ]);
@@ -84,6 +85,60 @@ test('fetchSession maps the snake_case response to AssessmentSessionState', asyn
         answersRevision: 5,
         config: { total_duration_seconds: 3600 },
         seed: 'seed-1',
+        currentSegment: null,
+    });
+});
+
+// F2 timed-segments stage 5 (PR #109) added `current_segment` to
+// GET /sessions/:id — verified against
+// `AssessmentSessionResource::currentSegment()`, not guessed. A response
+// from before that stage (or a session that never started) omits/nulls the
+// field; the test above already covers that. This covers the populated
+// shape IST's real orchestration (F2 IST real test page) actually reads.
+test('fetchSession maps a populated current_segment', async () => {
+    const { fetchImpl } = fakeFetch([
+        {
+            status: 200,
+            body: {
+                session_id: 'ses_1',
+                test_type: 'ist',
+                status: 'in_progress',
+                attempt_no: 1,
+                started_at: '2026-09-22T00:00:00Z',
+                ends_at: '2026-09-22T02:00:00Z',
+                write_deadline: '2026-09-22T02:00:00Z',
+                submitted_at: null,
+                server_time: '2026-09-22T00:05:00Z',
+                remaining_seconds: 7200,
+                answers_revision: 0,
+                config: { total_duration_seconds: 7200 },
+                seed: null,
+                replayed: false,
+                current_segment: {
+                    code: 'SE',
+                    index: 0,
+                    started_at: null,
+                    ends_at: null,
+                    remaining_seconds: null,
+                },
+            },
+        },
+    ]);
+    const transport = createHttpTransport({
+        sessionId: 'ses_1',
+        getToken: () => 'tok',
+        onUnauthorized: noop,
+        fetchImpl,
+    });
+
+    const state = await transport.fetchSession();
+
+    assert.deepEqual(state.currentSegment, {
+        code: 'SE',
+        index: 0,
+        startedAt: null,
+        endsAt: null,
+        remainingSeconds: null,
     });
 });
 
@@ -371,6 +426,104 @@ for (const [code, expectedType] of SUBMIT_ERROR_CASES) {
         });
 
         const outcome = await transport.submitSend();
+
+        assert.equal(outcome.type, expectedType);
+    });
+}
+
+// --- subtestNextSend ---
+
+test('subtestNextSend parses an accepted response, POSTs with no body, to the right URL', async () => {
+    const { fetchImpl, calls } = fakeFetch([
+        {
+            status: 200,
+            body: {
+                session_id: 'ses_1',
+                current_segment: {
+                    index: 0,
+                    became_current_at: '2026-09-22T00:00:00Z',
+                    started_at: '2026-09-22T00:00:00Z',
+                },
+            },
+        },
+    ]);
+    const transport = createHttpTransport({
+        sessionId: 'ses_1',
+        getToken: () => 'tok',
+        onUnauthorized: noop,
+        fetchImpl,
+    });
+
+    const outcome = await transport.subtestNextSend();
+
+    assert.deepEqual(outcome, {
+        type: 'accepted',
+        segmentIndex: 0,
+        becameCurrentAt: '2026-09-22T00:00:00Z',
+        startedAt: '2026-09-22T00:00:00Z',
+    });
+    assert.equal(calls[0]!.url, '/api/sessions/ses_1/subtest/next');
+    assert.equal(calls[0]!.init.method, 'POST');
+    assert.equal(
+        calls[0]!.init.body,
+        undefined,
+        'subtest/next has no request body per SubtestNextController',
+    );
+});
+
+test('subtestNextSend maps a still-waiting reading gap (started_at null) through as-is', async () => {
+    const { fetchImpl } = fakeFetch([
+        {
+            status: 200,
+            body: {
+                session_id: 'ses_1',
+                current_segment: {
+                    index: 1,
+                    became_current_at: '2026-09-22T00:30:00Z',
+                    started_at: null,
+                },
+            },
+        },
+    ]);
+    const transport = createHttpTransport({
+        sessionId: 'ses_1',
+        getToken: () => 'tok',
+        onUnauthorized: noop,
+        fetchImpl,
+    });
+
+    const outcome = await transport.subtestNextSend();
+
+    assert.deepEqual(outcome, {
+        type: 'accepted',
+        segmentIndex: 1,
+        becameCurrentAt: '2026-09-22T00:30:00Z',
+        startedAt: null,
+    });
+});
+
+const SUBTEST_NEXT_ERROR_CASES: [number, string, string][] = [
+    [404, 'SESSION_NOT_FOUND', 'not_found'],
+    [409, 'SESSION_NOT_STARTED', 'not_started'],
+    [409, 'SESSION_CLOSED', 'closed'],
+    [409, 'DEADLINE_EXCEEDED', 'deadline_exceeded'],
+    [422, 'INVALID_SESSION_TRANSITION', 'invalid_transition'],
+    [500, 'SOME_UNKNOWN_FUTURE_CODE', 'network_error'],
+];
+
+for (const [status, code, expectedType] of SUBTEST_NEXT_ERROR_CASES) {
+    test(`subtestNextSend maps server code ${code} (HTTP ${status}) to outcome type ${expectedType}`, async () => {
+        const { fetchImpl } = fakeFetch([
+            { status, body: { error: { code, message: 'x' } } },
+        ]);
+        const transport = createHttpTransport({
+            sessionId: 'ses_1',
+            getToken: () => 'tok',
+            onUnauthorized: noop,
+            fetchImpl,
+        });
+
+        const outcome = await transport.subtestNextSend();
 
         assert.equal(outcome.type, expectedType);
     });
