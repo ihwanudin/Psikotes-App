@@ -12,6 +12,7 @@ final readonly class RlsContext
     private const array ROLES = [
         'service',
         'super_admin',
+        'central_admin',
         'branch_admin',
         'staff',
         'psychologist',

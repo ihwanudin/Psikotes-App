@@ -202,6 +202,50 @@ async (page) => {
     )
     results.push('submit unlocked: enabled with 90/90 items answered')
 
+    // --- Real HTTP transport scenario (Lead's 2026-09-21 instruction):
+    // a second PapiItemsRunner on the same page, wired through the real
+    // createHttpTransport() against a fake HTTP endpoint returning the
+    // real wire shapes, proving papiItemsOutcomeFromGeneric is actually
+    // exercised inside a rendered runner. Safe to run here, at the very
+    // end of the script, without colliding with the section above: that
+    // section has moved off its item view (radiogroup/Mulai/Sebelumnya/
+    // Berikutnya) onto its ringkasan screen by this point, so this
+    // section's own "Mulai" and radio options are the only ones on the
+    // page when these locators run.
+    const httpDemoStart = page.getByRole('button', { name: 'Mulai' })
+    await httpDemoStart.waitFor()
+    await httpDemoStart.click()
+
+    const httpDemoOptionA = page.getByRole('radio').first()
+    await httpDemoOptionA.waitFor()
+    const httpDemoOptionText = await httpDemoOptionA.textContent()
+    assert(
+        httpDemoOptionText.includes('(transport HTTP)'),
+        `the real-transport scenario's item text must come from the fake HTTP endpoint's response, got: ${httpDemoOptionText}`,
+    )
+    results.push('http transport: papiItemsOutcomeFromGeneric-mapped item text rendered from the real createHttpTransport() + fake endpoint, not the synthetic fixture data')
+
+    await httpDemoOptionA.click()
+    await page.waitForFunction(
+        () =>
+            window.__papiHttpTransportCalls.some(
+                (call) => call.method === 'POST' && call.url.endsWith('/answers'),
+            ),
+        { timeout: 5000 },
+    )
+    results.push('http transport: selecting an answer reached autosaveSend() -> a real POST /answers call')
+
+    const httpDemoUnauthorizedButton = page.getByRole('button', {
+        name: 'Uji token kedaluwarsa (401, uji)',
+    })
+    await httpDemoUnauthorizedButton.click()
+    await page.waitForFunction(
+        () => window.__papiHttpTransportUnauthorizedFired === true,
+        { timeout: 5000 },
+    )
+    await page.getByText('Sesi psikotes telah berakhir.').waitFor()
+    results.push('http transport: a 401 fires onUnauthorized() exactly once and the page shows the session-ended message, same pattern as lobby.tsx')
+
     assert(errors.length === 0, `Browser errors: ${errors.join('; ')}`)
 
     return results
