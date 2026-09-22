@@ -59,12 +59,21 @@ return new class extends Migration
         }
 
         DB::statement('ALTER TABLE '.self::TABLE.' ALTER COLUMN engine_version SET NOT NULL');
-        DB::unprepared(<<<SQL
+        // DB::unprepared() requires a literal-string, which PHPStan can't
+        // trace through table()/checkName()'s method-call interpolation
+        // even though both just return this class's own constants --
+        // same reasoning and fix as the timed-segments migrations: go
+        // straight to the PDO handle, safe here since the SQL is entirely
+        // this file's own literal fragments, never external input.
+        $sql = <<<SQL
             ALTER TABLE {$this->table()}
                 ADD CONSTRAINT {$this->checkName()} CHECK (
                     engine_version ~ '^[A-Za-z0-9][A-Za-z0-9._:+/-]{0,99}\$'
                 );
-            SQL);
+            SQL;
+        if (DB::connection()->getPdo()->exec($sql) === false) {
+            throw new RuntimeException('Unable to add the engine_version CHECK constraint.');
+        }
     }
 
     public function down(): void
