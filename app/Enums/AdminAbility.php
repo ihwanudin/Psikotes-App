@@ -49,4 +49,20 @@ enum AdminAbility: string
      * ceiling.
      */
     case AuthorizeRetestBeyondLimit = 'authorize_retest_beyond_limit';
+
+    /**
+     * See the EXISTENCE of a failed/not-scorable `assessment_scoring_attempts`
+     * row (session, participant, instrument, attempted_at) without its
+     * psychometric REASON detail (`reason_code`) -- Lead's 2026-09-23
+     * decision, deliberately a separate ability from ReviewReports rather
+     * than reusing GenerateReports/ViewParticipants: this is operational
+     * visibility ("a participant needs re-invitation/re-administration"),
+     * not report access or general participant management, and the two
+     * concepts must be able to diverge independently later. A viewer with
+     * ReviewReports (psychologist) sees the reason detail too via that
+     * ability, not this one -- see Admin::canPerform()'s two separate
+     * match arms and the scoring-failures review page, which renders the
+     * reason column only when ReviewReports is also true.
+     */
+    case ReviewScoringFailures = 'review_scoring_failures';
 }
