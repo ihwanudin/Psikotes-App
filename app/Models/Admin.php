@@ -106,6 +106,17 @@ final class Admin extends Authenticatable implements FilamentUser, HasEmailAuthe
                 [AdminRole::SuperAdmin, AdminRole::CentralAdmin],
                 true,
             ),
+            // Existence-only visibility into scoring failures (Lead's
+            // 2026-09-23 decision) -- SuperAdmin + CentralAdmin for
+            // operational action (re-invite/re-administer), deliberately
+            // NOT Psychologist here: Psychologist already sees everything
+            // on the scoring-failures review page, reason detail included,
+            // via ReviewReports below. BranchAdmin/Staff get neither.
+            AdminAbility::ReviewScoringFailures => in_array(
+                $this->role,
+                [AdminRole::SuperAdmin, AdminRole::CentralAdmin],
+                true,
+            ),
         };
     }
 
