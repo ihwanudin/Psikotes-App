@@ -95,9 +95,57 @@
                             @endforeach
                         </ul>
                     @endif
+
+                    @if (!empty($existingSnapshot['revision']))
+                        <h3 class="mt-6 font-semibold">Riwayat revisi</h3>
+                        <div class="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-900">
+                            <p class="text-sm">Versi ini merevisi snapshot versi {{ $existingSnapshot['revision']['supersedes_version'] ?? '?' }}.</p>
+                            <p class="mt-1 text-sm font-medium">Alasan: {{ $existingSnapshot['revision']['reason'] ?? '-' }}</p>
+                        </div>
+                    @endif
+                @endif
+
+                {{-- Revision request section --}}
+                @if ($isSignedByAnotherPsychologist)
+                    <div class="mt-6 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800">
+                        <h3 class="font-semibold text-gray-700 dark:text-gray-300">Ajukan Revisi</h3>
+                        <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                            Laporan ini sudah ditandatangani oleh psikolog lain. Hanya psikolog yang menandatangani
+                            versi ini yang dapat mengajukan revisi.
+                        </p>
+                    </div>
+                @else
+                    <div class="mt-6 rounded-xl border border-gray-200 p-4 dark:border-gray-700">
+                        <h3 class="font-semibold">Ajukan Revisi</h3>
+                        <p class="mt-1 text-sm">Untuk merevisi laporan yang sudah ditandatangani, isi alasan revisi di bawah.</p>
+                        <label for="revision-reason" class="mt-3 block font-medium">Alasan revisi (minimal 20 karakter)</label>
+                        <textarea
+                            id="revision-reason"
+                            wire:model="revisionReason"
+                            rows="3"
+                            class="mt-1"
+                            placeholder="Jelaskan mengapa laporan perlu direvisi..."
+                        ></textarea>
+                        @error('revisionReason')<p class="mt-1 text-sm text-red-700">{{ $message }}</p>@enderror
+                        <button
+                            type="button"
+                            wire:click="requestRevision"
+                            class="mt-3 rounded-lg bg-amber-600 px-4 py-2 font-semibold text-white hover:bg-amber-500"
+                        >
+                            Ajukan Revisi
+                        </button>
+                    </div>
                 @endif
             </section>
         @else
+            {{-- Revision banner --}}
+            @if ($isRevision)
+                <div class="rounded-xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-600 dark:bg-amber-900" role="alert">
+                    <p class="font-semibold text-amber-800 dark:text-amber-200">Mode revisi</p>
+                    <p class="mt-1 text-sm text-amber-700 dark:text-amber-300">Anda sedang merevisi laporan yang sudah ditandatangani. Versi baru akan disimpan sebagai versi terpisah dan tidak mengubah versi sebelumnya.</p>
+                </div>
+            @endif
+
             {{-- Aspect table --}}
             <div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700" tabindex="0" aria-label="Tabel aspek dan override">
                 <table>

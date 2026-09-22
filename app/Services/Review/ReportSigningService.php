@@ -241,19 +241,30 @@ final class ReportSigningService
             return ['success' => false, 'code' => 'SIGNING_BLOCKED', 'message' => 'Report cannot be signed.', 'status' => 422, 'blocking_reason_codes' => $transitionResult['blocking_reason_codes']];
         }
 
-        // Step 9: Persist snapshot_json = prerequisiteInput + provenance (derived, not client claims)
+        // Step 9: Persist snapshot. Running the revision-reason check and the
+        // version-chain read inside one runAsService closure does NOT by
+        // itself close the TOCTOU window - it's one transaction, but an
+        // unlocked `SELECT ... ORDER BY version DESC` under READ COMMITTED
+        // (Postgres's default) still lets two concurrent signings both read
+        // the same `latest` row, so both could pass (or both wrongly skip)
+        // the revision_reason check and both try to insert the next version.
+        // What actually closes the window is the `lockForUpdate()` below: it
+        // serializes concurrent signing attempts on the SAME case (the
+        // second request blocks until the first's transaction commits or
+        // rolls back), so by the time this closure reads `latest`, no other
+        // signing for this case can be mid-flight. The unique constraint on
+        // (assessment_case_id, version) is kept as a second, independent
+        // safety net - if it's ever hit anyway, the second signer gets a
+        // clean 409 SIGNING_CONFLICT instead of an unhandled 500.
         $signedAt = now();
         $signedByAdminId = (int) $psychologist->id;
-        $snapshotJson = json_encode([
-            'prerequisite_input' => $snapshot->prerequisiteInput(),
-            'provenance' => $snapshot->provenance(),
-        ], JSON_THROW_ON_ERROR);
 
-        $result = $this->runner->runAsService(function () use (
-            $casePublicId, $input, $signedAt, $signedByAdminId, $snapshotJson,
+        $signingClosure = function () use (
+            $casePublicId, $input, $signedAt, $signedByAdminId, $snapshot,
         ): array {
             $caseRecord = DB::table('assessment_cases')
                 ->where('public_id', $casePublicId)
+                ->lockForUpdate()
                 ->first();
             if ($caseRecord === null) {
                 return ['found' => false, 'error_code' => 'CASE_NOT_FOUND'];
@@ -268,15 +279,63 @@ final class ReportSigningService
                 return ['found' => false, 'error_code' => 'NARRATIVE_VERSION_NOT_FOUND'];
             }
 
+            // Safe to read as "the" latest now: the case row lock above
+            // means no other signing attempt for this case is mid-flight.
             $latest = DB::table('report_signing_snapshots')
                 ->where('assessment_case_id', $caseId)
                 ->orderByDesc('version')
                 ->first();
+
+            // Validate revision_reason if re-signing over a SIGNED snapshot.
+            if ($latest !== null && $latest->state === 'SIGNED') {
+                // A report already signed by a DIFFERENT psychologist may not
+                // be re-signed here. There is deliberately no case-reassignment
+                // path yet - a psychologist who disagrees with a colleague's
+                // signed report is a process question for the project owner,
+                // not something this endpoint decides by simply overwriting
+                // signed_by_admin_id. See handoff doc for the finding this
+                // guards against.
+                if ((int) $latest->signed_by_admin_id !== $signedByAdminId) {
+                    return ['found' => false, 'error_code' => 'SIGNED_BY_ANOTHER_PSYCHOLOGIST'];
+                }
+                $reason = isset($input['revision_reason']) && is_string($input['revision_reason']) ? trim($input['revision_reason']) : '';
+                if (mb_strlen($reason) < 20) {
+                    return ['found' => false, 'error_code' => 'REVISION_REASON_REQUIRED'];
+                }
+                $revisionReason = $reason;
+                $supersededVersion = (int) $latest->version;
+            } else {
+                $revisionReason = null;
+                $supersededVersion = null;
+            }
+
+            $snapshotJson = json_encode([
+                'prerequisite_input' => $snapshot->prerequisiteInput(),
+                'provenance' => $snapshot->provenance(),
+            ] + ($revisionReason !== null ? ['revision' => [
+                'reason' => $revisionReason,
+                'supersedes_version' => $supersededVersion,
+            ]] : []), JSON_THROW_ON_ERROR);
+
             $version = $latest === null ? 1 : $latest->version + 1;
             $supersedesId = $latest?->id;
             $id = (string) Str::ulid();
 
-            DB::table('report_signing_snapshots')->insert([
+            // insertOrIgnore(), not insert(): on PostgreSQL this compiles to
+            // INSERT ... ON CONFLICT DO NOTHING (SQLite: INSERT OR IGNORE),
+            // so a unique violation on either (assessment_case_id, version)
+            // or supersedes_id - both mean a concurrent signer already won -
+            // silently inserts zero rows instead of throwing. That matters
+            // specifically here: a thrown QueryException would abort the
+            // WHOLE Postgres transaction (25P02) until rolled back, and
+            // runAsService()'s own cleanup (restoring the previous RLS role
+            // in its finally block) would then itself fail on the poisoned
+            // connection before this method ever got a chance to handle it
+            // - confirmed by actually triggering that, not assumed; see
+            // tasks/handoffs/f5/report-signing-conflict-500.md. Not throwing
+            // at all sidesteps that entirely, with no need to touch
+            // RlsContextRunner.
+            $inserted = DB::table('report_signing_snapshots')->insertOrIgnore([
                 'id' => $id,
                 'assessment_case_id' => $caseId,
                 'version' => $version,
@@ -290,16 +349,35 @@ final class ReportSigningService
                 'created_at' => $signedAt,
             ]);
 
+            if ($inserted === 0) {
+                // Should not happen with the row lock above in place - kept
+                // as a second, independent safety net for if it's ever
+                // bypassed.
+                return ['found' => false, 'error_code' => 'SIGNING_CONFLICT'];
+            }
+
             return ['found' => true, 'row' => DB::table('report_signing_snapshots')->where('id', $id)->sole()];
-        });
+        };
+
+        $result = $this->runner->runAsService($signingClosure);
 
         if (! $result['found']) {
             $messages = [
                 'CASE_NOT_FOUND' => 'Assessment case not found.',
                 'NARRATIVE_VERSION_NOT_FOUND' => 'Referenced version does not belong to this assessment case.',
+                'REVISION_REASON_REQUIRED' => 'Revisi memerlukan alasan minimal 20 karakter.',
+                'SIGNING_CONFLICT' => 'A conflicting signing attempt for this case was just committed. Reload and try again.',
+                'SIGNED_BY_ANOTHER_PSYCHOLOGIST' => 'Laporan ini sudah ditandatangani oleh psikolog lain. Hanya psikolog yang menandatangani versi sebelumnya yang dapat mengajukan revisi.',
+            ];
+            $statuses = [
+                'CASE_NOT_FOUND' => 404,
+                'NARRATIVE_VERSION_NOT_FOUND' => 404,
+                'REVISION_REASON_REQUIRED' => 422,
+                'SIGNING_CONFLICT' => 409,
+                'SIGNED_BY_ANOTHER_PSYCHOLOGIST' => 403,
             ];
 
-            return ['success' => false, 'code' => $result['error_code'], 'message' => $messages[$result['error_code']], 'status' => 404];
+            return ['success' => false, 'code' => $result['error_code'], 'message' => $messages[$result['error_code']], 'status' => $statuses[$result['error_code']]];
         }
 
         $row = $result['row'];
