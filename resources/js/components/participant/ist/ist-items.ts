@@ -27,6 +27,8 @@
  *   to invent. Out of scope for this file until that reader ships.
  */
 
+import type { GenericItemsOutcome } from '../session-runner/http-transport.ts';
+
 export type IstMultipleChoiceOptionKey = 'a' | 'b' | 'c' | 'd' | 'e';
 
 export type IstMultipleChoiceItem = {
@@ -94,4 +96,42 @@ export function istSubtestContentFromWire(wire: {
     throw new RangeError(
         `istSubtestContentFromWire: unsupported answer_type "${wire.answer_type}" for subtest "${wire.code}"`,
     );
+}
+
+/**
+ * The whole-instrument `GET /sessions/:id/items` outcome — every subtest
+ * `IstItemContentReader` currently builds (SE/WA/AN/GE/RA/ZR), not one at a
+ * time. Mirrors PAPI/RMIB's own `xxxItemsOutcomeFromGeneric` shape (F2
+ * http-transport connect, PR #108) over `GenericItemsOutcome`
+ * (`../session-runner/http-transport.ts`) — IST didn't have this layer
+ * before (`ist-subtest-screen.tsx` took its one subtest as a prop, no
+ * fetching of its own, per PR #92's explicit scope), so this is new here,
+ * not a port of existing IST code.
+ */
+export type IstItemsOutcome =
+    | { type: 'available'; subtests: IstSubtestContent[] }
+    | { type: 'not_started' }
+    | { type: 'closed' }
+    | { type: 'deadline_exceeded' }
+    | { type: 'not_found' }
+    | { type: 'content_unavailable' }
+    | { type: 'network_error' };
+
+export function istItemsOutcomeFromGeneric(
+    outcome: GenericItemsOutcome,
+): IstItemsOutcome {
+    if (outcome.type !== 'available') {
+        return outcome;
+    }
+
+    return {
+        type: 'available',
+        subtests: outcome.content.subtests.map((subtest) =>
+            istSubtestContentFromWire(
+                subtest as unknown as Parameters<
+                    typeof istSubtestContentFromWire
+                >[0],
+            ),
+        ),
+    };
 }

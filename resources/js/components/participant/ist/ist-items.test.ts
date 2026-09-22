@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { istSubtestContentFromWire } from './ist-items.ts';
+import {
+    istItemsOutcomeFromGeneric,
+    istSubtestContentFromWire,
+} from './ist-items.ts';
 
 test('istSubtestContentFromWire maps a multiple_choice subtest', () => {
     const content = istSubtestContentFromWire({
@@ -88,3 +91,70 @@ test('istSubtestContentFromWire rejects an unsupported answer_type rather than g
         RangeError,
     );
 });
+
+test('istItemsOutcomeFromGeneric maps every subtest in an available outcome', () => {
+    // GenericItemsContent's `subtests` type is deliberately narrow
+    // (`{code, items}` only — see http-transport.ts's module doc: the
+    // generic transport layer doesn't know per-instrument fields like
+    // `answer_type`/`instructions`). The wire payload really does carry
+    // them; this cast mirrors how istItemsOutcomeFromGeneric itself reads
+    // them at runtime, not a type-safety gap in that function.
+    const rawSubtests = [
+        {
+            code: 'SE',
+            answer_type: 'multiple_choice',
+            instructions: 'Pilih kata yang tepat.',
+            items: [
+                {
+                    item: 1,
+                    text: 'x',
+                    options: { a: '1', b: '2', c: '3', d: '4', e: '5' },
+                },
+            ],
+        },
+        {
+            code: 'GE',
+            answer_type: 'fill_in_word',
+            instructions: 'Temukan kata.',
+            items: [{ item: 61, text: 'mawar - melati' }],
+        },
+    ];
+    const outcome = istItemsOutcomeFromGeneric({
+        type: 'available',
+        content: {
+            sessionId: 'ses_1',
+            instrument: 'ist',
+            version: 'v1',
+            instructions: null,
+            subtests: rawSubtests as unknown as {
+                code: string;
+                items: unknown[];
+            }[],
+        },
+    });
+
+    assert.equal(outcome.type, 'available');
+
+    if (outcome.type !== 'available') {
+        return;
+    }
+
+    assert.equal(outcome.subtests.length, 2);
+    assert.equal(outcome.subtests[0]!.code, 'SE');
+    assert.equal(outcome.subtests[0]!.answerType, 'multiple_choice');
+    assert.equal(outcome.subtests[1]!.code, 'GE');
+    assert.equal(outcome.subtests[1]!.answerType, 'fill_in_word');
+});
+
+for (const type of [
+    'not_started',
+    'closed',
+    'deadline_exceeded',
+    'not_found',
+    'content_unavailable',
+    'network_error',
+] as const) {
+    test(`istItemsOutcomeFromGeneric passes a non-available outcome (${type}) through as-is`, () => {
+        assert.deepEqual(istItemsOutcomeFromGeneric({ type }), { type });
+    });
+}

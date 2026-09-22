@@ -22,6 +22,7 @@ function fakeSession(
         answersRevision: 5,
         config: null,
         seed: null,
+        currentSegment: null,
         ...overrides,
     };
 }
