@@ -8,6 +8,8 @@ use App\Contracts\ProvidesRlsContext;
 use App\Enums\AdminAbility;
 use App\Enums\AdminRole;
 use App\Security\RlsContext;
+use Filament\Auth\MultiFactor\Email\Concerns\InteractsWithEmailAuthentication;
+use Filament\Auth\MultiFactor\Email\Contracts\HasEmailAuthentication;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -29,12 +31,13 @@ use Illuminate\Support\Carbon;
  * @property string|null $silp_number
  * @property string|null $str_number
  * @property Carbon|null $disabled_at
+ * @property bool $has_email_authentication
  */
-#[Fillable(['branch_id', 'name', 'email', 'password', 'role', 'can_verify_payments', 'silp_number', 'str_number'])]
+#[Fillable(['branch_id', 'name', 'email', 'password', 'role', 'can_verify_payments', 'silp_number', 'str_number', 'has_email_authentication'])]
 #[Hidden(['password', 'remember_token'])]
-final class Admin extends Authenticatable implements FilamentUser, ProvidesRlsContext
+final class Admin extends Authenticatable implements FilamentUser, HasEmailAuthentication, ProvidesRlsContext
 {
-    use Notifiable, SoftDeletes;
+    use InteractsWithEmailAuthentication, Notifiable, SoftDeletes;
 
     /** @return BelongsTo<Branch, $this> */
     public function branch(): BelongsTo
