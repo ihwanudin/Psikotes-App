@@ -103,7 +103,7 @@ function Preview() {
                     persetujuan nyata, atau akses tes
                 </p>
                 <div className="flex flex-wrap items-center gap-4">
-                    <label className="space-y-1">
+                    <label className="min-w-0 space-y-1">
                         Skenario
                         <select
                             aria-label="Skenario"
@@ -115,7 +115,7 @@ function Preview() {
                                 setFeedback(undefined);
                                 setReceipt('Belum ada callback.');
                             }}
-                            className="ml-2 min-h-11 max-w-full rounded border border-slate-500 bg-white px-3"
+                            className="ml-2 min-h-11 w-full min-w-0 max-w-full rounded border border-slate-500 bg-white px-3"
                         >
                             {Object.keys(scenarios).map((name) => (
                                 <option key={name}>{name}</option>
@@ -258,7 +258,7 @@ function Preview() {
                 <output aria-label="Jumlah konfirmasi">{confirmations}</output>
                 <output
                     aria-label="Input keyboard terakhir"
-                    className="block text-sm"
+                    className="block text-sm wrap-anywhere"
                 >
                     {keyboard}
                 </output>

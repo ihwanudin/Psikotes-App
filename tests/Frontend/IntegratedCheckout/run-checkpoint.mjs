@@ -14,17 +14,28 @@ import { fileURLToPath } from 'node:url';
 // Requires an already running, isolated fixture (default port 8012, see
 // vite.config.ts); never starts a backend or installs packages.
 const root = fileURLToPath(new URL('../../../', import.meta.url));
-const cli = process.argv[2];
+const cliArg = process.argv[2];
+// An explicit path stays supported for local use (it's what this repo's own
+// evidence docs document). With no argument, resolve @playwright/cli from
+// node_modules instead — CI installs it there (`npm install --no-save
+// @playwright/cli`) rather than relying on a machine-specific npx cache path.
+let cli;
 // Keep in sync with vite.config.ts's default. Overridable so two concurrent
 // sessions can each run this fixture without colliding.
 const PORT = Number(process.env.INTEGRATED_CHECKOUT_FIXTURE_PORT) || 8012;
 const DEFAULT_ORIGIN = 'http://127.0.0.1:8012';
 const origin = `http://127.0.0.1:${PORT}`;
 
-if (!cli || !path.isAbsolute(cli) || !existsSync(cli)) {
-    throw new Error(
-        'Pass the absolute path of the existing Playwright CLI script.',
-    );
+if (cliArg) {
+    if (!path.isAbsolute(cliArg) || !existsSync(cliArg)) {
+        throw new Error(
+            'Pass the absolute path of the existing Playwright CLI script.',
+        );
+    }
+
+    cli = cliArg;
+} else {
+    cli = fileURLToPath(import.meta.resolve('@playwright/cli/playwright-cli.js'));
 }
 
 const output = path.join(root, 'output/playwright/checkout-checkpoint');
@@ -102,7 +113,13 @@ const command = (session, args, log) => {
         );
 
         if (result.error || result.status !== 0) {
-            throw new Error(`CLI failed; inspect ${log}`);
+            // Surface the CLI's own output inline -- it's otherwise only
+            // ever written to `log`, which CI never prints or uploads, so a
+            // failure here was previously undiagnosable from the Actions
+            // console alone.
+            const tail = readFileSync(log, 'utf8').split('\n').slice(-60).join('\n');
+
+            throw new Error(`CLI failed; inspect ${log}\n--- tail of ${log} ---\n${tail}`);
         }
     } finally {
         closeSync(fd);
@@ -148,9 +165,12 @@ for (const suite of suites) {
             runner,
             `async(page)=>{\n${code}\nif(checkpointErrors.length) throw new Error(JSON.stringify(checkpointErrors));\nreturn result;\n}`,
         );
+        // Headless: a CI runner has no display server, and headed mode
+        // needs one (Xvfb or a real X server) or the browser fails to
+        // launch. Nothing here needs a human watching.
         command(
             session,
-            ['open', 'about:blank', '--headed'],
+            ['open', 'about:blank'],
             path.join(output, `${suite.name}-open.log`),
         );
         command(session, ['run-code', '--filename', runner], log);

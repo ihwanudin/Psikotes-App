@@ -121,6 +121,70 @@ jobs:
         if: steps.docs_changes.outputs.docs_only != 'true'
         run: composer ci:check
 
+  frontend-fixture-browser:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright CLI and Chromium
+        run: |
+          npm install --no-save @playwright/cli
+          npx playwright install --with-deps chromium
+
+      - name: Run ParticipantLobby fixture harness
+        run: |
+          set -euo pipefail
+          npx vite --config tests/Frontend/ParticipantLobby/vite.config.ts &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+
+          for _ in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8011/ > /dev/null && break
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:8011/ > /dev/null
+
+          npx --yes --package @playwright/cli playwright-cli -s=ci-lobby open about:blank
+          npx --yes --package @playwright/cli playwright-cli -s=ci-lobby run-code \
+            --filename tests/Frontend/ParticipantLobby/browser.test.mjs
+          npx --yes --package @playwright/cli playwright-cli -s=ci-lobby close
+
+      - name: Run IntegratedCheckout fixture harness
+        run: |
+          set -euo pipefail
+          npx vite --config tests/Frontend/IntegratedCheckout/vite.config.ts &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+
+          for _ in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8011/ > /dev/null && break
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:8011/ > /dev/null
+
+          node tests/Frontend/IntegratedCheckout/run-checkpoint.mjs
+
+      - name: Upload fixture harness output
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: frontend-fixture-browser-output
+          path: output/playwright/
+          if-no-files-found: ignore
+          retention-days: 14
+
   organization-postgres:
     runs-on: ubuntu-latest
     timeout-minutes: 20
