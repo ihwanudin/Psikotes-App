@@ -258,7 +258,7 @@ function Preview() {
                 <output aria-label="Jumlah konfirmasi">{confirmations}</output>
                 <output
                     aria-label="Input keyboard terakhir"
-                    className="block text-sm"
+                    className="block text-sm wrap-anywhere"
                 >
                     {keyboard}
                 </output>
