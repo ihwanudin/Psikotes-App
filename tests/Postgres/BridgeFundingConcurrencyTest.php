@@ -163,9 +163,18 @@ final class BridgeFundingConcurrencyTest extends TestCase
             DB::table('payment_methods')->where('id', $this->paymentMethodId)->delete();
             DB::table('admins')->where('id', $this->superAdminId)->delete();
             DB::table('participants')->where('id', $this->participantId)->delete();
+            DB::table('branches')->where('id', $this->branchId)->delete();
+        });
+        // package_items/packages last, after participants (FK:
+        // participants.package_id) is already gone: no DELETE grant for
+        // psikotes_runtime on either table, for any role including service
+        // (RLS-GAP-07/08 remediation, 2026-09-22 -- no production code path
+        // ever deletes a package or package item). Same pattern already
+        // established in
+        // CheckoutHandoffIssuanceConcurrencyTest::deletePackageItems().
+        $this->asOwner(function (): void {
             DB::table('package_items')->where('package_id', $this->packageId)->delete();
             DB::table('packages')->where('id', $this->packageId)->delete();
-            DB::table('branches')->where('id', $this->branchId)->delete();
         });
         parent::tearDown();
     }
