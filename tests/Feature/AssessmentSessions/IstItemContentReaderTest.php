@@ -15,17 +15,19 @@ use Illuminate\Support\Facades\File;
 use Tests\TestCase;
 
 /**
- * F2 IST reader Stage 1 (2026-09-21, Lead plan sign-off). The REAL
- * ist_items.json always has top-level status:"draft" today (ME's
- * word-list ambiguity keeps it there) -- so the "reader builds real
- * content correctly" tests below seed a MODIFIED copy of the real file
- * (only the top-level `status` flipped to "final") rather than the
- * genuinely-seeded row, to exercise IstItemContentReader's own parsing
- * logic in isolation. The "fails closed against production data" test
- * uses the actual InstrumentSeeder + actual ist_items.json unmodified --
- * that one is the real regression guard; it must keep failing until the
- * psychologist resolves ME's draft_reason (or FA/WU merge and this reader
- * is extended for them).
+ * F2 IST reader Stage 1 (2026-09-21, Lead plan sign-off), extended for ME
+ * (2026-09-22). The REAL ist_items.json on this branch still has
+ * top-level status:"draft" today (PR #118, which finalizes ME with a real
+ * word_list, has not merged into this branch) -- so the "reader builds
+ * real content correctly" tests below seed a MODIFIED copy of the real
+ * file (the six text subtests' real content, plus ME's REAL finalized
+ * shape from PR #118/commit ee3f5528 -- TEKUKUR/QUINTET, the psychologist-
+ * confirmed word list -- injected here so this reader's own ME parsing is
+ * exercised against the actual data shape it will see once #118 merges,
+ * not a synthetic stand-in) rather than the genuinely-seeded row. The
+ * "fails closed against production data" test uses the actual
+ * InstrumentSeeder + actual ist_items.json unmodified -- that one is the
+ * real regression guard; it must keep failing until #118 (or FA/WU) merge.
  */
 final class IstItemContentReaderTest extends TestCase
 {
@@ -35,10 +37,9 @@ final class IstItemContentReaderTest extends TestCase
         $this->artisan('migrate:fresh', ['--force' => true, '--no-interaction' => true]);
     }
 
-    public function test_it_builds_the_six_final_text_subtests_from_the_real_extracted_content(): void
+    public function test_it_builds_the_seven_final_subtests_from_the_real_extracted_content(): void
     {
-        $payload = $this->realIstItemsPayload();
-        $payload['status'] = 'final';
+        $payload = $this->realIstItemsPayloadWithFinalMe();
         $this->seedIstItemsAuthority($payload);
 
         $content = app(RlsContextRunner::class)->runAsService(
@@ -46,8 +47,8 @@ final class IstItemContentReaderTest extends TestCase
         );
 
         $this->assertSame(GenericAssessmentInstrument::Ist, $content->instrument);
-        $this->assertCount(6, $content->subtests);
-        $this->assertSame(['SE', 'WA', 'AN', 'GE', 'RA', 'ZR'], array_column($content->subtests, 'code'));
+        $this->assertCount(7, $content->subtests);
+        $this->assertSame(['SE', 'WA', 'AN', 'GE', 'RA', 'ZR', 'ME'], array_column($content->subtests, 'code'));
 
         $se = $content->subtests[0];
         $this->assertSame('multiple_choice', $se['answer_type']);
@@ -81,6 +82,23 @@ final class IstItemContentReaderTest extends TestCase
         $this->assertSame('fill_in_numeric', $zr['answer_type']);
         $this->assertSame(97, $zr['items'][0]['item']);
 
+        // ME with no live segment (this test's syntheticDefinition() carries
+        // no ME_MEMORIZE/ME_ANSWER segments, and contentFor() is called with
+        // no $currentSegmentCode) -- both halves present, matching the
+        // documented null-segment behavior.
+        $me = $content->subtests[6];
+        $this->assertSame('multiple_choice', $me['answer_type']);
+        $this->assertCount(20, $me['items']);
+        $this->assertSame(157, $me['items'][0]['item']);
+        $this->assertArrayHasKey('word_list', $me);
+        $this->assertSame(
+            ['BUNGA', 'PERKAKAS', 'BURUNG', 'KESENIAN', 'BINATANG'],
+            array_keys($me['word_list']),
+        );
+        $this->assertSame(['SOKA', 'LARAT', 'FLAMBOYAN', 'YASMIN', 'DAHLIA'], $me['word_list']['BUNGA']);
+        $this->assertContains('TEKUKUR', $me['word_list']['BURUNG']);
+        $this->assertContains('QUINTET', $me['word_list']['KESENIAN']);
+
         // No item anywhere carries a field beyond the explicit whitelist --
         // proves the reader whitelists rather than passes decoded JSON
         // through, independent of whether today's source data happens to
@@ -90,6 +108,99 @@ final class IstItemContentReaderTest extends TestCase
                 $this->assertSame([], array_diff(array_keys($item), ['item', 'text', 'options']));
             }
         }
+    }
+
+    public function test_me_memorize_phase_sends_the_word_list_without_answer_items(): void
+    {
+        $payload = $this->realIstItemsPayloadWithFinalMe();
+        $this->seedIstItemsAuthority($payload);
+
+        $content = app(RlsContextRunner::class)->runAsService(
+            fn () => (new IstItemContentReader)->contentFor(
+                GenericAssessmentInstrument::Ist,
+                $this->syntheticDefinition(),
+                'ME_MEMORIZE',
+            ),
+        );
+
+        $me = $content->subtests[6];
+        $this->assertSame('ME', $me['code']);
+        $this->assertArrayHasKey('word_list', $me);
+        $this->assertContains('TEKUKUR', $me['word_list']['BURUNG']);
+        $this->assertSame([], $me['items']);
+    }
+
+    public function test_me_answer_phase_sends_answer_items_without_the_word_list(): void
+    {
+        $payload = $this->realIstItemsPayloadWithFinalMe();
+        $this->seedIstItemsAuthority($payload);
+
+        $content = app(RlsContextRunner::class)->runAsService(
+            fn () => (new IstItemContentReader)->contentFor(
+                GenericAssessmentInstrument::Ist,
+                $this->syntheticDefinition(),
+                'ME_ANSWER',
+            ),
+        );
+
+        $me = $content->subtests[6];
+        $this->assertSame('ME', $me['code']);
+        $this->assertCount(20, $me['items']);
+        $this->assertSame(157, $me['items'][0]['item']);
+        $this->assertArrayNotHasKey('word_list', $me);
+    }
+
+    public function test_me_shows_neither_half_while_a_different_subtest_segment_is_current(): void
+    {
+        $payload = $this->realIstItemsPayloadWithFinalMe();
+        $this->seedIstItemsAuthority($payload);
+
+        $content = app(RlsContextRunner::class)->runAsService(
+            fn () => (new IstItemContentReader)->contentFor(
+                GenericAssessmentInstrument::Ist,
+                $this->syntheticDefinition(),
+                'SE',
+            ),
+        );
+
+        $me = $content->subtests[6];
+        $this->assertSame([], $me['items']);
+        $this->assertArrayNotHasKey('word_list', $me);
+    }
+
+    public function test_se_through_zr_are_unaffected_by_the_current_segment_code(): void
+    {
+        $payload = $this->realIstItemsPayloadWithFinalMe();
+        $this->seedIstItemsAuthority($payload);
+
+        $memorize = app(RlsContextRunner::class)->runAsService(
+            fn () => (new IstItemContentReader)->contentFor(GenericAssessmentInstrument::Ist, $this->syntheticDefinition(), 'ME_MEMORIZE'),
+        );
+        $answer = app(RlsContextRunner::class)->runAsService(
+            fn () => (new IstItemContentReader)->contentFor(GenericAssessmentInstrument::Ist, $this->syntheticDefinition(), 'ME_ANSWER'),
+        );
+
+        foreach (['SE', 'WA', 'AN', 'GE', 'RA', 'ZR'] as $index => $code) {
+            $this->assertSame($code, $memorize->subtests[$index]['code']);
+            $this->assertSame($memorize->subtests[$index], $answer->subtests[$index]);
+        }
+    }
+
+    public function test_me_word_list_is_still_validated_during_the_answer_phase(): void
+    {
+        $payload = $this->realIstItemsPayloadWithFinalMe();
+        $payload['subtests']['ME']['word_list']['BUNGA'] = ['only-one-word'];
+        $this->seedIstItemsAuthority($payload);
+
+        $this->expectException(AssessmentItemContentUnavailable::class);
+
+        app(RlsContextRunner::class)->runAsService(
+            fn () => (new IstItemContentReader)->contentFor(
+                GenericAssessmentInstrument::Ist,
+                $this->syntheticDefinition(),
+                'ME_ANSWER',
+            ),
+        );
     }
 
     public function test_it_fails_closed_against_the_real_seeded_data_because_me_is_still_draft(): void
@@ -146,13 +257,19 @@ final class IstItemContentReaderTest extends TestCase
 
     public function test_it_fails_closed_when_an_unsupported_subtest_is_also_marked_final(): void
     {
-        $payload = $this->realIstItemsPayload();
-        $payload['status'] = 'final';
-        // ME is not in this reader's supported set. If the data ever claims
-        // it final anyway (authoring mistake, or this reader simply hasn't
-        // been extended for it yet), the whole instrument must still fail
-        // closed rather than silently ship without ME.
-        $payload['subtests']['ME']['status'] = 'final';
+        // FA/WU (pending PR #73) still are not in this reader's supported
+        // set even after ME's addition -- synthesize a stand-in ("XX") for
+        // "some future subtest not yet supported here," since neither real
+        // unsupported code exists in ist_items.json today. If the data ever
+        // claims one final anyway (authoring mistake, or this reader simply
+        // hasn't been extended for it yet), the whole instrument must still
+        // fail closed rather than silently ship without it.
+        $payload = $this->realIstItemsPayloadWithFinalMe();
+        $payload['subtests']['XX'] = [
+            'status' => 'final',
+            'instructions' => ['text' => 'Synthetic unsupported subtest.'],
+            'items' => [],
+        ];
         $this->seedIstItemsAuthority($payload);
 
         $this->expectException(AssessmentItemContentUnavailable::class);
@@ -182,6 +299,48 @@ final class IstItemContentReaderTest extends TestCase
         $payload = File::get(database_path('seeders/data/ist_items.json'));
 
         return json_decode($payload, true, flags: JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * The real payload, with ME replaced by its actual finalized shape from
+     * PR #118 / commit ee3f5528 (psychologist-confirmed Versi A word list:
+     * TEKUKUR for Burung, QUINTET for Kesenian -- owner-decisions
+     * 2026-09-21 item 21). Not synthetic: this is the exact data this
+     * reader will see once #118 merges into this branch.
+     *
+     * @return array<string, mixed>
+     */
+    private function realIstItemsPayloadWithFinalMe(): array
+    {
+        $payload = $this->realIstItemsPayload();
+        $payload['status'] = 'final';
+
+        $letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'R', 'S', 'T', 'U'];
+        $items = [];
+        foreach ($letters as $offset => $letter) {
+            $items[] = [
+                'item' => 157 + $offset,
+                'text' => "Kata yang mempunyai huruf permulaan – {$letter} – adalah …… .",
+                'options' => [
+                    'a' => 'bunga', 'b' => 'perkakas', 'c' => 'burung', 'd' => 'kesenian', 'e' => 'binatang',
+                ],
+            ];
+        }
+
+        $payload['subtests']['ME'] = [
+            'status' => 'final',
+            'instructions' => ['text' => '(Soal-soal No. 157 – 176) Pada persoalan berikutnya, terdapat sejumlah pertanyaan mengenai kata-kata yang telah saudara hafalkan tadi. Coretlah jawaban saudara pada lembaran jawaban di belakang nomor soal yang sesuai.'],
+            'items' => $items,
+            'word_list' => [
+                'BUNGA' => ['SOKA', 'LARAT', 'FLAMBOYAN', 'YASMIN', 'DAHLIA'],
+                'PERKAKAS' => ['WAJAN', 'JARUM', 'KIKIR', 'CANGKUL', 'PALU'],
+                'BURUNG' => ['ITIK', 'ELANG', 'WALET', 'TEKUKUR', 'NURI'],
+                'KESENIAN' => ['QUINTET', 'ARCA', 'OPERA', 'UKIRAN', 'GAMELAN'],
+                'BINATANG' => ['RUSA', 'MUSANG', 'BERUANG', 'HARIMAU', 'ZEBRA'],
+            ],
+        ];
+
+        return $payload;
     }
 
     /** @param array<string, mixed> $payload */
