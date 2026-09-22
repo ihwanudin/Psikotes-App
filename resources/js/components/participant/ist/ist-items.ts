@@ -20,11 +20,23 @@
  *   `item_no` (`ScoreSealedIstAnswerSet.php`'s `$globalItem` matches
  *   `IstItemContentReader`'s `$expectedNumber`), so no client-side
  *   recomputation is needed: `item` IS `item_no`.
- * - FA/WU (image-option subtests) and ME (memorization) are deliberately
- *   NOT modeled here — `IstItemContentReader` does not build them yet
- *   (see its own doc comment), and per Lead's 2026-09-21 review, their
- *   `/items` wire shape is F2's contract to define, not this codebase's
- *   to invent. Out of scope for this file until that reader ships.
+ * - FA/WU (image-option subtests) are deliberately NOT modeled here —
+ *   `IstItemContentReader` does not build them yet (pending #73), and per
+ *   Lead's 2026-09-21 review, their `/items` wire shape is F2's contract
+ *   to define, not this codebase's to invent.
+ * - ME (memorization) IS modeled: `IstItemContentReader.php`
+ *   (`f2/ist-me-reader-segment-awareness`, commit `bf31b940`) extended it
+ *   with a segment-aware memorize/answer split, verified by reading that
+ *   commit directly, not guessed. ME's `code` in the wire response is
+ *   always `"ME"` (its subtest code) regardless of phase — `word_list`
+ *   (memorize-phase, five fixed categories of five words each) is present
+ *   ONLY while the session's current segment is `ME_MEMORIZE`; `items`
+ *   (answer-phase, the same multiple_choice shape SE/WA/AN use) is an
+ *   EMPTY array (never a missing field) except while the current segment
+ *   is `ME_ANSWER`. Since the server computes this fresh per request from
+ *   the session's live segment state, the caller must re-fetch `/items`
+ *   whenever `current_segment.code` changes — a single fetch captured at
+ *   mount is stale the moment ME's phase advances.
  */
 
 import type { GenericItemsOutcome } from '../session-runner/http-transport.ts';
@@ -45,12 +57,23 @@ export type IstFillInItem = {
 export type IstAnswerType =
     'multiple_choice' | 'fill_in_word' | 'fill_in_numeric';
 
+/** ME's memorize-phase content — verified against
+ * `IstItemContentReader::WORD_LIST_CATEGORIES` (`bf31b940`): exactly these
+ * five categories, five words each. */
+export type IstWordListCategory =
+    'BUNGA' | 'PERKAKAS' | 'BURUNG' | 'KESENIAN' | 'BINATANG';
+
+export type IstWordList = Record<IstWordListCategory, string[]>;
+
 export type IstSubtestContent =
     | {
           code: string;
           answerType: 'multiple_choice';
           instructions: string;
           items: IstMultipleChoiceItem[];
+          /** Present only for ME, and only while its current segment is
+           * `ME_MEMORIZE` — see this module's doc. */
+          wordList?: IstWordList;
       }
     | {
           code: string;
@@ -71,6 +94,7 @@ export function istSubtestContentFromWire(wire: {
     answer_type: string;
     instructions: string;
     items: unknown[];
+    word_list?: IstWordList;
 }): IstSubtestContent {
     if (wire.answer_type === 'multiple_choice') {
         return {
@@ -78,6 +102,7 @@ export function istSubtestContentFromWire(wire: {
             answerType: 'multiple_choice',
             instructions: wire.instructions,
             items: wire.items as IstMultipleChoiceItem[],
+            ...(wire.word_list !== undefined ? { wordList: wire.word_list } : {}),
         };
     }
 

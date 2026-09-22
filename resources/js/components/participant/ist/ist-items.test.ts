@@ -92,6 +92,55 @@ test('istSubtestContentFromWire rejects an unsupported answer_type rather than g
     );
 });
 
+test('istSubtestContentFromWire maps ME during the memorize phase: word_list present, items empty', () => {
+    const wordList = {
+        BUNGA: ['mawar', 'melati', 'anggrek', 'kamboja', 'kenanga'],
+        PERKAKAS: ['palu', 'gergaji', 'obeng', 'tang', 'kunci'],
+        BURUNG: ['merpati', 'elang', 'gagak', 'pipit', 'kutilang'],
+        KESENIAN: ['wayang', 'gamelan', 'batik', 'tari', 'lukis'],
+        BINATANG: ['kucing', 'anjing', 'kuda', 'sapi', 'kambing'],
+    };
+    const content = istSubtestContentFromWire({
+        code: 'ME',
+        answer_type: 'multiple_choice',
+        instructions: 'Hafalkan lima kata di tiap kategori.',
+        items: [],
+        word_list: wordList,
+    });
+
+    assert.equal(content.answerType, 'multiple_choice');
+    assert.equal(content.items.length, 0);
+    if (content.answerType !== 'multiple_choice') {
+        return;
+    }
+
+    assert.deepEqual(content.wordList, wordList);
+});
+
+test('istSubtestContentFromWire maps ME during the answer phase: items present, word_list absent', () => {
+    const content = istSubtestContentFromWire({
+        code: 'ME',
+        answer_type: 'multiple_choice',
+        instructions: 'Hafalkan lima kata di tiap kategori.',
+        items: [
+            {
+                item: 157,
+                text: 'Kata pertama di kategori BUNGA adalah ...',
+                options: { a: 'mawar', b: 'melati', c: 'anggrek', d: 'kamboja', e: 'kenanga' },
+            },
+        ],
+    });
+
+    assert.equal(content.answerType, 'multiple_choice');
+    assert.equal(content.items.length, 1);
+    if (content.answerType !== 'multiple_choice') {
+        return;
+    }
+
+    assert.equal(content.wordList, undefined);
+    assert.ok(!('wordList' in content), 'wordList must be entirely absent, not an undefined key');
+});
+
 test('istItemsOutcomeFromGeneric maps every subtest in an available outcome', () => {
     // GenericItemsContent's `subtests` type is deliberately narrow
     // (`{code, items}` only — see http-transport.ts's module doc: the
