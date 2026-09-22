@@ -34,13 +34,16 @@ use UnexpectedValueException;
  * may roll back either.
  *
  * `execute()` never throws for a PREDICTABLE scoring rejection -- today
- * that is only `LoadSealedGenericAnswerSet`'s `SEALED_GENERIC_ANSWER_INCOMPLETE`
+ * that is `LoadSealedGenericAnswerSet`'s `SEALED_GENERIC_ANSWER_INCOMPLETE`
  * (PAPI's all-or-nothing completeness policy, still enforced verbatim; see
- * that class). Any OTHER exception is a genuine bug or data-integrity
- * problem, not a participant leaving items blank, and is left to propagate
- * so the caller's transaction rolls back -- this class does not decide that
- * boundary is safe to swallow, only the one specific, coded, expected
- * rejection is.
+ * that class) and, since ADR-0032 PR3,
+ * `ScoreSealedRmibAnswerSet`'s `SEALED_RMIB_RESULT_NOT_SCORABLE` (RMIB's P3
+ * tiered rule: 2+ defective rank groups -- see that class). Any OTHER
+ * exception is a genuine bug or data-integrity problem, not a participant
+ * leaving items blank or a session that genuinely cannot be scored, and is
+ * left to propagate so the caller's transaction rolls back -- this class
+ * does not decide that boundary is safe to swallow, only the two specific,
+ * coded, expected rejections are.
  */
 final class ScoreAssessmentSession
 {
@@ -100,18 +103,29 @@ final class ScoreAssessmentSession
 
         $instrumentVersionId = $this->activeInstrumentVersionId($instrument);
 
-        $resultPublicId = match ($instrument) {
-            GenericAssessmentInstrument::Ist => $this->persistIst->execute(
-                $this->scoreIst->execute($sealed, $instrumentVersionId),
-            ),
-            GenericAssessmentInstrument::Papi => $this->persistPapi->execute(
-                $this->scorePapi->execute($sealed, $instrumentVersionId),
-            ),
-            GenericAssessmentInstrument::Rmib => $this->persistRmib->execute(
-                $this->scoreRmib->execute($sealed, $instrumentVersionId),
-            ),
-            default => throw new LogicException('ASSESSMENT_SCORING_INSTRUMENT_UNSUPPORTED'),
-        };
+        try {
+            $resultPublicId = match ($instrument) {
+                GenericAssessmentInstrument::Ist => $this->persistIst->execute(
+                    $this->scoreIst->execute($sealed, $instrumentVersionId),
+                ),
+                GenericAssessmentInstrument::Papi => $this->persistPapi->execute(
+                    $this->scorePapi->execute($sealed, $instrumentVersionId),
+                ),
+                GenericAssessmentInstrument::Rmib => $this->persistRmib->execute(
+                    $this->scoreRmib->execute($sealed, $instrumentVersionId),
+                ),
+                default => throw new LogicException('ASSESSMENT_SCORING_INSTRUMENT_UNSUPPORTED'),
+            };
+        } catch (UnexpectedValueException $exception) {
+            if ($exception->getMessage() !== 'SEALED_RMIB_RESULT_NOT_SCORABLE') {
+                throw $exception;
+            }
+
+            $outcome = AssessmentScoringOutcome::notScorable('RMIB_MULTIPLE_GROUPS_INVALID');
+            $this->recordAttempt($sessionId, $instrument, $attemptedAt, $outcome);
+
+            return $outcome;
+        }
 
         $outcome = AssessmentScoringOutcome::scored($resultPublicId);
         $this->recordAttempt($sessionId, $instrument, $attemptedAt, $outcome);

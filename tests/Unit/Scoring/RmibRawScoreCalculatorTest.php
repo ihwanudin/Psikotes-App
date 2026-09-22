@@ -82,20 +82,114 @@ final class RmibRawScoreCalculatorTest extends TestCase
         $calculator->calculate($responses);
     }
 
-    /** @return iterable<string, array{array<mixed>, string}> */
+    /**
+     * These are genuine structural/type/domain errors -- unrelated to
+     * ADR-0032 PR3's completeness tolerance (P3) -- and stay hard-rejected.
+     * 'missing cell' and 'duplicate rank within group' used to live here too
+     * (pre-PR3, when 108 well-formed non-duplicate responses were always
+     * required); they are now valid tiered-scoring inputs, covered by
+     * dedicated positive-path tests below instead.
+     *
+     * @return iterable<string, array{array<mixed>, string}>
+     */
     public static function invalidResponses(): iterable
     {
         $complete = self::completeResponses();
 
-        yield 'missing cell' => [array_slice($complete, 0, 107), 'RMIB responses must contain all 108 configured cells.'];
         yield 'duplicate cell' => [[...$complete, $complete[0]], 'RMIB response cell is duplicated.'];
         yield 'out of domain cell' => [[...array_slice($complete, 0, 107), ['group' => 10, 'position' => 12, 'rank' => 12]], 'RMIB response cell is outside the supplied rotation.'];
         yield 'malformed rank' => [[...array_slice($complete, 0, 107), ['group' => 9, 'position' => 12, 'rank' => '12']], 'RMIB response must contain integer group, position, and rank.'];
         yield 'rank outside 1 through 12' => [[...array_slice($complete, 0, 107), ['group' => 9, 'position' => 12, 'rank' => 13]], 'RMIB rank is outside 1 through 12.'];
+    }
 
-        $duplicateRank = $complete;
+    /**
+     * ADR-0032 PR3 (P3, 2026-09-21): a group missing exactly one cell is
+     * reconstructed from the other eleven ranks (the one value in 1-12 not
+     * among them) and scores identically to the fully-answered case.
+     */
+    public function test_a_single_missing_cell_in_one_group_is_reconstructed_to_an_identical_score(): void
+    {
+        $data = $this->canonicalData();
+        $calculator = new RmibRawScoreCalculator($data['categories'], $data['rotation']);
+        $complete = $calculator->calculate(self::completeResponses());
+        $reconstructed = $calculator->calculate(array_slice(self::completeResponses(), 0, 107));
+
+        $this->assertTrue($reconstructed['scorable']);
+        $this->assertSame([], $reconstructed['excluded_groups']);
+        $this->assertFalse($reconstructed['review_required']);
+        $this->assertNull($reconstructed['review_reason']);
+        $this->assertSame($complete['categories'], $reconstructed['categories']);
+        $this->assertSame($complete['group_sums'], $reconstructed['group_sums']);
+        $this->assertSame($complete['total_rank_sum'], $reconstructed['total_rank_sum']);
+        $this->assertSame(107, $reconstructed['response_count']);
+    }
+
+    /**
+     * ADR-0032 PR3 (P3): a group with 2+ missing cells, or any duplicated
+     * rank within it, is excluded from every category -- but the session
+     * still scores, read qualitatively (`review_required`). Every other
+     * group, and therefore every category's remaining cell_count, stays
+     * intact and uniformly reduced by exactly one (rotation-symmetry: each
+     * category occurs exactly once per group).
+     */
+    #[DataProvider('singleDefectiveGroupCases')]
+    public function test_a_single_defective_group_is_excluded_but_the_session_still_scores(array $responses, int $expectedExcludedGroup): void
+    {
+        $data = $this->canonicalData();
+        $calculator = new RmibRawScoreCalculator($data['categories'], $data['rotation']);
+        $complete = $calculator->calculate(self::completeResponses());
+
+        $result = $calculator->calculate($responses);
+
+        $this->assertTrue($result['scorable']);
+        $this->assertSame([$expectedExcludedGroup], $result['excluded_groups']);
+        $this->assertTrue($result['review_required']);
+        $this->assertSame('RMIB_GROUP_EXCLUDED', $result['review_reason']);
+        $this->assertCount(12, $result['categories']);
+
+        foreach ($result['categories'] as $index => $category) {
+            $this->assertSame($complete['categories'][$index]['cell_count'] - 1, $category['cell_count']);
+            $this->assertLessThan($complete['categories'][$index]['total'], $category['total']);
+        }
+    }
+
+    /** @return iterable<string, array{array<mixed>, int}> */
+    public static function singleDefectiveGroupCases(): iterable
+    {
+        $missingTwo = array_values(array_filter(
+            self::completeResponses(),
+            static fn (array $cell): bool => ! ($cell['group'] === 1 && in_array($cell['position'], [11, 12], true)),
+        ));
+        yield 'two missing cells in group 1' => [$missingTwo, 1];
+
+        $duplicateRank = self::completeResponses();
         $duplicateRank[1]['rank'] = 1;
-        yield 'duplicate rank within group' => [$duplicateRank, 'RMIB group must use each rank exactly once.'];
+        yield 'duplicate rank within group 1' => [$duplicateRank, 1];
+    }
+
+    /**
+     * ADR-0032 PR3 (P3): 2+ defective groups make the whole result
+     * `scorable: false` -- re-administration, not partial scoring.
+     */
+    public function test_two_or_more_defective_groups_make_the_result_unscorable(): void
+    {
+        $data = $this->canonicalData();
+        $calculator = new RmibRawScoreCalculator($data['categories'], $data['rotation']);
+        // Two missing cells in group 1 (positions 11-12) AND group 2
+        // (positions 11-12): both cross the 2-missing exclusion threshold.
+        $responses = array_values(array_filter(
+            self::completeResponses(),
+            static fn (array $cell): bool => ! (
+                in_array($cell['group'], [1, 2], true) && in_array($cell['position'], [11, 12], true)
+            ),
+        ));
+
+        $result = $calculator->calculate($responses);
+
+        $this->assertFalse($result['scorable']);
+        $this->assertSame([1, 2], $result['excluded_groups']);
+        $this->assertTrue($result['review_required']);
+        $this->assertSame('RMIB_MULTIPLE_GROUPS_INVALID', $result['review_reason']);
     }
 
     /**

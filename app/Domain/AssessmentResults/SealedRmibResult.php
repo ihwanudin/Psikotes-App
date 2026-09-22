@@ -42,16 +42,19 @@ use UnexpectedValueException;
 final readonly class SealedRmibResult
 {
     // ADR-0032 PR1 (2026-09-22): bumped v1->v2, payload gained `engineVersion`.
-    public const CONTRACT_VERSION = 'rmib-result:v2';
+    // ADR-0032 PR3 (2026-09-23): bumped v2->v3, payload gained
+    // `reviewRequired`/`excludedGroups` (P3's tiered incomplete-ranking rule).
+    public const CONTRACT_VERSION = 'rmib-result:v3';
 
     /**
      * The scoring CODE version -- see SealedIstResult::ENGINE_VERSION's
      * docblock for the distinction from `scoringSource`/`resultContractVersion`.
      * Bump alongside RmibRawScoreCalculator's rules, SCORING_ALGORITHM.md,
-     * and CHANGELOG.md. Still all-or-nothing at v1; ADR-0032 PR3's tiered
-     * incomplete-ranking rule bumps this to v2.
+     * and CHANGELOG.md. ADR-0032 PR3 bumps this v1->v2: the actual scoring
+     * RULE changed (single-missing-position reconstruction, single-group
+     * exclusion), not just orchestration around an unchanged formula.
      */
-    public const ENGINE_VERSION = 'rmib-scoring:v1';
+    public const ENGINE_VERSION = 'rmib-scoring:v2';
 
     public const CATEGORY_COUNT = 12;
 
@@ -67,6 +70,7 @@ final readonly class SealedRmibResult
      *     band:array{lo:int|null,hi:int|null}
      * }> $categories
      * @param  array<string,mixed>  $sessionDefinition
+     * @param  list<int>  $excludedGroups
      */
     private function __construct(
         public string $resultContractVersion,
@@ -82,6 +86,8 @@ final readonly class SealedRmibResult
         public array $sessionDefinition,
         public array $scoringSource,
         public array $categories,
+        public bool $reviewRequired,
+        public array $excludedGroups,
         public string $resultChecksum,
         private string $canonicalJson,
     ) {}
@@ -97,14 +103,18 @@ final readonly class SealedRmibResult
      *     category:string,
      *     band:array{lo:int|null,hi:int|null}
      * }> $categories
+     * @param  list<int>  $excludedGroups
      */
     public static function seal(
         SealedGenericAnswerSet $source,
         array $scoringSource,
         array $categories,
+        bool $reviewRequired,
+        array $excludedGroups,
     ): self {
         self::assertScoringSource($scoringSource);
         self::assertCategories($categories);
+        self::assertExcludedGroups($excludedGroups, $reviewRequired);
 
         $payload = self::canonicalize([
             'resultContractVersion' => self::CONTRACT_VERSION,
@@ -120,6 +130,8 @@ final readonly class SealedRmibResult
             'sessionDefinition' => $source->definition->toArray(),
             'scoringSource' => $scoringSource,
             'categories' => $categories,
+            'reviewRequired' => $reviewRequired,
+            'excludedGroups' => $excludedGroups,
         ]);
         $payloadJson = self::encode($payload);
         $resultChecksum = hash('sha256', 'sealed-rmib-result:v1|'.$payloadJson);
@@ -142,6 +154,8 @@ final readonly class SealedRmibResult
             sessionDefinition: $source->definition->toArray(),
             scoringSource: $scoringSource,
             categories: $categories,
+            reviewRequired: $reviewRequired,
+            excludedGroups: $excludedGroups,
             resultChecksum: $resultChecksum,
             canonicalJson: $canonicalJson,
         );
@@ -164,6 +178,8 @@ final readonly class SealedRmibResult
             'sessionDefinition' => $this->sessionDefinition,
             'scoringSource' => $this->scoringSource,
             'categories' => $this->categories,
+            'reviewRequired' => $this->reviewRequired,
+            'excludedGroups' => $this->excludedGroups,
             'resultChecksum' => $this->resultChecksum,
         ];
     }
@@ -201,7 +217,13 @@ final readonly class SealedRmibResult
                 ]
                 || ! self::canonicalIdentity($category['code'])
                 || isset($seen[$category['code']])
-                || ! is_int($category['rawScore']) || $category['rawScore'] < 9 || $category['rawScore'] > 108
+                // ADR-0032 PR3: lower bound was 9 (all 9 groups always
+                // contributed). P3's single-group-exclusion tier can drop a
+                // category's cell_count to 8 (min possible rawScore 8*1=8),
+                // so the floor widens accordingly -- 108 (9*12) stays the
+                // ceiling since a fully complete/reconstructed result is
+                // still possible and most common.
+                || ! is_int($category['rawScore']) || $category['rawScore'] < 8 || $category['rawScore'] > 108
                 || ! is_int($category['standardScore']) || $category['standardScore'] < 1 || $category['standardScore'] > 12
                 || ! is_int($category['sourceScore']) || $category['sourceScore'] < 1 || $category['sourceScore'] > 10
                 || ! is_int($category['level']) || $category['level'] < 1 || $category['level'] > 5
@@ -211,6 +233,29 @@ final readonly class SealedRmibResult
                 throw self::invalid();
             }
             $seen[$category['code']] = true;
+        }
+    }
+
+    /** @param array<mixed> $excludedGroups */
+    private static function assertExcludedGroups(array $excludedGroups, bool $reviewRequired): void
+    {
+        if (! array_is_list($excludedGroups) || count($excludedGroups) > 1) {
+            // 2+ excluded groups is ScoreSealedRmibAnswerSet's
+            // `SEALED_RMIB_RESULT_NOT_SCORABLE` signal (P3) -- a
+            // SealedRmibResult should never be sealed for that case.
+            throw self::invalid();
+        }
+
+        $seen = [];
+        foreach ($excludedGroups as $group) {
+            if (! is_int($group) || $group < 1 || $group > 9 || isset($seen[$group])) {
+                throw self::invalid();
+            }
+            $seen[$group] = true;
+        }
+
+        if ($reviewRequired !== ($excludedGroups !== [])) {
+            throw self::invalid();
         }
     }
 

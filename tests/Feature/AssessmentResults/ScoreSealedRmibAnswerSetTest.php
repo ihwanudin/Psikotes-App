@@ -50,8 +50,10 @@ final class ScoreSealedRmibAnswerSetTest extends OrganizationPaymentTestCase
         $this->assertSame($first->canonicalJson(), $second->canonicalJson());
         $this->assertSame($first->resultChecksum, $second->resultChecksum);
         $this->assertMatchesRegularExpression('/\A[a-f0-9]{64}\z/', $first->resultChecksum);
-        $this->assertSame('rmib-result:v2', $first->resultContractVersion);
-        $this->assertSame('rmib-scoring:v1', $first->engineVersion);
+        $this->assertSame('rmib-result:v3', $first->resultContractVersion);
+        $this->assertSame('rmib-scoring:v2', $first->engineVersion);
+        $this->assertFalse($first->reviewRequired);
+        $this->assertSame([], $first->excludedGroups);
         $this->assertSame($source->sourceChecksum, $first->sealedSourceChecksum);
         $this->assertSame([
             'id' => $scoringSourceId,
@@ -83,6 +85,71 @@ final class ScoreSealedRmibAnswerSetTest extends OrganizationPaymentTestCase
         $this->assertSame(5, $byCode['S.Se']['level']);
         $this->assertSame(2, count($queries)); // second call replays, both hit instrument_versions once each
         $this->assertStringNotContainsString('dass', strtolower($first->canonicalJson()));
+    }
+
+    /**
+     * ADR-0032 PR3 (P3): a group missing exactly one item_no is
+     * reconstructed from the other eleven ranks and treated as fully valid
+     * -- the sealed result must be byte-for-byte identical (except the
+     * missing item's raw answer never having existed) to the fully-answered
+     * case, not merely "close".
+     */
+    public function test_a_single_missing_item_in_one_group_is_reconstructed_to_an_identical_score(): void
+    {
+        $scoringSourceId = $this->insertCanonicalScoringSource(isActive: false);
+        $complete = $this->score($this->rmibSource(), $scoringSourceId);
+        $reconstructed = $this->score($this->rmibSource(omitItems: [1]), $scoringSourceId);
+
+        $this->assertFalse($reconstructed->reviewRequired);
+        $this->assertSame([], $reconstructed->excludedGroups);
+        $this->assertSame($complete->categories, $reconstructed->categories);
+    }
+
+    /**
+     * ADR-0032 PR3 (P3): a group with 2+ missing items is excluded from
+     * every category (not just its own contribution shrinking), but the
+     * session still scores -- read qualitatively by the psychologist
+     * (`reviewRequired`). Every category's cell_count drops by exactly one
+     * (rotation-symmetry: each category occurs exactly once per group).
+     */
+    public function test_a_group_with_two_missing_items_is_excluded_but_the_session_still_scores(): void
+    {
+        $scoringSourceId = $this->insertCanonicalScoringSource(isActive: false);
+        $complete = $this->score($this->rmibSource(), $scoringSourceId);
+        $excluded = $this->score($this->rmibSource(omitItems: [1, 2]), $scoringSourceId);
+
+        $this->assertTrue($excluded->reviewRequired);
+        $this->assertSame([1], $excluded->excludedGroups);
+        $this->assertCount(12, $excluded->categories);
+
+        $byCode = [];
+        foreach ($complete->categories as $category) {
+            $byCode[$category['code']] = $category;
+        }
+        foreach ($excluded->categories as $category) {
+            $full = $byCode[$category['code']];
+            $this->assertLessThan($full['rawScore'], $category['rawScore']);
+        }
+    }
+
+    /**
+     * ADR-0032 PR3 (P3): 2+ defective groups make the whole session
+     * `not_scorable` -- re-administration, not a partial result. This is the
+     * one RMIB rejection ScoreAssessmentSession is expected to catch and
+     * record without rolling back its caller's transaction; every other
+     * rejection from this scorer stays uncaught.
+     */
+    public function test_two_defective_groups_make_the_session_not_scorable(): void
+    {
+        $scoringSourceId = $this->insertCanonicalScoringSource(isActive: false);
+        $source = $this->rmibSource(omitItems: [1, 2, 13, 14]);
+
+        try {
+            $this->score($source, $scoringSourceId);
+            $this->fail('Two defective RMIB groups must not produce a sealed result.');
+        } catch (UnexpectedValueException $exception) {
+            $this->assertSame('SEALED_RMIB_RESULT_NOT_SCORABLE', $exception->getMessage());
+        }
     }
 
     public function test_it_requires_a_service_transaction_and_positive_internal_source_id_before_sql(): void
@@ -219,10 +286,12 @@ final class ScoreSealedRmibAnswerSetTest extends OrganizationPaymentTestCase
         return DB::table('instrument_versions')->insertGetId([...$row, ...$changes]);
     }
 
+    /** @param list<int> $omitItems */
     private function rmibSource(
         string $valueOverride = '',
         int $valueOverrideItem = 0,
         bool $asObject = false,
+        array $omitItems = [],
     ): SealedGenericAnswerSet {
         $data = $this->canonicalData();
         $cells = $data['rotation'];
@@ -237,14 +306,70 @@ final class ScoreSealedRmibAnswerSetTest extends OrganizationPaymentTestCase
         $globalItem = 0;
         foreach ($cells as $cell) {
             $globalItem++;
+            if (in_array($globalItem, $omitItems, true)) {
+                continue;
+            }
             $value = (string) $cell['position'];
             if ($globalItem === $valueOverrideItem) {
                 $value = $asObject ? (object) ['answer' => $valueOverride] : $valueOverride;
             }
-            $values[] = $value;
+            $values[$globalItem] = $value;
         }
 
-        return $this->sealedSource(GenericAssessmentInstrument::Rmib, $subtests, $values);
+        return $this->sealedSourceWithItemNos(GenericAssessmentInstrument::Rmib, $subtests, $values);
+    }
+
+    /**
+     * Like sealedSource(), but $values is keyed by item_no (1-based, may be
+     * sparse) instead of assuming a contiguous 0-based list -- lets tests
+     * omit specific item_no slots to exercise ADR-0032 PR3's tolerance for
+     * missing RMIB responses.
+     *
+     * @param  list<array{code:string,duration_seconds:int,item_count:int}>  $subtests
+     * @param  array<int,mixed>  $values
+     */
+    private function sealedSourceWithItemNos(
+        GenericAssessmentInstrument $instrument,
+        array $subtests,
+        array $values,
+    ): SealedGenericAnswerSet {
+        $definitionSource = [
+            'instrument' => $instrument->value,
+            'version' => 'synthetic-definition-v1',
+            'provenance' => 'synthetic-test-only',
+            'total_duration_seconds' => array_sum(array_column($subtests, 'duration_seconds')),
+            'subtests' => $subtests,
+            'randomization' => 'fixed',
+            'seed' => null,
+            'generator' => null,
+        ];
+        $definition = SessionDefinition::fromArray([
+            ...$definitionSource,
+            'checksum' => SessionDefinition::checksumFor($definitionSource),
+        ]);
+        ksort($values);
+        $answers = [];
+        foreach ($values as $itemNo => $value) {
+            $answers[] = [
+                'item_no' => $itemNo,
+                'value' => $value,
+                'revision' => 1,
+                'answered_at' => '2026-09-20T03:10:00.123456Z',
+            ];
+        }
+
+        return SealedGenericAnswerSet::seal(
+            assessmentCaseId: 11,
+            sessionId: 22,
+            participantId: 33,
+            sessionPublicId: '01K50SYNTHETICRMIBSESSION00',
+            instrument: $instrument,
+            attemptNo: 1,
+            submittedAt: '2026-09-20T03:20:00.654321Z',
+            answersRevision: 1,
+            definition: $definition,
+            answers: $answers,
+        );
     }
 
     /**
