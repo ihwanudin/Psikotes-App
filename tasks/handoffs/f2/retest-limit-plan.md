@@ -1,8 +1,16 @@
 # F2 — Retest limit and authorization (item 19) plan (2026-09-22)
 
-**Status: plan only, no code.** Closes item 19 (`tasks/handoffs/decisions/owner-decisions-2026-09-21.md`,
-commit `77ef777`), queued after #100 and the MFA plan per Lead's stated
-priority order.
+**Status: plan only, no code — revised.** Closes item 19
+(`tasks/handoffs/decisions/owner-decisions-2026-09-21.md`, commit
+`77ef777`), queued after #100 and the MFA plan per Lead's stated priority
+order. **This revision resolves the first draft's flagged ambiguity**:
+Lead confirmed, quoting the owner's decision text directly, that the first
+3 attempts are automatic and need no approval from anyone — only attempt 4
+and onward needs one of the three approved roles. That is a real behavior
+change to the already-tested `AssessmentAttemptAllocationPolicy` (the
+first draft wrongly assumed the safer, zero-change reading was correct);
+see "Resolved" below for the corrected design, the exact test-by-test
+impact, and the config-driven threshold Lead also asked for.
 
 ## Source of the requirement
 
@@ -64,41 +72,124 @@ is a transient DTO only. `App\Actions\AssessmentSessions\AllocateAndStartAssessm
 from this call site (retest authority is out of scope, ADR-0031)"*),
 confirming the owner's "always rejected today" claim exactly.
 
-## Critical ambiguity: what does "3 kali percobaan" actually gate?
+## Resolved: "3 kali percobaan" means the first 3 are automatic, no approval
 
-The owner's decision text supports two structurally different readings,
-and the existing, already-tested `AssessmentAttemptAllocationPolicy`
-contract only matches one of them. **Flagging this rather than guessing —
-this changes tested behavior either way.**
+Lead confirmed directly from the owner's decision text, which settles this
+precisely (item 19, quoted verbatim): *"Yang boleh menyetujui **percobaan
+ke-4 dan seterusnya**: super_admin, admin aplikasi pusat, dan psikolog."*
+The literal wording — approval is for "attempt 4 and onward," not "attempt
+2 and onward" — means attempts 1–3 need **no approval from anyone**.
 
-**Reading A (recommended — zero change to already-tested policy code)**:
-every retest (attempt #2 onward) requires an admin-issued grant, exactly
-matching `AssessmentAttemptAllocationPolicyTest::test_consumed_attempt_never_automatically_opens_a_new_attempt`'s
-existing, locked-in assertion (attempt #2 with *no* grant is rejected,
-today, on purpose). "Batas: 3 kali percobaan" is then a **hard ceiling
-enforced by the granting action itself**: once a participant already has 3
-total attempts (original + 2 retests) at an institution, the granting
-action refuses to issue a 4th grant *to anyone*, including the three
-approved roles. "Yang boleh menyetujui percobaan ke-4 dan seterusnya" reads
-as "who may approve a retest at all, up to that ceiling" — beyond the
-ceiling, the action itself blocks it regardless of role.
+**This is a real behavior change, not zero-change as the first draft of
+this plan assumed.** `AssessmentAttemptAllocationPolicy::decide()` today
+rejects *every* retest (attempt #2 onward) without a grant — confirmed by
+`AssessmentAttemptAllocationPolicyTest::test_consumed_attempt_never_automatically_opens_a_new_attempt`'s
+existing, currently-correct assertion that attempt #2 with no grant is
+rejected. That assertion becomes **wrong** under the confirmed policy and
+must change: attempt #2 (and #3) with no grant must now be **accepted**.
+Only attempt #4 and beyond keeps requiring a valid grant, using the exact
+validation logic that already exists and is already tested.
 
-**Reading B (contradicts existing tested behavior)**: the first 3 attempts
-(original + 2 retests) happen freely, with *no* admin grant needed for
-attempts 2–3, and only the 4th attempt onward requires one of the three
-roles' approval. This would require changing
-`AssessmentAttemptAllocationPolicy::decide()`'s retest-gating logic itself
-(the "no grant → reject" branch would need a `nextAttemptNumber <= 3`
-carve-out) — a real behavior change to code Lead/the team already reviewed
-and shipped as correct.
+### The new ability is not "authorize retests," it's "authorize attempts beyond the free limit"
 
-Reading A is recommended: it requires no change to already-tested domain
-logic, and the owner's own framing ("consequence for the team: wire up the
-existing mechanism") reads as *connecting* the existing all-retests-need-
-approval contract, not *loosening* it. But this is a genuine fork in
-product behavior (does a participant's 2nd attempt need anyone's
-sign-off, or not?) that only the owner can actually resolve — **flagging
-for Lead/owner confirmation before implementation, not choosing silently.**
+Renamed from the first draft's `AuthorizeRetest` to **`AdminAbility::AuthorizeRetestBeyondLimit`**
+(Lead's suggested name) — precise about what it actually gates. It has no
+bearing on attempts 1–3 at all; those need no ability check because they
+need no admin action.
+
+### The free-attempt threshold is config, not a constant
+
+Same pattern as the bridge-funding plan's amount cap
+(`config('bridge_funding.max_amount')`): a new `config/assessment_retests.php`,
+`'free_attempt_limit' => (int) env('ASSESSMENT_RETEST_FREE_ATTEMPT_LIMIT', 3)`.
+`AssessmentAttemptAllocationPolicy` itself stays a pure domain class with no
+framework dependency (it is constructed bare, `new AssessmentAttemptAllocationPolicy()`,
+in all 7 existing tests, and has no constructor today) — the threshold is
+read from config **by the caller**
+(`AllocateAndStartAssessmentSession::allocateNew()`) and passed into
+`decide()` as a new, explicit parameter with a `3` default (so the three
+existing tests that never exercise retest behavior at all — attempt-one
+allocation, replay, and the active-attempt-exists check — need no change
+merely to keep compiling). This keeps the "no thresholds hardcoded in
+code" principle CLAUDE.md already states for scoring Lookup Tables, applied
+here to a different kind of threshold with the same shape of risk (the
+owner changing their mind about "3" later must not require a code
+deploy).
+
+### Restructured `allowsRetest()` — minimal, explained precisely
+
+```php
+private function allowsRetest(
+    array $attempts,
+    ?AssessmentRetestGrant $grant,
+    string $authorizationId,
+    int $nextAttemptNumber,
+    int $freeAttemptLimit,
+): bool {
+    // Authorization-identity reuse is barred unconditionally -- every
+    // attempt, free or gated, must run under a genuinely new
+    // authorization. This part of today's logic is unchanged and stays
+    // hoisted above the threshold branch so it still applies to attempts
+    // 2-3 even though they no longer need a grant.
+    foreach ($attempts as $attempt) {
+        if ($attempt->authorizationId === $authorizationId) {
+            return false;
+        }
+    }
+
+    if ($nextAttemptNumber <= $freeAttemptLimit) {
+        return true;
+    }
+
+    // Everything below is today's existing, already-tested grant
+    // validation, completely unchanged -- only now reachable at
+    // nextAttemptNumber > $freeAttemptLimit instead of at every retest.
+    if ($grant === null
+        || ! $grant->authorized
+        || trim($grant->grantId) === ''
+        || trim($grant->auditReason) === ''
+        || trim($grant->authorizedBy) === ''
+        || $grant->authorizationId !== $authorizationId
+        || $grant->attemptNumber !== $nextAttemptNumber) {
+        return false;
+    }
+
+    return true;
+}
+```
+
+### Existing test impact — every one of the 7 checked individually, per Lead's explicit ask, not silently reinterpreted
+
+| Test | Exercises retest gating? | Verdict |
+|---|---|---|
+| `test_first_authorized_intent_allocates_attempt_one_with_supplied_identity` | No — empty history, attempt 1 never reaches `allowsRetest()` at all (`$attempts !== []` guard) | **Unaffected**, no change |
+| `test_same_intent_replays_the_same_attempt_without_persistence` | No — replay path returns before the retest-gating check | **Unaffected**, no change |
+| `test_different_intent_cannot_allocate_while_an_active_attempt_exists` (2 variants) | No — the active-attempt check fires before `allowsRetest()`; this is about concurrent/duplicate allocation, not authorization | **Unaffected**, no change |
+| `test_consumed_attempt_never_automatically_opens_a_new_attempt` (4 variants: submitted/scored/expired/voided) | Yes — 1 prior attempt, requests attempt #2, no grant, asserts **rejected** | **Must flip.** Attempt #2 ≤ the free limit, so this must now assert **accepted**. Renamed to `test_consumed_first_attempt_automatically_allows_the_free_retest_without_a_grant`, same 4 status variants (the terminal status of attempt #1 must not matter for whether the free retest is granted — worth keeping as its own coverage). **New test added** to replace the invariant this one used to weakly express ("you eventually do need authorization"): 3 consumed prior attempts, requesting attempt #4, no grant → still asserts **rejected** with `RetestNotAuthorized` — this is the one that actually proves the ceiling now. |
+| `test_valid_retest_grant_allocates_the_next_attempt_with_new_authorization` | Yes — 1 prior attempt, valid grant for attempt #2, asserts **accepted** | **Must move to attempt #4.** At attempt #2 the supplied grant is no longer doing any real work (accepted either way now), so the test would stop proving what its name says. Rebuilt with 3 prior consumed attempts and a valid grant for attempt #4 — same assertion shape, now actually exercising grant validation. |
+| `test_retest_requires_authorization_reason_actor_new_entitlement_and_exact_next_attempt` (6 invalid-grant variants: not authorized, blank reason, blank actor, reused authorization, wrong-bound authorization, wrong attempt number) | Yes — 1 prior attempt, various invalid grants, asserts **rejected** | **5 of 6 must move to attempt #4** (not authorized, blank reason, blank actor, wrong-bound authorization, wrong attempt number) — left at attempt #2 they'd all flip to accepted regardless of grant validity, silently deleting this coverage rather than preserving it. **The "reused entitlement authorization" variant is different**: it's actually testing the universal reuse-check (hoisted above the threshold branch above), which now applies at *every* attempt number, free or gated — this one can stay at attempt #2 unchanged, since reuse must still be rejected there too, or move to attempt #4 for consistency with its siblings. Recommend moving all 6 together for one coherent data provider, simplest to read. |
+
+No test's *meaning* is deleted — each rejection case that genuinely tests
+grant validation moves to the attempt number where grant validation is
+actually invoked; the one case that tested reuse-prevention specifically
+is confirmed to still hold at any attempt number under the restructured
+function above.
+
+### How does the approving admin know which attempt number they're authorizing?
+
+Lead's explicit question. The granting action (`AuthorizeRetestBeyondLimit`,
+renamed to match the ability — see below) computes the participant's
+attempt history the same way the allocator does (identical `test_sessions`
+query shape), and its response/confirmation step surfaces that count
+explicitly — e.g. *"Peserta ini telah mengikuti tes 3 kali. Anda akan
+mengizinkan percobaan ke-4."* — matching `VerifyManualTransfer`'s existing
+pattern of surfacing the specific order/proof being acted on rather than a
+blind approve button. The action also **refuses outright** (a clear
+"tidak perlu izin" response, not a silently-created moot grant row) if
+`nextAttemptNumber <= freeAttemptLimit` when invoked — an approving admin
+can never end up authorizing an attempt that didn't need authorization in
+the first place, which doubles as confirmation they're always looking at
+attempt 4+ when the action succeeds.
 
 ## New table: a durable place for the grant to live
 
@@ -143,10 +234,12 @@ existing `verified_by_admin_id`/`verified_at` pairing pattern from
 
 ## New ability
 
-`AdminAbility::AuthorizeRetest` (name illustrative). `Admin::canPerform()`:
+`AdminAbility::AuthorizeRetestBeyondLimit` (Lead's suggested name — precise
+that this gates attempts past the free limit, not retests in general).
+`Admin::canPerform()`:
 
 ```php
-AdminAbility::AuthorizeRetest => in_array(
+AdminAbility::AuthorizeRetestBeyondLimit => in_array(
     $this->role,
     [AdminRole::SuperAdmin, AdminRole::Psychologist], // + CentralAdmin once it exists
     true,
@@ -182,26 +275,30 @@ needed, no new column needed. The granting action (below) reuses this
 exact same history query to compute the next attempt number and enforce
 the ≤3 ceiling.
 
-## New action: `AuthorizeAssessmentRetest` (name illustrative)
+## New action: `AuthorizeRetestBeyondLimit` (matches the ability name)
 
 Mirrors `VerifyManualTransfer`'s shape (the pattern the owner explicitly
 asked to match): `lockForUpdate()` on the relevant `test_sessions` history
 rows (already locked by `AllocateAndStartAssessmentSession::lockHistory()`
 today — this action needs its own equivalent lock, since it runs as a
 separate request, not inside the allocator's own transaction), compute the
-next attempt number, reject with a clear error if it would exceed 3
-(Reading A: reject unconditionally, for any role, once already at 3),
-`insertOrIgnore()` the grant row keyed by the same partial-unique index the
-migration adds (matching the `GrantBridgeFunding`/F5 `insertOrIgnore()`
-pattern established this session — real risk here too: a grant read and
-written under a service-elevated context inside `runAsService()`, so the
-same PostgreSQL 25P02-on-QueryException trap applies), write one
-`audit_logs` row (actor, reason, timestamp — same shape as
-`VerifyManualTransfer`/`GrantBridgeFunding`).
+next attempt number the same way the allocator does, and:
 
-`Gate::forUser($admin)->authorize('authorizeRetest', ...)` needs a policy
-method; likely on a new lightweight policy scoped to `Participant` or
-`AssessmentCase` (whichever the eventual UI surface uses — see below),
+- If `nextAttemptNumber <= config('assessment_retests.free_attempt_limit')`:
+  refuse with a clear "this attempt does not need authorization" response
+  — never silently create a moot grant row (see "how does the approving
+  admin know" above).
+- Otherwise (attempt 4, 5, 6...): `insertOrIgnore()` the grant row keyed by the same partial-unique
+  index the migration adds (matching the `GrantBridgeFunding`/F5
+  `insertOrIgnore()` pattern established this session — real risk here
+  too: a grant read and written under a service-elevated context inside
+  `runAsService()`, so the same PostgreSQL 25P02-on-QueryException trap
+  applies), write one `audit_logs` row (actor, reason, timestamp — same
+  shape as `VerifyManualTransfer`/`GrantBridgeFunding`).
+
+`Gate::forUser($admin)->authorize('authorizeRetestBeyondLimit', ...)` needs
+a policy method; likely on a new lightweight policy scoped to `Participant`
+or `AssessmentCase` (whichever the eventual UI surface uses — see below),
 following `OrderPolicy`'s existing two-line shape (`canPerform()` check +
 branch-ownership check, though branch-ownership is moot here since only
 `super_admin`/`psychologist`/eventually `central_admin` can reach this
@@ -210,18 +307,30 @@ ability at all, and none of those three roles are branch-scoped).
 ## Wiring the grant back into the allocator
 
 `AllocateAndStartAssessmentSession::allocateNew()` currently always passes
-`null` (line ~152). Needs a grant lookup added there: when
-`$attempts !== []` (a retest is being attempted), look up an `active`
-`assessment_retest_grants` row for `(participant_id, test_type,
-attempt_number = nextAttemptNumber)`, hydrate it into a real
-`AssessmentRetestGrant`, and pass that instead of `null`. On successful
-allocation, mark the grant `consumed` in the same transaction (the
-allocator already holds the relevant locks). The class's own docblock
-("This unwired slice ... deliberately does not authorize retests") and the
-inline comment at the `null` argument both need updating to reflect that
-this is no longer true once this ships — not treated as optional
-documentation cleanup, since a future reader relying on that comment would
-be reading stale intent.
+`null` (line ~152) and never reads the free-attempt limit at all. Needs:
+
+- Read `$freeAttemptLimit = (int) config('assessment_retests.free_attempt_limit', 3)`
+  and pass it as `decide()`'s new parameter — always, not just on retests,
+  since `decide()` needs it to know whether the *current* request even
+  requires a grant.
+- A grant lookup, but **only when `$nextAttemptNumber > $freeAttemptLimit`**
+  (not "whenever `$attempts !== []`" as the first draft of this plan said —
+  attempts within the free limit need no lookup at all, the common case
+  stays a single cheap history query with no extra round trip): look up an
+  `active` `assessment_retest_grants` row for `(participant_id, test_type,
+  attempt_number = nextAttemptNumber)`, hydrate it into a real
+  `AssessmentRetestGrant`, and pass that instead of `null`.
+- On successful allocation *of a gated attempt* (i.e. only when a grant was
+  actually looked up and used), mark that grant `consumed` in the same
+  transaction (the allocator already holds the relevant locks). Attempts
+  within the free limit never touch `assessment_retest_grants` at all, so
+  there is nothing to mark consumed for them.
+
+The class's own docblock ("This unwired slice ... deliberately does not
+authorize retests") and the inline comment at the `null` argument both need
+updating to reflect that this is no longer true once this ships — not
+treated as optional documentation cleanup, since a future reader relying on
+that comment would be reading stale intent.
 
 ## UI/endpoint surface — left to implementation-time judgment, not decided here
 
@@ -238,8 +347,14 @@ consistent with the codebase by then.
 
 ## Explicitly not designed here
 
-- **Reading A vs Reading B** (above) — needs an explicit owner/Lead answer
-  before implementation starts, not assumed.
+- **Whether there is any hard ceiling past attempt 4** — the owner's
+  decision states who may approve "attempt 4 and onward" but never states
+  whether onward is unbounded. As designed, `AuthorizeRetestBeyondLimit`
+  can keep authorizing attempt 5, 6, 7... indefinitely, each individually,
+  by any of the three approved roles, with no system-enforced upper bound.
+  If the owner intends a true hard cap (e.g. "5 total, full stop"), that
+  is a second, separate config value this plan does not add — flagging
+  rather than assuming silence means "unbounded."
 - **Whether a revoked/expired grant needs its own admin-facing action** (a
   "cancel this retest authorization before it's used" workflow) — the
   `status` column supports it structurally, but no action is designed for
@@ -250,16 +365,16 @@ consistent with the codebase by then.
   itself isn't active yet (ADR-0031's own consequences section), so this
   plan's action only ever operates against the single-case-per-instrument
   reality that exists today.
-- **Tests** (designed, not written): the existing 7
-  `AssessmentAttemptAllocationPolicyTest` cases stay green unchanged
-  (Reading A requires no change to that class at all); new tests for
-  `AuthorizeAssessmentRetest` (ceiling enforcement, role gating, audit row
-  shape, idempotent re-authorization) and for the allocator's new grant
-  lookup (a real retest actually starts once granted, a 4th attempt is
-  rejected even for `super_admin`); a Postgres concurrency test for the
-  same insertOrIgnore-under-service-context shape `GrantBridgeFunding`
-  already proved out, since the identical PostgreSQL transaction-poisoning
-  risk applies here too.
+- **Tests** (designed, not written; see the per-test table above for the
+  existing 7): new tests for `AuthorizeRetestBeyondLimit` (refuses when
+  invoked for an attempt still within the free limit, role gating, audit
+  row shape, idempotent re-authorization) and for the allocator's new
+  free-vs-gated branch (attempts 2–3 start with no grant lookup at all, a
+  4th attempt is rejected without one even for `super_admin`, a granted 4th
+  attempt actually starts and consumes the grant); a Postgres concurrency
+  test for the same insertOrIgnore-under-service-context shape
+  `GrantBridgeFunding` already proved out, since the identical PostgreSQL
+  transaction-poisoning risk applies here too.
 
 ## Nothing changed yet
 
