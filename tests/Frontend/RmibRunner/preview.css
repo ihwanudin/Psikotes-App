@@ -1,0 +1,3 @@
+/* Test-only entry: include RMIB component utilities outside this fixture's Vite root. */
+@import '../../../resources/css/app.css';
+@source '../../../resources/js/components/participant/rmib';

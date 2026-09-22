@@ -6,6 +6,7 @@ namespace Tests\Feature\AssessmentSessions;
 
 use App\Actions\AssessmentSessions\AutosaveAssessmentAnswers;
 use App\Actions\AssessmentSessions\GetAssessmentSession;
+use App\Actions\AssessmentSessions\SealExpiredAssessmentSession;
 use App\Actions\AssessmentSessions\SubmitAssessmentSession;
 use App\Domain\AssessmentSessions\AssessmentAutosavePolicy;
 use App\Domain\AssessmentSessions\AssessmentSessionSubmitPolicy;
@@ -129,6 +130,74 @@ final class AssessmentSessionHttpTest extends OrganizationPaymentTestCase
         $this->withToken($this->token($participant))->getJson("/api/sessions/{$session}")
             ->assertOk()
             ->assertJsonPath('remaining_seconds', 0);
+    }
+
+    // ─── stage 5 (2026-09-22): current_segment ───
+
+    public function test_get_current_segment_is_null_for_a_session_that_never_started(): void
+    {
+        $this->bindGetClock('2026-09-21T00:30:00.000000+00:00');
+        $participant = $this->participant();
+        $session = $this->sessionRow($participant, 'created');
+
+        $this->withToken($this->token($participant))->getJson("/api/sessions/{$session}")
+            ->assertOk()
+            ->assertJsonPath('current_segment', null);
+    }
+
+    public function test_get_current_segment_reports_the_single_implicit_segment_for_an_untouched_subtest(): void
+    {
+        $this->bindGetClock('2026-09-21T00:30:00.000000+00:00');
+        $participant = $this->participant();
+        $session = $this->sessionRow($participant, 'in_progress');
+
+        $response = $this->withToken($this->token($participant))->getJson("/api/sessions/{$session}")->assertOk();
+
+        $response->assertJsonPath('current_segment.code', 'SYN')
+            ->assertJsonPath('current_segment.index', 0)
+            ->assertJsonPath('current_segment.started_at', '2026-09-21T00:00:00.000000Z')
+            ->assertJsonPath('current_segment.remaining_seconds', 1800);
+    }
+
+    /**
+     * A segment waiting out its own reading gap reports started_at/ends_at/
+     * remaining_seconds together as null - a real, observable state, not
+     * an error (tasks/handoffs/f2/timed-segments-plan.md's response-shape
+     * section).
+     */
+    public function test_get_current_segment_reports_the_null_triple_while_waiting_on_a_reading_gap(): void
+    {
+        $this->bindGetClock('2026-09-21T00:00:30.000000+00:00');
+        $participant = $this->participant();
+        $definitionSource = [
+            'instrument' => 'ist', 'version' => 'synthetic-definition-v1',
+            'provenance' => 'session-http-reading-gap-test-only', 'total_duration_seconds' => 3600,
+            'subtests' => [['code' => 'SYN', 'duration_seconds' => 3600, 'item_count' => 5, 'reading_cap_seconds' => 60]],
+            'randomization' => 'fixed', 'seed' => null, 'generator' => null,
+        ];
+        $definition = SessionDefinition::fromArray([
+            ...$definitionSource, 'checksum' => SessionDefinition::checksumFor($definitionSource),
+        ]);
+        $publicId = (string) Str::ulid();
+        DB::table('test_sessions')->insert([
+            'public_id' => $publicId, 'participant_id' => $participant, 'test_type' => 'ist',
+            'attempt_no' => ++$this->attempt,
+            'authorization_id' => (string) Str::ulid(), 'allocation_intent_id' => (string) Str::ulid(),
+            'duration_seconds' => 3660, 'status' => 'in_progress', 'answers_revision' => 0,
+            'started_at' => self::STARTED,
+            'ends_at' => '2026-09-21 01:01:00.000000+00:00',
+            'session_definition_version' => $definition->version,
+            'session_definition_provenance' => $definition->provenance,
+            'session_definition_checksum' => $definition->checksum,
+            'session_definition_payload' => json_encode($definition->toArray(), JSON_THROW_ON_ERROR),
+        ]);
+
+        $response = $this->withToken($this->token($participant))->getJson("/api/sessions/{$publicId}")->assertOk();
+
+        $response->assertJsonPath('current_segment.index', 0)
+            ->assertJsonPath('current_segment.started_at', null)
+            ->assertJsonPath('current_segment.ends_at', null)
+            ->assertJsonPath('current_segment.remaining_seconds', null);
     }
 
     public function test_get_nonexistent_and_foreign_session_are_byte_identical_404(): void
@@ -445,6 +514,7 @@ final class AssessmentSessionHttpTest extends OrganizationPaymentTestCase
         $this->app->instance(AutosaveAssessmentAnswers::class, new AutosaveAssessmentAnswers(
             $this->app->make(RlsContextRunner::class),
             new AssessmentAutosavePolicy,
+            new SealExpiredAssessmentSession($this->app->make(RlsContextRunner::class)),
             fn (): DateTimeImmutable => new DateTimeImmutable($iso),
         ));
     }
@@ -454,6 +524,7 @@ final class AssessmentSessionHttpTest extends OrganizationPaymentTestCase
         $this->app->instance(SubmitAssessmentSession::class, new SubmitAssessmentSession(
             $this->app->make(RlsContextRunner::class),
             new AssessmentSessionSubmitPolicy,
+            new SealExpiredAssessmentSession($this->app->make(RlsContextRunner::class)),
             fn (): DateTimeImmutable => new DateTimeImmutable($iso),
         ));
     }

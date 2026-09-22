@@ -2,6 +2,7 @@ import { Clock, Video, VideoOff, WifiOff } from 'lucide-react';
 import { useCallback } from 'react';
 import type { ReactNode } from 'react';
 
+import { Button } from '@/components/ui/button';
 import { useAssessmentSession } from './use-assessment-session.ts';
 import type {
     AssessmentSessionState,
@@ -9,6 +10,11 @@ import type {
 } from './use-assessment-session.ts';
 import { useOfflineQueue } from './use-offline-queue.ts';
 import type { UseOfflineQueueResult } from './use-offline-queue.ts';
+import { usePeriodicPhotoCapture } from './use-periodic-photo-capture.ts';
+import type {
+    PeriodicPhotoCaptureConfig,
+    UsePeriodicPhotoCaptureResult,
+} from './use-periodic-photo-capture.ts';
 import { useProctoringCamera } from './use-proctoring-camera.ts';
 import type {
     GetUserMedia,
@@ -25,6 +31,14 @@ import type { ProctoringReporter } from './proctoring-reporter.ts';
  * deliberately NOT owned here: only the per-instrument page knows what
  * "moving to a different item" means, which is what decides when to
  * flush (see use-autosave.ts's module doc).
+ *
+ * Periodic photo capture (SPEC.md 8A.2, butir 12/PR #87 wired to the
+ * live camera here) rides on top of the camera's own status: it is only
+ * ever running while `camera.status === 'active'`, via
+ * use-periodic-photo-capture.ts. Passing no `photoCapture` prop disables
+ * it entirely — no scheduler is constructed, matching every other
+ * proctoring feature in this shell (nothing happens without an explicit
+ * caller-supplied trigger/config).
  */
 
 export type SessionRunnerContext = {
@@ -34,6 +48,7 @@ export type SessionRunnerContext = {
     reloadSession: () => Promise<AssessmentSessionState>;
     camera: UseProctoringCameraResult;
     connectivity: UseOfflineQueueResult;
+    photoCapture: UsePeriodicPhotoCaptureResult;
 };
 
 export type SessionRunnerShellProps = {
@@ -43,6 +58,13 @@ export type SessionRunnerShellProps = {
         reporter?: ProctoringReporter;
         getUserMedia?: GetUserMedia;
     };
+    /** Server-supplied cadence/size/quality for periodic proctoring
+     * photo capture — see use-periodic-photo-capture.ts's module doc.
+     * `undefined` disables the feature (no scheduler is ever
+     * constructed). Must be referentially stable across renders (e.g.
+     * `useMemo`d by the caller from server config) — a new object tears
+     * down and restarts the capture cadence. */
+    photoCapture?: PeriodicPhotoCaptureConfig;
     children: (runner: SessionRunnerContext) => ReactNode;
 };
 
@@ -74,6 +96,7 @@ export function SessionRunnerShell({
     fetchSession,
     pollIntervalMs,
     proctoring,
+    photoCapture,
     children,
 }: SessionRunnerShellProps) {
     const connectivity = useOfflineQueue();
@@ -107,11 +130,24 @@ export function SessionRunnerShell({
         });
 
     const camera = useProctoringCamera(proctoring);
+    const periodicPhotoCapture = usePeriodicPhotoCapture({
+        cameraStatus: camera.status,
+        captureFrame: camera.captureFrame,
+        config: photoCapture ?? null,
+    });
 
     return (
         <div className="min-h-screen bg-slate-50 text-slate-950">
             <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 backdrop-blur">
-                <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-4 px-4 py-3">
+                {/* Lead's UI/UX review (ui-ux-pro-max, domain ux, "Layout
+                & Responsive"): at 360px the camera badge's retry button
+                was clipped off the right edge instead of wrapping —
+                flex-wrap on both this row and the camera-status group
+                lets the timer, badge, and button each drop to their own
+                line as the viewport narrows, verified at 360px with no
+                horizontal scroll (see PR description for the
+                screenshot). */}
+                <div className="mx-auto flex w-full max-w-4xl flex-wrap items-center justify-between gap-4 px-4 py-3">
                     <div className="flex items-center gap-2 font-semibold tabular-nums">
                         <Clock
                             className="size-5 text-teal-700"
@@ -122,7 +158,7 @@ export function SessionRunnerShell({
                         </span>
                     </div>
 
-                    <div className="flex items-center gap-2 text-sm text-slate-600">
+                    <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
                         {camera.status === 'active' ? (
                             <Video
                                 className="size-4 text-teal-700"
@@ -134,7 +170,34 @@ export function SessionRunnerShell({
                                 aria-hidden="true"
                             />
                         )}
-                        <span>{CAMERA_STATUS_LABEL[camera.status]}</span>
+                        {/* Lead's UI/UX review (ui-ux-pro-max, domain ux,
+                        "Accessibility / Screen Reader"): camera status
+                        changes (e.g. going interrupted, or reactivation
+                        failing) must reach screen-reader participants,
+                        not just sighted ones watching the icon change.
+                        role="status" (implies aria-live="polite") is
+                        scoped to this span alone, deliberately excluding
+                        the timer beside it (aria-live="off" above) —
+                        the timer changes every second and would drown
+                        out every other announcement if it were live
+                        too. Each CAMERA_STATUS_LABEL value already reads
+                        as a complete, contextual sentence, so no extra
+                        "Status kamera:" prefix is needed for the
+                        announcement to make sense on its own. */}
+                        <span role="status" aria-atomic="true">
+                            {CAMERA_STATUS_LABEL[camera.status]}
+                        </span>
+                        {camera.status === 'reactivation_failed' ? (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => void camera.reactivate()}
+                                className="min-h-11"
+                            >
+                                Coba aktifkan kamera lagi
+                            </Button>
+                        ) : null}
                     </div>
                 </div>
 
@@ -165,6 +228,7 @@ export function SessionRunnerShell({
                     reloadSession: reload,
                     camera,
                     connectivity,
+                    photoCapture: periodicPhotoCapture,
                 })}
             </main>
         </div>

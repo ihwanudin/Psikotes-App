@@ -90,6 +90,29 @@ final class IdentityEvidenceAccessTest extends TestCase
         $this->assertNotSame($branchA->id, $branchB->id);
     }
 
+    /**
+     * This route never goes through Filament's panel middleware stack (no
+     * `canAccessPanel()`, no RejectDisabledAdmin from AdminPanelProvider),
+     * so a disabled admin's still-valid session previously kept working
+     * here even though `/admin` correctly rejected them -- 2026-09-22,
+     * Lead's independent security review of #104. Closed by the global
+     * `admin.enabled` middleware alias on this route.
+     */
+    public function test_disabled_admin_cannot_fetch_identity_evidence_urls(): void
+    {
+        Storage::fake('identity');
+        [$branch, , $evidence] = $this->evidence('A');
+        $admin = $this->admin(AdminRole::Staff, $branch);
+        $admin->forceFill(['disabled_at' => now()])->save();
+
+        $this->actingAs($admin, 'admin')
+            ->postJson("/admin/identity-evidence/{$evidence->public_id}/temporary-url")
+            ->assertForbidden();
+
+        $this->assertDatabaseCount('audit_logs', 0);
+        $this->assertGuest('admin');
+    }
+
     /** @return array{Branch, Participant, IdentityEvidence} */
     private function evidence(string $suffix): array
     {

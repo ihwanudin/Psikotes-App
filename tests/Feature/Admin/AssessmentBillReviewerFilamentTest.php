@@ -286,6 +286,7 @@ final class AssessmentBillReviewerFilamentTest extends OrganizationPaymentTestCa
             'branch_id' => $branchId, 'name' => 'Synthetic reviewer',
             'email' => uniqid().'@example.test', 'password' => 'not-real',
             'role' => $role, 'can_verify_payments' => $legacyFlag,
+            'has_email_authentication' => true,
         ]);
     }
 }

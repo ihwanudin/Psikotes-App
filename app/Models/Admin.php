@@ -8,6 +8,8 @@ use App\Contracts\ProvidesRlsContext;
 use App\Enums\AdminAbility;
 use App\Enums\AdminRole;
 use App\Security\RlsContext;
+use Filament\Auth\MultiFactor\Email\Concerns\InteractsWithEmailAuthentication;
+use Filament\Auth\MultiFactor\Email\Contracts\HasEmailAuthentication;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -16,6 +18,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Carbon;
 
 /**
  * @property int $id
@@ -27,12 +30,14 @@ use Illuminate\Notifications\Notifiable;
  * @property bool $can_verify_payments
  * @property string|null $silp_number
  * @property string|null $str_number
+ * @property Carbon|null $disabled_at
+ * @property bool $has_email_authentication
  */
-#[Fillable(['branch_id', 'name', 'email', 'password', 'role', 'can_verify_payments', 'silp_number', 'str_number'])]
+#[Fillable(['branch_id', 'name', 'email', 'password', 'role', 'can_verify_payments', 'silp_number', 'str_number', 'has_email_authentication'])]
 #[Hidden(['password', 'remember_token'])]
-final class Admin extends Authenticatable implements FilamentUser, ProvidesRlsContext
+final class Admin extends Authenticatable implements FilamentUser, HasEmailAuthentication, ProvidesRlsContext
 {
-    use Notifiable, SoftDeletes;
+    use InteractsWithEmailAuthentication, Notifiable, SoftDeletes;
 
     /** @return BelongsTo<Branch, $this> */
     public function branch(): BelongsTo
@@ -43,6 +48,7 @@ final class Admin extends Authenticatable implements FilamentUser, ProvidesRlsCo
     public function canAccessPanel(Panel $panel): bool
     {
         return $panel->getId() === 'admin'
+            && $this->disabled_at === null
             && $this->canPerform(AdminAbility::AccessPanel);
     }
 
@@ -52,15 +58,20 @@ final class Admin extends Authenticatable implements FilamentUser, ProvidesRlsCo
             AdminAbility::AccessPanel,
             AdminAbility::ViewParticipants => true,
             AdminAbility::ManageAdmins,
-            AdminAbility::ManageTestPackages,
             AdminAbility::ManagePaymentMethods,
             AdminAbility::ManageIntegrations => $this->role === AdminRole::SuperAdmin,
+            AdminAbility::ManageTestPackages => in_array(
+                $this->role,
+                [AdminRole::SuperAdmin, AdminRole::CentralAdmin],
+                true,
+            ),
             AdminAbility::EditParticipants => in_array(
                 $this->role,
-                [AdminRole::SuperAdmin, AdminRole::BranchAdmin, AdminRole::Staff],
+                [AdminRole::SuperAdmin, AdminRole::CentralAdmin, AdminRole::BranchAdmin, AdminRole::Staff],
                 true,
             ),
             AdminAbility::VerifyPayments => $this->role === AdminRole::SuperAdmin
+                || $this->role === AdminRole::CentralAdmin
                 || ($this->can_verify_payments
                     && in_array($this->role, [AdminRole::BranchAdmin, AdminRole::Staff], true)),
             AdminAbility::ViewDass => $this->role === AdminRole::Psychologist,
@@ -72,7 +83,16 @@ final class Admin extends Authenticatable implements FilamentUser, ProvidesRlsCo
             // is its own increment, not an addition to this match arm.
             AdminAbility::GenerateReports => in_array(
                 $this->role,
-                [AdminRole::Psychologist, AdminRole::SuperAdmin],
+                [AdminRole::Psychologist, AdminRole::SuperAdmin, AdminRole::CentralAdmin],
+                true,
+            ),
+            // super_admin + psychologist only for now (item 19, owner's
+            // decision); extends to central_admin automatically once that
+            // role exists, same one-line-addition pattern already used
+            // elsewhere in this enum.
+            AdminAbility::AuthorizeRetestBeyondLimit => in_array(
+                $this->role,
+                [AdminRole::SuperAdmin, AdminRole::Psychologist],
                 true,
             ),
         };
@@ -82,6 +102,7 @@ final class Admin extends Authenticatable implements FilamentUser, ProvidesRlsCo
     {
         return match ($this->role) {
             AdminRole::SuperAdmin => new RlsContext('super_admin'),
+            AdminRole::CentralAdmin => new RlsContext('central_admin'),
             AdminRole::BranchAdmin => new RlsContext('branch_admin', $this->requiredBranchId()),
             AdminRole::Staff => new RlsContext('staff', $this->requiredBranchId()),
             AdminRole::Psychologist => new RlsContext('psychologist'),
@@ -104,6 +125,7 @@ final class Admin extends Authenticatable implements FilamentUser, ProvidesRlsCo
             'password' => 'hashed',
             'role' => AdminRole::class,
             'can_verify_payments' => 'boolean',
+            'disabled_at' => 'datetime',
         ];
     }
 }

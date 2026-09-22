@@ -65,7 +65,12 @@ final readonly class AssessmentSessionAllocationResult
         $startedAt = $startedAt->setTimezone($utc);
         $endsAt = $endsAt->setTimezone($utc);
         $serverTime = $serverTime->setTimezone($utc);
-        $expectedEndsAt = $startedAt->add(new DateInterval("PT{$definition->totalDurationSeconds}S"));
+        // F2 timed-segments stage 3 (2026-09-22), revision 1's ends_at formula:
+        // started_at + totalDurationSeconds + totalReadingCapSeconds. Always 0
+        // reading cap today, so this is currently the same window as before.
+        $expectedEndsAt = $startedAt->add(new DateInterval(
+            'PT'.($definition->totalDurationSeconds + $definition->totalReadingCapSeconds).'S',
+        ));
 
         if ($endsAt->format('U.u') !== $expectedEndsAt->format('U.u')) {
             throw new InvalidArgumentException('Assessment session duration must match its definition snapshot.');

@@ -18,6 +18,7 @@ final class AssessmentAttemptAllocationPolicy
         string $newSessionPublicId,
         ?AssessmentAttemptAllocation $existingAllocation,
         ?AssessmentRetestGrant $retestGrant,
+        int $freeAttemptLimit = 3,
     ): AssessmentAttemptAllocationDecision {
         if (trim($intentId) === '' || trim($authorizationId) === '') {
             throw new InvalidAssessmentSessionState('Allocation intent and authorization are required.');
@@ -43,6 +44,7 @@ final class AssessmentAttemptAllocationPolicy
             $retestGrant,
             $authorizationId,
             $nextAttemptNumber,
+            $freeAttemptLimit,
         )) {
             return $this->reject(AssessmentSessionErrorCode::RetestNotAuthorized);
         }
@@ -110,13 +112,37 @@ final class AssessmentAttemptAllocationPolicy
         throw new InvalidAssessmentSessionState('Allocation replay is missing from attempt history.');
     }
 
-    /** @param list<AssessmentAttempt> $attempts */
+    /**
+     * item 19 (owner's decision, 2026-09-22): the first $freeAttemptLimit
+     * attempts need no admin authorization at all. Every attempt past that
+     * needs its own individual, valid AssessmentRetestGrant -- with no
+     * further upper bound (repeated human approval is the deterrent, not a
+     * fixed ceiling).
+     *
+     * @param  list<AssessmentAttempt>  $attempts
+     */
     private function allowsRetest(
         array $attempts,
         ?AssessmentRetestGrant $grant,
         string $authorizationId,
         int $nextAttemptNumber,
+        int $freeAttemptLimit,
     ): bool {
+        // Authorization-identity reuse is barred unconditionally: every
+        // attempt, free or gated, must run under a genuinely new
+        // authorization. Hoisted above the free-limit branch below so this
+        // defense does not weaken just because an attempt happens to fall
+        // under the free limit.
+        foreach ($attempts as $attempt) {
+            if ($attempt->authorizationId === $authorizationId) {
+                return false;
+            }
+        }
+
+        if ($nextAttemptNumber <= $freeAttemptLimit) {
+            return true;
+        }
+
         if ($grant === null
             || ! $grant->authorized
             || trim($grant->grantId) === ''
@@ -125,12 +151,6 @@ final class AssessmentAttemptAllocationPolicy
             || $grant->authorizationId !== $authorizationId
             || $grant->attemptNumber !== $nextAttemptNumber) {
             return false;
-        }
-
-        foreach ($attempts as $attempt) {
-            if ($attempt->authorizationId === $authorizationId) {
-                return false;
-            }
         }
 
         return true;

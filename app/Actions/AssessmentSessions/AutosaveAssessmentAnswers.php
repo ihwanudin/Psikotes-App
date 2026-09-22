@@ -10,6 +10,8 @@ use App\Domain\AssessmentSessions\AssessmentAutosaveReceipt;
 use App\Domain\AssessmentSessions\AssessmentSessionStatus;
 use App\Domain\AssessmentSessions\GenericAssessmentInstrument;
 use App\Domain\AssessmentSessions\SessionDefinition;
+use App\Domain\AssessmentSessions\SubtestItemRange;
+use App\Domain\AssessmentSessions\TimedSegmentSweep;
 use App\Domain\AssessmentSessions\UnsupportedGenericAssessmentInstrument;
 use App\Security\RlsContextRunner;
 use Closure;
@@ -18,6 +20,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use JsonException;
 use RuntimeException;
+use stdClass;
 
 final class AutosaveAssessmentAnswers
 {
@@ -26,6 +29,7 @@ final class AutosaveAssessmentAnswers
     public function __construct(
         private readonly RlsContextRunner $contexts,
         private readonly AssessmentAutosavePolicy $policy,
+        private readonly SealExpiredAssessmentSession $sealer,
         ?Closure $clock = null,
     ) {
         $this->clock = $clock ?? static fn (): DateTimeImmutable => new DateTimeImmutable('now');
@@ -97,6 +101,9 @@ final class AutosaveAssessmentAnswers
             throw new RuntimeException('The assessment autosave clock must return DateTimeImmutable.');
         }
 
+        $definition = $this->storedDefinition($session->session_definition_payload);
+        $currentSubtestRange = $this->currentSubtestItemRange($session, $definition, $receivedAt);
+
         $existing = $this->loadMutation((int) $session->id, $mutationId);
         $decision = $this->policy->decide(
             $status,
@@ -108,22 +115,15 @@ final class AutosaveAssessmentAnswers
             $revision,
             $items,
             $existing,
-            $this->maxItemNo($session->session_definition_payload),
+            array_sum(array_column($definition->subtests, 'item_count')),
+            $currentSubtestRange?->start,
+            $currentSubtestRange?->end,
         );
 
         if (! $decision->accepted) {
             if ($decision->status === AssessmentSessionStatus::Expired
                 && $status === AssessmentSessionStatus::InProgress) {
-                $updated = DB::table('test_sessions')->where('id', $session->id)
-                    ->where('status', AssessmentSessionStatus::InProgress->value)
-                    ->update([
-                        'status' => AssessmentSessionStatus::Expired->value,
-                        'expired_at' => $this->timestamp($receivedAt),
-                        'updated_at' => $this->timestamp($receivedAt),
-                    ]);
-                if ($updated !== 1) {
-                    throw new RuntimeException('The expired assessment session could not be sealed.');
-                }
+                $this->sealer->sealWithinTransaction((int) $session->id, $receivedAt);
             }
 
             return $this->reject($decision->status->value, $decision->errorCode?->value, (int) $session->answers_revision);
@@ -169,13 +169,13 @@ final class AutosaveAssessmentAnswers
     }
 
     /**
-     * The session's true total item count, read from the exact
+     * The session's true SessionDefinition, read from the exact
      * session_definition_payload snapshot the server itself stored at
      * start time (S3) -- never from the client, and never re-derived from
      * a live catalog lookup that could drift from what this specific
      * session was actually issued.
      */
-    private function maxItemNo(mixed $definitionPayload): int
+    private function storedDefinition(mixed $definitionPayload): SessionDefinition
     {
         if (! is_string($definitionPayload)) {
             throw new RuntimeException('The persisted assessment session definition snapshot is missing.');
@@ -189,7 +189,36 @@ final class AutosaveAssessmentAnswers
             throw new RuntimeException('The persisted assessment session definition snapshot is invalid.');
         }
 
-        return array_sum(array_column(SessionDefinition::fromArray($decoded)->subtests, 'item_count'));
+        return SessionDefinition::fromArray($decoded);
+    }
+
+    /**
+     * F2 timed-segments stage 5 (2026-09-22). null only when the session
+     * has never started (started_at null) -- the deadline check inside
+     * AssessmentAutosavePolicy::decide() already rejects that case
+     * (SESSION_NOT_STARTED) before the new range check would ever run, so
+     * null here is safe. Compute-only, fresh on every request -- never
+     * trusts a stored index, the same reason TimedSegmentSweep exists.
+     */
+    private function currentSubtestItemRange(
+        stdClass $session,
+        SessionDefinition $definition,
+        DateTimeImmutable $receivedAt,
+    ): ?SubtestItemRange {
+        if ($session->started_at === null) {
+            return null;
+        }
+
+        $swept = (new TimedSegmentSweep)->evaluate(
+            $definition->segments,
+            $session->current_segment_index === null ? null : (int) $session->current_segment_index,
+            $session->current_segment_became_current_at === null ? null : new DateTimeImmutable((string) $session->current_segment_became_current_at),
+            $session->current_segment_started_at === null ? null : new DateTimeImmutable((string) $session->current_segment_started_at),
+            new DateTimeImmutable((string) $session->started_at),
+            $receivedAt,
+        );
+
+        return $definition->currentSubtestItemRange($swept->index);
     }
 
     private function loadMutation(int $sessionId, string $mutationId): ?AssessmentAutosaveMutation

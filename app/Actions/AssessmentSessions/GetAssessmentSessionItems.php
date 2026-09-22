@@ -9,6 +9,7 @@ use App\Domain\AssessmentSessions\AssessmentItemContentUnavailable;
 use App\Domain\AssessmentSessions\AssessmentSessionStatus;
 use App\Domain\AssessmentSessions\GenericAssessmentInstrument;
 use App\Domain\AssessmentSessions\SessionDefinition;
+use App\Domain\AssessmentSessions\TimedSegmentSweep;
 use App\Domain\AssessmentSessions\UnsupportedGenericAssessmentInstrument;
 use App\Security\RlsContextRunner;
 use Closure;
@@ -18,6 +19,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use JsonException;
 use RuntimeException;
+use stdClass;
 
 /**
  * F2 item-delivery (2026-09-21). GET /sessions/{id}/items. Read-only, same
@@ -40,6 +42,21 @@ use RuntimeException;
  * is not cached or assumed still available just because start succeeded,
  * so a reader that becomes unavailable after a session started still
  * fails this read closed rather than serving something stale or guessed.
+ *
+ * $item_content_variant (RMIB gender-track selection, 2026-09-21): read
+ * verbatim from the session row and passed to contentFor() as
+ * $lockedVariant on EVERY read -- this class never resolves a variant
+ * itself and never re-derives it from current participant state. A reader
+ * with a variant axis (RMIB) must use exactly this locked value, so a
+ * profile change after the session started (e.g. a corrected gender) never
+ * changes what a participant sees mid-test.
+ *
+ * $currentSegmentCode (item-delivery segment-awareness, per
+ * tasks/handoffs/f2/item-delivery-segment-awareness-deferred.md): computed
+ * fresh via TimedSegmentSweep on every read (see currentSegmentCode()
+ * below), never persisted or trusted from a stored index -- an independent
+ * axis from $lockedVariant above, a reader may need either, both, or
+ * neither.
  */
 final class GetAssessmentSessionItems
 {
@@ -98,7 +115,8 @@ final class GetAssessmentSessionItems
             throw new RuntimeException('An in-progress session requires ends_at.');
         }
         $endsAt = $this->utc(new DateTimeImmutable((string) $session->ends_at));
-        if ($this->serverTime() > $endsAt) {
+        $serverTime = $this->serverTime();
+        if ($serverTime > $endsAt) {
             return $this->reject('DEADLINE_EXCEEDED');
         }
 
@@ -107,8 +125,20 @@ final class GetAssessmentSessionItems
             throw new RuntimeException('Stored session definition instrument disagrees with the session.');
         }
 
+        $lockedVariant = $session->item_content_variant ?? null;
+        if ($lockedVariant !== null && ! is_string($lockedVariant)) {
+            throw new RuntimeException('The persisted item content variant is invalid.');
+        }
+        $currentSegmentCode = $this->currentSegmentCode($session, $definition, $serverTime);
+
         try {
-            $content = $this->itemContent->contentFor($instrument, $definition);
+            $content = $this->itemContent->contentFor(
+                $instrument,
+                $definition,
+                $participantId,
+                $lockedVariant,
+                $currentSegmentCode,
+            );
         } catch (AssessmentItemContentUnavailable) {
             return $this->reject('ASSESSMENT_ITEM_CONTENT_UNAVAILABLE');
         }
@@ -117,6 +147,33 @@ final class GetAssessmentSessionItems
         }
 
         return new GetAssessmentSessionItemsResult(true, null, $sessionPublicId, $content);
+    }
+
+    /**
+     * F2 item-delivery segment-awareness (per
+     * tasks/handoffs/f2/item-delivery-segment-awareness-deferred.md).
+     * Compute-only, fresh on every request -- never trusts a stored index,
+     * the same reason TimedSegmentSweep exists and the same pattern
+     * AutosaveAssessmentAnswers/SubtestNext/GetAssessmentSession's own
+     * resource already follow. started_at is guaranteed non-null here: the
+     * caller already rejected anything but an in_progress session above.
+     */
+    private function currentSegmentCode(stdClass $session, SessionDefinition $definition, DateTimeImmutable $now): string
+    {
+        if ($session->started_at === null) {
+            throw new RuntimeException('An in-progress session requires started_at.');
+        }
+
+        $swept = (new TimedSegmentSweep)->evaluate(
+            $definition->segments,
+            $session->current_segment_index === null ? null : (int) $session->current_segment_index,
+            $session->current_segment_became_current_at === null ? null : new DateTimeImmutable((string) $session->current_segment_became_current_at),
+            $session->current_segment_started_at === null ? null : new DateTimeImmutable((string) $session->current_segment_started_at),
+            new DateTimeImmutable((string) $session->started_at),
+            $now,
+        );
+
+        return $definition->segments[$swept->index]->code;
     }
 
     private function storedDefinition(object $session): SessionDefinition
