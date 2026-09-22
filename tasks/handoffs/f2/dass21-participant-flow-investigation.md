@@ -5,16 +5,30 @@ Everything below is read from the actual source on `origin/main` (paths/
 lines cited), not guessed or taken on Lead's word. No code was written for
 this task — this is the plan Lead asked for before implementation starts.
 
+> **Correction, same day**: §5's original claim that `dass.assessments`/
+> `dass.responses`/`dass.results` have "no RLS policy at all" was **wrong**
+> — a real methodology error (grep scoped to `database/migrations/*.php`
+> only, missing `database/schema/rls_policies.sql`, which already defines
+> RLS for all three tables, added in `418b45fb` "F1: define fail-closed
+> tenant and DASS RLS policies", 2026-08-25 — a month before this
+> investigation). See the corrected §5 below. The real, narrower gap:
+> the existing policy lets the owning participant write directly to
+> `dass.assessments`/`dass.responses` and read the *full* `dass.results`
+> row (including subscale scores), neither of which matches Lead's later
+> "service-only writes, general-category-only participant reads"
+> decision — that's a policy the existing RLS needs *tightened* to match,
+> not a from-scratch gap.
+
 ## TL;DR
 
 DASS-21 is fully wired everywhere **except** the one place that actually
 matters for this task: a participant cannot take it. Consent-type
 plumbing, entitlement provisioning, scoring, screening policy, the
-two-tier confidentiality split for reporting, and an isolated DB schema
-all already exist and are already tested. What's missing is the
-session-taking layer: no way to start a DASS attempt, no way to answer its
-21 items, no way to submit them, and **no RLS policy on the three DASS
-tables themselves** (only `consent_records` has one). `API_CONTRACT.md`
+two-tier confidentiality split for reporting, an isolated DB schema, and
+that schema's own RLS all already exist and are already tested. What's
+missing is the session-taking layer itself: no way to start a DASS
+attempt, no way to answer its 21 items, no way to submit them.
+`API_CONTRACT.md`
 documents that DASS is deliberately excluded from the generic engine and
 uses "penyimpanan dan alur terisolasi" (isolated storage and flow), but
 does not specify what that isolated flow's endpoints actually look like —
@@ -135,10 +149,11 @@ Already fully wired on the entitlement side — this is not a gap:
 
 CLAUDE.md's rule ("DASS-21 TIDAK PERNAH masuk ekspresi zona/label...
 Skor subskala DASS TIDAK dicetak di HPP") is already structurally
-enforced on the **reporting** side, which is reassuring evidence this
-project takes it seriously, but the **live test-taking API** (what I'd be
-building) has no code to audit yet, so it inherits nothing automatically
-— it has to be built correctly from scratch.
+enforced on the **reporting** side, and — corrected from this document's
+original version, see the banner at the top — RLS on the three isolated
+tables themselves already exists too, from day one of the project. The
+**live test-taking API** (what I'd be building) still has no code to
+audit, so IT inherits nothing automatically.
 
 **Already built (reporting side)**:
 - `app/Domain/Report/DassScreeningSummary.php` — the ONLY DASS shape
@@ -162,31 +177,50 @@ building) has no code to audit yet, so it inherits nothing automatically
   service/psychologist/self-participant only — `branch_admin`/`staff`
   explicitly excluded, proven by
   `tests/Postgres/DassConsentBranchPrivacyTest.php`.
+- `dass.assessments`/`dass.responses`/`dass.results` RLS
+  (`database/schema/rls_policies.sql:65-70,204-271`, `-- dass_policy_start`
+  ... `-- dass_policy_end`, committed `418b45fb` 2026-08-25, loaded by
+  `2026_08_25_000500_enforce_row_level_security.php`): `ENABLE`+`FORCE`
+  on all three tables. Reads: service/psychologist OR the owning
+  participant (via `participant_id` on `assessments`, via an `EXISTS`
+  join to the parent assessment on `responses`/`results`). Writes
+  (`FOR ALL`): service OR the owning participant on `assessments`/
+  `responses`; **service only** on `results`. No admin role
+  (`super_admin`/`branch_admin`/`staff`) appears in any of these
+  policies at all — already correctly excluded, no work needed there.
 
-**Not yet built — a real gap, found during this investigation, worth
-flagging even though Lead framed this task as "not a security risk"**:
-`dass.assessments`, `dass.responses`, `dass.results` have **no RLS
-policy at all**. `grep`-verified: only
-`2026_08_25_000300_create_isolated_dass_schema.php` touches those three
-tables in the whole `database/migrations/` tree — no follow-up policy
-migration exists for them the way one exists for `consent_records`. Any
-new session-taking action that writes into `dass.responses` or reads
-`dass.results` needs its own RLS policy migration (participant sees only
-their own row, `branch_admin`/`staff` excluded same as DASS consent,
-`super_admin` almost certainly excluded too by analogy to the consent
-policy's restrictive layer) before it can be considered safe to ship —
-this is new work this task would need to include, not something to
-inherit "for free" the way the generic instruments' RLS already exists.
+**Real gap, corrected from this document's original claim**: not "no
+RLS," but the existing policy doesn't match two specifics of Lead's
+later decision (b):
+- `dass.assessments`/`dass.responses` let the owning **participant**
+  write directly (`FOR ALL`, not just `FOR SELECT`) — Lead's instruction
+  is "Tulis hanya lewat konteks service," i.e. writes should be
+  service-only, matching how every other session-http action in this
+  codebase already works (the participant-facing controller elevates to
+  a `service` RLS context internally and enforces "own row" via its own
+  `WHERE`, never writing as a raw `participant`-role connection).
+- `dass.results`'s existing participant-read policy returns the **whole
+  row**, including every subscale column (`depression_score`,
+  `anxiety_category`, etc.) — not restricted to "general category only."
+  This can't be fixed with a column-level `GRANT`: every request shares
+  one `psikotes_runtime` Postgres role, and `app_private.app_role()` is
+  a session variable read by RLS `USING` clauses, not a real per-role
+  Postgres identity a column `GRANT` could condition on. The only place
+  that split can actually be enforced is the application layer — the
+  same `DassScreeningSummary`-vs-`DassInternalDetail` discipline this
+  codebase already uses elsewhere — which means whether to even keep
+  the row-level participant-read policy as-is (relying entirely on the
+  future endpoint's code to never forward subscale fields) or narrow it
+  further is Lead's call, not mine to resolve unilaterally here.
 
 **What a new DASS session-taking API must NOT do** (derived from the
-above, my own design constraint, not yet built so nothing to point at
-that already enforces it): the submit/complete response returned to the
-*participant themselves* should carry at most what
-`DassScreeningSummary` carries (general category + narrative + follow-up)
-— never raw subscale scores, never `item_scores`. Whether even the
-general category should reach the participant live (vs. only ever
-appearing later in the signed HPP) is itself a question for Lead/
-psychologist, not something I'd decide unilaterally.
+above): the submit/complete response returned to the *participant
+themselves* should carry at most what `DassScreeningSummary` carries
+(general category + narrative + follow-up) — never raw subscale scores,
+never `item_scores`, regardless of what the RLS row itself permits.
+Whether even the general category should reach the participant live (vs.
+only ever appearing later in the signed HPP) is itself a question for
+Lead/psychologist, not something I'd decide unilaterally.
 
 ## Proposed shape (sketch only — needs Lead/psychologist sign-off before any code)
 
