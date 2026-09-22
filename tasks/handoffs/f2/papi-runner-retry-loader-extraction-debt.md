@@ -1,5 +1,46 @@
 # Debt: extract a shared retry-loader core (GLM, recorded 2026-09-21)
 
+**Update 2026-09-22 — done, gate relaxed by Lead.** CI still down with no
+ETA; Lead relaxed the "wait for #82 to merge" gate below, same reasoning
+and same pattern as the HTTP-transport connection (#108): merge the
+still-open branches locally (`git merge`, not rebase) and build on top,
+rather than wait indefinitely. Branch
+`glm/retry-loader-extraction-all-instruments`, `main` + `glm/retry-loader-extraction`
+(#88) + `glm/papi-runner-prototype` (#82) + `glm/rmib-runner-prototype`
+(#85) + `glm/ist-runner-prototype` (#92) + `glm/kraepelin-runner-items`
+(#69) merged in that order, zero conflicts (one clean auto-merge in
+`package.json`).
+
+Two corrections to how this task was described when handed off, found by
+reading the actual branches rather than trusting the summary of them:
+
+- PR #88 ("extract the shared retry-loader core, scoped to the copy in
+  main") does NOT contain Kraepelin's copy — it only extracted
+  `retry-loader.ts` (the shared core) and refactored
+  `resume-answers-loader.ts` into a thin wrapper around it, exactly as
+  its own title says. Kraepelin's actual `items-loader.ts` copy is still
+  on `glm/kraepelin-runner-items` (#69), merged separately here.
+- IST does not have a fifth copy of this pattern at all —
+  `ist-subtest-screen.tsx` takes `subtest` as a prop rather than fetching
+  `/items` itself (by design, per that PR's own scope doc), so there is
+  no IST items-loader to migrate. Its only loader-shaped file,
+  `ist-asset-url-loader.ts`, is a different, already-reviewed pattern
+  (bounded consecutive-failure count for image loads, not the
+  fetch-once-on-mount-then-retry shape this debt is about) and is out of
+  scope here.
+
+So the actual four copies were: `resume-answers-loader.ts` (already done
+in #88), `papi-items-loader.ts`, `rmib-items-loader.ts`, and
+`kraepelin/items-loader.ts` — the last three migrated to thin wrappers
+around `retry-loader.ts` here, mirroring `resume-answers-loader.ts`'s own
+post-extraction shape exactly. Every one of the three loaders' existing
+`*.test.ts` files was left completely untouched (confirmed via `git
+status` before running them) and all 31 of their tests still pass
+unmodified against the new implementations — the "zero behavioral
+change" bar the Gate section below required. Full suite (session-runner +
+papi + rmib + kraepelin + ist): 234/234, same count as the pre-extraction
+baseline on this merged tree.
+
 Recorded per Lead's instruction after reviewing `61c7395`/`cea25fd` on
 `glm/papi-runner-prototype`: the same retry-loader pattern now exists as
 three separate implementations. Lead's read: three copies is the last

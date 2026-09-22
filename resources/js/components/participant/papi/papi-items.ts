@@ -1,3 +1,5 @@
+import type { GenericItemsOutcome } from '../session-runner/http-transport.ts';
+
 /**
  * `GET /sessions/:id/items` for PAPI (API_CONTRACT.md, PR #71 —
  * `tasks/handoffs/f2/item-delivery-papi-reader.md`; not yet merged to
@@ -87,4 +89,40 @@ export function papiItemsFromSubtests(
     }
 
     return subtests[0]!.items;
+}
+
+/**
+ * Maps `http-transport.ts`'s generic `GET /sessions/:id/items` outcome
+ * (one shared shape every instrument's transport call returns) into
+ * PAPI's own `PapiItemsOutcome` — the mapping `papi-items-runner.tsx`'s
+ * real caller needs between the shared HTTP transport and this
+ * instrument's typed shape. Every non-`available` member is identical
+ * between the two unions by construction (same names, no payload — see
+ * `http-transport.ts`'s module doc), so this is a pass-through for those;
+ * only `available` needs unwrapping via `papiItemsFromSubtests` and the
+ * `instructions` cast (the generic envelope leaves it as `unknown` since
+ * it's instrument-specific).
+ */
+export function papiItemsOutcomeFromGeneric(
+    outcome: GenericItemsOutcome,
+): PapiItemsOutcome {
+    if (outcome.type !== 'available') {
+        return outcome;
+    }
+
+    return {
+        type: 'available',
+        content: {
+            sessionId: outcome.content.sessionId,
+            instrument: outcome.content.instrument,
+            version: outcome.content.version,
+            items: papiItemsFromSubtests(
+                outcome.content.subtests as {
+                    code: string;
+                    items: PapiItem[];
+                }[],
+            ),
+            instructions: outcome.content.instructions as PapiInstructions,
+        },
+    };
 }

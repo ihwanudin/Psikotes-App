@@ -1,3 +1,5 @@
+import type { GenericItemsOutcome } from '../session-runner/http-transport.ts';
+
 /**
  * Pure types + wire-envelope helpers for the RMIB item content — no React,
  * no fetch, testable via `node --test`. Mirrors
@@ -76,6 +78,38 @@ export function rmibPositionsFromSubtests(
     }
 
     return positionsSubtests[0]!.items;
+}
+
+/**
+ * Maps `http-transport.ts`'s generic `GET /sessions/:id/items` outcome
+ * into RMIB's own `RmibItemsOutcome` — mirrors
+ * `papi-items.ts`'s `papiItemsOutcomeFromGeneric` exactly (same reasoning:
+ * every non-`available` member is identical between the two unions by
+ * construction, so only `available` needs unwrapping via
+ * `rmibPositionsFromSubtests` and the `instructions` cast).
+ */
+export function rmibItemsOutcomeFromGeneric(
+    outcome: GenericItemsOutcome,
+): RmibItemsOutcome {
+    if (outcome.type !== 'available') {
+        return outcome;
+    }
+
+    return {
+        type: 'available',
+        content: {
+            sessionId: outcome.content.sessionId,
+            instrument: outcome.content.instrument,
+            version: outcome.content.version,
+            positions: rmibPositionsFromSubtests(
+                outcome.content.subtests as {
+                    code: string;
+                    items: RmibPosition[];
+                }[],
+            ),
+            instructions: outcome.content.instructions as RmibInstructions,
+        },
+    };
 }
 
 export const RMIB_GROUP_COUNT = 9;

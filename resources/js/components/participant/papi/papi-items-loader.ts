@@ -1,37 +1,35 @@
+import { createRetryLoader } from '../session-runner/retry-loader.ts';
+import type { RetryLoaderState } from '../session-runner/retry-loader.ts';
 import type { FetchPapiItems, PapiItemsOutcome } from './papi-items.ts';
 
 /**
- * Pure retry orchestration for GET /sessions/:id/items (PAPI) — same
- * shape and reasoning as kraepelin/items-loader.ts (that module's doc
- * covers the "why" in full, following the pattern Lead required after
- * catching the original resume-answers gap: a one-shot fetch that
- * blocks entering the test must not leave the participant stuck with no
- * UI and a running timer on a transient network blip). Kept as its own
- * module per-instrument rather than one shared generic loader — the
- * outcome sets already differ across the three copies that exist
- * (resume-answers, Kraepelin items, this one), and duplicating ~130
- * lines is cheaper than forcing a premature abstraction over things
- * that keep diverging.
+ * Pure retry orchestration for GET /sessions/:id/items (PAPI) — no React,
+ * no fetch, no DOM. The actual retry state machine (network_error/
+ * rejection classification, the 5-consecutive-failure cap, stale-attempt
+ * handling) lives in `../session-runner/retry-loader.ts`, shared across
+ * every "fetch once, retry on connectivity" loader in this codebase
+ * (Lead's 2026-09-21 extraction, `glm/retry-loader-extraction` — scoped
+ * at the time to `resume-answers-loader.ts`, the only one of the four
+ * near-identical copies merged to `main` then; PAPI/RMIB/Kraepelin's own
+ * loaders migrate to the shared core in their own connection PRs once
+ * merged, per that extraction's own doc — this file is that migration
+ * for PAPI). This file is now a thin type-specific wrapper: it exists so
+ * `createPapiItemsLoader`'s public shape (function name,
+ * `PapiItemsLoaderState`, `PapiItemsLoaderOptions`) stays exactly what
+ * `use-papi-items.ts` already depends on, unchanged.
  *
- * `network_error` (a resolved outcome) and a rejected/thrown fetcher are
- * both treated as "couldn't reach the server right now" — retried
- * through the caller-supplied `queueRetry`, capped at
- * `MAX_CONSECUTIVE_AUTO_RETRIES` consecutive failures, with `retry()`
- * always available and resetting the budget. Every other outcome
- * (`available`, `not_started`, `closed`, `deadline_exceeded`,
- * `not_found`, `content_unavailable`) is final and never auto-retried.
+ * Every non-`network_error` outcome (`available`, `not_started`,
+ * `closed`, `deadline_exceeded`, `not_found`, `content_unavailable`) is
+ * final and is never auto-retried.
  */
 
-const MAX_CONSECUTIVE_AUTO_RETRIES = 5;
-
-export type PapiItemsLoaderState =
-    | { status: 'loading' }
-    | { status: 'reconnecting'; autoRetryExhausted: boolean }
-    | { status: 'ready'; outcome: PapiItemsOutcome };
+export type PapiItemsLoaderState = RetryLoaderState<PapiItemsOutcome>;
 
 export type PapiItemsLoaderOptions = {
     fetchItems: FetchPapiItems;
-    /** Same shape as offline-queue.ts's `queueRetry`. */
+    /** Same shape as offline-queue.ts's `queueRetry`: queues `retry` to
+     * run once connectivity is believed restored (immediately, if it
+     * already is). */
     queueRetry: (retry: () => void) => () => void;
 };
 
@@ -51,85 +49,9 @@ export type PapiItemsLoader = {
 export function createPapiItemsLoader(
     options: PapiItemsLoaderOptions,
 ): PapiItemsLoader {
-    let state: PapiItemsLoaderState = { status: 'loading' };
-    const listeners = new Set<(state: PapiItemsLoaderState) => void>();
-    let attemptId = 0;
-    let unsubscribeQueuedRetry: (() => void) | null = null;
-    let disposed = false;
-    let consecutiveFailures = 0;
-
-    function setState(next: PapiItemsLoaderState): void {
-        state = next;
-
-        for (const listener of listeners) {
-            listener(state);
-        }
-    }
-
-    function onConnectivityFailure(): void {
-        consecutiveFailures++;
-        const exhausted = consecutiveFailures >= MAX_CONSECUTIVE_AUTO_RETRIES;
-        setState({ status: 'reconnecting', autoRetryExhausted: exhausted });
-
-        if (exhausted) {
-            return;
-        }
-
-        unsubscribeQueuedRetry = options.queueRetry(() => {
-            attempt();
-        });
-    }
-
-    function attempt(): void {
-        unsubscribeQueuedRetry?.();
-        unsubscribeQueuedRetry = null;
-
-        const thisAttemptId = ++attemptId;
-
-        options
-            .fetchItems()
-            .then((outcome) => {
-                if (disposed || attemptId !== thisAttemptId) {
-                    return;
-                }
-
-                if (outcome.type === 'network_error') {
-                    onConnectivityFailure();
-
-                    return;
-                }
-
-                consecutiveFailures = 0;
-                setState({ status: 'ready', outcome });
-            })
-            .catch(() => {
-                if (disposed || attemptId !== thisAttemptId) {
-                    return;
-                }
-
-                onConnectivityFailure();
-            });
-    }
-
-    return {
-        getState: () => state,
-        subscribe(listener) {
-            listeners.add(listener);
-
-            return () => listeners.delete(listener);
-        },
-        start() {
-            attempt();
-        },
-        retry() {
-            consecutiveFailures = 0;
-            setState({ status: 'loading' });
-            attempt();
-        },
-        dispose() {
-            disposed = true;
-            unsubscribeQueuedRetry?.();
-            unsubscribeQueuedRetry = null;
-        },
-    };
+    return createRetryLoader<PapiItemsOutcome>({
+        fetch: options.fetchItems,
+        queueRetry: options.queueRetry,
+        isNetworkError: (outcome) => outcome.type === 'network_error',
+    });
 }
