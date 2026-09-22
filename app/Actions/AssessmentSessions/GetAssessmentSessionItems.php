@@ -40,6 +40,14 @@ use RuntimeException;
  * is not cached or assumed still available just because start succeeded,
  * so a reader that becomes unavailable after a session started still
  * fails this read closed rather than serving something stale or guessed.
+ *
+ * $item_content_variant (RMIB gender-track selection, 2026-09-21): read
+ * verbatim from the session row and passed to contentFor() as
+ * $lockedVariant on EVERY read -- this class never resolves a variant
+ * itself and never re-derives it from current participant state. A reader
+ * with a variant axis (RMIB) must use exactly this locked value, so a
+ * profile change after the session started (e.g. a corrected gender) never
+ * changes what a participant sees mid-test.
  */
 final class GetAssessmentSessionItems
 {
@@ -107,8 +115,13 @@ final class GetAssessmentSessionItems
             throw new RuntimeException('Stored session definition instrument disagrees with the session.');
         }
 
+        $lockedVariant = $session->item_content_variant ?? null;
+        if ($lockedVariant !== null && ! is_string($lockedVariant)) {
+            throw new RuntimeException('The persisted item content variant is invalid.');
+        }
+
         try {
-            $content = $this->itemContent->contentFor($instrument, $definition);
+            $content = $this->itemContent->contentFor($instrument, $definition, $participantId, $lockedVariant);
         } catch (AssessmentItemContentUnavailable) {
             return $this->reject('ASSESSMENT_ITEM_CONTENT_UNAVAILABLE');
         }

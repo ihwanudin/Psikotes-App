@@ -201,9 +201,19 @@ final class AllocateAndStartAssessmentSession
         // the definition-authority call above it: a thrown
         // AssessmentItemContentUnavailable rolls back this whole
         // transaction via the same mechanism, no separate cleanup needed.
-        // The returned content itself is not needed here -- only that it
-        // could be produced; GET /sessions/{id}/items reads it for real.
-        $this->itemContent->contentFor($instrument, $definition);
+        // The returned content itself is not needed here beyond
+        // $resolvedVariant -- only that content could be produced;
+        // GET /sessions/{id}/items reads the content for real.
+        //
+        // $lockedVariant is null here: this is the ONE call per session
+        // where a reader with a variant axis (RMIB) may resolve fresh from
+        // the participant's current profile (Lead sign-off, 2026-09-21).
+        // $resolvedVariant is persisted into item_content_variant below and
+        // handed to every later contentFor() call for this session (see
+        // GetAssessmentSessionItems::load()) -- so a profile change after
+        // this moment never changes what the participant is shown.
+        $content = $this->itemContent->contentFor($instrument, $definition, $authorization->participantId);
+        $itemContentVariant = $content->resolvedVariant;
         $serverTime = $this->serverTime();
         $start = $this->stateMachine->start(
             AssessmentSessionStatus::Created,
@@ -222,6 +232,7 @@ final class AllocateAndStartAssessmentSession
             $decision->allocation,
             $definition,
             $serverTime,
+            $itemContentVariant,
         );
         DB::table('test_session_grants')->insert([
             'test_session_id' => $sessionId,
@@ -539,6 +550,7 @@ final class AllocateAndStartAssessmentSession
         AssessmentAttemptAllocation $allocation,
         SessionDefinition $definition,
         DateTimeImmutable $serverTime,
+        ?string $itemContentVariant,
     ): int {
         try {
             $payload = json_encode(
@@ -564,6 +576,7 @@ final class AllocateAndStartAssessmentSession
             'session_definition_provenance' => $definition->provenance,
             'session_definition_checksum' => $definition->checksum,
             'session_definition_payload' => $payload,
+            'item_content_variant' => $itemContentVariant,
             'created_at' => $this->timestamp($serverTime),
             'updated_at' => $this->timestamp($serverTime),
         ]);

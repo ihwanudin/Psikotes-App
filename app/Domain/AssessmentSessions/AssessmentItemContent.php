@@ -21,6 +21,16 @@ namespace App\Domain\AssessmentSessions;
  * text statically. Null for instruments/readers that don't have any (most
  * of them, today). Same whitelisting responsibility as $subtests: whatever
  * shape a reader puts here, that reader already validated it.
+ *
+ * $resolvedVariant (RMIB gender-track selection, 2026-09-21): set only when
+ * AssessmentItemContentAuthority::contentFor() was called with
+ * $lockedVariant === null (the one-time fresh-resolution call at
+ * allocation) and the reader picked a variant -- the caller persists this
+ * value and passes it back as $lockedVariant on every later call for the
+ * same session. Null whenever $lockedVariant was already given, and null
+ * for every reader without a variant axis. Never participant identity
+ * itself (e.g. never a name or ID), only an opaque per-reader selector
+ * (e.g. `'male'`/`'female'` for RMIB).
  */
 final readonly class AssessmentItemContent
 {
@@ -33,5 +43,6 @@ final readonly class AssessmentItemContent
         public string $version,
         public array $subtests,
         public ?array $instructions = null,
+        public ?string $resolvedVariant = null,
     ) {}
 }

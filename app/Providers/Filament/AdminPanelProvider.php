@@ -6,6 +6,8 @@ namespace App\Providers\Filament;
 
 use App\Http\Middleware\ApplyRlsContext;
 use App\Http\Middleware\RejectDisabledAdmin;
+use App\Http\Middleware\RequireMfaForPrivilegedAdmins;
+use App\Security\AuditedEmailMultiFactorAuthentication;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -32,6 +34,12 @@ final class AdminPanelProvider extends PanelProvider
             ->id('admin')
             ->path('admin')
             ->login()
+            // Required for MFA below: Filament's own "set up required" page
+            // route only registers when isRequired is true panel-wide
+            // (which this design deliberately avoids -- see
+            // RequireMfaForPrivilegedAdmins), so the profile page is the
+            // only always-registered place an admin can enable MFA from.
+            ->profile()
             ->authGuard('admin')
             ->colors([
                 'primary' => Color::Amber,
@@ -46,6 +54,15 @@ final class AdminPanelProvider extends PanelProvider
                 AccountWidget::class,
                 FilamentInfoWidget::class,
             ])
+            ->multiFactorAuthentication([
+                AuditedEmailMultiFactorAuthentication::make()
+                    ->codeExpiryMinutes((int) config('admin_accounts.mfa_code_expiry_minutes', 5)),
+                // isRequired stays false: Filament's own enforcement cannot
+                // be scoped by role (see RequireMfaForPrivilegedAdmins'
+                // docblock) -- role-scoped enforcement lives in that
+                // middleware below instead. This just registers the
+                // provider so any admin can turn it on from their profile.
+            ], isRequired: false)
             ->middleware([
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,
@@ -60,6 +77,7 @@ final class AdminPanelProvider extends PanelProvider
             ->authMiddleware([
                 Authenticate::class,
                 RejectDisabledAdmin::class,
+                RequireMfaForPrivilegedAdmins::class,
                 ApplyRlsContext::class,
             ], isPersistent: true);
     }
