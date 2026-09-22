@@ -80,6 +80,38 @@ final class AllocateAndStartAssessmentSessionTest extends OrganizationPaymentTes
         $this->assertSame($result->endsAt, $result->writeDeadline);
     }
 
+    /**
+     * F2 timed-segments stage 3 (2026-09-22), revision 1 of
+     * tasks/handoffs/f2/timed-segments-plan.md: test_sessions.duration_seconds
+     * and the session's actual ends_at must cover reading_cap_seconds on top
+     * of the timed duration. Every real catalog sets reading_cap_seconds=0
+     * today (P8 still open), so this is the only place proving the
+     * mechanism itself works before any real data exercises it - including
+     * exercising AssessmentSessionAllocationResult's own strict endsAt
+     * invariant with a non-zero reading cap for the first time.
+     */
+    public function test_a_definition_with_a_reading_cap_extends_ends_at_and_the_stored_duration(): void
+    {
+        $fixture = $this->participantGraph(direct: true);
+        $authority = new FakeAssessmentSessionDefinitionAuthorityWithReadingCap;
+
+        $result = $this->action($authority)->execute(
+            new ParticipantPrincipal($fixture['participant'], $fixture['branch']),
+            GenericAssessmentInstrument::Ist,
+        );
+
+        $session = DB::table('test_sessions')->where('public_id', $result->sessionId)->sole();
+        // 600s timed + 30s reading cap.
+        $this->assertSame(630, (int) $session->duration_seconds);
+        $this->assertEquals(
+            $result->startedAt->modify('+630 seconds'),
+            $result->endsAt,
+        );
+        // The client-facing definitional duration stays the timed-only figure.
+        $this->assertSame(600, $result->durationSeconds);
+        $this->assertSame(630, $result->remainingSeconds);
+    }
+
     public function test_exact_replay_returns_stored_snapshot_and_timestamps_without_calling_authority_again(): void
     {
         $fixture = $this->participantGraph(direct: true);
@@ -691,6 +723,35 @@ final class FakeAssessmentSessionDefinitionAuthority implements AssessmentSessio
             'provenance' => 'allocator-feature-test',
             'total_duration_seconds' => 600,
             'subtests' => [['code' => 'all', 'duration_seconds' => 600, 'item_count' => 10]],
+            'randomization' => 'fixed',
+            'seed' => null,
+            'generator' => null,
+        ];
+        $payload['checksum'] = SessionDefinition::checksumFor($payload);
+
+        return SessionDefinition::fromArray($payload);
+    }
+}
+
+final class FakeAssessmentSessionDefinitionAuthorityWithReadingCap implements AssessmentSessionDefinitionAuthority
+{
+    public function issueForNewSession(
+        GenericAssessmentInstrument $instrument,
+        CaseAuthorization $authorization,
+        string $sessionPublicId,
+    ): SessionDefinition {
+        $payload = [
+            'instrument' => $instrument->value,
+            'version' => 'synthetic-v1',
+            'provenance' => 'allocator-feature-test-reading-cap',
+            'total_duration_seconds' => 600,
+            'subtests' => [[
+                'code' => 'all',
+                'duration_seconds' => 600,
+                'item_count' => 10,
+                'reading_cap_seconds' => 30,
+                'allow_early_finish' => false,
+            ]],
             'randomization' => 'fixed',
             'seed' => null,
             'generator' => null,

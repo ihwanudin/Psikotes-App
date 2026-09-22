@@ -159,11 +159,16 @@ final readonly class LoadSealedGenericAnswerSet
             throw self::invalid();
         }
 
+        // F2 timed-segments stage 3 (2026-09-22): test_sessions.duration_seconds
+        // stores totalDurationSeconds + totalReadingCapSeconds (revision 1's
+        // ends_at formula), not totalDurationSeconds alone -- see
+        // AllocateAndStartAssessmentSession::sessionDurationSeconds(). Always 0
+        // reading cap today, so this is currently a no-op change.
         if ($definition->instrument !== $instrument
             || $definition->version !== $session->session_definition_version
             || $definition->provenance !== $session->session_definition_provenance
             || $definition->checksum !== $session->session_definition_checksum
-            || $definition->totalDurationSeconds !== (int) ($session->duration_seconds ?? 0)) {
+            || $definition->totalDurationSeconds + $definition->totalReadingCapSeconds !== (int) ($session->duration_seconds ?? 0)) {
             throw self::invalid();
         }
 

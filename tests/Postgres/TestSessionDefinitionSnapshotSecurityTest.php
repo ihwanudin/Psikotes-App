@@ -231,6 +231,13 @@ final class TestSessionDefinitionSnapshotSecurityTest extends TestCase
      * hit the exact same gap; re-applying the later migration here mirrors
      * what `artisan migrate` would actually do (replay every later
      * migration in order), not a workaround specific to this test.
+     *
+     * F2 timed-segments stage 3b (2026-09-22): the same reasoning now
+     * applies one layer further -- database/migrations/2026_09_22_020000_
+     * extend_test_session_definition_snapshot_for_timed_segments.php also
+     * uses CREATE OR REPLACE FUNCTION on this same function, so it must be
+     * replayed too after the Kraepelin migration's up(), in migration
+     * order, for the same reason.
      */
     public function test_owner_down_up_preserves_historical_null_session_without_backfill(): void
     {
@@ -245,6 +252,7 @@ final class TestSessionDefinitionSnapshotSecurityTest extends TestCase
                 $historical = $this->directFixture(false);
                 $migration->up();
                 (require database_path('migrations/2026_09_21_000100_fix_kraepelin_randomization_mode.php'))->up();
+                (require database_path('migrations/2026_09_22_020000_extend_test_session_definition_snapshot_for_timed_segments.php'))->up();
                 $this->assertEquals($before, $this->definitions());
                 foreach ($this->snapshotColumns() as $column) {
                     $this->assertNull(DB::table('test_sessions')

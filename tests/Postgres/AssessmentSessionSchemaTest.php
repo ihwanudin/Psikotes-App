@@ -215,6 +215,14 @@ final class AssessmentSessionSchemaTest extends TestCase
                     ->where('id', $graph['session'])->update(['ends_at' => '2099-01-01 00:00:00+00']));
                 $this->assertSqlState('P0001', fn () => DB::table('test_sessions')
                     ->where('id', $graph['session'])->update(['answers_revision' => 1]));
+                // F2 timed-segments stage 6 (2026-09-22): a participant-role
+                // UPDATE can never smuggle a segment-column change through,
+                // even one that would otherwise be a legal transition
+                // (staying in_progress) - defense in depth for the trigger's
+                // defensive participant-role branch, exercised here even
+                // though every real write path uses the service role.
+                $this->assertSqlState('P0001', fn () => DB::table('test_sessions')
+                    ->where('id', $graph['session'])->update(['current_segment_index' => 0]));
                 $this->assertSame(1, DB::table('test_sessions')->where('id', $graph['session'])
                     ->update(['status' => 'submitted']));
                 $this->assertNotNull(DB::table('test_sessions')->where('id', $graph['session'])->value('submitted_at'));
