@@ -118,6 +118,7 @@ const command = (session, args, log) => {
             // failure here was previously undiagnosable from the Actions
             // console alone.
             const tail = readFileSync(log, 'utf8').split('\n').slice(-60).join('\n');
+
             throw new Error(`CLI failed; inspect ${log}\n--- tail of ${log} ---\n${tail}`);
         }
     } finally {
