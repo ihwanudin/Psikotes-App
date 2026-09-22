@@ -345,16 +345,24 @@ Filament page/resource for case-level admin actions, or a small dedicated
 one-off page) at implementation time, matching whatever shape is most
 consistent with the codebase by then.
 
+## Resolved: no upper bound past attempt 4 — the gate is repeated human approval
+
+Lead confirmed with the owner's own words (answering this exact question):
+*"saya tidak ingin membatasi secara kaku, karena bisa jadi dia pindah
+institusi dan dia ingin psikotes lagi"* ("I don't want a rigid cap, because
+they might change institutions and want the assessment again"). **There is
+no additional ceiling.** Attempt 4, 5, 6, and onward each individually
+still require their own authorization from one of the three approved
+roles, with the same mandatory audit trail (reason, actor, timestamp) —
+the repeated human approval decision at every single attempt *is* the
+abuse deterrent, not a fixed numeric cap. `AuthorizeRetestBeyondLimit` is
+designed exactly this way already (no cap beyond the config-driven free
+limit, one grant authorizes exactly one specific next attempt, never a
+standing "unlimited retests" permission) — this section confirms that
+design is correct as specified, not an oversight to close later.
+
 ## Explicitly not designed here
 
-- **Whether there is any hard ceiling past attempt 4** — the owner's
-  decision states who may approve "attempt 4 and onward" but never states
-  whether onward is unbounded. As designed, `AuthorizeRetestBeyondLimit`
-  can keep authorizing attempt 5, 6, 7... indefinitely, each individually,
-  by any of the three approved roles, with no system-enforced upper bound.
-  If the owner intends a true hard cap (e.g. "5 total, full stop"), that
-  is a second, separate config value this plan does not add — flagging
-  rather than assuming silence means "unbounded."
 - **Whether a revoked/expired grant needs its own admin-facing action** (a
   "cancel this retest authorization before it's used" workflow) — the
   `status` column supports it structurally, but no action is designed for
