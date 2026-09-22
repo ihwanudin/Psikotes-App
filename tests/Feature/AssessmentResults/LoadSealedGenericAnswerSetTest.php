@@ -160,9 +160,12 @@ final class LoadSealedGenericAnswerSetTest extends OrganizationPaymentTestCase
         }
     }
 
-    public function test_missing_or_unknown_item_numbers_fail_closed(): void
+    public function test_papi_missing_or_unknown_item_numbers_fail_closed(): void
     {
-        $missing = $this->sealedSession('ist', [
+        // ADR-0032 (2026-09-22): PAPI keeps today's all-or-nothing behaviour
+        // verbatim -- unlike IST/RMIB below, a missing item is still
+        // rejected for PAPI, just under a more specific error code now.
+        $missing = $this->sealedSession('papi', [
             ['item_no' => 1, 'value' => 'A', 'revision' => 1],
             ['item_no' => 2, 'value' => 'B', 'revision' => 1],
         ]);
@@ -172,8 +175,35 @@ final class LoadSealedGenericAnswerSetTest extends OrganizationPaymentTestCase
             ['item_no' => 4, 'value' => 'D', 'revision' => 1],
         ]);
 
-        $this->assertInvalid($missing);
+        $this->assertIncomplete($missing);
         $this->assertInvalid($unknown);
+    }
+
+    public function test_ist_and_rmib_load_an_incomplete_answer_set_without_throwing(): void
+    {
+        foreach (['ist', 'rmib'] as $instrument) {
+            $sessionId = $this->sealedSession($instrument, [
+                ['item_no' => 1, 'value' => 'A', 'revision' => 1],
+            ]);
+
+            $snapshot = $this->load($sessionId);
+
+            $this->assertSame([1], array_column($snapshot->answers, 'item_no'), $instrument);
+        }
+    }
+
+    public function test_more_answers_than_the_definition_expects_still_fails_closed_for_every_instrument(): void
+    {
+        foreach (['ist', 'papi', 'rmib'] as $instrument) {
+            $sessionId = $this->sealedSession($instrument, [
+                ['item_no' => 1, 'value' => 'A', 'revision' => 1],
+                ['item_no' => 2, 'value' => 'B', 'revision' => 1],
+                ['item_no' => 3, 'value' => 'C', 'revision' => 1],
+                ['item_no' => 4, 'value' => 'D', 'revision' => 1],
+            ]);
+
+            $this->assertInvalid($sessionId, $instrument);
+        }
     }
 
     public function test_answer_revision_outside_the_sealed_range_fails_closed(): void
@@ -236,13 +266,23 @@ final class LoadSealedGenericAnswerSetTest extends OrganizationPaymentTestCase
         );
     }
 
-    private function assertInvalid(int $sessionId): void
+    private function assertInvalid(int $sessionId, string $context = ''): void
     {
         try {
             $this->load($sessionId);
-            $this->fail('The corrupted sealed source must fail closed.');
+            $this->fail('The corrupted sealed source must fail closed.'.($context !== '' ? " ({$context})" : ''));
         } catch (UnexpectedValueException $exception) {
-            $this->assertSame('SEALED_GENERIC_ANSWER_INVALID', $exception->getMessage());
+            $this->assertSame('SEALED_GENERIC_ANSWER_INVALID', $exception->getMessage(), $context);
+        }
+    }
+
+    private function assertIncomplete(int $sessionId): void
+    {
+        try {
+            $this->load($sessionId);
+            $this->fail('An incomplete PAPI answer set must still be rejected.');
+        } catch (UnexpectedValueException $exception) {
+            $this->assertSame('SEALED_GENERIC_ANSWER_INCOMPLETE', $exception->getMessage());
         }
     }
 

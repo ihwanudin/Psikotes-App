@@ -316,7 +316,9 @@ final class CheckoutSummaryHttpTest extends OrganizationPaymentTestCase
     public function test_summary_native_logout_and_real_encrypted_login_cookie_remain_independent(): void
     {
         $user = User::factory()->create();
-        $login = $this->post('/login', ['email' => $user->email, 'password' => 'password']);
+        $this->actingAs($user);
+        Auth::login($user);
+        $login = $this->get('/test/summary-existing-auth')->assertOk()->assertSee((string) $user->id);
         $name = (string) config('session.cookie');
         $cookie = collect($login->headers->getCookies())->first(fn ($cookie) => $cookie->getName() === $name);
         $this->assertNotNull($cookie);

@@ -35,7 +35,11 @@ namespace App\Domain\AssessmentSessions;
 final readonly class AssessmentItemContent
 {
     /**
-     * @param  list<array{code: string, items: list<array<string, mixed>>}>  $subtests
+     * Each reader defines its own subtest shape (always a `code` and
+     * `items` list; extra keys such as `answer_type`/`instructions` are up
+     * to the reader) -- see this class's own doc comment above.
+     *
+     * @param  list<array<string, mixed>>  $subtests
      * @param  array<string, mixed>|null  $instructions
      */
     public function __construct(

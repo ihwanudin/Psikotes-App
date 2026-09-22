@@ -74,6 +74,7 @@ final readonly class RmibItemContentReader implements AssessmentItemContentAutho
         SessionDefinition $definition,
         int $participantId,
         ?string $lockedVariant = null,
+        ?string $currentSegmentCode = null,
     ): AssessmentItemContent {
         if ($instrument !== GenericAssessmentInstrument::Rmib) {
             throw new AssessmentItemContentUnavailable(

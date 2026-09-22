@@ -210,6 +210,7 @@ final class AssessmentSessionItemsReadbackTest extends OrganizationPaymentTestCa
                 SessionDefinition $definition,
                 int $participantId,
                 ?string $lockedVariant = null,
+                ?string $currentSegmentCode = null,
             ): AssessmentItemContent {
                 return new AssessmentItemContent($instrument, 'synthetic-content-v1', [
                     ['code' => 'SYN', 'items' => [

@@ -26,6 +26,7 @@ final readonly class AlwaysAvailableAssessmentItemContentAuthority implements As
         SessionDefinition $definition,
         int $participantId,
         ?string $lockedVariant = null,
+        ?string $currentSegmentCode = null,
     ): AssessmentItemContent {
         return new AssessmentItemContent($instrument, $definition->version, []);
     }

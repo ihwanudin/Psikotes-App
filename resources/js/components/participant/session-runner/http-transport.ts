@@ -8,6 +8,7 @@ import type {
     ResumeAnswersOutcome,
 } from './resume-answers.ts';
 import type { SubmitOutcome, SubmitSend } from './submit-session.ts';
+import type { SubtestNextOutcome, SubtestNextSend } from './subtest-next.ts';
 import type {
     AssessmentSessionState,
     FetchSession,
@@ -115,6 +116,7 @@ export type HttpTransport = {
     fetchResumeAnswers: FetchResumeAnswers;
     autosaveSend: AutosaveSend;
     submitSend: SubmitSend;
+    subtestNextSend: SubtestNextSend;
 };
 
 type ApiErrorBody = { error?: { code?: string } };
@@ -362,12 +364,49 @@ export function createHttpTransport(
         }
     };
 
+    const subtestNextSend: SubtestNextSend = async () => {
+        const { status, body } = await request(
+            `/api/sessions/${sessionId}/subtest/next`,
+            {
+                method: 'POST',
+            },
+        );
+
+        if (status >= 200 && status < 300 && body !== null) {
+            const b = body as Record<string, unknown>;
+            const segment = b.current_segment as Record<string, unknown>;
+
+            return {
+                type: 'accepted',
+                segmentIndex: Number(segment.index),
+                becameCurrentAt: String(segment.became_current_at),
+                startedAt: (segment.started_at as string | null) ?? null,
+            } satisfies SubtestNextOutcome;
+        }
+
+        switch (errorCode(body)) {
+            case 'SESSION_NOT_FOUND':
+                return { type: 'not_found' };
+            case 'SESSION_NOT_STARTED':
+                return { type: 'not_started' };
+            case 'SESSION_CLOSED':
+                return { type: 'closed' };
+            case 'DEADLINE_EXCEEDED':
+                return { type: 'deadline_exceeded' };
+            case 'INVALID_SESSION_TRANSITION':
+                return { type: 'invalid_transition' };
+            default:
+                return { type: 'network_error' };
+        }
+    };
+
     return {
         fetchSession,
         fetchItems,
         fetchResumeAnswers,
         autosaveSend,
         submitSend,
+        subtestNextSend,
     };
 }
 
@@ -388,5 +427,24 @@ function sessionStateFromBody(body: unknown): AssessmentSessionState {
         answersRevision: Number(b.answers_revision),
         config: b.config ?? null,
         seed: (b.seed as string | null) ?? null,
+        currentSegment: currentSegmentFromBody(b.current_segment),
+    };
+}
+
+function currentSegmentFromBody(
+    value: unknown,
+): AssessmentSessionState['currentSegment'] {
+    if (value === null || value === undefined) {
+        return null;
+    }
+
+    const s = value as Record<string, unknown>;
+
+    return {
+        code: String(s.code),
+        index: Number(s.index),
+        startedAt: (s.started_at as string | null) ?? null,
+        endsAt: (s.ends_at as string | null) ?? null,
+        remainingSeconds: (s.remaining_seconds as number | null) ?? null,
     };
 }

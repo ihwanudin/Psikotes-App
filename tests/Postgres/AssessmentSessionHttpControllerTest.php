@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Postgres;
 
+use App\Actions\AssessmentResults\ScoreAssessmentSession;
 use App\Actions\AssessmentSessions\AutosaveAssessmentAnswers;
 use App\Actions\AssessmentSessions\GetAssessmentSession;
 use App\Actions\AssessmentSessions\SealExpiredAssessmentSession;
@@ -80,7 +81,7 @@ final class AssessmentSessionHttpControllerTest extends TestCase
         $this->assertFalse($identity->rolsuper);
         $this->assertFalse($identity->rolbypassrls);
 
-        $fixture = $this->fixture();
+        $fixture = $this->fixture('kraepelin');
         $principal = new ParticipantPrincipal($fixture['participant'], $fixture['branch']);
 
         $getResponse = (new GetAssessmentSessionController)(
@@ -114,10 +115,16 @@ final class AssessmentSessionHttpControllerTest extends TestCase
         );
         $this->assertSame(200, $submitResponse->getStatusCode());
         $submitBody = $submitResponse->getData(true);
-        // AssessmentSessionSubmitPolicy only ever transitions InProgress ->
-        // Submitted -- scoring is a separate later pipeline this action does
-        // not run, so 'submitted' is the real post-state, not the contract
-        // example's literal 'scored'. See the handoff doc.
+        // test_sessions.status only ever reaches 'scored' via the
+        // in_progress->submitted->scored chain, and nothing transitions a
+        // session to 'scored' (ADR-0032, 2026-09-22: the orchestrator scores
+        // IST/PAPI/RMIB synchronously on submit, but never flips
+        // test_sessions.status to 'scored' itself -- see that ADR's §
+        // "expired tetap expired selamanya" decision, same reasoning
+        // applies to 'submitted'). This fixture uses kraepelin specifically
+        // so ScoreAssessmentSession skips it entirely (own pipeline, out of
+        // ADR-0032's scope) -- so 'submitted' is the real post-state here
+        // regardless, not the contract example's literal 'scored'.
         $this->assertSame('submitted', $submitBody['status']);
         $this->assertSame(1, $submitBody['answers_revision']);
         $this->assertSame('submitted', DB::table('test_sessions')->where('id', $fixture['session'])->value('status'));
@@ -241,6 +248,7 @@ final class AssessmentSessionHttpControllerTest extends TestCase
             app(RlsContextRunner::class),
             new AssessmentSessionSubmitPolicy,
             new SealExpiredAssessmentSession(app(RlsContextRunner::class)),
+            app(ScoreAssessmentSession::class),
             fn (): DateTimeImmutable => new DateTimeImmutable($iso),
         );
     }
@@ -265,12 +273,29 @@ final class AssessmentSessionHttpControllerTest extends TestCase
     }
 
     /** @return array{branch:int,participant:int,session:int,public_id:string} */
-    private function fixture(): array
+    private function fixture(string $testType = 'ist'): array
     {
         $graph = $this->graph();
 
-        return app(RlsContextRunner::class)->runAsService(function () use ($graph): array {
-            $definitionSource = [
+        return app(RlsContextRunner::class)->runAsService(function () use ($graph, $testType): array {
+            // ADR-0032 (2026-09-22): 'ist' reaching a real accepted submit
+            // now runs ScoreAssessmentSession, which needs a matching active
+            // instrument_versions row this fixture never seeds -- callers
+            // that submit use 'kraepelin' instead (skipped entirely by
+            // ScoreAssessmentSession, its own pipeline, out of ADR-0032's
+            // scope), keeping this fixture's actual concerns (RLS,
+            // concurrency, 404s) isolated from scoring.
+            $definitionSource = $testType === 'kraepelin' ? [
+                'instrument' => 'kraepelin', 'version' => 'synthetic-definition-v1',
+                'provenance' => 'session-http-controller-pg-test-only', 'total_duration_seconds' => 750,
+                'subtests' => [['code' => 'K', 'duration_seconds' => 750, 'item_count' => 1350]],
+                'randomization' => 'fixed', 'seed' => null,
+                'generator' => [
+                    'algorithm' => 'synthetic-generator', 'version' => 'synthetic-v1',
+                    'columns' => 50, 'seconds_per_column' => 15,
+                    'numbers_per_column' => 28, 'answer_slots_per_column' => 27,
+                ],
+            ] : [
                 'instrument' => 'ist', 'version' => 'synthetic-definition-v1',
                 'provenance' => 'session-http-controller-pg-test-only', 'total_duration_seconds' => 3600,
                 'subtests' => [['code' => 'SYN', 'duration_seconds' => 3600, 'item_count' => 5]],
@@ -282,10 +307,11 @@ final class AssessmentSessionHttpControllerTest extends TestCase
             $publicId = (string) Str::ulid();
             $session = DB::table('test_sessions')->insertGetId([
                 'public_id' => $publicId, 'participant_id' => $graph['participant'],
-                'test_type' => 'ist', 'attempt_no' => 1,
+                'test_type' => $testType, 'attempt_no' => 1,
                 'authorization_id' => (string) Str::ulid(),
                 'allocation_intent_id' => (string) Str::ulid(),
-                'duration_seconds' => 3600, 'status' => 'in_progress', 'answers_revision' => 0,
+                'duration_seconds' => $definitionSource['total_duration_seconds'],
+                'status' => 'in_progress', 'answers_revision' => 0,
                 'started_at' => '2026-09-08 03:00:00.000000+00',
                 'ends_at' => '2026-09-08 04:00:00.000000+00',
                 'session_definition_version' => $definition->version,

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Actions\AssessmentSessions;
 
+use App\Actions\AssessmentResults\ScoreAssessmentSession;
 use App\Domain\AssessmentSessions\AssessmentSessionStatus;
 use App\Domain\AssessmentSessions\AssessmentSessionSubmitPolicy;
 use App\Domain\AssessmentSessions\GenericAssessmentInstrument;
@@ -24,6 +25,7 @@ final class SubmitAssessmentSession
         private readonly RlsContextRunner $contexts,
         private readonly AssessmentSessionSubmitPolicy $policy,
         private readonly SealExpiredAssessmentSession $sealer,
+        private readonly ScoreAssessmentSession $scorer,
         ?Closure $clock = null,
     ) {
         $this->clock = $clock ?? static fn (): DateTimeImmutable => new DateTimeImmutable('now');
@@ -55,7 +57,7 @@ final class SubmitAssessmentSession
         }
 
         try {
-            GenericAssessmentInstrument::fromExternal((string) $session->test_type);
+            $instrument = GenericAssessmentInstrument::fromExternal((string) $session->test_type);
         } catch (UnsupportedGenericAssessmentInstrument) {
             return $this->notFound();
         }
@@ -106,6 +108,19 @@ final class SubmitAssessmentSession
             ]);
         if ($updated !== 1) {
             throw new RuntimeException('The assessment session submission could not be committed.');
+        }
+
+        // ADR-0032 §1(a) (2026-09-22): scored synchronously, in the same
+        // transaction as the status write above, so "submitted" and the
+        // scoring outcome (a result row or a failed_to_score audit row)
+        // commit or roll back together. ScoreAssessmentSession never throws
+        // for a predictable rejection (e.g. PAPI's completeness policy) --
+        // only a genuine infrastructure failure propagates from here, and
+        // that legitimately rolls back this whole submit, same as before
+        // this call existed. Kraepelin is deliberately skipped: it has its
+        // own, separate scoring pipeline, out of ADR-0032's scope.
+        if (ScoreAssessmentSession::scores($instrument)) {
+            $this->scorer->execute((int) $session->id, $instrument);
         }
 
         return $this->result(

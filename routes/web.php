@@ -22,6 +22,7 @@ use App\Http\Controllers\RegistrationOrderStatusController;
 use App\Http\Controllers\ReportSigningController;
 use App\Http\Controllers\ReviewInputController;
 use App\Http\Controllers\SelectionLaunchController;
+use App\Http\Controllers\ServeIstAssetController;
 use App\Http\Controllers\XenditWebhookController;
 use App\Http\Middleware\ApplyRlsContext;
 use App\Http\Middleware\AuthenticateCheckoutSession;
@@ -65,6 +66,16 @@ Route::post('/checkout/payment', CheckoutPaymentController::class)
     ])->name('checkout.payment');
 
 Route::get('/health', HealthCheckController::class)->withoutMiddleware('web')->name('health');
+
+// Replaces the framework's own auto-registered local-disk signed-URL route
+// for ist-assets ('serve' => false in config/filesystems.php) -- see
+// ServeIstAssetController's doc comment. No session/CSRF: a valid signature
+// is the whole auth story here, same as the framework's own equivalent
+// route would have been.
+Route::get('/private-ist-assets/{path}', ServeIstAssetController::class)
+    ->where('path', '.*')
+    ->withoutMiddleware('web')
+    ->name('storage.ist-assets');
 
 Route::get('/selection/launch', SelectionLaunchController::class)
     ->middleware('throttle:30,1')
@@ -233,9 +244,3 @@ Route::get('/admin/assessment-cases/{case}/signing', [ReportSigningController::c
     ->name('admin.assessment-cases.signing.show');
 
 Route::inertia('/', 'welcome')->name('home');
-
-Route::middleware(['auth', 'verified'])->group(function () {
-    Route::inertia('dashboard', 'dashboard')->name('dashboard');
-});
-
-require __DIR__.'/settings.php';
