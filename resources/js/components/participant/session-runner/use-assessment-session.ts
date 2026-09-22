@@ -6,6 +6,30 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  * camelCase; the transport layer (not this file) is responsible for
  * mapping the wire JSON's snake_case to this shape.
  */
+/**
+ * `current_segment`, added by F2 timed-segments stage 5 (PR #109) —
+ * verified against `AssessmentSessionResource::currentSegment()`
+ * (`app/Http/Resources/AssessmentSessionResource.php`), not guessed. Null
+ * only when the session has never started. `startedAt` null means the
+ * segment's reading gap hasn't been confirmed yet (see
+ * `TimedSegmentTransitionPolicy`'s doc) — that is the one client-observable
+ * signal that a "Mulai mengerjakan" confirmation is owed before this
+ * segment's own timer begins.
+ */
+export type CurrentSegmentState = {
+    code: string;
+    index: number;
+    startedAt: string | null;
+    endsAt: string | null;
+    remainingSeconds: number | null;
+};
+
+/**
+ * `AssessmentSession`, mirrored from f2-assessment-session-contract.md
+ * §Stable DTOs / API_CONTRACT.md's session section. Field names here are
+ * camelCase; the transport layer (not this file) is responsible for
+ * mapping the wire JSON's snake_case to this shape.
+ */
 export type AssessmentSessionState = {
     sessionId: string;
     testType: 'ist' | 'papi' | 'rmib' | 'kraepelin';
@@ -21,6 +45,7 @@ export type AssessmentSessionState = {
     answersRevision: number;
     config: unknown;
     seed: string | null;
+    currentSegment: CurrentSegmentState | null;
 };
 
 export type FetchSession = () => Promise<AssessmentSessionState>;

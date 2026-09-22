@@ -19,6 +19,10 @@ final class AssessmentAttemptAllocationPolicyTest extends TestCase
 
     private const string SECOND_SESSION = '01ARZ3NDEKTSV4RRFFQ69G5FAW';
 
+    private const string THIRD_SESSION = '01ARZ3NDEKTSV4RRFFQ69G5FAX';
+
+    private const string FOURTH_SESSION = '01ARZ3NDEKTSV4RRFFQ69G5FAY';
+
     private const string FIRST_INTENT = 'allocation-intent:first';
 
     private const string SECOND_INTENT = 'allocation-intent:second';
@@ -91,8 +95,17 @@ final class AssessmentAttemptAllocationPolicyTest extends TestCase
         yield 'in progress' => [AssessmentSessionStatus::InProgress];
     }
 
+    /**
+     * item 19 (owner's decision, 2026-09-22): the first
+     * config('assessment_retests.free_attempt_limit') attempts (3 by
+     * default) need no admin authorization at all, regardless of the
+     * terminal status the prior attempt ended in. This test used to assert
+     * the opposite (attempt #2 with no grant rejected) -- that was correct
+     * under the old "every retest needs a grant" policy, which the owner's
+     * decision explicitly replaced.
+     */
     #[DataProvider('consumedStatuses')]
-    public function test_consumed_attempt_never_automatically_opens_a_new_attempt(
+    public function test_consumed_first_attempt_automatically_allows_the_free_retest_without_a_grant(
         AssessmentSessionStatus $status,
     ): void {
         $decision = (new AssessmentAttemptAllocationPolicy)->decide(
@@ -104,9 +117,10 @@ final class AssessmentAttemptAllocationPolicyTest extends TestCase
             null,
         );
 
-        $this->assertFalse($decision->accepted);
-        $this->assertFalse($decision->shouldPersist);
-        $this->assertSame(AssessmentSessionErrorCode::RetestNotAuthorized, $decision->errorCode);
+        $this->assertTrue($decision->accepted);
+        $this->assertTrue($decision->shouldPersist);
+        $this->assertSame(2, $decision->allocation?->attempt->attemptNumber);
+        $this->assertSame(self::SECOND_AUTHORIZATION, $decision->allocation?->attempt->authorizationId);
     }
 
     /** @return iterable<string, array{AssessmentSessionStatus}> */
@@ -118,42 +132,64 @@ final class AssessmentAttemptAllocationPolicyTest extends TestCase
         yield 'void' => [AssessmentSessionStatus::Voided];
     }
 
-    public function test_valid_retest_grant_allocates_the_next_attempt_with_new_authorization(): void
+    /**
+     * The invariant test_consumed_attempt_never_automatically_opens_a_new_attempt
+     * used to (weakly) express -- "you eventually do need authorization" --
+     * now actually holds at the correct boundary: past the free limit, not
+     * at attempt #2.
+     */
+    public function test_attempt_past_the_free_limit_is_rejected_without_a_grant(): void
+    {
+        $decision = (new AssessmentAttemptAllocationPolicy)->decide(
+            $this->threeConsumedAttempts(),
+            'allocation-intent:fourth',
+            'entitlement-authorization:fourth',
+            self::FOURTH_SESSION,
+            null,
+            null,
+        );
+
+        $this->assertFalse($decision->accepted);
+        $this->assertFalse($decision->shouldPersist);
+        $this->assertSame(AssessmentSessionErrorCode::RetestNotAuthorized, $decision->errorCode);
+    }
+
+    public function test_valid_retest_grant_allocates_the_attempt_past_the_free_limit_with_new_authorization(): void
     {
         $grant = new AssessmentRetestGrant(
-            'retest-grant:second',
+            'retest-grant:fourth',
             true,
             'Identity incident reviewed by authorized administrator.',
             'admin:reviewer-public-id',
-            self::SECOND_AUTHORIZATION,
-            2,
+            'entitlement-authorization:fourth',
+            4,
         );
 
         $decision = (new AssessmentAttemptAllocationPolicy)->decide(
-            [$this->attempt(AssessmentSessionStatus::Voided)],
-            self::SECOND_INTENT,
-            self::SECOND_AUTHORIZATION,
-            self::SECOND_SESSION,
+            $this->threeConsumedAttempts(),
+            'allocation-intent:fourth',
+            'entitlement-authorization:fourth',
+            self::FOURTH_SESSION,
             null,
             $grant,
         );
 
         $this->assertTrue($decision->accepted);
         $this->assertTrue($decision->shouldPersist);
-        $this->assertSame(2, $decision->allocation?->attempt->attemptNumber);
-        $this->assertSame(self::SECOND_AUTHORIZATION, $decision->allocation?->attempt->authorizationId);
+        $this->assertSame(4, $decision->allocation?->attempt->attemptNumber);
+        $this->assertSame('entitlement-authorization:fourth', $decision->allocation?->attempt->authorizationId);
     }
 
     #[DataProvider('invalidRetestGrants')]
-    public function test_retest_requires_authorization_reason_actor_new_entitlement_and_exact_next_attempt(
+    public function test_retest_past_the_free_limit_requires_authorization_reason_actor_new_entitlement_and_exact_next_attempt(
         AssessmentRetestGrant $grant,
         string $requestedAuthorization,
     ): void {
         $decision = (new AssessmentAttemptAllocationPolicy)->decide(
-            [$this->attempt(AssessmentSessionStatus::Scored)],
-            self::SECOND_INTENT,
+            $this->threeConsumedAttempts(),
+            'allocation-intent:fourth',
             $requestedAuthorization,
-            self::SECOND_SESSION,
+            self::FOURTH_SESSION,
             null,
             $grant,
         );
@@ -167,23 +203,54 @@ final class AssessmentAttemptAllocationPolicyTest extends TestCase
     public static function invalidRetestGrants(): iterable
     {
         yield 'not authorized' => [new AssessmentRetestGrant(
-            'grant', false, 'Reviewed incident.', 'admin:one', self::SECOND_AUTHORIZATION, 2,
-        ), self::SECOND_AUTHORIZATION];
+            'grant', false, 'Reviewed incident.', 'admin:one', 'entitlement-authorization:fourth', 4,
+        ), 'entitlement-authorization:fourth'];
         yield 'blank reason' => [new AssessmentRetestGrant(
-            'grant', true, '   ', 'admin:one', self::SECOND_AUTHORIZATION, 2,
-        ), self::SECOND_AUTHORIZATION];
+            'grant', true, '   ', 'admin:one', 'entitlement-authorization:fourth', 4,
+        ), 'entitlement-authorization:fourth'];
         yield 'blank authorizing actor' => [new AssessmentRetestGrant(
-            'grant', true, 'Reviewed incident.', '', self::SECOND_AUTHORIZATION, 2,
-        ), self::SECOND_AUTHORIZATION];
-        yield 'reused entitlement authorization' => [new AssessmentRetestGrant(
-            'grant', true, 'Reviewed incident.', 'admin:one', self::FIRST_AUTHORIZATION, 2,
+            'grant', true, 'Reviewed incident.', '', 'entitlement-authorization:fourth', 4,
+        ), 'entitlement-authorization:fourth'];
+        yield 'reused prior authorization' => [new AssessmentRetestGrant(
+            'grant', true, 'Reviewed incident.', 'admin:one', self::FIRST_AUTHORIZATION, 4,
         ), self::FIRST_AUTHORIZATION];
         yield 'grant bound to another authorization' => [new AssessmentRetestGrant(
-            'grant', true, 'Reviewed incident.', 'admin:one', 'entitlement-authorization:other', 2,
-        ), self::SECOND_AUTHORIZATION];
+            'grant', true, 'Reviewed incident.', 'admin:one', 'entitlement-authorization:other', 4,
+        ), 'entitlement-authorization:fourth'];
         yield 'grant bound to wrong attempt' => [new AssessmentRetestGrant(
-            'grant', true, 'Reviewed incident.', 'admin:one', self::SECOND_AUTHORIZATION, 3,
-        ), self::SECOND_AUTHORIZATION];
+            'grant', true, 'Reviewed incident.', 'admin:one', 'entitlement-authorization:fourth', 5,
+        ), 'entitlement-authorization:fourth'];
+    }
+
+    /**
+     * The universal authorization-identity reuse check (hoisted above the
+     * free-limit branch in allowsRetest()) must still reject reuse even
+     * when the attempt itself is within the free limit -- confirms that
+     * defense did not quietly weaken for attempts 2-3.
+     */
+    public function test_reused_authorization_is_rejected_even_within_the_free_limit(): void
+    {
+        $decision = (new AssessmentAttemptAllocationPolicy)->decide(
+            [$this->attempt(AssessmentSessionStatus::Voided)],
+            self::SECOND_INTENT,
+            self::FIRST_AUTHORIZATION,
+            self::SECOND_SESSION,
+            null,
+            null,
+        );
+
+        $this->assertFalse($decision->accepted);
+        $this->assertSame(AssessmentSessionErrorCode::RetestNotAuthorized, $decision->errorCode);
+    }
+
+    /** @return list<AssessmentAttempt> */
+    private function threeConsumedAttempts(): array
+    {
+        return [
+            new AssessmentAttempt(self::FIRST_SESSION, 1, self::FIRST_AUTHORIZATION, AssessmentSessionStatus::Scored),
+            new AssessmentAttempt(self::SECOND_SESSION, 2, self::SECOND_AUTHORIZATION, AssessmentSessionStatus::Scored),
+            new AssessmentAttempt(self::THIRD_SESSION, 3, 'entitlement-authorization:third', AssessmentSessionStatus::Scored),
+        ];
     }
 
     private function attempt(AssessmentSessionStatus $status): AssessmentAttempt

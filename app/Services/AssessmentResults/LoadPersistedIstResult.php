@@ -36,7 +36,7 @@ final readonly class LoadPersistedIstResult
                     'session_definition_provenance', 'session_definition_checksum',
                     'session_definition_payload', 'instrument_version_id', 'instrument_version',
                     'instrument_source_file', 'instrument_checksum', 'result_contract_version',
-                    'result_payload', 'result_checksum', 'created_at',
+                    'engine_version', 'result_payload', 'result_checksum', 'created_at',
                 ]);
             if ($parent === null) {
                 throw self::invalid();

@@ -20,6 +20,27 @@ final class InstrumentSeeder extends Seeder
         'papi' => 'papi.json',
         'rmib' => 'rmib.json',
         'kraepelin' => 'kraepelin.json',
+        // F2 item-delivery Stage 2 (2026-09-21): the raw item numbers, kept
+        // as a separate instrument_versions row from 'kraepelin' above
+        // (that one holds scoring norms). See
+        // app/Services/AssessmentSessions/KraepelinItemContentReader.php.
+        'kraepelin_grid' => 'kraepelin_grid.json',
+        // F2 item-delivery Stage 2 (2026-09-21): the raw statement pairs,
+        // kept as a separate instrument_versions row from 'papi' above
+        // (that one holds the scoring dimension mapping). See
+        // app/Services/AssessmentSessions/PapiItemContentReader.php.
+        'papi_items' => 'papi_items.json',
+        // F2 item-delivery Stage 2 continuation (2026-09-21): the raw job
+        // labels (both gender tracks), kept as a separate instrument_versions
+        // row from 'rmib' above (that one holds the scoring
+        // categories/rotation). See
+        // app/Services/AssessmentSessions/RmibItemContentReader.php.
+        'rmib_items' => 'rmib_items.json',
+        // F2 IST reader Stage 1 (2026-09-21): raw item text/options, kept as
+        // a separate instrument_versions row from 'ist' above (that one
+        // holds scoring norms: match_strategy, answer keys). See
+        // app/Services/AssessmentSessions/IstItemContentReader.php.
+        'ist_items' => 'ist_items.json',
         'dass21' => 'dass21.json',
         'reporting' => 'reporting.json',
         'aspect_sources' => 'aspect_sources.json',

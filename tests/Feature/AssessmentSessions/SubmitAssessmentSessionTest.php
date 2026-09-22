@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Feature\AssessmentSessions;
 
+use App\Actions\AssessmentResults\ScoreAssessmentSession;
+use App\Actions\AssessmentSessions\SealExpiredAssessmentSession;
 use App\Actions\AssessmentSessions\SubmitAssessmentSession;
 use App\Domain\AssessmentSessions\AssessmentSessionSubmitPolicy;
+use App\Domain\AssessmentSessions\SessionDefinition;
 use App\Security\RlsContextRunner;
 use DateTimeImmutable;
 use Illuminate\Database\QueryException;
@@ -28,7 +31,12 @@ final class SubmitAssessmentSessionTest extends OrganizationPaymentTestCase
     public function test_submit_at_exact_deadline_seals_owned_session_with_server_timestamp(): void
     {
         $participant = $this->participant();
-        $session = $this->sessionPublicId($participant, 'in_progress', 7);
+        // ADR-0032 (2026-09-22): kraepelin, deliberately -- this test is
+        // about submit's own status/timestamp mechanics, not scoring, and
+        // kraepelin is the one supported test_type ScoreAssessmentSession
+        // skips (its own pipeline, out of ADR-0032's scope), so it needs no
+        // session_definition/answers fixture to reach the accepted branch.
+        $session = $this->sessionPublicId($participant, 'in_progress', 7, 'kraepelin');
         $runner = $this->app->make(RlsContextRunner::class);
         $role = null;
         $transaction = 0;
@@ -156,11 +164,80 @@ final class SubmitAssessmentSessionTest extends OrganizationPaymentTestCase
         ]);
     }
 
+    public function test_an_incomplete_papi_submit_still_commits_with_a_failed_to_score_attempt_row(): void
+    {
+        // ADR-0032 §1(a)/§3 -- the test explicitly required before undrafting:
+        // an incomplete submit under PAPI's still-strict all-or-nothing
+        // policy must NOT roll back the submit. status='submitted' and one
+        // failed_to_score audit row must both land, atomically, so the
+        // participant is never stuck retrying while their timer runs out.
+        $participant = $this->participant();
+        $key = (string) Str::ulid();
+        $definitionSource = [
+            'instrument' => 'papi', 'version' => 'synthetic-v1', 'provenance' => 'synthetic-test-only',
+            'total_duration_seconds' => 3600,
+            'subtests' => [
+                ['code' => 'A', 'duration_seconds' => 1200, 'item_count' => 1],
+                ['code' => 'B', 'duration_seconds' => 2400, 'item_count' => 2],
+            ],
+            'randomization' => 'fixed', 'seed' => null, 'generator' => null,
+        ];
+        $definition = [...$definitionSource, 'checksum' => SessionDefinition::checksumFor($definitionSource)];
+        $case = DB::table('assessment_cases')->insertGetId([
+            'public_id' => (string) Str::ulid(), 'participant_id' => $participant,
+            'organization_id' => DB::table('participants')->where('id', $participant)->value('branch_id'),
+            'package_id' => null, 'origin' => 'DIRECT_PUBLIC',
+            'created_at' => '2026-09-08 03:00:00.000000+07:00', 'updated_at' => '2026-09-08 03:00:00.000000+07:00',
+        ]);
+        $sessionId = DB::table('test_sessions')->insertGetId([
+            'public_id' => (string) Str::ulid(), 'participant_id' => $participant,
+            'assessment_case_id' => $case, 'test_type' => 'papi',
+            'attempt_no' => 1, 'authorization_id' => 'synthetic-auth-'.$key,
+            'allocation_intent_id' => 'synthetic-allocation-'.$key, 'duration_seconds' => 3600,
+            'status' => 'in_progress', 'answers_revision' => 0,
+            'started_at' => '2026-09-08 03:00:00.000000+07:00', 'ends_at' => '2026-09-08 04:00:00.000000+07:00',
+            'session_definition_version' => $definition['version'],
+            'session_definition_provenance' => $definition['provenance'],
+            'session_definition_checksum' => $definition['checksum'],
+            'session_definition_payload' => json_encode($definition, JSON_THROW_ON_ERROR),
+        ]);
+        $publicId = (string) DB::table('test_sessions')->where('id', $sessionId)->value('public_id');
+        // Only 2 of the 3 defined items answered -- incomplete under PAPI's policy.
+        DB::table('assessment_autosave_mutations')->insert([
+            'session_id' => $sessionId, 'mutation_id' => (string) Str::ulid(), 'revision' => 1,
+            'request_hash' => hash('sha256', $key), 'accepted_item_numbers' => json_encode([1, 2], JSON_THROW_ON_ERROR),
+            'received_at' => '2026-09-08 03:10:00.000000+07:00', 'created_at' => '2026-09-08 03:10:00.000000+07:00',
+        ]);
+        foreach ([1, 2] as $itemNo) {
+            DB::table('answers')->insert([
+                'session_id' => $sessionId, 'item_no' => $itemNo, 'value' => json_encode('A', JSON_THROW_ON_ERROR),
+                'revision' => 1, 'answered_at' => '2026-09-08 03:10:00.123456+07:00',
+                'created_at' => '2026-09-08 03:10:00.123456+07:00', 'updated_at' => '2026-09-08 03:10:00.123456+07:00',
+            ]);
+        }
+        DB::table('test_sessions')->where('id', $sessionId)->update(['answers_revision' => 1]);
+
+        $result = $this->action(fn (): DateTimeImmutable => new DateTimeImmutable('2026-09-08T03:30:00+07:00'))
+            ->execute($participant, $publicId);
+
+        $this->assertTrue($result->accepted);
+        $this->assertSame('submitted', $result->status);
+        $this->assertDatabaseHas('test_sessions', ['id' => $sessionId, 'status' => 'submitted']);
+        $this->assertDatabaseMissing('generic_instrument_results', ['session_id' => $sessionId]);
+        $attempt = DB::table('assessment_scoring_attempts')->where('session_id', $sessionId)->sole();
+        $this->assertSame('failed_to_score', $attempt->outcome);
+        $this->assertSame('INCOMPLETE_ANSWERS', $attempt->reason_code);
+        $this->assertNull($attempt->result_public_id);
+        $this->assertSame('papi', $attempt->instrument_code);
+    }
+
     private function action(callable $clock): SubmitAssessmentSession
     {
         return new SubmitAssessmentSession(
             $this->app->make(RlsContextRunner::class),
             new AssessmentSessionSubmitPolicy,
+            new SealExpiredAssessmentSession($this->app->make(RlsContextRunner::class)),
+            $this->app->make(ScoreAssessmentSession::class),
             $clock(...),
         );
     }

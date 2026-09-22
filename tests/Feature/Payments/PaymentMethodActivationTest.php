@@ -29,7 +29,7 @@ final class PaymentMethodActivationTest extends TestCase
 
     public function test_payment_methods_are_disabled_by_default(): void
     {
-        $this->assertSame(2, PaymentMethod::query()->count());
+        $this->assertSame(3, PaymentMethod::query()->count());
         $this->assertSame(0, PaymentMethod::query()->active()->count());
     }
 

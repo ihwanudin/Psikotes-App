@@ -1,5 +1,8 @@
 # CHANGELOG
 
+## [Unreleased]
+- **SCORING-4.4.0** (ADR-0032 PR1, 2026-09-22): orkestrator penilaian generik pertama kali dipasang -- submit sesi IST/PAPI/RMIB kini benar-benar menjalankan loader→skorer→penyimpan secara sinkron, di dalam transaksi submit yang sama (sebelumnya tidak ada jalur produksi yang pernah memanggil rantai ini sama sekali). **Butir IST kosong kini dinilai salah (0)**, bukan menolak seluruh sesi (keputusan psikolog P1) -- `IstRawScoreCalculator` sendiri tidak berubah, hanya cara jawaban kosong dipetakan sebelum masuk ke situ. PAPI tidak disentuh sama sekali (`ScoreSealedPapiAnswerSet`/`PapiRawScoreCalculator` identik, tetap semua-atau-tidak-sama-sekali). Kolom `engine_version` baru di `generic_instrument_results` mengikat setiap hasil ke versi kode skoring yang menghasilkannya, terpisah dari versi data instrumen (`instrument_version`) dan versi bentuk JSON (`result_contract_version`, dinaikkan v1→v2 untuk IST/PAPI/RMIB agar memuat field baru ini). Tabel audit baru `assessment_scoring_attempts` mencatat setiap upaya penilaian (`scored`/`failed_to_score`), termasuk kasus jawaban tidak lengkap yang gagal dinilai TANPA membatalkan status `submitted` peserta.
+
 ## [Unreleased] — F1 fondasi
 - Tambahkan pemetaan zona T-06 berbasis data `GA-2026.08` untuk 18 aspek dan enam bidang kerja, termasuk standar dasar, kenaikan khusus bidang, minat wajib, serta keluaran provenance versi.
 - Rekonsiliasi kontrak psikometri ke SCORING-4.3.0/F2-2026.09: IQ dan RMIB mengikuti tabel lookup v1.1, PAPI memakai jarak dari zona putih, RMIB memakai competition ranking, serta faktor Kraepelin dibulatkan half-up tiga desimal sebelum lookup.

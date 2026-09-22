@@ -1,0 +1,1186 @@
+{
+  "version": "F0-ITEMS-IST-2026.09",
+  "status": "final",
+  "subtests": {
+    "SE": {
+      "status": "final",
+      "instructions": {
+        "text": "(Soal-soal No. 01 – 20) Soal-soal 01-20 terdiri atas kalimat-kalimat. Pada setiap kalimat satu kata hilang dan disediakan 5 (lima) kata pilihan sebagai penggantinya. Pilihan kata yang tepat dapat menyempurnakan kalimat itu ! Contoh 01 Seekor kuda mempunyai kesamaan terbanyak dengan seekor ….. a) kucing b) bajing c) keledai d) lembu e) anjing Jawaban yang benar ialah : c) keledai Oleh karena itu, pada lembar jawaban di belakang contoh 01, huruf c harus dicoret. 01) a b c d e Contoh berikutnya : Lawannya “harapan” ialah ….. a) duka b) putus asa c) sengsara d) cinta e) benci Jawabannya ialah b) putus asa Maka huruf b yang seharusnya dicoret."
+      },
+      "items": [
+        {
+          "item": 1,
+          "text": "Pengaruh seseorang terhadap orang lain seharusnya bergantung pada …..",
+          "options": {
+            "a": "kekuasaan",
+            "b": "bujukan",
+            "c": "kekayaan",
+            "d": "keberanian",
+            "e": "kewibawaan"
+          }
+        },
+        {
+          "item": 2,
+          "text": "Lawannya “hemat” ialah ……………",
+          "options": {
+            "a": "murah",
+            "b": "kikir",
+            "c": "boros",
+            "d": "bernilai",
+            "e": "kaya"
+          }
+        },
+        {
+          "item": 3,
+          "text": "………. tidak termasuk cuaca",
+          "options": {
+            "a": "angin puyuh",
+            "b": "halilintar",
+            "c": "salju",
+            "d": "gempa bumi",
+            "e": "kabut"
+          }
+        },
+        {
+          "item": 4,
+          "text": "Lawannya “setia” ialah ……………",
+          "options": {
+            "a": "cinta",
+            "b": "benci",
+            "c": "persahabatan",
+            "d": "khianat",
+            "e": "permusuhan"
+          }
+        },
+        {
+          "item": 5,
+          "text": "Seekor kuda selalu mempunyai ……………",
+          "options": {
+            "a": "kandang",
+            "b": "ladam",
+            "c": "pelana",
+            "d": "kuku",
+            "e": "surai"
+          }
+        },
+        {
+          "item": 6,
+          "text": "Seorang paman …………… lebih tua dari kemenakannya.",
+          "options": {
+            "a": "jarang",
+            "b": "biasanya",
+            "c": "selalu",
+            "d": "tidak pernah",
+            "e": "kadang-kadang"
+          }
+        },
+        {
+          "item": 7,
+          "text": "Pada jumlah yang sama, nilai kalori yang tertinggi terdapat pada ……………",
+          "options": {
+            "a": "ikan",
+            "b": "daging",
+            "c": "lemak",
+            "d": "tahu",
+            "e": "sayuran"
+          }
+        },
+        {
+          "item": 8,
+          "text": "Pada suatu pertandingan selalu terdapat ……………",
+          "options": {
+            "a": "lawan",
+            "b": "wasit",
+            "c": "penonton",
+            "d": "sorak",
+            "e": "kemenangan"
+          }
+        },
+        {
+          "item": 9,
+          "text": "Suatu pernyataan yang belum dipastikan dikatakan sebagai pernyataan yang …..",
+          "options": {
+            "a": "paradoks",
+            "b": "tergesa-gesa",
+            "c": "mempunyai arti rangkap",
+            "d": "menyesatkan",
+            "e": "hipotesis"
+          }
+        },
+        {
+          "item": 10,
+          "text": "Pada sepatu selalu terdapat ……………",
+          "options": {
+            "a": "kulit",
+            "b": "sol",
+            "c": "tali sepatu",
+            "d": "gesper",
+            "e": "lidah"
+          }
+        },
+        {
+          "item": 11,
+          "text": "Suatu …………… tidak menyangkut persoalan pencegahan kecelakaan.",
+          "options": {
+            "a": "lampu lalu lintas",
+            "b": "kacamata pelindung",
+            "c": "kotak PPPK",
+            "d": "tanda peringatan",
+            "e": "palang kereta api"
+          }
+        },
+        {
+          "item": 12,
+          "text": "Mata uang logam Rp 50,- tahun 1991, garis tengahnya ialah …………… mm.",
+          "options": {
+            "a": "17",
+            "b": "29",
+            "c": "25",
+            "d": "20",
+            "e": "15"
+          }
+        },
+        {
+          "item": 13,
+          "text": "Seseorang yang bersikap menyangsikan setiap kemajuan ialah seorang yang …..",
+          "options": {
+            "a": "demokratis",
+            "b": "radikal",
+            "c": "liberal",
+            "d": "konservatif",
+            "e": "anarkis"
+          }
+        },
+        {
+          "item": 14,
+          "text": "Lawannya “tidak pernah” ialah ……………",
+          "options": {
+            "a": "sering",
+            "b": "kadang-kadang",
+            "c": "jarang",
+            "d": "kerap kali",
+            "e": "selalu"
+          }
+        },
+        {
+          "item": 15,
+          "text": "Jarak antara Jakarta – Surabaya kira-kira …………… Km",
+          "options": {
+            "a": "650",
+            "b": "1000",
+            "c": "800",
+            "d": "600",
+            "e": "950"
+          }
+        },
+        {
+          "item": 16,
+          "text": "Untuk dapat membuat nada yang rendah dan mendalam, kita memerlukan banyak ….",
+          "options": {
+            "a": "kekuatan",
+            "b": "peranan",
+            "c": "ayunan",
+            "d": "berat",
+            "e": "suara"
+          }
+        },
+        {
+          "item": 17,
+          "text": "Ayah …………… lebih berpengalaman dari pada anaknya",
+          "options": {
+            "a": "selalu",
+            "b": "biasanya",
+            "c": "jauh",
+            "d": "jarang",
+            "e": "pada dasarnya"
+          }
+        },
+        {
+          "item": 18,
+          "text": "Diantara kota-kota berikut ini, maka kota ….. letaknya paling selatan.",
+          "options": {
+            "a": "Jakarta",
+            "b": "Bandung",
+            "c": "Cirebon",
+            "d": "Semarang",
+            "e": "Surabaya"
+          }
+        },
+        {
+          "item": 19,
+          "text": "Jika kita mengetahui jumlah presentase nomor-nomor lotere yang tidak menang, maka kita dapat menghitung …..",
+          "options": {
+            "a": "jumlah nomor yang menang",
+            "b": "pajak lotere",
+            "c": "kemungkinan menang",
+            "d": "jumlah pengikut",
+            "e": "tinggi keuntungan"
+          }
+        },
+        {
+          "item": 20,
+          "text": "Seorang anak yang berumur 10 tahun tingginya rata-rata …………… cm",
+          "options": {
+            "a": "150",
+            "b": "130",
+            "c": "110",
+            "d": "105",
+            "e": "115"
+          }
+        }
+      ]
+    },
+    "WA": {
+      "status": "final",
+      "instructions": {
+        "text": "(Soal-soal No. 21 – 40) Ditentukan 5 kata. Pada 4 dari 5 kata itu terdapat suatu kesamaan. Carilah kata yang kelima yang tidak memiliki kesamaan dengan keempat kata itu.. Contoh 02 a) meja b) kursi c) burung d) lemari e) tempat tidur a), b), d), dan e) ialah perabot rumah (meubel) c) burung, bukan perabot rumah atau tidak memiliki kesamaan dengan keempat kata itu. Oleh karena itu, pada lembar jawaban di belakang contoh 02, huruf c harus dicoret. 02) a b c d e Contoh berikutnya : a) duduk b) berbaring c) berdiri d) berjalan e) berjongkok pada a), b), c) dan e) orang berada dalam keadaan tidak bergerak, sedangkan d) orang dalam keadaan bergerak. Maka jawaban yang benar ialah : d) berjalan Oleh karena itu huruf d yang seharusnya dicoret."
+      },
+      "items": [
+        {
+          "item": 21,
+          "options": {
+            "a": "lingkungan",
+            "b": "panah",
+            "c": "elips",
+            "d": "busur",
+            "e": "lengkungan"
+          }
+        },
+        {
+          "item": 22,
+          "options": {
+            "a": "mengetuk",
+            "b": "memaki",
+            "c": "menjahit",
+            "d": "menggergaji",
+            "e": "memukul"
+          }
+        },
+        {
+          "item": 23,
+          "options": {
+            "a": "lebar",
+            "b": "keliling",
+            "c": "luas",
+            "d": "isi",
+            "e": "panjang"
+          }
+        },
+        {
+          "item": 24,
+          "options": {
+            "a": "mengikat",
+            "b": "menyatukan",
+            "c": "melepaskan",
+            "d": "mengaitkan",
+            "e": "melekatkan"
+          }
+        },
+        {
+          "item": 25,
+          "options": {
+            "a": "arah",
+            "b": "timur",
+            "c": "perjalanan",
+            "d": "tujuan",
+            "e": "selatan"
+          }
+        },
+        {
+          "item": 26,
+          "options": {
+            "a": "jarak",
+            "b": "perpisahan",
+            "c": "tugas",
+            "d": "batas",
+            "e": "perceraian"
+          }
+        },
+        {
+          "item": 27,
+          "options": {
+            "a": "saringan",
+            "b": "kelambu",
+            "c": "payung",
+            "d": "tapisan",
+            "e": "jala"
+          }
+        },
+        {
+          "item": 28,
+          "options": {
+            "a": "putih",
+            "b": "pucat",
+            "c": "buram",
+            "d": "kasar",
+            "e": "berkilauan"
+          }
+        },
+        {
+          "item": 29,
+          "options": {
+            "a": "otobis",
+            "b": "pesawat terbang",
+            "c": "sepeda motor",
+            "d": "sepeda",
+            "e": "kapal api"
+          }
+        },
+        {
+          "item": 30,
+          "options": {
+            "a": "biola",
+            "b": "seruling",
+            "c": "klarinet",
+            "d": "terompet",
+            "e": "saxophon"
+          }
+        },
+        {
+          "item": 31,
+          "options": {
+            "a": "bergelombang",
+            "b": "kasar",
+            "c": "berduri",
+            "d": "licin",
+            "e": "lurus"
+          }
+        },
+        {
+          "item": 32,
+          "options": {
+            "a": "jam",
+            "b": "kompas",
+            "c": "penunjuk jalan",
+            "d": "bintang pari",
+            "e": "arah"
+          }
+        },
+        {
+          "item": 33,
+          "options": {
+            "a": "kebijaksanaan",
+            "b": "pendidikan",
+            "c": "perencanaan",
+            "d": "penempatan",
+            "e": "pengerahan"
+          }
+        },
+        {
+          "item": 34,
+          "options": {
+            "a": "bermotor",
+            "b": "berjalan",
+            "c": "berlayar",
+            "d": "bersepeda",
+            "e": "berkuda"
+          }
+        },
+        {
+          "item": 35,
+          "options": {
+            "a": "gambar",
+            "b": "lukisan",
+            "c": "potret",
+            "d": "patung",
+            "e": "ukiran"
+          }
+        },
+        {
+          "item": 36,
+          "options": {
+            "a": "panjang",
+            "b": "lonjong",
+            "c": "runcing",
+            "d": "bulat",
+            "e": "bersudut"
+          }
+        },
+        {
+          "item": 37,
+          "options": {
+            "a": "kunci",
+            "b": "palang pintu",
+            "c": "gerendel",
+            "d": "gunting",
+            "e": "obeng"
+          }
+        },
+        {
+          "item": 38,
+          "options": {
+            "a": "jembatan",
+            "b": "batas",
+            "c": "perkawinan",
+            "d": "pagar",
+            "e": "masyarakat"
+          }
+        },
+        {
+          "item": 39,
+          "options": {
+            "a": "mengetam",
+            "b": "menasehati",
+            "c": "mengasah",
+            "d": "melicinkan",
+            "e": "menggosok"
+          }
+        },
+        {
+          "item": 40,
+          "options": {
+            "a": "batu",
+            "b": "baja",
+            "c": "bulu",
+            "d": "karet",
+            "e": "kayu"
+          }
+        }
+      ]
+    },
+    "AN": {
+      "status": "final",
+      "instructions": {
+        "text": "(Soal-soal No. 41 – 60) Ditentukan 3 (tiga) kata. Antara kata pertama dan kata kedua terdapat suatu hubungan tertentu. Antara kata ketiga dan salah satu diantara lima kata pilihan harus pula terdapat hubungan yang sama itu. Carilah kata itu. Contoh 03 Hutan : pohon = tembok : ? a) batu bata b) rumah c) semen d) putih e) dinding hubungan antara hutan dan pohon ialah bahwa hutan terdiri atas pohon-pohon, maka hubungan antara tembok dan salah satu kata pilihan bahwa tembok terdiri atas batu-batu bata. Oleh karena itu, pada lembar jawaban di belakang contoh 02, huruf a harus dicoret. 03) a b c d e Contoh berikutnya : Gelap : terang = basah : ? a) Hujan b) hari c) lembab d) angin e) kering Gelap ialah lawannya dari terang, maka untuk basah lawannya ialah kering Maka jawaban yang benar ialah : e) kering Oleh karena itu huruf e yang seharusnya dicoret."
+      },
+      "items": [
+        {
+          "item": 41,
+          "text": "Menemukan : menghilangkan = Mengingat : ?",
+          "options": {
+            "a": "menghapal",
+            "b": "mengenai",
+            "c": "melupakan",
+            "d": "berpikir",
+            "e": "memimpikan"
+          }
+        },
+        {
+          "item": 42,
+          "text": "Bunga : jambangan = Burung : ?",
+          "options": {
+            "a": "sarang",
+            "b": "langit",
+            "c": "pagar",
+            "d": "pohon",
+            "e": "sangkar"
+          }
+        },
+        {
+          "item": 43,
+          "text": "Kereta api : rel = Otobis : ?",
+          "options": {
+            "a": "roda",
+            "b": "poros",
+            "c": "ban",
+            "d": "jalan raya",
+            "e": "kecepatan"
+          }
+        },
+        {
+          "item": 44,
+          "text": "Perak : emas = Cincin : ?",
+          "options": {
+            "a": "arloji",
+            "b": "berlian",
+            "c": "permata",
+            "d": "gelang",
+            "e": "platina"
+          }
+        },
+        {
+          "item": 45,
+          "text": "Lingkaran : bola = Bujur sangkar : ?",
+          "options": {
+            "a": "bentuk",
+            "b": "gambar",
+            "c": "segi empat",
+            "d": "kubus",
+            "e": "piramida"
+          }
+        },
+        {
+          "item": 46,
+          "text": "Saran : kepustakaan = Merundingkan : ?",
+          "options": {
+            "a": "menawarkan",
+            "b": "menentukan",
+            "c": "menilai",
+            "d": "menimbang",
+            "e": "merenungkan"
+          }
+        },
+        {
+          "item": 47,
+          "text": "Lidah : asam = Hidung : ?",
+          "options": {
+            "a": "mencium",
+            "b": "bernapas",
+            "c": "mengecap",
+            "d": "tengik",
+            "e": "asin"
+          }
+        },
+        {
+          "item": 48,
+          "text": "Darah : pembuluh = Air : ?",
+          "options": {
+            "a": "pintu air",
+            "b": "sungai",
+            "c": "talang",
+            "d": "hujan",
+            "e": "ember"
+          }
+        },
+        {
+          "item": 49,
+          "text": "Saraf : penyalur = Pupil : ?",
+          "options": {
+            "a": "penyinaran",
+            "b": "mata",
+            "c": "melihat",
+            "d": "cahaya",
+            "e": "pelindung"
+          }
+        },
+        {
+          "item": 50,
+          "text": "Pengantar surat : pengantar telegram = Pandai besi : ?",
+          "options": {
+            "a": "palu godam",
+            "b": "pedagang besi",
+            "c": "api",
+            "d": "tukang emas",
+            "e": "besi tempa"
+          }
+        },
+        {
+          "item": 51,
+          "text": "Buta : warna = Tuli : ?",
+          "options": {
+            "a": "pendengaran",
+            "b": "mendengar",
+            "c": "nada",
+            "d": "kata",
+            "e": "telinga"
+          }
+        },
+        {
+          "item": 52,
+          "text": "Makanan : bumbu = Ceramah : ?",
+          "options": {
+            "a": "penghinaan",
+            "b": "pidato",
+            "c": "kelakar",
+            "d": "kesan",
+            "e": "ayat"
+          }
+        },
+        {
+          "item": 53,
+          "text": "Marah : emosi = Duka cita : ?",
+          "options": {
+            "a": "suka cita",
+            "b": "sakit hati",
+            "c": "suasana hati",
+            "d": "sedih",
+            "e": "rindu"
+          }
+        },
+        {
+          "item": 54,
+          "text": "Mantel : jubah = wool : ?",
+          "options": {
+            "a": "bahan sandang",
+            "b": "domba",
+            "c": "sutra",
+            "d": "jas",
+            "e": "tekstil"
+          }
+        },
+        {
+          "item": 55,
+          "text": "Ketinggian puncak : tekanan udara = ketinggian nada : ?",
+          "options": {
+            "a": "garpu tala",
+            "b": "sopran",
+            "c": "nyanyian",
+            "d": "panjang senar",
+            "e": "suara"
+          }
+        },
+        {
+          "item": 56,
+          "text": "Negara : revolusi = Hidup : ?",
+          "options": {
+            "a": "biologi",
+            "b": "keturunan",
+            "c": "mutasi",
+            "d": "seleksi",
+            "e": "ilmu hewan"
+          }
+        },
+        {
+          "item": 57,
+          "text": "Kekurangan : penemuan = Panas : ?",
+          "options": {
+            "a": "haus",
+            "b": "khatulistiwa",
+            "c": "es",
+            "d": "matahari",
+            "e": "dingin"
+          }
+        },
+        {
+          "item": 58,
+          "text": "Kayu : diketam = Besi : ?",
+          "options": {
+            "a": "dipalu",
+            "b": "digergaji",
+            "c": "dituang",
+            "d": "dikikir",
+            "e": "ditempa"
+          }
+        },
+        {
+          "item": 59,
+          "text": "Olahragawan : lembing = Cendekiawan",
+          "options": {
+            "a": "perpustakaan",
+            "b": "penelitian",
+            "c": "karya",
+            "d": "studi",
+            "e": "mikroskop"
+          }
+        },
+        {
+          "item": 60,
+          "text": "Keledai : kuda pacuan = Pembakaran : ?",
+          "options": {
+            "a": "pemadam api",
+            "b": "obor",
+            "c": "letupan",
+            "d": "korek api",
+            "e": "lautan api"
+          }
+        }
+      ]
+    },
+    "GE": {
+      "status": "final",
+      "instructions": {
+        "text": "(Soal-soal No. 61 – 76) Ditentukan dua kata. Carilah satu perkataan yang meliputi pengertian kedua kata tadi Tulislah perkataan itu pada lembar jawaban di belakang nomor soal yang sesuai. Contoh 04 Ayam – itik Perkataan “burung” dapat meliputi pengertian kedua kata itu. Maka jawabannya ialah “burung” Oleh karena itu, pada lembar jawaban di belakang contoh 04, harus ditulis “burung” 04) burung Contoh berikutnya : Gaun – celana Pada contoh ini jawabannya ialah “pakaian” maka “pakaian” yang seharusnya ditulis. Carilah selalu perkataan yang tepat yang dapat meliputi pengertuan kedua kata itu."
+      },
+      "answer_type": "fill_in_word",
+      "items": [
+        {
+          "item": 61,
+          "text": "mawar – melati"
+        },
+        {
+          "item": 62,
+          "text": "mata – telinga"
+        },
+        {
+          "item": 63,
+          "text": "gula – intan"
+        },
+        {
+          "item": 64,
+          "text": "hujan – salju"
+        },
+        {
+          "item": 65,
+          "text": "pengantar surat – telepon"
+        },
+        {
+          "item": 66,
+          "text": "kamera – kacamata"
+        },
+        {
+          "item": 67,
+          "text": "lambung – usus"
+        },
+        {
+          "item": 68,
+          "text": "banyak – sedikit"
+        },
+        {
+          "item": 69,
+          "text": "telur – benih"
+        },
+        {
+          "item": 70,
+          "text": "bendera – lencana"
+        },
+        {
+          "item": 71,
+          "text": "rumput – gajah"
+        },
+        {
+          "item": 72,
+          "text": "ember – kantong"
+        },
+        {
+          "item": 73,
+          "text": "awal – akhir"
+        },
+        {
+          "item": 74,
+          "text": "kikir – boros"
+        },
+        {
+          "item": 75,
+          "text": "penawaran – permintaan"
+        },
+        {
+          "item": 76,
+          "text": "atas – bawah"
+        }
+      ]
+    },
+    "RA": {
+      "status": "final",
+      "instructions": {
+        "text": "(Soal-soal No. 77 – 96) Persoalan berikutnya ialah soal-soal hitungan. Contoh 05 Sebatang pensil harganya 25 rupiah. Berapakah harga 3 batang? Jawabannya ialah : 75 Perhatikan cara menjawab di atas lembar jawaban! Pada lembar jawaban lihatlah pada kolom 05. Kolom ini terdiri atas angka-angka 1 sampai 9 dan 0 Untuk menunjukkan jawaban suatu soal, maka coretlah angka-angka yang terdapat di dalam jawaban itu. Keurutan angka jawaban tidak perlu dihiraukan. Pada contoh 05 jawaban ialah 75. Oleh karena itu, pada lembar jawaban di belakang contoh 05, angka 7 dan 5 harus dicoret. 05) 1 2 3 4 5 6 7 8 9 0 Contoh lain : Dengan sepede Husin dapat mencapai 15 km dalam waktu 1 jam. Berapa km-kah yang dapat ia capai dalam waktu 4 jam? Jawabannya ialah : 60 Maka untuk menunjukkan jawaban itu angka 6 dan 0 yang seharusnya dicoret."
+      },
+      "answer_type": "fill_in_numeric",
+      "items": [
+        {
+          "item": 77,
+          "text": "Jika seorang anak memiliki 50 rupiah dan memberikan 15 rupiah kepada orang lain, berapa rupiahkah yang masih tinggal padanya?"
+        },
+        {
+          "item": 78,
+          "text": "Berapa km-kah yang dapat ditempuh oleh kereta api dalam waktu 7 jam, jika kecepatannya 40 km/jam?"
+        },
+        {
+          "item": 79,
+          "text": "15 peti buah-buahan beratnya 250 kg dan setiap peti kosong beratnya 3 kg, berapakah berat buah-buahan itu?"
+        },
+        {
+          "item": 80,
+          "text": "Seseorang mempunyai persediaan rumput yang cukup untuk 7 ekor kuda selama 78 hari. Berapa harikah persediaan itu cukup untuk 21 ekor kuda?"
+        },
+        {
+          "item": 81,
+          "text": "3 batang coklat harganya Rp 5,- Berapa batangkah yang dapat kita beli dengan Rp 50,-?"
+        },
+        {
+          "item": 82,
+          "text": "Seseorang dapat berjalan 1,75 m dalam waktu ¼ detik. Berapakah meterkah yang dapat ia tempuh dalam waktu 10 detik?"
+        },
+        {
+          "item": 83,
+          "text": "Jika sebuah batu terletak 15 m di sebelah selatan dari sebatang pohon dan pohon itu berada 30 m di sebelah selatan dari sebuah rumah, berapa meterkah jarak antara batu dan rumah itu?"
+        },
+        {
+          "item": 84,
+          "text": "Jika 4 ½ m bahan sandang harganya Rp 90,- berapakah rupiahkah harganya 2 ½ m?"
+        },
+        {
+          "item": 85,
+          "text": "7 orang dapat menyelesaikan sesuatu pekerjaan dalam 6 hari. Berapa orangkah yang diperlukan untuk menyelesaikan pekerjaan itu dalam setengah hari?"
+        },
+        {
+          "item": 86,
+          "text": "Karena dipanaskan, kawat yang panjangnya 48 cm akan mengembang menjadi 52 cm. setelah pemanasan, berapakah panjangnya kawat yang berukuran 72 cm?"
+        },
+        {
+          "item": 87,
+          "text": "Suatu pabrik dapat menghasilkan 304 batang pensil dalam waktu 8 jam. Berapa batangkah dihasilkan dalam waktu setengah jam?"
+        },
+        {
+          "item": 88,
+          "text": "Untuk suatu campuran diperlukan 2 bagian perak dan 3 bagian timah. Berapa gramkah perak yang diperlukan untuk mendapatkan campuran itu yang beratnya 15 gram?"
+        },
+        {
+          "item": 89,
+          "text": "Untuk setiap Rp 3,- yang dimiliki Sidin, Hamid memiliki Rp 5,- Jika mereka bersama mempunyai Rp 120,- berapa rupiahkah yang dimiliki Hamid?"
+        },
+        {
+          "item": 90,
+          "text": "Mesin A menenun 60 m kain, sedangkan mesin B menenun 40 m. berapa meterkah yang ditenun mesin A, jika mesin B menenun 60 m?"
+        },
+        {
+          "item": 91,
+          "text": "Seseorang membelikan 1/10 dari uangnya untuk perangko dan 4 kali jumlah itu untuk alat tulis. Sisa uangnya masih Rp 60,- Berapa rupiahkah uang semula?"
+        },
+        {
+          "item": 92,
+          "text": "Di dalam dua peti terdapat 43 piring. Di dalam peti yang satu terdapat 9 piring lebih banyak dari pada di dalam peti yang lain. Berapa buah piring terdapat di dalam peti yang lebih kecil?"
+        },
+        {
+          "item": 93,
+          "text": "Suatu lembaran kain yang panjangnya 60 cm harus dibagikan sedemikian rupa sehingga panjangnya satu bagian ialah 2/3 dari bagian yang lain. Berapa panjangnya bagian yang terpendek."
+        },
+        {
+          "item": 94,
+          "text": "Suatu perusahaan mengekspor ¾ dari hasil produksinya dan menjual 4/5 dari sisa itu dalam negeri. Berapa % kah hasil produksi yang masih tinggal?"
+        },
+        {
+          "item": 95,
+          "text": "Jika suatu botol berisi anggur hanya 7/8 bagian dan harganya ialah Rp 84,- berapakah harga anggur itu jika botol itu hanya terisi ½ penuh?"
+        },
+        {
+          "item": 96,
+          "text": "Di dalam suatu keluarga setiap anak perempuan mempunyai jumlah saudara laki-laki yang sama dengan jumlah saudara perempuan dan setiap anak laki-laki mempunyai dua kali lebih banyak saudara perempuan dari pada saudara laki-laki. Berapa anak laki-lakikah yang terdapat di dalam keluarga tersebut?"
+        }
+      ]
+    },
+    "ZR": {
+      "status": "final",
+      "instructions": {
+        "text": "(Soal-soal No. 97 – 116) Pada persoalan berikut akan diberikan deret angka. Setiap deret tersusun menurut suatu aturan yang tertentu dan dapat dilanjutkan menurut aturan itu. Carilah untuk setiap deret, angka berikutnya dan coretlah jawaban saudara pada lembar jawaban di belakang nomor soal yang sesuai. Contoh 06 2 4 6 8 10 12 14 ? Pada deret ini angka berikutnya selelau didapat jika angka di depannya ditambah dengan 2. Maka jawabanya ialah 16 Oleh karena itu, pada lembar jawaban di belakang contoh 06, angka 1 dan 6 harus dicoret. 06) 1 2 3 4 5 6 7 8 9 0 Contoh berikutnya : 9 7 10 8 11 9 12 ? Pada deret ini berganti-ganti harus dikurangi dengan 2 dan setelah itu ditambah dengan 3. Jawaban contoh ini ialah : 10, maka dari itu angka 1 dan 0 seharusnya yang dicoret. Kadang-kadang pada beberapa soal harus pula dikalikan atau dibagi."
+      },
+      "answer_type": "fill_in_numeric",
+      "items": [
+        {
+          "item": 97,
+          "text": "6 9 12 15 18 21 24 ?"
+        },
+        {
+          "item": 98,
+          "text": "15 16 18 19 21 22 24 ?"
+        },
+        {
+          "item": 99,
+          "text": "19 18 22 21 25 24 28 ?"
+        },
+        {
+          "item": 100,
+          "text": "16 12 17 13 18 14 19 ?"
+        },
+        {
+          "item": 101,
+          "text": "2 4 8 10 20 22 44 ?"
+        },
+        {
+          "item": 102,
+          "text": "15 13 16 12 17 11 18 ?"
+        },
+        {
+          "item": 103,
+          "text": "25 22 11 33 30 15 45 ?"
+        },
+        {
+          "item": 104,
+          "text": "49 51 54 27 9 11 14 ?"
+        },
+        {
+          "item": 105,
+          "text": "2 3 1 3 4 2 4 ?"
+        },
+        {
+          "item": 106,
+          "text": "19 17 20 16 21 15 22 ?"
+        },
+        {
+          "item": 107,
+          "text": "94 92 46 44 22 20 10 ?"
+        },
+        {
+          "item": 108,
+          "text": "5 8 9 8 11 12 11 ?"
+        },
+        {
+          "item": 109,
+          "text": "12 15 19 23 28 33 39 ?"
+        },
+        {
+          "item": 110,
+          "text": "7 5 10 7 21 17 68 ?"
+        },
+        {
+          "item": 111,
+          "text": "11 15 18 9 13 16 8 ?"
+        },
+        {
+          "item": 112,
+          "text": "3 8 15 24 35 48 63 ?"
+        },
+        {
+          "item": 113,
+          "text": "4 5 7 4 8 13 7 ?"
+        },
+        {
+          "item": 114,
+          "text": "8 5 15 18 6 3 9 ?"
+        },
+        {
+          "item": 115,
+          "text": "15 6 18 10 30 23 69 ?"
+        },
+        {
+          "item": 116,
+          "text": "5 35 28 4 11 77 70 ?"
+        }
+      ]
+    },
+    "ME": {
+      "status": "final",
+      "instructions": {
+        "text": "(Soal-soal No. 157 – 176) Pada persoalan berikutnya, terdapat sejumlah pertanyaan mengenai kata-kata yang telah saudara hafalkan tadi. Coretlah jawaban saudara pada lembaran jawaban di belakang nomor soal yang sesuai. Contoh 09 Kata yang mempunyai huruf permulaan – Q – adalah suatu ……. a) bunga b) perkakas c) burung d) kesenian e) binatang Quintet adalah termasuk dalam jenis kesenian, sehingga jawaban yang benar adalah d). Oleh karena itu, pada lembar jawaban di belakang contoh 09 huruf d harus dicoret. 09) a b c d e Contoh berikutnya : Kata yang mempunyai huruf pertama – Z – adalah suatu ……. a) bunga b) perkakas c) burung d) kesenian e) binatang Jawabannya adalah e, karena Zebra termasuk dalam jenis binatang."
+      },
+      "items": [
+        {
+          "item": 157,
+          "text": "Kata yang mempunyai huruf permulaan – A – adalah …… .",
+          "options": {
+            "a": "bunga",
+            "b": "perkakas",
+            "c": "burung",
+            "d": "kesenian",
+            "e": "binatang"
+          }
+        },
+        {
+          "item": 158,
+          "text": "Kata yang mempunyai huruf permulaan – B – adalah …… .",
+          "options": {
+            "a": "bunga",
+            "b": "perkakas",
+            "c": "burung",
+            "d": "kesenian",
+            "e": "binatang"
+          }
+        },
+        {
+          "item": 159,
+          "text": "Kata yang mempunyai huruf permulaan – C – adalah …… .",
+          "options": {
+            "a": "bunga",
+            "b": "perkakas",
+            "c": "burung",
+            "d": "kesenian",
+            "e": "binatang"
+          }
+        },
+        {
+          "item": 160,
+          "text": "Kata yang mempunyai huruf permulaan – D – adalah …… .",
+          "options": {
+            "a": "bunga",
+            "b": "perkakas",
+            "c": "burung",
+            "d": "kesenian",
+            "e": "binatang"
+          }
+        },
+        {
+          "item": 161,
+          "text": "Kata yang mempunyai huruf permulaan – E – adalah …… .",
+          "options": {
+            "a": "bunga",
+            "b": "perkakas",
+            "c": "burung",
+            "d": "kesenian",
+            "e": "binatang"
+          }
+        },
+        {
+          "item": 162,
+          "text": "Kata yang mempunyai huruf permulaan – F – adalah …… .",
+          "options": {
+            "a": "bunga",
+            "b": "perkakas",
+            "c": "burung",
+            "d": "kesenian",
+            "e": "binatang"
+          }
+        },
+        {
+          "item": 163,
+          "text": "Kata yang mempunyai huruf permulaan – G – adalah …… .",
+          "options": {
+            "a": "bunga",
+            "b": "perkakas",
+            "c": "burung",
+            "d": "kesenian",
+            "e": "binatang"
+          }
+        },
+        {
+          "item": 164,
+          "text": "Kata yang mempunyai huruf permulaan – H – adalah …… .",
+          "options": {
+            "a": "bunga",
+            "b": "perkakas",
+            "c": "burung",
+            "d": "kesenian",
+            "e": "binatang"
+          }
+        },
+        {
+          "item": 165,
+          "text": "Kata yang mempunyai huruf permulaan – I – adalah …… .",
+          "options": {
+            "a": "bunga",
+            "b": "perkakas",
+            "c": "burung",
+            "d": "kesenian",
+            "e": "binatang"
+          }
+        },
+        {
+          "item": 166,
+          "text": "Kata yang mempunyai huruf permulaan – J – adalah …… .",
+          "options": {
+            "a": "bunga",
+            "b": "perkakas",
+            "c": "burung",
+            "d": "kesenian",
+            "e": "binatang"
+          }
+        },
+        {
+          "item": 167,
+          "text": "Kata yang mempunyai huruf permulaan – K – adalah …… .",
+          "options": {
+            "a": "bunga",
+            "b": "perkakas",
+            "c": "burung",
+            "d": "kesenian",
+            "e": "binatang"
+          }
+        },
+        {
+          "item": 168,
+          "text": "Kata yang mempunyai huruf permulaan – L – adalah …… .",
+          "options": {
+            "a": "bunga",
+            "b": "perkakas",
+            "c": "burung",
+            "d": "kesenian",
+            "e": "binatang"
+          }
+        },
+        {
+          "item": 169,
+          "text": "Kata yang mempunyai huruf permulaan – M – adalah …… .",
+          "options": {
+            "a": "bunga",
+            "b": "perkakas",
+            "c": "burung",
+            "d": "kesenian",
+            "e": "binatang"
+          }
+        },
+        {
+          "item": 170,
+          "text": "Kata yang mempunyai huruf permulaan – N – adalah …… .",
+          "options": {
+            "a": "bunga",
+            "b": "perkakas",
+            "c": "burung",
+            "d": "kesenian",
+            "e": "binatang"
+          }
+        },
+        {
+          "item": 171,
+          "text": "Kata yang mempunyai huruf permulaan – O – adalah …… .",
+          "options": {
+            "a": "bunga",
+            "b": "perkakas",
+            "c": "burung",
+            "d": "kesenian",
+            "e": "binatang"
+          }
+        },
+        {
+          "item": 172,
+          "text": "Kata yang mempunyai huruf permulaan – P – adalah …… .",
+          "options": {
+            "a": "bunga",
+            "b": "perkakas",
+            "c": "burung",
+            "d": "kesenian",
+            "e": "binatang"
+          }
+        },
+        {
+          "item": 173,
+          "text": "Kata yang mempunyai huruf permulaan – R – adalah …… .",
+          "options": {
+            "a": "bunga",
+            "b": "perkakas",
+            "c": "burung",
+            "d": "kesenian",
+            "e": "binatang"
+          }
+        },
+        {
+          "item": 174,
+          "text": "Kata yang mempunyai huruf permulaan – S – adalah …… .",
+          "options": {
+            "a": "bunga",
+            "b": "perkakas",
+            "c": "burung",
+            "d": "kesenian",
+            "e": "binatang"
+          }
+        },
+        {
+          "item": 175,
+          "text": "Kata yang mempunyai huruf permulaan – T – adalah …… .",
+          "options": {
+            "a": "bunga",
+            "b": "perkakas",
+            "c": "burung",
+            "d": "kesenian",
+            "e": "binatang"
+          }
+        },
+        {
+          "item": 176,
+          "text": "Kata yang mempunyai huruf permulaan – U – adalah …… .",
+          "options": {
+            "a": "bunga",
+            "b": "perkakas",
+            "c": "burung",
+            "d": "kesenian",
+            "e": "binatang"
+          }
+        }
+      ],
+      "word_list": {
+        "BUNGA": [
+          "SOKA",
+          "LARAT",
+          "FLAMBOYAN",
+          "YASMIN",
+          "DAHLIA"
+        ],
+        "PERKAKAS": [
+          "WAJAN",
+          "JARUM",
+          "KIKIR",
+          "CANGKUL",
+          "PALU"
+        ],
+        "BURUNG": [
+          "ITIK",
+          "ELANG",
+          "WALET",
+          "TEKUKUR",
+          "NURI"
+        ],
+        "KESENIAN": [
+          "QUINTET",
+          "ARCA",
+          "OPERA",
+          "UKIRAN",
+          "GAMELAN"
+        ],
+        "BINATANG": [
+          "RUSA",
+          "MUSANG",
+          "BERUANG",
+          "HARIMAU",
+          "ZEBRA"
+        ]
+      }
+    }
+  }
+}

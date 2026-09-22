@@ -35,7 +35,18 @@ use UnexpectedValueException;
  */
 final readonly class SealedPapiResult
 {
-    public const CONTRACT_VERSION = 'papi-result:v1';
+    // ADR-0032 PR1 (2026-09-22): bumped v1->v2, payload gained `engineVersion`.
+    public const CONTRACT_VERSION = 'papi-result:v2';
+
+    /**
+     * The scoring CODE version -- see SealedIstResult::ENGINE_VERSION's
+     * docblock. PAPI's own scoring rules (ScoreSealedPapiAnswerSet,
+     * PapiRawScoreCalculator) are untouched by ADR-0032 (Lead, 2026-09-22:
+     * do not touch either file) -- this constant exists only so every row
+     * in `generic_instrument_results` (NOT NULL `engine_version`) carries a
+     * provenance value, not because PAPI's formula changed.
+     */
+    public const ENGINE_VERSION = 'papi-scoring:v1';
 
     public const DIMENSION_COUNT = 20;
 
@@ -54,6 +65,7 @@ final readonly class SealedPapiResult
      */
     private function __construct(
         public string $resultContractVersion,
+        public string $engineVersion,
         public int $assessmentCaseId,
         public int $sessionId,
         public int $participantId,
@@ -91,6 +103,7 @@ final readonly class SealedPapiResult
 
         $payload = self::canonicalize([
             'resultContractVersion' => self::CONTRACT_VERSION,
+            'engineVersion' => self::ENGINE_VERSION,
             'assessmentCaseId' => $source->assessmentCaseId,
             'sessionId' => $source->sessionId,
             'participantId' => $source->participantId,
@@ -112,6 +125,7 @@ final readonly class SealedPapiResult
 
         return new self(
             resultContractVersion: self::CONTRACT_VERSION,
+            engineVersion: self::ENGINE_VERSION,
             assessmentCaseId: $source->assessmentCaseId,
             sessionId: $source->sessionId,
             participantId: $source->participantId,
@@ -133,6 +147,7 @@ final readonly class SealedPapiResult
     {
         return [
             'resultContractVersion' => $this->resultContractVersion,
+            'engineVersion' => $this->engineVersion,
             'assessmentCaseId' => $this->assessmentCaseId,
             'sessionId' => $this->sessionId,
             'participantId' => $this->participantId,

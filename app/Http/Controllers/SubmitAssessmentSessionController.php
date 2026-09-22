@@ -23,12 +23,19 @@ use Throwable;
  * {session_id,status:'scored'... -- actually 'submitted', see below}
  * shape per API_CONTRACT.md: repeated submit is safe and does not reopen
  * answers (AssessmentSessionSubmitPolicy's replay branch). The contract's
- * literal example shows status:'scored', but scoring is a separate,
- * later pipeline (F2's G7 lane) that this action does not run --
- * AssessmentSessionSubmitPolicy only ever transitions
- * InProgress -> Submitted. This response reports the action's real
- * post-state ('submitted') rather than fabricating 'scored'; documented
- * as a contract-wording note in the handoff, not silently resolved.
+ * literal example shows status:'scored', but `test_sessions.status` never
+ * reaches 'scored' for a fresh accepted submit (ADR-0032, 2026-09-22):
+ * SubmitAssessmentSession's own transaction DOES score the session now
+ * (IST/PAPI/RMIB, synchronously, via ScoreAssessmentSession -- a
+ * `generic_instrument_results` row or a `assessment_scoring_attempts`
+ * failure row is written in the same transaction as the status write,
+ * never rolled back for a predictable scoring rejection), but
+ * `AssessmentSessionSubmitPolicy` itself still only ever transitions
+ * InProgress -> Submitted; nothing promotes `test_sessions.status` to
+ * 'scored' anywhere in this codebase (deliberate -- see ADR-0032). This
+ * response reports the action's real post-state ('submitted') rather than
+ * fabricating 'scored'; documented as a contract-wording note in the
+ * handoff, not silently resolved.
  *
  * Same error-code -> HTTP status mapping as autosave for the codes this
  * action can produce (SESSION_NOT_FOUND: 404; SESSION_NOT_STARTED,

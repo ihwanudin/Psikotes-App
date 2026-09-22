@@ -24,6 +24,17 @@ final class OrderStateMachine
         );
     }
 
+    /**
+     * Bridge funding (item 18): an admin-approved grant, not a gateway event
+     * or a manual-transfer review. Money has not actually been received --
+     * unlocksEntitlements is still true, because the owner's decision is
+     * that participant access must be identical to a paying participant.
+     */
+    public function applyBridgeFunding(OrderStatus $current): OrderTransition
+    {
+        return $this->transition($current, OrderStatus::BridgeFunded);
+    }
+
     private function transition(OrderStatus $current, OrderStatus $target): OrderTransition
     {
 
@@ -40,7 +51,7 @@ final class OrderStateMachine
         return new OrderTransition(
             status: $target,
             changed: true,
-            unlocksEntitlements: $target === OrderStatus::Paid,
+            unlocksEntitlements: $target->grantsAccess(),
         );
     }
 }

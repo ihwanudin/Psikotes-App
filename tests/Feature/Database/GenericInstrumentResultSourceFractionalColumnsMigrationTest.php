@@ -199,7 +199,8 @@ final class GenericInstrumentResultSourceFractionalColumnsMigrationTest extends 
             'instrument_version_id' => $instrumentVersion->id, 'instrument_version' => $instrumentVersion->version,
             'instrument_source_file' => $instrumentVersion->source_file,
             'instrument_checksum' => $instrumentVersion->checksum,
-            'result_contract_version' => 'synthetic-result:v1', 'result_payload' => $resultPayload,
+            'result_contract_version' => 'synthetic-result:v1', 'engine_version' => 'synthetic-scoring:v1',
+            'result_payload' => $resultPayload,
             'result_checksum' => hash('sha256', $resultPayload), 'created_at' => now(),
         ]);
     }

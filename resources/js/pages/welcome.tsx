@@ -1,4 +1,4 @@
-import { Head, Link, usePage } from '@inertiajs/react';
+import { Head, Link } from '@inertiajs/react';
 import {
     ArrowRight,
     BadgeCheck,
@@ -15,7 +15,8 @@ import {
     ShieldCheck,
     UserRoundCheck,
 } from 'lucide-react';
-import { dashboard, login, register } from '@/routes';
+import { register } from '@/routes';
+import { login as adminLogin } from '@/routes/filament/admin/auth';
 
 const instruments = ['IST', 'PAPI Kostick', 'Kraepelin', 'RMIB', 'DASS-21'];
 
@@ -248,8 +249,6 @@ function SectionHeading({
 }
 
 export default function Welcome() {
-    const { auth } = usePage().props;
-
     return (
         <>
             <Head>
@@ -304,12 +303,12 @@ export default function Welcome() {
                             </a>
                         </nav>
 
-                        <Link
-                            href={auth.user ? dashboard() : login()}
+                        <a
+                            href={adminLogin.url()}
                             className="focus-visible:outline-brand-gold inline-flex h-10 items-center justify-center rounded-lg border border-white/25 px-4 text-sm font-semibold text-white transition hover:border-white/45 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-4"
                         >
-                            {auth.user ? 'Buka dashboard' : 'Portal pengelola'}
-                        </Link>
+                            Portal pengelola
+                        </a>
                     </div>
                 </header>
 

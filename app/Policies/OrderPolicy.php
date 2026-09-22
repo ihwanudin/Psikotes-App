@@ -30,4 +30,14 @@ final class OrderPolicy
         return $admin->role === AdminRole::SuperAdmin
             || $admin->branch_id === $order->participant->branch_id;
     }
+
+    public function approveBridgeFunding(Admin $admin, Order $order): bool
+    {
+        if (! $admin->canPerform(AdminAbility::ApproveBridgeFunding)) {
+            return false;
+        }
+
+        return $admin->role === AdminRole::SuperAdmin
+            || $admin->branch_id === $order->participant->branch_id;
+    }
 }

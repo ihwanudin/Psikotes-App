@@ -32,7 +32,6 @@ test('flush with nothing pending is a no-op and never calls send', async () => {
             return {
                 type: 'accepted',
                 revision: 1,
-                receivedAt: 'x',
                 acceptedItemNos: [],
             };
         },
@@ -55,7 +54,6 @@ test('accepted flush advances revision and clears pending changes', async () => 
             return {
                 type: 'accepted',
                 revision: batch.revision,
-                receivedAt: '2026-09-21T00:00:00Z',
                 acceptedItemNos: batch.items.map((item) => item.itemNo),
             };
         },
@@ -104,7 +102,6 @@ test('a second flush while one is in flight does not send twice', async () => {
     gate.resolve({
         type: 'accepted',
         revision: 1,
-        receivedAt: 'x',
         acceptedItemNos: [1],
     });
     await firstFlush;
@@ -130,7 +127,6 @@ test('changes queued while a batch is in flight are not merged into that batch',
     gate.resolve({
         type: 'accepted',
         revision: 1,
-        receivedAt: 'x',
         acceptedItemNos: [1],
     });
     await firstFlush;
@@ -171,7 +167,6 @@ test('a network error retries the identical mutation_id, revision, and items', a
             return {
                 type: 'accepted',
                 revision: batch.revision,
-                receivedAt: 'x',
                 acceptedItemNos: batch.items.map((i) => i.itemNo),
             };
         },
@@ -284,6 +279,132 @@ test('session_closed and deadline_exceeded surface without setting needsReload',
     }
 });
 
+test('not_found and not_started are terminal: no requeue, no retry, and further edits are silently ignored', async () => {
+    for (const type of ['not_found', 'not_started'] as const) {
+        const calls: AutosaveBatch[] = [];
+        const engine = createAutosaveEngine({
+            initialRevision: 0,
+            createMutationId: idGenerator(),
+            send: async (batch) => {
+                calls.push(batch);
+
+                return { type };
+            },
+        });
+
+        engine.queueChange(1, 'v');
+        const result = await engine.flush();
+
+        assert.equal(result.status, type);
+        assert.equal(
+            engine.isTerminal(),
+            true,
+            `${type} must mark the engine terminal`,
+        );
+        assert.equal(
+            engine.hasPendingChanges(),
+            false,
+            `${type} must not requeue the rejected batch (there is nothing to resend it to)`,
+        );
+
+        // A no-op, not a throw (Lead's 2026-09-21 review): queueChange is
+        // called directly from a UI event handler (the participant
+        // picking an answer), so an uncaught exception there would land
+        // in the participant's hands. It must neither throw nor queue
+        // anything to send.
+        assert.doesNotThrow(
+            () => engine.queueChange(2, 'other'),
+            `${type} must not throw from queueChange — it is called from a UI event handler`,
+        );
+        assert.equal(
+            engine.hasPendingChanges(),
+            false,
+            `${type} must silently drop the edit, not queue it for a session that will never send again`,
+        );
+
+        // A caller that calls flush() again anyway (e.g. a stray timer)
+        // must get the same terminal status without a second network call.
+        const again = await engine.flush();
+        assert.deepEqual(again, { status: type });
+        assert.equal(
+            calls.length,
+            1,
+            `${type} must never be retried automatically`,
+        );
+    }
+});
+
+test('queueChange after a terminal outcome never calls send, even via a later flush()', async () => {
+    let sendCalls = 0;
+    const engine = createAutosaveEngine({
+        initialRevision: 0,
+        createMutationId: idGenerator(),
+        send: async () => {
+            sendCalls++;
+
+            return { type: 'not_found' };
+        },
+    });
+
+    engine.queueChange(1, 'v');
+    await engine.flush();
+    assert.equal(sendCalls, 1);
+    assert.equal(engine.isTerminal(), true);
+
+    // Simulates the participant clicking a different answer after the
+    // page already knows the session is dead.
+    assert.doesNotThrow(() => engine.queueChange(2, 'clicked after terminal'));
+    await engine.flush();
+
+    assert.equal(
+        sendCalls,
+        1,
+        'a click after terminal must never trigger a second send()/fetch',
+    );
+});
+
+test('invalid_batch holds the rejected batch without retrying it, but the engine stays usable for new edits', async () => {
+    const calls: AutosaveBatch[] = [];
+    const engine = createAutosaveEngine({
+        initialRevision: 0,
+        createMutationId: idGenerator(),
+        send: async (batch) => {
+            calls.push(batch);
+
+            return { type: 'invalid_batch' };
+        },
+    });
+
+    engine.queueChange(1, 'bad-value');
+    const result = await engine.flush();
+
+    assert.deepEqual(result, { status: 'invalid_batch' });
+    assert.equal(
+        engine.isTerminal(),
+        false,
+        'invalid_batch is per-batch, not terminal for the engine',
+    );
+    assert.equal(engine.needsReload(), false);
+    assert.equal(
+        engine.hasPendingChanges(),
+        false,
+        'the rejected batch must not be requeued — resending the identical payload would retry-loop forever',
+    );
+
+    // Nothing pending: a stray extra flush() must be a no-op, proving no
+    // automatic resend of the same rejected payload.
+    const again = await engine.flush();
+    assert.deepEqual(again, { status: 'skipped' });
+    assert.equal(
+        calls.length,
+        1,
+        'the rejected batch must be sent exactly once, never retried',
+    );
+
+    // A genuinely new edit (not a retry of the old one) is still accepted.
+    assert.doesNotThrow(() => engine.queueChange(2, 'good-value'));
+});
+
 test('reload() restores a fresh revision and clears needsReload without discarding unsent edits', async () => {
     const engine = createAutosaveEngine({
         initialRevision: 2,
@@ -319,7 +440,6 @@ test('each real (non-retry) batch gets its own mutation_id from the injected gen
             return {
                 type: 'accepted',
                 revision: batch.revision,
-                receivedAt: 'x',
                 acceptedItemNos: batch.items.map((i) => i.itemNo),
             };
         },

@@ -220,7 +220,8 @@ final class GenericInstrumentResultSourceFractionalColumnsTest extends TestCase
             'session_definition_payload' => $definitionPayload,
             'instrument_version_id' => $instrumentVersionId, 'instrument_version' => 'synthetic-pg-v1',
             'instrument_source_file' => 'synthetic-pg-ist.json', 'instrument_checksum' => hash('sha256', $instrumentPayload),
-            'result_contract_version' => 'synthetic-result:v1', 'result_payload' => $resultPayload,
+            'result_contract_version' => 'synthetic-result:v1', 'engine_version' => 'synthetic-scoring:v1',
+            'result_payload' => $resultPayload,
             'result_checksum' => hash('sha256', $resultPayload), 'created_at' => now(),
         ]);
     }

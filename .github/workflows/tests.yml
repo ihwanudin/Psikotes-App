@@ -9,15 +9,67 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('push-main-{0}', github.ref) }}
+  cancel-in-progress: true
+
 jobs:
   ci:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Detect docs-only changes
+        id: docs_changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "docs_only=false" >> "$GITHUB_OUTPUT"
+          files_file="$(mktemp)"
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            base_sha="${{ github.event.pull_request.base.sha }}"
+            if ! git fetch --no-tags --depth=100 origin "$base_sha"; then
+              echo "Diff detection failed while fetching PR base; running the full ci job." >&2
+              exit 0
+            fi
+            diff_range="FETCH_HEAD...HEAD"
+          else
+            before_sha="${{ github.event.before }}"
+            if [[ -z "$before_sha" || "$before_sha" == "0000000000000000000000000000000000000000" ]]; then
+              echo "Push base commit is unavailable; running the full ci job." >&2
+              exit 0
+            fi
+            if ! git fetch --no-tags --depth=100 origin "$before_sha"; then
+              echo "Diff detection failed while fetching push base; running the full ci job." >&2
+              exit 0
+            fi
+            diff_range="FETCH_HEAD..HEAD"
+          fi
+
+          if ! git diff --name-only "$diff_range" > "$files_file"; then
+            echo "Diff detection failed while computing changed files; running the full ci job." >&2
+            exit 0
+          fi
+          if [[ ! -s "$files_file" ]]; then
+            echo "Diff detection found no changed files; running the full ci job." >&2
+            exit 0
+          fi
+
+          docs_only=true
+          while IFS= read -r file; do
+            if [[ "$file" != tasks/* && "$file" != *.md ]]; then
+              docs_only=false
+              break
+            fi
+          done < "$files_file"
+
+          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
 
       - name: Setup Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -45,6 +97,7 @@ jobs:
         with:
           # Single source of truth, kept in step with docker/app/Dockerfile.
           node-version-file: '.nvmrc'
+          cache: 'npm'
 
       - name: Prepare Laravel environment
         run: |
@@ -55,10 +108,17 @@ jobs:
           sed -i 's/^DB_CONNECTION=.*/DB_CONNECTION=sqlite/' .env
           sed -i "s#^DB_DATABASE=.*#DB_DATABASE=$(pwd)/database/database.sqlite#" .env
 
+      - name: Summarize skipped CI heavy checks
+        if: steps.docs_changes.outputs.docs_only == 'true'
+        run: |
+          echo "SKIPPED: diff only touches safe docs paths, CI heavy checks were not run." >> "$GITHUB_STEP_SUMMARY"
+
       - name: Setup Application
+        if: steps.docs_changes.outputs.docs_only != 'true'
         run: composer setup
 
       - name: Run CI Checks
+        if: steps.docs_changes.outputs.docs_only != 'true'
         run: composer ci:check
 
   frontend-fixture-browser:
@@ -127,13 +187,64 @@ jobs:
 
   organization-postgres:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 20
 
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Detect PostgreSQL-irrelevant changes
+        id: postgres_changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "postgres_irrelevant=false" >> "$GITHUB_OUTPUT"
+          files_file="$(mktemp)"
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            base_sha="${{ github.event.pull_request.base.sha }}"
+            if ! git fetch --no-tags --depth=100 origin "$base_sha"; then
+              echo "Diff detection failed while fetching PR base; running organization-postgres." >&2
+              exit 0
+            fi
+            diff_range="FETCH_HEAD...HEAD"
+          else
+            before_sha="${{ github.event.before }}"
+            if [[ -z "$before_sha" || "$before_sha" == "0000000000000000000000000000000000000000" ]]; then
+              echo "Push base commit is unavailable; running organization-postgres." >&2
+              exit 0
+            fi
+            if ! git fetch --no-tags --depth=100 origin "$before_sha"; then
+              echo "Diff detection failed while fetching push base; running organization-postgres." >&2
+              exit 0
+            fi
+            diff_range="FETCH_HEAD..HEAD"
+          fi
+
+          if ! git diff --name-only "$diff_range" > "$files_file"; then
+            echo "Diff detection failed while computing changed files; running organization-postgres." >&2
+            exit 0
+          fi
+          if [[ ! -s "$files_file" ]]; then
+            echo "Diff detection found no changed files; running organization-postgres." >&2
+            exit 0
+          fi
+
+          postgres_irrelevant=true
+          while IFS= read -r file; do
+            if [[ "$file" == app/* || "$file" == database/* || "$file" == routes/* || "$file" == config/* || "$file" == composer.* || "$file" == docker/* || "$file" == .github/workflows/* ]]; then
+              postgres_irrelevant=false
+              break
+            fi
+            if [[ "$file" != tests/Frontend/* && "$file" != resources/css/* && "$file" != resources/js/* && "$file" != tools/design-tokens/* && "$file" != tasks/* && "$file" != *.md ]]; then
+              postgres_irrelevant=false
+              break
+            fi
+          done < "$files_file"
+
+          echo "postgres_irrelevant=$postgres_irrelevant" >> "$GITHUB_OUTPUT"
 
       - name: Setup PHP for dependencies
         uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
@@ -148,8 +259,15 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Summarize skipped PostgreSQL suite
+        if: steps.postgres_changes.outputs.postgres_irrelevant == 'true'
+        run: |
+          echo "SKIPPED: diff only touches safe docs/frontend paths, backend suite was not run." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Install test dependencies and build assets
+        if: steps.postgres_changes.outputs.postgres_irrelevant != 'true'
         env:
           APP_ENV: testing
           APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
@@ -159,9 +277,11 @@ jobs:
           npm run build
 
       - name: Build PHP runner from repository Dockerfile
+        if: steps.postgres_changes.outputs.postgres_irrelevant != 'true'
         run: docker build --target php-base --tag oncam-org-postgres-ci:php83 --file docker/app/Dockerfile .
 
       - name: Run ordered PostgreSQL suites on disposable database
+        if: steps.postgres_changes.outputs.postgres_irrelevant != 'true'
         shell: bash
         run: |
           set -euo pipefail

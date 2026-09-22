@@ -170,6 +170,211 @@ final class TestSessionDefinitionSnapshotSchemaTest extends OrganizationPaymentT
         ));
     }
 
+    // ═══════════════════════════════════════════════
+    // F2 timed-segments stage 3b (2026-09-22) --
+    // tasks/handoffs/f2/timed-segments-plan.md. Raw INSERT/UPDATE through
+    // this test connection, bypassing SessionDefinition's PHP validation
+    // entirely, so these prove the DATABASE itself enforces the new shape
+    // and duration invariants -- not just the PHP layer in front of it.
+    // ═══════════════════════════════════════════════
+
+    public function test_snapshot_accepts_any_independent_combination_of_the_optional_subtest_fields(): void
+    {
+        $readingCapOnly = $this->fixedDefinition();
+        $readingCapOnly['subtests'][0]['reading_cap_seconds'] = 15;
+        $readingCapOnly['checksum'] = SessionDefinition::checksumFor($readingCapOnly);
+        DB::table('test_sessions')->insert(
+            $this->sessionRow(duration: 75) + $this->snapshot($readingCapOnly),
+        );
+
+        $earlyFinishOnly = $this->fixedDefinition();
+        $earlyFinishOnly['subtests'][0]['allow_early_finish'] = true;
+        $earlyFinishOnly['checksum'] = SessionDefinition::checksumFor($earlyFinishOnly);
+        DB::table('test_sessions')->insert(
+            $this->sessionRow(duration: 60) + $this->snapshot($earlyFinishOnly),
+        );
+
+        $bothNoSegments = $this->fixedDefinition();
+        $bothNoSegments['subtests'][0]['reading_cap_seconds'] = 10;
+        $bothNoSegments['subtests'][0]['allow_early_finish'] = true;
+        $bothNoSegments['checksum'] = SessionDefinition::checksumFor($bothNoSegments);
+        DB::table('test_sessions')->insert(
+            $this->sessionRow(duration: 70) + $this->snapshot($bothNoSegments),
+        );
+
+        $segmentsOnly = $this->fixedDefinition();
+        $segmentsOnly['subtests'][0]['segments'] = [
+            ['code' => 'SYNTHETIC_A', 'duration_seconds' => 20, 'reading_cap_seconds' => 5, 'allow_early_finish' => false],
+            ['code' => 'SYNTHETIC_B', 'duration_seconds' => 40, 'reading_cap_seconds' => 0, 'allow_early_finish' => true],
+        ];
+        $segmentsOnly['checksum'] = SessionDefinition::checksumFor($segmentsOnly);
+        DB::table('test_sessions')->insert(
+            $this->sessionRow(duration: 65) + $this->snapshot($segmentsOnly),
+        );
+
+        $this->assertSame(4, DB::table('test_sessions')->count());
+    }
+
+    public function test_snapshot_rejects_a_subtest_with_the_wrong_key_count_even_with_optional_fields_present(): void
+    {
+        $tooFew = $this->fixedDefinition();
+        unset($tooFew['subtests'][0]['item_count']);
+        $tooFew['subtests'][0]['reading_cap_seconds'] = 10;
+        $this->assertRejected(fn () => DB::table('test_sessions')->insert(
+            $this->sessionRow(duration: 70) + $this->snapshot($tooFew),
+        ), 'missing a required field alongside a valid optional one');
+
+        $unknown = $this->fixedDefinition();
+        $unknown['subtests'][0]['reading_cap_seconds'] = 10;
+        $unknown['subtests'][0]['unexpected'] = true;
+        $this->assertRejected(fn () => DB::table('test_sessions')->insert(
+            $this->sessionRow(duration: 70) + $this->snapshot($unknown),
+        ), 'unknown field alongside a valid optional one');
+
+        $wrongType = $this->fixedDefinition();
+        $wrongType['subtests'][0]['reading_cap_seconds'] = '10';
+        $this->assertRejected(fn () => DB::table('test_sessions')->insert(
+            $this->sessionRow(duration: 70) + $this->snapshot($wrongType),
+        ), 'reading_cap_seconds as a string');
+
+        $negative = $this->fixedDefinition();
+        $negative['subtests'][0]['reading_cap_seconds'] = -1;
+        $this->assertRejected(fn () => DB::table('test_sessions')->insert(
+            $this->sessionRow(duration: 59) + $this->snapshot($negative),
+        ), 'negative reading_cap_seconds');
+
+        $wrongBoolType = $this->fixedDefinition();
+        $wrongBoolType['subtests'][0]['allow_early_finish'] = 'true';
+        $this->assertRejected(fn () => DB::table('test_sessions')->insert(
+            $this->sessionRow(duration: 60) + $this->snapshot($wrongBoolType),
+        ), 'allow_early_finish as a string');
+    }
+
+    public function test_snapshot_rejects_malformed_segments_shape(): void
+    {
+        $emptyArray = $this->fixedDefinition();
+        $emptyArray['subtests'][0]['segments'] = [];
+        $this->assertRejected(fn () => DB::table('test_sessions')->insert(
+            $this->sessionRow(duration: 60) + $this->snapshot($emptyArray),
+        ), 'empty segments array');
+
+        $missingKey = $this->fixedDefinition();
+        $missingKey['subtests'][0]['segments'] = [
+            ['code' => 'SYNTHETIC_A', 'duration_seconds' => 60, 'reading_cap_seconds' => 0],
+        ];
+        $this->assertRejected(fn () => DB::table('test_sessions')->insert(
+            $this->sessionRow(duration: 60) + $this->snapshot($missingKey),
+        ), 'segment missing allow_early_finish');
+
+        $extraKey = $this->fixedDefinition();
+        $extraKey['subtests'][0]['segments'] = [
+            ['code' => 'SYNTHETIC_A', 'duration_seconds' => 60, 'reading_cap_seconds' => 0, 'allow_early_finish' => false, 'unexpected' => true],
+        ];
+        $this->assertRejected(fn () => DB::table('test_sessions')->insert(
+            $this->sessionRow(duration: 60) + $this->snapshot($extraKey),
+        ), 'segment with an unexpected key');
+
+        $wrongDurationType = $this->fixedDefinition();
+        $wrongDurationType['subtests'][0]['segments'] = [
+            ['code' => 'SYNTHETIC_A', 'duration_seconds' => '60', 'reading_cap_seconds' => 0, 'allow_early_finish' => false],
+        ];
+        $this->assertRejected(fn () => DB::table('test_sessions')->insert(
+            $this->sessionRow(duration: 60) + $this->snapshot($wrongDurationType),
+        ), 'segment duration_seconds as a string');
+
+        $collidingCode = $this->fixedDefinition();
+        $collidingCode['subtests'][0]['segments'] = [
+            ['code' => 'SYNTHETIC', 'duration_seconds' => 60, 'reading_cap_seconds' => 0, 'allow_early_finish' => false],
+        ];
+        $this->assertRejected(fn () => DB::table('test_sessions')->insert(
+            $this->sessionRow(duration: 60) + $this->snapshot($collidingCode),
+        ), 'segment code colliding with its own parent subtest code');
+    }
+
+    public function test_snapshot_rejects_segment_durations_not_summing_to_their_parent_subtest(): void
+    {
+        $definition = $this->fixedDefinition();
+        $definition['subtests'][0]['segments'] = [
+            ['code' => 'SYNTHETIC_A', 'duration_seconds' => 20, 'reading_cap_seconds' => 0, 'allow_early_finish' => false],
+            ['code' => 'SYNTHETIC_B', 'duration_seconds' => 30, 'reading_cap_seconds' => 0, 'allow_early_finish' => false],
+        ];
+
+        $this->assertRejected(fn () => DB::table('test_sessions')->insert(
+            $this->sessionRow(duration: 60) + $this->snapshot($definition),
+        ), 'segments summing to 50, parent subtest duration is 60');
+    }
+
+    /**
+     * The duration invariant this whole extension exists for (revision 1 of
+     * tasks/handoffs/f2/timed-segments-plan.md): duration_seconds must be
+     * exactly total_duration_seconds PLUS the reading cap sum -- neither
+     * the old formula (ignoring the cap) nor an arbitrary other value.
+     */
+    public function test_snapshot_rejects_a_duration_that_ignores_the_reading_cap(): void
+    {
+        $definition = $this->fixedDefinition();
+        $definition['subtests'][0]['reading_cap_seconds'] = 15;
+        $definition['checksum'] = SessionDefinition::checksumFor($definition);
+
+        // The pre-stage-3 formula: duration_seconds = total_duration_seconds
+        // alone, ignoring the 15s reading cap entirely.
+        $this->assertRejected(fn () => DB::table('test_sessions')->insert(
+            $this->sessionRow(duration: 60) + $this->snapshot($definition),
+        ), 'duration_seconds omits the reading cap');
+
+        // An arbitrary other value is equally wrong.
+        $this->assertRejected(fn () => DB::table('test_sessions')->insert(
+            $this->sessionRow(duration: 100) + $this->snapshot($definition),
+        ), 'duration_seconds is an arbitrary value');
+
+        // Exactly total_duration_seconds + reading cap succeeds.
+        DB::table('test_sessions')->insert(
+            $this->sessionRow(duration: 75) + $this->snapshot($definition),
+        );
+        $this->assertSame(1, DB::table('test_sessions')->count());
+    }
+
+    /**
+     * The Kraepelin branch has its own hardcoded 750 check (generator
+     * shape is fixed: 50 columns x 15s) -- this must account for a reading
+     * cap exactly the same way the general path does, not stay pinned at
+     * a literal 750 regardless of the cap.
+     */
+    public function test_kraepelin_snapshot_duration_accounts_for_a_reading_cap(): void
+    {
+        $definition = $this->kraepelinDefinition();
+        $definition['subtests'][0]['reading_cap_seconds'] = 20;
+        $definition['checksum'] = SessionDefinition::checksumFor($definition);
+
+        $this->assertRejected(fn () => DB::table('test_sessions')->insert(
+            $this->sessionRow(duration: 750, testType: 'kraepelin') + $this->snapshot($definition),
+        ), 'Kraepelin duration_seconds stays literally 750, ignoring the reading cap');
+
+        DB::table('test_sessions')->insert(
+            $this->sessionRow(duration: 770, testType: 'kraepelin') + $this->snapshot($definition),
+        );
+        $this->assertSame(1, DB::table('test_sessions')->count());
+    }
+
+    /**
+     * Lead's explicit ask (2026-09-22): confirm no OTHER invariant in this
+     * same trigger was disturbed by how the total duration is now
+     * recomputed -- item_count is entirely unrelated to duration/reading
+     * caps, so the Kraepelin 1350-item check must still fire exactly as
+     * before, reading-cap fields present or not.
+     */
+    public function test_item_count_invariant_is_unaffected_by_reading_cap_fields(): void
+    {
+        $definition = $this->kraepelinDefinition();
+        $definition['subtests'][0]['reading_cap_seconds'] = 5;
+        $definition['subtests'][0]['item_count'] = 1349;
+        $definition['checksum'] = SessionDefinition::checksumFor($definition);
+
+        $this->assertRejected(fn () => DB::table('test_sessions')->insert(
+            $this->sessionRow(duration: 755, testType: 'kraepelin') + $this->snapshot($definition),
+        ), 'wrong item_count still rejected with a reading cap present');
+    }
+
     public function test_existing_sessions_and_grants_remain_null_without_backfill(): void
     {
         $this->migrate('down');

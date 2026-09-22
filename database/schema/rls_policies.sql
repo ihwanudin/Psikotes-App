@@ -144,8 +144,12 @@ CREATE POLICY consent_records_write ON consent_records FOR ALL TO psikotes_runti
 USING (app_private.app_role() IN ('service', 'super_admin'))
 WITH CHECK (app_private.app_role() IN ('service', 'super_admin'));
 
+-- packages/package_items RLS policies are created by:
+-- 2026_09_22_000200_harden_test_package_catalog_rls.php (PR #99)
+-- 2026_09_22_000300_add_central_admin_to_package_catalog_rls.php (adds central_admin)
+
 CREATE POLICY payment_methods_read ON payment_methods FOR SELECT TO psikotes_runtime
-USING (app_private.app_role() IN ('service', 'super_admin', 'branch_admin', 'staff', 'psychologist', 'participant'));
+USING (app_private.app_role() IN ('service', 'super_admin', 'central_admin', 'branch_admin', 'staff', 'psychologist', 'participant'));
 CREATE POLICY payment_methods_write ON payment_methods FOR ALL TO psikotes_runtime
 USING (app_private.app_role() IN ('service', 'super_admin'))
 WITH CHECK (app_private.app_role() IN ('service', 'super_admin'));

@@ -19,8 +19,12 @@ final class InstrumentSeederTest extends TestCase
     private const SOURCES = [
         'ist' => 'ist.json',
         'papi' => 'papi.json',
+        'papi_items' => 'papi_items.json',
         'rmib' => 'rmib.json',
+        'rmib_items' => 'rmib_items.json',
         'kraepelin' => 'kraepelin.json',
+        'kraepelin_grid' => 'kraepelin_grid.json',
+        'ist_items' => 'ist_items.json',
         'dass21' => 'dass21.json',
         'reporting' => 'reporting.json',
         'aspect_sources' => 'aspect_sources.json',

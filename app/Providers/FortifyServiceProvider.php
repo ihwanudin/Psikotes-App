@@ -26,7 +26,29 @@ class FortifyServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // Owner decision item 13.2: the starter-kit login cluster is
+        // unused (guard `web` has no reachable path outside this
+        // package's own routes; confirmed
+        // tasks/handoffs/f2/fortify-users-cluster-investigation.md and
+        // tasks/handoffs/f7/starter-auth-removal-plan-2026-09-21.md).
+        // Removing this provider from bootstrap/providers.php alone
+        // would NOT stop these routes:
+        // Laravel\Fortify\FortifyServiceProvider (the package's own
+        // provider, auto-discovered via Composer, not listed there) is
+        // what actually registers them, gated on the package's own
+        // `Fortify::$registersRoutes` static flag — `ignoreRoutes()` is
+        // Fortify's documented way to turn that off. Must run in
+        // `register()`, not `boot()`: Laravel guarantees every
+        // provider's `register()` runs before any provider's `boot()`,
+        // so this always executes before the package provider's own
+        // `boot()` -> `configureRoutes()` regardless of provider
+        // registration order. The rest of this file
+        // (configureActions/configureViews/configureRateLimiting) is
+        // left in place for now — those callbacks simply never run once
+        // their routes don't exist — and gets deleted in the follow-up
+        // PR that removes the file itself along with config/fortify.php
+        // and the composer dependency.
+        Fortify::ignoreRoutes();
     }
 
     /**

@@ -1,0 +1,27 @@
+{
+    "checks": [
+        {
+            "name": "Mobile (360px): policy list item body text is >= 16px (text-base)",
+            "passed": true,
+            "detail": "fontSize=16px"
+        },
+        {
+            "name": "Mobile: the policy <ul> has a real list-style (bullets), not \"none\"",
+            "passed": true,
+            "detail": "listStyleType=disc"
+        },
+        {
+            "name": "Desktop (>= sm breakpoint): policy text may shrink to 14px (sm:text-sm) — confirms the responsive split actually applies, not just present in the class list",
+            "passed": true,
+            "detail": "fontSize=14px"
+        }
+    ],
+    "mobileMeasurements": {
+        "policyItemFontSize": "16px",
+        "listStyleType": "disc",
+        "listItemHasMarker": true
+    },
+    "desktopMeasurements": {
+        "policyItemFontSize": "14px"
+    }
+}
