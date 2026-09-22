@@ -150,6 +150,7 @@ final class TestPackageManagementTest extends TestCase
             'email' => $role->value.'@example.test',
             'password' => 'not-a-real-password',
             'role' => $role,
+            'has_email_authentication' => true,
         ]);
     }
 

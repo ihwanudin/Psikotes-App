@@ -65,6 +65,10 @@ final class DisabledAdminCannotAccessPanelTest extends TestCase
             'name' => 'Admin', 'email' => 'admin-'.uniqid('', true).'@example.test',
             'password' => Hash::make('irrelevant-existing-password'),
             'role' => AdminRole::SuperAdmin,
+            // Unrelated to what this test checks (disabled-admin rejection)
+            // -- true so RequireMfaForPrivilegedAdmins never redirects this
+            // fixture to the profile page and masks the assertions below.
+            'has_email_authentication' => true,
         ]);
     }
 }
