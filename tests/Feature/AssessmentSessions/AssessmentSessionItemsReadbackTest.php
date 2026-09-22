@@ -69,6 +69,7 @@ final class AssessmentSessionItemsReadbackTest extends OrganizationPaymentTestCa
                     ['item_no' => 3, 'text' => 'third'],
                 ]],
             ],
+            'instructions' => null,
         ]);
     }
 
@@ -173,7 +174,7 @@ final class AssessmentSessionItemsReadbackTest extends OrganizationPaymentTestCa
 
         $response = $this->withToken($this->token($participant))->getJson("/api/sessions/{$session}/items")->assertOk();
 
-        $this->assertSame(['session_id', 'instrument', 'version', 'subtests'], array_keys($response->json()));
+        $this->assertSame(['session_id', 'instrument', 'version', 'subtests', 'instructions'], array_keys($response->json()));
         $this->assertSame(['code', 'items'], array_keys($response->json('subtests.0')));
     }
 
