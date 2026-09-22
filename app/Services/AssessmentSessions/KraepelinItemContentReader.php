@@ -39,7 +39,7 @@ use JsonException;
  *
  * $participantId/$lockedVariant (interface, 2026-09-21): ignored -- Kraepelin
  * content has no per-participant variant axis, every participant sees the
- * same grid.
+ * same grid. $currentSegmentCode is also ignored -- no multi-phase subtest.
  */
 final readonly class KraepelinItemContentReader implements AssessmentItemContentAuthority
 {
@@ -54,7 +54,9 @@ final readonly class KraepelinItemContentReader implements AssessmentItemContent
         SessionDefinition $definition,
         int $participantId,
         ?string $lockedVariant = null,
+        ?string $currentSegmentCode = null,
     ): AssessmentItemContent {
+        // Kraepelin has no multi-phase subtest -- nothing to filter by segment.
         if ($instrument !== GenericAssessmentInstrument::Kraepelin) {
             throw new AssessmentItemContentUnavailable(
                 'KraepelinItemContentReader only serves the Kraepelin instrument.',

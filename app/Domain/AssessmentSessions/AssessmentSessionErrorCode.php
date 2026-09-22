@@ -13,6 +13,8 @@ enum AssessmentSessionErrorCode: string
     case AutosaveRevisionGap = 'AUTOSAVE_REVISION_GAP';
     case MutationPayloadMismatch = 'MUTATION_PAYLOAD_MISMATCH';
     case InvalidAnswerBatch = 'INVALID_ANSWER_BATCH';
+    case InvalidSessionTransition = 'INVALID_SESSION_TRANSITION';
+    case ItemOutsideCurrentSegment = 'ITEM_OUTSIDE_CURRENT_SEGMENT';
     case AttemptAlreadyExists = 'ATTEMPT_ALREADY_EXISTS';
     case RetestNotAuthorized = 'RETEST_NOT_AUTHORIZED';
 }

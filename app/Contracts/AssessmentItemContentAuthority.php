@@ -34,6 +34,17 @@ use App\Domain\AssessmentSessions\SessionDefinition;
  * fresh from $participantId and report what it picked via
  * AssessmentItemContent::$resolvedVariant, for the caller to persist and
  * pass back as $lockedVariant on every later call.
+ *
+ * $currentSegmentCode (added item-delivery segment-awareness stage, per
+ * tasks/handoffs/f2/item-delivery-segment-awareness-deferred.md): the
+ * caller's own fresh TimedSegmentSweep result for the live session, e.g.
+ * "ME_MEMORIZE"/"ME_ANSWER" -- null only when there is no live session to
+ * sweep (AllocateAndStartAssessmentSession's pre-start deliverability
+ * check, whose return value is discarded; see that call site's own
+ * comment). A reader for an instrument with no multi-phase subtest ignores
+ * this entirely, exactly like Kraepelin's reader does today. Independent
+ * axis from $participantId/$lockedVariant -- a reader may need either,
+ * both, or neither.
  */
 interface AssessmentItemContentAuthority
 {
@@ -43,5 +54,6 @@ interface AssessmentItemContentAuthority
         SessionDefinition $definition,
         int $participantId,
         ?string $lockedVariant = null,
+        ?string $currentSegmentCode = null,
     ): AssessmentItemContent;
 }

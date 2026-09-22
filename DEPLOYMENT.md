@@ -39,6 +39,7 @@ tersebut bukan bagian Git dan tunnel tidak terbukti live.
 | Xendit | `XENDIT_SECRET_KEY`, `XENDIT_CALLBACK_TOKEN` | finance/platform |
 | Private object storage | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION`, `AWS_BUCKET`, `AWS_ENDPOINT`/`FILESYSTEM_S3_ENDPOINT` | storage owner |
 | Identity/payment disks | `IDENTITY_FILESYSTEM_*`, `PAYMENT_PROOF_FILESYSTEM_*` | storage/security |
+| IST asset disk | `IST_ASSET_FILESYSTEM_*` | storage/security |
 | Shared Drive archive | `DRIVE_SA_JSON`, `DRIVE_SHARED_FOLDER_ID` | archive owner |
 | Error tracker | `SENTRY_DSN` or approved equivalent | operations |
 | Cloudflare tunnel | `.secrets/cloudflare_tunnel_token` | platform |
@@ -69,7 +70,24 @@ S3, monitoring, dan tunnel tetap tidak aktif sampai owner dan evidence tersedia.
 4. Pastikan migrasi dijalankan `migrate`, bukan `app`/worker. Untuk managed
    PostgreSQL, DBA membuat role terlebih dahulu; password tidak ditaruh dalam
    `database/schema/postgres_roles.sql`.
-5. Periksa `GET /health` dan daftar proses/schedule sebelum test. `/up` juga
+5. Setelah migrasi, jalankan `php artisan assets:sync-ist` (F2 IST reader
+   Stage 1, 2026-09-21) pada tahap yang sama dengan `migrate` -- deploy-time,
+   bukan scheduler berkala, karena tidak ada apa pun untuk diperiksa ulang
+   di antara deploy. **Peran DB**: berbeda dari `migrate` (owner-only,
+   `pgsql_migration`), command ini adalah `php artisan` biasa yang jalan
+   lewat koneksi `pgsql` normal milik `app` -- yaitu peran runtime
+   `psikotes_runtime`, RLS `app.role='service'` (lewat
+   `RlsContextRunner::runAsService()`, sama seperti tulisan app lainnya).
+   Tidak butuh credential owner. Command ini menyalin
+   `database/seeders/data/assets/ist/**/*.png` (sumber checked-in, ditinjau
+   sama seperti `ist_items.json`) ke disk privat `ist-assets` dan mencatat
+   `asset_id` opaque per berkas di `assessment_asset_references` (tabel RLS
+   `service`-only, sama pola dengan `instrument_versions`). **Exit code
+   bukan-nol WAJIB menggagalkan deploy** -- command menolak melanjutkan bila
+   checksum berkas yang baru ditulis tidak cocok dengan sumbernya setelah
+   sync (byte korup), dan tidak pernah diam-diam tetap memakai aset
+   lama/rusak.
+6. Periksa `GET /health` dan daftar proses/schedule sebelum test. `/up` juga
    terdaftar oleh Laravel, tetapi semantics liveness-vs-readiness belum dibekukan.
 
 Pada candidate ini `docker compose config --quiet` lulus dengan placeholder

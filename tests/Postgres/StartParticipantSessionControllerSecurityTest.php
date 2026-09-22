@@ -218,6 +218,7 @@ final class StartParticipantSessionControllerSecurityTest extends TestCase
                         SessionDefinition $definition,
                         int $participantId,
                         ?string $lockedVariant = null,
+                        ?string $currentSegmentCode = null,
                     ): AssessmentItemContent {
                         throw new RuntimeException('Must never be reached: no ready entitlement exists.');
                     }

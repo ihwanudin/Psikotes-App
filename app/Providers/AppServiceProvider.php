@@ -12,6 +12,7 @@ use App\Contracts\PaymentProvider;
 use App\Contracts\RunsRlsContext;
 use App\Security\RlsContextRunner;
 use App\Services\AssessmentSessions\DatabaseAssessmentSessionDefinitionAuthority;
+use App\Services\AssessmentSessions\IstItemContentReader;
 use App\Services\AssessmentSessions\KraepelinItemContentReader;
 use App\Services\AssessmentSessions\PapiItemContentReader;
 use App\Services\AssessmentSessions\RegistryAssessmentItemContentAuthority;
@@ -23,13 +24,17 @@ use App\Services\Payments\XenditProvider;
 use App\Services\ReportRendering\ReportDocumentSupplementalData;
 use App\Services\ReportRendering\ReportSupplementalData;
 use Carbon\CarbonImmutable;
+use DateTimeInterface;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
 use RuntimeException;
 
@@ -52,17 +57,19 @@ class AppServiceProvider extends ServiceProvider
         // Fail-closed by design (Lead sign-off, 2026-09-21): an instrument
         // with no entry below rejects with ASSESSMENT_ITEM_CONTENT_UNAVAILABLE
         // rather than falling through to a permissive default. Kraepelin,
-        // PAPI, and RMIB (Stage 2 continuation, 2026-09-21) are the only
-        // real readers so far -- ist still has none, so it still rejects
-        // the same way Stage 1 shipped it. Stage 2 only ever ADDS entries
-        // to this map; it never changes RegistryAssessmentItemContentAuthority's
-        // default.
+        // PAPI, and RMIB (Stage 2 continuation, 2026-09-21) and IST (IST
+        // plan sign-off, 2026-09-21, extended for ME per
+        // app/Services/AssessmentSessions/IstItemContentReader.php's doc
+        // comment) are the real readers registered so far. New entries only
+        // ever get ADDED to this map; it never changes
+        // RegistryAssessmentItemContentAuthority's default.
         $this->app->bind(
             AssessmentItemContentAuthority::class,
             fn (): RegistryAssessmentItemContentAuthority => new RegistryAssessmentItemContentAuthority([
                 'kraepelin' => new KraepelinItemContentReader,
                 'papi' => new PapiItemContentReader,
                 'rmib' => new RmibItemContentReader,
+                'ist' => new IstItemContentReader,
             ]),
         );
         $this->app->bind(ReportSupplementalData::class, ReportDocumentSupplementalData::class);
@@ -76,6 +83,7 @@ class AppServiceProvider extends ServiceProvider
         Model::preventLazyLoading($this->app->environment('testing'));
 
         $this->configureDefaults();
+        self::configureIstAssetTemporaryUrls();
 
         if (config('app.env') !== 'production') {
             return;
@@ -154,6 +162,50 @@ class AppServiceProvider extends ServiceProvider
                     'message' => 'Terlalu banyak permintaan layanan.',
                 ],
             ], 429, $headers)));
+    }
+
+    /**
+     * The ist-assets local disk has 'serve' => false in filesystems.php:
+     * ServeIstAssetController + routes/web.php's `storage.ist-assets`
+     * route replace the framework's own signed-URL serving (see that
+     * controller's doc comment for why). This restores
+     * Storage::disk('ist-assets')->temporaryUrl(), pointed at the
+     * replacement route, with one addition over the framework's own
+     * un-overridden behavior: a random `nonce` query parameter folded
+     * into the signature, so two temporaryUrl() calls issued within the
+     * same second (its `expires` timestamp is second-precision) never
+     * produce a byte-identical URL. Mirrors
+     * Illuminate\Filesystem\LocalFilesystemAdapter::temporaryUrl()
+     * exactly otherwise (absolute: false + ->to(), not absolute: true
+     * directly -- hasValidRelativeSignature() on the receiving end
+     * validates against the relative form).
+     *
+     * Public static and side-effect-only (no $this) so a Feature test can
+     * call it again after Storage::persistentFake('ist-assets') -- that
+     * helper replaces the disk instance outright and does not carry over
+     * whatever buildTemporaryUrlsUsing() this provider's boot() already
+     * registered on the instance it replaced (Storage::fake(), unlike
+     * persistentFake(), goes further and installs its own unrelated fake
+     * callback, which is why tests needing the real nonce/route behavior
+     * must use persistentFake() and then call this again).
+     */
+    public static function configureIstAssetTemporaryUrls(): void
+    {
+        if (config('filesystems.disks.ist-assets.driver') !== 'local') {
+            return;
+        }
+
+        Storage::disk('ist-assets')->buildTemporaryUrlsUsing(
+            fn (string $path, DateTimeInterface $expiration, array $options = []): string => URL::to(URL::temporarySignedRoute(
+                'storage.ist-assets',
+                $expiration,
+                [
+                    'path' => strtr(rawurlencode($path), ['%2F' => '/']),
+                    'nonce' => Str::random(16),
+                ],
+                absolute: false,
+            )),
+        );
     }
 
     /** @return list<string> */
