@@ -66,26 +66,6 @@ final class DatabaseRlsCoverageSecurityTest extends TestCase
      * @var array<string, string>
      */
     private const array KNOWN_GAPS = [
-        'generic_assessment_result_versions' => 'RLS-GAP-01: generic assessment result payload '
-            .'versions (Selection-integration result-callback pipeline, feature-flag-gated by '
-            .'selection_integration.result_callback_enabled). See GenericAssessmentResultStore.',
-        'generic_assessment_result_outbox' => 'RLS-GAP-02: result-callback dispatch outbox. See '
-            .'GenericAssessmentResultOutbox.',
-        'generic_assessment_result_dispatch_attempts' => 'RLS-GAP-03: result-callback dispatch '
-            .'attempt/retry ledger. See GenericAssessmentResultDispatch.',
-        'generic_assessment_result_callback_schedules' => 'RLS-GAP-04: result-callback schedule/'
-            .'cadence tracking. See GenericAssessmentResultCallbackOrchestrator.',
-        'report_number_sequences' => 'RLS-GAP-05: sequential report-number issuance state. See '
-            .'App\Services\ReportRendering\ReportNumberIssuer.',
-        'test_number_sequences' => 'RLS-GAP-06: sequential test-number issuance state, used by the '
-            .'scheduled test-numbers:prepare-month command. See '
-            .'App\Services\TestNumber\MonthlyTestNumberIssuer.',
-        'packages' => 'RLS-GAP-07: relrowsecurity=0 but relforcerowsecurity=1 -- FORCE set without '
-            .'ENABLE, a broken/incomplete migration, not a deliberate no-RLS choice. Read by the '
-            .'public registration page per Lead\'s note; likely needs a non-service-only read '
-            .'policy, not a blanket service-only one.',
-        'package_items' => 'RLS-GAP-08: same FORCE-without-ENABLE migration bug as packages above; '
-            .'same remediation PR.',
         'users' => 'RLS-GAP-09: Fortify/Jetstream default auth scaffold cluster, registered and '
             .'live in bootstrap/providers.php but of unconfirmed actual use versus the app\'s real '
             .'Admin/participant-JWT auth -- under investigation, not yet a confirmed dead surface. '
