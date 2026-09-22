@@ -95,6 +95,17 @@ final class Admin extends Authenticatable implements FilamentUser, HasEmailAuthe
                 [AdminRole::SuperAdmin, AdminRole::Psychologist],
                 true,
             ),
+            // super_admin + central_admin (Lead's technical call, #112/#123
+            // reconciliation, 2026-09-22 -- "keputusan teknis, bukan
+            // keputusan bisnis pemilik proyek": central_admin's whole
+            // purpose is holding-company-level oversight, the same level
+            // this ability already gates at.
+            // tasks/handoffs/f2/legacy-entitlement-provisioning-closure-plan.md).
+            AdminAbility::ApproveBridgeFunding => in_array(
+                $this->role,
+                [AdminRole::SuperAdmin, AdminRole::CentralAdmin],
+                true,
+            ),
         };
     }
 

@@ -48,6 +48,24 @@ final class OrderStateMachineTest extends TestCase
         (new OrderStateMachine)->apply($current, $incoming);
     }
 
+    public function test_bridge_funding_transition_unlocks_entitlements_like_paid(): void
+    {
+        $machine = new OrderStateMachine;
+
+        $transition = $machine->applyBridgeFunding(OrderStatus::Pending);
+
+        $this->assertSame(OrderStatus::BridgeFunded, $transition->status);
+        $this->assertTrue($transition->changed);
+        $this->assertTrue($transition->unlocksEntitlements, 'BridgeFunded must unlock entitlements exactly like Paid (item 18: identical participant access) -- this is the exact regression the transition() widening in this commit guards against.');
+    }
+
+    public function test_bridge_funding_cannot_reorder_a_non_pending_order(): void
+    {
+        $this->expectException(InvalidOrderTransition::class);
+
+        (new OrderStateMachine)->applyBridgeFunding(OrderStatus::Paid);
+    }
+
     /** @return iterable<string, array{PaymentStatus}> */
     public static function providerStatuses(): iterable
     {

@@ -29,6 +29,17 @@ enum AdminAbility: string
     case GenerateReports = 'generate_reports';
 
     /**
+     * Approve a bridge-funding grant (item 18 -- the holding company covers
+     * a DIRECT_PUBLIC participant's assessment). Deliberately separate from
+     * VerifyPayments, even though both are "an admin attests money has been
+     * handled outside the normal participant-pays flow" (Lead's
+     * separation-of-concerns reasoning, already applied to GenerateReports
+     * vs ReviewReports): widening VerifyPayments for this narrow need would
+     * silently widen access to ordinary manual-transfer verification too.
+     */
+    case ApproveBridgeFunding = 'approve_bridge_funding';
+
+    /**
      * Authorize a specific retest attempt beyond
      * config('assessment_retests.free_attempt_limit') (item 19). Not
      * "authorize retests" generally -- attempts within the free limit need

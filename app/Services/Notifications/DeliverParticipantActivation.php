@@ -8,7 +8,6 @@ use App\Contracts\Notifier;
 use App\Data\Notifications\ParticipantActivationNotification;
 use App\Domain\Retention\RetentionDataClass;
 use App\Domain\Retention\RetentionPolicy;
-use App\Enums\OrderStatus;
 use App\Models\Order;
 use App\Models\OutboxMessage;
 use App\Security\RlsContextRunner;
@@ -153,7 +152,7 @@ final readonly class DeliverParticipantActivation
             return 'notification_contract_invalid';
         }
 
-        if ($order === null || $order->status !== OrderStatus::Paid) {
+        if ($order === null || ! $order->status->grantsAccess()) {
             return 'notification_order_not_paid';
         }
 
