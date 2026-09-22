@@ -237,7 +237,7 @@ final class AssessmentSessionHttpControllerTest extends TestCase
         return new AutosaveAssessmentAnswers(
             app(RlsContextRunner::class),
             new AssessmentAutosavePolicy,
-            new SealExpiredAssessmentSession(app(RlsContextRunner::class)),
+            new SealExpiredAssessmentSession(app(RlsContextRunner::class), app(ScoreAssessmentSession::class)),
             fn (): DateTimeImmutable => new DateTimeImmutable($iso),
         );
     }
@@ -247,7 +247,7 @@ final class AssessmentSessionHttpControllerTest extends TestCase
         return new SubmitAssessmentSession(
             app(RlsContextRunner::class),
             new AssessmentSessionSubmitPolicy,
-            new SealExpiredAssessmentSession(app(RlsContextRunner::class)),
+            new SealExpiredAssessmentSession(app(RlsContextRunner::class), app(ScoreAssessmentSession::class)),
             app(ScoreAssessmentSession::class),
             fn (): DateTimeImmutable => new DateTimeImmutable($iso),
         );
@@ -381,7 +381,7 @@ final class AssessmentSessionHttpControllerTest extends TestCase
                 $action = new AutosaveAssessmentAnswers(
                     app(RlsContextRunner::class),
                     new AssessmentAutosavePolicy,
-                    new SealExpiredAssessmentSession(app(RlsContextRunner::class)),
+                    new SealExpiredAssessmentSession(app(RlsContextRunner::class), app(ScoreAssessmentSession::class)),
                     function () use ($pair): DateTimeImmutable {
                         $this->writeEvent($pair[1], ['event' => 'locked']);
                         if (fgets($pair[1]) !== "release\n") {

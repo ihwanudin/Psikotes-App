@@ -40,12 +40,13 @@ Schedule::command('integrations:dispatch-generic-result-callbacks --limit=25')
     ->onOneServer()
     ->when(static fn (): bool => (bool) config('selection_integration.result_callback_enabled'));
 
-// F2 (2026-09-21): housekeeping only -- transitions abandoned in_progress
-// sessions to expired; never scores anything (ADR-0032 Titik A not yet
-// answered). Without this, a session a participant simply walks away from
-// stays in_progress in the database forever, since the status transition
-// is otherwise only discovered lazily on the participant's own next
-// request, which never comes.
+// F2 (2026-09-21), scoring wired in ADR-0032 PR2 (2026-09-23): transitions
+// abandoned in_progress sessions to expired and scores each one
+// (IST/PAPI/RMIB) in the same transaction as its seal. Without this, a
+// session a participant simply walks away from stays in_progress in the
+// database forever, since the status transition is otherwise only
+// discovered lazily on the participant's own next request, which never
+// comes.
 Schedule::command('sessions:sweep-expired')
     ->everyMinute()
     ->withoutOverlapping()

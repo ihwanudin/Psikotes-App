@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Postgres;
 
+use App\Actions\AssessmentResults\ScoreAssessmentSession;
 use App\Actions\AssessmentSessions\AutosaveAssessmentAnswers;
 use App\Actions\AssessmentSessions\SealExpiredAssessmentSession;
 use App\Domain\AssessmentSessions\AssessmentAutosavePolicy;
@@ -152,7 +153,7 @@ final class SweepExpiredAssessmentSessionsConcurrencyTest extends TestCase
         $action = new AutosaveAssessmentAnswers(
             $contexts,
             new AssessmentAutosavePolicy,
-            new SealExpiredAssessmentSession($contexts),
+            new SealExpiredAssessmentSession($contexts, app(ScoreAssessmentSession::class)),
             fn (): DateTimeImmutable => new DateTimeImmutable($lateIso),
         );
         $result = $action->execute($fixture['participant'], $fixture['public_id'], (string) Str::ulid(), 1, [
@@ -178,7 +179,7 @@ final class SweepExpiredAssessmentSessionsConcurrencyTest extends TestCase
     private function runSweepSealWorker(array $fixture, string $lateIso): array
     {
         $contexts = app(RlsContextRunner::class);
-        $sealer = new SealExpiredAssessmentSession($contexts);
+        $sealer = new SealExpiredAssessmentSession($contexts, app(ScoreAssessmentSession::class));
         $sealer->seal($fixture['session'], new DateTimeImmutable($lateIso));
 
         return ['sealed' => true];
@@ -198,11 +199,22 @@ final class SweepExpiredAssessmentSessionsConcurrencyTest extends TestCase
                 'referral_source' => 'default', 'full_name' => 'Sweep Concurrency Synthetic',
                 'phone' => '620000000000',
             ]);
+            // ADR-0032 PR2 (2026-09-23): kraepelin, deliberately -- this
+            // fixture has no assessment_case_id or seeded scoring data, and
+            // this test is about the sweep/autosave RACE, not scoring.
+            // Kraepelin is the one supported test_type ScoreAssessmentSession
+            // (now wired into the expiry seal both workers exercise) skips
+            // entirely.
             $definitionSource = [
-                'instrument' => 'ist', 'version' => 'synthetic-definition-v1',
-                'provenance' => 'sweep-concurrency-test-only', 'total_duration_seconds' => 3600,
-                'subtests' => [['code' => 'SYN', 'duration_seconds' => 3600, 'item_count' => 5]],
-                'randomization' => 'fixed', 'seed' => null, 'generator' => null,
+                'instrument' => 'kraepelin', 'version' => 'synthetic-definition-v1',
+                'provenance' => 'sweep-concurrency-test-only', 'total_duration_seconds' => 750,
+                'subtests' => [['code' => 'K', 'duration_seconds' => 750, 'item_count' => 1350]],
+                'randomization' => 'fixed', 'seed' => null,
+                'generator' => [
+                    'algorithm' => 'synthetic-generator', 'version' => 'synthetic-v1',
+                    'columns' => 50, 'seconds_per_column' => 15,
+                    'numbers_per_column' => 28, 'answer_slots_per_column' => 27,
+                ],
             ];
             $definition = SessionDefinition::fromArray([
                 ...$definitionSource, 'checksum' => SessionDefinition::checksumFor($definitionSource),
@@ -210,10 +222,10 @@ final class SweepExpiredAssessmentSessionsConcurrencyTest extends TestCase
             $publicId = (string) Str::ulid();
             $session = DB::table('test_sessions')->insertGetId([
                 'public_id' => $publicId, 'participant_id' => $participant,
-                'test_type' => 'ist', 'attempt_no' => 1,
+                'test_type' => 'kraepelin', 'attempt_no' => 1,
                 'authorization_id' => (string) Str::ulid(),
                 'allocation_intent_id' => (string) Str::ulid(),
-                'duration_seconds' => 3600, 'status' => 'in_progress', 'answers_revision' => 0,
+                'duration_seconds' => 750, 'status' => 'in_progress', 'answers_revision' => 0,
                 'started_at' => '2026-09-08 03:00:00.000000+00',
                 'ends_at' => '2026-09-08 04:00:00.000000+00',
                 'session_definition_version' => $definition->version,

@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Actions\AssessmentSessions\SealExpiredAssessmentSession;
 use App\Contracts\AssessmentItemContentAuthority;
 use App\Contracts\AssessmentSessionDefinitionAuthority;
 use App\Contracts\IdentityMatcher;
 use App\Contracts\Notifier;
 use App\Contracts\PaymentProvider;
 use App\Contracts\RunsRlsContext;
+use App\Contracts\SealsExpiredAssessmentSessions;
 use App\Security\RlsContextRunner;
 use App\Services\AssessmentSessions\DatabaseAssessmentSessionDefinitionAuthority;
 use App\Services\AssessmentSessions\IstItemContentReader;
@@ -50,6 +52,12 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(IdentityMatcher::class, ManualReviewIdentityMatcher::class);
         $this->app->bind(Notifier::class, N8nNotifier::class);
         $this->app->bind(PaymentProvider::class, XenditProvider::class);
+        // F2 (2026-09-21) added this contract for SweepExpiredAssessmentSessions'
+        // constructor but never registered a binding -- found while wiring
+        // ADR-0032 PR2 (2026-09-23): sessions:sweep-expired would have thrown
+        // BindingResolutionException on every real run, since Laravel's
+        // container auto-wiring cannot resolve an unbound interface.
+        $this->app->bind(SealsExpiredAssessmentSessions::class, SealExpiredAssessmentSession::class);
         $this->app->bind(
             AssessmentSessionDefinitionAuthority::class,
             DatabaseAssessmentSessionDefinitionAuthority::class,

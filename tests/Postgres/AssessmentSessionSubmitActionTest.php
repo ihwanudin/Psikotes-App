@@ -58,7 +58,10 @@ final class AssessmentSessionSubmitActionTest extends TestCase
         $this->assertSame('submitted', $accepted->status);
         $this->assertSame(7, $accepted->answersRevision);
 
-        $late = $this->fixture('in_progress', 3);
+        // ADR-0032 PR2 (2026-09-23): kraepelin -- this one actually reaches
+        // the expiry seal (now wired to score), same reasoning as the
+        // $exact fixture above.
+        $late = $this->fixture('in_progress', 3, 'kraepelin');
         $expired = $this->action(fn (): DateTimeImmutable => new DateTimeImmutable('2026-09-08T04:00:00.000001+07:00'))
             ->execute($late['participant'], $late['public_id']);
         $this->assertFalse($expired->accepted);
@@ -100,7 +103,7 @@ final class AssessmentSessionSubmitActionTest extends TestCase
         return new SubmitAssessmentSession(
             app(RlsContextRunner::class),
             new AssessmentSessionSubmitPolicy,
-            new SealExpiredAssessmentSession(app(RlsContextRunner::class)),
+            new SealExpiredAssessmentSession(app(RlsContextRunner::class), app(ScoreAssessmentSession::class)),
             app(ScoreAssessmentSession::class),
             $clock(...),
         );

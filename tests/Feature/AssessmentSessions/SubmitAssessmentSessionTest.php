@@ -66,7 +66,10 @@ final class SubmitAssessmentSessionTest extends OrganizationPaymentTestCase
     public function test_submit_one_microsecond_late_seals_expired_without_submission(): void
     {
         $participant = $this->participant();
-        $session = $this->sessionPublicId($participant, 'in_progress', 3);
+        // ADR-0032 PR2 (2026-09-23): kraepelin -- this fixture has no
+        // assessment_case_id, so the now-wired expiry scoring would fail
+        // closed for a real instrument. Kraepelin is skipped entirely.
+        $session = $this->sessionPublicId($participant, 'in_progress', 3, 'kraepelin');
         $result = $this->action(fn (): DateTimeImmutable => new DateTimeImmutable('2026-09-08T04:00:00.000001+07:00'))
             ->execute($participant, $session);
 
@@ -236,7 +239,10 @@ final class SubmitAssessmentSessionTest extends OrganizationPaymentTestCase
         return new SubmitAssessmentSession(
             $this->app->make(RlsContextRunner::class),
             new AssessmentSessionSubmitPolicy,
-            new SealExpiredAssessmentSession($this->app->make(RlsContextRunner::class)),
+            new SealExpiredAssessmentSession(
+                $this->app->make(RlsContextRunner::class),
+                $this->app->make(ScoreAssessmentSession::class),
+            ),
             $this->app->make(ScoreAssessmentSession::class),
             $clock(...),
         );

@@ -30,7 +30,7 @@ final readonly class PersistSealedIstResult
                 ->select([
                     'session.id', 'session.public_id', 'session.assessment_case_id',
                     'session.participant_id', 'session.test_type', 'session.attempt_no',
-                    'session.status', 'session.submitted_at', 'session.answers_revision',
+                    'session.status', 'session.submitted_at', 'session.expired_at', 'session.answers_revision',
                     'session.session_definition_version', 'session.session_definition_provenance',
                     'session.session_definition_checksum', 'session.session_definition_payload',
                 ])
@@ -109,8 +109,12 @@ final readonly class PersistSealedIstResult
             && strtoupper((string) ($session->public_id ?? '')) === $result->sessionPublicId
             && ($session->test_type ?? null) === 'ist'
             && (int) ($session->attempt_no ?? 0) === $result->attemptNo
-            && ($session->status ?? null) === 'submitted'
-            && $this->sameTimestamp($session->submitted_at ?? null, $result->submittedAt)
+            // ADR-0032 PR2 (2026-09-23): 'expired' sessions are scored too
+            // (psychologist P4) -- submitted_at/expired_at are mutually
+            // exclusive by test_sessions_lifecycle_check, so COALESCE picks
+            // whichever the session actually has.
+            && in_array($session->status ?? null, ['submitted', 'expired'], true)
+            && $this->sameTimestamp($session->submitted_at ?? $session->expired_at ?? null, $result->submittedAt)
             && (int) ($session->answers_revision ?? 0) === $result->answersRevision
             && ($session->session_definition_version ?? null) === $result->sessionDefinition['version']
             && ($session->session_definition_provenance ?? null) === $result->sessionDefinition['provenance']

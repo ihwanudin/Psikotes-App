@@ -91,6 +91,15 @@ final class GenericResultLedgerMigrationFixture
         (require database_path(
             'migrations/2026_09_22_000100_add_engine_version_to_generic_instrument_results.php',
         ))->up();
+        // ADR-0032 PR2 (2026-09-23): widens the guard trigger's accepted
+        // source-session status set (adds 'expired') and its submitted_at
+        // comparison (COALESCE with expired_at) -- not a column/type change
+        // like the two calls above, but the same "the rebuild reverts it,
+        // reapply here" reasoning: the trigger body is part of what
+        // 2026_09_13_000100's own up() recreates from scratch.
+        (require database_path(
+            'migrations/2026_09_23_000100_allow_expired_sessions_in_generic_instrument_result_ledger.php',
+        ))->up();
         $this->assertRebuiltStateMatchesAllKnownMigrations();
 
         $this->restoreRequired = false;

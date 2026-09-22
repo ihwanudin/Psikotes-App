@@ -25,10 +25,13 @@ use Throwable;
  * forever, not just "unscored": even the status transition itself never
  * happens without this sweep.
  *
- * Deliberately does NOT score anything (see `SealExpiredAssessmentSession`'s
- * own docblock) -- ADR-0032's Titik A (whether expired sessions may ever be
- * scored) is not decided yet.
+ * Scores each session it seals (IST/PAPI/RMIB; Kraepelin skipped) --
+ * `SealExpiredAssessmentSession::seal()` does this internally now
+ * (ADR-0032 §1(b), psychologist P4, 2026-09-23), inside the same
+ * transaction as that session's own status write. This command itself
+ * stays unaware of scoring; it only decides WHICH sessions are candidates.
  *
+
  * Each candidate session is sealed in its OWN service-context transaction
  * (`SealExpiredAssessmentSession::seal()`), not one transaction for the
  * whole batch: a failure sealing one session (e.g. a concurrent writer won

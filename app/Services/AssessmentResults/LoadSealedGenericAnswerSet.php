@@ -45,6 +45,7 @@ final readonly class LoadSealedGenericAnswerSet
                 'session.status',
                 'session.answers_revision',
                 'session.submitted_at',
+                'session.expired_at',
                 'session.session_definition_version',
                 'session.session_definition_provenance',
                 'session.session_definition_checksum',
@@ -66,7 +67,7 @@ final readonly class LoadSealedGenericAnswerSet
             throw new UnexpectedValueException('SEALED_GENERIC_ANSWER_INSTRUMENT_UNSUPPORTED');
         }
 
-        if (! in_array($session->status ?? null, ['submitted', 'scored'], true)
+        if (! in_array($session->status ?? null, ['submitted', 'scored', 'expired'], true)
             || (int) ($session->id ?? 0) !== $sessionId
             || (int) ($session->participant_id ?? 0) < 1
             || (int) ($session->assessment_case_id ?? 0) < 1
@@ -128,7 +129,13 @@ final readonly class LoadSealedGenericAnswerSet
             sessionPublicId: strtoupper((string) $session->public_id),
             instrument: $instrument,
             attemptNo: (int) $session->attempt_no,
-            submittedAt: $this->timestamp($session->submitted_at ?? null),
+            // ADR-0032 PR2 (2026-09-23): "when this session's answers became
+            // final" -- submitted_at for an explicit submit, expired_at for
+            // a session sealed by the expiry sweep (test_sessions_lifecycle_check
+            // makes the two mutually exclusive; exactly one is ever set for
+            // a sealed session). Never both null here: the status gate above
+            // already only accepts submitted/scored/expired.
+            submittedAt: $this->timestamp($session->submitted_at ?? $session->expired_at ?? null),
             answersRevision: (int) $session->answers_revision,
             definition: $definition,
             answers: $answers,
