@@ -702,6 +702,7 @@ final readonly class ThrowingAssessmentItemContentAuthority implements Assessmen
     public function contentFor(
         GenericAssessmentInstrument $instrument,
         SessionDefinition $definition,
+        ?string $currentSegmentCode = null,
     ): AssessmentItemContent {
         throw $this->failure;
     }
