@@ -41,6 +41,7 @@ final class PapiItemContentReaderTest extends TestCase
             fn () => (new PapiItemContentReader)->contentFor(
                 GenericAssessmentInstrument::Papi,
                 $this->syntheticDefinition(),
+                1,
             ),
         );
 
@@ -86,6 +87,7 @@ final class PapiItemContentReaderTest extends TestCase
             fn () => (new PapiItemContentReader)->contentFor(
                 GenericAssessmentInstrument::Papi,
                 $this->syntheticDefinition(),
+                1,
             ),
         );
     }
@@ -98,6 +100,7 @@ final class PapiItemContentReaderTest extends TestCase
             fn () => (new PapiItemContentReader)->contentFor(
                 GenericAssessmentInstrument::Ist,
                 $this->syntheticDefinition(instrument: 'ist'),
+                1,
             ),
         );
     }
@@ -112,6 +115,7 @@ final class PapiItemContentReaderTest extends TestCase
             fn () => (new PapiItemContentReader)->contentFor(
                 GenericAssessmentInstrument::Papi,
                 $this->syntheticDefinition(),
+                1,
             ),
         );
     }
@@ -128,6 +132,7 @@ final class PapiItemContentReaderTest extends TestCase
             fn () => (new PapiItemContentReader)->contentFor(
                 GenericAssessmentInstrument::Papi,
                 $this->syntheticDefinition(),
+                1,
             ),
         );
     }
@@ -149,6 +154,7 @@ final class PapiItemContentReaderTest extends TestCase
             fn () => (new PapiItemContentReader)->contentFor(
                 GenericAssessmentInstrument::Papi,
                 $this->syntheticDefinition(),
+                1,
             ),
         );
     }

@@ -24,6 +24,8 @@ final readonly class AlwaysAvailableAssessmentItemContentAuthority implements As
     public function contentFor(
         GenericAssessmentInstrument $instrument,
         SessionDefinition $definition,
+        int $participantId,
+        ?string $lockedVariant = null,
     ): AssessmentItemContent {
         return new AssessmentItemContent($instrument, $definition->version, []);
     }
