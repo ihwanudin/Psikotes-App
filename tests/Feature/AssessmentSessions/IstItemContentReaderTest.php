@@ -37,18 +37,19 @@ final class IstItemContentReaderTest extends TestCase
         $this->artisan('migrate:fresh', ['--force' => true, '--no-interaction' => true]);
     }
 
-    public function test_it_builds_the_seven_final_subtests_from_the_real_extracted_content(): void
+    public function test_it_builds_the_nine_final_subtests_from_the_real_extracted_content(): void
     {
-        $payload = $this->realIstItemsPayloadWithFinalMe();
+        $payload = $this->realIstItemsPayloadFullyFinal();
         $this->seedIstItemsAuthority($payload);
+        $this->seedIstAssetReferences($this->allFaWuAssetPaths());
 
         $content = app(RlsContextRunner::class)->runAsService(
             fn () => (new IstItemContentReader)->contentFor(GenericAssessmentInstrument::Ist, $this->syntheticDefinition(), 1),
         );
 
         $this->assertSame(GenericAssessmentInstrument::Ist, $content->instrument);
-        $this->assertCount(7, $content->subtests);
-        $this->assertSame(['SE', 'WA', 'AN', 'GE', 'RA', 'ZR', 'ME'], array_column($content->subtests, 'code'));
+        $this->assertCount(9, $content->subtests);
+        $this->assertSame(['SE', 'WA', 'AN', 'GE', 'RA', 'ZR', 'FA', 'WU', 'ME'], array_column($content->subtests, 'code'));
 
         $se = $content->subtests[0];
         $this->assertSame('multiple_choice', $se['answer_type']);
@@ -82,11 +83,46 @@ final class IstItemContentReaderTest extends TestCase
         $this->assertSame('fill_in_numeric', $zr['answer_type']);
         $this->assertSame(97, $zr['items'][0]['item']);
 
+        // FA: two legend groups. Items 117-128 (FA-L1) and 129-136 (FA-L2)
+        // resolve to two DIFFERENT sets of option asset_ids -- proves the
+        // per-item legend_id lookup actually varies by item, not just
+        // reuses whatever legend happened to be built first.
+        $fa = $content->subtests[6];
+        $this->assertSame('FA', $fa['code']);
+        $this->assertSame('image_choice', $fa['answer_type']);
+        $this->assertCount(20, $fa['items']);
+        $this->assertSame(117, $fa['items'][0]['item']);
+        $this->assertSame($this->assetId('fa/117.png'), $fa['items'][0]['asset_id']);
+        $this->assertSame(
+            ['a' => $this->assetId('fa/legend-1-a.png'), 'b' => $this->assetId('fa/legend-1-b.png'),
+                'c' => $this->assetId('fa/legend-1-c.png'), 'd' => $this->assetId('fa/legend-1-d.png'),
+                'e' => $this->assetId('fa/legend-1-e.png')],
+            $fa['items'][0]['options'],
+        );
+        $this->assertSame(129, $fa['items'][12]['item']);
+        $this->assertSame($this->assetId('fa/legend-2-a.png'), $fa['items'][12]['options']['a']);
+        $this->assertNotSame($fa['items'][0]['options'], $fa['items'][12]['options']);
+
+        // WU: one shared legend for all 20 items.
+        $wu = $content->subtests[7];
+        $this->assertSame('WU', $wu['code']);
+        $this->assertSame('image_choice', $wu['answer_type']);
+        $this->assertCount(20, $wu['items']);
+        $this->assertSame(137, $wu['items'][0]['item']);
+        $this->assertSame($this->assetId('wu/137.png'), $wu['items'][0]['asset_id']);
+        $this->assertSame($wu['items'][0]['options'], $wu['items'][19]['options']);
+        $this->assertSame(
+            ['a' => $this->assetId('wu/legend-a.png'), 'b' => $this->assetId('wu/legend-b.png'),
+                'c' => $this->assetId('wu/legend-c.png'), 'd' => $this->assetId('wu/legend-d.png'),
+                'e' => $this->assetId('wu/legend-e.png')],
+            $wu['items'][0]['options'],
+        );
+
         // ME with no live segment (this test's syntheticDefinition() carries
         // no ME_MEMORIZE/ME_ANSWER segments, and contentFor() is called with
         // no $currentSegmentCode) -- both halves present, matching the
         // documented null-segment behavior.
-        $me = $content->subtests[6];
+        $me = $content->subtests[8];
         $this->assertSame('multiple_choice', $me['answer_type']);
         $this->assertCount(20, $me['items']);
         $this->assertSame(157, $me['items'][0]['item']);
@@ -99,21 +135,25 @@ final class IstItemContentReaderTest extends TestCase
         $this->assertContains('TEKUKUR', $me['word_list']['BURUNG']);
         $this->assertContains('QUINTET', $me['word_list']['KESENIAN']);
 
-        // No item anywhere carries a field beyond the explicit whitelist --
-        // proves the reader whitelists rather than passes decoded JSON
-        // through, independent of whether today's source data happens to
-        // be clean.
+        // No item anywhere carries a field beyond the explicit whitelist for
+        // its own answer_type -- proves the reader whitelists rather than
+        // passes decoded JSON through, independent of whether today's
+        // source data happens to be clean.
         foreach ($content->subtests as $subtest) {
+            $whitelist = $subtest['answer_type'] === 'image_choice'
+                ? ['item', 'asset_id', 'options']
+                : ['item', 'text', 'options'];
             foreach ($subtest['items'] as $item) {
-                $this->assertSame([], array_diff(array_keys($item), ['item', 'text', 'options']));
+                $this->assertSame([], array_diff(array_keys($item), $whitelist));
             }
         }
     }
 
     public function test_me_memorize_phase_sends_the_word_list_without_answer_items(): void
     {
-        $payload = $this->realIstItemsPayloadWithFinalMe();
+        $payload = $this->realIstItemsPayloadFullyFinal();
         $this->seedIstItemsAuthority($payload);
+        $this->seedIstAssetReferences($this->allFaWuAssetPaths());
 
         $content = app(RlsContextRunner::class)->runAsService(
             fn () => (new IstItemContentReader)->contentFor(
@@ -124,7 +164,7 @@ final class IstItemContentReaderTest extends TestCase
             ),
         );
 
-        $me = $content->subtests[6];
+        $me = $content->subtests[8];
         $this->assertSame('ME', $me['code']);
         $this->assertArrayHasKey('word_list', $me);
         $this->assertContains('TEKUKUR', $me['word_list']['BURUNG']);
@@ -133,8 +173,9 @@ final class IstItemContentReaderTest extends TestCase
 
     public function test_me_answer_phase_sends_answer_items_without_the_word_list(): void
     {
-        $payload = $this->realIstItemsPayloadWithFinalMe();
+        $payload = $this->realIstItemsPayloadFullyFinal();
         $this->seedIstItemsAuthority($payload);
+        $this->seedIstAssetReferences($this->allFaWuAssetPaths());
 
         $content = app(RlsContextRunner::class)->runAsService(
             fn () => (new IstItemContentReader)->contentFor(
@@ -145,7 +186,7 @@ final class IstItemContentReaderTest extends TestCase
             ),
         );
 
-        $me = $content->subtests[6];
+        $me = $content->subtests[8];
         $this->assertSame('ME', $me['code']);
         $this->assertCount(20, $me['items']);
         $this->assertSame(157, $me['items'][0]['item']);
@@ -154,8 +195,9 @@ final class IstItemContentReaderTest extends TestCase
 
     public function test_me_shows_neither_half_while_a_different_subtest_segment_is_current(): void
     {
-        $payload = $this->realIstItemsPayloadWithFinalMe();
+        $payload = $this->realIstItemsPayloadFullyFinal();
         $this->seedIstItemsAuthority($payload);
+        $this->seedIstAssetReferences($this->allFaWuAssetPaths());
 
         $content = app(RlsContextRunner::class)->runAsService(
             fn () => (new IstItemContentReader)->contentFor(
@@ -166,15 +208,16 @@ final class IstItemContentReaderTest extends TestCase
             ),
         );
 
-        $me = $content->subtests[6];
+        $me = $content->subtests[8];
         $this->assertSame([], $me['items']);
         $this->assertArrayNotHasKey('word_list', $me);
     }
 
     public function test_se_through_zr_are_unaffected_by_the_current_segment_code(): void
     {
-        $payload = $this->realIstItemsPayloadWithFinalMe();
+        $payload = $this->realIstItemsPayloadFullyFinal();
         $this->seedIstItemsAuthority($payload);
+        $this->seedIstAssetReferences($this->allFaWuAssetPaths());
 
         $memorize = app(RlsContextRunner::class)->runAsService(
             fn () => (new IstItemContentReader)->contentFor(GenericAssessmentInstrument::Ist, $this->syntheticDefinition(), 1, currentSegmentCode: 'ME_MEMORIZE'),
@@ -191,9 +234,10 @@ final class IstItemContentReaderTest extends TestCase
 
     public function test_me_word_list_is_still_validated_during_the_answer_phase(): void
     {
-        $payload = $this->realIstItemsPayloadWithFinalMe();
+        $payload = $this->realIstItemsPayloadFullyFinal();
         $payload['subtests']['ME']['word_list']['BUNGA'] = ['only-one-word'];
         $this->seedIstItemsAuthority($payload);
+        $this->seedIstAssetReferences($this->allFaWuAssetPaths());
 
         $this->expectException(AssessmentItemContentUnavailable::class);
 
@@ -209,25 +253,26 @@ final class IstItemContentReaderTest extends TestCase
 
     /**
      * item-delivery reconciliation with #76/RMIB (2026-09-22): this used to
-     * assert the real seeded data fails closed because ME was still draft.
-     * PR #118 (merged into main before this reconciliation) finalized ME's
-     * word list -- the real ist_items.json is now top-level `status:"final"`
-     * with all seven subtests final, so the premise this test named no
-     * longer holds. Not a bug this reconciliation introduced: the real data
-     * genuinely caught up to what this reader has supported since the ME
-     * extension. Replaced with the positive assertion it was always meant
-     * to eventually become.
+     * assert the real seeded data fails closed because ME was still draft,
+     * then became a positive "builds successfully" assertion once #118
+     * merged ME into main. FA/WU's addition to self::SUBTESTS (2026-09-23)
+     * flips it back: this branch is off main BEFORE PR #133 (FA/WU) lands,
+     * so the real seeded ist_items.json genuinely does not have FA/WU yet
+     * -- and now that this reader requires them, the whole instrument
+     * fails closed against today's real data, exactly the guard's job
+     * (same situation ME was in before #118, not a bug this PR introduced).
+     * This will need to flip positive again, the same way it did for ME,
+     * once #133 actually merges.
      */
-    public function test_it_builds_successfully_against_the_real_seeded_data_now_that_me_is_final(): void
+    public function test_it_still_fails_closed_against_the_real_seeded_data_because_fa_wu_are_not_final_yet(): void
     {
         app(RlsContextRunner::class)->runAsService(fn () => (new InstrumentSeeder)->run());
 
-        $content = app(RlsContextRunner::class)->runAsService(
+        $this->expectException(AssessmentItemContentUnavailable::class);
+
+        app(RlsContextRunner::class)->runAsService(
             fn () => (new IstItemContentReader)->contentFor(GenericAssessmentInstrument::Ist, $this->syntheticDefinition(), 1),
         );
-
-        $this->assertSame(GenericAssessmentInstrument::Ist, $content->instrument);
-        $this->assertSame(['SE', 'WA', 'AN', 'GE', 'RA', 'ZR', 'ME'], array_column($content->subtests, 'code'));
     }
 
     public function test_it_rejects_a_non_ist_instrument(): void
@@ -274,20 +319,21 @@ final class IstItemContentReaderTest extends TestCase
 
     public function test_it_fails_closed_when_an_unsupported_subtest_is_also_marked_final(): void
     {
-        // FA/WU (pending PR #73) still are not in this reader's supported
-        // set even after ME's addition -- synthesize a stand-in ("XX") for
-        // "some future subtest not yet supported here," since neither real
-        // unsupported code exists in ist_items.json today. If the data ever
-        // claims one final anyway (authoring mistake, or this reader simply
-        // hasn't been extended for it yet), the whole instrument must still
-        // fail closed rather than silently ship without it.
-        $payload = $this->realIstItemsPayloadWithFinalMe();
+        // Every real subtest code is supported as of this reader's FA/WU
+        // extension -- synthesize a stand-in ("XX") for "some future
+        // subtest not yet supported here," since no real unsupported code
+        // exists in ist_items.json today. If the data ever claims one final
+        // anyway (authoring mistake, or this reader simply hasn't been
+        // extended for it yet), the whole instrument must still fail closed
+        // rather than silently ship without it.
+        $payload = $this->realIstItemsPayloadFullyFinal();
         $payload['subtests']['XX'] = [
             'status' => 'final',
             'instructions' => ['text' => 'Synthetic unsupported subtest.'],
             'items' => [],
         ];
         $this->seedIstItemsAuthority($payload);
+        $this->seedIstAssetReferences($this->allFaWuAssetPaths());
 
         $this->expectException(AssessmentItemContentUnavailable::class);
 
@@ -310,6 +356,104 @@ final class IstItemContentReaderTest extends TestCase
         );
     }
 
+    /**
+     * The real gap flagged to Lead/Codex #1 (2026-09-23): FA/WU's real
+     * source has no `instructions` field at all, and every subtest (image
+     * choice included) still goes through instructionsText(), same as
+     * every other subtest -- so the real shape stays fail-closed for the
+     * whole instrument until that data gap is resolved, exactly the
+     * guard's job. This test uses the real shape verbatim (no placeholder
+     * instructions), unlike every other test in this file.
+     */
+    public function test_it_still_fails_closed_against_the_real_fa_wu_shape_because_instructions_are_missing(): void
+    {
+        $payload = $this->realIstItemsPayloadFullyFinal();
+        foreach (['FA', 'WU'] as $code) {
+            unset($payload['subtests'][$code]['instructions']);
+        }
+        $this->seedIstItemsAuthority($payload);
+        $this->seedIstAssetReferences($this->allFaWuAssetPaths());
+
+        $this->expectException(AssessmentItemContentUnavailable::class);
+
+        app(RlsContextRunner::class)->runAsService(
+            fn () => (new IstItemContentReader)->contentFor(GenericAssessmentInstrument::Ist, $this->syntheticDefinition(), 1),
+        );
+    }
+
+    public function test_image_choice_fails_closed_when_an_item_legend_id_disagrees_with_the_legend_group(): void
+    {
+        $payload = $this->realIstItemsPayloadFullyFinal();
+        $payload['subtests']['FA']['items'][0]['legend_id'] = 'FA-L2';
+        $this->seedIstItemsAuthority($payload);
+        $this->seedIstAssetReferences($this->allFaWuAssetPaths());
+
+        $this->expectException(AssessmentItemContentUnavailable::class);
+
+        app(RlsContextRunner::class)->runAsService(
+            fn () => (new IstItemContentReader)->contentFor(GenericAssessmentInstrument::Ist, $this->syntheticDefinition(), 1),
+        );
+    }
+
+    public function test_image_choice_fails_closed_when_a_legend_group_leaves_an_item_uncovered(): void
+    {
+        $payload = $this->realIstItemsPayloadFullyFinal();
+        // Drop item 136 from FA-L2's own declared coverage -- 19 covered,
+        // one short, even though the items array itself still has 20 rows.
+        $payload['subtests']['FA']['option_legends'][1]['items'] = range(129, 135);
+        $this->seedIstItemsAuthority($payload);
+        $this->seedIstAssetReferences($this->allFaWuAssetPaths());
+
+        $this->expectException(AssessmentItemContentUnavailable::class);
+
+        app(RlsContextRunner::class)->runAsService(
+            fn () => (new IstItemContentReader)->contentFor(GenericAssessmentInstrument::Ist, $this->syntheticDefinition(), 1),
+        );
+    }
+
+    public function test_image_choice_fails_closed_when_both_option_legends_and_option_legend_are_present(): void
+    {
+        $payload = $this->realIstItemsPayloadFullyFinal();
+        $payload['subtests']['WU']['option_legends'] = $payload['subtests']['FA']['option_legends'];
+        $this->seedIstItemsAuthority($payload);
+        $this->seedIstAssetReferences($this->allFaWuAssetPaths());
+
+        $this->expectException(AssessmentItemContentUnavailable::class);
+
+        app(RlsContextRunner::class)->runAsService(
+            fn () => (new IstItemContentReader)->contentFor(GenericAssessmentInstrument::Ist, $this->syntheticDefinition(), 1),
+        );
+    }
+
+    public function test_image_choice_fails_closed_when_neither_option_legends_nor_option_legend_is_present(): void
+    {
+        $payload = $this->realIstItemsPayloadFullyFinal();
+        unset($payload['subtests']['WU']['option_legend']);
+        $this->seedIstItemsAuthority($payload);
+        $this->seedIstAssetReferences($this->allFaWuAssetPaths());
+
+        $this->expectException(AssessmentItemContentUnavailable::class);
+
+        app(RlsContextRunner::class)->runAsService(
+            fn () => (new IstItemContentReader)->contentFor(GenericAssessmentInstrument::Ist, $this->syntheticDefinition(), 1),
+        );
+    }
+
+    public function test_image_choice_fails_closed_when_an_image_asset_has_not_been_synced(): void
+    {
+        $payload = $this->realIstItemsPayloadFullyFinal();
+        $this->seedIstItemsAuthority($payload);
+        // Every asset except FA item 117's own stem image.
+        $paths = array_values(array_diff($this->allFaWuAssetPaths(), ['fa/117.png']));
+        $this->seedIstAssetReferences($paths);
+
+        $this->expectException(AssessmentItemContentUnavailable::class);
+
+        app(RlsContextRunner::class)->runAsService(
+            fn () => (new IstItemContentReader)->contentFor(GenericAssessmentInstrument::Ist, $this->syntheticDefinition(), 1),
+        );
+    }
+
     /** @return array<string, mixed> */
     private function realIstItemsPayload(): array
     {
@@ -322,12 +466,18 @@ final class IstItemContentReaderTest extends TestCase
      * The real payload, with ME replaced by its actual finalized shape from
      * PR #118 / commit ee3f5528 (psychologist-confirmed Versi A word list:
      * TEKUKUR for Burung, QUINTET for Kesenian -- owner-decisions
-     * 2026-09-21 item 21). Not synthetic: this is the exact data this
-     * reader will see once #118 merges into this branch.
+     * 2026-09-21 item 21) and FA/WU replaced by their actual finalized
+     * shape from PR #73/#133 (confirmed directly against
+     * origin/lead/repair-ist-fa-wu-merge:database/seeders/data/ist_items.json,
+     * not assumed). Not synthetic: this is the exact data this reader will
+     * see once #118 and #73/#133 both merge into this branch -- except
+     * FA/WU's `instructions` field, which the real source genuinely has
+     * none of (see realFaWuSubtests()'s own docblock for why a placeholder
+     * is used here instead).
      *
      * @return array<string, mixed>
      */
-    private function realIstItemsPayloadWithFinalMe(): array
+    private function realIstItemsPayloadFullyFinal(): array
     {
         $payload = $this->realIstItemsPayload();
         $payload['status'] = 'final';
@@ -357,7 +507,139 @@ final class IstItemContentReaderTest extends TestCase
             ],
         ];
 
+        foreach ($this->realFaWuSubtests() as $code => $subtest) {
+            $payload['subtests'][$code] = $subtest;
+        }
+
         return $payload;
+    }
+
+    /**
+     * FA/WU's real item/legend shape, confirmed directly against
+     * origin/lead/repair-ist-fa-wu-merge:database/seeders/data/ist_items.json
+     * (PR #73/#133) -- both genuinely `status: "final"` (visual review
+     * passed), both `answer_type: "image_choice"`. FA has two answer-legend
+     * groups (items 117-128 use FA-L1, 129-136 use FA-L2); WU has one
+     * legend shared by all 20 items (137-156), and its items carry no
+     * `legend_id` field at all.
+     *
+     * The real source has NO `instructions` field for either subtest at
+     * all (confirmed -- not an extraction bug this test is working around,
+     * a genuine data-shape gap flagged back to Lead/Codex #1, 2026-09-23:
+     * unclear whether FA/WU instructions are meant to come from data (a
+     * follow-up F0 extraction) or fixed frontend copy). This placeholder
+     * text is NOT real instrument content and exists only so the tests
+     * below can exercise imageChoiceItems() itself; see
+     * test_it_still_fails_closed_against_the_real_fa_wu_shape_because_instructions_are_missing()
+     * for the regression guard proving the reader does NOT accept the real
+     * shape as-is.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private function realFaWuSubtests(): array
+    {
+        $faItems = [];
+        foreach (range(117, 128) as $itemNumber) {
+            $faItems[] = ['item' => $itemNumber, 'image' => "assets/ist/fa/{$itemNumber}.png", 'legend_id' => 'FA-L1'];
+        }
+        foreach (range(129, 136) as $itemNumber) {
+            $faItems[] = ['item' => $itemNumber, 'image' => "assets/ist/fa/{$itemNumber}.png", 'legend_id' => 'FA-L2'];
+        }
+
+        $wuItems = [];
+        foreach (range(137, 156) as $itemNumber) {
+            $wuItems[] = ['item' => $itemNumber, 'image' => "assets/ist/wu/{$itemNumber}.png"];
+        }
+
+        $placeholderInstructions = ['text' => 'PLACEHOLDER -- not real instrument content, see realFaWuSubtests() docblock.'];
+
+        return [
+            'FA' => [
+                'status' => 'final',
+                'answer_type' => 'image_choice',
+                'instructions' => $placeholderInstructions,
+                'option_legends' => [
+                    [
+                        'legend_id' => 'FA-L1',
+                        'items' => range(117, 128),
+                        'options' => $this->legendPaths('fa', 'legend-1'),
+                    ],
+                    [
+                        'legend_id' => 'FA-L2',
+                        'items' => range(129, 136),
+                        'options' => $this->legendPaths('fa', 'legend-2'),
+                    ],
+                ],
+                'items' => $faItems,
+            ],
+            'WU' => [
+                'status' => 'final',
+                'answer_type' => 'image_choice',
+                'instructions' => $placeholderInstructions,
+                'option_legend' => ['options' => $this->legendPaths('wu', 'legend')],
+                'items' => $wuItems,
+            ],
+        ];
+    }
+
+    /** @return array<string, string> */
+    private function legendPaths(string $subtest, string $prefix): array
+    {
+        $built = [];
+        foreach (['a', 'b', 'c', 'd', 'e'] as $letter) {
+            $built[$letter] = "assets/ist/{$subtest}/{$prefix}-{$letter}.png";
+        }
+
+        return $built;
+    }
+
+    /** @return list<string> object_key values (relative to database/seeders/data/assets/ist/) */
+    private function allFaWuAssetPaths(): array
+    {
+        $paths = [];
+        foreach (range(117, 156) as $itemNumber) {
+            $subtest = $itemNumber <= 136 ? 'fa' : 'wu';
+            $paths[] = "{$subtest}/{$itemNumber}.png";
+        }
+        foreach (['legend-1', 'legend-2'] as $prefix) {
+            foreach (['a', 'b', 'c', 'd', 'e'] as $letter) {
+                $paths[] = "fa/{$prefix}-{$letter}.png";
+            }
+        }
+        foreach (['a', 'b', 'c', 'd', 'e'] as $letter) {
+            $paths[] = "wu/legend-{$letter}.png";
+        }
+
+        return $paths;
+    }
+
+    /** @param  list<string>  $objectKeys */
+    private function seedIstAssetReferences(array $objectKeys): void
+    {
+        $now = now();
+        DB::table('assessment_asset_references')->insert(array_map(
+            fn (string $objectKey): array => [
+                'asset_id' => $this->assetId($objectKey),
+                'instrument' => 'ist',
+                'disk' => 'ist-assets',
+                'object_key' => $objectKey,
+                'checksum_sha256' => hash('sha256', $objectKey),
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            $objectKeys,
+        ));
+    }
+
+    /**
+     * Deterministic per-object_key id, shared by seedIstAssetReferences()
+     * and assertions. assessment_asset_references.asset_id is a ulid()
+     * column (char(26) on PostgreSQL) -- exactly 26 lowercase hex chars
+     * fits without needing a real ULID generator.
+     */
+    private function assetId(string $objectKey): string
+    {
+        return substr(hash('sha256', $objectKey), 0, 26);
     }
 
     /** @param array<string, mixed> $payload */
