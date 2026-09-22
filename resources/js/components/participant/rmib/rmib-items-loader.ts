@@ -1,37 +1,27 @@
+import { createRetryLoader } from '../session-runner/retry-loader.ts';
+import type { RetryLoaderState } from '../session-runner/retry-loader.ts';
 import type { FetchRmibItems, RmibItemsOutcome } from './rmib-items.ts';
 
 /**
- * Pure retry orchestration for `GET /sessions/:id/items` (RMIB) — no
- * React, no fetch, no DOM. This is the FOURTH near-identical copy of this
- * retry-loader pattern (after `session-runner/resume-answers-loader.ts`,
- * `kraepelin/items-loader.ts` on PR #69, and `papi/papi-items-loader.ts`
- * on the PAPI runner PR) — Lead's 2026-09-21 read when reviewing the PAPI
- * PR: three copies was already the last tolerable point, RMIB is the
- * fourth. The PAPI PR (#82) is still open/draft (not merged) as of this
- * file's creation, so per the approved RMIB plan this is written as a
- * fourth copy rather than against an extracted shared core, and
- * `tasks/handoffs/f2/papi-runner-retry-loader-extraction-debt.md` is
- * updated to say so — the extraction itself stays gated on the PAPI PR
- * merging, per Lead's explicit instruction not to start it before then.
+ * Pure retry orchestration for GET /sessions/:id/items (RMIB) — no React,
+ * no fetch, no DOM. The actual retry state machine now lives in
+ * `../session-runner/retry-loader.ts`, shared across every "fetch once,
+ * retry on connectivity" loader in this codebase (Lead's 2026-09-21
+ * extraction, `glm/retry-loader-extraction` — see `papi-items-loader.ts`'s
+ * identical doc for the full history; this file is that same migration
+ * for RMIB). This file is now a thin type-specific wrapper: it exists so
+ * `createRmibItemsLoader`'s public shape (function name,
+ * `RmibItemsLoaderState`, `RmibItemsLoaderOptions`) stays exactly what
+ * `use-rmib-items.ts` already depends on, unchanged.
  *
- * Same retry design as the other three: a `network_error` outcome AND a
- * rejected/thrown fetcher are both treated as "couldn't reach the
- * server", transitioning to `reconnecting` and retried through the
- * caller-supplied `queueRetry` (the same connectivity signal
- * `offline-queue.ts` exposes, never a second detector). Capped at
- * `MAX_CONSECUTIVE_AUTO_RETRIES` consecutive failures; `retry()` always
- * available and resets the budget. Every other outcome is final.
+ * Every non-`network_error` outcome is final and is never auto-retried.
  */
 
-const MAX_CONSECUTIVE_AUTO_RETRIES = 5;
-
-export type RmibItemsLoaderState =
-    | { status: 'loading' }
-    | { status: 'reconnecting'; autoRetryExhausted: boolean }
-    | { status: 'ready'; outcome: RmibItemsOutcome };
+export type RmibItemsLoaderState = RetryLoaderState<RmibItemsOutcome>;
 
 export type RmibItemsLoaderOptions = {
     fetchItems: FetchRmibItems;
+    /** Same shape as offline-queue.ts's `queueRetry`. */
     queueRetry: (retry: () => void) => () => void;
 };
 
@@ -51,85 +41,9 @@ export type RmibItemsLoader = {
 export function createRmibItemsLoader(
     options: RmibItemsLoaderOptions,
 ): RmibItemsLoader {
-    let state: RmibItemsLoaderState = { status: 'loading' };
-    const listeners = new Set<(state: RmibItemsLoaderState) => void>();
-    let attemptId = 0;
-    let unsubscribeQueuedRetry: (() => void) | null = null;
-    let disposed = false;
-    let consecutiveFailures = 0;
-
-    function setState(next: RmibItemsLoaderState): void {
-        state = next;
-
-        for (const listener of listeners) {
-            listener(state);
-        }
-    }
-
-    function onConnectivityFailure(): void {
-        consecutiveFailures++;
-        const exhausted = consecutiveFailures >= MAX_CONSECUTIVE_AUTO_RETRIES;
-        setState({ status: 'reconnecting', autoRetryExhausted: exhausted });
-
-        if (exhausted) {
-            return;
-        }
-
-        unsubscribeQueuedRetry = options.queueRetry(() => {
-            attempt();
-        });
-    }
-
-    function attempt(): void {
-        unsubscribeQueuedRetry?.();
-        unsubscribeQueuedRetry = null;
-
-        const thisAttemptId = ++attemptId;
-
-        options
-            .fetchItems()
-            .then((outcome) => {
-                if (disposed || attemptId !== thisAttemptId) {
-                    return;
-                }
-
-                if (outcome.type === 'network_error') {
-                    onConnectivityFailure();
-
-                    return;
-                }
-
-                consecutiveFailures = 0;
-                setState({ status: 'ready', outcome });
-            })
-            .catch(() => {
-                if (disposed || attemptId !== thisAttemptId) {
-                    return;
-                }
-
-                onConnectivityFailure();
-            });
-    }
-
-    return {
-        getState: () => state,
-        subscribe(listener) {
-            listeners.add(listener);
-
-            return () => listeners.delete(listener);
-        },
-        start() {
-            attempt();
-        },
-        retry() {
-            consecutiveFailures = 0;
-            setState({ status: 'loading' });
-            attempt();
-        },
-        dispose() {
-            disposed = true;
-            unsubscribeQueuedRetry?.();
-            unsubscribeQueuedRetry = null;
-        },
-    };
+    return createRetryLoader<RmibItemsOutcome>({
+        fetch: options.fetchItems,
+        queueRetry: options.queueRetry,
+        isNetworkError: (outcome) => outcome.type === 'network_error',
+    });
 }
