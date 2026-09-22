@@ -113,7 +113,12 @@ const command = (session, args, log) => {
         );
 
         if (result.error || result.status !== 0) {
-            throw new Error(`CLI failed; inspect ${log}`);
+            // Surface the CLI's own output inline -- it's otherwise only
+            // ever written to `log`, which CI never prints or uploads, so a
+            // failure here was previously undiagnosable from the Actions
+            // console alone.
+            const tail = readFileSync(log, 'utf8').split('\n').slice(-60).join('\n');
+            throw new Error(`CLI failed; inspect ${log}\n--- tail of ${log} ---\n${tail}`);
         }
     } finally {
         closeSync(fd);
