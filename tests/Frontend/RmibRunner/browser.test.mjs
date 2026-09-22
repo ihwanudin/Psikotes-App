@@ -308,6 +308,52 @@ async (page) => {
     assert(!(await submitAfterAll.isDisabled()), 'submit must unlock once all 9 groups are confirmed')
     results.push('submit unlocked: enabled with 9/9 groups confirmed')
 
+    // --- Real HTTP transport scenario (Lead's 2026-09-21 instruction):
+    // a second RmibItemsRunner on the same page, wired through the real
+    // createHttpTransport() against a fake HTTP endpoint returning the
+    // real wire shapes, proving rmibItemsOutcomeFromGeneric is actually
+    // exercised inside a rendered runner. Safe to run here, at the very
+    // end of the script (no page.goto() since the startFlow() call
+    // above): the section-1 runner has moved off its group view (drag
+    // rows/up-down buttons/Sebelumnya/Berikutnya) onto its ringkasan
+    // screen by this point, so this section's own "Mulai" and job rows
+    // are the only ones on the page when these locators run.
+    const httpDemoStart = page.getByRole('button', { name: 'Mulai' })
+    await httpDemoStart.waitFor()
+    await httpDemoStart.click()
+
+    const httpDemoDownButton = page
+        .getByRole('button', { name: /Turunkan peringkat/ })
+        .first()
+    await httpDemoDownButton.waitFor()
+    const httpDemoDownLabel = await httpDemoDownButton.getAttribute('aria-label')
+    assert(
+        httpDemoDownLabel.includes('(transport HTTP)'),
+        `the real-transport scenario's job text must come from the fake HTTP endpoint's response, got: ${httpDemoDownLabel}`,
+    )
+    results.push('http transport: rmibItemsOutcomeFromGeneric-mapped job text rendered from the real createHttpTransport() + fake endpoint, not the synthetic fixture data')
+
+    await httpDemoDownButton.click()
+    await page.waitForFunction(
+        () =>
+            window.__rmibHttpTransportCalls.some(
+                (call) => call.method === 'POST' && call.url.endsWith('/answers'),
+            ),
+        { timeout: 5000 },
+    )
+    results.push('http transport: reordering a group reached autosaveSend() -> a real POST /answers call')
+
+    const httpDemoUnauthorizedButton = page.getByRole('button', {
+        name: 'Uji token kedaluwarsa (401, uji)',
+    })
+    await httpDemoUnauthorizedButton.click()
+    await page.waitForFunction(
+        () => window.__rmibHttpTransportUnauthorizedFired === true,
+        { timeout: 5000 },
+    )
+    await page.getByText('Sesi psikotes telah berakhir.').waitFor()
+    results.push('http transport: a 401 fires onUnauthorized() exactly once and the page shows the session-ended message, same pattern as lobby.tsx')
+
     assert(errors.length === 0, `Browser errors: ${errors.join('; ')}`)
 
     return results
