@@ -91,6 +91,67 @@ Assert-Contains $source 'Wrong S3 credential rejection probe' 'Harness must exec
 Assert-Contains $source 'offsite_copy=PASS' 'Successful runs must attest the offsite copy.'
 Assert-Contains $source 's3_output_check=PASS' 'Successful runs must attest S3 credential output checks.'
 Assert-Contains $source 'Exact-label offsite network cleanup' 'Dedicated offsite network must be cleaned by exact label.'
+Assert-Contains $source "GetEnvironmentVariable('F9_BACKUP_RETENTION_DAYS')" 'Retention duration must come from the environment boundary.'
+Assert-Contains $source '$retentionDays = 30' 'Retention must default to 30 days in one assignment.'
+Assert-Contains $source '[int]::TryParse($retentionDaysValue' 'Retention input must be validated as an integer.'
+Assert-Contains $source "GetEnvironmentVariable('F9_BACKUP_RETENTION_APPLY')" 'Destructive retention apply must have an explicit environment signal.'
+Assert-Contains $source '$retentionApply = $false' 'Retention apply must default to dry-run.'
+Assert-Contains $source '$retentionApplyValue -ieq ''true''' 'Only an explicit true value may enable retention apply.'
+Assert-Contains $source '$backupKeyTemplate = ''backups/{date}/{name}.dump.age''' 'Backup prefix and dated key format must have one template.'
+Assert-Contains $source '$backupPrefix = $backupKeyTemplate.Substring' 'Owned prefix must be derived from the shared key template.'
+Assert-Contains $source '[DateTime]::UtcNow.Date' 'Retention reference date must come from the system clock.'
+Assert-Contains $source 'function New-BackupObjectKey' 'Synthetic and current backup keys must use the shared writer.'
+Assert-Contains $source 'function Get-BackupObjectDate' 'Retention must parse keys through one parser.'
+Assert-Contains $source 'function Invoke-RetentionPrune' 'Runner must define a reusable retention operation.'
+Assert-Contains $source '$objectKey = $backupPrefix + $listedKey' 'Relative mc listing keys must be scoped back under the owned prefix.'
+Assert-Contains $source '$cutoffDate = $referenceDate.Date.AddDays(-$days)' 'Retention cutoff must derive from the single duration value.'
+Assert-Contains $source '$backupDate -gt $referenceDate.Date' 'Future-dated keys must be treated separately.'
+Assert-Contains $source '$null -eq $backupDate' 'Unparseable keys must be treated separately.'
+Assert-Contains $source 'Send-EncryptedOffsiteCopy $encryptedArchive $currentBackupObject' 'The current encrypted backup must use the retained backup prefix.'
+Assert-Contains $source 'New-BackupObjectKey ($retentionReferenceDate.AddDays(-$retentionDays - 1))' 'Harness must create an old in-prefix object.'
+Assert-Contains $source '$youngRetentionObject = $currentBackupObject' 'Harness must retain the current backup as its young object.'
+Assert-Contains $source 'outside-backups/2000-01-01/' 'Harness must create an old-looking object outside the owned prefix.'
+Assert-Contains $source '${backupPrefix}not-a-date/' 'Harness must create an unparseable in-prefix object.'
+Assert-Contains $source 'New-BackupObjectKey ($retentionReferenceDate.AddDays(1))' 'Harness must create a future-dated in-prefix object.'
+Assert-Contains $source 'Invoke-RetentionPrune $retentionReferenceDate $retentionDays $false' 'Synthetic rehearsal must run dry-run explicitly.'
+Assert-Contains $source 'Invoke-RetentionPrune $retentionReferenceDate $retentionDays $true' 'Synthetic rehearsal must run apply explicitly.'
+Assert-Contains $source 'Assert-RetentionObjectState ''dry-run'' ''old''' 'Dry-run must inspect the old object individually.'
+Assert-Contains $source 'Assert-RetentionObjectState ''dry-run'' ''young''' 'Dry-run must inspect the young object individually.'
+Assert-Contains $source 'Assert-RetentionObjectState ''dry-run'' ''outside-prefix''' 'Dry-run must inspect the outside-prefix object individually.'
+Assert-Contains $source 'Assert-RetentionObjectState ''dry-run'' ''unparseable''' 'Dry-run must inspect the unparseable object individually.'
+Assert-Contains $source 'Assert-RetentionObjectState ''dry-run'' ''future''' 'Dry-run must inspect the future object individually.'
+Assert-Contains $source 'Assert-RetentionObjectState ''apply'' ''old'' $oldRetentionObject $false' 'Apply must prove the old object was deleted.'
+Assert-Contains $source 'Assert-RetentionObjectState ''apply'' ''young'' $youngRetentionObject $true' 'Apply must prove the young object remains.'
+Assert-Contains $source 'Assert-RetentionObjectState ''apply'' ''outside-prefix'' $outsideRetentionObject $true' 'Apply must prove the outside-prefix object remains.'
+Assert-Contains $source 'Assert-RetentionObjectState ''apply'' ''unparseable'' $invalidRetentionObject $true' 'Apply must prove the unparseable object remains.'
+Assert-Contains $source 'Assert-RetentionObjectState ''apply'' ''future'' $futureRetentionObject $true' 'Apply must prove the future object remains.'
+Assert-Contains $source 'retention_dry_run=PASS' 'Successful dry-run must print its retention attestation.'
+Assert-Contains $source 'retention_prune=PASS' 'Successful apply must print its retention attestation.'
+Assert-Contains $source 'retention_secret_output_check=PASS' 'Successful retention must attest credential-output checks.'
+Assert-Contains $source 'Invoke-S3Step ''Retention object deletion''' 'Each destructive object operation must use the credential guard.'
+Assert-Contains $source 'Invoke-RetentionPrune $retentionReferenceDate $retentionDays $retentionApply' 'Operator mode must honor the safe explicit apply signal.'
+
+$writerAst = $ast.Find({
+    param($node)
+    $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -ceq 'New-BackupObjectKey'
+}, $true)
+Assert-True ($null -ne $writerAst) 'Runner must define the shared backup-key writer.'
+$parserAst = $ast.Find({
+    param($node)
+    $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -ceq 'Get-BackupObjectDate'
+}, $true)
+Assert-True ($null -ne $parserAst) 'Runner must define the shared backup-key parser.'
+$backupKeyTemplate = 'backups/{date}/{name}.dump.age'
+. ([scriptblock]::Create($writerAst.Extent.Text))
+. ([scriptblock]::Create($parserAst.Extent.Text))
+$contractDate = [DateTime]::SpecifyKind([DateTime] '2026-09-21', [DateTimeKind]::Utc)
+$contractKey = New-BackupObjectKey $contractDate 'contract-check'
+Assert-True ($contractKey -ceq 'backups/2026-09-21/contract-check.dump.age') 'Backup-key writer must use the one declared format.'
+Assert-True ((Get-BackupObjectDate $contractKey) -eq $contractDate) 'Backup-key parser must round-trip the writer output.'
+Assert-True ($null -eq (Get-BackupObjectDate 'backups/not-a-date/contract-check.dump.age')) 'Parser must reject non-date keys.'
+Assert-True ($null -eq (Get-BackupObjectDate 'backups/2026-02-30/contract-check.dump.age')) 'Parser must reject impossible calendar dates.'
 
 $s3GuardAst = $ast.Find({
     param($node)
@@ -142,4 +203,4 @@ Assert-True ((ConvertTo-StableSchemaExpression '"CaseSensitive" = 1') -cne `
     (ConvertTo-StableSchemaExpression '"casesensitive" = 1')) `
     'Canonicalization must preserve quoted-identifier case.'
 
-Write-Output 'postgres-backup-restore-contract: PASS (82 assertions)'
+Write-Output 'postgres-backup-restore-contract: PASS (127 assertions)'
