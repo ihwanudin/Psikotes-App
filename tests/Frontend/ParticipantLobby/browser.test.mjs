@@ -1,4 +1,5 @@
 // Playwright CLI run-code --filename entrypoint; uses an isolated browser profile.
+// prettier-ignore
 // eslint-disable-next-line @typescript-eslint/no-unused-expressions -- CLI evaluates this function expression as its entrypoint.
 async (page) => {
     // Playwright CLI's run-code sandbox does not expose `process`, so this
