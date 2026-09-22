@@ -309,6 +309,47 @@ final class SessionDefinitionTest extends TestCase
     // tasks/handoffs/f2/timed-segments-plan.md
     // ═══════════════════════════════════════════════
 
+    // ─── stage 5: currentSubtestItemRange() ───
+
+    public function test_current_subtest_item_range_maps_a_flattened_segment_index_back_to_its_owning_subtest(): void
+    {
+        $input = $this->fixedDefinition('ist');
+        $input['total_duration_seconds'] = 120;
+        $input['subtests'][0]['duration_seconds'] = 60;
+        $input['subtests'][0]['item_count'] = 20;
+        $input['subtests'][] = ['code' => 'OTHER', 'duration_seconds' => 60, 'item_count' => 20];
+        $input['checksum'] = SessionDefinition::checksumFor($input);
+
+        $definition = SessionDefinition::fromArray($input);
+
+        $first = $definition->currentSubtestItemRange(0);
+        $this->assertSame(1, $first->start);
+        $this->assertSame(20, $first->end);
+
+        $second = $definition->currentSubtestItemRange(1);
+        $this->assertSame(21, $second->start);
+        $this->assertSame(40, $second->end);
+    }
+
+    public function test_current_subtest_item_range_resolves_every_segment_of_a_multi_segment_subtest_to_the_same_range(): void
+    {
+        $input = $this->fixedDefinition('ist');
+        $input['subtests'][0]['item_count'] = 10;
+        $input['subtests'][0]['segments'] = [
+            ['code' => 'SYNTHETIC_MEMORIZE', 'duration_seconds' => 20, 'reading_cap_seconds' => 0, 'allow_early_finish' => false],
+            ['code' => 'SYNTHETIC_ANSWER', 'duration_seconds' => 40, 'reading_cap_seconds' => 0, 'allow_early_finish' => false],
+        ];
+        $input['checksum'] = SessionDefinition::checksumFor($input);
+
+        $definition = SessionDefinition::fromArray($input);
+
+        $memorize = $definition->currentSubtestItemRange(0);
+        $answer = $definition->currentSubtestItemRange(1);
+        $this->assertEquals($memorize, $answer);
+        $this->assertSame(1, $memorize->start);
+        $this->assertSame(10, $memorize->end);
+    }
+
     public function test_a_definition_with_no_timed_segment_fields_degenerates_to_one_segment_per_subtest(): void
     {
         $definition = SessionDefinition::fromArray($this->fixedDefinition('ist'));

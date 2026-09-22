@@ -109,6 +109,9 @@ final class GetAssessmentSession
             $serverTime,
             $remainingSeconds,
             $definition,
+            $session->current_segment_index === null ? null : (int) $session->current_segment_index,
+            $this->date($session->current_segment_became_current_at),
+            $this->date($session->current_segment_started_at),
         ));
     }
 

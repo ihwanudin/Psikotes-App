@@ -86,6 +86,14 @@ final readonly class SessionDefinition
      *     numbers_per_column: int,
      *     answer_slots_per_column: int
      * }|null  $generator
+     * @param  list<int>  $segmentSubtestIndex  Derived: parallel to $segments,
+     *                                          which index into $subtests each
+     *                                          flattened segment came from. See
+     *                                          flattenSegmentSubtestIndex().
+     * @param  list<SubtestItemRange>  $subtestItemRanges  Derived: the item_no
+     *                                                     range each subtest
+     *                                                     owns, in order. See
+     *                                                     subtestItemRanges().
      */
     private function __construct(
         public GenericAssessmentInstrument $instrument,
@@ -99,7 +107,27 @@ final readonly class SessionDefinition
         public string $randomization,
         public ?string $seed,
         public ?array $generator,
+        public array $segmentSubtestIndex = [],
+        public array $subtestItemRanges = [],
     ) {}
+
+    /**
+     * F2 timed-segments stage 5 (2026-09-22): the item_no range
+     * (1-indexed, inclusive both ends) belonging to whichever subtest owns
+     * the flattened segment at $segmentIndex -- e.g. for a session where SE
+     * covers 1-20 and WA covers 21-40, a $segmentIndex pointing anywhere
+     * inside WA's own segment(s) (whether WA has one segment or several,
+     * like ME's memorize/answer) returns [21, 40]. AutosaveAssessmentAnswers
+     * uses this to reject an answer for an item_no outside the CURRENT
+     * subtest's range, not just outside the whole instrument.
+     */
+    public function currentSubtestItemRange(int $segmentIndex): SubtestItemRange
+    {
+        $subtestIndex = $this->segmentSubtestIndex[$segmentIndex]
+            ?? throw new InvalidArgumentException('Segment index is out of range.');
+
+        return $this->subtestItemRanges[$subtestIndex];
+    }
 
     /** @param array<string, mixed> $input */
     public static function fromArray(array $input): self
@@ -162,6 +190,8 @@ final readonly class SessionDefinition
             static fn (TimedSegment $segment): int => $segment->readingCapSeconds,
             $segments,
         ));
+        $segmentSubtestIndex = self::flattenSegmentSubtestIndex($subtests);
+        $subtestItemRanges = self::subtestItemRanges($subtests);
 
         return new self(
             instrument: $instrument,
@@ -173,6 +203,8 @@ final readonly class SessionDefinition
             segments: $segments,
             totalReadingCapSeconds: $totalReadingCapSeconds,
             randomization: $randomization,
+            segmentSubtestIndex: $segmentSubtestIndex,
+            subtestItemRanges: $subtestItemRanges,
             seed: $seed,
             generator: $generator,
         );
@@ -406,6 +438,48 @@ final readonly class SessionDefinition
         }
 
         return $segments;
+    }
+
+    /**
+     * Parallel to flattenSegments(): for each entry in the flattened
+     * $segments list, which index into $subtests it came from.
+     *
+     * @param  list<array<string, mixed>>  $subtests
+     * @return list<int>
+     */
+    private static function flattenSegmentSubtestIndex(array $subtests): array
+    {
+        $map = [];
+
+        foreach ($subtests as $subtestIndex => $subtest) {
+            $segmentCount = isset($subtest['segments']) ? count($subtest['segments']) : 1;
+            for ($i = 0; $i < $segmentCount; $i++) {
+                $map[] = $subtestIndex;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * The 1-indexed, inclusive item_no range each subtest owns, in order --
+     * e.g. item_count 20 then 20 produces [[1,20],[21,40]].
+     *
+     * @param  list<array<string, mixed>>  $subtests
+     * @return list<SubtestItemRange>
+     */
+    private static function subtestItemRanges(array $subtests): array
+    {
+        $ranges = [];
+        $cursor = 1;
+
+        foreach ($subtests as $subtest) {
+            $itemCount = $subtest['item_count'];
+            $ranges[] = new SubtestItemRange($cursor, $cursor + $itemCount - 1);
+            $cursor += $itemCount;
+        }
+
+        return $ranges;
     }
 
     /** @param  array<string, bool>  $codes */
