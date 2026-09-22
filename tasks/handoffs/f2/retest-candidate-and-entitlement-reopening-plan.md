@@ -1,6 +1,19 @@
 # F2 — Retest candidate eligibility and entitlement reopening (follow-up to item 19) plan (2026-09-22)
 
-**Status: plan only, no code.** Follow-up to PR #116
+**Status: plan only, no code — revised.** Lead's review of the first
+revision confirmed the overall direction and the Q3 approach (a parallel
+branch with retest-shaped invariants, not a flipped flag) but required
+three things resolved to a definite conclusion before code, not left as
+open items: the exact `entitlement.status` value after attempt 1, whether
+the production entry point automatically reaches the candidate-selection
+path for a single-case participant, and whether the `$sessions->count() > 1`
+guard also protects against real corruption (not just "retests aren't
+built yet"). All three are traced and resolved below, inline in the
+sections they belong to — see "Q1" for the entitlement-status trace, "Q2"
+for the guard's corrected replacement, and the new "Confirmed:" block
+under Q3 for the production entry-point trace.
+
+Follow-up to PR #116
 (`f2/retest-limit`, draft), which wires `AssessmentRetestGrant` into
 `AssessmentAttemptAllocationPolicy` and `AllocateAndStartAssessmentSession`
 but ships with an explicit caveat in its own body:
@@ -64,18 +77,70 @@ follow-up doesn't touch it).
 **Where the reset happens:** inside
 `AllocateAndStartAssessmentSession::allocateNew()`, immediately before its
 existing `consumeSourceGrant()` call, and only when the accepted decision's
-`attemptNumber > 1`. Concretely: add a private `reopenEntitlementForRetest(int $entitlementId): void`
-that runs `UPDATE entitlements SET status = 'ready', started_at = NULL,
-completed_at = NULL WHERE id = ? AND status <> 'ready'` under the same
-`lockForUpdate()` the method already takes on the entitlement row, then let
-`consumeSourceGrant()` run completely unchanged — its existing
-`WHERE status = 'ready' AND started_at IS NULL AND completed_at IS NULL`
-clause is satisfied again once the reset has run in the same transaction.
-This keeps the change to one additional call in one method; no new method
-on `CaseAuthorizationResolver` reads or requires the entitlement to already
-be reset before allocation is attempted, and no reset happens speculatively
-for a candidate that never gets to allocation (e.g. it's rejected for
-insufficient authorization).
+`attemptNumber > 1`. This keeps the change to one additional call in one
+method; no new method on `CaseAuthorizationResolver` reads or requires the
+entitlement to already be reset before allocation is attempted, and no
+reset happens speculatively for a candidate that never gets to allocation
+(e.g. it's rejected for insufficient authorization).
+
+**Exact prior status, traced through `consumeSourceGrant()` (PR #116,
+`app/Actions/AssessmentSessions/AllocateAndStartAssessmentSession.php:572-597`)
+— this was left as an open item in the previous revision of this plan;
+Lead required it resolved before code, so it's resolved here:**
+
+```php
+$updated = $query
+    ->where('status', 'ready')
+    ->whereNotNull('ready_at')
+    ->whereNull('started_at')
+    ->whereNull('completed_at')
+    ->update([
+        'status' => 'in_progress',
+        'started_at' => $this->timestamp($serverTime),
+        'updated_at' => $this->timestamp($serverTime),
+    ]);
+```
+
+This is the **only** writer to `entitlements.status`/`started_at`/`completed_at`
+in the entire codebase (Q1's grep already established this). It transitions
+`'ready' → 'in_progress'` and sets `started_at` on allocation — and never
+transitions the row again afterward, for any reason: no code path sets
+`completed_at`, and no code path sets `status` back to anything else once
+`in_progress`, regardless of how the session itself later ends
+(`submitted`/`scored`/`expired`/`voided` all live only on `test_sessions`,
+never on `entitlements`). **Consequence: after attempt 1 ends, the
+entitlement row is deterministically stuck at exactly `status =
+'in_progress', started_at = <attempt-1 timestamp>, completed_at = NULL` —
+not "whatever value," a single, guaranteed value.**
+
+This means `reopenEntitlementForRetest()` can and must assert the exact
+prior state rather than a loose `status <> 'ready'`:
+
+```php
+private function reopenEntitlementForRetest(int $entitlementId): void
+{
+    $updated = DB::table('entitlements')
+        ->where('id', $entitlementId)
+        ->where('status', 'in_progress')
+        ->whereNotNull('started_at')
+        ->whereNull('completed_at')
+        ->update([
+            'status' => 'ready',
+            'started_at' => null,
+        ]);
+    if ($updated !== 1) {
+        throw new InvalidAssessmentSessionState('The retest entitlement was not in the expected in-progress state.');
+    }
+}
+```
+
+Asserting `status = 'in_progress'` exactly (not merely "not ready") is not
+just precision for its own sake — it doubles as a corruption check: if the
+row were ever found in any other state (e.g. still `'ready'` because
+`consumeSourceGrant()` never actually ran for attempt 1, which should be
+structurally impossible but would indicate a real bug if it happened), this
+throws instead of silently reopening a row that was never legitimately
+consumed.
 
 **Rejected alternative:** resetting the entitlement at
 candidate-projection time (inside `ParticipantAssessmentSessionCandidates::candidate()`
@@ -108,6 +173,52 @@ guard has to change as part of this follow-up**, not just the
 PR #116 broke, since PR #116 never reaches allocation for a second attempt
 today (the resolver rejects first).
 
+**Is the guard purely "retests aren't supported yet," or does it also
+catch real corruption (e.g. two concurrently `in_progress` sessions)? Lead
+required this confirmed explicitly, not assumed.** Traced: in today's
+pre-retest state space, `AssessmentAttemptAllocationPolicy::decide()` has
+always rejected any attempt beyond the first when no retest grant is
+supplied, and production has never supplied one (`allocateNew()` always
+passed `null` before PR #116) — so a second row for the same
+participant+case+instrument was structurally impossible to create
+correctly. **Any 2-row state observed today would in fact only ever be
+reachable through corruption** (a bug that let `decide()`'s reject slip,
+or a direct write bypassing the allocator entirely), which is exactly why
+the guard fires unconditionally on `count() > 1` — it had no legitimate
+case to distinguish from a corrupt one. **It is therefore not safe to
+simply delete the guard or loosen it to "count() > 1 is fine now" —**
+doing so would also silently accept a genuinely corrupt state, such as two
+rows both `in_progress` at once, and hand the caller whichever one
+`$sessions->last()` happens to be, with no signal anything was wrong.
+
+The guard must become specific to the one new legitimate shape (a linear
+history where only the most recent attempt can be non-terminal), not
+removed:
+
+```php
+// Note: AssessmentSessionStatus::Voided's underlying string value is
+// 'void', not 'voided' -- checked against app/Domain/AssessmentSessions/AssessmentSessionStatus.php
+// directly rather than assumed, to avoid embedding a real typo bug here.
+$nonTerminal = $sessions->filter(
+    static fn (array $row): bool => ! in_array($row['status'] ?? null,
+        ['submitted', 'scored', 'expired', 'void'], true),
+);
+if ($nonTerminal->count() > 1
+    || ($nonTerminal->count() === 1 && $nonTerminal->keys()->first() !== $sessions->keys()->last())) {
+    throw new InvalidAssessmentSessionState('Assessment attempt history is not a valid linear sequence.');
+}
+```
+
+i.e.: at most one non-terminal (`created`/`in_progress`) row is ever
+allowed, and if one exists it must be the row with the highest
+`attempt_no` (the sessions collection is already `orderBy('attempt_no')`).
+Any earlier row that is still non-terminal — two concurrently active
+attempts, or a gap where an old attempt was never closed out before a
+newer one exists — still throws exactly as today. This is strictly more
+permissive than today's guard only for the one new legitimate case (a
+terminal row followed by nothing yet), and strictly as strict as today's
+guard for every corruption case it used to catch.
+
 ### Design
 
 Fetch the full ordered history (`orderBy('attempt_no')`, no `limit(2)` —
@@ -121,8 +232,11 @@ for the existing live-replay branch (unchanged: if its status is
 `retestCandidate: false`, `eligibleForAllocation: false`, session identity
 carried through for `isLiveReplay()`).
 
-When the latest row is **terminal** (`submitted`/`scored`/`expired`/`voided`
-— i.e. not `created`/`in_progress`), this is new: today `candidate()` never
+The linear-history guard above (replacing `count() > 1`) already guarantees
+that when it doesn't throw, at most the last row can be non-terminal — so
+"the latest row is terminal" is simply "`$nonTerminal` is empty." When the
+latest row is **terminal** (`submitted`/`scored`/`expired`/`voided` — i.e.
+not `created`/`in_progress`), this is new: today `candidate()` never
 reaches this branch at all for `count() >= 1` non-live rows because
 nothing calls it with more than one row and the single-row terminal case
 currently falls through to `selectionCandidate(..., eligible: false, ...)`
@@ -258,16 +372,19 @@ re-fetches and re-locks `$entitlement`, `$sessions`, the order/selection
 row, all over again even though the candidate was already projected once).
 This branch follows that existing pattern rather than deviating from it.
 
-Note this branch **does not** assert `$entitlement->started_at === null`
-— for a retest, the entitlement's prior `started_at` from attempt 1 is
-expected and correct, not a corruption signal. It does still assert
-`$entitlement->status !== 'ready'` is **not** required either way — the
-row's `status` after a terminal attempt 1 could be `'in_progress'` (if
-`consumeSourceGrant()` never advances status past what it set — needs
-confirming against that method's exact write, flagged below) or whatever
-value that method leaves behind; the branch deliberately does not pin an
-exact prior status because Q1's reset is what normalizes it before
-allocation, not this resolver.
+Note this branch deliberately asserts **nothing** about
+`$entitlement->started_at`/`$entitlement->status` in either direction —
+neither requiring them null (that's the first-attempt branch's job) nor
+pinning them to the specific prior value. Q1's trace of
+`consumeSourceGrant()` established that a retest's entitlement is always
+found at exactly `status = 'in_progress', started_at = <attempt-1 time>,
+completed_at = NULL` at this point, but *asserting* that here would
+duplicate a check `reopenEntitlementForRetest()` already makes explicit
+and load-bearing (Q1) — this resolver's job is authorizing the attempt,
+not validating the entitlement's exact prior state twice over in two
+different classes. If the entitlement is ever found in some other,
+unexpected state, `reopenEntitlementForRetest()`'s own `$updated !== 1`
+guard is what catches it, one call later in the same transaction.
 
 ### Ordering: why the resolver must authorize *before* the entitlement is reset
 
@@ -300,15 +417,45 @@ first-attempt-only, unchanged. A retest can only ever be reached through
 `retestCandidate` lives) — the plan does not add any retest awareness to
 `resolveDirect()`/`resolveLegacy()`.
 
-This has a real consequence worth flagging to Lead rather than deciding
-silently: **it means a retest is only reachable if the participant's
-session-selection call site actually goes through `ParticipantAssessmentSessionCandidates`/`AssessmentSessionSelectionPolicy`
-first**, even for a participant with only one case. Confirming that the
-production entry point (participant lobby → start-session flow) always
-takes the selection path rather than ever calling `resolveParticipantForUpdate()`
-directly for a single-case participant is **out of this plan's research
-scope** — flagged as a verification step for implementation time, not
-assumed here.
+This has a real consequence: **a retest is only reachable if the
+participant's session-selection call site actually goes through
+`ParticipantAssessmentSessionCandidates`/`AssessmentSessionSelectionPolicy`
+first**, even for a participant with only one case. Lead required this
+traced to a definite conclusion rather than left open, so:
+
+**Confirmed: yes, every real participant automatically goes through the
+selection path — no additional wiring needed anywhere.** Traced the actual
+production entry point:
+
+- `routes/api.php:53` wires the only production route for starting a
+  generic-instrument session, `POST /sessions/{testType}/start`, to
+  `StartParticipantSessionController`.
+- That controller calls
+  `App\Actions\AssessmentSessions\StartParticipantAssessmentSession::execute()`
+  (`app/Actions/AssessmentSessions/StartParticipantAssessmentSession.php`),
+  whose `withinTransaction()` (lines 62-97) **unconditionally** calls
+  `$this->candidates->project(...)` → `$this->selectionPolicy->select(...)`
+  → `$this->authorizations->resolveSelectedParticipantForUpdate(...)` —
+  every single time, for every participant, whether they have one case or
+  several. There is no branch that skips selection for the single-case
+  case.
+- Grepping `app/` for callers of `resolveParticipantForUpdate()` (the
+  unselected method that internally reaches `readyEntitlement()`) outside
+  `CaseAuthorizationResolver` itself, and for any controller under
+  `app/Http` referencing `CaseAuthorizationResolver` directly, both return
+  **zero matches**. `resolveParticipantForUpdate()`/`resolveDirect()`/`resolveLegacy()`/`readyEntitlement()`
+  are exercised only by tests today — they are dead code on every
+  production path, not a live alternate route this plan needs to also
+  reach.
+
+So the design in Q2/Q3 is complete as scoped: once
+`ParticipantAssessmentSessionCandidates::candidate()` reports
+`retestCandidate: true` for a single-case participant whose one entitlement
+is terminal, `StartParticipantAssessmentSession` will reach it exactly the
+same way it reaches any multi-case participant, with no further wiring.
+`readyEntitlement()` staying first-attempt-only (deliberately not made
+retest-aware, per the reasoning above) is therefore safe to leave exactly
+as designed — it has no production caller to leave behind.
 
 ## Does `AssessmentSessionSelectionPolicy` need changes?
 
@@ -325,23 +472,20 @@ by construction; it does not need modification for this follow-up.
 
 ## What still needs a decision, not covered here
 
-- **Exact prior `status` value `consumeSourceGrant()` leaves on the
-  entitlement row after attempt 1**, to confirm Q3's branch doesn't need
-  to assert a specific value. Needs one read of
-  `AllocateAndStartAssessmentSession::consumeSourceGrant()`'s exact
-  `UPDATE`/`update()` call at implementation time (not re-derived here to
-  keep this plan scoped to the three questions Lead asked).
-- **Whether the production single-case entry point ever calls
-  `resolveParticipantForUpdate()` directly** (bypassing candidate
-  selection) — if it does, a retest would silently be unreachable from
-  that entry point even after this plan ships, since `readyEntitlement()`
-  is deliberately not touched. Needs tracing the actual controller/action
-  that participants hit today.
-- **`latestSessionIsTerminal()`'s exact status set** — `submitted`,
-  `scored`, `expired`, `voided` per `AssessmentSessionStatus`, mirrors
-  `AssessmentAttemptAllocationPolicyTest::consumedStatuses()` in PR #116;
-  should reuse a shared helper rather than duplicating the enum
-  membership check in two files.
+All three items Lead flagged in the prior revision (exact post-attempt-1
+entitlement status, whether the production entry point auto-reaches
+selection, and whether the `count() > 1` guard also gates corruption) are
+now resolved above with evidence, not left open. One smaller item remains,
+genuinely out of this plan's three-question scope:
+
+- **A shared terminal-status helper.** The non-terminal/terminal status
+  check now appears in three places once implemented: this plan's
+  `candidate()` history guard, its `retestCandidate` branch, and
+  `AssessmentAttemptAllocationPolicyTest::consumedStatuses()`'s existing
+  enum membership list from PR #116. Should be a single named method
+  (e.g. `AssessmentSessionStatus::isTerminal()` on the enum itself) rather
+  than duplicating the four-value list in multiple files — a
+  implementation-time cleanup, not a design decision.
 
 ## Test impact (designed, not written)
 
