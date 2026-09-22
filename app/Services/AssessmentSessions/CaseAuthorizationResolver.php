@@ -13,6 +13,7 @@ use App\Domain\AssessmentSessions\CaseAuthorizationGrantKind;
 use App\Domain\AssessmentSessions\CaseAuthorizationOrigin;
 use App\Domain\AssessmentSessions\CaseAuthorizationRejected;
 use App\Domain\AssessmentSessions\GenericAssessmentInstrument;
+use App\Enums\OrderStatus;
 use App\Models\AssessmentCase;
 use App\Models\AssessmentCharge;
 use App\Models\AssessmentEntitlement;
@@ -223,7 +224,7 @@ final readonly class CaseAuthorizationResolver
             ->orderBy('id')->lockForUpdate()->limit(1)->get();
         if ($selections->isNotEmpty() || $integrated->isNotEmpty()
             || $order->public_id !== $case->public_id
-            || $order->status->value !== 'paid' || $order->paid_at === null) {
+            || ! $this->orderGrantsAccess($order)) {
             $this->reject();
         }
 
@@ -374,6 +375,20 @@ final readonly class CaseAuthorizationResolver
         return (int) $id;
     }
 
+    /**
+     * Paid and BridgeFunded both grant session-start access (item 18: bridge
+     * funding is identical to a paying participant). The paid_at
+     * not-null invariant stays Paid-specific -- BridgeFunded has no
+     * equivalent timestamp column on `orders` itself; its own approval
+     * timestamp lives on `bridge_funding_grants`, which this read path does
+     * not join.
+     */
+    private function orderGrantsAccess(Order $order): bool
+    {
+        return $order->status->grantsAccess()
+            && ($order->status !== OrderStatus::Paid || $order->paid_at !== null);
+    }
+
     private function resolveDirect(Participant $participant, GenericAssessmentInstrument $instrument): CaseAuthorization
     {
         if (! is_int($participant->package_id)) {
@@ -405,7 +420,7 @@ final readonly class CaseAuthorizationResolver
         if ($selection->isNotEmpty() || $integrated->isNotEmpty()
             || $entitlementTypes !== $packageTypes
             || $entitlements->contains(fn (Entitlement $row): bool => $row->order_id !== $order->id)
-            || $order->status->value !== 'paid' || $order->paid_at === null
+            || ! $this->orderGrantsAccess($order)
             || $order->assessment_case_id !== $case->id
             || $case->public_id !== $order->public_id
             || $case->participant_id !== $participant->id

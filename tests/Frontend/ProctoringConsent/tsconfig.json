@@ -1,0 +1,13 @@
+{
+    "extends": "../../../tsconfig.json",
+    "include": [
+        "./*.ts",
+        "./*.tsx",
+        "../../../resources/js/types/vite-env.d.ts",
+        "../../../resources/js/components/participant/proctoring/**/*.ts",
+        "../../../resources/js/components/participant/proctoring/**/*.tsx",
+        "../../../resources/js/components/participant/session-runner/use-proctoring-camera.ts",
+        "../../../resources/js/components/participant/session-runner/camera-controller.ts",
+        "../../../resources/js/components/participant/session-runner/proctoring-reporter.ts"
+    ]
+}

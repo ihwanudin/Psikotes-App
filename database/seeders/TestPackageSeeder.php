@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
+use App\Security\RlsContextRunner;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
@@ -19,6 +20,14 @@ final class TestPackageSeeder extends Seeder
             flags: JSON_THROW_ON_ERROR,
         );
 
+        app(RlsContextRunner::class)->runAsService(function () use ($catalog): void {
+            $this->seedCatalog($catalog);
+        });
+    }
+
+    /** @param array{packages: list<array{code: string, name: string, amount: int, test_types: list<string>}>, consultation_amount: int, currency: string} $catalog */
+    private function seedCatalog(array $catalog): void
+    {
         foreach ($catalog['packages'] as $definition) {
             DB::table('packages')->insertOrIgnore([
                 'code' => $definition['code'],

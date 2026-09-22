@@ -85,10 +85,35 @@ final class CheckoutZeroPriceSettlementTest extends TestCase
                 DB::table('checkout_sessions')->where('organization_id', $organization)->delete();
                 DB::table('checkout_handoffs')->where('organization_id', $organization)->delete();
                 DB::table('integration_sources')->where('integration_client_id', $this->fixture['client'])->delete();
-                DB::table('package_items')->where('package_id', $this->fixture['package'])->delete();
             });
+            // Not the service-role connection above: package_items has no
+            // DELETE grant at all (RLS-GAP-07/08 remediation, 2026-09-22
+            // -- no production code path ever deletes a package or
+            // package item, so it was deliberately not granted). Test
+            // cleanup goes through the schema-owner connection instead,
+            // same as every other owner-only DDL/cleanup operation in
+            // this suite.
+            $this->deletePackageItems((int) $this->fixture['package']);
         }
         parent::tearDown();
+    }
+
+    private function deletePackageItems(int $packageId): void
+    {
+        $runtime = DB::getDefaultConnection();
+        $config = config('database.connections.'.$runtime);
+        config()->set('database.connections.checkout_zero_price_settlement_cleanup', [
+            ...$config,
+            'username' => 'org_test_owner',
+        ]);
+
+        try {
+            DB::connection('checkout_zero_price_settlement_cleanup')
+                ->table('package_items')->where('package_id', $packageId)->delete();
+        } finally {
+            DB::purge('checkout_zero_price_settlement_cleanup');
+            config()->set('database.connections.checkout_zero_price_settlement_cleanup', null);
+        }
     }
 
     public function test_two_processes_serialize_to_one_charge_audit_and_activation_set(): void

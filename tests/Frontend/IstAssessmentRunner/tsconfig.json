@@ -1,0 +1,12 @@
+{
+    "extends": "../../../tsconfig.json",
+    "include": [
+        "./*.ts",
+        "./*.tsx",
+        "../../../resources/js/types/vite-env.d.ts",
+        "../../../resources/js/components/participant/ist/*.ts",
+        "../../../resources/js/components/participant/ist/*.tsx",
+        "../../../resources/js/components/participant/session-runner/*.ts",
+        "../../../resources/js/components/participant/session-runner/*.tsx"
+    ]
+}

@@ -27,10 +27,14 @@ use Throwable;
  * underlying condition); anything else 500, reported.
  *
  * Response is a pass-through of AssessmentItemContent: session_id,
- * instrument, version, and subtests as returned by the authority. Field-
- * level whitelisting of what belongs inside each item happens inside the
- * per-instrument reader that produced the content, not here -- this
- * controller has no instrument-specific knowledge to filter with.
+ * instrument, version, subtests, and instructions as returned by the
+ * authority. Field-level whitelisting of what belongs inside each item (or
+ * inside instructions) happens inside the per-instrument reader that
+ * produced the content, not here -- this controller has no
+ * instrument-specific knowledge to filter with. `instructions` is `null`
+ * for instruments/readers that don't have any -- always present in the
+ * response shape, never an omitted key, so the shape is stable across
+ * instruments.
  */
 final class GetAssessmentSessionItemsController extends Controller
 {
@@ -61,6 +65,7 @@ final class GetAssessmentSessionItemsController extends Controller
                     'instrument' => $result->content->instrument->value,
                     'version' => $result->content->version,
                     'subtests' => $result->content->subtests,
+                    'instructions' => $result->content->instructions,
                 ]);
             }
 

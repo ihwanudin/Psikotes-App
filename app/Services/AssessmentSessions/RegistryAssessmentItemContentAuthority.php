@@ -32,6 +32,9 @@ final readonly class RegistryAssessmentItemContentAuthority implements Assessmen
     public function contentFor(
         GenericAssessmentInstrument $instrument,
         SessionDefinition $definition,
+        int $participantId,
+        ?string $lockedVariant = null,
+        ?string $currentSegmentCode = null,
     ): AssessmentItemContent {
         $reader = $this->readers[$instrument->value] ?? null;
         if ($reader === null) {
@@ -40,6 +43,6 @@ final readonly class RegistryAssessmentItemContentAuthority implements Assessmen
             );
         }
 
-        return $reader->contentFor($instrument, $definition);
+        return $reader->contentFor($instrument, $definition, $participantId, $lockedVariant, $currentSegmentCode);
     }
 }

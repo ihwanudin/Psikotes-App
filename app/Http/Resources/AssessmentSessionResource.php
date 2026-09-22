@@ -6,6 +6,7 @@ namespace App\Http\Resources;
 
 use App\Actions\AssessmentSessions\AssessmentSessionAllocationResult;
 use App\Actions\AssessmentSessions\AssessmentSessionSnapshot;
+use App\Domain\AssessmentSessions\TimedSegmentSweep;
 use DateTimeImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -76,6 +77,50 @@ final class AssessmentSessionResource extends JsonResource
             ],
             'seed' => $definition->seed,
             'replayed' => $resource instanceof AssessmentSessionAllocationResult && $resource->replayed,
+            'current_segment' => $this->currentSegment($resource),
+        ];
+    }
+
+    /**
+     * F2 timed-segments stage 5 (2026-09-22). null only when the session has
+     * never started (startedAt null -- 'created', or 'void' straight from
+     * 'created'); every other status necessarily entered segment 0 at least
+     * once. Computed fresh via TimedSegmentSweep on every read -- compute-
+     * only, same as remaining_seconds, never persisted here (see
+     * TimedSegmentSweep's own docblock for why). For
+     * AssessmentSessionAllocationResult (just started/replayed), there is
+     * never a stored index yet, so the sweep seeds from startedAt exactly
+     * the way a session that has never subtest/next'd already does.
+     *
+     * @return array{code: string, index: int, started_at: string|null, ends_at: string|null, remaining_seconds: int|null}|null
+     */
+    private function currentSegment(AssessmentSessionAllocationResult|AssessmentSessionSnapshot $resource): ?array
+    {
+        if ($resource->startedAt === null) {
+            return null;
+        }
+
+        $swept = (new TimedSegmentSweep)->evaluate(
+            $resource->definition->segments,
+            $resource instanceof AssessmentSessionSnapshot ? $resource->currentSegmentIndex : null,
+            $resource instanceof AssessmentSessionSnapshot ? $resource->currentSegmentBecameCurrentAt : null,
+            $resource instanceof AssessmentSessionSnapshot ? $resource->currentSegmentStartedAt : null,
+            $resource->startedAt,
+            $resource->serverTime,
+        );
+
+        $segment = $resource->definition->segments[$swept->index];
+        $endsAt = $swept->startedAt?->modify("+{$segment->durationSeconds} seconds");
+        $remainingSeconds = $endsAt === null ? null : max(0, (int) ceil(
+            (float) $endsAt->format('U.u') - (float) $resource->serverTime->format('U.u'),
+        ));
+
+        return [
+            'code' => $segment->code,
+            'index' => $swept->index,
+            'started_at' => $this->rfc3339($swept->startedAt),
+            'ends_at' => $this->rfc3339($endsAt),
+            'remaining_seconds' => $remainingSeconds,
         ];
     }
 

@@ -6,6 +6,7 @@ namespace Tests\Postgres;
 
 use App\Actions\AssessmentSessions\AutosaveAssessmentAnswers;
 use App\Actions\AssessmentSessions\GetAssessmentSessionAnswers;
+use App\Actions\AssessmentSessions\SealExpiredAssessmentSession;
 use App\Domain\AssessmentSessions\AssessmentAutosavePolicy;
 use App\Domain\AssessmentSessions\SessionDefinition;
 use App\Http\Controllers\GetAssessmentSessionAnswersController;
@@ -72,6 +73,7 @@ final class AssessmentSessionAnswersReadbackControllerTest extends TestCase
         $fixture = $this->fixture();
         $autosave = new AutosaveAssessmentAnswers(
             app(RlsContextRunner::class), new AssessmentAutosavePolicy,
+            new SealExpiredAssessmentSession(app(RlsContextRunner::class)),
             fn (): DateTimeImmutable => new DateTimeImmutable('2026-09-08T03:30:00+00:00'),
         );
         $autosaveResult = $autosave->execute($fixture['participant'], $fixture['public_id'], (string) Str::ulid(), 1, [
@@ -249,6 +251,7 @@ final class AssessmentSessionAnswersReadbackControllerTest extends TestCase
                 $action = new AutosaveAssessmentAnswers(
                     app(RlsContextRunner::class),
                     new AssessmentAutosavePolicy,
+                    new SealExpiredAssessmentSession(app(RlsContextRunner::class)),
                     function () use ($pair): DateTimeImmutable {
                         $this->writeEvent($pair[1], ['event' => 'locked']);
                         if (fgets($pair[1]) !== "release\n") {

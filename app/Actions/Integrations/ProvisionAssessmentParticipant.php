@@ -24,6 +24,20 @@ use Illuminate\Support\Str;
 
 final readonly class ProvisionAssessmentParticipant
 {
+    /**
+     * SPEC.md:259: entitlements become `ready` only via a verified Xendit
+     * webhook, an admin-verified manual transfer, or audited super_admin
+     * activation. Both modes here involve real money that hasn't gone
+     * through any of those three paths at provisioning time -- COMMERCIAL_SELF_PAY
+     * obviously, and INVOICED_TO_ORGANIZATION because the organization is
+     * billed and expected to actually pay, just not yet verified. SPONSORED,
+     * INTERNAL, and WAIVED involve no participant payment at all and are
+     * deliberately left unconditionally `ready` for now (Direction B,
+     * tasks/handoffs/f2/legacy-entitlement-provisioning-closure-plan.md --
+     * a unified design with clause (c) manual activation, not decided yet).
+     */
+    private const array MONEY_VERIFIED_FUNDING_MODES = ['COMMERCIAL_SELF_PAY', 'INVOICED_TO_ORGANIZATION'];
+
     public function __construct(
         private RlsContextRunner $runner,
         private MonthlyTestNumberIssuer $testNumbers,
@@ -117,13 +131,14 @@ final readonly class ProvisionAssessmentParticipant
                         'logical_assessment_key' => $logicalKey,
                         'metadata' => $input['metadata'] ?? [],
                     ]);
+                    $moneyVerified = in_array($input['fundingMode'], self::MONEY_VERIFIED_FUNDING_MODES, true);
                     foreach ($testTypes as $testType) {
                         $participant->entitlements()->firstOrCreate([
                             'test_type' => $testType,
                             'assessment_case_id' => $testType === 'dass21' ? null : $case->id,
-                        ], [
-                            'order_id' => null, 'status' => 'ready', 'ready_at' => $now,
-                        ]);
+                        ], $moneyVerified
+                            ? ['order_id' => null, 'status' => 'locked', 'ready_at' => null]
+                            : ['order_id' => null, 'status' => 'ready', 'ready_at' => $now]);
                     }
 
                     DB::table('audit_logs')->insert([

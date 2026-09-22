@@ -13,6 +13,7 @@ use App\Domain\AssessmentSessions\CaseAuthorizationOrigin;
 use App\Domain\AssessmentSessions\CaseAuthorizationRejected;
 use App\Domain\AssessmentSessions\GenericAssessmentInstrument;
 use App\Domain\AssessmentSessions\InvalidAssessmentSessionState;
+use App\Enums\OrderStatus;
 use App\Security\RlsContextRunner;
 use App\Services\ParticipantAuth\ParticipantPrincipal;
 use Illuminate\Support\Facades\DB;
@@ -135,8 +136,29 @@ final readonly class ParticipantAssessmentSessionCandidates
             $case,
             $order,
             null,
-            ($order['status'] ?? null) === 'paid' && ($order['paid_at'] ?? null) !== null,
+            $this->orderGrantsAccess($order),
         );
+    }
+
+    /**
+     * Mirrors CaseAuthorizationResolver::orderGrantsAccess() -- Paid and
+     * BridgeFunded both grant session-start access (item 18). Reads a raw
+     * DB::table() row array (never hydrated as an Order model here), so the
+     * OrderStatus::grantsAccess() enum method is used directly rather than
+     * an Eloquent accessor.
+     *
+     * @param  array<string,mixed>  $order
+     */
+    private function orderGrantsAccess(array $order): bool
+    {
+        $status = $order['status'] ?? null;
+        if (! is_string($status)) {
+            return false;
+        }
+        $status = OrderStatus::from($status);
+
+        return $status->grantsAccess()
+            && ($status !== OrderStatus::Paid || ($order['paid_at'] ?? null) !== null);
     }
 
     /** @param array<string,mixed> $case */

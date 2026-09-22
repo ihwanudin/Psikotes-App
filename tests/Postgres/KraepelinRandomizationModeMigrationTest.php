@@ -34,6 +34,8 @@ final class KraepelinRandomizationModeMigrationTest extends TestCase
 {
     private const MIGRATION_PATH = 'migrations/2026_09_21_000100_fix_kraepelin_randomization_mode.php';
 
+    private const TIMED_SEGMENTS_MIGRATION_PATH = 'migrations/2026_09_22_020000_extend_test_session_definition_snapshot_for_timed_segments.php';
+
     public function test_catalog_accepts_fixed_null_seed_kraepelin_and_rejects_seeded_mode(): void
     {
         app(RlsContextRunner::class)->runAsService(function (): void {
@@ -133,6 +135,22 @@ final class KraepelinRandomizationModeMigrationTest extends TestCase
         });
     }
 
+    /**
+     * F2 timed-segments stage 3b (2026-09-22): re-applies the later timed-
+     * segments migration's up() after this migration's own up(), for the
+     * exact reason TestSessionDefinitionSnapshotSecurityTest::
+     * test_owner_down_up_preserves_historical_null_session_without_backfill's
+     * own docblock already documents for this same function -- that later
+     * migration (database/migrations/2026_09_22_020000_extend_test_session_
+     * definition_snapshot_for_timed_segments.php) also uses CREATE OR
+     * REPLACE FUNCTION on guard_test_session_definition_snapshot(), so
+     * $fixedSnapshot (captured against the fully-migrated, current function)
+     * would otherwise never equal the function this migration's own up()
+     * reinstalls in isolation. Mirrors what `artisan migrate` would actually
+     * do (replay every later migration in order), not a workaround specific
+     * to this test. guard_assessment_session_definitions() is untouched by
+     * that later migration, so $fixedCatalog needs no such re-apply.
+     */
     public function test_down_then_up_restores_the_exact_original_trigger_definitions(): void
     {
         $this->asOwner(function (): void {
@@ -153,6 +171,7 @@ final class KraepelinRandomizationModeMigrationTest extends TestCase
                 $this->assertNotSame($fixedSnapshot, $seededSnapshot);
 
                 $this->runMigration('up');
+                (require database_path(self::TIMED_SEGMENTS_MIGRATION_PATH))->up();
                 $this->assertSame($fixedCatalog, $this->functionSource('guard_assessment_session_definitions'));
                 $this->assertSame($fixedSnapshot, $this->functionSource('guard_test_session_definition_snapshot'));
             } finally {
