@@ -191,6 +191,7 @@ async (page) => {
             `item ${itemNo}'s last autosaved value must be "a" (the first radio option), got ${JSON.stringify(lastValueByItemNo.get(itemNo))}`,
         )
     }
+
     results.push('autosave: all 90 items reached send() with the correct {item_no, value} shape')
 
     const submitAfterAll = page.getByRole('button', { name: 'Kirim jawaban' })
