@@ -175,6 +175,12 @@ final class AllocateAndStartAssessmentSession
                     AssessmentSessionErrorCode::AutosaveRevisionGap,
                     AssessmentSessionErrorCode::MutationPayloadMismatch,
                     AssessmentSessionErrorCode::InvalidAnswerBatch,
+                    // F2 timed-segments (PR #109): SubtestNext/autosave's own
+                    // range check, same as every other case in this bucket --
+                    // belongs to a different endpoint's policy, can never
+                    // reach this call site either.
+                    AssessmentSessionErrorCode::InvalidSessionTransition,
+                    AssessmentSessionErrorCode::ItemOutsideCurrentSegment,
                     null => null,
                 },
             );

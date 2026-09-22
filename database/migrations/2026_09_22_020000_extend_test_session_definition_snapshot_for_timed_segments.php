@@ -98,6 +98,9 @@ return new class extends Migration
         });
     }
 
+    /**
+     * @return literal-string
+     */
     private function postgresSnapshotFunctionBody(bool $timedSegments): string
     {
         $subtestShape = $timedSegments
@@ -371,7 +374,7 @@ return new class extends Migration
             SQL;
     }
 
-    /** @param array{insert: string, update: string} $valid */
+    /** @param array{insert: literal-string, update: literal-string} $valid */
     private function installSqliteSnapshotTriggers(array $valid): void
     {
         DB::unprepared('DROP TRIGGER IF EXISTS test_sessions_definition_snapshot_insert_guard');
@@ -390,7 +393,7 @@ return new class extends Migration
             BEGIN SELECT RAISE(ABORT, 'test session definition snapshot is immutable or invalid'); END");
     }
 
-    /** @return array{insert: string, update: string} */
+    /** @return array{insert: literal-string, update: literal-string} */
     private function sqliteSnapshotValidExpression(bool $timedSegments): array
     {
         $payload = "CASE WHEN json_valid(NEW.session_definition_payload) THEN NEW.session_definition_payload ELSE '{}' END";
@@ -398,8 +401,8 @@ return new class extends Migration
         $provenance = "json_extract({$payload}, '\$.provenance')";
         $checksum = "json_extract({$payload}, '\$.checksum')";
         $generator = "json_extract({$payload}, '\$.generator')";
-        $canonicalVersion = $this->sqliteCanonicalIdentity($version, 100);
-        $canonicalProvenance = $this->sqliteCanonicalIdentity($provenance, 255);
+        $canonicalVersion = $this->sqliteCanonicalIdentity($version, '100');
+        $canonicalProvenance = $this->sqliteCanonicalIdentity($provenance, '255');
         $canonicalAlgorithm = $this->sqliteCanonicalIdentity("json_extract({$payload}, '\$.generator.algorithm')");
         $canonicalGeneratorVersion = $this->sqliteCanonicalIdentity("json_extract({$payload}, '\$.generator.version')");
 
@@ -646,21 +649,37 @@ return new class extends Migration
         return ['insert' => $valid, 'update' => $valid];
     }
 
-    private function sqliteCanonicalIdentity(string $expression, ?int $maxLength = null): string
+    /**
+     * $maxLength is a `literal-string` digit sequence (e.g. `'100'`), not an
+     * `int` -- PHPStan's literal-string inference does not reliably treat
+     * `literal-string . int` (nor `sprintf('%s...%d', $literalString, $int)`)
+     * as staying `literal-string`; every attempt at concatenating/sprintf-ing
+     * a real `int` into this method's result was independently re-verified
+     * with phpstan to still fail with "returns non-falsy-string", so the
+     * parameter itself is typed to keep every piece of this method's return
+     * value `literal-string` all the way through, with pure `.` concatenation
+     * (no int ever enters the expression). Call sites pass digit-string
+     * literals, e.g. `'100'`, not `100`.
+     *
+     * @param  literal-string  $expression
+     * @param  literal-string|null  $maxLength
+     * @return literal-string
+     */
+    private function sqliteCanonicalIdentity(string $expression, ?string $maxLength = null): string
     {
         $length = $maxLength === null
-            ? "length({$expression}) > 0"
-            : "length({$expression}) BETWEEN 1 AND {$maxLength}";
+            ? 'length('.$expression.') > 0'
+            : 'length('.$expression.') BETWEEN 1 AND '.$maxLength;
 
-        return "{$length} AND {$expression} = trim({$expression})"
-            ." AND instr({$expression}, ' ') = 0"
-            ." AND instr({$expression}, char(9)) = 0"
-            ." AND instr({$expression}, char(10)) = 0"
-            ." AND instr({$expression}, char(13)) = 0"
-            ." AND instr({$expression}, char(160)) = 0"
-            ." AND instr({$expression}, char(8203)) = 0"
-            ." AND instr({$expression}, char(8232)) = 0"
-            ." AND instr({$expression}, char(8233)) = 0"
-            ." AND instr({$expression}, char(65279)) = 0";
+        return $length.' AND '.$expression.' = trim('.$expression.')'
+            .' AND instr('.$expression.", ' ') = 0"
+            .' AND instr('.$expression.', char(9)) = 0'
+            .' AND instr('.$expression.', char(10)) = 0'
+            .' AND instr('.$expression.', char(13)) = 0'
+            .' AND instr('.$expression.', char(160)) = 0'
+            .' AND instr('.$expression.', char(8203)) = 0'
+            .' AND instr('.$expression.', char(8232)) = 0'
+            .' AND instr('.$expression.', char(8233)) = 0'
+            .' AND instr('.$expression.', char(65279)) = 0';
     }
 };

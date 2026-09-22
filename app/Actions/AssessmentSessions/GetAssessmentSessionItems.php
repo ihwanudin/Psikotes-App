@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use JsonException;
 use RuntimeException;
+use stdClass;
 
 /**
  * F2 item-delivery (2026-09-21). GET /sessions/{id}/items. Read-only, same
@@ -132,7 +133,7 @@ final class GetAssessmentSessionItems
      * resource already follow. started_at is guaranteed non-null here: the
      * caller already rejected anything but an in_progress session above.
      */
-    private function currentSegmentCode(object $session, SessionDefinition $definition, DateTimeImmutable $now): string
+    private function currentSegmentCode(stdClass $session, SessionDefinition $definition, DateTimeImmutable $now): string
     {
         if ($session->started_at === null) {
             throw new RuntimeException('An in-progress session requires started_at.');
@@ -150,7 +151,7 @@ final class GetAssessmentSessionItems
         return $definition->segments[$swept->index]->code;
     }
 
-    private function storedDefinition(object $session): SessionDefinition
+    private function storedDefinition(stdClass $session): SessionDefinition
     {
         $definitionPayload = $session->session_definition_payload ?? null;
         if (! is_string($definitionPayload)) {
