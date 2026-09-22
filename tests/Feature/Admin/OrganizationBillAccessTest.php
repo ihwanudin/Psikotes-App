@@ -44,6 +44,7 @@ final class OrganizationBillAccessTest extends OrganizationPaymentTestCase
             'name' => 'Admin Sintetis', 'email' => 'portal@example.test',
             'password' => 'synthetic-password', 'role' => AdminRole::BranchAdmin,
             'branch_id' => $this->own['organization'], 'can_verify_payments' => true,
+            'has_email_authentication' => true,
         ]);
         $this->actingAs($this->admin, 'admin');
     }

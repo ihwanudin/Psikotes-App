@@ -376,6 +376,7 @@ final class PsychologistReviewFixturePageTest extends TestCase
             'password' => 'not-a-real-password',
             'role' => $role,
             'can_verify_payments' => false,
+            'has_email_authentication' => true,
         ]);
     }
 }

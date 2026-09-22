@@ -381,6 +381,7 @@ final class ReportGenerationPageTest extends TestCase
             'email' => (string) Str::uuid().'@example.test',
             'password' => bcrypt('password'),
             'role' => $role->value,
+            'has_email_authentication' => true,
         ]);
     }
 
