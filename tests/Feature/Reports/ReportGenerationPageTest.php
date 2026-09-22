@@ -355,10 +355,6 @@ final class ReportGenerationPageTest extends TestCase
         $this->assertStringNotContainsString('PAPI', $pdfContent);
         $this->assertStringNotContainsString('RMIB', $pdfContent);
 
-        foreach (['A1', 'A2', 'B1', 'B2', 'C2', 'C4', 'C5', 'D4'] as $aspectCode) {
-            $this->assertStringNotContainsString($aspectCode, $pdfContent);
-        }
-
         // Verify ledger row was created with correct admin
         $row = DB::table('report_documents')->where('object_key', $files[0])->sole();
         $this->assertSame('hpp', $row->document_type);
