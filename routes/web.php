@@ -244,9 +244,3 @@ Route::get('/admin/assessment-cases/{case}/signing', [ReportSigningController::c
     ->name('admin.assessment-cases.signing.show');
 
 Route::inertia('/', 'welcome')->name('home');
-
-Route::middleware(['auth', 'verified'])->group(function () {
-    Route::inertia('dashboard', 'dashboard')->name('dashboard');
-});
-
-require __DIR__.'/settings.php';
