@@ -56,7 +56,10 @@ final class GenericInstrumentResultLedgerTest extends TestCase
             'session_definition_provenance', 'session_definition_checksum',
             'session_definition_payload', 'instrument_version_id', 'instrument_version',
             'instrument_source_file', 'instrument_checksum', 'result_contract_version',
-            'result_payload', 'result_checksum', 'created_at',
+            // engine_version (added by 2026_09_22_000100) lands last, not
+            // right after result_contract_version -- Postgres ALTER TABLE
+            // ADD COLUMN has no positioning, unlike MySQL's AFTER clause.
+            'result_payload', 'result_checksum', 'created_at', 'engine_version',
         ], $columns['generic_instrument_results'] ?? []);
         $this->assertSame([
             'id', 'result_id', 'ordinal', 'source_code', 'raw_score',
@@ -634,7 +637,8 @@ final class GenericInstrumentResultLedgerTest extends TestCase
             'instrument_version' => $instrument->version,
             'instrument_source_file' => $instrument->source_file,
             'instrument_checksum' => $instrument->checksum,
-            'result_contract_version' => 'ist-result:v1', 'result_payload' => $payload,
+            'result_contract_version' => 'ist-result:v1', 'engine_version' => 'ist-scoring:v1',
+            'result_payload' => $payload,
             'result_checksum' => hash('sha256', $payload), 'created_at' => now(),
         ];
     }

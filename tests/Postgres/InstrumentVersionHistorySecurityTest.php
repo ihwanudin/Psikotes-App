@@ -91,8 +91,10 @@ final class InstrumentVersionHistorySecurityTest extends TestCase
             'kraepelin' => ['F2-2026.09', 'kraepelin.json'],
             'kraepelin_grid' => ['F0-2026.09', 'kraepelin_grid.json'],
             'papi' => ['F2-2026.09', 'papi.json'],
+            'papi_items' => ['F0-ITEMS-PAPI-2026.09', 'papi_items.json'],
             'reporting' => ['GA-2026.08', 'reporting.json'],
             'rmib' => ['F2-2026.09', 'rmib.json'],
+            'rmib_items' => ['F0-ITEMS-RMIB-2026.09', 'rmib_items.json'],
         ] as $code => [$version, $sourceFile]) {
             $expected[] = [
                 'code' => $code,

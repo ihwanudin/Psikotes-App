@@ -148,6 +148,7 @@ final class IntegrationRegistryManagementTest extends TestCase
             'email' => str()->random(8).'@example.test',
             'password' => 'not-a-real-password',
             'role' => $role,
+            'has_email_authentication' => true,
         ]);
     }
 

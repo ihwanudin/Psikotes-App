@@ -41,7 +41,17 @@ use UnexpectedValueException;
  */
 final readonly class SealedRmibResult
 {
-    public const CONTRACT_VERSION = 'rmib-result:v1';
+    // ADR-0032 PR1 (2026-09-22): bumped v1->v2, payload gained `engineVersion`.
+    public const CONTRACT_VERSION = 'rmib-result:v2';
+
+    /**
+     * The scoring CODE version -- see SealedIstResult::ENGINE_VERSION's
+     * docblock for the distinction from `scoringSource`/`resultContractVersion`.
+     * Bump alongside RmibRawScoreCalculator's rules, SCORING_ALGORITHM.md,
+     * and CHANGELOG.md. Still all-or-nothing at v1; ADR-0032 PR3's tiered
+     * incomplete-ranking rule bumps this to v2.
+     */
+    public const ENGINE_VERSION = 'rmib-scoring:v1';
 
     public const CATEGORY_COUNT = 12;
 
@@ -60,6 +70,7 @@ final readonly class SealedRmibResult
      */
     private function __construct(
         public string $resultContractVersion,
+        public string $engineVersion,
         public int $assessmentCaseId,
         public int $sessionId,
         public int $participantId,
@@ -97,6 +108,7 @@ final readonly class SealedRmibResult
 
         $payload = self::canonicalize([
             'resultContractVersion' => self::CONTRACT_VERSION,
+            'engineVersion' => self::ENGINE_VERSION,
             'assessmentCaseId' => $source->assessmentCaseId,
             'sessionId' => $source->sessionId,
             'participantId' => $source->participantId,
@@ -118,6 +130,7 @@ final readonly class SealedRmibResult
 
         return new self(
             resultContractVersion: self::CONTRACT_VERSION,
+            engineVersion: self::ENGINE_VERSION,
             assessmentCaseId: $source->assessmentCaseId,
             sessionId: $source->sessionId,
             participantId: $source->participantId,
@@ -139,6 +152,7 @@ final readonly class SealedRmibResult
     {
         return [
             'resultContractVersion' => $this->resultContractVersion,
+            'engineVersion' => $this->engineVersion,
             'assessmentCaseId' => $this->assessmentCaseId,
             'sessionId' => $this->sessionId,
             'participantId' => $this->participantId,

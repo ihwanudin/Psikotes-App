@@ -9,6 +9,7 @@ use App\Contracts\AssessmentSessionDefinitionAuthority;
 use App\Domain\AssessmentSessions\AssessmentAttempt;
 use App\Domain\AssessmentSessions\AssessmentAttemptAllocation;
 use App\Domain\AssessmentSessions\AssessmentAttemptAllocationPolicy;
+use App\Domain\AssessmentSessions\AssessmentRetestGrant;
 use App\Domain\AssessmentSessions\AssessmentSessionDeadlinePolicy;
 use App\Domain\AssessmentSessions\AssessmentSessionErrorCode;
 use App\Domain\AssessmentSessions\AssessmentSessionStartFailureCode;
@@ -38,10 +39,14 @@ use LogicException;
 use RuntimeException;
 
 /**
- * Internal first-attempt allocator with exact replay only.
+ * First-attempt and retest allocator with exact replay.
  *
- * This unwired slice has no HTTP or production definition-authority binding and deliberately does not
- * authorize retests or resolve multi-case history.
+ * Retest authorization (item 19, 2026-09-22): the first
+ * config('assessment_retests.free_attempt_limit') attempts need no admin
+ * grant at all; every attempt past that looks up an active
+ * assessment_retest_grants row and requires one. Does not resolve
+ * multi-case history (ADR-0031 multi-case wiring is a separate,
+ * not-yet-active slice).
  */
 final class AllocateAndStartAssessmentSession
 {
@@ -142,27 +147,32 @@ final class AllocateAndStartAssessmentSession
         $authorizationId = $this->authorizationId($authorization->origin, $authorization->grantKind, $authorization->grantId);
         $intentId = $this->intentId($authorization->origin, $authorization->grantKind, $authorization->grantId, $instrument);
         $history = $this->lockHistory($authorization->participantId, $instrument, $authorization->caseId);
+        $attempts = $this->attempts($history);
         $newSessionPublicId = (string) Str::ulid();
+        $freeAttemptLimit = (int) config('assessment_retests.free_attempt_limit', 3);
+        $nextAttemptNumber = count($attempts) + 1;
+        $retestGrantRow = $nextAttemptNumber > $freeAttemptLimit
+            ? $this->lockActiveRetestGrant($authorization->participantId, $instrument, $nextAttemptNumber)
+            : null;
+        $retestGrant = $retestGrantRow === null ? null : $this->hydrateRetestGrant($retestGrantRow);
         $decision = $this->allocationPolicy->decide(
-            $this->attempts($history),
+            $attempts,
             $intentId,
             $authorizationId,
             $newSessionPublicId,
             null,
-            null,
+            $retestGrant,
+            $freeAttemptLimit,
         );
-        if (! $decision->accepted || ! $decision->shouldPersist || $decision->allocation === null
-            || $decision->allocation->attempt->attemptNumber !== 1) {
+        if (! $decision->accepted || ! $decision->shouldPersist || $decision->allocation === null) {
             $errorCode = $decision->errorCode;
-            // No retest grant is ever passed from this call site (retest authority
-            // is out of scope, ADR-0031), so decide() can only reject here with
-            // AttemptAlreadyExists or RetestNotAuthorized -- its other cases belong
-            // to the deadline/autosave policies for different endpoints and can
-            // never reach this call. RetestNotAuthorized maps to 403 verbatim per
-            // ADR-0030 ("... tidak memiliki authority retest"), not 409. A null
-            // errorCode here would mean the decision was accepted with the wrong
-            // attempt number, which fresh (empty) history can never produce --
-            // an invariant, not a participant outcome.
+            // decide() can only reject here with AttemptAlreadyExists or
+            // RetestNotAuthorized (item 19: the first $freeAttemptLimit
+            // attempts are automatic, every attempt past that needs its own
+            // valid, looked-up-above grant) -- its other cases belong to the
+            // deadline/autosave policies for different endpoints and can
+            // never reach this call. RetestNotAuthorized maps to 403 verbatim
+            // per ADR-0030 ("... tidak memiliki authority retest"), not 409.
             throw new InvalidAssessmentSessionState(
                 $errorCode === null ? 'FIRST_ATTEMPT_ALLOCATION_REJECTED' : $errorCode->value,
                 match ($errorCode) {
@@ -197,9 +207,19 @@ final class AllocateAndStartAssessmentSession
         // the definition-authority call above it: a thrown
         // AssessmentItemContentUnavailable rolls back this whole
         // transaction via the same mechanism, no separate cleanup needed.
-        // The returned content itself is not needed here -- only that it
-        // could be produced; GET /sessions/{id}/items reads it for real.
-        $this->itemContent->contentFor($instrument, $definition);
+        // The returned content itself is not needed here beyond
+        // $resolvedVariant -- only that content could be produced;
+        // GET /sessions/{id}/items reads the content for real.
+        //
+        // $lockedVariant is null here: this is the ONE call per session
+        // where a reader with a variant axis (RMIB) may resolve fresh from
+        // the participant's current profile (Lead sign-off, 2026-09-21).
+        // $resolvedVariant is persisted into item_content_variant below and
+        // handed to every later contentFor() call for this session (see
+        // GetAssessmentSessionItems::load()) -- so a profile change after
+        // this moment never changes what the participant is shown.
+        $content = $this->itemContent->contentFor($instrument, $definition, $authorization->participantId);
+        $itemContentVariant = $content->resolvedVariant;
         $serverTime = $this->serverTime();
         $start = $this->stateMachine->start(
             AssessmentSessionStatus::Created,
@@ -218,6 +238,7 @@ final class AllocateAndStartAssessmentSession
             $decision->allocation,
             $definition,
             $serverTime,
+            $itemContentVariant,
         );
         DB::table('test_session_grants')->insert([
             'test_session_id' => $sessionId,
@@ -225,6 +246,9 @@ final class AllocateAndStartAssessmentSession
             'created_at' => $this->timestamp($serverTime),
         ]);
         $this->consumeSourceGrant($authorization, $serverTime);
+        if ($retestGrantRow !== null) {
+            $this->consumeRetestGrant((int) $retestGrantRow['id'], $serverTime);
+        }
         if ($principal instanceof AssessmentPrincipal) {
             $this->startIntegratedParticipant($principal, $serverTime);
         }
@@ -233,7 +257,7 @@ final class AllocateAndStartAssessmentSession
         return new AssessmentSessionAllocationResult(
             $newSessionPublicId,
             $start->status,
-            1,
+            $decision->allocation->attempt->attemptNumber,
             0,
             $start->startedAt,
             $start->endsAt,
@@ -241,6 +265,57 @@ final class AllocateAndStartAssessmentSession
             $definition,
             false,
         );
+    }
+
+    /**
+     * item 19: only reached when nextAttemptNumber is past
+     * config('assessment_retests.free_attempt_limit'). Locked so the same
+     * grant cannot be raced into consumption by two concurrent allocation
+     * attempts -- though in practice the participant/history lock already
+     * serializes callers for the same participant+instrument before this
+     * point is ever reached.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function lockActiveRetestGrant(int $participantId, GenericAssessmentInstrument $instrument, int $attemptNumber): ?array
+    {
+        $row = DB::table('assessment_retest_grants')
+            ->where('participant_id', $participantId)
+            ->where('test_type', $instrument->value)
+            ->where('attempt_number', $attemptNumber)
+            ->where('status', 'active')
+            ->lockForUpdate()
+            ->first();
+
+        return $row === null ? null : (array) $row;
+    }
+
+    /** @param array<string, mixed> $row */
+    private function hydrateRetestGrant(array $row): AssessmentRetestGrant
+    {
+        return new AssessmentRetestGrant(
+            (string) $row['public_id'],
+            true,
+            (string) $row['reason'],
+            'admin:'.$row['approved_by_admin_id'],
+            (string) $row['authorization_id'],
+            (int) $row['attempt_number'],
+        );
+    }
+
+    private function consumeRetestGrant(int $grantId, DateTimeImmutable $serverTime): void
+    {
+        $updated = DB::table('assessment_retest_grants')
+            ->where('id', $grantId)
+            ->where('status', 'active')
+            ->update([
+                'status' => 'consumed',
+                'consumed_at' => $this->timestamp($serverTime),
+                'updated_at' => $this->timestamp($serverTime),
+            ]);
+        if ($updated !== 1) {
+            throw new InvalidAssessmentSessionState('The exact retest grant could not be consumed.');
+        }
     }
 
     /** @return array{source_system: string} */
@@ -481,6 +556,7 @@ final class AllocateAndStartAssessmentSession
         AssessmentAttemptAllocation $allocation,
         SessionDefinition $definition,
         DateTimeImmutable $serverTime,
+        ?string $itemContentVariant,
     ): int {
         try {
             $payload = json_encode(
@@ -506,6 +582,7 @@ final class AllocateAndStartAssessmentSession
             'session_definition_provenance' => $definition->provenance,
             'session_definition_checksum' => $definition->checksum,
             'session_definition_payload' => $payload,
+            'item_content_variant' => $itemContentVariant,
             'created_at' => $this->timestamp($serverTime),
             'updated_at' => $this->timestamp($serverTime),
         ]);

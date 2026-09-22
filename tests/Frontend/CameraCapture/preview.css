@@ -1,0 +1,4 @@
+/* Test-only entry: include session-runner component utilities outside this fixture's Vite root. */
+@import '../../../resources/css/app.css';
+@source '../../../resources/js/components/participant/session-runner';
+@source '../../../resources/js/components/ui';

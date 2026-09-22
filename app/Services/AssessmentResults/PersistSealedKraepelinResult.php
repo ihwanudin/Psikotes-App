@@ -224,6 +224,15 @@ final readonly class PersistSealedKraepelinResult
             'instrument_source_file' => $result->scoringSource['sourceFile'],
             'instrument_checksum' => $result->scoringSource['checksum'],
             'result_contract_version' => $result->resultContractVersion,
+            // ADR-0032 PR1 (2026-09-22) added `engine_version` NOT NULL to the
+            // shared `generic_instrument_results` ledger for IST/PAPI/RMIB
+            // provenance. Kraepelin's own scoring code is untouched and out
+            // of ADR-0032's scope -- this is a fixed DB-column value only,
+            // deliberately NOT threaded into SealedKraepelinResult's sealed
+            // payload/checksum (unlike the other three instruments), so
+            // nothing about Kraepelin's own seal shape or any of its
+            // existing readers changes.
+            'engine_version' => 'kraepelin-scoring:v1',
             'result_payload' => $result->canonicalJson(),
             'result_checksum' => $result->resultChecksum,
         ];

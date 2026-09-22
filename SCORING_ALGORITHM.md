@@ -1,6 +1,6 @@
 # SCORING ALGORITHM — psikotes.oncam.id
 
-Versi kontrak: **SCORING-4.3.0**
+Versi kontrak: **SCORING-4.4.0**
 Versi data normalisasi: **F2-2026.09**
 Status: FINAL untuk implementasi F2
 
@@ -37,6 +37,7 @@ DASS-21 berjalan pada jalur terpisah dan tidak menjadi input zona atau label kel
 
 - Sembilan subtes dan 176 item: SE20, WA20, AN20, GE16, RA20, ZR20, FA20, WU20, ME20.
 - Non-GE: benar bernilai 1 dari `keys`. GE: jawaban dinormalisasi dan dicocokkan ke `ge_dictionary` dengan nilai 0/1/2; jawaban tidak dikenal bernilai 0 dan dicatat.
+- **Butir kosong (ADR-0032, keputusan psikolog 2026-09-22): dinilai salah (0)**, sama seperti jawaban yang salah — tidak menolak penilaian sesi. Ini satu-satunya aturan kelengkapan untuk IST; RMIB punya aturan bertingkat sendiri (ADR-0032 PR3), PAPI tetap semua-atau-tidak-sama-sekali (tidak berubah).
 - RW per subtes menjadi SW melalui tabel norma berversi. Batas domain mengikuti jumlah item; GE memiliki domain 0–32.
 - SW menjadi level melalui kategori sheet 02: `≤80→1`, `81–94→2`, `95–104→3`, `105–118→4`, `≥119→5`.
 - IQ: jumlah RW sembilan subtes menjadi IQ melalui sheet 03, kemudian skor 1–10 melalui sheet 04. Pasangan skor `[1,2]`, `[3,4]`, `[5,6]`, `[7,8]`, dan `[9,10]` masing-masing menjadi level 1–5. Mapping eksplisit `iq_level_bands` menghasilkan `IQ≤90→1`, `91–102→2`, `103–114→3`, `115–126→4`, `≥127→5`.

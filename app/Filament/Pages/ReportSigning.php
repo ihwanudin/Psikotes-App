@@ -44,7 +44,7 @@ final class ReportSigning extends Page
         'D5' => 'Minat pelayanan sosial',
     ];
 
-    protected static ?string $slug = 'report-signing';
+    protected static ?string $slug = 'report-signing/{case}';
 
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-clipboard-document-check';
 
@@ -93,9 +93,18 @@ final class ReportSigning extends Page
     #[Locked]
     public bool $isReadOnly = false;
 
+    #[Locked]
+    public bool $isRevision = false;
+
+    #[Locked]
+    public bool $isSignedByAnotherPsychologist = false;
+
     /** @var array<string, mixed>|null */
     #[Locked]
     public ?array $existingSnapshot = null;
+
+    #[Locked]
+    public string $revisionReasonForSigning = '';
 
     // ─── Mutable form state ───
 
@@ -105,6 +114,8 @@ final class ReportSigning extends Page
     public ?string $labelOverrideFinal = null;
 
     public string $labelOverrideReason = '';
+
+    public string $revisionReason = '';
 
     /** @var array<string, array{sources: list<array{source: string, level: int}>, final_level: int|null, reason: string}> */
     public array $g7Resolutions = [];
@@ -128,7 +139,7 @@ final class ReportSigning extends Page
 
     public static function shouldRegisterNavigation(): bool
     {
-        return self::canAccess();
+        return false;
     }
 
     public static function canAccess(): bool
@@ -150,6 +161,10 @@ final class ReportSigning extends Page
         if ($snapshot !== null && $snapshot->state === 'SIGNED') {
             $this->isReadOnly = true;
             $this->existingSnapshot = json_decode($snapshot->snapshot_json, true, 512, JSON_THROW_ON_ERROR);
+
+            $currentAdmin = self::currentReviewer();
+            $this->isSignedByAnotherPsychologist = $currentAdmin === null
+                || (int) $snapshot->signed_by_admin_id !== $currentAdmin->id;
         }
 
         // Load case + eligibility data via RLS
@@ -199,24 +214,17 @@ final class ReportSigning extends Page
             $this->iq = (int) $data['eligibility']->iq;
 
             // Initialize form state from baseline
-            foreach (self::ASPECTS as $aspect) {
-                $systemLevel = (int) $this->baseline['zone']['aspects'][$aspect]['level'];
-                $this->levelOverrides[$aspect] = [
-                    'system_level' => $systemLevel,
-                    'final_level' => $systemLevel,
-                    'reason' => '',
-                ];
-                $this->g7Resolutions[$aspect] = [
-                    'sources' => [['source' => 'CANONICAL', 'level' => $systemLevel]],
-                    'final_level' => null,
-                    'reason' => '',
-                ];
-            }
+            $this->loadFormState();
         }
 
         if ($data['narrative'] !== null) {
             $this->narrativeVersionId = $data['narrative']->id;
         }
+    }
+
+    public function mountCanAuthorizeAccess(): void
+    {
+        abort_unless(self::canAccess(), 404);
     }
 
     public function hydrateCanAuthorizeAccess(): void
@@ -314,6 +322,73 @@ final class ReportSigning extends Page
         // Redirect to read-only view
         $this->isReadOnly = true;
         $this->existingSnapshot = $result['data']['snapshot'];
+    }
+
+    public function requestRevision(): void
+    {
+        if (! $this->isReadOnly) {
+            return;
+        }
+
+        // Defense in depth: the button for this is already hidden in the
+        // blade view when true, but this Livewire action is directly
+        // callable regardless of what's rendered. The real gate is
+        // ReportSigningService::sign()'s own SIGNED_BY_ANOTHER_PSYCHOLOGIST
+        // check - this just fails the same way without a wasted round trip.
+        if ($this->isSignedByAnotherPsychologist) {
+            Notification::make()
+                ->title('Tidak dapat mengajukan revisi')
+                ->body('Laporan ini sudah ditandatangani oleh psikolog lain.')
+                ->danger()
+                ->send();
+
+            return;
+        }
+
+        $reason = trim($this->revisionReason);
+        if (mb_strlen($reason) < 20) {
+            $this->addError('revisionReason', 'Alasan revisi minimal 20 karakter.');
+
+            return;
+        }
+
+        $this->isReadOnly = false;
+        $this->isRevision = true;
+        $this->existingSnapshot = null;
+        $this->revisionReasonForSigning = $reason;
+        $this->revisionReason = '';
+        $this->loadFormState();
+    }
+
+    private function loadFormState(): void
+    {
+        $this->levelOverrides = [];
+        $this->g7Resolutions = [];
+        $this->narrativeClusters = ['A' => '', 'B' => '', 'C' => '', 'D' => ''];
+        $this->procedureNote = '';
+        $this->accompanimentConditions = '';
+        $this->labelOverrideFinal = null;
+        $this->labelOverrideReason = '';
+        $this->revisionReason = '';
+        $this->blockingCodes = [];
+
+        if (empty($this->baseline)) {
+            return;
+        }
+
+        foreach (self::ASPECTS as $aspect) {
+            $systemLevel = (int) $this->baseline['zone']['aspects'][$aspect]['level'];
+            $this->levelOverrides[$aspect] = [
+                'system_level' => $systemLevel,
+                'final_level' => $systemLevel,
+                'reason' => '',
+            ];
+            $this->g7Resolutions[$aspect] = [
+                'sources' => [['source' => 'CANONICAL', 'level' => $systemLevel]],
+                'final_level' => null,
+                'reason' => '',
+            ];
+        }
     }
 
     public function focusBlocker(string $code): void
@@ -438,6 +513,10 @@ final class ReportSigning extends Page
                 'final_label' => $this->labelOverrideFinal,
                 'reason' => $this->labelOverrideReason,
             ];
+        }
+
+        if ($this->isRevision) {
+            $input['revision_reason'] = $this->revisionReasonForSigning;
         }
 
         return $input;

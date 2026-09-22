@@ -1,6 +1,6 @@
 {
   "version": "F0-ITEMS-IST-2026.09",
-  "status": "draft",
+  "status": "final",
   "subtests": {
     "SE": {
       "status": "final",
@@ -918,7 +918,7 @@
       ]
     },
     "ME": {
-      "status": "draft",
+      "status": "final",
       "instructions": {
         "text": "(Soal-soal No. 157 – 176) Pada persoalan berikutnya, terdapat sejumlah pertanyaan mengenai kata-kata yang telah saudara hafalkan tadi. Coretlah jawaban saudara pada lembaran jawaban di belakang nomor soal yang sesuai. Contoh 09 Kata yang mempunyai huruf permulaan – Q – adalah suatu ……. a) bunga b) perkakas c) burung d) kesenian e) binatang Quintet adalah termasuk dalam jenis kesenian, sehingga jawaban yang benar adalah d). Oleh karena itu, pada lembar jawaban di belakang contoh 09 huruf d harus dicoret. 09) a b c d e Contoh berikutnya : Kata yang mempunyai huruf pertama – Z – adalah suatu ……. a) bunga b) perkakas c) burung d) kesenian e) binatang Jawabannya adalah e, karena Zebra termasuk dalam jenis binatang."
       },
@@ -1144,89 +1144,43 @@
           }
         }
       ],
-      "draft_reason": "The memorization word list is printed 4 times on PDF page 19 and is not identical across copies (BURUNG/KESENIAN entries differ). The psychologist has not confirmed which variant is correct. Both are recorded verbatim; this subtest cannot be marked final until resolved.",
-      "word_list_variants": [
-        {
-          "categories": {
-            "BUNGA": [
-              "SOKA",
-              "LARAT",
-              "FLAMBOYAN",
-              "YASMIN",
-              "DAHLIA"
-            ],
-            "PERKAKAS": [
-              "WAJAN",
-              "JARUM",
-              "KIKIR",
-              "CANGKUL",
-              "PALU"
-            ],
-            "BURUNG": [
-              "ITIK",
-              "ELANG",
-              "WALET",
-              "TEKUKUR",
-              "NURI"
-            ],
-            "KESENIAN": [
-              "QUINTET",
-              "ARCA",
-              "OPERA",
-              "UKIRAN",
-              "GAMELAN"
-            ],
-            "BINATANG": [
-              "RUSA",
-              "MUSANG",
-              "BERUANG",
-              "HARIMAU",
-              "ZEBRA"
-            ]
-          },
-          "printed_count": 1
-        },
-        {
-          "categories": {
-            "BUNGA": [
-              "SOKA",
-              "LARAT",
-              "FLAMBOYAN",
-              "YASMIN",
-              "DAHLIA"
-            ],
-            "PERKAKAS": [
-              "WAJAN",
-              "JARUM",
-              "KIKIR",
-              "CANGKUL",
-              "PALU"
-            ],
-            "BURUNG": [
-              "ITIK",
-              "ELANG",
-              "WALET",
-              "TERUKUR",
-              "NURI"
-            ],
-            "KESENIAN": [
-              "QUATET",
-              "ARCA",
-              "OPERA",
-              "UKIRAN",
-              "GAMELAN"
-            ],
-            "BINATANG": [
-              "RUSA",
-              "MUSANG",
-              "BERUANG",
-              "HARIMAU",
-              "ZEBRA"
-            ]
-          },
-          "printed_count": 3
-        }
-      ]
+      "word_list": {
+        "BUNGA": [
+          "SOKA",
+          "LARAT",
+          "FLAMBOYAN",
+          "YASMIN",
+          "DAHLIA"
+        ],
+        "PERKAKAS": [
+          "WAJAN",
+          "JARUM",
+          "KIKIR",
+          "CANGKUL",
+          "PALU"
+        ],
+        "BURUNG": [
+          "ITIK",
+          "ELANG",
+          "WALET",
+          "TEKUKUR",
+          "NURI"
+        ],
+        "KESENIAN": [
+          "QUINTET",
+          "ARCA",
+          "OPERA",
+          "UKIRAN",
+          "GAMELAN"
+        ],
+        "BINATANG": [
+          "RUSA",
+          "MUSANG",
+          "BERUANG",
+          "HARIMAU",
+          "ZEBRA"
+        ]
+      }
     }
   }
 }

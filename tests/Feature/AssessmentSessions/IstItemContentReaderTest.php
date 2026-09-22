@@ -43,7 +43,7 @@ final class IstItemContentReaderTest extends TestCase
         $this->seedIstItemsAuthority($payload);
 
         $content = app(RlsContextRunner::class)->runAsService(
-            fn () => (new IstItemContentReader)->contentFor(GenericAssessmentInstrument::Ist, $this->syntheticDefinition()),
+            fn () => (new IstItemContentReader)->contentFor(GenericAssessmentInstrument::Ist, $this->syntheticDefinition(), 1),
         );
 
         $this->assertSame(GenericAssessmentInstrument::Ist, $content->instrument);
@@ -119,7 +119,8 @@ final class IstItemContentReaderTest extends TestCase
             fn () => (new IstItemContentReader)->contentFor(
                 GenericAssessmentInstrument::Ist,
                 $this->syntheticDefinition(),
-                'ME_MEMORIZE',
+                1,
+                currentSegmentCode: 'ME_MEMORIZE',
             ),
         );
 
@@ -139,7 +140,8 @@ final class IstItemContentReaderTest extends TestCase
             fn () => (new IstItemContentReader)->contentFor(
                 GenericAssessmentInstrument::Ist,
                 $this->syntheticDefinition(),
-                'ME_ANSWER',
+                1,
+                currentSegmentCode: 'ME_ANSWER',
             ),
         );
 
@@ -159,7 +161,8 @@ final class IstItemContentReaderTest extends TestCase
             fn () => (new IstItemContentReader)->contentFor(
                 GenericAssessmentInstrument::Ist,
                 $this->syntheticDefinition(),
-                'SE',
+                1,
+                currentSegmentCode: 'SE',
             ),
         );
 
@@ -174,10 +177,10 @@ final class IstItemContentReaderTest extends TestCase
         $this->seedIstItemsAuthority($payload);
 
         $memorize = app(RlsContextRunner::class)->runAsService(
-            fn () => (new IstItemContentReader)->contentFor(GenericAssessmentInstrument::Ist, $this->syntheticDefinition(), 'ME_MEMORIZE'),
+            fn () => (new IstItemContentReader)->contentFor(GenericAssessmentInstrument::Ist, $this->syntheticDefinition(), 1, currentSegmentCode: 'ME_MEMORIZE'),
         );
         $answer = app(RlsContextRunner::class)->runAsService(
-            fn () => (new IstItemContentReader)->contentFor(GenericAssessmentInstrument::Ist, $this->syntheticDefinition(), 'ME_ANSWER'),
+            fn () => (new IstItemContentReader)->contentFor(GenericAssessmentInstrument::Ist, $this->syntheticDefinition(), 1, currentSegmentCode: 'ME_ANSWER'),
         );
 
         foreach (['SE', 'WA', 'AN', 'GE', 'RA', 'ZR'] as $index => $code) {
@@ -198,20 +201,33 @@ final class IstItemContentReaderTest extends TestCase
             fn () => (new IstItemContentReader)->contentFor(
                 GenericAssessmentInstrument::Ist,
                 $this->syntheticDefinition(),
-                'ME_ANSWER',
+                1,
+                currentSegmentCode: 'ME_ANSWER',
             ),
         );
     }
 
-    public function test_it_fails_closed_against_the_real_seeded_data_because_me_is_still_draft(): void
+    /**
+     * item-delivery reconciliation with #76/RMIB (2026-09-22): this used to
+     * assert the real seeded data fails closed because ME was still draft.
+     * PR #118 (merged into main before this reconciliation) finalized ME's
+     * word list -- the real ist_items.json is now top-level `status:"final"`
+     * with all seven subtests final, so the premise this test named no
+     * longer holds. Not a bug this reconciliation introduced: the real data
+     * genuinely caught up to what this reader has supported since the ME
+     * extension. Replaced with the positive assertion it was always meant
+     * to eventually become.
+     */
+    public function test_it_builds_successfully_against_the_real_seeded_data_now_that_me_is_final(): void
     {
         app(RlsContextRunner::class)->runAsService(fn () => (new InstrumentSeeder)->run());
 
-        $this->expectException(AssessmentItemContentUnavailable::class);
-
-        app(RlsContextRunner::class)->runAsService(
-            fn () => (new IstItemContentReader)->contentFor(GenericAssessmentInstrument::Ist, $this->syntheticDefinition()),
+        $content = app(RlsContextRunner::class)->runAsService(
+            fn () => (new IstItemContentReader)->contentFor(GenericAssessmentInstrument::Ist, $this->syntheticDefinition(), 1),
         );
+
+        $this->assertSame(GenericAssessmentInstrument::Ist, $content->instrument);
+        $this->assertSame(['SE', 'WA', 'AN', 'GE', 'RA', 'ZR', 'ME'], array_column($content->subtests, 'code'));
     }
 
     public function test_it_rejects_a_non_ist_instrument(): void
@@ -222,6 +238,7 @@ final class IstItemContentReaderTest extends TestCase
             fn () => (new IstItemContentReader)->contentFor(
                 GenericAssessmentInstrument::Papi,
                 $this->syntheticDefinition(instrument: 'papi'),
+                1,
             ),
         );
     }
@@ -234,7 +251,7 @@ final class IstItemContentReaderTest extends TestCase
         $this->expectException(AssessmentItemContentUnavailable::class);
 
         app(RlsContextRunner::class)->runAsService(
-            fn () => (new IstItemContentReader)->contentFor(GenericAssessmentInstrument::Ist, $this->syntheticDefinition()),
+            fn () => (new IstItemContentReader)->contentFor(GenericAssessmentInstrument::Ist, $this->syntheticDefinition(), 1),
         );
     }
 
@@ -251,7 +268,7 @@ final class IstItemContentReaderTest extends TestCase
         $this->expectException(AssessmentItemContentUnavailable::class);
 
         app(RlsContextRunner::class)->runAsService(
-            fn () => (new IstItemContentReader)->contentFor(GenericAssessmentInstrument::Ist, $this->syntheticDefinition()),
+            fn () => (new IstItemContentReader)->contentFor(GenericAssessmentInstrument::Ist, $this->syntheticDefinition(), 1),
         );
     }
 
@@ -275,7 +292,7 @@ final class IstItemContentReaderTest extends TestCase
         $this->expectException(AssessmentItemContentUnavailable::class);
 
         app(RlsContextRunner::class)->runAsService(
-            fn () => (new IstItemContentReader)->contentFor(GenericAssessmentInstrument::Ist, $this->syntheticDefinition()),
+            fn () => (new IstItemContentReader)->contentFor(GenericAssessmentInstrument::Ist, $this->syntheticDefinition(), 1),
         );
     }
 
@@ -289,7 +306,7 @@ final class IstItemContentReaderTest extends TestCase
         $this->expectException(AssessmentItemContentUnavailable::class);
 
         app(RlsContextRunner::class)->runAsService(
-            fn () => (new IstItemContentReader)->contentFor(GenericAssessmentInstrument::Ist, $this->syntheticDefinition()),
+            fn () => (new IstItemContentReader)->contentFor(GenericAssessmentInstrument::Ist, $this->syntheticDefinition(), 1),
         );
     }
 

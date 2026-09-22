@@ -28,7 +28,8 @@ export type UseAutosaveOptions = {
 
 export type UseAutosaveResult = {
     /** Queues a local edit and (re)starts the debounce timer. Throws if
-     * needsReload is true — check it before calling. */
+     * needsReload is true — check it before calling. A no-op once
+     * isTerminal is true (see autosave-engine.ts's queueChange doc). */
     queueChange: (itemNo: number, value: unknown) => void;
     /** Sends immediately, bypassing any pending debounce timer. Call this
      * on item navigation and before submit. */
@@ -40,6 +41,10 @@ export type UseAutosaveResult = {
     isFlushing: boolean;
     hasPendingChanges: boolean;
     needsReload: boolean;
+    /** True once a not_found/not_started outcome has been seen — see
+     * autosave-engine.ts's AutosaveEngine.isTerminal doc. Unlike
+     * needsReload, there is no reload() call that clears this. */
+    isTerminal: boolean;
     lastResult: FlushResult | null;
     getRevision: () => number;
 };
@@ -70,6 +75,7 @@ export function useAutosave({
     const [isFlushing, setIsFlushing] = useState(false);
     const [hasPendingChanges, setHasPendingChanges] = useState(false);
     const [needsReload, setNeedsReload] = useState(false);
+    const [isTerminal, setIsTerminal] = useState(false);
     const [lastResult, setLastResult] = useState<FlushResult | null>(null);
     const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -77,6 +83,7 @@ export function useAutosave({
         setIsFlushing(engine.isFlushing());
         setHasPendingChanges(engine.hasPendingChanges());
         setNeedsReload(engine.needsReload());
+        setIsTerminal(engine.isTerminal());
     }, [engine]);
 
     const clearDebounce = useCallback(() => {
@@ -126,6 +133,7 @@ export function useAutosave({
         isFlushing,
         hasPendingChanges,
         needsReload,
+        isTerminal,
         lastResult,
         getRevision: () => engine.getRevision(),
     };

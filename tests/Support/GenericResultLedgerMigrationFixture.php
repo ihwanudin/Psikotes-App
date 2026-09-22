@@ -85,6 +85,12 @@ final class GenericResultLedgerMigrationFixture
         (require database_path(
             'migrations/2026_09_20_000200_widen_generic_instrument_result_source_fractional_columns.php',
         ))->up();
+        // ADR-0032 PR1 (2026-09-22): adds generic_instrument_results.engine_version
+        // (the PARENT table this time, not _sources) -- same reasoning as the
+        // 2026_09_20_000200 call above.
+        (require database_path(
+            'migrations/2026_09_22_000100_add_engine_version_to_generic_instrument_results.php',
+        ))->up();
         $this->assertRebuiltStateMatchesAllKnownMigrations();
 
         $this->restoreRequired = false;
@@ -100,27 +106,44 @@ final class GenericResultLedgerMigrationFixture
      */
     private function assertRebuiltStateMatchesAllKnownMigrations(): void
     {
-        $columns = collect(DB::select(<<<'SQL'
+        $sourceColumns = collect(DB::select(<<<'SQL'
             SELECT attname, format_type(atttypid, atttypmod) type
             FROM pg_attribute
             WHERE attrelid = 'generic_instrument_result_sources'::regclass
               AND attnum > 0 AND NOT attisdropped
             SQL))->pluck('type', 'attname');
-        $expected = [
-            'raw_score' => 'numeric(8,3)', 'band_low' => 'numeric(8,3)', 'band_high' => 'numeric(8,3)',
-        ];
         $mismatches = [];
-        foreach ($expected as $column => $expectedType) {
-            $actualType = $columns[$column] ?? null;
+        foreach ([
+            'raw_score' => 'numeric(8,3)', 'band_low' => 'numeric(8,3)', 'band_high' => 'numeric(8,3)',
+        ] as $column => $expectedType) {
+            $actualType = $sourceColumns[$column] ?? null;
             if ($actualType !== $expectedType) {
-                $mismatches[] = "{$column}: expected {$expectedType}, got ".($actualType ?? 'MISSING');
+                $mismatches[] = "generic_instrument_result_sources.{$column}: expected {$expectedType}, got ".($actualType ?? 'MISSING');
             }
         }
+
+        // ADR-0032 PR1 (2026-09-22): generic_instrument_results (the PARENT
+        // table) also gained a column after 2026_09_13_000100.
+        $resultColumns = collect(DB::select(<<<'SQL'
+            SELECT attname, format_type(atttypid, atttypmod) type
+            FROM pg_attribute
+            WHERE attrelid = 'generic_instrument_results'::regclass
+              AND attnum > 0 AND NOT attisdropped
+            SQL))->pluck('type', 'attname');
+        foreach ([
+            'engine_version' => 'character varying(100)',
+        ] as $column => $expectedType) {
+            $actualType = $resultColumns[$column] ?? null;
+            if ($actualType !== $expectedType) {
+                $mismatches[] = "generic_instrument_results.{$column}: expected {$expectedType}, got ".($actualType ?? 'MISSING');
+            }
+        }
+
         if ($mismatches !== []) {
             throw new RuntimeException(
-                'GenericResultLedgerMigrationFixture::restore() only rebuilt generic_instrument_result_sources '
-                .'back to migration 2026_09_13_000100\'s original shape. Another migration changes this table '
-                .'and is not (yet, or no longer correctly) re-applied here — add its ->up() call in restore(), '
+                'GenericResultLedgerMigrationFixture::restore() only rebuilt the ledger tables back to migration '
+                .'2026_09_13_000100\'s original shape. Another migration changes one of them and is not '
+                .'(yet, or no longer correctly) re-applied here — add its ->up() call in restore(), '
                 .'right after the rebuild. Mismatched column(s): '.implode('; ', $mismatches).'.',
             );
         }

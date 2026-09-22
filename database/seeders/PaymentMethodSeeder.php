@@ -13,6 +13,7 @@ final class PaymentMethodSeeder extends Seeder
     private const METHODS = [
         'xendit' => 'Xendit Invoice',
         'manual_transfer' => 'Transfer Manual',
+        'bridge_funding' => 'Dana Talang',
     ];
 
     public function run(): void

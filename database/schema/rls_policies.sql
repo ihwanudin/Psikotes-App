@@ -144,8 +144,10 @@ CREATE POLICY consent_records_write ON consent_records FOR ALL TO psikotes_runti
 USING (app_private.app_role() IN ('service', 'super_admin'))
 WITH CHECK (app_private.app_role() IN ('service', 'super_admin'));
 
+-- TODO(central_admin): setelah PR #99 (RLS packages/package_items) merge,
+-- tambah 'central_admin' ke packages_read DAN packages_update.
 CREATE POLICY payment_methods_read ON payment_methods FOR SELECT TO psikotes_runtime
-USING (app_private.app_role() IN ('service', 'super_admin', 'branch_admin', 'staff', 'psychologist', 'participant'));
+USING (app_private.app_role() IN ('service', 'super_admin', 'central_admin', 'branch_admin', 'staff', 'psychologist', 'participant'));
 CREATE POLICY payment_methods_write ON payment_methods FOR ALL TO psikotes_runtime
 USING (app_private.app_role() IN ('service', 'super_admin'))
 WITH CHECK (app_private.app_role() IN ('service', 'super_admin'));

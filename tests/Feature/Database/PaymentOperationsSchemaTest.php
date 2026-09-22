@@ -68,6 +68,7 @@ final class PaymentOperationsSchemaTest extends TestCase
         $this->seed(PaymentMethodSeeder::class);
 
         $this->assertSame([
+            ['code' => 'bridge_funding', 'is_active' => 0],
             ['code' => 'manual_transfer', 'is_active' => 0],
             ['code' => 'xendit', 'is_active' => 0],
         ], DB::table('payment_methods')->orderBy('code')->get(['code', 'is_active'])->map(fn (object $row): array => [

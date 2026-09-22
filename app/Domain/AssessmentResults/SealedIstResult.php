@@ -9,7 +9,19 @@ use UnexpectedValueException;
 
 final readonly class SealedIstResult
 {
-    public const CONTRACT_VERSION = 'ist-result:v1';
+    // ADR-0032 PR1 (2026-09-22): bumped v1->v2, payload gained `engineVersion`.
+    public const CONTRACT_VERSION = 'ist-result:v2';
+
+    /**
+     * The scoring CODE version, distinct from `scoringSource` (the
+     * instrument DATA version -- norms/keys) and from `resultContractVersion`
+     * (the JSON shape). Bump this whenever IstRawScoreCalculator's rules
+     * change, alongside SCORING_ALGORITHM.md's own contract version and
+     * CHANGELOG.md, per CLAUDE.md. v1 already reflects the ADR-0032 P1 rule
+     * (a blank item scores as wrong) -- that rule shipped in the same change
+     * that introduced this constant, so there is no pre-P1 version to track.
+     */
+    public const ENGINE_VERSION = 'ist-scoring:v1';
 
     /**
      * @param  array{id:int,code:string,version:string,sourceFile:string,checksum:string}  $scoringSource
@@ -34,6 +46,7 @@ final readonly class SealedIstResult
      */
     private function __construct(
         public string $resultContractVersion,
+        public string $engineVersion,
         public int $assessmentCaseId,
         public int $sessionId,
         public int $participantId,
@@ -82,6 +95,7 @@ final readonly class SealedIstResult
 
         $payload = self::canonicalize([
             'resultContractVersion' => self::CONTRACT_VERSION,
+            'engineVersion' => self::ENGINE_VERSION,
             'assessmentCaseId' => $source->assessmentCaseId,
             'sessionId' => $source->sessionId,
             'participantId' => $source->participantId,
@@ -104,6 +118,7 @@ final readonly class SealedIstResult
 
         return new self(
             resultContractVersion: self::CONTRACT_VERSION,
+            engineVersion: self::ENGINE_VERSION,
             assessmentCaseId: $source->assessmentCaseId,
             sessionId: $source->sessionId,
             participantId: $source->participantId,
@@ -126,6 +141,7 @@ final readonly class SealedIstResult
     {
         return [
             'resultContractVersion' => $this->resultContractVersion,
+            'engineVersion' => $this->engineVersion,
             'assessmentCaseId' => $this->assessmentCaseId,
             'sessionId' => $this->sessionId,
             'participantId' => $this->participantId,

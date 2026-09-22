@@ -74,3 +74,22 @@ Action P9a dan endpoint publik tetap belum selesai hanya karena migration lulus.
 PostgreSQL menerima CHECK yang bernilai NULL, sehingga guard funding harus
 menangani three-valued logic secara eksplisit.
 [PostgreSQL 17 constraints](https://www.postgresql.org/docs/17/ddl-constraints.html).
+
+## Follow-up (2026-09-21)
+
+Diverifikasi (F2, penyelidikan gender vs start RMIB): hari ini tidak ada
+jalur produksi yang membuat peserta sampai ke start RMIB dengan `gender`
+null -- tapi murni karena `CheckoutParticipantProvisioningController`
+(satu-satunya penulis `gender` yang boleh NULL, sesuai keputusan di atas)
+belum dirute ke produksi, dan gerbang kelengkapan profil
+`AssessmentAccessPrerequisites` yang seharusnya menolaknya juga belum
+dirute. Bukan karena ada gerbang aktif di jalur yang sungguh dirute
+(`StartParticipantSessionController`).
+
+**Syarat untuk pekerjaan yang merutekan checkout-v2 ke produksi**: saat itu
+terjadi, gerbang `AssessmentAccessPrerequisites` (atau yang setara) wajib
+ikut dipasang di jalur start generik. Pembaca item RMIB yang gagal-tertutup
+pada gender null (`app/Services/AssessmentSessions/RmibItemContentReader.php`,
+menyusul) bukan pengganti gerbang kelengkapan profil -- ia hanya mencegah
+RMIB spesifik, bukan seluruh kelengkapan profil yang dijanjikan keputusan
+ini.

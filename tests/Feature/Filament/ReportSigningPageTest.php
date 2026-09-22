@@ -7,6 +7,7 @@ namespace Tests\Feature\Filament;
 use App\Domain\Eligibility\EligibilityDecisionSnapshot;
 use App\Enums\AdminRole;
 use App\Filament\Pages\ReportSigning;
+use App\Filament\Pages\ReportSigningQueue;
 use App\Models\Admin;
 use App\Models\AssessmentCase;
 use App\Models\Branch;
@@ -35,7 +36,10 @@ final class ReportSigningPageTest extends TestCase
 
     // ─── Helpers ───
 
-    private function createCase(): AssessmentCase
+    /**
+     * @param  'DIRECT_PUBLIC'|'INTEGRATED'  $origin
+     */
+    private function createCase(string $origin = 'DIRECT_PUBLIC'): AssessmentCase
     {
         static $counter = 0;
         $suffix = ++$counter;
@@ -71,7 +75,7 @@ final class ReportSigningPageTest extends TestCase
             'participant_id' => $participant->id,
             'organization_id' => $branch->id,
             'package_id' => $package->id,
-            'origin' => 'DIRECT_PUBLIC',
+            'origin' => $origin,
             'intended_field_snapshot' => 'UMUM',
         ]);
     }
@@ -83,6 +87,7 @@ final class ReportSigningPageTest extends TestCase
             'email' => (string) Str::uuid().'@example.test',
             'password' => bcrypt('password'),
             'role' => AdminRole::Psychologist->value,
+            'has_email_authentication' => true,
         ]);
     }
 
@@ -93,6 +98,7 @@ final class ReportSigningPageTest extends TestCase
             'email' => (string) Str::uuid().'@example.test',
             'password' => bcrypt('password'),
             'role' => AdminRole::SuperAdmin->value,
+            'has_email_authentication' => true,
         ]);
     }
 
@@ -131,9 +137,9 @@ final class ReportSigningPageTest extends TestCase
     }
 
     /**
-     * @return array{eligibilityId: string, narrativeId: string}
+     * @return array{eligibilityId: ?string, narrativeId: ?string}
      */
-    private function seedBaseline(AssessmentCase $case): array
+    private function seedBaseline(AssessmentCase $case, bool $seedEligibility = true, bool $seedNarrative = true): array
     {
         $reporting = $this->canonicalReporting();
         $canonicalInput = [
@@ -150,42 +156,48 @@ final class ReportSigningPageTest extends TestCase
         $snapshot = EligibilityDecisionSnapshot::create($canonicalInput);
         $snapshotArray = $snapshot->toArray();
 
-        $eligibilityId = (string) Str::ulid();
-        DB::table('eligibility_decision_versions')->insert([
-            'id' => $eligibilityId,
-            'assessment_case_id' => $case->id,
-            'version' => 1,
-            'supersedes_id' => null,
-            'standard_version' => $snapshotArray['provenance']['eligibility_standard_version'],
-            'field_code' => $snapshotArray['zone']['field_code'],
-            'publication_blocked' => $snapshotArray['publication_blocked'],
-            'recommendation_label' => $snapshotArray['recommendation']['label'] ?? null,
-            'iq' => $canonicalInput['iq'],
-            'validity' => $canonicalInput['validity'],
-            'snapshot_json' => json_encode($snapshotArray, JSON_THROW_ON_ERROR),
-            'canonical_input_json' => json_encode($canonicalInput, JSON_THROW_ON_ERROR),
-            'created_at' => now(),
-        ]);
+        $eligibilityId = null;
+        if ($seedEligibility) {
+            $eligibilityId = (string) Str::ulid();
+            DB::table('eligibility_decision_versions')->insert([
+                'id' => $eligibilityId,
+                'assessment_case_id' => $case->id,
+                'version' => 1,
+                'supersedes_id' => null,
+                'standard_version' => $snapshotArray['provenance']['eligibility_standard_version'],
+                'field_code' => $snapshotArray['zone']['field_code'],
+                'publication_blocked' => $snapshotArray['publication_blocked'],
+                'recommendation_label' => $snapshotArray['recommendation']['label'] ?? null,
+                'iq' => $canonicalInput['iq'],
+                'validity' => $canonicalInput['validity'],
+                'snapshot_json' => json_encode($snapshotArray, JSON_THROW_ON_ERROR),
+                'canonical_input_json' => json_encode($canonicalInput, JSON_THROW_ON_ERROR),
+                'created_at' => now(),
+            ]);
+        }
 
-        $narrativeId = (string) Str::ulid();
-        DB::table('bilingual_narrative_versions')->insert([
-            'id' => $narrativeId,
-            'assessment_case_id' => $case->id,
-            'version' => 1,
-            'supersedes_id' => null,
-            'eligibility_version_id' => $eligibilityId,
-            'review_required' => false,
-            'cluster_a_id' => 'Teks A ID',
-            'cluster_a_jp' => 'Teks A JP',
-            'cluster_b_id' => 'Teks B ID',
-            'cluster_b_jp' => 'Teks B JP',
-            'cluster_c_id' => null,
-            'cluster_c_jp' => null,
-            'cluster_d_id' => 'Teks D ID',
-            'cluster_d_jp' => 'Teks D JP',
-            'snapshot_json' => json_encode(['type' => 'bilingual_cluster_narratives'], JSON_THROW_ON_ERROR),
-            'created_at' => now(),
-        ]);
+        $narrativeId = null;
+        if ($seedNarrative) {
+            $narrativeId = (string) Str::ulid();
+            DB::table('bilingual_narrative_versions')->insert([
+                'id' => $narrativeId,
+                'assessment_case_id' => $case->id,
+                'version' => 1,
+                'supersedes_id' => null,
+                'eligibility_version_id' => $eligibilityId,
+                'review_required' => false,
+                'cluster_a_id' => 'Teks A ID',
+                'cluster_a_jp' => 'Teks A JP',
+                'cluster_b_id' => 'Teks B ID',
+                'cluster_b_jp' => 'Teks B JP',
+                'cluster_c_id' => null,
+                'cluster_c_jp' => null,
+                'cluster_d_id' => 'Teks D ID',
+                'cluster_d_jp' => 'Teks D JP',
+                'snapshot_json' => json_encode(['type' => 'bilingual_cluster_narratives'], JSON_THROW_ON_ERROR),
+                'created_at' => now(),
+            ]);
+        }
 
         return ['eligibilityId' => $eligibilityId, 'narrativeId' => $narrativeId];
     }
@@ -250,6 +262,9 @@ final class ReportSigningPageTest extends TestCase
         return ['eligibilityId' => $eligibilityId, 'narrativeId' => $narrativeId];
     }
 
+    /**
+     * @return array{standard_version: string, base_standards: array<string, mixed>, fields: array<int, array<string, mixed>>}
+     */
     private function canonicalReporting(): array
     {
         $contents = file_get_contents(dirname(__DIR__, 3).'/database/seeders/data/reporting.json');
@@ -267,19 +282,12 @@ final class ReportSigningPageTest extends TestCase
 
     // ─── Authorization ───
 
-    public function test_non_psychologist_roles_cannot_access_page(): void
+    public function test_branch_admin_and_staff_cannot_access_page(): void
     {
         $case = $this->createCase();
         $this->seedBaseline($case);
 
-        // SuperAdmin → 404
-        $this->actingAs($this->superAdmin(), 'admin');
-        self::assertFalse(ReportSigning::canAccess());
-        Livewire::test(ReportSigning::class, ['case' => $case->public_id])
-            ->assertNotFound();
-
         // BranchAdmin → 404
-        $this->flushSession();
         $this->actingAs($this->branchAdmin(), 'admin');
         self::assertFalse(ReportSigning::canAccess());
         Livewire::test(ReportSigning::class, ['case' => $case->public_id])
@@ -288,6 +296,17 @@ final class ReportSigningPageTest extends TestCase
         // Staff → 404
         $this->flushSession();
         $this->actingAs($this->staff(), 'admin');
+        self::assertFalse(ReportSigning::canAccess());
+        Livewire::test(ReportSigning::class, ['case' => $case->public_id])
+            ->assertNotFound();
+    }
+
+    public function test_super_admin_cannot_access_page(): void
+    {
+        $case = $this->createCase();
+        $this->seedBaseline($case);
+
+        $this->actingAs($this->superAdmin(), 'admin');
         self::assertFalse(ReportSigning::canAccess());
         Livewire::test(ReportSigning::class, ['case' => $case->public_id])
             ->assertNotFound();
@@ -302,24 +321,37 @@ final class ReportSigningPageTest extends TestCase
             ->assertRedirect('/admin/login');
     }
 
-    public function test_page_does_not_register_navigation_for_non_psychologist(): void
+    public function test_queue_page_does_not_register_navigation_for_branch_admin_and_staff(): void
     {
-        $this->actingAs($this->superAdmin(), 'admin');
-        self::assertFalse(ReportSigning::shouldRegisterNavigation());
-
-        $this->flushSession();
         $this->actingAs($this->branchAdmin(), 'admin');
-        self::assertFalse(ReportSigning::shouldRegisterNavigation());
+        self::assertFalse(ReportSigningQueue::shouldRegisterNavigation());
 
         $this->flushSession();
         $this->actingAs($this->staff(), 'admin');
-        self::assertFalse(ReportSigning::shouldRegisterNavigation());
+        self::assertFalse(ReportSigningQueue::shouldRegisterNavigation());
     }
 
-    public function test_page_registers_navigation_for_psychologist(): void
+    public function test_queue_page_registers_navigation_for_psychologist(): void
     {
         $this->actingAs($this->psychologist(), 'admin');
-        self::assertTrue(ReportSigning::shouldRegisterNavigation());
+        self::assertTrue(ReportSigningQueue::shouldRegisterNavigation());
+    }
+
+    public function test_queue_page_does_not_register_navigation_for_super_admin(): void
+    {
+        $this->actingAs($this->superAdmin(), 'admin');
+        self::assertFalse(ReportSigningQueue::shouldRegisterNavigation());
+    }
+
+    public function test_per_case_page_never_registers_navigation(): void
+    {
+        // Per-case page should never appear in navigation regardless of role
+        $this->actingAs($this->psychologist(), 'admin');
+        self::assertFalse(ReportSigning::shouldRegisterNavigation());
+
+        $this->flushSession();
+        $this->actingAs($this->superAdmin(), 'admin');
+        self::assertFalse(ReportSigning::shouldRegisterNavigation());
     }
 
     public function test_can_access_returns_true_for_psychologist(): void
@@ -605,5 +637,625 @@ final class ReportSigningPageTest extends TestCase
 
         Livewire::test(ReportSigning::class, ['case' => $nonexistentId])
             ->assertNotFound();
+    }
+
+    // ─── Revision flow ───
+
+    public function test_request_revision_without_reason_shows_error_and_stays_read_only(): void
+    {
+        $case = $this->createCase();
+        $baseline = $this->seedBaseline($case);
+        $psychologist = $this->psychologist();
+        $this->actingAs($psychologist, 'admin');
+
+        // Insert a SIGNED snapshot
+        DB::table('report_signing_snapshots')->insert([
+            'id' => (string) Str::ulid(),
+            'assessment_case_id' => $case->id,
+            'version' => 1,
+            'supersedes_id' => null,
+            'state' => 'SIGNED',
+            'eligibility_version_id' => $baseline['eligibilityId'],
+            'narrative_version_id' => $baseline['narrativeId'],
+            'snapshot_json' => json_encode([
+                'prerequisite_input' => [
+                    'label' => 'DISARANKAN',
+                    'validity' => 'V1',
+                    'target_field' => 'UMUM',
+                    'procedure_note' => null,
+                    'accompaniment_conditions' => null,
+                    'narrative_clusters' => ['A' => 'Narasi A.', 'B' => 'Narasi B.', 'C' => 'Narasi C.', 'D' => 'Narasi D.'],
+                    'overrides' => [],
+                ],
+                'provenance' => ['signed' => true],
+            ], JSON_THROW_ON_ERROR),
+            'signed_by_admin_id' => $psychologist->id,
+            'signed_at' => now(),
+            'created_at' => now(),
+        ]);
+
+        $component = Livewire::test(ReportSigning::class, ['case' => $case->public_id]);
+        $component->assertSuccessful();
+        $component->assertSet('isReadOnly', true);
+
+        // Request revision with empty reason
+        $component->set('revisionReason', '');
+        $component->call('requestRevision');
+        $component->assertHasErrors('revisionReason');
+        $component->assertSet('isReadOnly', true);
+
+        // Request revision with short reason
+        $component->set('revisionReason', 'Singkat.');
+        $component->call('requestRevision');
+        $component->assertHasErrors('revisionReason');
+        $component->assertSet('isReadOnly', true);
+    }
+
+    public function test_request_revision_with_valid_reason_enables_editing(): void
+    {
+        $case = $this->createCase();
+        $baseline = $this->seedBaseline($case);
+        $psychologist = $this->psychologist();
+        $this->actingAs($psychologist, 'admin');
+
+        // Insert a SIGNED snapshot
+        DB::table('report_signing_snapshots')->insert([
+            'id' => (string) Str::ulid(),
+            'assessment_case_id' => $case->id,
+            'version' => 1,
+            'supersedes_id' => null,
+            'state' => 'SIGNED',
+            'eligibility_version_id' => $baseline['eligibilityId'],
+            'narrative_version_id' => $baseline['narrativeId'],
+            'snapshot_json' => json_encode([
+                'prerequisite_input' => [
+                    'label' => 'DISARANKAN',
+                    'validity' => 'V1',
+                    'target_field' => 'UMUM',
+                    'procedure_note' => null,
+                    'accompaniment_conditions' => null,
+                    'narrative_clusters' => ['A' => 'Narasi A.', 'B' => 'Narasi B.', 'C' => 'Narasi C.', 'D' => 'Narasi D.'],
+                    'overrides' => [],
+                ],
+                'provenance' => ['signed' => true],
+            ], JSON_THROW_ON_ERROR),
+            'signed_by_admin_id' => $psychologist->id,
+            'signed_at' => now(),
+            'created_at' => now(),
+        ]);
+
+        $component = Livewire::test(ReportSigning::class, ['case' => $case->public_id]);
+        $component->assertSuccessful();
+        $component->assertSet('isReadOnly', true);
+
+        // Request revision with valid reason
+        $component->set('revisionReason', 'Psikolog perlu merevisi laporan karena ada perubahan narasi klaster yang signifikan.');
+        $component->call('requestRevision');
+
+        $component->assertSet('isReadOnly', false);
+        $component->assertSet('isRevision', true);
+        $component->assertSet('existingSnapshot', null);
+        $component->assertSet('revisionReason', '');
+        $component->assertSet('revisionReasonForSigning', 'Psikolog perlu merevisi laporan karena ada perubahan narasi klaster yang signifikan.');
+
+        // Form is in editable mode
+        $component->assertSee('Mode revisi');
+        $component->assertSee('Validasi kesiapan');
+        $component->assertSee('Tandatangani Laporan');
+    }
+
+    public function test_end_to_end_resign_flow(): void
+    {
+        $case = $this->createCase();
+        $baseline = $this->seedBaseline($case);
+        $psychologist = $this->psychologist();
+        $this->actingAs($psychologist, 'admin');
+
+        // First signing
+        $component = Livewire::test(ReportSigning::class, ['case' => $case->public_id]);
+        $component->assertSuccessful();
+
+        $component->set('narrativeClusters.A', 'Narasi klaster A pertama.');
+        $component->set('narrativeClusters.B', 'Narasi klaster B pertama.');
+        $component->set('narrativeClusters.C', 'Narasi klaster C pertama.');
+        $component->set('narrativeClusters.D', 'Narasi klaster D pertama.');
+        $component->call('validateDraft');
+        $component->assertSet('blockingCodes', []);
+        $component->call('submit');
+        $component->assertSet('isReadOnly', true);
+
+        // Verify first snapshot persisted
+        $this->assertDatabaseCount('report_signing_snapshots', 1);
+
+        // Request revision
+        $component->set('revisionReason', 'Psikolog perlu merevisi laporan karena ada perubahan narasi klaster yang signifikan.');
+        $component->call('requestRevision');
+        $component->assertSet('isReadOnly', false);
+        $component->assertSet('isRevision', true);
+
+        // Edit and submit revision
+        $component->set('narrativeClusters.A', 'Narasi klaster A revisi.');
+        $component->set('narrativeClusters.B', 'Narasi klaster B revisi.');
+        $component->set('narrativeClusters.C', 'Narasi klaster C revisi.');
+        $component->set('narrativeClusters.D', 'Narasi klaster D revisi.');
+        $component->call('validateDraft');
+        $component->assertSet('blockingCodes', []);
+        $component->call('submit');
+        $component->assertSet('isReadOnly', true);
+
+        // Two independent rows in DB
+        $snapshots = DB::table('report_signing_snapshots')
+            ->where('assessment_case_id', $case->id)
+            ->orderBy('version')
+            ->get();
+        $this->assertCount(2, $snapshots);
+
+        // Version 1 is intact
+        $this->assertSame('SIGNED', $snapshots[0]->state);
+        $this->assertSame(1, (int) $snapshots[0]->version);
+        $this->assertNull($snapshots[0]->supersedes_id);
+        $v1Json = json_decode($snapshots[0]->snapshot_json, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertCount(2, $v1Json);
+        $this->assertArrayNotHasKey('revision', $v1Json);
+
+        // Version 2 has revision metadata
+        $this->assertSame('SIGNED', $snapshots[1]->state);
+        $this->assertSame(2, (int) $snapshots[1]->version);
+        $this->assertSame($snapshots[0]->id, $snapshots[1]->supersedes_id);
+        $v2Json = json_decode($snapshots[1]->snapshot_json, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertArrayHasKey('revision', $v2Json);
+        $this->assertSame(1, $v2Json['revision']['supersedes_version']);
+    }
+
+    // ─── Cross-psychologist ownership (2026-09-22 finding) ───
+
+    /**
+     * Finding surfaced 2026-09-22 (independent security check on PR #97):
+     * this page set isReadOnly purely from snapshot state, so ANY
+     * psychologist could open ANY already-signed case, see the "Ajukan
+     * Revisi" form, submit a 20+ character reason, and overwrite the
+     * original signer. The button is now hidden here and the page exposes
+     * isSignedByAnotherPsychologist so the view can't offer a path the
+     * backend (ReportSigningService::sign()'s own
+     * SIGNED_BY_ANOTHER_PSYCHOLOGIST check) now rejects.
+     */
+    public function test_revision_form_is_hidden_for_a_case_signed_by_another_psychologist(): void
+    {
+        $case = $this->createCase();
+        $baseline = $this->seedBaseline($case);
+        $psychologistA = $this->psychologist();
+        $psychologistB = $this->psychologist();
+
+        DB::table('report_signing_snapshots')->insert([
+            'id' => (string) Str::ulid(),
+            'assessment_case_id' => $case->id,
+            'version' => 1,
+            'supersedes_id' => null,
+            'state' => 'SIGNED',
+            'eligibility_version_id' => $baseline['eligibilityId'],
+            'narrative_version_id' => $baseline['narrativeId'],
+            'snapshot_json' => json_encode([
+                'prerequisite_input' => [
+                    'label' => 'DISARANKAN',
+                    'validity' => 'V1',
+                    'target_field' => 'UMUM',
+                    'procedure_note' => null,
+                    'accompaniment_conditions' => null,
+                    'narrative_clusters' => ['A' => 'Narasi A.', 'B' => 'Narasi B.', 'C' => 'Narasi C.', 'D' => 'Narasi D.'],
+                    'overrides' => [],
+                ],
+                'provenance' => ['signed' => true],
+            ], JSON_THROW_ON_ERROR),
+            'signed_by_admin_id' => $psychologistA->id,
+            'signed_at' => now(),
+            'created_at' => now(),
+        ]);
+
+        $this->actingAs($psychologistB, 'admin');
+        $component = Livewire::test(ReportSigning::class, ['case' => $case->public_id]);
+        $component->assertSuccessful();
+        $component->assertSet('isReadOnly', true);
+        $component->assertSet('isSignedByAnotherPsychologist', true);
+
+        // The revision form itself (textarea + submit button) is gone —
+        // only the blocked-state message renders.
+        $component->assertDontSee('wire:click="requestRevision"', false);
+        $component->assertSee('sudah ditandatangani oleh psikolog lain');
+
+        // Defense in depth: even calling the Livewire action directly
+        // (bypassing the hidden button) does nothing.
+        $component->set('revisionReason', 'Psikolog B mencoba memaksa masuk mode revisi.');
+        $component->call('requestRevision');
+        $component->assertSet('isReadOnly', true);
+        $component->assertSet('isRevision', false);
+    }
+
+    public function test_revision_form_is_shown_for_the_signing_psychologists_own_case(): void
+    {
+        $case = $this->createCase();
+        $baseline = $this->seedBaseline($case);
+        $psychologist = $this->psychologist();
+
+        DB::table('report_signing_snapshots')->insert([
+            'id' => (string) Str::ulid(),
+            'assessment_case_id' => $case->id,
+            'version' => 1,
+            'supersedes_id' => null,
+            'state' => 'SIGNED',
+            'eligibility_version_id' => $baseline['eligibilityId'],
+            'narrative_version_id' => $baseline['narrativeId'],
+            'snapshot_json' => json_encode([
+                'prerequisite_input' => [
+                    'label' => 'DISARANKAN',
+                    'validity' => 'V1',
+                    'target_field' => 'UMUM',
+                    'procedure_note' => null,
+                    'accompaniment_conditions' => null,
+                    'narrative_clusters' => ['A' => 'Narasi A.', 'B' => 'Narasi B.', 'C' => 'Narasi C.', 'D' => 'Narasi D.'],
+                    'overrides' => [],
+                ],
+                'provenance' => ['signed' => true],
+            ], JSON_THROW_ON_ERROR),
+            'signed_by_admin_id' => $psychologist->id,
+            'signed_at' => now(),
+            'created_at' => now(),
+        ]);
+
+        $this->actingAs($psychologist, 'admin');
+        $component = Livewire::test(ReportSigning::class, ['case' => $case->public_id]);
+        $component->assertSuccessful();
+        $component->assertSet('isReadOnly', true);
+        $component->assertSet('isSignedByAnotherPsychologist', false);
+        $component->assertSee('wire:click="requestRevision"', false);
+    }
+
+    // ─── Queue page HTTP tests ───
+
+    public function test_queue_page_psychologist_returns_200(): void
+    {
+        $case = $this->createCase();
+        $this->seedBaseline($case);
+        $this->actingAs($this->psychologist(), 'admin');
+
+        $this->get(ReportSigningQueue::getUrl())
+            ->assertSuccessful();
+    }
+
+    public function test_queue_page_super_admin_returns_404(): void
+    {
+        $case = $this->createCase();
+        $this->seedBaseline($case);
+        $this->actingAs($this->superAdmin(), 'admin');
+
+        $this->get(ReportSigningQueue::getUrl())
+            ->assertNotFound();
+    }
+
+    public function test_queue_page_branch_admin_returns_404(): void
+    {
+        $case = $this->createCase();
+        $this->seedBaseline($case);
+        $this->actingAs($this->branchAdmin(), 'admin');
+
+        $this->get(ReportSigningQueue::getUrl())
+            ->assertNotFound();
+    }
+
+    public function test_queue_page_staff_returns_404(): void
+    {
+        $case = $this->createCase();
+        $this->seedBaseline($case);
+        $this->actingAs($this->staff(), 'admin');
+
+        $this->get(ReportSigningQueue::getUrl())
+            ->assertNotFound();
+    }
+
+    /**
+     * ReportSigningQueue::mount() runs `abort_unless(self::canAccess(), 404)`
+     * before it ever calls `runAsService()` for the case listing - the
+     * ability check is not itself run inside the service-role context. This
+     * proves that ordering behaviorally (not just by reading the source): a
+     * denied role must produce zero queries against the listing's own
+     * tables, not merely a 404 response that some later, differently-scoped
+     * query also happened to reject.
+     */
+    public function test_queue_page_denied_role_never_queries_the_case_listing(): void
+    {
+        $case = $this->createCase();
+        $this->seedBaseline($case);
+        $this->actingAs($this->branchAdmin(), 'admin');
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        try {
+            $this->get(ReportSigningQueue::getUrl())->assertNotFound();
+            $queries = DB::getQueryLog();
+        } finally {
+            DB::disableQueryLog();
+        }
+
+        $listingQueries = array_filter(
+            $queries,
+            fn (array $q) => str_contains($q['query'], 'assessment_cases')
+                || str_contains($q['query'], 'eligibility_decision_versions')
+                || str_contains($q['query'], 'bilingual_narrative_versions')
+                || str_contains($q['query'], 'report_signing_snapshots'),
+        );
+
+        $this->assertSame(
+            [],
+            array_values($listingQueries),
+            'A denied role must never trigger the queue-listing query - the ability check must run before, not inside, the service-role query.',
+        );
+    }
+
+    public function test_queue_page_guest_redirects_to_login(): void
+    {
+        $case = $this->createCase();
+        $this->seedBaseline($case);
+
+        $this->get(ReportSigningQueue::getUrl())
+            ->assertRedirect('/admin/login');
+    }
+
+    // ─── Per-case page HTTP tests ───
+
+    public function test_per_case_page_psychologist_returns_200(): void
+    {
+        $case = $this->createCase();
+        $this->seedBaseline($case);
+        $this->actingAs($this->psychologist(), 'admin');
+
+        $this->get(ReportSigning::getUrl(['case' => $case->public_id]))
+            ->assertSuccessful();
+    }
+
+    public function test_per_case_page_super_admin_returns_404(): void
+    {
+        $case = $this->createCase();
+        $this->seedBaseline($case);
+        $this->actingAs($this->superAdmin(), 'admin');
+
+        $this->get(ReportSigning::getUrl(['case' => $case->public_id]))
+            ->assertNotFound();
+    }
+
+    public function test_per_case_page_branch_admin_returns_404(): void
+    {
+        $case = $this->createCase();
+        $this->seedBaseline($case);
+        $this->actingAs($this->branchAdmin(), 'admin');
+
+        $this->get(ReportSigning::getUrl(['case' => $case->public_id]))
+            ->assertNotFound();
+    }
+
+    public function test_per_case_page_staff_returns_404(): void
+    {
+        $case = $this->createCase();
+        $this->seedBaseline($case);
+        $this->actingAs($this->staff(), 'admin');
+
+        $this->get(ReportSigning::getUrl(['case' => $case->public_id]))
+            ->assertNotFound();
+    }
+
+    public function test_per_case_page_unknown_case_returns_404(): void
+    {
+        $this->actingAs($this->psychologist(), 'admin');
+
+        $this->get(ReportSigning::getUrl(['case' => (string) Str::ulid()]))
+            ->assertNotFound();
+    }
+
+    // ─── Queue page content tests ───
+
+    public function test_queue_page_shows_case_in_table(): void
+    {
+        $case = $this->createCase();
+        $this->seedBaseline($case);
+        $this->actingAs($this->psychologist(), 'admin');
+
+        $response = $this->get(ReportSigningQueue::getUrl());
+        $response->assertSuccessful();
+        $response->assertSee('Peserta ReportSigning Page');
+        $response->assertSee($case->public_id);
+        $response->assertSee('Tinjau', false);
+        $response->assertSee('Tanda Tangan', false);
+    }
+
+    public function test_queue_page_shows_empty_state_when_no_cases(): void
+    {
+        $this->actingAs($this->psychologist(), 'admin');
+
+        $response = $this->get(ReportSigningQueue::getUrl());
+        $response->assertSuccessful();
+        $response->assertSee('Tidak ada kasus yang siap ditinjau saat ini.');
+    }
+
+    public function test_queue_page_links_to_per_case_signing_page(): void
+    {
+        $case = $this->createCase();
+        $this->seedBaseline($case);
+        $this->actingAs($this->psychologist(), 'admin');
+
+        $response = $this->get(ReportSigningQueue::getUrl());
+        $response->assertSuccessful();
+        $expectedUrl = ReportSigning::getUrl(['case' => $case->public_id]);
+        $response->assertSee($expectedUrl, false);
+    }
+
+    public function test_queue_page_can_access_returns_true_for_psychologist(): void
+    {
+        $this->actingAs($this->psychologist(), 'admin');
+        self::assertTrue(ReportSigningQueue::canAccess());
+    }
+
+    public function test_queue_page_can_access_returns_false_for_staff(): void
+    {
+        $this->actingAs($this->staff(), 'admin');
+        self::assertFalse(ReportSigningQueue::canAccess());
+    }
+
+    // ─── Queue page: DIRECT_PUBLIC case ───
+
+    public function test_queue_page_shows_direct_public_case(): void
+    {
+        $case = $this->createCase();
+        $this->seedBaseline($case);
+        $this->actingAs($this->psychologist(), 'admin');
+
+        $response = $this->get(ReportSigningQueue::getUrl());
+        $response->assertSuccessful();
+        $response->assertSee($case->public_id);
+    }
+
+    // ─── Queue page: INTEGRATED case ───
+
+    public function test_queue_page_shows_integrated_case(): void
+    {
+        $case = $this->createCase('INTEGRATED');
+        $this->seedBaseline($case);
+        $this->actingAs($this->psychologist(), 'admin');
+
+        $response = $this->get(ReportSigningQueue::getUrl());
+        $response->assertSuccessful();
+        $response->assertSee($case->public_id);
+    }
+
+    // ─── Queue page: cases missing eligibility or narrative ───
+
+    public function test_queue_page_hides_case_without_eligibility(): void
+    {
+        $case = $this->createCase();
+        $this->seedBaseline($case, seedEligibility: false, seedNarrative: true);
+        $this->actingAs($this->psychologist(), 'admin');
+
+        $response = $this->get(ReportSigningQueue::getUrl());
+        $response->assertSuccessful();
+        $response->assertDontSee($case->public_id);
+    }
+
+    public function test_queue_page_hides_case_without_narrative(): void
+    {
+        $case = $this->createCase();
+        $this->seedBaseline($case, seedEligibility: true, seedNarrative: false);
+        $this->actingAs($this->psychologist(), 'admin');
+
+        $response = $this->get(ReportSigningQueue::getUrl());
+        $response->assertSuccessful();
+        $response->assertDontSee($case->public_id);
+    }
+
+    // ─── Queue page: one participant, two cases ───
+
+    public function test_queue_page_shows_only_eligible_case_for_participant_with_two_cases(): void
+    {
+        // Case 1: has both eligibility and narrative → should appear
+        $case1 = $this->createCase();
+        $this->seedBaseline($case1);
+
+        // Case 2: same participant, no eligibility → should NOT appear
+        $case2 = AssessmentCase::query()->create([
+            'public_id' => (string) Str::ulid(),
+            'participant_id' => $case1->participant_id,
+            'organization_id' => $case1->organization_id,
+            'package_id' => $case1->package_id,
+            'origin' => 'DIRECT_PUBLIC',
+            'intended_field_snapshot' => 'UMUM',
+        ]);
+
+        $this->actingAs($this->psychologist(), 'admin');
+
+        $response = $this->get(ReportSigningQueue::getUrl());
+        $response->assertSuccessful();
+        $response->assertSee($case1->public_id);
+        $response->assertDontSee($case2->public_id);
+    }
+
+    // ─── Queue page: badge states ───
+
+    public function test_queue_page_badge_belum_ditandatangani_for_no_snapshot(): void
+    {
+        $case = $this->createCase();
+        $this->seedBaseline($case);
+        $this->actingAs($this->psychologist(), 'admin');
+
+        $response = $this->get(ReportSigningQueue::getUrl());
+        $response->assertSuccessful();
+        $response->assertSee('Belum ditandatangani');
+    }
+
+    public function test_queue_page_badge_ditandatangani_for_v1_snapshot(): void
+    {
+        $case = $this->createCase();
+        $baseline = $this->seedBaseline($case);
+        $psychologist = $this->psychologist();
+        $this->actingAs($psychologist, 'admin');
+
+        DB::table('report_signing_snapshots')->insert([
+            'id' => (string) Str::ulid(),
+            'assessment_case_id' => $case->id,
+            'version' => 1,
+            'supersedes_id' => null,
+            'state' => 'SIGNED',
+            'eligibility_version_id' => $baseline['eligibilityId'],
+            'narrative_version_id' => $baseline['narrativeId'],
+            'snapshot_json' => json_encode(['provenance' => ['signed' => true]], JSON_THROW_ON_ERROR),
+            'signed_by_admin_id' => $psychologist->id,
+            'signed_at' => now(),
+            'created_at' => now(),
+        ]);
+
+        $response = $this->get(ReportSigningQueue::getUrl());
+        $response->assertSuccessful();
+        $response->assertSee('Ditandatangani');
+        $response->assertDontSee('Direvisi');
+        $response->assertDontSee('Belum ditandatangani');
+    }
+
+    public function test_queue_page_badge_direvisi_for_v2_snapshot(): void
+    {
+        $case = $this->createCase();
+        $baseline = $this->seedBaseline($case);
+        $psychologist = $this->psychologist();
+        $this->actingAs($psychologist, 'admin');
+
+        // v1 snapshot
+        $v1Id = (string) Str::ulid();
+        DB::table('report_signing_snapshots')->insert([
+            'id' => $v1Id,
+            'assessment_case_id' => $case->id,
+            'version' => 1,
+            'supersedes_id' => null,
+            'state' => 'SIGNED',
+            'eligibility_version_id' => $baseline['eligibilityId'],
+            'narrative_version_id' => $baseline['narrativeId'],
+            'snapshot_json' => json_encode(['provenance' => ['signed' => true]], JSON_THROW_ON_ERROR),
+            'signed_by_admin_id' => $psychologist->id,
+            'signed_at' => now(),
+            'created_at' => now(),
+        ]);
+
+        // v2 snapshot (re-sign)
+        DB::table('report_signing_snapshots')->insert([
+            'id' => (string) Str::ulid(),
+            'assessment_case_id' => $case->id,
+            'version' => 2,
+            'supersedes_id' => $v1Id,
+            'state' => 'SIGNED',
+            'eligibility_version_id' => $baseline['eligibilityId'],
+            'narrative_version_id' => $baseline['narrativeId'],
+            'snapshot_json' => json_encode(['provenance' => ['signed' => true], 'revision' => ['supersedes_version' => 1]], JSON_THROW_ON_ERROR),
+            'signed_by_admin_id' => $psychologist->id,
+            'signed_at' => now(),
+            'created_at' => now(),
+        ]);
+
+        $response = $this->get(ReportSigningQueue::getUrl());
+        $response->assertSuccessful();
+        $response->assertSee('Direvisi (v2)');
+        $response->assertDontSee('Ditandatangani');
     }
 }
