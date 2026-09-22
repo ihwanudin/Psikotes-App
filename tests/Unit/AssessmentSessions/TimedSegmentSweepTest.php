@@ -41,13 +41,24 @@ final class TimedSegmentSweepTest extends TestCase
 
     public function test_the_last_segment_past_its_duration_expires_the_session(): void
     {
+        // Inclusive boundary (matches AssessmentSessionDeadlinePolicy's own
+        // receivedAt > endsAt, i.e. receivedAt === endsAt still accepted):
+        // exactly at the deadline is still live, one tick past is expired.
+        $atDeadline = (new TimedSegmentSweep)->evaluate(
+            [new TimedSegment('SE', 300, 0, false)],
+            null, null, null,
+            $this->at(self::START),
+            $this->at('2026-09-22T08:05:00+00:00'),
+        );
+        $this->assertFalse($atDeadline->expired);
+
         $result = (new TimedSegmentSweep)->evaluate(
             [new TimedSegment('SE', 300, 0, false)],
             null,
             null,
             null,
             $this->at(self::START),
-            $this->at('2026-09-22T08:05:00+00:00'),
+            $this->at('2026-09-22T08:05:01+00:00'),
         );
 
         $this->assertSame(0, $result->index);
@@ -220,9 +231,17 @@ final class TimedSegmentSweepTest extends TestCase
         $atEndsAt = (new TimedSegmentSweep)->evaluate(
             $segments, null, null, null, $sessionStartedAt, $endsAt,
         );
-        $this->assertTrue(
+        $this->assertFalse(
             $atEndsAt->expired,
-            'Exactly at ends_at, the sweep must agree the session is over - the same instant AssessmentSessionDeadlinePolicy would reject a write at.',
+            'Exactly at ends_at, the sweep must agree the session is still live - the same instant AssessmentSessionDeadlinePolicy still accepts a write at (receivedAt > endsAt is the rejection, not >=).',
+        );
+
+        $oneSecondAfterEndsAt = (new TimedSegmentSweep)->evaluate(
+            $segments, null, null, null, $sessionStartedAt, $endsAt->modify('+1 second'),
+        );
+        $this->assertTrue(
+            $oneSecondAfterEndsAt->expired,
+            'One second after ends_at, the sweep must agree the session is over.',
         );
     }
 

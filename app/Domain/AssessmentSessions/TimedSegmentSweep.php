@@ -44,6 +44,17 @@ use DateTimeImmutable;
  * became_current_at, never later than the schedule it replaces), so
  * $expired here can become true before `ends_at` but never after it.
  * `ends_at` is never recomputed or shortened by an early finish.
+ *
+ * Boundary operator, fixed 2026-09-22 during stage 5: a segment deadline
+ * (reading cap or timed window) must be checked with `now() <= deadline`,
+ * INCLUSIVE, the same as AssessmentSessionDeadlinePolicy's own
+ * `receivedAt > endsAt` (i.e. `receivedAt === endsAt` is still accepted).
+ * An earlier exclusive `<` here meant the exact boundary instant genuinely
+ * disagreed with the whole-session policy -- caught by
+ * AutosaveAssessmentAnswersTest exercising a request landing exactly on a
+ * segment boundary, not by TimedSegmentSweepTest's own unit tests, which
+ * only checked the boundary INSTANT matched arithmetically, never the
+ * operator at that instant.
  */
 final class TimedSegmentSweep
 {
@@ -93,7 +104,7 @@ final class TimedSegmentSweep
                 // reaches here: startOf() already resolved it to
                 // $becameCurrentAt, so there is nothing to wait out.
                 $capDeadline = $becameCurrentAt->modify("+{$segment->readingCapSeconds} seconds");
-                if ($now < $capDeadline) {
+                if ($now <= $capDeadline) {
                     return new TimedSegmentSweepResult($index, $becameCurrentAt, null, false);
                 }
 
@@ -105,7 +116,7 @@ final class TimedSegmentSweep
             }
 
             $timedDeadline = $startedAt->modify("+{$segment->durationSeconds} seconds");
-            if ($now < $timedDeadline) {
+            if ($now <= $timedDeadline) {
                 return new TimedSegmentSweepResult($index, $becameCurrentAt, $startedAt, false);
             }
 
