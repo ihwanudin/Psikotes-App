@@ -25,12 +25,25 @@ use UnitEnum;
  *
  * v1 scope (Lead's explicit decision, 2026-09-23): `failed_to_score` only
  * -- `not_scorable` (RMIB with 2+ defective rank groups, "ADR-0032 PR3")
- * has no code path writing it yet anywhere in this codebase (verified: zero
- * references outside the migration's own CHECK constraint), so building UI
- * against it now would be UI against data nothing produces. The query
- * below already includes 'not_scorable' in its outcome filter so this page
- * needs no further change once that lands -- it will just start showing
- * rows.
+ * had no code path writing it yet at the time, so building UI against it
+ * would have been UI against data nothing produces. The query below
+ * already includes 'not_scorable' in its outcome filter so it needs no
+ * further change now that PR3 exists -- it will just start showing rows
+ * once a session actually lands there.
+ *
+ * ADR-0032 PR3 follow-up (2026-09-23): RMIB's OTHER new outcome --
+ * `reviewRequired` (exactly one rank group excluded, still scored, per
+ * psychologist P3) -- is a SEPARATE section below ($reviewRequiredResults),
+ * not a row in $attempts. Unlike `failed_to_score`/`not_scorable`, a
+ * reviewRequired result is NOT an assessment_scoring_attempts row at all --
+ * it's a normal, successful `generic_instrument_results` row (scoring did
+ * not fail), just one whose payload the psychologist should read
+ * qualitatively rather than take at face value (SCORING_ALGORITHM.md /
+ * P3's own wording). `reviewRequired`/`excludedGroups` live only inside
+ * that row's `result_payload` JSON (SealedRmibResult -- no dedicated
+ * columns), so this page decodes and filters in PHP rather than a
+ * driver-specific JSON-path WHERE, since generic_instrument_results has no
+ * volume concerns that would make that unaffordable on an admin-only page.
  *
  * Two-tier access (Lead's explicit decision, 2026-09-23 -- asked first,
  * not decided unilaterally, per CLAUDE.md's psychometric-access caution):
@@ -67,6 +80,9 @@ final class ScoringFailuresReview extends Page
 
     /** @var list<array<string, mixed>> */
     public array $attempts = [];
+
+    /** @var list<array<string, mixed>> */
+    public array $reviewRequiredResults = [];
 
     public bool $canSeeReason = false;
 
@@ -150,12 +166,17 @@ final class ScoringFailuresReview extends Page
 
     private function reload(): void
     {
-        // assessment_scoring_attempts is service-role-select-only (no
-        // admin-role RLS policy at all -- see its own migration docblock),
-        // same reason ReportSigningQueue wraps its own service-only reads.
-        // Access to THIS page is still gated by canAccess()/mount() above.
-        [$this->attempts, $this->reasonCodeOptions] = app(RlsContextRunner::class)->runAsService(
-            fn (): array => [array_values($this->query()->get()->map($this->row(...))->all()), $this->reasonCodeOptions()],
+        // assessment_scoring_attempts and generic_instrument_results are
+        // both service-role-select-only (no admin-role RLS policy at all --
+        // see their own migration docblocks), same reason ReportSigningQueue
+        // wraps its own service-only reads. Access to THIS page is still
+        // gated by canAccess()/mount() above.
+        [$this->attempts, $this->reasonCodeOptions, $this->reviewRequiredResults] = app(RlsContextRunner::class)->runAsService(
+            fn (): array => [
+                array_values($this->query()->get()->map($this->row(...))->all()),
+                $this->reasonCodeOptions(),
+                $this->reviewRequiredResults(),
+            ],
         );
     }
 
@@ -227,6 +248,57 @@ final class ScoringFailuresReview extends Page
             ->orderBy('reason_code')
             ->pluck('reason_code')
             ->all());
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function reviewRequiredResults(): array
+    {
+        // Only RMIB can ever produce this outcome (ADR-0032 PR3) -- an
+        // instrument filter for anything else means the viewer explicitly
+        // narrowed away from RMIB, so respect that rather than showing an
+        // unrelated section underneath a filtered-out instrument's table.
+        if ($this->instrumentFilter !== null && $this->instrumentFilter !== '' && $this->instrumentFilter !== 'rmib') {
+            return [];
+        }
+
+        $query = DB::table('generic_instrument_results as result')
+            ->join('participants as participant', 'participant.id', '=', 'result.participant_id')
+            ->where('result.instrument_code', 'rmib');
+
+        if ($this->dateFrom !== null && $this->dateFrom !== '') {
+            $query->whereDate('result.submitted_at', '>=', $this->dateFrom);
+        }
+        if ($this->dateTo !== null && $this->dateTo !== '') {
+            $query->whereDate('result.submitted_at', '<=', $this->dateTo);
+        }
+
+        $rows = $query
+            ->select(['result.session_public_id', 'result.submitted_at', 'result.result_payload', 'participant.full_name', 'participant.test_number'])
+            ->orderBy('result.submitted_at', 'desc')
+            ->get();
+
+        $results = [];
+        foreach ($rows as $row) {
+            $payload = json_decode((string) $row->result_payload, true, flags: JSON_THROW_ON_ERROR);
+            if (($payload['reviewRequired'] ?? false) !== true) {
+                continue;
+            }
+
+            $results[] = [
+                'session_public_id' => $row->session_public_id,
+                'submitted_at' => $row->submitted_at,
+                'full_name' => $row->full_name,
+                'test_number' => $row->test_number,
+                // Same tier split as reason_code above: excludedGroups is
+                // psychometric detail (which rank groups the score ignored
+                // and why), not just an operational flag -- never included
+                // in the array (not merely hidden in the view) for a
+                // viewer who can't see reasons.
+                'excluded_groups' => $this->canSeeReason ? $payload['excludedGroups'] : null,
+            ];
+        }
+
+        return $results;
     }
 
     /** @return list<string> */
