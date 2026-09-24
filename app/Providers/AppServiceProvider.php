@@ -22,6 +22,7 @@ use App\Services\AssessmentSessions\RmibItemContentReader;
 use App\Services\Identity\ManualReviewIdentityMatcher;
 use App\Services\Integrations\GenericAssessmentResultCallbackConfiguration;
 use App\Services\Notifications\N8nNotifier;
+use App\Services\ParticipantAuth\ParticipantPrincipal;
 use App\Services\Payments\XenditProvider;
 use App\Services\ReportRendering\ReportDocumentSupplementalData;
 use App\Services\ReportRendering\ReportSupplementalData;
@@ -142,6 +143,8 @@ class AppServiceProvider extends ServiceProvider
             ->by($request->session()->getId().'|'.(string) $request->ip()));
         RateLimiter::for('identity-evidence-access', fn (Request $request): Limit => Limit::perMinute(30)
             ->by((string) ($request->user('admin')?->getAuthIdentifier() ?? $request->ip())));
+        RateLimiter::for('proctoring-photo-access', fn (Request $request): Limit => Limit::perMinute(30)
+            ->by((string) ($request->user('admin')?->getAuthIdentifier() ?? $request->ip())));
         RateLimiter::for('manual-payment-proof-access', fn (Request $request): Limit => Limit::perMinute(30)
             ->by((string) ($request->user('admin')?->getAuthIdentifier() ?? $request->ip())));
         RateLimiter::for('eligibility-decision-access', fn (Request $request): Limit => Limit::perMinute(30)
@@ -162,6 +165,18 @@ class AppServiceProvider extends ServiceProvider
                     'message' => 'Terlalu banyak percobaan. Silakan coba lagi nanti.',
                 ],
             ], 429, $headers)));
+        // F7 proctoring persistence (2026-09-24): periodic photos every
+        // 12-20s (config('proctoring.capture_*_interval_seconds')) plus
+        // occasional camera/screen events. 30/min per participant is
+        // generous headroom over the worst realistic case (~5 photos/min
+        // at the minimum interval) while still bounding abuse of the
+        // upload/insert path.
+        RateLimiter::for('proctoring-ingest', function (Request $request): Limit {
+            $principal = $request->attributes->get('participant_principal');
+            $key = $principal instanceof ParticipantPrincipal ? (string) $principal->participantId : (string) $request->ip();
+
+            return Limit::perMinute(30)->by($key);
+        });
         RateLimiter::for('selection-integration', fn (Request $request): Limit => Limit::perMinute(120)
             ->by((string) $request->ip())
             ->response(fn (Request $request, array $headers) => response()->json([

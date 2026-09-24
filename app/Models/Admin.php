@@ -117,6 +117,14 @@ final class Admin extends Authenticatable implements FilamentUser, HasEmailAuthe
                 [AdminRole::SuperAdmin, AdminRole::CentralAdmin],
                 true,
             ),
+            // Psychologist + super_admin/central_admin (F7, 2026-09-24).
+            // BranchAdmin/Staff deliberately excluded from this ability --
+            // see the enum case's own doc comment.
+            AdminAbility::ReviewProctoring => in_array(
+                $this->role,
+                [AdminRole::Psychologist, AdminRole::SuperAdmin, AdminRole::CentralAdmin],
+                true,
+            ),
         };
     }
 

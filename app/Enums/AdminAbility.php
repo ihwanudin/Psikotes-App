@@ -65,4 +65,16 @@ enum AdminAbility: string
      * reason column only when ReviewReports is also true.
      */
     case ReviewScoringFailures = 'review_scoring_failures';
+
+    /**
+     * Issue a signed URL to a `proctor_photos` row and read
+     * `proctor_logs`/`proctor_adjudications` beyond what RLS alone exposes
+     * to an admin panel session (F7, 2026-09-24). Psychologist +
+     * super_admin/central_admin only, deliberately not branch_admin/staff:
+     * those roles already get RLS read access to the metadata rows
+     * (own-branch only), but not a signed-URL-issuing route in this
+     * increment -- a branch-scoped photo-viewing UI is a separate,
+     * later decision, not an extension of this ability.
+     */
+    case ReviewProctoring = 'review_proctoring';
 }

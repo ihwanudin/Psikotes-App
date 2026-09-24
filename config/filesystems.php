@@ -4,6 +4,7 @@ $identityDriver = env('IDENTITY_FILESYSTEM_DRIVER', 'local');
 $paymentProofDriver = env('PAYMENT_PROOF_FILESYSTEM_DRIVER', 'local');
 $reportDriver = env('REPORT_FILESYSTEM_DRIVER', 'local');
 $istAssetDriver = env('IST_ASSET_FILESYSTEM_DRIVER', 'local');
+$proctoringDriver = env('PROCTORING_FILESYSTEM_DRIVER', 'local');
 
 return [
 
@@ -168,6 +169,34 @@ return [
                 // signed nonce so no two issued URLs are ever identical.
                 'serve' => false,
                 'url' => '/private-ist-assets',
+                'visibility' => 'private',
+                'throw' => true,
+                'report' => true,
+            ],
+
+        // F7 proctoring persistence (2026-09-24): periodic/start/submit
+        // capture photos. Private, non-public object keys only -- served
+        // via short-lived signed URLs (ProctoringPhotoUrlIssuer), same
+        // pattern as 'identity'/'payment-proofs'.
+        'proctoring' => $proctoringDriver === 's3'
+            ? [
+                'driver' => 's3',
+                'key' => env('AWS_ACCESS_KEY_ID'),
+                'secret' => env('AWS_SECRET_ACCESS_KEY'),
+                'region' => env('AWS_DEFAULT_REGION'),
+                'bucket' => env('AWS_BUCKET'),
+                'endpoint' => env('AWS_ENDPOINT', env('FILESYSTEM_S3_ENDPOINT')),
+                'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
+                'root' => env('PROCTORING_FILESYSTEM_ROOT', 'proctoring'),
+                'visibility' => 'private',
+                'throw' => true,
+                'report' => true,
+            ]
+            : [
+                'driver' => 'local',
+                'root' => storage_path('app/private/proctoring'),
+                'serve' => true,
+                'url' => '/private-proctoring-photos',
                 'visibility' => 'private',
                 'throw' => true,
                 'report' => true,
