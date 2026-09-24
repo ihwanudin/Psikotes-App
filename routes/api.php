@@ -19,6 +19,7 @@ use App\Http\Controllers\StartDassAssessmentController;
 use App\Http\Controllers\StartParticipantSessionController;
 use App\Http\Controllers\SubmitAssessmentSessionController;
 use App\Http\Controllers\SubmitDassAssessmentController;
+use App\Http\Controllers\SubmitProctoringEvidenceController;
 use App\Http\Controllers\SubtestNextController;
 use Illuminate\Support\Facades\Route;
 
@@ -69,6 +70,16 @@ Route::middleware('participant.jwt')->group(function (): void {
         ->name('participant.sessions.answers');
     Route::post('/sessions/{id}/submit', SubmitAssessmentSessionController::class)
         ->name('participant.sessions.submit');
+
+    // F7 proctoring persistence (2026-09-24): same rls-excluded group, same
+    // reason -- RecordProctoringEvent/RecordProctoringPhoto each own their
+    // own service transaction and lock the session row themselves. One
+    // route, two payload shapes (API_CONTRACT.md: "foto multipart | log
+    // event"), disambiguated by SubmitProctoringEvidenceRequest, not a
+    // client-set discriminator field.
+    Route::post('/sessions/{id}/proctor', SubmitProctoringEvidenceController::class)
+        ->middleware('throttle:proctoring-ingest')
+        ->name('participant.sessions.proctor');
 
     // F2 session-answers-readback (2026-09-21): same rls-excluded group,
     // same reason -- GetAssessmentSessionAnswers owns its own service
