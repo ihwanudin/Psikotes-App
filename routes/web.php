@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Http\Controllers\Admin\AssessmentParticipantExportController;
 use App\Http\Controllers\Admin\IdentityEvidenceAccessController;
 use App\Http\Controllers\Admin\ManualPaymentProofAccessController;
+use App\Http\Controllers\Admin\ProctoringPhotoAccessController;
 use App\Http\Controllers\AdminPasswordSetupController;
 use App\Http\Controllers\AssessmentInvitationController;
 use App\Http\Controllers\BilingualNarrativeController;
@@ -134,6 +135,10 @@ Route::post('/admin/identity-evidence/{evidence}/temporary-url', IdentityEvidenc
     ->whereUlid('evidence')
     ->middleware(['auth:admin', 'admin.not-disabled', 'throttle:identity-evidence-access'])
     ->name('admin.identity-evidence.temporary-url');
+Route::post('/admin/proctoring-photos/{photo}/temporary-url', ProctoringPhotoAccessController::class)
+    ->whereUlid('photo')
+    ->middleware(['auth:admin', 'admin.not-disabled', 'throttle:proctoring-photo-access'])
+    ->name('admin.proctoring-photos.temporary-url');
 Route::get('/admin/manual-payment-proofs/{order}/open', ManualPaymentProofAccessController::class)
     ->whereUlid('order')
     ->middleware([
