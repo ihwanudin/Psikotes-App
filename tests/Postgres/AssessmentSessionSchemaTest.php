@@ -376,6 +376,12 @@ final class AssessmentSessionSchemaTest extends TestCase
         if ($method === 'down' && Schema::hasTable('assessment_scoring_attempts')) {
             (require database_path('migrations/2026_09_22_000200_create_assessment_scoring_attempts.php'))->down();
         }
+        // F7 (2026-09-24): proctor_session_monitors/proctor_photos/
+        // proctor_logs/proctor_adjudications all foreign-key to
+        // test_sessions too -- same reasoning as the two guards above.
+        if ($method === 'down' && Schema::hasTable('proctor_session_monitors')) {
+            (require database_path('migrations/2026_09_24_000100_create_proctoring_tables.php'))->down();
+        }
         $migration = require database_path('migrations/2026_09_08_000100_create_generic_assessment_sessions.php');
         if (! is_object($migration) || ! in_array($method, ['up', 'down'], true) || ! method_exists($migration, $method)) {
             throw new RuntimeException('Assessment session migration is invalid.');
