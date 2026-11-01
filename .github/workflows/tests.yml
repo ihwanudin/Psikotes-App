@@ -72,7 +72,7 @@ jobs:
           echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
 
       - name: Setup Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
 
@@ -83,7 +83,7 @@ jobs:
         run: python -m unittest discover -s tools/extract/tests -t . -v
 
       - name: Setup PHP
-        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
         with:
           php-version: '8.3'
           tools: composer:v2
@@ -93,7 +93,7 @@ jobs:
           ini-values: memory_limit=2048M
 
       - name: Setup Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           # Single source of truth, kept in step with docker/app/Dockerfile.
           node-version-file: '.nvmrc'
@@ -131,7 +131,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: '.nvmrc'
 
@@ -178,7 +178,7 @@ jobs:
 
       - name: Upload fixture harness output
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: frontend-fixture-browser-output
           path: output/playwright/
@@ -247,7 +247,7 @@ jobs:
           echo "postgres_irrelevant=$postgres_irrelevant" >> "$GITHUB_OUTPUT"
 
       - name: Setup PHP for dependencies
-        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
         with:
           php-version: '8.3'
           extensions: bcmath, intl, pcntl, pdo_pgsql, zip
@@ -256,7 +256,7 @@ jobs:
           ini-values: memory_limit=2048M
 
       - name: Setup Node for frontend assets
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: '.nvmrc'
           cache: 'npm'
